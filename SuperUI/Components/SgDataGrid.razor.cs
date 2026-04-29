@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using SuperUI.Localization;
 using System.Collections;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
@@ -126,6 +127,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private const int MinColumnWidth = 40;
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
     private ElementReference _gridRootRef;
     private ElementReference _chooserRef;
@@ -243,11 +245,6 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [Parameter] public IReadOnlyList<int> PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
     
     /// <summary>
-    /// Gets or sets the localization settings for grid UI text. Default is Russian.
-    /// </summary>
-    [Parameter] public SgDataGridLocale Locale { get; set; } = SgDataGridLocale.Ru;
-    
-    /// <summary>
     /// Gets or sets where to display row details.
     /// Supported values: Inline, Drawer, Window. Default is Inline.
     /// </summary>
@@ -348,9 +345,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     internal int CurrentPage => _currentPage;
     internal int TotalFilteredCount => GetFilteredRows().Count;
     internal int TotalPages => !EnablePaging ? 1 : Math.Max(1, (int)Math.Ceiling(TotalFilteredCount / (double)Math.Max(1, PageSize)));
-    internal string EffectiveEmptyText => string.IsNullOrWhiteSpace(EmptyText) ? Locale.EmptyText : EmptyText!;
-    internal string EffectiveDetailDrawerTitle => string.IsNullOrWhiteSpace(DetailDrawerTitle) ? Locale.DetailDrawerTitle : DetailDrawerTitle!;
-    internal string EffectiveDetailWindowTitle => string.IsNullOrWhiteSpace(DetailWindowTitle) ? Locale.DetailWindowTitle : DetailWindowTitle!;
+    internal string EffectiveEmptyText => string.IsNullOrWhiteSpace(EmptyText) ? Localizer["DataGrid_EmptyText"] : EmptyText!;
+    internal string EffectiveDetailDrawerTitle => string.IsNullOrWhiteSpace(DetailDrawerTitle) ? Localizer["DataGrid_DetailDrawerTitle"] : DetailDrawerTitle!;
+    internal string EffectiveDetailWindowTitle => string.IsNullOrWhiteSpace(DetailWindowTitle) ? Localizer["DataGrid_DetailWindowTitle"] : DetailWindowTitle!;
     internal bool SelectionEnabled => AllowMultiSelect || SelectedItemsChanged.HasDelegate;
     internal int ColumnSpan
     {
@@ -1153,7 +1150,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private bool MatchesConditionFilter(TItem item, SgDataGridColumn<TItem> col, ColumnFilter filter)
     {
         var rawValue = col.GetValue(item);
-        var targetType = ResolveColumnType(col);
+        var targetType = ResolveColumnType(col, rawValue);
 
         if (filter.And)
         {
@@ -1184,8 +1181,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return true;
 
         var rawValue = col.GetValue(item);
+        var targetType = ResolveColumnType(col, rawValue);
         var display = col.GetDisplay(item);
-        var targetType = ResolveColumnType(col);
         return MatchesQueryRulePrepared(rawValue, display, targetType, rule);
     }
 
@@ -1247,7 +1244,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         return GridObjectComparer.Instance.Compare(left, right);
     }
 
-    private static object? ConvertForComparison(object? value, Type type)
+private static object? ConvertForComparison(object? value, Type type)
     {
         if (value is null)
             return null;
@@ -1255,10 +1252,36 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         var target = Nullable.GetUnderlyingType(type) ?? type;
         if (target.IsEnum)
             return value.ToString();
+
+        // Normalize value to target type for proper numeric comparison
+        var valueType = Nullable.GetUnderlyingType(value.GetType()) ?? value.GetType();
+        if (valueType != target && target != typeof(object))
+        {
+            if (IsNumericType(target) && IsNumericValue(value))
+            {
+                try
+                {
+                    return Convert.ChangeType(value, target, CultureInfo.CurrentCulture);
+                }
+                catch
+                {
+                    // If conversion fails, try converting to decimal first as intermediate
+                    try
+                    {
+                        var asDecimal = Convert.ToDecimal(value, CultureInfo.CurrentCulture);
+                        return Convert.ChangeType(asDecimal, target, CultureInfo.CurrentCulture);
+                    }
+                    catch
+                    {
+                        // Fall through to return original value
+                    }
+                }
+            }
+        }
         return value;
     }
 
-    private static object? ConvertFromString(string? text, Type type)
+private static object? ConvertFromString(string? text, Type type)
     {
         var target = Nullable.GetUnderlyingType(type) ?? type;
         if (string.IsNullOrWhiteSpace(text))
@@ -1274,6 +1297,22 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
                 return text;
             if (target == typeof(bool))
                 return text is "true" or "True" or "1" or "✓" || bool.Parse(text);
+
+            // Clean numeric strings: remove thousand separators (spaces), currency symbols, etc.
+            // For formats like "92 731,00 ₽" -> "92731,00"
+            if (IsNumericType(target))
+            {
+                text = CleanNumericString(text);
+                // Normalize decimal separator to current culture format
+                // In Russian locale, decimal separator is comma
+                var expectedSeparator = CultureInfo.CurrentCulture.NumberFormat.NumberDecimalSeparator[0];
+                // If we have a dot in the cleaned string but expecting comma, replace it
+                if (expectedSeparator == ',' && text.Contains('.'))
+                {
+                    text = text.Replace('.', ',');
+                }
+            }
+
             if (target == typeof(int))
                 return int.Parse(text, CultureInfo.CurrentCulture);
             if (target == typeof(long))
@@ -1518,7 +1557,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return Task.CompletedTask;
 
         _pendingRules[index] = _pendingRules[index] with { Condition = condition };
-        // No StateHasChanged - will be called when filter is applied
+        // No StateHasChanged during typing
         return Task.CompletedTask;
     }
 
@@ -1528,7 +1567,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return Task.CompletedTask;
 
         _pendingRules[index] = _pendingRules[index] with { Value = value };
-        // No StateHasChanged - will be called when filter is applied
+        // No StateHasChanged during typing - prevents UI lag
         return Task.CompletedTask;
     }
 
@@ -1693,16 +1732,81 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
     private bool IsNumericColumn(string key)
     {
-        var type = ResolveColumnType(GetColumnByKey(key));
-        type = Nullable.GetUnderlyingType(type) ?? type;
-        return type == typeof(byte) || type == typeof(short) || type == typeof(int) || type == typeof(long) ||
-               type == typeof(float) || type == typeof(double) || type == typeof(decimal);
+        var col = GetColumnByKey(key);
+        if (col?.ValueType is not null)
+        {
+            var type = Nullable.GetUnderlyingType(col.ValueType) ?? col.ValueType;
+            return IsNumericType(type);
+        }
+
+        // Auto-detect numeric column by sampling first few non-null values
+        var values = Items?.Take(20).Select(item => col?.GetValue(item)) ?? Enumerable.Empty<object?>();
+        var numericCount = values
+            .Where(v => v is not null)
+            .Take(10)
+            .Count(IsNumericValue);
+        
+        return numericCount >= 3; // If 3+ of first 10 values are numeric, treat as numeric column
     }
 
-    private static Type ResolveColumnType(SgDataGridColumn<TItem>? col)
+    private static bool IsNumericType(Type type) =>
+        type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort) ||
+        type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) ||
+        type == typeof(float) || type == typeof(double) || type == typeof(decimal);
+
+    private static bool IsNumericValue(object? value)
+    {
+        return value switch
+        {
+            sbyte => true,
+            byte => true,
+            short => true,
+            ushort => true,
+            int => true,
+            uint => true,
+            long => true,
+            ulong => true,
+            float => true,
+            double => true,
+            decimal => true,
+            _ => false
+        };
+    }
+
+    private static string CleanNumericString(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return text;
+
+        // Remove thousand separators (spaces, commas depending on culture) and currency symbols
+        // For "92 731,00 ₽" -> "92731,00" or for "92,731.00" -> "92731.00"
+        // Support both comma and dot as decimal separators since input can be in any format
+        var cleaned = new StringBuilder();
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (char.IsDigit(c) || c == ',' || c == '.' || c == '-' || c == '+' || c == 'E' || c == 'e')
+            {
+                cleaned.Append(c);
+            }
+        }
+
+        return cleaned.ToString();
+    }
+
+    private static Type ResolveColumnType(SgDataGridColumn<TItem>? col, object? rawValue = null)
     {
         if (col?.ValueType is not null)
             return col.ValueType;
+
+        // Try to infer type from the actual value
+        if (rawValue is not null)
+        {
+            var valueType = Nullable.GetUnderlyingType(rawValue.GetType()) ?? rawValue.GetType();
+            if (IsNumericType(valueType))
+                return valueType;
+        }
 
         return typeof(string);
     }
@@ -1790,7 +1894,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
                 Path = path,
                 Column = column,
                 Depth = depth,
-                Label = string.IsNullOrEmpty(groupKey) ? Locale.FilterEmpty : groupKey,
+                Label = string.IsNullOrEmpty(groupKey) ? Localizer["DataGrid_FilterEmpty"] : groupKey,
                 TotalCount = groupRows.Count
             };
 
@@ -2303,7 +2407,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     {
         _editModalItem = item;
         _isEditMode = true;
-        _editModalTitle = !string.IsNullOrEmpty(EditModalEditTitle) ? EditModalEditTitle : Locale.Edit;
+        _editModalTitle = !string.IsNullOrEmpty(EditModalEditTitle) ? EditModalEditTitle : Localizer["DataGrid_Edit"];
         
         // Get editable columns, or if none are marked editable, use all visible columns except ID
         var editableColumns = VisibleColumns.Where(c => c.Editable).ToList();
@@ -2331,7 +2435,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     {
         _editModalItem = CreateItemFactory is not null ? CreateItemFactory() : Activator.CreateInstance<TItem>();
         _isEditMode = false;
-        _editModalTitle = !string.IsNullOrEmpty(EditModalAddTitle) ? EditModalAddTitle : Locale.Add;
+        _editModalTitle = !string.IsNullOrEmpty(EditModalAddTitle) ? EditModalAddTitle : Localizer["DataGrid_Add"];
         
         // Get editable columns, or if none are marked editable, use all visible columns except ID
         var editableColumns = VisibleColumns.Where(c => c.Editable).ToList();
@@ -2434,7 +2538,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         builder.OpenComponent(0, formType);
         builder.AddAttribute(1, "Model", _editModalItem);
         builder.AddAttribute(2, "Columns", 2);
-        builder.AddAttribute(3, "SubmitText", Locale.Save);
+        builder.AddAttribute(3, "SubmitText", Localizer["Save"]);
         builder.AddAttribute(4, "OnValidSubmit", EventCallback.Factory.Create<TItem>(this, SaveEditModal));
         builder.AddAttribute(5, "Actions", CreateFormActions());
         builder.CloseComponent();
@@ -2445,17 +2549,17 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         builder.OpenElement(0, "div");
         builder.AddAttribute(1, "style", "display:flex;gap:8px;justify-content:flex-end;");
         
-        // Save button
+// Save button
         builder.OpenComponent(2, typeof(SgButton));
         builder.AddAttribute(3, "Type", "submit");
-        builder.AddAttribute(4, "Text", Locale.Save);
+        builder.AddAttribute(4, "Text", Localizer["Save"]);
         builder.AddAttribute(5, "Variant", "primary");
         builder.CloseComponent();
-        
+
         // Cancel button
         builder.OpenComponent(6, typeof(SgButton));
         builder.AddAttribute(7, "Type", "button");
-        builder.AddAttribute(8, "Text", Locale.Cancel);
+        builder.AddAttribute(8, "Text", Localizer["Cancel"]);
         builder.AddAttribute(9, "OnClick", EventCallback.Factory.Create<MouseEventArgs>(this, async _ => await CloseEditModal()));
         builder.CloseComponent();
         
@@ -2751,28 +2855,44 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         public List<GroupNode> Children { get; } = new();
     }
 
-    private sealed class GridObjectComparer : IComparer<object?>
-    {
-        public static readonly GridObjectComparer Instance = new();
+private sealed class GridObjectComparer : IComparer<object?>
+     {
+         public static readonly GridObjectComparer Instance = new();
 
-        public int Compare(object? x, object? y)
-        {
-            if (ReferenceEquals(x, y))
-                return 0;
-            if (x is null)
-                return -1;
-            if (y is null)
-                return 1;
+         public int Compare(object? x, object? y)
+         {
+             if (ReferenceEquals(x, y))
+                 return 0;
+             if (x is null)
+                 return -1;
+             if (y is null)
+                 return 1;
 
-            var xType = Nullable.GetUnderlyingType(x.GetType()) ?? x.GetType();
-            var yType = Nullable.GetUnderlyingType(y.GetType()) ?? y.GetType();
+             var xType = Nullable.GetUnderlyingType(x.GetType()) ?? x.GetType();
+             var yType = Nullable.GetUnderlyingType(y.GetType()) ?? y.GetType();
 
-            if (xType == yType && x is IComparable comparable)
-                return comparable.CompareTo(y);
+             // Handle comparison of numeric types with different types (int vs double, etc.)
+             if (IsNumericType(xType) && IsNumericType(yType))
+             {
+                 // Convert both to decimal for comparison
+                 try
+                 {
+                     var xDec = Convert.ToDecimal(x, CultureInfo.CurrentCulture);
+                     var yDec = Convert.ToDecimal(y, CultureInfo.CurrentCulture);
+                     return xDec.CompareTo(yDec);
+                 }
+                 catch
+                 {
+                     // Fall through to string comparison
+                 }
+             }
 
-            return string.Compare(x.ToString(), y.ToString(), true, CultureInfo.CurrentCulture);
-        }
-    }
+             if (xType == yType && x is IComparable comparable)
+                 return comparable.CompareTo(y);
+
+             return string.Compare(x.ToString(), y.ToString(), true, CultureInfo.CurrentCulture);
+         }
+     }
 }
 
 public sealed class SgDataGridContextMenuEventArgs<TItem>
