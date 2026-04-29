@@ -2,6 +2,7 @@ namespace SuperUI.Components
 {
     using Microsoft.AspNetCore.Components;
     using Microsoft.JSInterop;
+    using SuperUI.Localization;
     using System.Text.Json;
     using System.Text.Json.Serialization;
     using System.Reflection;
@@ -72,7 +73,8 @@ namespace SuperUI.Components
         [Parameter] public EventCallback<List<TItem>> SelectedItemsChanged { get; set; }
 
         [Parameter] public EventCallback<int> CurrentPageChanged { get; set; }
-        [Parameter] public SgDataGridLocale Locale { get; set; } = SgDataGridLocale.Ru;
+        [Inject] public IJSRuntime JSRuntime { get; set; } = default!;
+        [Inject] public ISuperUILocalizer Localizer { get; set; } = default!;
         [Parameter] public bool Loading { get; set; }
         
         // Pagination parameters
@@ -1217,15 +1219,15 @@ namespace SuperUI.Components
                 if (acc is null) continue;
                 var get = acc.Get;
 
-                var prefix = col.Aggregate switch
-                {
-                    Aggregate.Sum => Locale.AggregateSum + ": ",
-                    Aggregate.Average => Locale.AggregateAverage + ": ",
-                    Aggregate.Count => Locale.AggregateCount + ": ",
-                    Aggregate.Min => Locale.AggregateMin + ": ",
-                    Aggregate.Max => Locale.AggregateMax + ": ",
-                    _ => ""
-                };
+var prefix = col.Aggregate switch
+                 {
+                     Aggregate.Sum => Localizer["DataGrid_AggregateSum"] + ": ",
+                     Aggregate.Average => Localizer["DataGrid_AggregateAverage"] + ": ",
+                     Aggregate.Count => Localizer["DataGrid_AggregateCount"] + ": ",
+                     Aggregate.Min => Localizer["DataGrid_AggregateMin"] + ": ",
+                     Aggregate.Max => Localizer["DataGrid_AggregateMax"] + ": ",
+                     _ => ""
+                 };
 
                 if (col.Aggregate == Aggregate.Count)
                 {

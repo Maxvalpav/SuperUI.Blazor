@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using SuperUI.Localization;
 using System.Globalization;
 
 namespace SuperUI.Components
@@ -83,6 +85,8 @@ namespace SuperUI.Components
         /// </summary>
         [Parameter] public TimeZoneInfo? TimeZone { get; set; }
 
+        [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+
         private DateTime _currentMonth = DateTime.Today;
         private bool _isModalVisible;
         private bool _isNewEvent;
@@ -93,11 +97,11 @@ namespace SuperUI.Components
         private static readonly string[] _recurrenceOptions = { "", "FREQ=DAILY", "FREQ=WEEKLY", "FREQ=MONTHLY", "FREQ=YEARLY" };
         private static readonly Dictionary<string, string> _recurrenceLabels = new()
         {
-            [""] = "Никогда",
-            ["FREQ=DAILY"] = "Ежедневно",
-            ["FREQ=WEEKLY"] = "Еженедельно",
-            ["FREQ=MONTHLY"] = "Ежемесячно",
-            ["FREQ=YEARLY"] = "Ежегодно"
+            [""] = "Never",
+            ["FREQ=DAILY"] = "Daily",
+            ["FREQ=WEEKLY"] = "Weekly",
+            ["FREQ=MONTHLY"] = "Monthly",
+            ["FREQ=YEARLY"] = "Yearly"
         };
 
         protected override void OnInitialized()
@@ -266,7 +270,7 @@ namespace SuperUI.Components
                 {
                     Id = Guid.NewGuid().ToString(),
                     Date = date, 
-                    Title = "Новое событие",
+                    Title = "New event",
                     Color = "#1890ff",
                     IsAllDay = true
                 };

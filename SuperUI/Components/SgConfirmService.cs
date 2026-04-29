@@ -12,7 +12,7 @@ public sealed class SgConfirmRequest
     /// <summary>
     /// Gets or initializes the dialog title.
     /// </summary>
-    public string Title { get; init; } = "Подтверждение";
+    public string? Title { get; init; }
 
     /// <summary>
     /// Gets or initializes the confirmation message.
@@ -27,12 +27,12 @@ public sealed class SgConfirmRequest
     /// <summary>
     /// Gets or initializes the confirm button text.
     /// </summary>
-    public string ConfirmText { get; init; } = "Подтвердить";
+    public string? ConfirmText { get; init; }
 
     /// <summary>
     /// Gets or initializes the cancel button text.
     /// </summary>
-    public string CancelText { get; init; } = "Отмена";
+    public string? CancelText { get; init; }
 }
 
 /// <summary>

@@ -1,12 +1,12 @@
 @typeparam TItem
 @using Microsoft.AspNetCore.Components.Web
-@using System.Runtime.CompilerServices
+@using SuperUI.Localization
 
 <CascadingValue Value="this" IsFixed="true">
     @ChildContent
 </CascadingValue>
 
-<CascadingValue Value="Locale" IsFixed="false">
+<CascadingValue Value="Localizer" IsFixed="false">
 <div class="sg-root @(ShowColumnBorders ? "sg-col-borders" : "") @(_editModalVisible ? "sg-modal-open" : "") @CssClass" 
      id="@_gridId" 
      @ref="_gridRootRef" 
@@ -25,8 +25,8 @@
             var gcol = GetColumnByKey(gk);
             if (gcol is null) continue;
             <div class="sg-chip sg-group-chip">
-                <span>@Locale.Group: @gcol.Title</span>
-                <button class="sg-chip-x" title="@Locale.RemoveGroup" @onclick="async () => await ToggleGroupByAsync(gk)">×</button>
+                <span>@Localizer["DataGrid_Group"]: @gcol.Title</span>
+                <button class="sg-chip-x" title="@Localizer["DataGrid_RemoveGroup"]" @onclick="async () => await ToggleGroupByAsync(gk)">×</button>
             </div>
         }
         @foreach (var sortRule in SortRules)
@@ -35,45 +35,45 @@
             if (scol is null) continue;
             <div class="sg-chip sg-sort-chip">
                 <span>@(sortRule.Dir == SortDirection.Ascending ? "▲" : "▼") @scol.Title</span>
-                <button class="sg-chip-x" title="@Locale.Clear" @onclick="async () => await RemoveSortAsync(sortRule.Key)">×</button>
+                <button class="sg-chip-x" title="@Localizer["Clear"]" @onclick="async () => await RemoveSortAsync(sortRule.Key)">×</button>
             </div>
         }
         <div class="sg-spacer"></div>
         @if (ShowSearch)
         {
             <input class="sg-search"
-                   placeholder="@Locale.Search"
+                   placeholder="@Localizer["DataGrid_Search"]"
                    value="@_search"
                    @oninput="OnSearchInput" />
         }
         @if (CanCreateInlineItem)
         {
-            <button class="sg-btn primary" @onclick="StartCreateModalAsync">@Locale.Add</button>
+            <button class="sg-btn primary" @onclick="StartCreateModalAsync">@Localizer["DataGrid_Add"]</button>
         }
         @if (HasUndoDelete)
         {
-            <button class="sg-btn" @onclick="UndoDeleteAsync">@Locale.UndoDelete</button>
+            <button class="sg-btn" @onclick="UndoDeleteAsync">@Localizer["DataGrid_UndoDelete"]</button>
         }
         @if (HasActiveFilters)
         {
-            <button class="sg-btn" @onclick="ClearAllFiltersAsync" title="@Locale.ResetFilters">@Locale.ResetFilters</button>
+            <button class="sg-btn" @onclick="ClearAllFiltersAsync" title="@Localizer["DataGrid_ResetFilters"]">@Localizer["DataGrid_ResetFilters"]</button>
         }
         @if (HasActiveSort)
         {
-            <button class="sg-btn" @onclick="ClearSortAsync" title="@Locale.ResetSort">@Locale.ResetSort</button>
+            <button class="sg-btn" @onclick="ClearSortAsync" title="@Localizer["DataGrid_ResetSort"]">@Localizer["DataGrid_ResetSort"]</button>
         }
         @if (AllowAutoFit)
         {
-            <button class="sg-btn" @onclick="AutoFitAsync" title="@Locale.AutoFit">@Locale.AutoFit</button>
+            <button class="sg-btn" @onclick="AutoFitAsync" title="@Localizer["DataGrid_AutoFit"]">@Localizer["DataGrid_AutoFit"]</button>
         }
         @if (ShowColumnChooser)
         {
             <div @ref="_chooserRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleChooserFocusOutAsync" tabindex="-1">
-                <button class="sg-btn" @onclick="ToggleChooserAsync" title="@Locale.Columns">@Locale.Columns</button>
+                <button class="sg-btn" @onclick="ToggleChooserAsync" title="@Localizer["DataGrid_Columns"]">@Localizer["DataGrid_Columns"]</button>
                 @if (_showChooser)
                 {
                     <div class="sg-chooser-menu">
-                        <div class="sg-chooser-head">@Locale.ShowColumns</div>
+                        <div class="sg-chooser-head">@Localizer["DataGrid_ShowColumns"]</div>
                         @foreach (var col in _columns)
                         {
                             var k = col.Key;
@@ -88,30 +88,30 @@
                 }
             </div>
         }
-        @if (ShowExportCsv || ShowExportExcel)
-        {
-            <div @ref="_exportRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleExportFocusOutAsync" tabindex="-1">
-                <button class="sg-btn" @onclick="ToggleExportMenuAsync" title="@Locale.Save">@Locale.Save</button>
-                @if (_showExportMenu)
-                {
-                    <div class="sg-chooser-menu">
-                        @if (ShowExportCsv)
-                        {
-                            <button class="sg-chooser-item sg-btn-link" @onclick="async () => { await ExportCsvAsync(); _showExportMenu = false; }">@Locale.ExportCsv</button>
-                        }
-                        @if (ShowExportExcel)
-                        {
-                            <button class="sg-chooser-item sg-btn-link" @onclick="async () => { await ExportExcelAsync(); _showExportMenu = false; }">@Locale.ExportExcel</button>
-                        }
-                    </div>
-                }
-            </div>
-        }
-        @if (SelectionEnabled && SelectedItems.Count > 0)
-        {
-            <div class="sg-chip">@Locale.Selected: @SelectedItems.Count</div>
-            <button class="sg-btn" @onclick="ClearSelectionAsync">@Locale.Clear</button>
-        }
+@if (ShowExportCsv || ShowExportExcel)
+         {
+             <div @ref="_exportRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleExportFocusOutAsync" tabindex="-1">
+                 <button class="sg-btn" @onclick="ToggleExportMenuAsync" title="@Localizer["DataGrid_Export"]">@Localizer["DataGrid_Export"]</button>
+                 @if (_showExportMenu)
+                 {
+                     <div class="sg-chooser-menu">
+                         @if (ShowExportCsv)
+                         {
+                             <button class="sg-chooser-item sg-btn-link" @onclick="async () => { await ExportCsvAsync(); _showExportMenu = false; }">@Localizer["DataGrid_ExportCsv"]</button>
+                         }
+                         @if (ShowExportExcel)
+                         {
+                             <button class="sg-chooser-item sg-btn-link" @onclick="async () => { await ExportExcelAsync(); _showExportMenu = false; }">@Localizer["DataGrid_ExportExcel"]</button>
+                         }
+                     </div>
+                 }
+             </div>
+         }
+@if (SelectionEnabled && SelectedItems.Count > 0)
+         {
+             <div class="sg-chip">@Localizer["DataGrid_Selected"]: @SelectedItems.Count</div>
+             <button class="sg-btn" @onclick="ClearSelectionAsync">@Localizer["Clear"]</button>
+         }
     </div>
 
     <div class="sg-scroll">
@@ -127,12 +127,12 @@
                     }
                     @if (SelectionEnabled)
                     {
-                        <th class="sg-col-check sg-pinned" style="left: 0;">
-                            <input type="checkbox"
-                                   aria-label="@Locale.SelectAll"
-                                   checked="@AllFilteredSelected"
-                                   @onchange="OnToggleAllAsync" />
-                        </th>
+<th class="sg-col-check sg-pinned" style="left: 0;">
+                               <input type="checkbox"
+                                      aria-label="@Localizer["DataGrid_SelectAll"]"
+                                      checked="@AllFilteredSelected"
+                                      @onchange="OnToggleAllAsync" />
+                           </th>
                     }
                     @for (var i = 0; i < visibleCols.Count; i++)
                     {
@@ -151,7 +151,7 @@
                             style="@(widthStyle + pinStyle)" class="@thClass">
                             <div class="sg-th-inner">
                                 <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
-                                      title="@(col.Sortable ? Locale.Sort : "")"
+                                      title="@(col.Sortable ? Localizer["DataGrid_Sort"] : "")"
                                       @onclick="@(async (MouseEventArgs e) => { if (col.Sortable) await ToggleSortAsync(key, e.CtrlKey || e.ShiftKey); })">
                                     @col.Title
                                     @if (sort == SortDirection.Ascending)
@@ -196,91 +196,91 @@
                                         var rIdx = ri;
                                         var rule = PendingRules[rIdx];
                                         <div class="sg-filter-rule">
-                                            <select class="sg-filter-cond-select"
-                                                    value="@rule.Condition.ToString()"
-                                                    @onchange="async e => await SetPendingRuleConditionAsync(rIdx, Enum.Parse<FilterCondition>(e.Value!.ToString()!))">
-                                                <option value="Contains">@Locale.FilterContains</option>
-                                                <option value="NotContains">@Locale.FilterNotContains</option>
-                                                <option value="Equals">@Locale.FilterEquals</option>
-                                                <option value="NotEquals">@Locale.FilterNotEquals</option>
-                                                <option value="StartsWith">@Locale.FilterStartsWith</option>
-                                                <option value="EndsWith">@Locale.FilterEndsWith</option>
-                                                @if (IsNumericColumn(key))
-                                                {
-                                                    <option value="GreaterThan">@Locale.FilterGreaterThan</option>
-                                                    <option value="LessThan">@Locale.FilterLessThan</option>
-                                                    <option value="GreaterOrEqual">@Locale.FilterGreaterOrEqual</option>
-                                                    <option value="LessOrEqual">@Locale.FilterLessOrEqual</option>
-                                                }
-                                                <option value="IsEmpty">@Locale.FilterIsEmpty</option>
-                                                <option value="IsNotEmpty">@Locale.FilterIsNotEmpty</option>
-                                            </select>
-                                            @if (rule.Condition != FilterCondition.IsEmpty && rule.Condition != FilterCondition.IsNotEmpty)
-                                            {
-                                                <input class="sg-filter-rule-input"
-                                                       placeholder="@Locale.FilterValue"
-                                                       value="@rule.Value"
-                                                       @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
-                                            }
+<select class="sg-filter-cond-select"
+                                                     value="@rule.Condition.ToString()"
+                                                     @onchange="async e => await SetPendingRuleConditionAsync(rIdx, Enum.Parse<FilterCondition>(e.Value!.ToString()!))">
+                                                 <option value="Contains">@Localizer["DataGrid_FilterContains"]</option>
+                                                 <option value="NotContains">@Localizer["DataGrid_FilterNotContains"]</option>
+                                                 <option value="Equals">@Localizer["DataGrid_FilterEquals"]</option>
+                                                 <option value="NotEquals">@Localizer["DataGrid_FilterNotEquals"]</option>
+                                                 <option value="StartsWith">@Localizer["DataGrid_FilterStartsWith"]</option>
+                                                 <option value="EndsWith">@Localizer["DataGrid_FilterEndsWith"]</option>
+                                                 @if (IsNumericColumn(key))
+                                                 {
+                                                     <option value="GreaterThan">@Localizer["DataGrid_FilterGreaterThan"]</option>
+                                                     <option value="LessThan">@Localizer["DataGrid_FilterLessThan"]</option>
+                                                     <option value="GreaterOrEqual">@Localizer["DataGrid_FilterGreaterOrEqual"]</option>
+                                                     <option value="LessOrEqual">@Localizer["DataGrid_FilterLessOrEqual"]</option>
+                                                 }
+                                                 <option value="IsEmpty">@Localizer["DataGrid_FilterIsEmpty"]</option>
+                                                 <option value="IsNotEmpty">@Localizer["DataGrid_FilterIsNotEmpty"]</option>
+                                             </select>
+@if (rule.Condition != FilterCondition.IsEmpty && rule.Condition != FilterCondition.IsNotEmpty)
+                                             {
+                                                 <input class="sg-filter-rule-input"
+                                                        placeholder="@Localizer["DataGrid_FilterValue"]"
+                                                        value="@rule.Value"
+                                                        @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
+                                             }
                                             @if (PendingRules.Count > 1)
                                             {
-                                                <button class="sg-filter-rule-del" type="button"
-                                                        title="@Locale.FilterRemoveCondition"
-                                                        @onclick="async () => await RemovePendingRuleAsync(rIdx)">×</button>
+<button class="sg-filter-rule-del" type="button"
+                                                         title="@Localizer["DataGrid_FilterRemoveCondition"]"
+                                                         @onclick="async () => await RemovePendingRuleAsync(rIdx)">×</button>
                                             }
                                         </div>
                                     }
 
                                     @* Add rule *@
-                                    <div class="sg-filter-add-rule">
-                                        <button class="sg-btn sg-sm" type="button" @onclick="AddPendingRuleAsync">@Locale.FilterAddCondition</button>
-                                    </div>
+<div class="sg-filter-add-rule">
+                                         <button class="sg-btn sg-sm" type="button" @onclick="AddPendingRuleAsync">@Localizer["DataGrid_FilterAddCondition"]</button>
+                                     </div>
 
-                                    @* Quick apply *@
-                                    <div class="sg-filter-cond-apply">
-                                        <button class="sg-btn primary" style="width:100%" type="button"
-                                                @onclick="async () => await ApplyConditionFilterAsync(key)">
-                                            @Locale.FilterApply
-                                        </button>
-                                    </div>
+                                     @* Quick apply *@
+                                     <div class="sg-filter-cond-apply">
+                                         <button class="sg-btn primary" style="width:100%" type="button"
+                                                 @onclick="async () => await ApplyConditionFilterAsync(key)">
+                                             @Localizer["DataGrid_FilterApply"]
+                                         </button>
+                                     </div>
 
-                                    @* Divider *@
-                                    <div class="sg-filter-divider">@Locale.FilterOrValues</div>
+                                     @* Divider *@
+                                     <div class="sg-filter-divider">@Localizer["DataGrid_FilterOrValues"]</div>
 
                                     @* Checkbox list *@
                                     <div class="sg-filter-actions">
-                                        <label class="sg-filter-all">
-                                            <input type="checkbox"
-                                                   checked="@IsPendingAllSelected(key)"
-                                                   @onchange="@(e => TogglePendingAllAsync(key, e.Value is true))" />
-                                            @Locale.FilterAll
-                                        </label>
+<label class="sg-filter-all">
+                                             <input type="checkbox"
+                                                    checked="@IsPendingAllSelected(key)"
+                                                    @onchange="@(e => TogglePendingAllAsync(key, e.Value is true))" />
+                                             @Localizer["DataGrid_FilterAll"]
+                                         </label>
                                     </div>
-                                    <div class="sg-filter-list">
-                                        @foreach (var val in GetDistinctValuesForColumn(key))
-                                        {
-                                            var display = val ?? Locale.FilterEmpty;
-                                            var selected = IsPendingValueSelected(val);
-                                            <label class="sg-filter-item" @key="val">
-                                                <input type="checkbox"
-                                                       checked="@selected"
-                                                       @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
-                                                <span>@display</span>
-                                            </label>
-                                        }
-                                    </div>
+<div class="sg-filter-list">
+                                         @foreach (var val in GetDistinctValuesForColumn(key))
+                                         {
+                                             var display = val ?? Localizer["DataGrid_FilterEmpty"];
+                                             var selected = IsPendingValueSelected(val);
+                                             <label class="sg-filter-item" @key="val">
+                                                 <input type="checkbox"
+                                                        checked="@selected"
+                                                        @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
+                                                 <span>@display</span>
+                                             </label>
+                                         }
+                                     </div>
 
-                                    @* Footer *@
-                                    <div class="sg-filter-foot">
-                                        <button class="sg-btn" title="@(IsGroupedBy(key) ? Locale.FilterUnGroupBy : Locale.FilterGroupBy)"
-                                                @onclick="async () => await ToggleGroupByAsync(key)">
-                                            @(IsGroupedBy(key) ? Locale.FilterUnGroupBy : Locale.FilterGroupBy)
-                                        </button>
-                                        <div class="sg-spacer"></div>
-                                        <button class="sg-btn" @onclick="async () => await ClearPendingAsync(key)">@Locale.FilterReset</button>
-                                        <button class="sg-btn" @onclick="CloseFilterMenuAsync">@Locale.FilterCancel</button>
-                                        <button class="sg-btn primary" @onclick="ApplyFilterAsync">@Locale.FilterOk</button>
-                                    </div>
+                                     @* Footer *@
+                                     <div class="sg-filter-foot">
+                                         <button class="sg-btn" title="@(IsGroupedBy(key) ? Localizer["DataGrid_FilterUnGroupBy"] : Localizer["DataGrid_FilterGroupBy"])"
+                                                 @onclick="async () => await ToggleGroupByAsync(key)">
+                                             @(IsGroupedBy(key) ? Localizer["DataGrid_FilterUnGroupBy"] : Localizer["DataGrid_FilterGroupBy"])
+                                         </button>
+                                         <div class="sg-spacer"></div>
+                                         <button class="sg-btn" @onclick="async () => await ClearPendingAsync(key)">@Localizer["DataGrid_FilterReset"]</button>
+                                         <button class="sg-btn" @onclick="CloseFilterMenuAsync">@Localizer["DataGrid_FilterCancel"]</button>
+                                         <button class="sg-btn primary" @onclick="ApplyFilterAsync">@Localizer["DataGrid_FilterOk"]</button>
+                                     </div>
                                 </div>
                             }
                             @if (col.Resizable)
@@ -294,38 +294,38 @@
                         <th class="sg-th sg-col-actions sg-pinned" style="right:0;"></th>
                     }
                 </tr>
-                @if (ShowQuickFilters)
-                {
-                    <tr class="sg-quick-filter-row">
-                        @if (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline)
-                        {
-                            <th class="sg-col-expand"></th>
-                        }
-                        @if (SelectionEnabled)
-                        {
-                            <th class="sg-col-check sg-pinned" style="left:0;"></th>
-                        }
-                        @foreach (var col in visibleCols)
-                        {
-                            var widthStyle = GetColumnWidthStyle(col);
-                            var pinStyle = GetColumnPinStyle(col);
-                            var thClass = "sg-th" + (col.Pinned ? " sg-pinned" : "");
-                            <th class="@($"{thClass} sg-quick-filter-cell")" style="@(widthStyle + pinStyle)">
-                                @if (col.Filterable)
-                                {
-                                    <input class="sg-quick-filter-input"
-                                           placeholder="@Locale.QuickFilter"
-                                           value="@(_quickFilters.TryGetValue(col.Key, out var quickValue) ? quickValue : string.Empty)"
-                                           @oninput="@(e => OnQuickFilterInputAsync(col.Key, e))" />
-                                }
-                            </th>
-                        }
-                        @if (AllowEdit || AllowDelete)
-                        {
-                            <th class="sg-th sg-col-actions sg-pinned" style="right:0;"></th>
-                        }
-                    </tr>
-                }
+@if (ShowQuickFilters)
+                     {
+                         <tr class="sg-quick-filter-row">
+                             @if (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline)
+                             {
+                                 <th class="sg-col-expand"></th>
+                             }
+                             @if (SelectionEnabled)
+                             {
+                                 <th class="sg-col-check sg-pinned" style="left:0;"></th>
+                             }
+                             @foreach (var col in visibleCols)
+                             {
+                                 var widthStyle = GetColumnWidthStyle(col);
+                                 var pinStyle = GetColumnPinStyle(col);
+                                 var thClass = "sg-th" + (col.Pinned ? " sg-pinned" : "");
+                                 <th class="@($"{thClass} sg-quick-filter-cell")" style="@(widthStyle + pinStyle)">
+                                     @if (col.Filterable)
+                                     {
+                                         <input class="sg-quick-filter-input"
+                                                placeholder="@Localizer["DataGrid_QuickFilter"]"
+                                                value="@(_quickFilters.TryGetValue(col.Key, out var quickValue) ? quickValue : string.Empty)"
+                                                @oninput="@(e => OnQuickFilterInputAsync(col.Key, e))" />
+                                     }
+                                 </th>
+                             }
+                             @if (AllowEdit || AllowDelete)
+                             {
+                                 <th class="sg-th sg-col-actions sg-pinned" style="right:0;"></th>
+                             }
+                         </tr>
+                     }
             </thead>
             <tbody>
                 @{
@@ -409,22 +409,22 @@
         <span class="sg-foot-info">
             @if (EnablePaging)
             {
-                @($"{Locale.RowsFrom} {from}–{to} {Locale.RowsOf} {filtered}")
+                @($"{Localizer["DataGrid_RowsFrom"]} {from}–{to} {Localizer["DataGrid_RowsOf"]} {filtered}")
             }
             else
             {
-                @($"{Locale.RowsShown} {filtered}")
+                @($"{Localizer["DataGrid_RowsShown"]} {filtered}")
             }
             @if (SelectedItems.Count > 0)
             {
-                <span class="sg-foot-sel"> @Locale.RowsSelectedCount: @SelectedItems.Count</span>
+                <span class="sg-foot-sel"> @Localizer["DataGrid_RowsSelectedCount"]: @SelectedItems.Count</span>
             }
         </span>
         @if (EnablePaging)
         {
             <div class="sg-pager">
                 <label class="sg-pager-size">
-                    @Locale.PageSize
+                    @Localizer["DataGrid_PageSize"]
                     <select @onchange="OnPageSizeChange" value="@PageSize">
                         @foreach (var s in PageSizeOptions)
                         {
@@ -433,9 +433,9 @@
                     </select>
                 </label>
                 <button class="sg-page-btn" disabled="@(CurrentPage <= 1)"
-                        @onclick="() => GoToPageAsync(1)" aria-label="@Locale.PageFirst">«</button>
+                        @onclick="() => GoToPageAsync(1)" aria-label="@Localizer["DataGrid_PageFirst"]">«</button>
                 <button class="sg-page-btn" disabled="@(CurrentPage <= 1)"
-                        @onclick="() => GoToPageAsync(CurrentPage - 1)" aria-label="@Locale.PagePrev">‹</button>
+                        @onclick="() => GoToPageAsync(CurrentPage - 1)" aria-label="@Localizer["DataGrid_PagePrev"]">‹</button>
                 @foreach (var p in GetPageWindow())
                 {
                     if (p == -1)
@@ -450,9 +450,9 @@
                     }
                 }
                 <button class="sg-page-btn" disabled="@(CurrentPage >= tp)"
-                        @onclick="() => GoToPageAsync(CurrentPage + 1)" aria-label="@Locale.PageNext">›</button>
+                        @onclick="() => GoToPageAsync(CurrentPage + 1)" aria-label="@Localizer["DataGrid_PageNext"]">›</button>
                 <button class="sg-page-btn" disabled="@(CurrentPage >= tp)"
-                        @onclick="() => GoToPageAsync(tp)" aria-label="@Locale.PageLast">»</button>
+                        @onclick="() => GoToPageAsync(tp)" aria-label="@Localizer["DataGrid_PageLast"]">»</button>
             </div>
         }
     </div>
@@ -608,7 +608,7 @@
             builder.AddAttribute(seq++, "type", "checkbox");
             builder.AddAttribute(seq++, "class", "sg-row-checkbox");
             builder.AddAttribute(seq++, "checked", isSelected);
-            builder.AddAttribute(seq++, "aria-label", Locale.SelectRow);
+            builder.AddAttribute(seq++, "aria-label", Localizer["DataGrid_SelectRow"]);
             builder.AddAttribute(seq++, "onchange", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(this, e => ToggleRowAsync(itemLocal, e.Value is true)));
             builder.CloseElement();
             builder.CloseElement();
@@ -668,7 +668,7 @@
                 builder.OpenElement(seq++, "button");
                 builder.AddAttribute(seq++, "class", "sg-icon-btn primary");
                 builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => StartEditModalAsync(itemLocal)));
-                builder.AddAttribute(seq++, "title", Locale.Edit);
+                builder.AddAttribute(seq++, "title", Localizer["DataGrid_Edit"]);
                 builder.OpenElement(seq++, "svg");
                 builder.AddAttribute(seq++, "viewBox", "0 0 24 24");
                 builder.AddAttribute(seq++, "width", "16");
@@ -685,7 +685,7 @@
                 builder.OpenElement(seq++, "button");
                 builder.AddAttribute(seq++, "class", "sg-icon-btn danger");
                 builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => DeleteRowAsync(itemLocal)));
-                builder.AddAttribute(seq++, "title", Locale.Delete);
+                builder.AddAttribute(seq++, "title", Localizer["DataGrid_Delete"]);
                 builder.OpenElement(seq++, "svg");
                 builder.AddAttribute(seq++, "viewBox", "0 0 24 24");
                 builder.AddAttribute(seq++, "width", "16");

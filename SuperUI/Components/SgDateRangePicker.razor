@@ -1,6 +1,5 @@
 @namespace SuperUI.Components
 @using SuperUI.Localization
-@inject ISuperUILocalizer Localizer
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -79,14 +78,14 @@
                         <span>@DaysCountText</span>
                     }
                 </div>
-                <div class="sgc-date-foot">
-                    <button class="sgc-btn sgc-sm" type="button" @onclick="SetTodayAsync">@(Locale?.DateToday ?? "Сегодня")</button>
-                    <button class="sgc-btn sgc-sm" type="button" @onclick="SetCurrentMonthAsync">@(Locale?.DateThisMonth ?? "Этот месяц")</button>
-                    @if (AllowClear)
-                    {
-                        <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@(Locale?.Clear ?? "Очистить")</button>
-                    }
-                </div>
+<div class="sgc-date-foot">
+                     <button class="sgc-btn sgc-sm" type="button" @onclick="SetTodayAsync">@Localizer["Today"]</button>
+                     <button class="sgc-btn sgc-sm" type="button" @onclick="SetCurrentMonthAsync">@Localizer["DataGrid_DateThisMonth"]</button>
+                     @if (AllowClear)
+                     {
+                         <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@Localizer["Clear"]</button>
+                     }
+                 </div>
             </div>
         }
     </div>
@@ -190,24 +189,21 @@
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the localization provider for translating UI text.
-    /// </summary>
-    [CascadingParameter] public SgDataGridLocale? Locale { get; set; }
 
-    private string ClearLabel => Locale?.Clear ?? Localizer["Clear"];
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+
+    private string ClearLabel => Localizer["DateRangeClear"];
 
     private bool HasRange => StartValue.HasValue && EndValue.HasValue;
     private bool HasPartialRange => StartValue.HasValue && !EndValue.HasValue;
     private string RangeText => $"{StartValue!.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)} - {EndValue!.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)}";
     private string PartialRangeText => $"{StartValue!.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)} - ...";
     private string SelectionHint => HasRange
-        ? (Locale?.DateRangeSelected ?? "Диапазон выбран")
+        ? Localizer["DateRangeSelected"]
         : HasPartialRange
-            ? (Locale?.DateRangeSelectEnd ?? "Выберите дату окончания")
-            : (Locale?.DateRangeSelectStart ?? "Выберите дату начала");
-    private string DaysCountText => $"{(EndValue!.Value.Date - StartValue!.Value.Date).Days + 1} {Locale?.DateRangeDays ?? "дн."}.";
+            ? Localizer["DateRangeSelectEnd"]
+            : Localizer["DateRangeSelectStart"];
+    private string DaysCountText => $"{(EndValue!.Value.Date - StartValue!.Value.Date).Days + 1} {Localizer["Days"]}.";
 
     protected override void OnParametersSet()
     {
