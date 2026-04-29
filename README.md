@@ -10,7 +10,7 @@
 [![Demo](https://img.shields.io/badge/demo-GitHub%20Pages-success?logo=github)](https://Maxvalpav.github.io/SuperUI.Blazor/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-**SuperUI** — Blazor component library with 86+ components: advanced data grid, forms, overlays, navigation, layout, charts. Full IntelliSense, dark mode, localization (en-US, ru-RU)
+**SuperUI** — Blazor component library with 25+ components: advanced data grid, forms, overlays, navigation, layout, charts. Full IntelliSense, dark mode, localization (en-US, ru-RU)
 
 🔗 **Live demo:** <https://maxvalpav.github.io/SuperUI.Blazor/>
 📦 **NuGet:** <https://www.nuget.org/packages/SuperUI>
@@ -25,7 +25,6 @@
 - 🧩 **86+ components** — grid, forms, dialogs, drawer, tabs, calendar, charts, kanban, tree, timeline, etc.
 - 🎨 **Theming** — light/dark mode, CSS-variables, full design-token customization
 - 🌍 **Localization** — en-US, ru-RU out of the box, easily extendable
-- ♿ **Accessibility** — WCAG 2.1 compliance, keyboard navigation, ARIA
 - ⚡ **High performance** — virtualization, low allocations on hot paths
 - 🛠 **IntelliSense** — full XML-doc for parameters, embedded source symbols
 - 🌐 **Blazor WASM + Server + Hybrid** — all hosting models supported
@@ -299,7 +298,7 @@ Issues and pull requests welcome. Please follow conventional commits and run `do
 
 ## 🇷🇺 Русский
 
-**SuperUI** — библиотека Blazor-компонентов: 86+ компонентов, тёмная тема, локализация (en-US, ru-RU).
+**SuperUI** — библиотека Blazor-компонентов: 25+ компонентов, тёмная тема, локализация (en-US, ru-RU).
 
 ### Установка
 
