@@ -1,5 +1,9 @@
 # SuperUI
 
+<p align="center">
+  <img src="icon.png" alt="Лого" width="128">
+</p>
+
 [![NuGet](https://img.shields.io/nuget/v/SuperUI.svg?logo=nuget)](https://www.nuget.org/packages/SuperUI)
 [![Downloads](https://img.shields.io/nuget/dt/SuperUI.svg?logo=nuget)](https://www.nuget.org/packages/SuperUI)
 [![Build](https://github.com/Maxvalpav/SuperUI.Blazor/actions/workflows/build-and-publish.yml/badge.svg)](https://github.com/Maxvalpav/SuperUI.Blazor/actions/workflows/build-and-publish.yml)
