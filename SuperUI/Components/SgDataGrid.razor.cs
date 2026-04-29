@@ -465,7 +465,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         {
             try
             {
-                _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui.js");
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
                 _selfRef = DotNetObjectReference.Create(this);
                 await _module.InvokeVoidAsync("init", _selfRef, _gridRootRef);
 
