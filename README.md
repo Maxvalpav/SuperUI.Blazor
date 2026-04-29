@@ -8,7 +8,7 @@
 
 **SuperUI** — enterprise-ready Blazor component library with 86+ components: advanced data grid, forms, overlays, navigation, layout, charts. Full IntelliSense, dark mode, localization (en-US, ru-RU), WCAG 2.1 accessibility.
 
-🔗 **Live demo:** <https://Maxvalpav.github.io/SuperUI/>
+🔗 **Live demo:** <https://maxvalpav.github.io/SuperUI.Blazor/>
 📦 **NuGet:** <https://www.nuget.org/packages/SuperUI>
 
 
