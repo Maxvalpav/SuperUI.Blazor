@@ -22,7 +22,7 @@
 
 ## ✨ Features
 
-- 🧩 **86+ components** — grid, forms, dialogs, drawer, tabs, calendar, charts, kanban, tree, timeline, etc.
+- 🧩 **25+ components** — grid, forms, dialogs, drawer, tabs, calendar, charts, kanban, tree, timeline, etc.
 - 🎨 **Theming** — light/dark mode, CSS-variables, full design-token customization
 - 🌍 **Localization** — en-US, ru-RU out of the box, easily extendable
 - ⚡ **High performance** — virtualization, low allocations on hot paths
