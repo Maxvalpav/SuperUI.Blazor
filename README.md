@@ -349,6 +349,6 @@ builder.Services.AddSuperUI();
 
 
 
-- **Демо:** <https://Maxvalpav.github.io/SuperUI/>
+- **Демо:** <https://maxvalpav.github.io/SuperUI.Blazor/>
 - **NuGet:** `dotnet add package SuperUI`
 - **Лицензия:** MIT
