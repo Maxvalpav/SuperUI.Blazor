@@ -38,7 +38,7 @@ public sealed class SgThemeService : IAsyncDisposable
 
         try
         {
-            _module = await _js.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-theme.js");
+            _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-theme.js");
             CurrentTheme = await _module.InvokeAsync<string>("getTheme");
         }
         catch (JSException) { }
