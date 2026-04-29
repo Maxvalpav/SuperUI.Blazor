@@ -347,9 +347,7 @@ builder.Services.AddSuperUI();
 </SgThemeProvider>
 ```
 
-### Скриншоты
 
-Кладите PNG в `docs/screenshots/` с именами `grid2.png`, `input.png`. Размер окна для скриншотов — **1440 × 900**, размер файла — до **300 КБ** (используйте `pngquant` или `oxipng`).
 
 - **Демо:** <https://Maxvalpav.github.io/SuperUI/>
 - **NuGet:** `dotnet add package SuperUI`
