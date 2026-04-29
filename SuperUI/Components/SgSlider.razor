@@ -1,0 +1,131 @@
+@namespace SuperUI.Components
+@typeparam TValue
+@inherits SgInputBase<TValue>
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_labelId" class="sgc-label">@Label</label>
+    }
+    <div class="sgc-slider-wrap">
+        <input id="@_sliderId"
+               type="range"
+               class="sgc-slider @(HasValidationErrors ? "sgc-invalid" : "")"
+               role="slider"
+               min="@Min"
+               max="@Max"
+               step="@Step"
+               value="@ValueAsDouble"
+               disabled="@Disabled"
+               aria-labelledby="@_labelId"
+               aria-valuemin="@Min"
+               aria-valuemax="@Max"
+               aria-valuenow="@ValueAsDouble"
+               aria-orientation="horizontal"
+               aria-invalid="@(HasValidationErrors ? "true" : null)"
+               aria-describedby="@DescribedBy"
+               @oninput="OnInputAsync"
+               @onkeydown="OnKeyDownAsync" />
+        @if (ShowValue)
+        {
+            <span class="sgc-slider-value">@ValueAsDouble@Suffix</span>
+        }
+    </div>
+    @if (HasValidationErrors)
+    {
+        <span id="@_errorId" class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
+    }
+</div>
+
+@code {
+    private readonly string _labelId = "sg-slider-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _sliderId = "sg-slider-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-slider-err-" + Guid.NewGuid().ToString("N")[..8];
+
+    /// <summary>
+    /// Gets or sets the minimum value of the slider. Default is 0.
+    /// </summary>
+    [Parameter] public double Min { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the maximum value of the slider. Default is 100.
+    /// </summary>
+    [Parameter] public double Max { get; set; } = 100;
+    
+    /// <summary>
+    /// Gets or sets the step increment. Default is 1.
+    /// </summary>
+    [Parameter] public double Step { get; set; } = 1;
+    
+    /// <summary>
+    /// Gets or sets the label text displayed above the slider.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the suffix text displayed after the value (e.g., "%", "px").
+    /// </summary>
+    [Parameter] public string? Suffix { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to display the current value next to the slider. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowValue { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether the slider is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the slider should take full width of its container. Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the field container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private double ValueAsDouble => Value is double d ? d : 0;
+    private string? DescribedBy => HasValidationErrors ? _errorId : null;
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            var typedValue = (TValue)(object)v;
+            await SetValueAsync(typedValue);
+        }
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+
+        double newValue = ValueAsDouble;
+
+        switch (e.Key)
+        {
+            case "Home":
+                newValue = Min;
+                break;
+            case "End":
+                newValue = Max;
+                break;
+            case "ArrowRight":
+            case "ArrowUp":
+                newValue = Math.Min(ValueAsDouble + Step, Max);
+                break;
+            case "ArrowLeft":
+            case "ArrowDown":
+                newValue = Math.Max(ValueAsDouble - Step, Min);
+                break;
+            default:
+                return;
+        }
+
+        var typedValue = (TValue)(object)newValue;
+        await SetValueAsync(typedValue);
+    }
+}

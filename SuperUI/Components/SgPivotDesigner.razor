@@ -1,0 +1,114 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+@typeparam TItem
+
+<div class="sgc-pivot-designer @CssClass">
+    <div class="sgc-pivot-designer-header">
+        <span>Поля сводной таблицы</span>
+        @if (AllowCollapse)
+        {
+            <button type="button" class="sgc-pivot-designer-toggle" @onclick="ToggleCollapsed">
+                @(_isCollapsed ? Localizer["Expand"] : Localizer["Collapse"])
+            </button>
+        }
+    </div>
+
+    @if (!_isCollapsed)
+    {
+    <div class="sgc-pivot-designer-section">
+        <div class="sgc-pivot-designer-label">Доступные поля</div>
+        <div class="sgc-pivot-field-list">
+            @foreach (var field in Fields.Where(f => !State.RowFields.Contains(f) && !State.ColumnFields.Contains(f) && !State.ValueFields.Contains(f)))
+            {
+                <div class="sgc-pivot-field-item">
+                    <span>@field.Label</span>
+                    <div class="sgc-pivot-field-actions">
+                        <button @onclick="() => AddToRows(field)" title="В строки">R</button>
+                        <button @onclick="() => AddToCols(field)" title="В столбцы">C</button>
+                        <button @onclick="() => AddToValues(field)" title="В значения">Σ</button>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="sgc-pivot-designer-grid">
+        <div class="sgc-pivot-designer-section">
+            <div class="sgc-pivot-designer-label">Строки</div>
+            <div class="sgc-pivot-field-list sgc-active-list">
+                @foreach (var field in State.RowFields)
+                {
+                    <div class="sgc-pivot-field-item sgc-active-field">
+                        <span>@field.Label</span>
+                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.RowFields)">×</button>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="sgc-pivot-designer-section">
+            <div class="sgc-pivot-designer-label">Столбцы</div>
+            <div class="sgc-pivot-field-list sgc-active-list">
+                @foreach (var field in State.ColumnFields)
+                {
+                    <div class="sgc-pivot-field-item sgc-active-field">
+                        <span>@field.Label</span>
+                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.ColumnFields)">×</button>
+                    </div>
+                }
+            </div>
+        </div>
+        <div class="sgc-pivot-designer-section">
+            <div class="sgc-pivot-designer-label">Значения</div>
+            <div class="sgc-pivot-field-list sgc-active-list">
+                @foreach (var field in State.ValueFields)
+                {
+                    <div class="sgc-pivot-field-item sgc-active-field">
+                        <div class="sgc-field-val-info">
+                            <span class="sgc-label">@field.Label</span>
+                            <select value="@field.AggregateType" @onchange="@(e => UpdateAggr(field, e))">
+                                <option value="@SgPivotAggregateType.Sum">Сумма</option>
+                                <option value="@SgPivotAggregateType.Count">Кол-во</option>
+                                <option value="@SgPivotAggregateType.Average">Среднее</option>
+                                <option value="@SgPivotAggregateType.Min">Мин</option>
+                                <option value="@SgPivotAggregateType.Max">Макс</option>
+                            </select>
+                        </div>
+                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.ValueFields)">×</button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public SgPivotState<TItem> State { get; set; } = default!;
+    [Parameter, EditorRequired] public List<SgPivotField<TItem>> Fields { get; set; } = new();
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public bool AllowCollapse { get; set; } = true;
+    [Parameter] public bool InitiallyCollapsed { get; set; }
+
+    private bool _isCollapsed;
+
+    protected override void OnInitialized()
+    {
+        _isCollapsed = InitiallyCollapsed;
+    }
+
+    private void AddToRows(SgPivotField<TItem> f) { State.RowFields.Add(f); State.NotifyChanged(); }
+    private void AddToCols(SgPivotField<TItem> f) { State.ColumnFields.Add(f); State.NotifyChanged(); }
+    private void AddToValues(SgPivotField<TItem> f) { State.ValueFields.Add(f); State.NotifyChanged(); }
+    private void RemoveField(SgPivotField<TItem> f, List<SgPivotField<TItem>> list) { list.Remove(f); State.NotifyChanged(); }
+    private void ToggleCollapsed() => _isCollapsed = !_isCollapsed;
+    
+    private void UpdateAggr(SgPivotField<TItem> f, ChangeEventArgs e) 
+    { 
+        if (Enum.TryParse<SgPivotAggregateType>(e.Value?.ToString(), out var res))
+        {
+            f.AggregateType = res;
+            State.NotifyChanged();
+        }
+    }
+}

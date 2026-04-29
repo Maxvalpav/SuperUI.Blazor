@@ -1,0 +1,150 @@
+@page "/calendar"
+@using SuperUI.Components
+@using System.Collections.Generic
+@using SuperUI.Demo.Models
+
+<PageTitle>Календарь - SUI</PageTitle>
+
+<SgCard Title="SgCalendar - Календарь" 
+        Subtitle="Полнофункциональный календарь для планирования событий и задач. Поддерживает различные режимы отображения, управление событиями и кастомизацию.">
+    <!-- SgCalendar -->
+    <div style="margin-top: 32px;">
+        <h2>Календарь с событиями</h2>
+        <p>Интерактивный календарь с поддержкой создания и редактирования событий.</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <!-- Примеры -->
+            <SgCard Title="Примеры использования">
+                <div style="height: 500px; border: 1px solid var(--sui-border); border-radius: 8px; overflow: hidden;">
+                    <SgCalendar @bind-Value="_selectedDate"
+                                @bind-Events="_events"
+                                EnableEditing="true"
+                                EnableCreation="true"
+                                OnEventSaved="OnEventSaved"
+                                OnDeleteEvent="OnDeleteEvent"
+                                Height="100%" />
+                </div>
+            </SgCard>
+
+            <!-- Property Grid -->
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_calendarProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Event Details -->
+    <div style="margin-top: 32px;">
+        <h2>Детали выбранной даты</h2>
+        <p>@_selectedDate.ToLongDateString()</p>
+        
+        <SgCard Title="Детали выбранной даты" Style="margin-top: 16px;">
+            @if (GetEventsForDate(_selectedDate).Any())
+            {
+                <SgStack Orientation="vertical" Gap="8px">
+                    @foreach (var ev in GetEventsForDate(_selectedDate))
+                    {
+                        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--sui-border); border-radius: 8px; background: white; transition: all 0.2s hover; cursor: default;">
+                            <div style="width: 4px; height: 40px; border-radius: 2px; background-color: @ev.Color;"></div>
+                            @if (!string.IsNullOrEmpty(ev.Icon))
+                            {
+                                <span style="font-size: 20px;">@ev.Icon</span>
+                            }
+                            <div style="flex: 1;">
+                                <div style="font-weight: 600; color: var(--sui-text-primary);">@ev.Title</div>
+                                @if (!string.IsNullOrEmpty(ev.Description))
+                                {
+                                    <div style="font-size: 13px; color: var(--sui-text-muted);">@ev.Description</div>
+                                }
+                            </div>
+                            <div style="font-size: 12px; color: var(--sui-text-muted); font-weight: 500;">
+                                @ev.Date.ToString("HH:mm")
+                            </div>
+                        </div>
+                    }
+                </SgStack>
+            }
+            else
+            {
+                <SgEmpty Text="На этот день событий не запланировано" />
+            }
+        </SgCard>
+    </div>
+</SgCard>
+
+@code {
+    [Inject] private SgToastService Toasts { get; set; } = default!;
+
+    private DateTime _selectedDate = DateTime.Today;
+    
+    private List<PropertyPanelItem> _calendarProperties = new()
+    {
+        new() { Label = "Value", Value = "DateTime", BadgeText = "Дата", BadgeVariant = "info" },
+        new() { Label = "Events", Value = "IEnumerable<SgCalendarEvent>", BadgeText = "События", BadgeVariant = "info" },
+        new() { Label = "View", Value = "Month|Week|Day", BadgeText = "Режим", BadgeVariant = "info" },
+        new() { Label = "Height", Value = "string", BadgeText = "Высота", BadgeVariant = "info" },
+        new() { Label = "EnableEditing", Value = "bool", BadgeText = "Редактирование", BadgeVariant = "warn" },
+        new() { Label = "EnableCreation", Value = "bool", BadgeText = "Создание", BadgeVariant = "warn" },
+        new() { Label = "DateCellContent", Value = "RenderFragment<DateTime>", BadgeText = "Шаблон", BadgeVariant = "info" },
+        new() { Label = "OnEventSaved", Value = "EventCallback<SgCalendarEvent>", BadgeText = "Сохранение", BadgeVariant = "success" },
+        new() { Label = "OnDeleteEvent", Value = "EventCallback<SgCalendarEvent>", BadgeText = "Удаление", BadgeVariant = "success" },
+        new() { Label = "OnAddEvent", Value = "EventCallback<DateTime>", BadgeText = "Добавление", BadgeVariant = "success" }
+    };
+
+    private IEnumerable<SgCalendarEvent> _events = new List<SgCalendarEvent>
+    {
+        new SgCalendarEvent 
+        { 
+            Id = "1", 
+            Title = "Встреча с командой", 
+            Description = "Обсуждение планов на неделю", 
+            Date = DateTime.Today.AddHours(10), 
+            Color = "#1890ff", 
+            Icon = "👥" 
+        },
+        new SgCalendarEvent 
+        { 
+            Id = "2", 
+            Title = "Релиз SuperUI", 
+            Description = "Выпуск новой версии компонентов", 
+            Date = DateTime.Today.AddDays(2).AddHours(14), 
+            Color = "#52c41a", 
+            Icon = "🚀" 
+        },
+        new SgCalendarEvent 
+        { 
+            Id = "3", 
+            Title = "Обед с клиентом", 
+            Description = "Ресторан 'Гурман'", 
+            Date = DateTime.Today.AddDays(-1).AddHours(13), 
+            Color = "#faad14", 
+            Icon = "🍴" 
+        },
+        new SgCalendarEvent 
+        { 
+            Id = "4", 
+            Title = "Вебинар по Blazor", 
+            Description = "Смотреть онлайн", 
+            Date = DateTime.Today.AddDays(5).AddHours(18), 
+            Color = "#722ed1", 
+            Icon = "📺" 
+        }
+    };
+
+    private void OnEventSaved(SgCalendarEvent ev)
+    {
+        Toasts.Show($"Событие '{ev.Title}' сохранено", "success");
+    }
+
+    private void OnDeleteEvent(SgCalendarEvent ev)
+    {
+        Toasts.Show($"Событие '{ev.Title}' удалено", "info");
+    }
+
+    private IEnumerable<SgCalendarEvent> GetEventsForDate(DateTime date)
+    {
+        return _events.Where(e => e.Date.Date == date.Date).OrderBy(e => e.Date);
+    }
+}
+
+

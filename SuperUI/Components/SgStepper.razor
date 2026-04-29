@@ -1,0 +1,94 @@
+@namespace SuperUI.Components
+
+<div class="sgc-stepper @(Vertical ? "sgc-vertical" : "") @CssClass" role="navigation" aria-label="Progress steps">
+    @{ var arr = (Steps ?? Array.Empty<StepperItem>()).ToList(); }
+    @for (var i = 0; i < arr.Count; i++)
+    {
+        var idx = i;
+        var s = arr[idx];
+        var state = idx < Active ? "done" : idx == Active ? "active" : "todo";
+        var isCurrent = idx == Active;
+        <div class="sgc-step sgc-@state" 
+             role="button"
+             tabindex="@(Clickable ? "0" : "-1")"
+             aria-current="@(isCurrent ? "step" : null)"
+             aria-label="Step @(idx + 1): @s.Title @(state == "done" ? "(completed)" : state == "active" ? "(current)" : "")"
+             @onclick="() => GoAsync(idx)"
+             @onkeydown="(e) => OnKeyDownAsync(e, idx)">
+            <div class="sgc-step-mark" aria-hidden="true">@(idx < Active ? "✓" : (idx + 1).ToString())</div>
+            <div class="sgc-step-text">
+                <div class="sgc-step-title">@s.Title</div>
+                @if (!string.IsNullOrEmpty(s.Description))
+                {
+                    <div class="sgc-step-desc">@s.Description</div>
+                }
+            </div>
+        </div>
+        @if (idx < arr.Count - 1)
+        {
+            <div class="sgc-step-line" aria-hidden="true"></div>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the collection of steps to display.
+    /// </summary>
+    [Parameter] public IEnumerable<StepperItem> Steps { get; set; } = Array.Empty<StepperItem>();
+    
+    /// <summary>
+    /// Gets or sets the index of the currently active step (0-based).
+    /// </summary>
+    [Parameter] public int Active { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the active step changes.
+    /// </summary>
+    [Parameter] public EventCallback<int> ActiveChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the stepper is displayed vertically.
+    /// Default is false (horizontal).
+    /// </summary>
+    [Parameter] public bool Vertical { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether steps can be clicked to navigate.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool Clickable { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Callback invoked before changing steps. Return false to prevent navigation.
+    /// </summary>
+    [Parameter] public Func<int, int, Task<bool>>? BeforeChangeAsync { get; set; }
+
+    private async Task GoAsync(int i)
+    {
+        if (!Clickable || i == Active) return;
+
+        if (BeforeChangeAsync is not null)
+        {
+            var canChange = await BeforeChangeAsync.Invoke(Active, i);
+            if (!canChange) return;
+        }
+
+        Active = i;
+        if (ActiveChanged.HasDelegate) await ActiveChanged.InvokeAsync(i);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e, int idx)
+    {
+        if (!Clickable) return;
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await GoAsync(idx);
+        }
+    }
+}

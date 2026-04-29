@@ -1,0 +1,89 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-accordion-item @(_open ? "sgc-open" : "") @CssClass">
+    <button type="button" 
+            class="sgc-accordion-header" 
+            @onclick="ToggleAsync"
+            @onfocus="() => IsFocused = true"
+            @onblur="() => IsFocused = false"
+            @ref="_buttonRef"
+            aria-expanded="@(_open ? "true" : "false")"
+            id="@_headerId"
+            aria-controls="@_contentId">
+        <span class="sgc-accordion-title">@Title</span>
+        <span class="sgc-accordion-arrow">@(_open ? "▼" : "▶")</span>
+    </button>
+    <div class="sgc-accordion-content-wrapper" 
+         id="@_contentId"
+         role="region"
+         aria-labelledby="@_headerId">
+        <div class="sgc-accordion-content">
+            @ChildContent
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly string _id = Guid.NewGuid().ToString("N")[..8];
+    private string _headerId => $"sg-acc-h-{_id}";
+    private string _contentId => $"sg-acc-c-{_id}";
+    private ElementReference _buttonRef;
+
+    public bool IsFocused { get; private set; }
+
+    public async Task FocusAsync()
+    {
+        try { await _buttonRef.FocusAsync(); } catch { }
+    }
+
+    private bool _open;
+
+    /// <summary>
+    /// Gets or sets the parent <see cref="SgAccordion"/> component.
+    /// </summary>
+    [CascadingParameter] public SgAccordion? Owner { get; set; }
+
+    /// <summary>
+    /// Gets or sets the custom CSS class for the accordion item.
+    /// </summary>
+    [Parameter] public string CssClass { get; set; } = "";
+    
+    /// <summary>
+    /// Gets or sets the title text displayed in the accordion item header.
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "";
+    
+    /// <summary>
+    /// Gets or sets the content to display when the accordion item is expanded.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the accordion item is initially expanded.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool Expanded { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _open = Expanded;
+        Owner?.Register(this);
+    }
+
+    public Task ToggleAsync()
+    {
+        _open = !_open;
+        if (_open) Owner?.NotifyExpanded(this);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public void Collapse()
+    {
+        if (!_open) return;
+        _open = false;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => Owner?.Unregister(this);
+}

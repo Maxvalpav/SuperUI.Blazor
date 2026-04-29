@@ -1,0 +1,44 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using SuperUI.Components;
+using SuperUI.Localization;
+using SuperUI.Services;
+
+namespace SuperUI;
+
+/// <summary>
+/// DI registration helpers for SuperUI.
+/// </summary>
+public static class ServiceCollectionExtensions
+{
+    /// <summary>
+    /// Registers the SuperUI services (<see cref="SgToastService"/>, <see cref="SgConfirmService"/>, 
+    /// <see cref="ISuperUILocalizer"/>, <see cref="SgZIndexService"/>)
+    /// with the dependency injection container.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddSuperUI(this IServiceCollection services)
+        => services.AddSuperUI(_ => { });
+
+    /// <summary>
+    /// Registers the SuperUI services and applies the supplied configuration delegate.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configure">Delegate that mutates the <see cref="SuperUiOptions"/>.</param>
+    /// <returns>The same service collection so calls can be chained.</returns>
+    public static IServiceCollection AddSuperUI(this IServiceCollection services, Action<SuperUiOptions> configure)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configure);
+
+        services.Configure(configure);
+        services.TryAddScoped<SgToastService>();
+        services.TryAddScoped<SgConfirmService>();
+        services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
+        services.TryAddScoped<SgZIndexService>();
+        services.TryAddScoped<SgThemeService>();
+
+        return services;
+    }
+}

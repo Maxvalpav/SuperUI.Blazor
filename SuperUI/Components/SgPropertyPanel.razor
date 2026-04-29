@@ -1,0 +1,120 @@
+@namespace SuperUI.Components
+
+<div class="sgc-property-panel @CssClass">
+    @if (HeaderContent is not null || !string.IsNullOrWhiteSpace(Title))
+    {
+        <div class="sgc-property-panel-header">
+            <div class="sgc-property-panel-title-wrap">
+                @if (HeaderContent is not null)
+                {
+                    @HeaderContent
+                }
+                else
+                {
+                    <div class="sgc-property-panel-title">@Title</div>
+                    @if (!string.IsNullOrWhiteSpace(Subtitle))
+                    {
+                        <div class="sgc-property-panel-subtitle">@Subtitle</div>
+                    }
+                }
+            </div>
+            @if (ActionsContent is not null)
+            {
+                <div class="sgc-property-panel-actions">@ActionsContent</div>
+            }
+        </div>
+    }
+
+    <div class="sgc-property-panel-grid" style="@GridStyle">
+        @foreach (var item in Items)
+        {
+            var span = Math.Min(Math.Max(1, item.Span), Math.Max(1, Columns));
+            <div class="sgc-property-panel-item @(Dense ? "sgc-dense" : "")" style="grid-column: span @span;">
+                <div class="sgc-property-panel-item-top">
+                    <div class="sgc-property-panel-label">@item.Label</div>
+                    @if (!string.IsNullOrWhiteSpace(item.BadgeText))
+                    {
+                        <SgBadge Text="@item.BadgeText" Variant="@item.BadgeVariant" />
+                    }
+                </div>
+
+                <div class="sgc-property-panel-value">
+                    @if (item.ValueTemplate is not null)
+                    {
+                        @item.ValueTemplate
+                    }
+                    else
+                    {
+                        <code style="background: var(--sui-toolbar-bg, #f8f8f8); padding: 2px 4px; border-radius: var(--sui-radius, 2px); font-size: 12px;">@(string.IsNullOrWhiteSpace(item.Value) ? "—" : item.Value)</code>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(item.Hint))
+                {
+                    <div class="sgc-property-panel-hint">@item.Hint</div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(item.Description))
+                {
+                    <div class="sgc-property-panel-description">@item.Description</div>
+                }
+            </div>
+        }
+    </div>
+
+    @if (FooterContent is not null)
+    {
+        <div class="sgc-property-panel-footer">@FooterContent</div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the panel title text.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the subtitle text displayed below the title.
+    /// </summary>
+    [Parameter] public string? Subtitle { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of property items to display.
+    /// </summary>
+    [Parameter] public IEnumerable<PropertyPanelItem> Items { get; set; } = Array.Empty<PropertyPanelItem>();
+    
+    /// <summary>
+    /// Gets or sets the number of grid columns.
+    /// Default is 2.
+    /// </summary>
+    [Parameter] public int Columns { get; set; } = 2;
+    
+    /// <summary>
+    /// Gets or sets whether to use dense (compact) spacing.
+    /// </summary>
+    [Parameter] public bool Dense { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom header content.
+    /// Takes precedence over <see cref="Title"/> and <see cref="Subtitle"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the action buttons content displayed in the header.
+    /// </summary>
+    [Parameter] public RenderFragment? ActionsContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the footer content displayed at the bottom.
+    /// </summary>
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    private string GridStyle => $"grid-template-columns: repeat({Math.Max(1, Columns)}, minmax(0, 1fr));";
+}

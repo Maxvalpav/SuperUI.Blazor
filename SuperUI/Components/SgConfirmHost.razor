@@ -1,0 +1,85 @@
+@namespace SuperUI.Components
+@implements IDisposable
+@inject SgConfirmService ConfirmService
+
+<SgModal Visible="@_visible" VisibleChanged="OnVisibleChanged" Title="@_request?.Title">
+    <ChildContent>
+        @if (_request is not null)
+        {
+            <div style="display:flex; flex-direction:column; gap:10px;">
+                <SgAlert Variant="@_request.Variant" Dense="true" ShowIcon="true" Text="@_request.Message" />
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        @if (_request is not null)
+        {
+            <SgButton Text="@_request.CancelText" OnClick="CancelAsync" />
+            <SgButton Text="@_request.ConfirmText" Variant="@ConfirmButtonVariant" OnClick="ConfirmAsync" />
+        }
+    </FooterContent>
+</SgModal>
+
+@code {
+    private SgConfirmRequest? _request;
+    private TaskCompletionSource<bool>? _pending;
+    private bool _visible;
+
+    protected override void OnInitialized()
+    {
+        ConfirmService.Requested += ShowAsync;
+    }
+
+    private Task<bool> ShowAsync(SgConfirmRequest request)
+    {
+        _request = request;
+        _pending?.TrySetResult(false);
+        _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _visible = true;
+        _ = InvokeAsync(StateHasChanged);
+        return _pending.Task;
+    }
+
+    private string ConfirmButtonVariant => _request?.Variant switch
+    {
+        "success" => "success",
+        "warn" => "default",
+        _ => "danger"
+    };
+
+    private async Task ConfirmAsync()
+    {
+        _pending?.TrySetResult(true);
+        await CloseAsync();
+    }
+
+    private async Task CancelAsync()
+    {
+        _pending?.TrySetResult(false);
+        await CloseAsync();
+    }
+
+    private async Task OnVisibleChanged(bool visible)
+    {
+        if (!visible && _visible)
+        {
+            _pending?.TrySetResult(false);
+        }
+
+        _visible = visible;
+        if (!visible)
+        {
+            _request = null;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task CloseAsync() => OnVisibleChanged(false);
+
+    public void Dispose()
+    {
+        ConfirmService.Requested -= ShowAsync;
+        _pending?.TrySetResult(false);
+    }
+}

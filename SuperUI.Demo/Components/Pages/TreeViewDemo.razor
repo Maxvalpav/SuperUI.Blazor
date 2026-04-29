@@ -1,0 +1,132 @@
+@page "/tree-view"
+@using SuperUI.Components
+@using SuperUI.Demo.Models
+
+<PageTitle>Древовидный список - SUI</PageTitle>
+
+<SgCard Title="SgTreeView - Древовидный список" 
+        Subtitle="Компонент для отображения иерархических структур данных. Поддерживает неограниченную вложенность, иконки узлов и управление состоянием развертывания.">
+    <!-- SgTreeView -->
+    <div style="margin-top: 32px;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px;">
+            <div>
+                <h2>Проводник файлов</h2>
+                <p>Интерактивное дерево с поддержкой поиска, мультивыбора и виртуализации.</p>
+            </div>
+            <div style="display: flex; gap: 12px;">
+                <SgTextBox Placeholder="Поиск..." @bind-Value="_searchText" Style="width: 200px;" />
+                <SgCheckBox Label="Виртуализация" @bind-Value="_virtualize" />
+                <SgCheckBox Label="Мультивыбор" @bind-Value="_multiSelect" />
+            </div>
+        </div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <!-- Примеры -->
+            <SgCard Title="Примеры использования">
+                <div style="height: 450px; border: 1px solid var(--sui-border); border-radius: 8px; padding: 12px; overflow: auto; background: white;">
+                    <SgTreeView Nodes="_fileNodes" 
+                                SelectedNode="_selectedNode" 
+                                SelectedNodeChanged="OnNodeSelected"
+                                SearchText="@_searchText"
+                                Virtualize="_virtualize"
+                                MultiSelect="_multiSelect"
+                                AllowDragDrop="true" />
+                </div>
+            </SgCard>
+
+            <!-- Property Grid -->
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_treeViewProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Node Details -->
+    <div style="margin-top: 32px;">
+        <h2>Детали выбранного узла</h2>
+        <p>Информация о выбранном элементе дерева.</p>
+        
+        <SgCard Title="Детали выбранного узла" Style="margin-top: 16px;">
+            @if (_selectedNode != null)
+            {
+                <SgDescriptions Columns="1" Bordered="true" Items="_nodeItems" />
+                <div style="margin-top: 24px; display: flex; gap: 12px;">
+                    <SgButton Text="Открыть" Variant="primary" Block="true" OnClick='() => Toasts.Show($"Открытие: {_selectedNode.Text}")' />
+                    <SgButton Text="Свойства" Variant="ghost" Block="true" />
+                </div>
+            }
+            else
+            {
+                <SgEmpty Text="Выберите узел в дереве для просмотра деталей" />
+            }
+        </SgCard>
+    </div>
+</SgCard>
+
+@code {
+    [Inject] private SgToastService Toasts { get; set; } = default!;
+
+    private TreeNode? _selectedNode;
+    private string? _searchText;
+    private bool _virtualize;
+    private bool _multiSelect;
+
+    private List<DescriptionItem> _nodeItems = new();
+
+    private List<PropertyPanelItem> _treeViewProperties = new()
+    {
+        new() { Label = "Nodes", Value = "IEnumerable<TreeNode>", BadgeText = "Узлы", BadgeVariant = "info" },
+        new() { Label = "SelectedNode", Value = "TreeNode", BadgeText = "Выбранный", BadgeVariant = "info" },
+        new() { Label = "CssClass", Value = "string", BadgeText = "CSS класс", BadgeVariant = "info" },
+        new() { Label = "SelectedNodeChanged", Value = "EventCallback<TreeNode>", BadgeText = "Изменение", BadgeVariant = "success" }
+    };
+
+    private List<TreeNode> _fileNodes = new()
+    {
+        new TreeNode { Key = "root", Text = "Корень проекта", Icon = "📁", Expanded = true, Children = new() {
+            new TreeNode { Key = "src", Text = "src", Icon = "📁", Expanded = true, Children = new() {
+                new TreeNode { Key = "comp", Text = "Components", Icon = "📁", Children = new() {
+                    new TreeNode { Key = "btn", Text = "Button.razor", Icon = "📄" },
+                    new TreeNode { Key = "input", Text = "Input.razor", Icon = "📄" },
+                    new TreeNode { Key = "tree", Text = "TreeView.razor", Icon = "📄" }
+                }},
+                new TreeNode { Key = "pages", Text = "Pages", Icon = "📁", Children = new() {
+                    new TreeNode { Key = "home", Text = "Index.razor", Icon = "📄" },
+                    new TreeNode { Key = "demo", Text = "TreeViewDemo.razor", Icon = "📄" }
+                }}
+            }},
+            new TreeNode { Key = "config", Text = "appsettings.json", Icon = "⚙️" },
+            new TreeNode { Key = "readme", Text = "README.md", Icon = "ℹ️" }
+        }}
+    };
+
+    protected override void OnInitialized()
+    {
+        _selectedNode = _fileNodes.FirstOrDefault();
+        UpdateNodeItems();
+    }
+
+    private void UpdateNodeItems()
+    {
+        if (_selectedNode == null)
+        {
+            _nodeItems.Clear();
+            return;
+        }
+
+        _nodeItems = new()
+        {
+            new() { Label = "Название", Value = $"{_selectedNode.Icon} {_selectedNode.Text}" },
+            new() { Label = "Ключ", Value = _selectedNode.Key },
+            new() { Label = "Дочерние элементы", Value = (_selectedNode.Children?.Any() == true ? _selectedNode.Children.Count.ToString() : "Нет") },
+            new() { Label = "Состояние", Value = (_selectedNode.Expanded ? "Развернут" : "Свернут") }
+        };
+    }
+
+    private void OnNodeSelected(TreeNode node)
+    {
+        _selectedNode = node;
+        UpdateNodeItems();
+    }
+}
+

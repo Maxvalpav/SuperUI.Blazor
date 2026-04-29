@@ -1,0 +1,70 @@
+@namespace SuperUI.Components
+
+<span class="sgc-chip @VariantClass @(Closable ? "sgc-closable" : "") @CssClass" 
+      role="option"
+      aria-label="@(AriaLabel ?? Text ?? "Chip")">
+    @if (Icon is not null) { <span class="sgc-chip-icon" aria-hidden="true">@Icon</span> }
+    <span>@ChildContent@Text</span>
+    @if (Closable)
+    {
+        <button type="button" class="sgc-chip-x" aria-label="Remove @(Text ?? "item")" @onclick="OnCloseAsync">×</button>
+    }
+</span>
+
+@code {
+    /// <summary>
+    /// Gets or sets the accessibility label for screen readers.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the chip text.
+    /// </summary>
+    [Parameter] public string? Text { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom content to render inside the chip.
+    /// Takes precedence over <see cref="Text"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the icon to display before the chip text.
+    /// </summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the visual variant of the chip.
+    /// Supported values: "default", "primary", "success", "danger", "warn". Default is "default".
+    /// </summary>
+    [Parameter] public string Variant { get; set; } = "default";
+    
+    /// <summary>
+    /// Gets or sets whether the chip displays a close button.
+    /// </summary>
+    [Parameter] public bool Closable { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the close button is clicked.
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private string VariantClass => Variant switch
+    {
+        "primary" => "sgc-primary",
+        "success" => "sgc-success",
+        "danger" => "sgc-danger",
+        "warn" => "sgc-warn",
+        _ => ""
+    };
+
+    private async Task OnCloseAsync()
+    {
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+    }
+}

@@ -1,0 +1,287 @@
+@namespace SuperUI.Components
+@typeparam TValue
+@implements IDisposable
+@using System.Linq.Expressions
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+         role="combobox"
+         aria-expanded="@(_open ? "true" : "false")"
+         aria-haspopup="listbox"
+         aria-labelledby="@_labelId"
+         aria-required="@(Required ? "true" : null)"
+         aria-disabled="@(Disabled ? "true" : null)"
+         aria-invalid="@(IsInvalid ? "true" : null)"
+         aria-describedby="@DescribedBy"
+         tabindex="@(Disabled ? "-1" : "0")"
+         @onclick:stopPropagation="true">
+        <div class="sgc-combo-control" @onclick="ToggleAsync">
+            @if (Editable && _open)
+            {
+                <input class="sgc-combo-input"
+                       value="@_search"
+                       placeholder="@EffectivePlaceholder"
+                       aria-autocomplete="list"
+                       aria-controls="@_listboxId"
+                       @oninput="OnSearchInput"
+                       @onkeydown="OnKeyDownAsync"
+                       @onclick:stopPropagation="true"
+                       @ref="_inputEl" />
+            }
+            else if (Value is not null)
+            {
+                <span class="sgc-combo-value">@LabelFrom(Value!)</span>
+            }
+            else
+            {
+                <span class="sgc-combo-placeholder">@Placeholder</span>
+            }
+            @if (AllowClear && Value is not null && !Disabled)
+            {
+                <button class="sgc-combo-clear" 
+                        @onclick:stopPropagation="true" 
+                        @onclick="ClearAsync" 
+                        type="button" 
+                        aria-label="@ClearLabel"
+                        title="@ClearLabel">×</button>
+            }
+            <span class="sgc-combo-caret" aria-hidden="true">@(_open ? "▲" : "▼")</span>
+        </div>
+        @if (_open)
+        {
+            <div id="@_listboxId" class="sgc-combo-menu" role="listbox">
+                @{ var filtered = GetFilteredItems().ToList(); }
+                @if (filtered.Count == 0)
+                {
+                    <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                }
+                else
+                {
+                    @for (var i = 0; i < filtered.Count; i++)
+                    {
+                        var idx = i;
+                        var it = filtered[idx];
+                        var isSelected = IsSelected(it);
+                        <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
+                             role="option"
+                             aria-selected="@(isSelected ? "true" : "false")"
+                             @onclick:stopPropagation="true"
+                             @onclick="() => PickAsync(it)">
+                            @LabelFrom(it)
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _labelId = "sg-combo-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _listboxId = "sg-combo-listbox-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _hintId = "sg-combo-hint-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-combo-err-" + Guid.NewGuid().ToString("N")[..8];
+    private bool _open;
+    private string _search = string.Empty;
+    private int _activeIndex = -1;
+    private ElementReference _inputEl;
+    private SgEditContextBinder<TValue?>? _binder;
+
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the expression that identifies the bound value for EditContext validation.
+    /// </summary>
+    [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the currently selected value.
+    /// </summary>
+    [Parameter] public TValue? Value { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the selected value changes.
+    /// </summary>
+    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of items to display in the dropdown.
+    /// </summary>
+    [Parameter] public IEnumerable<TValue> Items { get; set; } = Array.Empty<TValue>();
+    
+    /// <summary>
+    /// Gets or sets the function to extract display text from each item.
+    /// If not specified, uses ToString() on the item.
+    /// </summary>
+    [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the placeholder text shown when no item is selected.
+    /// </summary>
+    [Parameter] public string? Placeholder { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the text displayed when no items match the search filter.
+    /// </summary>
+    [Parameter] public string? EmptyText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the label text displayed above the combobox.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the hint text displayed below the combobox.
+    /// </summary>
+    [Parameter] public string? Hint { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
+    /// </summary>
+    [Parameter] public string? ErrorText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether a clear button is shown when an item is selected. Default is true.
+    /// </summary>
+    [Parameter] public bool AllowClear { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether the input is editable for filtering items. Default is true.
+    /// </summary>
+    [Parameter] public bool Editable { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether the combobox is required.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the combobox is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the combobox should take full width of its container. Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the field container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    [CascadingParameter] public SgDataGridLocale? Locale { get; set; }
+
+    private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
+    private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
+    private string ClearLabel => Locale?.Clear ?? Localizer["Clear"];
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
+        ? ErrorText 
+        : _binder?.ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+    private string LabelFrom(TValue v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
+    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
+
+    private IEnumerable<TValue> GetFilteredItems()
+    {
+        if (string.IsNullOrEmpty(_search)) return Items;
+        return Items.Where(i =>
+            LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    protected override void OnInitialized()
+    {
+        _binder = new SgEditContextBinder<TValue?>(StateHasChanged);
+    }
+
+    protected override void OnParametersSet()
+    {
+        _binder?.Update(CascadedEditContext, ValueExpression);
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        if (_open)
+        {
+            _search = string.Empty;
+            _activeIndex = -1;
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseAsync()
+    {
+        _open = false;
+        _search = string.Empty;
+        _activeIndex = -1;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _activeIndex = 0;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        var filtered = GetFilteredItems().ToList();
+        if (e.Key == "ArrowDown")
+        {
+            _activeIndex = Math.Min(filtered.Count - 1, _activeIndex + 1);
+            await InvokeAsync(StateHasChanged);
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            _activeIndex = Math.Max(0, _activeIndex - 1);
+            await InvokeAsync(StateHasChanged);
+        }
+        else if (e.Key == "Enter")
+        {
+            if (_activeIndex >= 0 && _activeIndex < filtered.Count)
+                await PickAsync(filtered[_activeIndex]);
+        }
+        else if (e.Key == "Escape")
+        {
+            await CloseAsync();
+        }
+    }
+
+    private async Task PickAsync(TValue v)
+    {
+        Value = v;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(v);
+        _binder?.NotifyFieldChanged();
+        await CloseAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        Value = default;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
+        _binder?.NotifyFieldChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => _binder?.Dispose();
+}
+

@@ -1,0 +1,174 @@
+@namespace SuperUI.Components
+@using Microsoft.AspNetCore.Components.Forms
+@using System.Linq.Expressions
+@implements IDisposable
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <label class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")" 
+           aria-labelledby="@_labelId"
+           aria-invalid="@(IsInvalid ? "true" : null)"
+           aria-describedby="@DescribedBy">
+        <InputFile OnChange="OnChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
+        <span class="sgc-upload-icon" aria-hidden="true">⬆</span>
+        <span class="sgc-upload-text">@(string.IsNullOrEmpty(Text) ? "Перетащите файлы или кликните для выбора" : Text)</span>
+    </label>
+    @if (_files.Count > 0)
+    {
+        <ul class="sgc-upload-list" role="list">
+            @foreach (var f in _files)
+            {
+                <li class="sgc-upload-item" role="listitem">
+                    <span>@f.Name</span>
+                    <span class="sgc-hint">@FormatSize(f.Size)</span>
+                </li>
+            }
+        </ul>
+    }
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _labelId = "sg-upload-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _hintId = "sg-upload-hint-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-upload-err-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly List<IBrowserFile> _files = new();
+    private SgEditContextBinder<IReadOnlyList<IBrowserFile>?>? _binder;
+
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the expression that identifies the bound value for EditContext validation.
+    /// </summary>
+    [Parameter] public Expression<Func<IReadOnlyList<IBrowserFile>?>>? ValueExpression { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of selected files.
+    /// </summary>
+    [Parameter] public IReadOnlyList<IBrowserFile>? Value { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the selected files change.
+    /// </summary>
+    [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>?> ValueChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the label text displayed above the file upload area.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the text displayed in the upload area.
+    /// </summary>
+    [Parameter] public string? Text { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the hint text displayed below the upload area.
+    /// </summary>
+    [Parameter] public string? Hint { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
+    /// </summary>
+    [Parameter] public string? ErrorText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the accepted file types (e.g., "image/*", ".pdf,.doc").
+    /// </summary>
+    [Parameter] public string? Accept { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether multiple files can be selected.
+    /// </summary>
+    [Parameter] public bool Multiple { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether file selection is required.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the file upload is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the upload area should take full width of its container. Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the field container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when files are selected (legacy, use <see cref="ValueChanged"/> instead).
+    /// </summary>
+    [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>> OnFilesSelected { get; set; }
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
+        ? ErrorText 
+        : _binder?.ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    protected override void OnInitialized()
+    {
+        _binder = new SgEditContextBinder<IReadOnlyList<IBrowserFile>?>(StateHasChanged);
+    }
+
+    protected override void OnParametersSet()
+    {
+        _binder?.Update(CascadedEditContext, ValueExpression);
+        // Sync external Value to internal _files list
+        if (Value != null && Value.Count > 0)
+        {
+            _files.Clear();
+            foreach (var f in Value) _files.Add(f);
+        }
+    }
+
+    private async Task OnChange(InputFileChangeEventArgs e)
+    {
+        _files.Clear();
+        if (Multiple)
+        {
+            foreach (var f in e.GetMultipleFiles(100)) _files.Add(f);
+        }
+        else
+        {
+            _files.Add(e.File);
+        }
+        
+        var fileList = _files.AsReadOnly();
+        Value = fileList;
+        
+        // Notify EditContext
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(fileList);
+        _binder?.NotifyFieldChanged();
+        
+        // Keep backward compatibility with OnFilesSelected
+        if (OnFilesSelected.HasDelegate) await OnFilesSelected.InvokeAsync(fileList);
+    }
+
+    private static string FormatSize(long bytes)
+    {
+        string[] u = { "Б", "КБ", "МБ", "ГБ" };
+        double v = bytes; var i = 0;
+        while (v >= 1024 && i < u.Length - 1) { v /= 1024; i++; }
+        return $"{v:0.##} {u[i]}";
+    }
+
+    public void Dispose() => _binder?.Dispose();
+}

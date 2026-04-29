@@ -1,0 +1,154 @@
+@namespace SuperUI.Components
+
+<button type="@Type"
+        class="sgc-btn @VariantClass @SizeClass @(Block ? "sgc-block" : "") @CssClass"
+        disabled="@(Disabled || Loading || _isDebouncing)"
+        title="@Title"
+        @onclick="OnClickAsync"
+        aria-pressed="@(IsToggle ? (_pressed ? "true" : "false") : null)"
+        @attributes="AdditionalAttributes">
+    @if (Loading)
+    {
+        <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
+    }
+    else if (Icon is not null)
+    {
+        <span class="sgc-btn-icon">@Icon</span>
+    }
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+    else if (!string.IsNullOrEmpty(Text))
+    {
+        <span>@Text</span>
+    }
+</button>
+
+@code {
+    private bool _isDebouncing;
+    private bool _pressed;
+
+    /// <summary>
+    /// Gets or sets the button text content.
+    /// </summary>
+    [Parameter] public string? Text { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom content to render inside the button.
+    /// Takes precedence over <see cref="Text"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the icon to display before the button text.
+    /// </summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the HTML button type. Default is "button".
+    /// </summary>
+    [Parameter] public string Type { get; set; } = "button";
+    
+    /// <summary>
+    /// Gets or sets the button visual variant. 
+    /// Supported values: "default", "primary", "danger", "success", "ghost", "outlined", "dashed". Default is "default".
+    /// </summary>
+    [Parameter] public string Variant { get; set; } = "default";
+    
+    /// <summary>
+    /// Gets or sets the button size.
+    /// Supported values: "sm", "md", "lg". Default is "md".
+    /// </summary>
+    [Parameter] public string Size { get; set; } = "md";
+    
+    /// <summary>
+    /// Gets or sets whether the button is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the button is in loading state (shows spinner).
+    /// </summary>
+    [Parameter] public bool Loading { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the button should take full width of its container.
+    /// </summary>
+    [Parameter] public bool Block { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the tooltip text shown on hover.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the button is in a toggle state.
+    /// </summary>
+    [Parameter] public bool IsToggle { get; set; }
+
+    /// <summary>
+    /// Gets or sets the debounce interval in milliseconds. Default is 300ms. Set to 0 to disable.
+    /// </summary>
+    [Parameter] public int DebounceInterval { get; set; } = 300;
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the button.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the button is clicked.
+    /// </summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional HTML attributes to apply to the button element.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string VariantClass => Variant switch
+    {
+        "primary" => "sgc-btn-primary",
+        "danger" => "sgc-danger",
+        "success" => "sgc-success",
+        "ghost" => "sgc-ghost",
+        "outlined" => "sgc-outlined",
+        "dashed" => "sgc-dashed",
+        _ => ""
+    };
+    private string SizeClass => Size switch
+    {
+        "sm" => "sgc-sm",
+        "lg" => "sgc-lg",
+        _ => ""
+    };
+
+    private async Task OnClickAsync(MouseEventArgs e)
+    {
+        if (Disabled || Loading || _isDebouncing) return;
+
+        if (IsToggle)
+        {
+            _pressed = !_pressed;
+        }
+
+        if (OnClick.HasDelegate)
+        {
+            if (DebounceInterval > 0)
+            {
+                _isDebouncing = true;
+                StateHasChanged();
+            }
+
+            await OnClick.InvokeAsync(e);
+
+            if (DebounceInterval > 0)
+            {
+                await Task.Delay(DebounceInterval);
+                _isDebouncing = false;
+                StateHasChanged();
+            }
+        }
+    }
+}

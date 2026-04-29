@@ -1,0 +1,235 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+@typeparam TItem
+@implements IDisposable
+
+<div class="sgc-pivot-container @CssClass">
+    <div class="sgc-pivot-main">
+        <div class="sgc-pivot-table-wrapper">
+            @if (State.RowFields.Any() || State.ColumnFields.Any())
+            {
+                <table class="sgc-pivot-table">
+                    <thead>
+                        <tr>
+                            <th class="sgc-pivot-corner" rowspan="@(Math.Max(1, State.ColumnFields.Count))">
+                                <div class="sgc-pivot-corner-labels">
+                                    <span class="sgc-pivot-col-label">@string.Join(", ", State.ColumnFields.Select(f => f.Label))</span>
+                                    <span class="sgc-pivot-row-label">@string.Join(", ", State.RowFields.Select(f => f.Label))</span>
+                                </div>
+                            </th>
+                            @foreach (var colPath in _columnPaths)
+                            {
+                                <th class="sgc-pivot-col-header">@colPath</th>
+                            }
+                            @if (ShowTotal)
+                            {
+                                <th class="sgc-pivot-total-header">@Localizer["Total"]</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var rowPath in _rowPaths)
+                        {
+                            <tr>
+                                <td class="sgc-pivot-row-header">@rowPath</td>
+                                @foreach (var colPath in _columnPaths)
+                                {
+                                    var cellValue = GetValue(rowPath, colPath);
+                                    var cellStyle = GetCellStyle(cellValue);
+                                    <td class="sgc-pivot-cell" style="@cellStyle" @onclick="() => HandleCellClick(rowPath, colPath)">
+                                        @FormatValue(cellValue)
+                                    </td>
+                                }
+                                @if (ShowTotal)
+                                {
+                                    <td class="sgc-pivot-total-cell">@FormatValue(GetRowTotal(rowPath))</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                    @if (ShowTotal)
+                    {
+                        <tfoot>
+                            <tr>
+                                <td class="sgc-pivot-total-header">@Localizer["Total"]</td>
+                                @foreach (var colPath in _columnPaths)
+                                {
+                                    <td class="sgc-pivot-total-cell">@FormatValue(GetColumnTotal(colPath))</td>
+                                }
+                                <td class="sgc-pivot-total-cell sgc-pivot-grand-total">@FormatValue(GetGrandTotal())</td>
+                            </tr>
+                        </tfoot>
+                    }
+                </table>
+            }
+            else
+            {
+                <div class="sgc-pivot-empty">
+                    @Localizer["SelectFieldsForPivot"]
+                </div>
+            }
+        </div>
+
+        @if (ShowDesigner)
+        {
+            <SgPivotDesigner TItem="TItem" State="State" Fields="Fields" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
+    [Parameter, EditorRequired] public SgPivotState<TItem> State { get; set; } = default!;
+    [Parameter] public List<SgPivotField<TItem>> Fields { get; set; } = new();
+    [Parameter] public bool ShowDesigner { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public bool ShowTotal { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the callback for drill-down. Invoked when a cell is clicked.
+    /// Returns the items that contribute to the clicked cell.
+    /// </summary>
+    [Parameter] public EventCallback<IEnumerable<TItem>> OnDrillDown { get; set; }
+
+    private List<string> _rowPaths = new();
+    private List<string> _columnPaths = new();
+    private Dictionary<(string, string), object?> _data = new();
+    private int _lastHash;
+
+    protected override void OnInitialized()
+    {
+        State.OnChanged += HandleStateChanged;
+    }
+
+    protected override void OnParametersSet()
+    {
+        var currentHash = CalculateHash();
+        if (currentHash != _lastHash)
+        {
+            _lastHash = currentHash;
+            CalculateTable();
+        }
+    }
+
+    private int CalculateHash()
+    {
+        var hash = new HashCode();
+        foreach (var item in Items.Take(100)) hash.Add(item?.GetHashCode() ?? 0);
+        hash.Add(Items.Count());
+        foreach (var f in State.RowFields) hash.Add(f.Name);
+        foreach (var f in State.ColumnFields) hash.Add(f.Name);
+        foreach (var f in State.ValueFields) { hash.Add(f.Name); hash.Add(f.AggregateType); }
+        return hash.ToHashCode();
+    }
+
+    private void HandleStateChanged()
+    {
+        _lastHash = CalculateHash();
+        CalculateTable();
+        StateHasChanged();
+    }
+
+    private void CalculateTable()
+    {
+        if (!State.RowFields.Any() && !State.ColumnFields.Any()) return;
+
+        _rowPaths = Items.Select(GetRowKey).Distinct().OrderBy(x => x).ToList();
+        _columnPaths = Items.Select(GetColKey).Distinct().OrderBy(x => x).ToList();
+
+        _data = Items
+            .GroupBy(i => (GetRowKey(i), GetColKey(i)))
+            .ToDictionary(
+                g => g.Key,
+                g => AggregateValues(g)
+            );
+    }
+
+    private string GetRowKey(TItem item) => State.RowFields.Any() 
+        ? string.Join(" | ", State.RowFields.Select(f => f.Selector(item)?.ToString() ?? "—")) 
+        : "Все";
+
+    private string GetColKey(TItem item) => State.ColumnFields.Any() 
+        ? string.Join(" | ", State.ColumnFields.Select(f => f.Selector(item)?.ToString() ?? "—")) 
+        : "Все";
+
+    private object? AggregateValues(IEnumerable<TItem> group)
+    {
+        if (!State.ValueFields.Any()) return group.Count();
+        
+        var field = State.ValueFields.First();
+        
+        if (field.CustomAggregate != null)
+        {
+            return field.CustomAggregate(group);
+        }
+
+        var values = group.Select(field.Selector).Where(v => v != null).Select(v => Convert.ToDouble(v));
+
+        if (!values.Any()) return field.AggregateType == SgPivotAggregateType.Count ? 0 : null;
+
+        return field.AggregateType switch
+        {
+            SgPivotAggregateType.Sum => values.Sum(),
+            SgPivotAggregateType.Count => (double)values.Count(),
+            SgPivotAggregateType.Average => values.Average(),
+            SgPivotAggregateType.Min => values.Min(),
+            SgPivotAggregateType.Max => values.Max(),
+            _ => null
+        };
+    }
+
+    private string? GetCellStyle(object? value)
+    {
+        if (State.ValueFields.Count > 0)
+        {
+            var field = State.ValueFields[0];
+            return field.CellStyleFunc?.Invoke(value);
+        }
+        return null;
+    }
+
+    private async Task HandleCellClick(string row, string col)
+    {
+        if (OnDrillDown.HasDelegate)
+        {
+            var items = Items.Where(i => GetRowKey(i) == row && GetColKey(i) == col);
+            await OnDrillDown.InvokeAsync(items);
+        }
+    }
+
+    private object? GetValue(string row, string col) => _data.TryGetValue((row, col), out var val) ? val : null;
+
+    private object? GetRowTotal(string row)
+    {
+        var items = Items.Where(i => GetRowKey(i) == row);
+        return AggregateValues(items);
+    }
+
+    private object? GetColumnTotal(string col)
+    {
+        var items = Items.Where(i => GetColKey(i) == col);
+        return AggregateValues(items);
+    }
+
+    private object? GetGrandTotal() => AggregateValues(Items);
+
+    private string FormatValue(object? val)
+    {
+        if (val == null) return "—";
+        
+        var format = State.ValueFields.FirstOrDefault()?.Format;
+        if (val is IFormattable formattable && !string.IsNullOrEmpty(format))
+        {
+            return formattable.ToString(format, System.Globalization.CultureInfo.CurrentCulture);
+        }
+
+        if (val is double d) return d.ToString("N2");
+        return val.ToString() ?? "—";
+    }
+
+    public void Dispose()
+    {
+        State.OnChanged -= HandleStateChanged;
+    }
+}

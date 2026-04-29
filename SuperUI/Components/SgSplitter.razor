@@ -1,0 +1,133 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-split @(IsVertical ? "sgc-v" : "sgc-h") @CssClass" @ref="_el">
+    <div class="sgc-split-pane" style="@FirstStyle" @ref="_first">@First</div>
+    <div class="sgc-split-bar" @ref="_bar"></div>
+    <div class="sgc-split-pane sgc-split-flex">@Second</div>
+</div>
+
+@code {
+    private ElementReference _el;
+    private ElementReference _first;
+    private ElementReference _bar;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgSplitter>? _self;
+    private bool _attached;
+    private bool _isDisposed;
+    private bool _lastVertical;
+
+    /// <summary>
+    /// Gets or sets the content for the first (left or top) pane.
+    /// </summary>
+    [Parameter] public RenderFragment? First { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the content for the second (right or bottom) pane.
+    /// </summary>
+    [Parameter] public RenderFragment? Second { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the layout orientation.
+    /// Supported values: "horizontal" (side-by-side), "vertical" (top-bottom). Default is "horizontal".
+    /// </summary>
+    [Parameter] public string Orientation { get; set; } = "horizontal";
+    
+    /// <summary>
+    /// Gets or sets whether to use vertical (top-bottom) split layout.
+    /// Legacy parameter, use <see cref="Orientation"/> instead.
+    /// </summary>
+    [Parameter] public bool Vertical { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size of the first pane in pixels.
+    /// Default is 240.
+    /// </summary>
+    [Parameter] public double Size { get; set; } = 240;
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the pane size changes.
+    /// </summary>
+    [Parameter] public EventCallback<double> SizeChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the minimum size of the first pane in pixels.
+    /// Default is 80.
+    /// </summary>
+    [Parameter] public double Min { get; set; } = 80;
+    
+    /// <summary>
+    /// Gets or sets the maximum size of the first pane in pixels.
+    /// Default is 1200.
+    /// </summary>
+    [Parameter] public double Max { get; set; } = 1200;
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private bool IsVertical => Orientation == "vertical" || Vertical;
+
+    private string FirstStyle => IsVertical
+        ? $"height:{Size.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;"
+        : $"width:{Size.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed) return;
+        
+        // Re-attach if orientation changed or first render
+        if (!_attached || _lastVertical != IsVertical)
+        {
+            try
+            {
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-splitter.js");
+                if (_isDisposed) return;
+
+                _self ??= DotNetObjectReference.Create(this);
+                // We need to re-attach because JS listeners depend on orientation
+                await _module.InvokeVoidAsync("attach", _bar, _first, IsVertical, Min, Max, _self);
+                _attached = true;
+                _lastVertical = IsVertical;
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+        }
+    }
+
+    [JSInvokable]
+    public async Task SetSize(double size)
+    {
+        if (Math.Abs(size - Size) < 0.5 || _isDisposed) return;
+        Size = size;
+        if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(size);
+        if (!_isDisposed)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        if (_module is not null)
+        {
+            try 
+            { 
+                if (_attached) await _module.InvokeVoidAsync("detach", _bar);
+                await _module.DisposeAsync(); 
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+}

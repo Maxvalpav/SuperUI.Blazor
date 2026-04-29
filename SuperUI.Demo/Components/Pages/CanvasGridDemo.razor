@@ -1,0 +1,102 @@
+@page "/canvas-grid-demo"
+@using SuperUI.Components
+@using SuperUI.Demo.Models
+
+<PageTitle>Сетка Canvas - SUI</PageTitle>
+
+<SgCard Title="SgCanvasGrid - Сетка Canvas" 
+        Subtitle="Высокопроизводительная сетка для отображения больших объемов данных. Поддерживает виртуализацию, сортировку, фильтрацию и редактирование.">
+    <!-- SgCanvasGrid -->
+    <div style="margin-top: 32px;">
+        <h2>Высокопроизводительная таблица (100,000 строк)</h2>
+        <p>Canvas-based таблица с виртуализацией для работы с большими объемами данных.</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Интерактивная Canvas Grid" Style="grid-column: 1 / -1;">
+                <div style="height: 600px; border: 1px solid var(--sui-border); border-radius: 4px; overflow: hidden;">
+                    <SgCanvasGrid TItem="Employee"
+                                  Items="_employees"
+                                  Columns="_columns"
+                                  Width="100%"
+                                  Height="600px"
+                                  RowHeight="32"
+                                  HeaderHeight="40"
+                                  ShowToolbar="true"
+                                  ShowStatus="true"
+                                  ShowSelectionColumn="true"
+                                  ShowColumnChooser="true"
+                                  ShowExport="true"
+                                  AllowSelection="true"
+                                  MultiSelect="true"
+                                  EnablePaging="false" />
+                </div>
+                <div style="margin-top: 8px; font-size: 12px; color: var(--sui-text-secondary);">
+                    Всего записей: <strong>@_employees.Count.ToString("N0")</strong>. Рендерится только видимые строки для максимальной производительности.
+                </div>
+            </SgCard>
+
+            <SgCard Title="Автогенерация колонок" Style="grid-column: 1 / -1;">
+                <div style="height: 500px; border: 1px solid var(--sui-border); border-radius: 4px; overflow: hidden;">
+                    <SgCanvasGrid TItem="Employee"
+                                  Items="_employees"
+                                  AutoGenerateColumns="true"
+                                  Width="100%"
+                                  Height="500px"
+                                  RowHeight="32"
+                                  HeaderHeight="40"
+                                  EnablePaging="true"
+                                  PageSize="200" />
+                </div>
+                <div style="margin-top: 8px; font-size: 12px; color: var(--sui-text-secondary);">
+                    Колонки построены из атрибутов <code>[Display]</code> модели Employee.
+                </div>
+            </SgCard>
+
+            <SgCard Title="Свойства компонента" Style="grid-column: 1 / -1;">
+                <PropertyTable Items="_canvasGridProperties" />
+            </SgCard>
+        </div>
+    </div>
+</SgCard>
+
+@code {
+    private List<Employee> _employees = new();
+    private List<CanvasGridColumn<Employee>> _columns = new();
+
+    private List<PropertyPanelItem> _canvasGridProperties = new()
+    {
+        new() { Label = "Items", Value = "IEnumerable<T>", BadgeText = "Данные", BadgeVariant = "info" },
+        new() { Label = "Columns", Value = "List<CanvasGridColumn<T>>", BadgeText = "Колонки", BadgeVariant = "info" },
+        new() { Label = "AutoGenerateColumns", Value = "bool", BadgeText = "Автогенерация", BadgeVariant = "warn" },
+        new() { Label = "Height", Value = "string", BadgeText = "Высота", BadgeVariant = "info" },
+        new() { Label = "Width", Value = "string", BadgeText = "Ширина", BadgeVariant = "info" },
+        new() { Label = "RowHeight", Value = "int", BadgeText = "Высота строки", BadgeVariant = "info" },
+        new() { Label = "HeaderHeight", Value = "int", BadgeText = "Высота шапки", BadgeVariant = "info" },
+        new() { Label = "ShowToolbar", Value = "bool", BadgeText = "Тулбар", BadgeVariant = "warn" },
+        new() { Label = "ShowStatus", Value = "bool", BadgeText = "Статус", BadgeVariant = "warn" },
+        new() { Label = "ShowSelectionColumn", Value = "bool", BadgeText = "Чекбоксы", BadgeVariant = "warn" },
+        new() { Label = "ShowColumnChooser", Value = "bool", BadgeText = "Выбор колонок", BadgeVariant = "warn" },
+        new() { Label = "ShowExport", Value = "bool", BadgeText = "Экспорт", BadgeVariant = "warn" },
+        new() { Label = "AllowSelection", Value = "bool", BadgeText = "Выбор", BadgeVariant = "warn" },
+        new() { Label = "MultiSelect", Value = "bool", BadgeText = "Множ. выбор", BadgeVariant = "warn" },
+        new() { Label = "EnablePaging", Value = "bool", BadgeText = "Пагинация", BadgeVariant = "warn" },
+        new() { Label = "PageSize", Value = "int", BadgeText = "На странице", BadgeVariant = "info" }
+    };
+
+    protected override void OnInitialized()
+    {
+        _employees = SampleDataService.GenerateEmployees(100000);
+        _columns = new List<CanvasGridColumn<Employee>>
+        {
+            new() { Title = "ID", Property = nameof(Employee.Id), Width = 70, Align = "right", Sortable = true, Filterable = true, Pinned = true, ValueType = typeof(int) },
+            new() { Title = "Имя", Property = nameof(Employee.FirstName), Width = 130, Sortable = true, Filterable = true, Editable = true },
+            new() { Title = "Фамилия", Property = nameof(Employee.LastName), Width = 140, Sortable = true, Filterable = true, Editable = true },
+            new() { Title = "Email", Property = nameof(Employee.Email), Width = 220, Sortable = true, Filterable = true },
+            new() { Title = "Отдел", Property = nameof(Employee.Department), Width = 130, Sortable = true, Filterable = true },
+            new() { Title = "Зарплата", Property = nameof(Employee.Salary), Width = 120, Align = "right", Sortable = true, Filterable = true, Format = "C2", ValueType = typeof(decimal), Aggregate = Aggregate.Average, Editable = true },
+            new() { Title = "Дата приема", Property = nameof(Employee.HireDate), Width = 120, Sortable = true, Filterable = true, Format = "dd.MM.yyyy", ValueType = typeof(DateTime) },
+            new() { Title = "Активен", Property = nameof(Employee.IsActive), Width = 90, Align = "center", Sortable = true, Filterable = true, ValueType = typeof(bool) },
+            new() { Title = "Заметки", Property = nameof(Employee.Notes), Width = 200, Sortable = false, Filterable = true }
+        };
+    }
+}

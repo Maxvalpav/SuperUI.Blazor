@@ -1,0 +1,36 @@
+@page "/Error"
+@using System.Diagnostics
+
+<PageTitle>Ошибка — SuperUI</PageTitle>
+
+<SgCard Title="Произошла ошибка">
+    <SgEmpty Text="Что-то пошло не так при обработке запроса.">
+        <Icon>⚠️</Icon>
+        <ChildContent>
+            @if (ShowRequestId)
+            {
+                <SgDescriptions Items="_items" Columns="1" />
+            }
+            <div style="margin-top:12px;">
+                <SgButton Text="На главную" Variant="primary" OnClick="@(() => Nav.NavigateTo("/"))" />
+            </div>
+        </ChildContent>
+    </SgEmpty>
+</SgCard>
+
+@code {
+    [Inject] private NavigationManager Nav { get; set; } = default!;
+
+    private string? RequestId { get; set; }
+    private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+
+    private DescriptionItem[] _items = Array.Empty<DescriptionItem>();
+
+    protected override void OnInitialized()
+    {
+        RequestId = Activity.Current?.Id;
+        if (RequestId is not null)
+            _items = new[] { new DescriptionItem { Label = "Request ID", Value = RequestId } };
+    }
+}
+

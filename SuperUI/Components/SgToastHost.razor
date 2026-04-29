@@ -1,0 +1,160 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject SgToastService Toasts
+@inject Microsoft.Extensions.Options.IOptions<SuperUI.SuperUiOptions> Options
+
+<div class="sgc-toast-container sgc-toast-@Placement.ToLowerInvariant()" role="region" aria-label="Notifications" aria-live="polite">
+    @foreach (var t in (Placement.EndsWith("Top") ? _items.AsEnumerable().Reverse() : _items))
+    {
+        var tLocal = t;
+        <div class="sgc-toast @VariantClass(tLocal.Variant) @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")" 
+             role="status" 
+             aria-live="polite" 
+             aria-atomic="true"
+             @key="tLocal.Id">
+            <div class="sgc-toast-body">
+                @if (!string.IsNullOrEmpty(tLocal.Title))
+                {
+                    <div class="sgc-toast-title">@tLocal.Title</div>
+                }
+                <div>@tLocal.Message</div>
+            </div>
+            <button class="sgc-toast-x" aria-label="Close notification" @onclick="() => RemoveAsync(tLocal.Id)">×</button>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<SgToast> _items = new();
+    private readonly Queue<SgToast> _queue = new();
+    private readonly HashSet<string> _closingIds = new();
+    private readonly CancellationTokenSource _hostCts = new();
+
+    private bool _disposed;
+
+    /// <summary>
+    /// Gets or sets the toast container placement: "TopRight", "TopLeft", "BottomRight", "BottomLeft".
+    /// Default is "TopRight".
+    /// </summary>
+    [Parameter] public string Placement { get; set; } = "TopRight";
+
+    protected override void OnInitialized()
+    {
+        Toasts.Added += OnAdd;
+        Toasts.Removed += OnRemove;
+    }
+
+    private void OnAdd(SgToast t)
+    {
+        if (!_disposed) _ = AddAsync(t);
+    }
+
+    private async Task AddAsync(SgToast t)
+    {
+        var max = Math.Max(1, Options.Value.MaxVisibleToasts);
+        
+        if (_items.Count >= max)
+        {
+            _queue.Enqueue(t);
+            return;
+        }
+
+        _items.Add(t);
+        await InvokeAsync(StateHasChanged);
+
+        if (t.DurationMs > 0 && !_disposed)
+        {
+            // Create a CancellationTokenSource for this toast's timeout
+            var cts = CancellationTokenSource.CreateLinkedTokenSource(_hostCts.Token);
+            t.TimeoutCts = cts;
+            
+            try
+            {
+                await Task.Delay(t.DurationMs, cts.Token);
+                if (!_disposed) await RemoveAsync(t.Id);
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                // Dispose the timeout token when auto-close completes
+                if (t.TimeoutCts != null)
+                {
+                    try { t.TimeoutCts.Cancel(); } catch { }
+                    t.TimeoutCts.Dispose();
+                    t.TimeoutCts = null;
+                }
+            }
+        }
+    }
+
+    private void OnRemove(string id)
+    {
+        if (!_disposed) _ = RemoveAsync(id);
+    }
+
+    private async Task RemoveAsync(string id)
+    {
+        if (_closingIds.Contains(id)) return;
+        
+        // Cancel the timeout token when manually closed
+        var toast = _items.FirstOrDefault(x => x.Id == id);
+        if (toast?.TimeoutCts != null)
+        {
+            try { toast.TimeoutCts.Cancel(); } catch { }
+            toast.TimeoutCts.Dispose();
+            toast.TimeoutCts = null;
+        }
+        
+        _closingIds.Add(id);
+        await InvokeAsync(StateHasChanged);
+        
+        // Wait for animation
+        await Task.Delay(300);
+        
+        _items.RemoveAll(x => x.Id == id);
+        _closingIds.Remove(id);
+        
+        // Check queue
+        if (_queue.Count > 0)
+        {
+            var next = _queue.Dequeue();
+            _ = AddAsync(next);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string VariantClass(string v) => v switch
+    {
+        "success" => "sgc-success",
+        "danger" => "sgc-danger",
+        "warn" => "sgc-warn",
+        _ => ""
+    };
+
+    async ValueTask IAsyncDisposable.DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        
+        Toasts.Added -= OnAdd;
+        Toasts.Removed -= OnRemove;
+        
+        // Cancel all active toast timeouts
+        foreach (var toast in _items)
+        {
+            if (toast.TimeoutCts != null)
+            {
+                try { toast.TimeoutCts.Cancel(); } catch { }
+                toast.TimeoutCts.Dispose();
+                toast.TimeoutCts = null;
+            }
+        }
+        
+        try { _hostCts.Cancel(); } catch { }
+        _hostCts.Dispose();
+        
+        // Dispose the service
+        await Toasts.DisposeAsync();
+    }
+}

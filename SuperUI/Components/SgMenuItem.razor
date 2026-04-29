@@ -1,0 +1,139 @@
+@namespace SuperUI.Components
+
+<div class="sgc-menu-item @VariantClass @(Disabled ? "sgc-disabled" : "") @(_open ? "sgc-open" : "") @CssClass"
+     role="menuitem"
+     aria-haspopup="@(SubMenu is not null ? "true" : null)"
+     aria-expanded="@(SubMenu is not null ? (_open ? "true" : "false") : null)"
+     tabindex="@(Disabled ? "-1" : "0")"
+     aria-disabled="@(Disabled ? "true" : null)"
+     @ref="_element"
+     @onclick="OnClickAsync"
+     @onkeydown="OnKeyDownAsync"
+     @onmouseenter="OnMouseEnter"
+     @onmouseleave="OnMouseLeave">
+    @if (Icon is not null) { <span class="sgc-menu-icon" aria-hidden="true">@Icon</span> }
+    <span class="sgc-menu-text">@ChildContent@Text</span>
+    @if (SubMenu is not null)
+    {
+        <span class="sgc-menu-arrow" aria-hidden="true">▶</span>
+        @if (_open)
+        {
+            <div class="sgc-menu-sub">
+                @SubMenu
+            </div>
+        }
+    }
+    else if (!string.IsNullOrEmpty(Shortcut))
+    {
+        <span class="sgc-menu-shortcut" aria-label="Keyboard shortcut: @Shortcut">@Shortcut</span>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private ElementReference _element;
+
+    [CascadingParameter] private SgMenu? ParentMenu { get; set; }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        ParentMenu?.RegisterItem(this);
+    }
+
+    private void OnMouseEnter()
+    {
+        if (Disabled || SubMenu is null) return;
+        _open = true;
+    }
+
+    private void OnMouseLeave()
+    {
+        if (SubMenu is null) return;
+        _open = false;
+    }
+
+    /// <summary>
+    /// Gets or sets the menu item text.
+    /// </summary>
+    [Parameter] public string? Text { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom content to render inside the menu item.
+    /// Takes precedence over <see cref="Text"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the nested sub-menu content.
+    /// </summary>
+    [Parameter] public RenderFragment? SubMenu { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the icon to display before the menu item text.
+    /// </summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the keyboard shortcut text to display on the right side.
+    /// </summary>
+    [Parameter] public string? Shortcut { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the visual variant of the menu item.
+    /// Supported values: "default", "danger". Default is "default".
+    /// </summary>
+    [Parameter] public string Variant { get; set; } = "default";
+    
+    /// <summary>
+    /// Gets or sets whether the menu item is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the menu item is clicked.
+    /// </summary>
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private string VariantClass => Variant == "danger" ? "sgc-danger" : "";
+
+    private async Task OnClickAsync()
+    {
+        if (Disabled) return;
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            if (SubMenu is not null)
+            {
+                _open = !_open;
+            }
+            else if (OnClick.HasDelegate)
+            {
+                await OnClick.InvokeAsync();
+            }
+        }
+        else if (e.Key == "ArrowRight" && SubMenu is not null)
+        {
+            _open = true;
+        }
+        else if (e.Key == "ArrowLeft" && SubMenu is not null)
+        {
+            _open = false;
+        }
+    }
+
+    internal async Task FocusAsync()
+    {
+        await _element.FocusAsync();
+    }
+}

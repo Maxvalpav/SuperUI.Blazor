@@ -1,0 +1,433 @@
+@namespace SuperUI.Components
+@typeparam TItem where TItem : class
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sg-chart-container" style="height: @(Height); width: @(Width); position: relative;">
+    @if (_renderChart)
+    {
+        <CascadingValue Value="this">
+            @ChildContent
+            <canvas @ref="_canvasRef" id="@_chartId" role="img" aria-label="@(Title ?? "Chart")"></canvas>
+        </CascadingValue>
+    }
+    else if (_error is not null)
+    {
+        <div class="sg-chart-error">
+            <p>@_error</p>
+            <button class="sg-btn" @onclick="RetryAsync">Retry</button>
+        </div>
+    }
+    else
+    {
+        <div class="sg-chart-loading">Loading chart...</div>
+    }
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgChart<TItem>>? _selfRef;
+    private string _chartId = $"sg-chart-{Guid.NewGuid():N}";
+    private List<SgChartDataset> _datasets = new();
+    private SgChartXAxis? _xAxis;
+    private SgChartYAxis? _yAxis;
+    private bool _renderChart = false;
+    private string? _error;
+    private bool _isDisposed;
+
+    /// <summary>
+    /// Gets or sets the chart type.
+    /// </summary>
+    [Parameter] public SgChartType ChartType { get; set; } = SgChartType.Line;
+    
+    /// <summary>
+    /// Gets or sets the data to display in the chart.
+    /// </summary>
+    [Parameter] public IEnumerable<TItem>? Data { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the chart options.
+    /// </summary>
+    [Parameter] public SgChartOptions? Options { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the chart height (e.g., "400px").
+    /// Default is "400px".
+    /// </summary>
+    [Parameter] public string Height { get; set; } = "400px";
+    
+    /// <summary>
+    /// Gets or sets the chart width (e.g., "600px").
+    /// Default is "600px".
+    /// </summary>
+    [Parameter] public string Width { get; set; } = "600px";
+    
+    /// <summary>
+    /// Gets or sets the chart title.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the child content containing datasets and axes.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when a data point is clicked.
+    /// </summary>
+    [Parameter] public EventCallback<SgChartClickEventArgs> OnDataPointClick { get; set; }
+
+    protected override void OnInitialized()
+    {
+        _renderChart = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed)
+            return;
+
+        if (firstRender)
+        {
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/sg-chart.js");
+                _selfRef = DotNetObjectReference.Create(this);
+                await InitializeChartAsync();
+            }
+            catch (Exception ex)
+            {
+                _error = $"Failed to load chart: {ex.Message}";
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task InitializeChartAsync()
+    {
+        if (_module is null || _selfRef is null)
+            return;
+
+        try
+        {
+            var config = BuildChartConfig();
+            await _module.InvokeVoidAsync("initChart", _selfRef, _canvasRef, config);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to initialize chart: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private object BuildChartConfig()
+    {
+        var data = Data?.ToList() ?? new List<TItem>();
+        var options = Options ?? new SgChartOptions();
+
+        // Extract labels from data (try to get Label property if it exists)
+        var labels = ExtractLabels(data);
+        
+        // Build datasets from data
+        var datasets = BuildDatasets(data);
+
+        // For heatmap, use 'matrix' type instead of 'heatmap'
+        var chartType = ChartType == SgChartType.Heatmap ? "matrix" : ChartType.ToString().ToLower();
+
+        var config = new
+        {
+            type = chartType,
+            data = new
+            {
+                labels = labels,
+                datasets = datasets
+            },
+            options = new
+            {
+                responsive = options.Responsive,
+                maintainAspectRatio = true,
+                plugins = new
+                {
+                    legend = new { display = options.ShowLegend },
+                    title = new { display = !string.IsNullOrEmpty(Title), text = Title ?? "" }
+                },
+                scales = BuildScales()
+            }
+        };
+
+        return config;
+    }
+
+    private List<string> ExtractLabels(List<TItem> data)
+    {
+        if (data.Count == 0)
+            return new List<string>();
+
+        // Try to extract Label property from first item
+        var labelProp = typeof(TItem).GetProperty("Label");
+        if (labelProp != null)
+        {
+            return data.Select(item => labelProp.GetValue(item)?.ToString() ?? "").ToList();
+        }
+
+        // Fallback to index-based labels
+        return Enumerable.Range(0, data.Count).Select(i => i.ToString()).ToList();
+    }
+
+    private List<object> BuildDatasets(List<TItem> data)
+    {
+        if (data.Count == 0)
+            return new List<object>();
+
+        // Try to extract Value property from items
+        var valueProp = typeof(TItem).GetProperty("Value");
+        if (valueProp == null)
+            return new List<object>();
+
+        var values = data.Select(item => 
+        {
+            var val = valueProp.GetValue(item);
+            return val is double d ? d : val is int i ? (double)i : 0.0;
+        }).ToList();
+
+        // Apply decimation if needed
+        var options = Options ?? new SgChartOptions();
+        if (options.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, options.DecimationThreshold))
+        {
+            values = DataDecimation.DecimateValues(values, options.DecimationTargetPoints ?? 1000);
+        }
+
+        // For Pie and Doughnut charts, use different styling
+        if (ChartType == SgChartType.Pie || ChartType == SgChartType.Doughnut)
+        {
+            var colors = new[] 
+            { 
+                "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", 
+                "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FF6384" 
+            };
+
+            return new List<object>
+            {
+                new
+                {
+                    label = "Data",
+                    data = values,
+                    backgroundColor = colors.Take(values.Count).ToList(),
+                    borderColor = "#fff",
+                    borderWidth = 2
+                }
+            };
+        }
+
+        // For Scatter charts
+        if (ChartType == SgChartType.Scatter)
+        {
+            // Convert values to scatter points (x, y)
+            var scatterData = values.Select((v, i) => new { x = i, y = v }).ToList();
+            
+            return new List<object>
+            {
+                new
+                {
+                    label = "Data",
+                    data = scatterData,
+                    borderColor = "#2196f3",
+                    backgroundColor = "rgba(33, 150, 243, 0.5)",
+                    borderWidth = 2,
+                    pointRadius = 4,
+                    pointHoverRadius = 6
+                }
+            };
+        }
+
+        // For Stacked charts
+        if (ChartType == SgChartType.Heatmap)
+        {
+            // Heatmap uses special rendering
+            return new List<object>
+            {
+                new
+                {
+                    label = "Data",
+                    data = values,
+                    borderColor = "#2196f3",
+                    backgroundColor = "rgba(33, 150, 243, 0.5)",
+                    borderWidth = 2
+                }
+            };
+        }
+
+        // For Line and Bar charts (including stacked)
+        return new List<object>
+        {
+            new
+            {
+                label = "Data",
+                data = values,
+                borderColor = "#2196f3",
+                backgroundColor = ChartType == SgChartType.Line ? "transparent" : "rgba(33, 150, 243, 0.5)",
+                borderWidth = 2,
+                fill = ChartType == SgChartType.Line ? false : true,
+                tension = 0.4,
+                stack = ChartType == SgChartType.Heatmap ? "stack" : null
+            }
+        };
+    }
+
+    private object BuildScales()
+    {
+        return new
+        {
+            y = new
+            {
+                beginAtZero = true,
+                title = new { display = _yAxis != null, text = _yAxis?.Title ?? "" }
+            },
+            x = new
+            {
+                title = new { display = _xAxis != null, text = _xAxis?.Title ?? "" }
+            }
+        };
+    }
+
+    /// <summary>
+    /// Refreshes the chart with current data.
+    /// </summary>
+    public async Task RefreshAsync()
+    {
+        if (_module is null)
+            return;
+
+        try
+        {
+            var config = BuildChartConfig();
+            await _module.InvokeVoidAsync("updateChart", _chartId, config);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to refresh chart: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Updates the chart data.
+    /// </summary>
+    public async Task UpdateDataAsync(IEnumerable<TItem> data)
+    {
+        Data = data;
+        await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Zooms the Y-axis to the specified range.
+    /// </summary>
+    public async Task ZoomYAsync(double min, double max)
+    {
+        if (_module is null)
+            return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("zoomY", _chartId, min, max);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to zoom: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Resets the Y-axis zoom to original range.
+    /// </summary>
+    public async Task ResetZoomAsync()
+    {
+        if (_module is null)
+            return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("resetZoom", _chartId);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to reset zoom: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Exports the chart as an image.
+    /// </summary>
+    public async Task ExportImageAsync(string format = "png")
+    {
+        if (_module is null)
+            return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("exportImage", _chartId, format);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to export chart: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>
+    /// Retries loading the chart after an error.
+    /// </summary>
+    public async Task RetryAsync()
+    {
+        _error = null;
+        _renderChart = true;
+        await InvokeAsync(StateHasChanged);
+        await Task.Delay(100);
+        await InitializeChartAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnDataPointClickedAsync(SgChartClickEventArgs args)
+    {
+        if (OnDataPointClick.HasDelegate)
+            await OnDataPointClick.InvokeAsync(args);
+    }
+
+    internal void RegisterDataset(SgChartDataset dataset)
+    {
+        _datasets.Add(dataset);
+    }
+
+    internal void RegisterXAxis(SgChartXAxis axis)
+    {
+        _xAxis = axis;
+    }
+
+    internal void RegisterYAxis(SgChartYAxis axis)
+    {
+        _yAxis = axis;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed)
+            return;
+
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("dispose", _chartId);
+                await _module.DisposeAsync();
+            }
+            catch { }
+        }
+
+        _selfRef?.Dispose();
+    }
+}

@@ -1,0 +1,78 @@
+@namespace SuperUI.Components
+
+<CascadingValue Value="this" IsFixed="true">
+    <div class="sgc-menu @CssClass" style="@Style" role="menu" @onkeydown="OnKeyDownAsync">
+        @ChildContent
+    </div>
+</CascadingValue>
+
+@code {
+    private readonly List<SgMenuItem> _items = new();
+    private int _focusedIndex = -1;
+
+    /// <summary>
+    /// Gets or sets the menu content containing menu items.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional inline styles to apply to the component.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the menu is closed.
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    internal void RegisterItem(SgMenuItem item)
+    {
+        if (_items.Contains(item)) return;
+        _items.Add(item);
+    }
+
+    internal void UnregisterItem(SgMenuItem item)
+    {
+        _items.Remove(item);
+        if (_focusedIndex >= _items.Count)
+            _focusedIndex = _items.Count - 1;
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowDown")
+        {
+            var nextIndex = _focusedIndex + 1;
+            if (nextIndex >= _items.Count)
+                nextIndex = 0;
+            _focusedIndex = nextIndex;
+            await FocusItemAsync(_focusedIndex);
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            var prevIndex = _focusedIndex - 1;
+            if (prevIndex < 0)
+                prevIndex = _items.Count - 1;
+            _focusedIndex = prevIndex;
+            await FocusItemAsync(_focusedIndex);
+        }
+        else if (e.Key == "Escape")
+        {
+            if (OnClose.HasDelegate)
+                await OnClose.InvokeAsync();
+        }
+    }
+
+    private async Task FocusItemAsync(int index)
+    {
+        if (index >= 0 && index < _items.Count)
+        {
+            await _items[index].FocusAsync();
+        }
+    }
+}

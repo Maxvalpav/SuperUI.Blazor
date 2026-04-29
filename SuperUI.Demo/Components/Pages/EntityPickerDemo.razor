@@ -1,0 +1,121 @@
+@page "/entity-picker-demo"
+@using System.ComponentModel
+@using System.ComponentModel.DataAnnotations
+@using System.Text.Json
+@using SuperUI.Components
+
+<PageTitle>Выбор сущности - SUI</PageTitle>
+
+<SgCard Title="SgEntityPicker - Выбор сущности" 
+        Subtitle="Компонент для выбора сущности из большой таблицы. Поддерживает поиск, фильтрацию и сохраненные виды.">
+    <!-- SgEntityPicker Single -->
+    <div style="margin-top: 32px;">
+        <h2>Выбор одной сущности</h2>
+        <p>Выбор одного элемента из списка с поддержкой поиска.</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <!-- Примеры -->
+            <SgCard Title="Примеры использования">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <SgEntityPicker TItem="CustomerGridRow"
+                                        Items="_customerRows"
+                                        @bind-Value="_selectedCustomer"
+                                        Label="Выбор клиента"
+                                        Placeholder="Выберите клиента..."
+                                        DisplaySelector="x => x.Name"
+                                        Title="Выберите основного контрагента">
+                            <Columns>
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name" Title="Клиент" Value="x => x.Name" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age" Title="Возраст" Value="x => x.Age" />
+                            </Columns>
+                        </SgEntityPicker>
+                    </div>
+                </div>
+            </SgCard>
+
+            <!-- Property Grid -->
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_entityPickerProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- SgEntityPicker Multi -->
+    <div style="margin-top: 32px;">
+        <h2>Выбор нескольких сущностей</h2>
+        <p>Выбор нескольких элементов из списка с поддержкой фильтрации.</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <!-- Примеры -->
+            <SgCard Title="Примеры использования">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <SgEntityPicker TItem="CustomerGridRow"
+                                        Items="_customerRows"
+                                        @bind-Values="_selectedCustomers"
+                                        MultiSelect="true"
+                                        Label="Выбор клиентов"
+                                        Placeholder="Выберите клиентов..."
+                                        DisplaySelector="x => x.Name"
+                                        StorageKey="enterprise-picker-views"
+                                        Title="Массовый выбор контрагентов">
+                            <Columns>
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name" Title="Клиент" Value="x => x.Name" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age" Title="Возраст" Value="x => x.Age" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="IsActive" Title="Активен" Value="x => x.IsActive" />
+                            </Columns>
+                        </SgEntityPicker>
+                    </div>
+                </div>
+            </SgCard>
+
+            <!-- Property Grid -->
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_entityPickerProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Selected Result -->
+    @if (_selectedCustomer != null)
+    {
+        <div style="margin-top: 32px;">
+            <SgAlert Variant="info" Text="@($"Выбранный клиент: {_selectedCustomer.Name} (Возраст: {_selectedCustomer.Age})")" />
+        </div>
+    }
+</SgCard>
+
+@code {
+    private CustomerGridRow? _selectedCustomer;
+    private IEnumerable<CustomerGridRow>? _selectedCustomers;
+    
+    private List<PropertyPanelItem> _entityPickerProperties = new()
+    {
+        new() { Label = "Items", Value = "IEnumerable<T>", BadgeText = "Данные", BadgeVariant = "info" },
+        new() { Label = "Value", Value = "T", BadgeText = "Значение", BadgeVariant = "info" },
+        new() { Label = "Values", Value = "IEnumerable<T>", BadgeText = "Значения", BadgeVariant = "info" },
+        new() { Label = "MultiSelect", Value = "bool", BadgeText = "Множественный", BadgeVariant = "warn" },
+        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = "info" },
+        new() { Label = "Placeholder", Value = "string", BadgeText = "Подсказка", BadgeVariant = "info" },
+        new() { Label = "DisplaySelector", Value = "Func<T, string>", BadgeText = "Отображение", BadgeVariant = "info" },
+        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = "info" },
+        new() { Label = "StorageKey", Value = "string", BadgeText = "Ключ", BadgeVariant = "info" },
+        new() { Label = "Readonly", Value = "bool", BadgeText = "Только чтение", BadgeVariant = "warn" },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = "warn" }
+    };
+    
+    private readonly List<CustomerGridRow> _customerRows =
+    [
+        new("Acme North", 34, new DateTime(1990, 3, 14), true),
+        new("Blue Ocean", 29, new DateTime(1995, 8, 21), true),
+        new("Contoso Retail", 42, new DateTime(1982, 11, 5), false),
+        new("Delta Systems", 31, new DateTime(1993, 1, 30), true),
+        new("Everest Group", 38, new DateTime(1986, 6, 17), false),
+        new("Future Labs", 27, new DateTime(1997, 9, 2), true),
+        new("Greenline", 45, new DateTime(1979, 12, 10), true)
+    ];
+
+    public sealed record CustomerGridRow(string Name, int Age, DateTime BirthDate, bool IsActive);
+}
+

@@ -1,0 +1,364 @@
+@inherits Bunit.BunitContext
+@using System.ComponentModel
+@using System.ComponentModel.DataAnnotations
+
+@code {
+    private void SetupJs() =>
+        JSInterop.SetupModule("/_content/SuperUI/superui.js")
+                 .SetupVoid("init", _ => true);
+
+    public record BoolRow(int Id, string Name, bool Active);
+
+    public class ProductVm
+    {
+        [Display(Name = "Код", Order = 1)]
+        public string Sku { get; set; } = "";
+
+        [Display(Name = "Имя", Order = 2)]
+        public string ProductName { get; set; } = "";
+
+        [DisplayFormat(DataFormatString = "{0:N2}")]
+        [Display(Name = "Цена", Order = 3)]
+        public decimal Price { get; set; }
+
+        [Browsable(false)]
+        public Guid Internal { get; set; }
+    }
+
+    private List<BoolRow> BoolData() => new()
+    {
+        new(1, "A", true),
+        new(2, "B", false),
+        new(3, "C", true),
+        new(4, "D", false),
+        new(5, "E", true),
+    };
+
+    [Fact]
+    public void Bool_column_filter_limits_rows_to_true_only()
+    {
+        SetupJs();
+        var data = BoolData();
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="ID"     Value="r => r.Id" />
+                <SgDataGridColumn TItem="BoolRow" Title="Name"   Value="r => r.Name" />
+                <SgDataGridColumn TItem="BoolRow" Title="Active" Value="r => r.Active" />
+            </SgDataGrid>
+        );
+
+        cut.FindAll(".sg-filter-btn")[2].Click();
+        cut.Find(".sg-filter-all input").Change(false);
+
+        var trueCb = cut.FindAll(".sg-filter-item input")
+            .Zip(cut.FindAll(".sg-filter-item span"), (cb, s) => (cb, t: s.TextContent.Trim()))
+            .First(x => x.t == "✓").cb;
+        trueCb.Change(true);
+
+        cut.Find(".sg-filter-foot .primary").Click();
+
+        var names = cut.FindAll("tbody tr td.sg-td")
+            .Where((_, i) => i % 3 == 1).Select(n => n.TextContent.Trim()).ToArray();
+        Assert.Equal(new[] { "A", "C", "E" }, names);
+    }
+
+    [Fact]
+    public void ToggleAll_off_unchecks_all_individual_items()
+    {
+        SetupJs();
+        var data = BoolData();
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="Active" Value="r => r.Active" />
+            </SgDataGrid>
+        );
+
+        cut.FindAll(".sg-filter-btn")[0].Click();
+        cut.Find(".sg-filter-all input").Change(false);
+
+        Assert.All(cut.FindAll(".sg-filter-item input"),
+            cb => Assert.False(cb.HasAttribute("checked")));
+
+        cut.Find(".sg-filter-foot .primary").Click();
+
+        Assert.Empty(cut.FindAll("tbody tr td.sg-td"));
+    }
+
+    [Fact]
+    public void ToggleAll_on_rechecks_all_individual_items()
+    {
+        SetupJs();
+        var data = BoolData();
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="Active" Value="r => r.Active" />
+            </SgDataGrid>
+        );
+
+        cut.FindAll(".sg-filter-btn")[0].Click();
+        cut.Find(".sg-filter-all input").Change(false);
+        cut.Find(".sg-filter-all input").Change(true);
+
+        Assert.All(cut.FindAll(".sg-filter-item input"),
+            cb => Assert.True(cb.HasAttribute("checked")));
+        Assert.Equal(5, cut.FindAll("tbody tr").Count);
+    }
+
+    [Fact]
+    public void Clear_filters_button_shows_when_filter_active_and_resets_all()
+    {
+        SetupJs();
+        var data = BoolData();
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="Name"   Value="r => r.Name" />
+                <SgDataGridColumn TItem="BoolRow" Title="Active" Value="r => r.Active" />
+            </SgDataGrid>
+        );
+
+        Assert.DoesNotContain(cut.FindAll(".sg-btn"),
+            b => b.TextContent.Contains("Сбросить фильтры"));
+
+        cut.Find(".sg-search").Input("A");
+
+        var clearBtn = cut.FindAll(".sg-btn").First(b => b.TextContent.Contains("Сбросить фильтры"));
+        clearBtn.Click();
+
+        Assert.Equal(5, cut.FindAll("tbody tr").Count);
+        Assert.DoesNotContain(cut.FindAll(".sg-btn"),
+            b => b.TextContent.Contains("Сбросить фильтры"));
+    }
+
+    [Fact]
+    public void Select_all_covers_rows_not_on_current_page()
+    {
+        SetupJs();
+        var data = Enumerable.Range(1, 100)
+            .Select(i => new BoolRow(i, $"N{i}", i % 2 == 0)).ToList();
+
+        IReadOnlyCollection<BoolRow>? captured = null;
+        var cb = EventCallback.Factory.Create<IReadOnlyCollection<BoolRow>>(this, v => captured = v);
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data" PageSize="10" SelectedItemsChanged="cb">
+                <SgDataGridColumn TItem="BoolRow" Title="ID"   Value="r => r.Id" />
+                <SgDataGridColumn TItem="BoolRow" Title="Name" Value="r => r.Name" />
+            </SgDataGrid>
+        );
+
+        cut.Find("thead th.sg-col-check input").Change(true);
+
+        Assert.NotNull(captured);
+        Assert.Equal(100, captured!.Count);
+    }
+
+    [Fact]
+    public void AutoGenerateColumns_builds_headers_from_Display_attributes()
+    {
+        SetupJs();
+        var data = new List<ProductVm>
+        {
+            new() { Sku = "A1", ProductName = "Foo", Price = 99.5m },
+            new() { Sku = "A2", ProductName = "Bar", Price = 5m },
+        };
+
+        var cut = Render<SgDataGrid<ProductVm>>(
+            @<SgDataGrid TItem="ProductVm" Items="data" AutoGenerateColumns="true" />
+        );
+
+        var headers = cut.FindAll("thead th.sg-th")
+            .Select(h => h.QuerySelector(".sg-th-title")?.TextContent.Trim() ?? "")
+            .ToArray();
+
+        Assert.Equal(new[] { "Код", "Имя", "Цена" }, headers);
+
+        var priceCells = cut.FindAll("tbody tr td.sg-td")
+            .Where((_, i) => i % 3 == 2).Select(n => n.TextContent.Trim()).ToArray();
+        Assert.Contains(priceCells, c => c.Contains("99,50") || c.Contains("99.50"));
+    }
+
+    [Fact]
+    public void AutoGenerateColumns_skips_Browsable_false()
+    {
+        SetupJs();
+        var data = new List<ProductVm> { new() { Sku = "A", ProductName = "B" } };
+
+        var cut = Render<SgDataGrid<ProductVm>>(
+            @<SgDataGrid TItem="ProductVm" Items="data" AutoGenerateColumns="true" />
+        );
+
+        var headers = cut.FindAll("thead th.sg-th")
+            .Select(h => h.QuerySelector(".sg-th-title")?.TextContent.Trim() ?? "")
+            .ToArray();
+
+        Assert.DoesNotContain("Internal", headers);
+    }
+
+    [Fact]
+    public void GroupBy_parameter_groups_rows_on_init()
+    {
+        SetupJs();
+        var data = new List<BoolRow>
+        {
+            new(1, "A", true), new(2, "B", false), new(3, "C", true),
+        };
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="Name"   Value="r => r.Name" />
+                <SgDataGridColumn TItem="BoolRow" Title="Active" Value="r => r.Active" GroupBy="true" />
+            </SgDataGrid>
+        );
+
+        Assert.NotEmpty(cut.FindAll(".sg-group-row"));
+        Assert.NotEmpty(cut.FindAll(".sg-group-cell"));
+    }
+
+    [Fact]
+    public void GroupBy_toggle_collapses_and_expands_group()
+    {
+        SetupJs();
+        var data = new List<BoolRow>
+        {
+            new(1, "A", true), new(2, "B", false), new(3, "C", true),
+        };
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="Name"   Value="r => r.Name" />
+                <SgDataGridColumn TItem="BoolRow" Title="Active" Value="r => r.Active" GroupBy="true" />
+            </SgDataGrid>
+        );
+
+        var rowsBefore = cut.FindAll("tbody tr").Count;
+        Assert.True(rowsBefore > 0);
+
+        cut.Find(".sg-group-cell").Click();
+        var rowsAfterCollapse = cut.FindAll("tbody tr").Count;
+        Assert.True(rowsAfterCollapse < rowsBefore);
+
+        cut.Find(".sg-group-cell").Click();
+        Assert.Equal(rowsBefore, cut.FindAll("tbody tr").Count);
+    }
+
+    [Fact]
+    public void Aggregate_Sum_renders_in_footer()
+    {
+        SetupJs();
+        var data = new List<BoolRow>
+        {
+            new(10, "A", true), new(20, "B", false), new(30, "C", true),
+        };
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data" ShowStatusBar="true">
+                <SgDataGridColumn TItem="BoolRow" Title="ID"   Value="r => r.Id" Aggregate="Aggregate.Sum" />
+                <SgDataGridColumn TItem="BoolRow" Title="Name" Value="r => r.Name" />
+            </SgDataGrid>
+        );
+
+        var footCells = cut.FindAll("tfoot td.sg-agg");
+        Assert.NotEmpty(footCells);
+        Assert.Contains(footCells, c => c.TextContent.Contains("60"));
+    }
+
+    [Fact]
+    public void Aggregate_Count_renders_row_count()
+    {
+        SetupJs();
+        var data = Enumerable.Range(1, 7).Select(i => new BoolRow(i, $"N{i}", true)).ToList();
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data" ShowStatusBar="true">
+                <SgDataGridColumn TItem="BoolRow" Title="ID" Value="r => r.Id" Aggregate="Aggregate.Count" />
+            </SgDataGrid>
+        );
+
+        Assert.Contains(cut.FindAll("tfoot td.sg-agg"),
+            c => c.TextContent.Contains("7"));
+    }
+
+    [Fact]
+    public void Inline_edit_double_click_shows_input_and_commit_on_enter()
+    {
+        SetupJs();
+        decimal? committed = null;
+        var data = new List<BoolRow> { new(1, "A", true) };
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="ID" Value="r => r.Id"
+                    Editable="true"
+                    OnValueChanged="(r, v) => { committed = Convert.ToDecimal(v); }" />
+                <SgDataGridColumn TItem="BoolRow" Title="Name" Value="r => r.Name" />
+            </SgDataGrid>
+        );
+
+        cut.Find("td.sg-editable").DoubleClick();
+        Assert.NotEmpty(cut.FindAll(".sg-editor"));
+
+        cut.Find(".sg-editor").Input("42");
+        cut.Find(".sg-editor").KeyDown("Enter");
+
+        Assert.Empty(cut.FindAll(".sg-editor"));
+        Assert.Equal(42m, committed);
+    }
+
+    [Fact]
+    public void Inline_edit_escape_cancels_without_commit()
+    {
+        SetupJs();
+        decimal? committed = null;
+        var data = new List<BoolRow> { new(1, "A", true) };
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data">
+                <SgDataGridColumn TItem="BoolRow" Title="ID" Value="r => r.Id"
+                    Editable="true"
+                    OnValueChanged="(r, v) => { committed = Convert.ToDecimal(v); }" />
+            </SgDataGrid>
+        );
+
+        cut.Find("td.sg-editable").DoubleClick();
+        cut.Find(".sg-editor").Input("99");
+        cut.Find(".sg-editor").KeyDown("Escape");
+
+        Assert.Empty(cut.FindAll(".sg-editor"));
+        Assert.Null(committed);
+    }
+
+    [Fact]
+    public void Column_chooser_hides_and_shows_column()
+    {
+        SetupJs();
+        var data = new List<BoolRow> { new(1, "A", true) };
+
+        var cut = Render<SgDataGrid<BoolRow>>(
+            @<SgDataGrid TItem="BoolRow" Items="data" ShowColumnChooser="true">
+                <SgDataGridColumn TItem="BoolRow" Title="ID"   Value="r => r.Id" />
+                <SgDataGridColumn TItem="BoolRow" Title="Name" Value="r => r.Name" />
+                <SgDataGridColumn TItem="BoolRow" Title="Flag" Value="r => r.Active" />
+            </SgDataGrid>
+        );
+
+        cut.FindAll(".sg-btn").First(b => b.TextContent.Contains("Колонки")).Click();
+        Assert.NotEmpty(cut.FindAll(".sg-chooser-item"));
+
+        cut.FindAll(".sg-chooser-item")
+           .First(x => x.TextContent.Contains("Flag"))
+           .QuerySelector("input")!.Change(false);
+
+        var headers = cut.FindAll("thead th.sg-th .sg-th-title")
+            .Select(h => h.TextContent.Trim()).ToArray();
+        Assert.DoesNotContain("Flag", headers);
+
+        cut.FindAll(".sg-chooser-item")
+           .First(x => x.TextContent.Contains("Flag"))
+           .QuerySelector("input")!.Change(true);
+
+        headers = cut.FindAll("thead th.sg-th .sg-th-title")
+            .Select(h => h.TextContent.Trim()).ToArray();
+        Assert.Contains("Flag", headers);
+    }
+}
+

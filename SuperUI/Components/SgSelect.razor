@@ -1,0 +1,134 @@
+@namespace SuperUI.Components
+@typeparam TValue
+@inherits SgInputBase<TValue>
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <select class="sgc-select @(IsInvalid ? "sgc-invalid" : "")"
+            disabled="@Disabled"
+            value="@ValueString"
+            aria-labelledby="@_labelId"
+            aria-required="@(Required ? "true" : null)"
+            aria-invalid="@(IsInvalid ? "true" : null)"
+            aria-describedby="@DescribedBy"
+            @onchange="OnChangeAsync">
+        @if (!string.IsNullOrEmpty(Placeholder))
+        {
+            <option value="" disabled="@(!AllowClear)" selected="@(Value is null)">@Placeholder</option>
+        }
+        @foreach (var it in Items)
+        {
+            var key = KeyFrom(it);
+            <option value="@key" selected="@(IsSelected(it))">@LabelFrom(it)</option>
+        }
+    </select>
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _labelId = "sg-select-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _hintId = "sg-select-hint-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-select-err-" + Guid.NewGuid().ToString("N")[..8];
+
+    /// <summary>
+    /// Gets or sets the collection of items to display in the dropdown.
+    /// </summary>
+    [Parameter] public IEnumerable<TValue> Items { get; set; } = Array.Empty<TValue>();
+    
+    /// <summary>
+    /// Gets or sets the function to extract display text from each item.
+    /// If not specified, uses ToString() on the item.
+    /// </summary>
+    [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the function to extract the value from each item.
+    /// If not specified, uses the item itself as the value.
+    /// </summary>
+    [Parameter] public Func<TValue, object>? ValueSelector { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the placeholder text shown when no item is selected.
+    /// </summary>
+    [Parameter] public string? Placeholder { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the label text displayed above the select.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the hint text displayed below the select.
+    /// </summary>
+    [Parameter] public string? Hint { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
+    /// </summary>
+    [Parameter] public string? ErrorText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the selection can be cleared by selecting the placeholder option.
+    /// </summary>
+    [Parameter] public bool AllowClear { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the select is required.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the select is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the select should take full width of its container. Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the field container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
+        ? ErrorText 
+        : ValidationMessages.FirstOrDefault();
+    private string LabelFrom(TValue v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
+    private string KeyFrom(TValue v) => (ValueSelector is not null ? ValueSelector(v) : v)?.ToString() ?? "";
+    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
+    private string ValueString => Value is null ? "" : KeyFrom(Value);
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private async Task OnChangeAsync(ChangeEventArgs e)
+    {
+        var key = e.Value?.ToString();
+        TValue? newValue = default;
+        
+        if (!string.IsNullOrEmpty(key))
+        {
+            foreach (var it in Items)
+            {
+                if (KeyFrom(it) == key)
+                {
+                    newValue = it;
+                    break;
+                }
+            }
+        }
+        
+        await SetValueAsync(newValue);
+    }
+}

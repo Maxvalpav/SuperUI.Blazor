@@ -1,0 +1,76 @@
+@namespace SuperUI.Components
+
+<div class="sgc-accordion @CssClass" @onkeydown="OnKeyDownAsync">
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
+</div>
+
+@code {
+    private List<SgAccordionItem> _items = new();
+
+    /// <summary>
+    /// Gets or sets the custom content to render inside the accordion.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether multiple items can be open at the same time. Default is false.
+    /// </summary>
+    [Parameter] public bool Multiple { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    public void Register(SgAccordionItem item)
+    {
+        if (!_items.Contains(item))
+        {
+            _items.Add(item);
+            StateHasChanged();
+        }
+    }
+
+    public void Unregister(SgAccordionItem item)
+    {
+        _items.Remove(item);
+    }
+
+    public async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key is not ("ArrowDown" or "ArrowUp" or "Home" or "End")) return;
+
+        var focusedItem = _items.FirstOrDefault(i => i.IsFocused);
+        if (focusedItem == null) return;
+
+        var index = _items.IndexOf(focusedItem);
+        int nextIndex = e.Key switch
+        {
+            "ArrowDown" => (index + 1) % _items.Count,
+            "ArrowUp" => (index - 1 + _items.Count) % _items.Count,
+            "Home" => 0,
+            "End" => _items.Count - 1,
+            _ => index
+        };
+
+        if (nextIndex != index)
+        {
+            await _items[nextIndex].FocusAsync();
+        }
+    }
+
+    internal void NotifyExpanded(SgAccordionItem it)
+    {
+        if (!Multiple)
+        {
+            foreach (var other in _items)
+            {
+                if (other != it) other.Collapse();
+            }
+        }
+    }
+}

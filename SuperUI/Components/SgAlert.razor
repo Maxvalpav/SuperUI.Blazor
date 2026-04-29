@@ -1,0 +1,135 @@
+@namespace SuperUI.Components
+
+@if (_visible)
+{
+    <div class="sgc-alert @VariantClass @(Dense ? "sgc-alert-dense" : "") @CssClass" role="@Role" style="@Style">
+        @if (ShowIcon)
+        {
+            <div class="sgc-alert-icon" aria-hidden="true">@IconToRender</div>
+        }
+
+        <div class="sgc-alert-body">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <div class="sgc-alert-title">@Title</div>
+            }
+
+            @if (ChildContent is not null)
+            {
+                <div class="sgc-alert-content">@ChildContent</div>
+            }
+            else if (!string.IsNullOrWhiteSpace(Text))
+            {
+                <div class="sgc-alert-content">@Text</div>
+            }
+        </div>
+
+        @if (ActionsContent is not null)
+        {
+            <div class="sgc-alert-actions">@ActionsContent</div>
+        }
+
+        @if (Dismissible)
+        {
+            <button type="button" class="sgc-alert-close" @onclick="CloseAsync" aria-label="Close">×</button>
+        }
+    </div>
+}
+
+@code {
+    private bool _visible = true;
+
+    /// <summary>
+    /// Gets or sets the alert visual variant.
+    /// Supported values: "info", "success", "warn", "danger". Default is "info".
+    /// </summary>
+    [Parameter] public string Variant { get; set; } = "info";
+    
+    /// <summary>
+    /// Gets or sets the alert title text displayed in bold.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the alert message text. Ignored if <see cref="ChildContent"/> is provided.
+    /// </summary>
+    [Parameter] public string? Text { get; set; }
+    
+    /// <summary>
+    /// Gets or sets custom icon text to display. If not specified, uses default icon based on <see cref="Variant"/>.
+    /// </summary>
+    [Parameter] public string? Icon { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to show the icon. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowIcon { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether the alert can be dismissed with a close button.
+    /// </summary>
+    [Parameter] public bool Dismissible { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to use compact spacing.
+    /// </summary>
+    [Parameter] public bool Dense { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the ARIA role attribute. Default is "status".
+    /// </summary>
+    [Parameter] public string Role { get; set; } = "status";
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the alert.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets inline CSS styles to apply to the alert.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+    
+    /// <summary>
+    /// Gets or sets custom content to render in the alert body.
+    /// Takes precedence over <see cref="Text"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets custom action buttons or content to render in the alert actions area.
+    /// </summary>
+    [Parameter] public RenderFragment? ActionsContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the alert is dismissed.
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string VariantClass => Variant switch
+    {
+        "success" => "sgc-success",
+        "warn" => "sgc-warn",
+        "danger" => "sgc-danger",
+        _ => "sgc-info"
+    };
+
+    private string IconToRender => !string.IsNullOrWhiteSpace(Icon)
+        ? Icon!
+        : Variant switch
+        {
+            "success" => "✓",
+            "warn" => "!",
+            "danger" => "✗",
+            _ => "i"
+        };
+
+    private async Task CloseAsync()
+    {
+        _visible = false;
+        if (OnClose.HasDelegate)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+}

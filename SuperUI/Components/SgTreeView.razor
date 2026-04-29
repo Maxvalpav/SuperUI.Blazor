@@ -1,0 +1,815 @@
+@namespace SuperUI.Components
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Components.Web.Virtualization
+@using System.Runtime.CompilerServices
+
+@if (Virtualize)
+{
+    <SgVirtualList TItem="FlatTreeNode"
+                   Items="@GetFlatVisibleNodeItems()"
+                   Height="@Height"
+                   ItemHeight="@ItemHeight"
+                   Overscan="@Overscan"
+                   CssClass="@CssClass">
+        <ChildContent>
+            <div class="sgc-tree-node-flat"
+                 role="treeitem"
+                 aria-level="@context.Level"
+                 aria-expanded="@(CanExpand(context.Node) ? (IsExpandedForRender(context.Node) ? "true" : "false") : null)"
+                 aria-selected="@(IsNodeSelected(context.Node) ? "true" : "false")">
+                @RenderNodeRow(context.Node, context.Level)
+            </div>
+        </ChildContent>
+    </SgVirtualList>
+}
+else
+{
+    <ul class="sgc-tree @CssClass" role="tree" aria-multiselectable="@(MultiSelect ? "true" : "false")">
+        @foreach (var node in GetVisibleRootNodes())
+        {
+            @RenderNode(node, 1)
+        }
+    </ul>
+}
+
+@code {
+    /// <summary>
+    /// Gets or sets the collection of root tree nodes to display.
+    /// </summary>
+    [Parameter] public IEnumerable<TreeNode> Nodes { get; set; } = Array.Empty<TreeNode>();
+
+    /// <summary>
+    /// Gets or sets the currently selected tree node.
+    /// </summary>
+    [Parameter] public TreeNode? SelectedNode { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the selected node changes.
+    /// </summary>
+    [Parameter] public EventCallback<TreeNode> SelectedNodeChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the collection of selected nodes when multi-select mode is enabled.
+    /// </summary>
+    [Parameter] public IReadOnlyCollection<TreeNode>? SelectedNodes { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the selected node collection changes.
+    /// </summary>
+    [Parameter] public EventCallback<IReadOnlyCollection<TreeNode>> SelectedNodesChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether multiple nodes can be selected.
+    /// </summary>
+    [Parameter] public bool MultiSelect { get; set; }
+
+    /// <summary>
+    /// Gets or sets an optional search text used to filter the tree.
+    /// </summary>
+    [Parameter] public string? SearchText { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom filter predicate used when <see cref="SearchText"/> is provided.
+    /// </summary>
+    [Parameter] public Func<TreeNode, string, bool>? Filter { get; set; }
+
+    /// <summary>
+    /// Gets or sets an async callback invoked before a node is expanded.
+    /// </summary>
+    [Parameter] public EventCallback<TreeNode> OnExpandAsync { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the tree should render via flat virtualization.
+    /// </summary>
+    [Parameter] public bool Virtualize { get; set; }
+
+    /// <summary>
+    /// Gets or sets the tree viewport height used in virtualized mode.
+    /// </summary>
+    [Parameter] public string Height { get; set; } = "320px";
+
+    /// <summary>
+    /// Gets or sets the expected row height used by the built-in virtualizer.
+    /// </summary>
+    [Parameter] public float ItemHeight { get; set; } = 28;
+
+    /// <summary>
+    /// Gets or sets the number of extra rows rendered around the viewport in virtualized mode.
+    /// </summary>
+    [Parameter] public int Overscan { get; set; } = 4;
+
+    /// <summary>
+    /// Gets or sets whether drag-and-drop reordering is enabled.
+    /// </summary>
+    [Parameter] public bool AllowDragDrop { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when a drag operation starts.
+    /// </summary>
+    [Parameter] public EventCallback<TreeNode> OnDragStart { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when a drag operation ends.
+    /// </summary>
+    [Parameter] public EventCallback<TreeNode> OnDragEnd { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked after a drag-and-drop reorder completes.
+    /// </summary>
+    [Parameter] public EventCallback<TreeNodeDropInfo> NodeDropped { get; set; }
+
+    /// <summary>
+    /// Gets or sets a predicate that determines if a node can be dropped onto another node at a specific position.
+    /// </summary>
+    [Parameter] public Func<TreeNodeDropInfo, bool>? CanDrop { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private readonly HashSet<TreeNode> _selectedNodes = new();
+    private readonly List<TreeNode> _rootNodes = new();
+    private IEnumerable<TreeNode>? _lastNodesSource;
+    private TreeNode? _focusedNode;
+    private TreeNode? _draggedNode;
+    private TreeNode? _dropTargetNode;
+    private TreeNodeDropPosition? _dropPosition;
+    private List<FlatTreeNode>? _flatNodesCache;
+    private string? _lastSearchText;
+
+    private IList<TreeNode> RootNodeCollection => Nodes as IList<TreeNode> ?? _rootNodes;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_lastNodesSource, Nodes))
+        {
+            _lastNodesSource = Nodes;
+            _rootNodes.Clear();
+            _rootNodes.AddRange(Nodes ?? Array.Empty<TreeNode>());
+            _flatNodesCache = null;
+        }
+
+        if (_lastSearchText != SearchText)
+        {
+            _lastSearchText = SearchText;
+            _flatNodesCache = null;
+        }
+
+        SyncSelectionFromParameters();
+        EnsureFocusedNode();
+    }
+
+    private RenderFragment RenderNode(TreeNode node, int level) => @<li class="sgc-tree-node"
+        @key="node"
+        role="treeitem"
+        aria-level="@level"
+        aria-expanded="@(CanExpand(node) ? (IsExpandedForRender(node) ? "true" : "false") : null)"
+        aria-selected="@(IsNodeSelected(node) ? "true" : "false")">
+        @RenderNodeRow(node, level)
+        @if (ShouldRenderChildren(node))
+        {
+            <ul class="sgc-tree-children" role="group">
+                @foreach (var child in GetVisibleChildren(node))
+                {
+                    @RenderNode(child, level + 1)
+                }
+            </ul>
+        }
+    </li>;
+
+    private RenderFragment RenderNodeRow(TreeNode node, int level) => @<div class="sgc-tree-row-wrap"
+         style="@GetRowIndentStyle(level)"
+         @ondragend="@(async e => await ClearDragStateAsync())">
+        @if (AllowDragDrop)
+        {
+            <div class="sgc-tree-drop-zone sgc-tree-drop-zone-before @(GetDropZoneClass(node, TreeNodeDropPosition.Before))"
+                 @ondragover:preventDefault="true"
+                 @ondragover="@(e => OnDragOver(node, TreeNodeDropPosition.Before))"
+                 @ondrop="@(async e => await OnDropAsync(node, TreeNodeDropPosition.Before))"></div>
+        }
+        <div id="@GetNodeDomId(node)"
+             class="sgc-tree-row @(IsNodeSelected(node) ? "sgc-selected" : "") @(ReferenceEquals(_focusedNode, node) ? "sgc-focused" : "") @(GetDropZoneClass(node, TreeNodeDropPosition.Inside))"
+             tabindex="@GetTabIndex(node)"
+             draggable="@(AllowDragDrop ? "true" : "false")"
+             @onclick="@(async (MouseEventArgs e) => await OnRowClickAsync(e, node))"
+             @onkeydown="@(async (KeyboardEventArgs e) => await OnKeyDownAsync(e, node))"
+             @ondragstart="@(async e => await OnDragStartAsync(node))"
+             @ondragover:preventDefault="true"
+             @ondragover="@(e => OnDragOver(node, TreeNodeDropPosition.Inside))"
+             @ondrop="@(async e => await OnDropAsync(node, TreeNodeDropPosition.Inside))">
+            <button type="button"
+                    class="sgc-tree-toggle"
+                    aria-hidden="true"
+                    tabindex="-1"
+                    @onclick:stopPropagation="true"
+                    @onclick="@(async () => await ToggleAsync(node))">
+                @if (node.Loading)
+                {
+                    <span class="sgc-tree-spinner"></span>
+                }
+                else
+                {
+                    @(CanExpand(node) ? (IsExpandedForRender(node) ? "▾" : "▸") : "")
+                }
+            </button>
+            @if (!string.IsNullOrEmpty(node.Icon))
+            {
+                <span class="sgc-tree-icon" aria-hidden="true">@node.Icon</span>
+            }
+            <span class="sgc-tree-text">
+                @if (!string.IsNullOrWhiteSpace(SearchText) && node.Text.Contains(SearchText, StringComparison.OrdinalIgnoreCase))
+                {
+                    var text = node.Text;
+                    var index = text.IndexOf(SearchText, StringComparison.OrdinalIgnoreCase);
+                    @text.Substring(0, index)
+                    <mark class="sgc-tree-highlight">@text.Substring(index, SearchText.Length)</mark>
+                    @text.Substring(index + SearchText.Length)
+                }
+                else
+                {
+                    @node.Text
+                }
+            </span>
+        </div>
+        @if (AllowDragDrop)
+        {
+            <div class="sgc-tree-drop-zone sgc-tree-drop-zone-after @(GetDropZoneClass(node, TreeNodeDropPosition.After))"
+                 @ondragover:preventDefault="true"
+                 @ondragover="@(e => OnDragOver(node, TreeNodeDropPosition.After))"
+                 @ondrop="@(async e => await OnDropAsync(node, TreeNodeDropPosition.After))"></div>
+        }
+    </div>;
+
+    private IEnumerable<TreeNode> GetVisibleRootNodes()
+    {
+        return RootNodeCollection.Where(ShouldRenderNode);
+    }
+
+    private IEnumerable<TreeNode> GetVisibleChildren(TreeNode node)
+    {
+        return node.Children.Where(ShouldRenderNode);
+    }
+
+    private List<FlatTreeNode> GetFlatVisibleNodeItems()
+    {
+        if (_flatNodesCache is not null)
+        {
+            return _flatNodesCache;
+        }
+
+        var nodes = new List<FlatTreeNode>();
+        foreach (var root in GetVisibleRootNodes())
+        {
+            AddVisibleNode(root, 1, nodes);
+        }
+
+        _flatNodesCache = nodes;
+        return nodes;
+    }
+
+    private bool HasActiveFilter => !string.IsNullOrWhiteSpace(SearchText);
+
+    private bool CanExpand(TreeNode node)
+    {
+        return node.Children.Count > 0 || OnExpandAsync.HasDelegate;
+    }
+
+    private bool IsExpandedForRender(TreeNode node)
+    {
+        return HasActiveFilter ? GetVisibleChildren(node).Any() : node.Expanded;
+    }
+
+    private bool ShouldRenderChildren(TreeNode node)
+    {
+        return GetVisibleChildren(node).Any() && (HasActiveFilter || node.Expanded);
+    }
+
+    private bool ShouldRenderNode(TreeNode node)
+    {
+        if (!HasActiveFilter)
+        {
+            return true;
+        }
+
+        if (MatchesFilter(node))
+        {
+            return true;
+        }
+
+        return node.Children.Any(ShouldRenderNode);
+    }
+
+    private bool MatchesFilter(TreeNode node)
+    {
+        if (!HasActiveFilter)
+        {
+            return true;
+        }
+
+        var term = SearchText!;
+        return Filter?.Invoke(node, term)
+            ?? node.Text.Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task ToggleAsync(TreeNode node)
+    {
+        if (node.Loading) return;
+
+        if (!node.Expanded)
+        {
+            if (OnExpandAsync.HasDelegate)
+            {
+                node.Loading = true;
+                _flatNodesCache = null;
+                StateHasChanged();
+                try
+                {
+                    await OnExpandAsync.InvokeAsync(node);
+                }
+                finally
+                {
+                    node.Loading = false;
+                }
+            }
+
+            node.Expanded = true;
+        }
+        else
+        {
+            node.Expanded = false;
+        }
+
+        _flatNodesCache = null;
+        EnsureFocusedNode();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnRowClickAsync(MouseEventArgs e, TreeNode node)
+    {
+        var preserveExisting = MultiSelect && e.CtrlKey;
+        await SelectAsync(node, preserveExisting);
+    }
+
+    private async Task SelectAsync(TreeNode node, bool preserveExisting = false)
+    {
+        _focusedNode = node;
+
+        if (MultiSelect)
+        {
+            if (!preserveExisting)
+            {
+                _selectedNodes.Clear();
+            }
+
+            if (preserveExisting && _selectedNodes.Contains(node))
+            {
+                _selectedNodes.Remove(node);
+            }
+            else
+            {
+                _selectedNodes.Add(node);
+            }
+
+            if (_selectedNodes.Count == 0)
+            {
+                _selectedNodes.Add(node);
+            }
+        }
+        else
+        {
+            _selectedNodes.Clear();
+            _selectedNodes.Add(node);
+        }
+
+        SelectedNode = node;
+
+        if (SelectedNodeChanged.HasDelegate)
+        {
+            await SelectedNodeChanged.InvokeAsync(node);
+        }
+
+        if (SelectedNodesChanged.HasDelegate)
+        {
+            await SelectedNodesChanged.InvokeAsync(_selectedNodes.ToList());
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e, TreeNode node)
+    {
+        var visibleNodes = GetFlatVisibleNodes();
+        var index = visibleNodes.IndexOf(node);
+
+        if (e.Key is "Enter" or " ")
+        {
+            await SelectAsync(node);
+        }
+        else if (e.Key == "ArrowDown" && index < visibleNodes.Count - 1)
+        {
+            await SelectAsync(visibleNodes[index + 1]);
+        }
+        else if (e.Key == "ArrowUp" && index > 0)
+        {
+            await SelectAsync(visibleNodes[index - 1]);
+        }
+        else if (e.Key == "Home" && visibleNodes.Count > 0)
+        {
+            await SelectAsync(visibleNodes[0]);
+        }
+        else if (e.Key == "End" && visibleNodes.Count > 0)
+        {
+            await SelectAsync(visibleNodes[^1]);
+        }
+        else if (e.Key == "ArrowRight")
+        {
+            if (CanExpand(node) && !node.Expanded)
+            {
+                await ToggleAsync(node);
+            }
+            else
+            {
+                var firstChild = GetVisibleChildren(node).FirstOrDefault();
+                if (firstChild is not null)
+                {
+                    await SelectAsync(firstChild);
+                }
+            }
+        }
+        else if (e.Key == "ArrowLeft")
+        {
+            if (node.Expanded && !HasActiveFilter)
+            {
+                await ToggleAsync(node);
+            }
+            else if (TryGetParent(node, out var parent) && parent is not null)
+            {
+                await SelectAsync(parent);
+            }
+        }
+    }
+
+    private async Task OnDragStartAsync(TreeNode node)
+    {
+        if (!AllowDragDrop)
+        {
+            return;
+        }
+
+        _draggedNode = node;
+        _dropTargetNode = null;
+
+        if (OnDragStart.HasDelegate)
+        {
+            await OnDragStart.InvokeAsync(node);
+        }
+    }
+
+    private void OnDragOver(TreeNode node, TreeNodeDropPosition position)
+    {
+        if (!AllowDragDrop || _draggedNode is null || ReferenceEquals(_draggedNode, node))
+        {
+            return;
+        }
+
+        if (IsDescendantOf(_draggedNode, node))
+        {
+            return;
+        }
+
+        var dropInfo = CreateDropInfo(_draggedNode, node, position);
+        if (CanDrop != null && !CanDrop(dropInfo))
+        {
+            return;
+        }
+
+        _dropTargetNode = node;
+        _dropPosition = position;
+    }
+
+    private async Task OnDropAsync(TreeNode targetNode, TreeNodeDropPosition position)
+    {
+        if (!AllowDragDrop || _draggedNode is null || ReferenceEquals(_draggedNode, targetNode))
+        {
+            await ClearDragStateAsync();
+            return;
+        }
+
+        if (IsDescendantOf(_draggedNode, targetNode))
+        {
+            await ClearDragStateAsync();
+            return;
+        }
+
+        var dropInfo = CreateDropInfo(_draggedNode, targetNode, position);
+        if (CanDrop != null && !CanDrop(dropInfo))
+        {
+            await ClearDragStateAsync();
+            return;
+        }
+
+        if (MoveNode(_draggedNode, targetNode, position, out var parentNode, out var insertIndex) && NodeDropped.HasDelegate)
+        {
+            await NodeDropped.InvokeAsync(new TreeNodeDropInfo(_draggedNode, targetNode, parentNode, insertIndex, position));
+        }
+
+        EnsureFocusedNode();
+        await ClearDragStateAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private TreeNodeDropInfo CreateDropInfo(TreeNode dragged, TreeNode target, TreeNodeDropPosition position)
+    {
+        TryGetNodeCollection(target, out _, out var parent);
+        
+        int insertIndex;
+        if (position == TreeNodeDropPosition.Inside)
+        {
+            insertIndex = target.Children.Count;
+        }
+        else
+        {
+            TryGetNodeCollection(target, out var coll, out _);
+            insertIndex = coll?.IndexOf(target) ?? -1;
+            if (position == TreeNodeDropPosition.After && insertIndex >= 0)
+            {
+                insertIndex++;
+            }
+        }
+
+        return new TreeNodeDropInfo(dragged, target, parent, insertIndex, position);
+    }
+
+    private bool MoveNode(TreeNode draggedNode, TreeNode targetNode, TreeNodeDropPosition position, out TreeNode? parentNode, out int insertIndex)
+    {
+        insertIndex = -1;
+        parentNode = null;
+        if (!TryGetNodeCollection(draggedNode, out var sourceCollection, out _) || sourceCollection is null)
+        {
+            return false;
+        }
+
+        var sourceIndex = sourceCollection.IndexOf(draggedNode);
+        if (sourceIndex < 0)
+        {
+            return false;
+        }
+
+        if (position == TreeNodeDropPosition.Inside)
+        {
+            sourceCollection.RemoveAt(sourceIndex);
+            targetNode.Children.Add(draggedNode);
+            targetNode.Expanded = true;
+            parentNode = targetNode;
+            insertIndex = targetNode.Children.Count - 1;
+            return true;
+        }
+
+        if (!TryGetNodeCollection(targetNode, out var targetCollection, out parentNode) || targetCollection is null)
+        {
+            return false;
+        }
+
+        var targetIndex = targetCollection.IndexOf(targetNode);
+        if (targetIndex < 0)
+        {
+            return false;
+        }
+
+        sourceCollection.RemoveAt(sourceIndex);
+        if (ReferenceEquals(sourceCollection, targetCollection) && sourceIndex < targetIndex)
+        {
+            targetIndex--;
+        }
+
+        if (position == TreeNodeDropPosition.After)
+        {
+            targetIndex++;
+        }
+
+        targetIndex = Math.Clamp(targetIndex, 0, targetCollection.Count);
+        targetCollection.Insert(targetIndex, draggedNode);
+        insertIndex = targetIndex;
+        return true;
+    }
+
+    private async Task ClearDragStateAsync()
+    {
+        var node = _draggedNode;
+        _draggedNode = null;
+        _dropTargetNode = null;
+        _dropPosition = null;
+
+        if (node != null && OnDragEnd.HasDelegate)
+        {
+            await OnDragEnd.InvokeAsync(node);
+        }
+    }
+
+    private bool IsDescendantOf(TreeNode ancestor, TreeNode candidate)
+    {
+        foreach (var child in ancestor.Children)
+        {
+            if (ReferenceEquals(child, candidate) || IsDescendantOf(child, candidate))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string? GetDropZoneClass(TreeNode node, TreeNodeDropPosition position)
+    {
+        return ReferenceEquals(_dropTargetNode, node) && _dropPosition == position
+            ? "sgc-drop-target"
+            : null;
+    }
+
+    private bool TryGetNodeCollection(TreeNode node, out IList<TreeNode>? collection, out TreeNode? parent)
+    {
+        collection = RootNodeCollection;
+        if (RootNodeCollection.Contains(node))
+        {
+            parent = null;
+            collection = RootNodeCollection;
+            return true;
+        }
+
+        foreach (var root in RootNodeCollection)
+        {
+            if (TryGetNodeCollection(root, node, out collection, out parent))
+            {
+                return true;
+            }
+        }
+
+        collection = null;
+        parent = null;
+        return false;
+    }
+
+    private static bool TryGetNodeCollection(TreeNode current, TreeNode target, out IList<TreeNode>? collection, out TreeNode? parent)
+    {
+        foreach (var child in current.Children)
+        {
+            if (ReferenceEquals(child, target))
+            {
+                collection = current.Children;
+                parent = current;
+                return true;
+            }
+
+            if (TryGetNodeCollection(child, target, out collection, out parent))
+            {
+                return true;
+            }
+        }
+
+        collection = null;
+        parent = null;
+        return false;
+    }
+
+    private List<TreeNode> GetFlatVisibleNodes()
+    {
+        return GetFlatVisibleNodeItems().Select(x => x.Node).ToList();
+    }
+
+    private void AddVisibleNode(TreeNode node, int level, ICollection<FlatTreeNode> result)
+    {
+        result.Add(new FlatTreeNode(node, level));
+
+        if (!ShouldRenderChildren(node))
+        {
+            return;
+        }
+
+        foreach (var child in GetVisibleChildren(node))
+        {
+            AddVisibleNode(child, level + 1, result);
+        }
+    }
+
+    private bool TryGetParent(TreeNode node, out TreeNode? parent)
+    {
+        foreach (var root in RootNodeCollection)
+        {
+            if (TryGetParent(root, node, out parent))
+            {
+                return true;
+            }
+        }
+
+        parent = null;
+        return false;
+    }
+
+    private static bool TryGetParent(TreeNode current, TreeNode target, out TreeNode? parent)
+    {
+        foreach (var child in current.Children)
+        {
+            if (ReferenceEquals(child, target))
+            {
+                parent = current;
+                return true;
+            }
+
+            if (TryGetParent(child, target, out parent))
+            {
+                return true;
+            }
+        }
+
+        parent = null;
+        return false;
+    }
+
+    private bool IsNodeSelected(TreeNode node)
+    {
+        return _selectedNodes.Contains(node);
+    }
+
+    private int GetTabIndex(TreeNode node)
+    {
+        if (ReferenceEquals(_focusedNode, node))
+        {
+            return 0;
+        }
+
+        var visibleNodes = GetFlatVisibleNodes();
+        return visibleNodes.Count > 0 && ReferenceEquals(visibleNodes[0], node) && _focusedNode is null ? 0 : -1;
+    }
+
+    private string GetRowIndentStyle(int level)
+    {
+        var offset = Math.Max(0, (level - 1) * 16);
+        return $"padding-left: {offset + 4}px;";
+    }
+
+    private void SyncSelectionFromParameters()
+    {
+        if (MultiSelect)
+        {
+            if (SelectedNodes is not null)
+            {
+                _selectedNodes.Clear();
+                foreach (var node in SelectedNodes)
+                {
+                    _selectedNodes.Add(node);
+                }
+            }
+            else if (SelectedNode is not null && !_selectedNodes.Contains(SelectedNode))
+            {
+                _selectedNodes.Clear();
+                _selectedNodes.Add(SelectedNode);
+            }
+        }
+        else
+        {
+            _selectedNodes.Clear();
+            var selected = SelectedNode ?? SelectedNodes?.FirstOrDefault();
+            if (selected is not null)
+            {
+                _selectedNodes.Add(selected);
+            }
+        }
+    }
+
+    private void EnsureFocusedNode()
+    {
+        var visibleNodes = GetFlatVisibleNodes();
+        if (visibleNodes.Count == 0)
+        {
+            _focusedNode = null;
+            return;
+        }
+
+        if (_focusedNode is not null && visibleNodes.Contains(_focusedNode))
+        {
+            return;
+        }
+
+        _focusedNode = SelectedNode is not null && visibleNodes.Contains(SelectedNode)
+            ? SelectedNode
+            : visibleNodes.FirstOrDefault(IsNodeSelected) ?? visibleNodes[0];
+    }
+
+    private static string GetNodeDomId(TreeNode node)
+    {
+        if (!string.IsNullOrWhiteSpace(node.Key))
+        {
+            return $"tree-node-{SanitizeId(node.Key)}";
+        }
+
+        return $"tree-node-{RuntimeHelpers.GetHashCode(node)}";
+    }
+
+    private static string SanitizeId(string value)
+    {
+        return string.Concat(value.Select(ch => char.IsLetterOrDigit(ch) ? ch : '-'));
+    }
+
+    private sealed record FlatTreeNode(TreeNode Node, int Level);
+}

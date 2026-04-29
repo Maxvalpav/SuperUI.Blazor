@@ -1,0 +1,706 @@
+@namespace SuperUI.Components
+@using System.ComponentModel
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Reflection
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-property-grid @CssClass">
+    @if (ShowToolbar)
+    {
+        <div class="sgc-pg-toolbar">
+            <input class="sgc-pg-search"
+                   placeholder="@(SearchPlaceholder ?? Localizer["SearchProperties"])"
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+            <button type="button"
+                    class="sgc-pg-btn @(GroupByLines ? "sgc-active" : "")"
+                    title="Группировать по категориям"
+                    @onclick="ToggleGrouping">
+                Категории
+            </button>
+        </div>
+    }
+
+    @if (ShowValidation && ShowValidationSummary && _modelValidationErrors.Count > 0)
+    {
+        <div class="sgc-pg-summary" role="alert">
+            @if (!string.IsNullOrWhiteSpace(ValidationSummaryTitle ?? Localizer["ValidationErrors"]))
+            {
+                <div class="sgc-pg-summary-title">@(ValidationSummaryTitle ?? Localizer["ValidationErrors"])</div>
+            }
+            @foreach (var error in _modelValidationErrors)
+            {
+                <div class="sgc-pg-summary-item">@error</div>
+            }
+        </div>
+    }
+
+    <div class="sgc-pg-body">
+        @if (FilteredProperties.Count == 0)
+        {
+            <div class="sgc-pg-empty">@(EmptyText ?? Localizer["PropertiesNotFound"])</div>
+        }
+        else if (GroupByLines)
+        {
+            @foreach (var group in GroupedProperties)
+            {
+                <div class="sgc-pg-group">
+                    <button type="button" class="sgc-pg-group-header" @onclick="() => ToggleGroup(group.Key)">
+                        <span class="sgc-pg-group-icon">@(IsGroupExpanded(group.Key) ? "▾" : "▸")</span>
+                        <span>@group.Key</span>
+                    </button>
+
+                    @if (IsGroupExpanded(group.Key))
+                    {
+                        <div class="sgc-pg-group-content">
+                            @foreach (var prop in group)
+                            {
+                                <div class="sgc-pg-row @(HasErrors(prop) ? "sgc-invalid" : string.Empty)" title="@prop.Description">
+                                    <div class="sgc-pg-label">
+                                        <div class="sgc-pg-name">
+                                            @prop.DisplayName
+                                            @if (ShowRequiredIndicator && IsRequired(prop))
+                                            {
+                                                <span class="sgc-pg-required" title="Обязательное поле">*</span>
+                                            }
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(prop.Description))
+                                        {
+                                            <div class="sgc-pg-description">@prop.Description</div>
+                                        }
+                                    </div>
+                                    <div class="sgc-pg-editor">
+                                        <div class="sgc-pg-editor-inner">
+                                            @RenderEditor(prop)
+                                            @if (ShowValidation && HasErrors(prop))
+                                            {
+                                                <div class="sgc-pg-validation">
+                                                    @foreach (var error in GetErrors(prop))
+                                                    {
+                                                        <div class="sgc-pg-validation-item">@error</div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+        else
+        {
+            @foreach (var prop in FilteredProperties)
+            {
+                <div class="sgc-pg-row @(HasErrors(prop) ? "sgc-invalid" : string.Empty)" title="@prop.Description">
+                    <div class="sgc-pg-label">
+                        <div class="sgc-pg-name">
+                            @prop.DisplayName
+                            @if (ShowRequiredIndicator && IsRequired(prop))
+                            {
+                                <span class="sgc-pg-required" title="Обязательное поле">*</span>
+                            }
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(prop.Description))
+                        {
+                            <div class="sgc-pg-description">@prop.Description</div>
+                        }
+                    </div>
+                    <div class="sgc-pg-editor">
+                        <div class="sgc-pg-editor-inner">
+                            @RenderEditor(prop)
+                            @if (ShowValidation && HasErrors(prop))
+                            {
+                                <div class="sgc-pg-validation">
+                                    @foreach (var error in GetErrors(prop))
+                                    {
+                                        <div class="sgc-pg-validation-item">@error</div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the object whose properties to display and edit.
+    /// </summary>
+    [Parameter] public object? SelectedObject { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to display the toolbar with search and grouping controls.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether to group properties by category.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool GroupByLines { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether to display validation errors.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool ShowValidation { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether to display the validation summary at the top.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool ShowValidationSummary { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether to display asterisks for required properties.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool ShowRequiredIndicator { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the placeholder text for the search input.
+    /// </summary>
+    [Parameter] public string? SearchPlaceholder { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the text displayed when no properties match the search.
+    /// </summary>
+    [Parameter] public string? EmptyText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the title for the validation summary section.
+    /// </summary>
+    [Parameter] public string? ValidationSummaryTitle { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when any property value changes.
+    /// </summary>
+    [Parameter] public EventCallback OnPropertyValueChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom editor for specific properties.
+    /// </summary>
+    [Parameter] public RenderFragment<PropertyEditorContext>? CustomEditor { get; set; }
+
+    private string _search = string.Empty;
+    private object? _lastSelectedObject;
+    private readonly HashSet<string> _collapsedGroups = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedObjects = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string> _editorValues = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, List<string>> _validationErrors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<string> _modelValidationErrors = new();
+    private List<PropertyItem> _properties = new();
+
+    private static readonly Dictionary<Type, List<PropertyItem>> _reflectionCache = new();
+    private static readonly object _reflectionLock = new();
+
+    public class PropertyEditorContext
+    {
+        public PropertyInfo Property { get; set; } = default!;
+        public object? Value { get; set; }
+        public object Target { get; set; } = default!;
+        public Action<object?> OnChanged { get; set; } = default!;
+    }
+
+    private IReadOnlyList<PropertyItem> FilteredProperties =>
+        string.IsNullOrWhiteSpace(_search)
+            ? _properties
+            : _properties
+                .Where(p => p.DisplayName.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                            p.Name.Contains(_search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+    private IEnumerable<IGrouping<string, PropertyItem>> GroupedProperties =>
+        FilteredProperties
+            .GroupBy(p => p.Category)
+            .OrderBy(g => g.Key, StringComparer.CurrentCultureIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_lastSelectedObject, SelectedObject))
+        {
+            _editorValues.Clear();
+            _lastSelectedObject = SelectedObject;
+            _expandedObjects.Clear();
+        }
+
+        if (SelectedObject is null)
+        {
+            _properties.Clear();
+            _validationErrors.Clear();
+            _modelValidationErrors.Clear();
+            return;
+        }
+
+        var type = SelectedObject.GetType();
+        lock (_reflectionLock)
+        {
+            if (!_reflectionCache.TryGetValue(type, out var cached))
+            {
+                cached = type.GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                    .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
+                    .Where(p => p.GetCustomAttribute<BrowsableAttribute>()?.Browsable != false)
+                    .OrderBy(p => p.GetCustomAttribute<DisplayAttribute>()?.GetOrder() ?? int.MaxValue)
+                    .ThenBy(p => p.Name)
+                    .Select(CreatePropertyItem)
+                    .ToList();
+                _reflectionCache[type] = cached;
+            }
+            _properties = cached;
+        }
+
+        ValidateAllProperties();
+    }
+
+    private static PropertyItem CreatePropertyItem(PropertyInfo property)
+    {
+        var display = property.GetCustomAttribute<DisplayAttribute>();
+        var category = property.GetCustomAttribute<CategoryAttribute>()?.Category ?? "Общее";
+        var description =
+            property.GetCustomAttribute<DescriptionAttribute>()?.Description ??
+            display?.GetDescription();
+
+        return new PropertyItem
+        {
+            Property = property,
+            Name = property.Name,
+            DisplayName =
+                property.GetCustomAttribute<DisplayNameAttribute>()?.DisplayName ??
+                display?.GetName() ??
+                SplitPascalCase(property.Name),
+            Category = category,
+            Description = description,
+            ReadOnly = property.GetCustomAttribute<ReadOnlyAttribute>()?.IsReadOnly == true || !property.CanWrite
+        };
+    }
+
+    private RenderFragment RenderEditor(PropertyItem prop) => @<div>
+        @{
+            var type = GetPropertyType(prop);
+            var value = prop.Property.GetValue(SelectedObject);
+            var editorValue = GetEditorValue(prop, value);
+        }
+
+        @if (CustomEditor != null)
+        {
+            @CustomEditor(new PropertyEditorContext 
+            { 
+                Property = prop.Property, 
+                Value = value, 
+                Target = SelectedObject!, 
+                OnChanged = (val) => _ = SetValueAsync(prop, val) 
+            })
+        }
+        else if (prop.ReadOnly)
+        {
+            <span class="sgc-pg-readonly">@FormatDisplayValue(value)</span>
+        }
+        else if (type == typeof(bool))
+        {
+            <input type="checkbox"
+                   class="sgc-pg-checkbox"
+                   checked="@((bool?)value ?? false)"
+                   @onchange="e => UpdateBooleanAsync(prop, e)" />
+        }
+        else if (type.IsEnum)
+        {
+            <select class="@GetEditorCssClass(prop)"
+                    value="@editorValue"
+                    @onchange="e => UpdateEnumAsync(prop, e)">
+                @foreach (var name in Enum.GetNames(type))
+                {
+                    <option value="@name">@GetEnumLabel(type, name)</option>
+                }
+            </select>
+        }
+        else if (type == typeof(DateTime))
+        {
+            <input type="datetime-local"
+                   class="@GetEditorCssClass(prop)"
+                   value="@editorValue"
+                   @onchange="e => UpdateTextAsync(prop, e)" />
+        }
+        else if (IsNumericType(type))
+        {
+            <input type="number"
+                   class="@GetEditorCssClass(prop)"
+                   value="@editorValue"
+                   @onchange="e => UpdateTextAsync(prop, e)" />
+        }
+        else if (!type.IsPrimitive && type != typeof(string) && type != typeof(decimal) && type != typeof(DateTime) && type != typeof(Guid))
+        {
+            @* Nested Object *@
+            <div class="sgc-pg-nested">
+                <button type="button" class="sg-btn sg-btn-sm sg-btn-ghost" @onclick="() => ToggleObject(prop.Name)">
+                    @(IsObjectExpanded(prop.Name) ? "Свернуть" : "Развернуть")
+                </button>
+                @if (IsObjectExpanded(prop.Name) && value != null)
+                {
+                    <div class="sgc-pg-nested-content" style="margin-left: 12px; border-left: 2px solid #eee; padding-left: 8px;">
+                        <SgPropertyGrid SelectedObject="@value" ShowToolbar="false" GroupByLines="false" OnPropertyValueChanged="OnPropertyValueChanged" />
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <input type="text"
+                   class="@GetEditorCssClass(prop)"
+                   value="@editorValue"
+                   @onchange="e => UpdateTextAsync(prop, e)" />
+        }
+    </div>;
+
+    private void ToggleObject(string name)
+    {
+        if (!_expandedObjects.Add(name))
+        {
+            _expandedObjects.Remove(name);
+        }
+    }
+
+    private bool IsObjectExpanded(string name) => _expandedObjects.Contains(name);
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void ToggleGrouping()
+    {
+        GroupByLines = !GroupByLines;
+    }
+
+    private void ToggleGroup(string category)
+    {
+        if (!_collapsedGroups.Add(category))
+        {
+            _collapsedGroups.Remove(category);
+        }
+    }
+
+    private bool IsGroupExpanded(string category) => !_collapsedGroups.Contains(category);
+
+    private static Type GetPropertyType(PropertyItem prop) =>
+        Nullable.GetUnderlyingType(prop.Property.PropertyType) ?? prop.Property.PropertyType;
+
+    private static bool IsRequired(PropertyItem prop) =>
+        prop.Property.GetCustomAttribute<RequiredAttribute>() is not null;
+
+    private async Task UpdateBooleanAsync(PropertyItem prop, ChangeEventArgs e)
+    {
+        var next = e.Value switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+
+        _editorValues.Remove(prop.Name);
+        await SetValueAsync(prop, next);
+    }
+
+    private async Task UpdateEnumAsync(PropertyItem prop, ChangeEventArgs e)
+    {
+        var targetType = GetPropertyType(prop);
+        var raw = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _editorValues[prop.Name] = string.Empty;
+            await SetValueAsync(prop, null);
+            return;
+        }
+
+        _editorValues[prop.Name] = raw;
+        await SetValueAsync(prop, Enum.Parse(targetType, raw, true));
+    }
+
+    private async Task UpdateTextAsync(PropertyItem prop, ChangeEventArgs e)
+    {
+        var raw = e.Value?.ToString();
+        _editorValues[prop.Name] = raw ?? string.Empty;
+
+        if (TryConvertValue(prop.Property.PropertyType, raw, out var converted))
+        {
+            await SetValueAsync(prop, converted);
+        }
+        else
+        {
+            SetErrors(prop, "Некорректный формат значения.");
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SetValueAsync(PropertyItem prop, object? value)
+    {
+        if (SelectedObject is null || prop.ReadOnly)
+        {
+            return;
+        }
+
+        if (!TryValidatePropertyValue(prop, value, out var errors))
+        {
+            SetErrors(prop, errors);
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        ClearErrors(prop);
+        prop.Property.SetValue(SelectedObject, value);
+        _editorValues.Remove(prop.Name);
+        ValidateAllProperties();
+
+        if (OnPropertyValueChanged.HasDelegate)
+        {
+            await OnPropertyValueChanged.InvokeAsync();
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static bool TryConvertValue(Type propertyType, string? raw, out object? value)
+    {
+        var targetType = Nullable.GetUnderlyingType(propertyType) ?? propertyType;
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            value = Nullable.GetUnderlyingType(propertyType) is not null || !targetType.IsValueType
+                ? null
+                : Activator.CreateInstance(targetType);
+            return true;
+        }
+
+        try
+        {
+            if (targetType == typeof(string))
+            {
+                value = raw;
+                return true;
+            }
+
+            if (targetType == typeof(DateTime))
+            {
+                value = DateTime.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            if (targetType == typeof(Guid))
+            {
+                value = Guid.Parse(raw);
+                return true;
+            }
+
+            value = Convert.ChangeType(raw, targetType, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    private static bool IsNumericType(Type type) =>
+        type == typeof(byte) ||
+        type == typeof(short) ||
+        type == typeof(int) ||
+        type == typeof(long) ||
+        type == typeof(float) ||
+        type == typeof(double) ||
+        type == typeof(decimal) ||
+        type == typeof(sbyte) ||
+        type == typeof(ushort) ||
+        type == typeof(uint) ||
+        type == typeof(ulong);
+
+    private static string FormatEditorValue(object? value) =>
+        value switch
+        {
+            null => string.Empty,
+            IFormattable formattable => formattable.ToString(null, CultureInfo.InvariantCulture),
+            _ => value.ToString() ?? string.Empty
+        };
+
+    private string GetEditorValue(PropertyItem prop, object? value)
+    {
+        if (_editorValues.TryGetValue(prop.Name, out var editorValue))
+            return editorValue;
+
+        var type = GetPropertyType(prop);
+        return type == typeof(DateTime)
+            ? FormatDateTimeValue(value)
+            : FormatEditorValue(value);
+    }
+
+    private static string FormatDateTimeValue(object? value) =>
+        value is DateTime dateTime
+            ? dateTime.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+            : string.Empty;
+
+    private static string FormatDisplayValue(object? value) =>
+        value switch
+        {
+            null => "—",
+            bool boolValue => boolValue ? "Да" : "Нет",
+            DateTime dateTime => dateTime.ToString("g", CultureInfo.CurrentCulture),
+            _ => value.ToString() ?? "—"
+        };
+
+    private static string GetEnumLabel(Type enumType, string name)
+    {
+        var member = enumType.GetMember(name).FirstOrDefault();
+        return member?.GetCustomAttribute<DisplayAttribute>()?.GetName() ?? SplitPascalCase(name);
+    }
+
+    private static string SplitPascalCase(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var builder = new System.Text.StringBuilder(value.Length + 8);
+        builder.Append(value[0]);
+        for (var i = 1; i < value.Length; i++)
+        {
+            if (char.IsUpper(value[i]) && !char.IsUpper(value[i - 1]))
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(value[i]);
+        }
+
+        return builder.ToString();
+    }
+
+    public bool Validate()
+    {
+        ValidateAllProperties();
+        StateHasChanged();
+        return _validationErrors.Count == 0 && _modelValidationErrors.Count == 0;
+    }
+
+    private string GetEditorCssClass(PropertyItem prop) =>
+        HasErrors(prop) ? "sgc-pg-input sgc-invalid" : "sgc-pg-input";
+
+    private bool HasErrors(PropertyItem prop) =>
+        ShowValidation && _validationErrors.TryGetValue(prop.Name, out var errors) && errors.Count > 0;
+
+    private IReadOnlyList<string> GetErrors(PropertyItem prop) =>
+        _validationErrors.TryGetValue(prop.Name, out var errors) ? errors : Array.Empty<string>();
+
+    private void ValidateAllProperties()
+    {
+        _validationErrors.Clear();
+        _modelValidationErrors.Clear();
+
+        if (SelectedObject is null)
+            return;
+
+        var context = new ValidationContext(SelectedObject);
+        var results = new List<ValidationResult>();
+        Validator.TryValidateObject(SelectedObject, context, results, validateAllProperties: true);
+
+        foreach (var result in results)
+        {
+            var members = result.MemberNames?.Where(x => !string.IsNullOrWhiteSpace(x)).ToList() ?? new List<string>();
+
+            if (members.Count == 0)
+            {
+                _modelValidationErrors.Add(result.ErrorMessage ?? "Некорректное значение.");
+                continue;
+            }
+
+            foreach (var member in members)
+            {
+                AddError(member, result.ErrorMessage ?? "Некорректное значение.");
+            }
+        }
+    }
+
+    private bool TryValidatePropertyValue(PropertyItem prop, object? value, out List<string> errors)
+    {
+        errors = new List<string>();
+
+        if (SelectedObject is null)
+            return true;
+
+        var context = new ValidationContext(SelectedObject)
+        {
+            MemberName = prop.Name
+        };
+
+        var results = new List<ValidationResult>();
+        var valid = Validator.TryValidateProperty(value, context, results);
+        if (valid)
+            return true;
+
+        foreach (var result in results)
+        {
+            errors.Add(result.ErrorMessage ?? "Некорректное значение.");
+        }
+
+        return false;
+    }
+
+    private void SetErrors(PropertyItem prop, IEnumerable<string> errors)
+    {
+        var list = errors
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Distinct(StringComparer.CurrentCulture)
+            .ToList();
+
+        if (list.Count == 0)
+        {
+            _validationErrors.Remove(prop.Name);
+            return;
+        }
+
+        _validationErrors[prop.Name] = list;
+    }
+
+    private void SetErrors(PropertyItem prop, params string[] errors) =>
+        SetErrors(prop, (IEnumerable<string>)errors);
+
+    private void ClearErrors(PropertyItem prop) =>
+        _validationErrors.Remove(prop.Name);
+
+    private void AddError(string propertyName, string error)
+    {
+        if (!_validationErrors.TryGetValue(propertyName, out var list))
+        {
+            list = new List<string>();
+            _validationErrors[propertyName] = list;
+        }
+
+        if (!list.Contains(error, StringComparer.CurrentCulture))
+        {
+            list.Add(error);
+        }
+    }
+
+    private sealed class PropertyItem
+    {
+        public required PropertyInfo Property { get; init; }
+        public required string Name { get; init; }
+        public required string DisplayName { get; init; }
+        public required string Category { get; init; }
+        public string? Description { get; init; }
+        public bool ReadOnly { get; init; }
+    }
+}

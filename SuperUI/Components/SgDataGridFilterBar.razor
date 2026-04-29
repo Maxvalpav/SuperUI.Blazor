@@ -1,0 +1,85 @@
+@typeparam TItem
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-data-grid-filterbar @CssClass">
+    <SgFilterBuilder Title="@(Title ?? Localizer["GridFilters"])"
+                     Subtitle="@(Subtitle ?? Localizer["GridFiltersSubtitle"])"
+                     Fields="@ResolvedFields"
+                     Filters="@EffectiveFilters"
+                     ShowApplyButton="@(ShowApplyButton && !AutoApply)"
+                     ApplyText="@(ApplyText ?? Localizer["Apply"])"
+                     FiltersChanged="HandleFiltersChangedAsync"
+                     OnApply="HandleApplyAsync"
+                     OnReset="HandleResetAsync" />
+
+    @if (!string.IsNullOrWhiteSpace(HintText ?? Localizer["GridFiltersHint"]))
+    {
+        <div class="sgc-data-grid-filterbar-hint">@(HintText ?? Localizer["GridFiltersHint"])</div>
+    }
+</div>
+
+@code {
+    private readonly List<QueryRule> _localFilters = new();
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? HintText { get; set; }
+    [Parameter] public string? ApplyText { get; set; }
+    [Parameter] public bool ShowApplyButton { get; set; } = true;
+    [Parameter] public bool AutoApply { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public SgDataGrid<TItem>? Grid { get; set; }
+    [Parameter] public IList<QueryRule>? Filters { get; set; }
+    [Parameter] public IReadOnlyList<QueryField> Fields { get; set; } = Array.Empty<QueryField>();
+    [Parameter] public EventCallback<IReadOnlyList<QueryRule>> FiltersChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<QueryRule>> Applied { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<QueryRule>> Reset { get; set; }
+
+    private IList<QueryRule> EffectiveFilters => Filters ?? _localFilters;
+    private IReadOnlyList<QueryField> ResolvedFields => Fields.Count > 0 ? Fields : Grid?.GetQueryFields() ?? Array.Empty<QueryField>();
+
+    private async Task HandleFiltersChangedAsync(IReadOnlyList<QueryRule> filters)
+    {
+        if (FiltersChanged.HasDelegate)
+        {
+            await FiltersChanged.InvokeAsync(filters);
+        }
+
+        if (AutoApply && Grid is not null)
+        {
+            await Grid.ApplyQueryRulesAsync(filters);
+            if (Applied.HasDelegate)
+            {
+                await Applied.InvokeAsync(filters);
+            }
+        }
+    }
+
+    private async Task HandleApplyAsync(IReadOnlyList<QueryRule> filters)
+    {
+        if (Grid is not null)
+        {
+            await Grid.ApplyQueryRulesAsync(filters);
+        }
+
+        if (Applied.HasDelegate)
+        {
+            await Applied.InvokeAsync(filters);
+        }
+    }
+
+    private async Task HandleResetAsync(IReadOnlyList<QueryRule> filters)
+    {
+        if (Grid is not null)
+        {
+            await Grid.ClearQueryRulesAsync();
+        }
+
+        if (Reset.HasDelegate)
+        {
+            await Reset.InvokeAsync(filters);
+        }
+    }
+}

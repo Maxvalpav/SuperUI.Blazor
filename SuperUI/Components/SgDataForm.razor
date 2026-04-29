@@ -1,0 +1,560 @@
+@namespace SuperUI.Components
+@typeparam TModel where TModel : class
+@using System.ComponentModel
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Reflection
+@using Microsoft.AspNetCore.Components.Forms
+
+<EditForm EditContext="_editContext"
+          OnValidSubmit="HandleValidSubmitAsync"
+          OnInvalidSubmit="HandleInvalidSubmitAsync">
+    <DataAnnotationsValidator />
+
+    @if (ShowValidationSummary)
+    {
+        <ValidationSummary />
+    }
+
+    <div class="sgc-form @CssClass">
+        <div class="sgc-data-form-grid" style="@GridStyle">
+            @foreach (var field in _fields)
+            {
+                <div class="sgc-field sgc-block">
+                    @if (FieldTemplate is not null)
+                    {
+                        @FieldTemplate(CreateFieldContext(field))
+                    }
+                    else
+                    {
+                        @if (field.Kind != FieldKind.Boolean)
+                        {
+                            <label class="sgc-label @(field.IsRequired ? "sgc-required" : "")">@field.Label</label>
+                        }
+
+                        @if (field.Kind == FieldKind.Boolean)
+                        {
+                            <label class="sgc-check" style="display:flex;align-items:center;gap:8px;">
+                                <input type="checkbox"
+                                       checked="@GetBoolValue(field)"
+                                       disabled="@IsFieldReadOnly(field)"
+                                       @onchange="e => OnCheckboxChangedAsync(field, e)" />
+                                <span>@field.Label</span>
+                            </label>
+                        }
+                        else if (field.Kind == FieldKind.Enum)
+                        {
+                            <select class="sgc-input"
+                                    disabled="@IsFieldReadOnly(field)"
+                                    value="@GetSelectValue(field)"
+                                    @onchange="e => OnTextChangedAsync(field, e)">
+                                @if (field.AllowEmpty)
+                                {
+                                    <option value=""></option>
+                                }
+                                @foreach (var option in field.EnumOptions)
+                                {
+                                    <option value="@option.Value">@option.Label</option>
+                                }
+                            </select>
+                        }
+                        else if (field.Kind == FieldKind.MultilineText)
+                        {
+                            <textarea class="sgc-textarea"
+                                      rows="@field.Rows"
+                                      placeholder="@field.Placeholder"
+                                      readonly="@IsFieldReadOnly(field)"
+                                      @onchange="e => OnTextChangedAsync(field, e)">@GetTextValue(field)</textarea>
+                        }
+                        else
+                        {
+                            <input class="sgc-input"
+                                   type="@field.InputType"
+                                   value="@GetTextValue(field)"
+                                   placeholder="@field.Placeholder"
+                                   readonly="@IsFieldReadOnly(field)"
+                                   min="@field.Min"
+                                   max="@field.Max"
+                                   maxlength="@field.MaxLength"
+                                   step="@field.Step"
+                                   @onchange="e => OnTextChangedAsync(field, e)" />
+                        }
+
+                        @if (!string.IsNullOrEmpty(field.Description))
+                        {
+                            <span class="sgc-hint">@field.Description</span>
+                        }
+
+                        @foreach (var message in GetValidationMessages(field))
+                        {
+                            <span class="sgc-error">@message</span>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        @if (Actions is not null || !ReadOnly)
+        {
+            <div class="sgc-form-actions" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+                @if (Actions is not null)
+                {
+                    @Actions
+                }
+                else if (!ReadOnly)
+                {
+                    <SgButton Type="submit" Text="@SubmitText" Variant="primary" />
+                }
+            </div>
+        }
+    </div>
+</EditForm>
+
+@code {
+    private EditContext? _editContext;
+    private TModel? _lastModel;
+    private List<FieldDefinition> _fields = new();
+
+    /// <summary>
+    /// Gets or sets the model instance to bind to the form. Required.
+    /// </summary>
+    [Parameter, EditorRequired] public TModel Model { get; set; } = default!;
+    
+    /// <summary>
+    /// Gets or sets whether to automatically generate form fields from model properties.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool AutoGenerate { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the number of grid columns for field layout.
+    /// Default is 2.
+    /// </summary>
+    [Parameter] public int Columns { get; set; } = 2;
+    
+    /// <summary>
+    /// Gets or sets whether the form is read-only.
+    /// </summary>
+    [Parameter] public bool ReadOnly { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to display the validation summary.
+    /// </summary>
+    [Parameter] public bool ShowValidationSummary { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the submit button text.
+    /// Default is "Save".
+    /// </summary>
+    [Parameter] public string SubmitText { get; set; } = "Save";
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of property names to include in the form.
+    /// If null, all properties are included.
+    /// </summary>
+    [Parameter] public IEnumerable<string>? IncludeFields { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of property names to exclude from the form.
+    /// </summary>
+    [Parameter] public IEnumerable<string>? ExcludeFields { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom actions content to replace the default submit button.
+    /// </summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom template for rendering each field.
+    /// </summary>
+    [Parameter] public RenderFragment<SgDataFormFieldContext>? FieldTemplate { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the form is submitted with valid data.
+    /// </summary>
+    [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the form is submitted with invalid data.
+    /// </summary>
+    [Parameter] public EventCallback<TModel> OnInvalidSubmit { get; set; }
+
+    private string GridStyle => $"display:grid;grid-template-columns:repeat({Math.Max(1, Columns)}, minmax(0, 1fr));gap:12px;";
+
+    protected override void OnParametersSet()
+    {
+        if (Model is null)
+            throw new InvalidOperationException($"{nameof(SgDataForm<TModel>)} requires a non-null {nameof(Model)}.");
+
+        if (!ReferenceEquals(_lastModel, Model) || _editContext is null)
+        {
+            _lastModel = Model;
+            _editContext = new EditContext(Model);
+        }
+
+        _fields = AutoGenerate ? BuildFields() : new List<FieldDefinition>();
+    }
+
+    private List<FieldDefinition> BuildFields()
+    {
+        var include = IncludeFields is null ? null : new HashSet<string>(IncludeFields, StringComparer.OrdinalIgnoreCase);
+        var exclude = ExcludeFields is null ? null : new HashSet<string>(ExcludeFields, StringComparer.OrdinalIgnoreCase);
+
+        return typeof(TModel)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(p => p.CanRead && p.CanWrite && p.GetIndexParameters().Length == 0)
+            .Where(p => p.GetCustomAttribute<BrowsableAttribute>()?.Browsable != false)
+            .Where(p => p.GetCustomAttribute<DisplayAttribute>()?.GetAutoGenerateField() != false)
+            .Where(p => include is null || include.Contains(p.Name))
+            .Where(p => exclude is null || !exclude.Contains(p.Name))
+            .OrderBy(p => p.GetCustomAttribute<DisplayAttribute>()?.GetOrder() ?? int.MaxValue)
+            .ThenBy(p => p.Name)
+            .Select(CreateFieldDefinition)
+            .ToList();
+    }
+
+    private static FieldDefinition CreateFieldDefinition(PropertyInfo property)
+    {
+        var display = property.GetCustomAttribute<DisplayAttribute>();
+        var dataType = property.GetCustomAttribute<DataTypeAttribute>();
+        var range = property.GetCustomAttribute<RangeAttribute>();
+        var stringLength = property.GetCustomAttribute<StringLengthAttribute>();
+        var editable = property.GetCustomAttribute<EditableAttribute>();
+        var readOnly = property.GetCustomAttribute<ReadOnlyAttribute>();
+        var required = property.GetCustomAttribute<RequiredAttribute>() is not null;
+        var underlyingType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
+        var allowEmpty = Nullable.GetUnderlyingType(property.PropertyType) is not null || !underlyingType.IsValueType;
+
+        var kind = GetFieldKind(underlyingType, dataType);
+        var inputType = GetInputType(underlyingType, dataType);
+
+        return new FieldDefinition
+        {
+            Property = property,
+            Label = display?.GetName() ?? SplitPascalCase(property.Name),
+            Description = display?.GetDescription(),
+            Placeholder = display?.GetPrompt(),
+            IsRequired = required,
+            IsReadOnly = editable?.AllowEdit == false || readOnly?.IsReadOnly == true,
+            Kind = kind,
+            InputType = inputType,
+            AllowEmpty = allowEmpty,
+            MaxLength = stringLength?.MaximumLength is > 0 ? stringLength.MaximumLength.ToString(CultureInfo.InvariantCulture) : null,
+            Min = range?.Minimum?.ToString(),
+            Max = range?.Maximum?.ToString(),
+            Step = IsNumericType(underlyingType) ? "any" : null,
+            Rows = dataType?.DataType == DataType.MultilineText ? 4 : 3,
+            EnumOptions = underlyingType.IsEnum
+                ? Enum.GetNames(underlyingType)
+                    .Select(name => new EnumOption(name, GetEnumLabel(underlyingType, name)))
+                    .ToArray()
+                : Array.Empty<EnumOption>()
+        };
+    }
+
+    private async Task OnTextChangedAsync(FieldDefinition field, ChangeEventArgs e)
+    {
+        if (_editContext is null) return;
+
+        if (!TryConvertValue(field, e.Value?.ToString(), out var value))
+            return;
+
+        field.Property.SetValue(Model, value);
+
+        var identifier = new FieldIdentifier(Model, field.Property.Name);
+        _editContext.NotifyFieldChanged(identifier);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnCheckboxChangedAsync(FieldDefinition field, ChangeEventArgs e)
+    {
+        if (_editContext is null) return;
+
+        var next = e.Value switch
+        {
+            bool b => b,
+            string s when bool.TryParse(s, out var parsed) => parsed,
+            _ => false
+        };
+
+        field.Property.SetValue(Model, next);
+
+        var identifier = new FieldIdentifier(Model, field.Property.Name);
+        _editContext.NotifyFieldChanged(identifier);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private IEnumerable<string> GetValidationMessages(FieldDefinition field)
+    {
+        if (_editContext is null) return Array.Empty<string>();
+        return _editContext.GetValidationMessages(new FieldIdentifier(Model, field.Property.Name));
+    }
+
+    private string GetTextValue(FieldDefinition field)
+    {
+        var value = field.Property.GetValue(Model);
+        if (value is null) return string.Empty;
+
+        return field.Kind switch
+        {
+            FieldKind.Date => value is DateTime dateTime
+                ? dateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                : value.ToString() ?? string.Empty,
+            FieldKind.DateTimeLocal => value is DateTime dt
+                ? dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                : value.ToString() ?? string.Empty,
+            _ => Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty
+        };
+    }
+
+    private bool GetBoolValue(FieldDefinition field)
+    {
+        var value = field.Property.GetValue(Model);
+        return value is bool b && b;
+    }
+
+    private string GetSelectValue(FieldDefinition field)
+    {
+        var value = field.Property.GetValue(Model);
+        return value?.ToString() ?? string.Empty;
+    }
+
+    private bool IsFieldReadOnly(FieldDefinition field) => ReadOnly || field.IsReadOnly;
+
+    private SgDataFormFieldContext CreateFieldContext(FieldDefinition field) => new()
+    {
+        Label = field.Label,
+        PropertyName = field.Property.Name,
+        PropertyType = field.Property.PropertyType,
+        Value = field.Property.GetValue(Model),
+        Messages = GetValidationMessages(field).ToArray(),
+        Required = field.IsRequired,
+        ReadOnly = IsFieldReadOnly(field),
+        SetValueAsync = value => SetFieldValueAsync(field, value)
+    };
+
+    private async Task SetFieldValueAsync(FieldDefinition field, object? value)
+    {
+        if (_editContext is null || IsFieldReadOnly(field))
+            return;
+
+        field.Property.SetValue(Model, value);
+        var identifier = new FieldIdentifier(Model, field.Property.Name);
+        _editContext.NotifyFieldChanged(identifier);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleValidSubmitAsync()
+    {
+        if (OnValidSubmit.HasDelegate)
+            await OnValidSubmit.InvokeAsync(Model);
+    }
+
+    private async Task HandleInvalidSubmitAsync()
+    {
+        if (OnInvalidSubmit.HasDelegate)
+            await OnInvalidSubmit.InvokeAsync(Model);
+    }
+
+    private static bool TryConvertValue(FieldDefinition field, string? raw, out object? value)
+    {
+        var targetType = Nullable.GetUnderlyingType(field.Property.PropertyType) ?? field.Property.PropertyType;
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            value = Nullable.GetUnderlyingType(field.Property.PropertyType) is not null || !targetType.IsValueType
+                ? null
+                : Activator.CreateInstance(targetType);
+            return true;
+        }
+
+        try
+        {
+            if (targetType == typeof(string))
+            {
+                value = raw;
+                return true;
+            }
+            if (targetType == typeof(DateTime))
+            {
+                value = field.Kind == FieldKind.Date
+                    ? DateTime.ParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    : DateTime.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(Guid))
+            {
+                value = Guid.Parse(raw);
+                return true;
+            }
+            if (targetType.IsEnum)
+            {
+                value = Enum.Parse(targetType, raw, true);
+                return true;
+            }
+            if (targetType == typeof(bool) && bool.TryParse(raw, out var boolValue))
+            {
+                value = boolValue;
+                return true;
+            }
+            if (targetType == typeof(int))
+            {
+                value = int.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(long))
+            {
+                value = long.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(short))
+            {
+                value = short.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(byte))
+            {
+                value = byte.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(float))
+            {
+                value = float.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(double))
+            {
+                value = double.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+            if (targetType == typeof(decimal))
+            {
+                value = decimal.Parse(raw, CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            value = Convert.ChangeType(raw, targetType, CultureInfo.CurrentCulture);
+            return true;
+        }
+        catch
+        {
+            value = null;
+            return false;
+        }
+    }
+
+    private static FieldKind GetFieldKind(Type type, DataTypeAttribute? dataType)
+    {
+        if (type == typeof(bool)) return FieldKind.Boolean;
+        if (type.IsEnum) return FieldKind.Enum;
+        if (type == typeof(DateTime))
+        {
+            return dataType?.DataType == DataType.Date
+                ? FieldKind.Date
+                : FieldKind.DateTimeLocal;
+        }
+        if (dataType?.DataType == DataType.MultilineText) return FieldKind.MultilineText;
+        if (type == typeof(string)) return FieldKind.Text;
+        if (IsNumericType(type)) return FieldKind.Number;
+        return FieldKind.Text;
+    }
+
+    private static string GetInputType(Type type, DataTypeAttribute? dataType)
+    {
+        if (type == typeof(DateTime))
+        {
+            return dataType?.DataType == DataType.Date ? "date" : "datetime-local";
+        }
+        if (IsNumericType(type)) return "number";
+        if (dataType?.DataType == DataType.EmailAddress) return "email";
+        if (dataType?.DataType == DataType.Password) return "password";
+        if (dataType?.DataType == DataType.PhoneNumber) return "tel";
+        if (dataType?.DataType == DataType.Url) return "url";
+        return "text";
+    }
+
+    private static bool IsNumericType(Type type)
+    {
+        return type == typeof(byte) ||
+               type == typeof(short) ||
+               type == typeof(int) ||
+               type == typeof(long) ||
+               type == typeof(float) ||
+               type == typeof(double) ||
+               type == typeof(decimal) ||
+               type == typeof(sbyte) ||
+               type == typeof(ushort) ||
+               type == typeof(uint) ||
+               type == typeof(ulong);
+    }
+
+    private static string SplitPascalCase(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return value;
+
+        var builder = new System.Text.StringBuilder(value.Length + 8);
+        builder.Append(value[0]);
+        for (var i = 1; i < value.Length; i++)
+        {
+            if (char.IsUpper(value[i]) && !char.IsUpper(value[i - 1]))
+                builder.Append(' ');
+            builder.Append(value[i]);
+        }
+        return builder.ToString();
+    }
+
+    private static string GetEnumLabel(Type enumType, string name)
+    {
+        var member = enumType.GetMember(name).FirstOrDefault();
+        return member?.GetCustomAttribute<DisplayAttribute>()?.GetName() ?? SplitPascalCase(name);
+    }
+
+    private sealed class FieldDefinition
+    {
+        public required PropertyInfo Property { get; init; }
+        public required string Label { get; init; }
+        public string? Description { get; init; }
+        public string? Placeholder { get; init; }
+        public bool IsRequired { get; init; }
+        public bool IsReadOnly { get; init; }
+        public bool AllowEmpty { get; init; }
+        public FieldKind Kind { get; init; }
+        public required string InputType { get; init; }
+        public string? Min { get; init; }
+        public string? Max { get; init; }
+        public string? Step { get; init; }
+        public string? MaxLength { get; init; }
+        public int Rows { get; init; }
+        public required IReadOnlyList<EnumOption> EnumOptions { get; init; }
+    }
+
+    private readonly record struct EnumOption(string Value, string Label);
+
+    private enum FieldKind
+    {
+        Text,
+        MultilineText,
+        Number,
+        Boolean,
+        Enum,
+        Date,
+        DateTimeLocal
+    }
+
+    public sealed class SgDataFormFieldContext
+    {
+        public string PropertyName { get; init; } = string.Empty;
+        public string Label { get; init; } = string.Empty;
+        public Type PropertyType { get; init; } = typeof(string);
+        public object? Value { get; init; }
+        public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+        public bool Required { get; init; }
+        public bool ReadOnly { get; init; }
+        public Func<object?, Task> SetValueAsync { get; init; } = _ => Task.CompletedTask;
+    }
+}

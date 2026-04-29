@@ -1,0 +1,317 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <div class="sgc-date @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "")"
+         role="combobox"
+         aria-expanded="@(_open ? "true" : "false")"
+         aria-haspopup="dialog"
+         aria-labelledby="@_labelId"
+         aria-required="@(Required ? "true" : null)"
+         aria-disabled="@(Disabled ? "true" : null)"
+         aria-controls="@_popupId"
+         tabindex="@(Disabled ? "-1" : "0")"
+         @onclick:stopPropagation="true">
+        <div class="sgc-date-control" @onclick="ToggleAsync">
+            @if (HasRange)
+            {
+                <span class="sgc-date-value">@RangeText</span>
+            }
+            else
+            {
+                <span class="sgc-date-placeholder">
+                    @if (HasPartialRange)
+                    {
+                        @PartialRangeText
+                    }
+                    else
+                    {
+                        @(string.IsNullOrEmpty(Placeholder) ? $"{StartPlaceholder} - {EndPlaceholder}" : Placeholder)
+                    }
+                </span>
+            }
+            @if (AllowClear && (HasRange || HasPartialRange) && !Disabled)
+            {
+                <button class="sgc-combo-clear" type="button"
+                        @onclick:stopPropagation="true"
+                        @onclick="ClearAsync" title="@ClearLabel">×</button>
+            }
+            <span class="sgc-combo-caret">📅</span>
+        </div>
+        @if (_open)
+        {
+            <div id="@_popupId" class="sgc-date-popup sgc-date-range-popup" role="dialog" aria-modal="false">
+                <div class="sgc-date-head">
+                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)">‹</button>
+                    <span class="sgc-date-title">@_view.ToString("LLLL yyyy", System.Globalization.CultureInfo.CurrentCulture)</span>
+                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)">›</button>
+                </div>
+                <div class="sgc-date-grid">
+                    @for (var i = 0; i < 7; i++)
+                    {
+                        var dow = ((int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek + i) % 7;
+                        <div class="sgc-date-dow">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[dow]</div>
+                    }
+                    @foreach (var d in BuildGrid())
+                    {
+                        var dl = d;
+                        var inMonth = dl.Month == _view.Month;
+                        var isToday = dl.Date == DateTime.Today;
+                        var isStart = StartValue.HasValue && dl.Date == StartValue.Value.Date;
+                        var isEnd = EndValue.HasValue && dl.Date == EndValue.Value.Date;
+                        var inRange = IsInRange(dl);
+                        var disabled = IsDisabled(dl);
+                        <button type="button"
+                                class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isStart ? "sgc-range-start" : "") @(isEnd ? "sgc-range-end" : "") @(inRange ? "sgc-in-range" : "") @(disabled ? "sgc-date-disabled" : "") @(isStart || isEnd ? "sgc-selected" : "")"
+                                disabled="@disabled"
+                                @onclick="() => PickAsync(dl)">@dl.Day</button>
+                    }
+                </div>
+                <div class="sgc-date-range-meta">
+                    <span>@SelectionHint</span>
+                    @if (HasRange)
+                    {
+                        <span>@DaysCountText</span>
+                    }
+                </div>
+                <div class="sgc-date-foot">
+                    <button class="sgc-btn sgc-sm" type="button" @onclick="SetTodayAsync">@(Locale?.DateToday ?? "Сегодня")</button>
+                    <button class="sgc-btn sgc-sm" type="button" @onclick="SetCurrentMonthAsync">@(Locale?.DateThisMonth ?? "Этот месяц")</button>
+                    @if (AllowClear)
+                    {
+                        <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@(Locale?.Clear ?? "Очистить")</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _labelId = "sg-daterange-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _popupId = "sg-daterange-popup-" + Guid.NewGuid().ToString("N")[..8];
+    private bool _open;
+    private DateTime _view = DateTime.Today;
+
+    /// <summary>
+    /// Gets or sets the start date of the selected range.
+    /// </summary>
+    [Parameter] public DateTime? StartValue { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the start date changes.
+    /// </summary>
+    [Parameter] public EventCallback<DateTime?> StartValueChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the end date of the selected range.
+    /// </summary>
+    [Parameter] public DateTime? EndValue { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the end date changes.
+    /// </summary>
+    [Parameter] public EventCallback<DateTime?> EndValueChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the date format string for displaying the selected range.
+    /// Default is "d" (short date pattern).
+    /// </summary>
+    [Parameter] public string Format { get; set; } = "d";
+    
+    /// <summary>
+    /// Gets or sets the placeholder text displayed when no range is selected.
+    /// Default is "Выберите диапазон".
+    /// </summary>
+    [Parameter] public string? Placeholder { get; set; } = "Выберите диапазон";
+
+    /// <summary>
+    /// Gets or sets the placeholder for the start date.
+    /// </summary>
+    [Parameter] public string? StartPlaceholder { get; set; } = "Начало";
+
+    /// <summary>
+    /// Gets or sets the placeholder for the end date.
+    /// </summary>
+    [Parameter] public string? EndPlaceholder { get; set; } = "Конец";
+    
+    /// <summary>
+    /// Gets or sets the label text displayed above the date range picker.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the hint text displayed below the date range picker.
+    /// </summary>
+    [Parameter] public string? Hint { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the clear button is displayed when a range is selected.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool AllowClear { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether the field is marked as required with a visual indicator.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the date range picker is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the date range picker takes the full width of its container.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the minimum selectable date. Dates before this are disabled.
+    /// </summary>
+    [Parameter] public DateTime? Min { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the maximum selectable date. Dates after this are disabled.
+    /// </summary>
+    [Parameter] public DateTime? Max { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the localization provider for translating UI text.
+    /// </summary>
+    [CascadingParameter] public SgDataGridLocale? Locale { get; set; }
+
+    private string ClearLabel => Locale?.Clear ?? Localizer["Clear"];
+
+    private bool HasRange => StartValue.HasValue && EndValue.HasValue;
+    private bool HasPartialRange => StartValue.HasValue && !EndValue.HasValue;
+    private string RangeText => $"{StartValue!.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)} - {EndValue!.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)}";
+    private string PartialRangeText => $"{StartValue!.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)} - ...";
+    private string SelectionHint => HasRange
+        ? (Locale?.DateRangeSelected ?? "Диапазон выбран")
+        : HasPartialRange
+            ? (Locale?.DateRangeSelectEnd ?? "Выберите дату окончания")
+            : (Locale?.DateRangeSelectStart ?? "Выберите дату начала");
+    private string DaysCountText => $"{(EndValue!.Value.Date - StartValue!.Value.Date).Days + 1} {Locale?.DateRangeDays ?? "дн."}.";
+
+    protected override void OnParametersSet()
+    {
+        var seed = StartValue ?? EndValue;
+        if (seed.HasValue)
+        {
+            _view = new DateTime(seed.Value.Year, seed.Value.Month, 1);
+        }
+    }
+
+    private Task ToggleAsync()
+    {
+        if (Disabled) return Task.CompletedTask;
+        _open = !_open;
+        if (_open)
+        {
+            var seed = StartValue ?? EndValue ?? DateTime.Today;
+            _view = new DateTime(seed.Year, seed.Month, 1);
+        }
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private void Shift(int months) => _view = _view.AddMonths(months);
+
+    private IEnumerable<DateTime> BuildGrid()
+    {
+        var first = new DateTime(_view.Year, _view.Month, 1);
+        var fdow = (int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var startOffset = ((int)first.DayOfWeek - fdow + 7) % 7;
+        var start = first.AddDays(-startOffset);
+        for (var i = 0; i < 42; i++) yield return start.AddDays(i);
+    }
+
+    private bool IsDisabled(DateTime d)
+    {
+        if (Min.HasValue && d.Date < Min.Value.Date) return true;
+        if (Max.HasValue && d.Date > Max.Value.Date) return true;
+        return false;
+    }
+
+    private bool IsInRange(DateTime d)
+    {
+        if (!HasRange) return false;
+        return d.Date > StartValue!.Value.Date && d.Date < EndValue!.Value.Date;
+    }
+
+    private async Task PickAsync(DateTime d)
+    {
+        if (IsDisabled(d)) return;
+
+        if (!StartValue.HasValue || (StartValue.HasValue && EndValue.HasValue))
+        {
+            // Начинаем новый диапазон
+            StartValue = d.Date;
+            EndValue = null;
+        }
+        else
+        {
+            // Завершаем диапазон
+            if (d.Date < StartValue.Value.Date)
+            {
+                EndValue = StartValue.Value.Date;
+                StartValue = d.Date;
+            }
+            else
+            {
+                EndValue = d.Date;
+            }
+            _open = false; // Закрываем меню только когда выбраны обе даты
+        }
+
+        await NotifyAsync();
+    }
+
+    private Task SetTodayAsync() => SetRangeAsync(DateTime.Today, DateTime.Today);
+
+    private Task SetCurrentMonthAsync()
+    {
+        var start = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+        var end = start.AddMonths(1).AddDays(-1);
+        return SetRangeAsync(start, end);
+    }
+
+    private async Task SetRangeAsync(DateTime start, DateTime end)
+    {
+        StartValue = start.Date;
+        EndValue = end.Date;
+        _open = false;
+        await NotifyAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        StartValue = null;
+        EndValue = null;
+        _open = false;
+        await NotifyAsync();
+    }
+
+    private async Task NotifyAsync()
+    {
+        if (StartValueChanged.HasDelegate) await StartValueChanged.InvokeAsync(StartValue);
+        if (EndValueChanged.HasDelegate) await EndValueChanged.InvokeAsync(EndValue);
+        await InvokeAsync(StateHasChanged);
+    }
+}
+

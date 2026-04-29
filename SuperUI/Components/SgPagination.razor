@@ -1,0 +1,133 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
+
+<div class="sgc-pager @CssClass">
+    <button class="sgc-pager-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(1)" title="@Localizer["First"]">«</button>
+    <button class="sgc-pager-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(Page - 1)" title="@Localizer["Previous"]">‹</button>
+    @foreach (var p in BuildPages())
+    {
+        if (p == -1)
+        {
+            <span class="sgc-pager-gap">…</span>
+        }
+        else
+        {
+            var pl = p;
+            <button class="sgc-pager-btn @(pl == Page ? "sgc-active" : "")"
+                    type="button" @onclick="() => GoAsync(pl)">@pl</button>
+        }
+    }
+    <button class="sgc-pager-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(Page + 1)" title="@Localizer["Next"]">›</button>
+    <button class="sgc-pager-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(TotalPages)" title="@Localizer["Last"]">»</button>
+    @if (ShowInfo)
+    {
+        <span class="sgc-pager-info">@Localizer.GetString("PageInfo", Page, TotalPages, TotalItems)</span>
+    }
+    @if (ShowJump)
+    {
+        <div class="sgc-pager-jump">
+            <span>@Localizer["GoTo"]</span>
+            <input type="number" 
+                   class="sgc-pager-input" 
+                   value="@Page" 
+                   @onchange="OnJumpChanged"
+                   min="1" max="@TotalPages" />
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets whether to show the "jump to page" input.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool ShowJump { get; set; }
+
+    /// <summary>
+    /// Gets or sets the current page number (1-based).
+    /// </summary>
+    [Parameter] public int Page { get; set; } = 1;
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the page changes.
+    /// </summary>
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the number of items per page.
+    /// Default is 25.
+    /// </summary>
+    [Parameter] public int PageSize { get; set; } = 25;
+    
+    /// <summary>
+    /// Gets or sets the total number of items across all pages.
+    /// </summary>
+    [Parameter] public int TotalItems { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the number of sibling pages to show on each side of the current page.
+    /// Default is 1.
+    /// </summary>
+    [Parameter] public int Siblings { get; set; } = 1;
+    
+    /// <summary>
+    /// Gets or sets whether to display pagination information text.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool ShowInfo { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to scroll to top after page change.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool ScrollToTop { get; set; }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalItems / Math.Max(1, PageSize)));
+
+    private async Task GoAsync(int p)
+    {
+        p = Math.Max(1, Math.Min(TotalPages, p));
+        if (p == Page) return;
+        Page = p;
+        if (PageChanged.HasDelegate) await PageChanged.InvokeAsync(p);
+
+        if (ScrollToTop)
+        {
+            try { await JS.InvokeVoidAsync("window.scrollTo", 0, 0); } catch { }
+        }
+    }
+
+    private async Task OnJumpChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var p))
+        {
+            await GoAsync(p);
+        }
+    }
+
+    private IEnumerable<int> BuildPages()
+    {
+        var total = TotalPages;
+        var set = new SortedSet<int> { 1, total, Page };
+        for (var i = 1; i <= Siblings; i++)
+        {
+            set.Add(Page - i);
+            set.Add(Page + i);
+        }
+        var list = set.Where(x => x >= 1 && x <= total).ToList();
+        var prev = 0;
+        foreach (var x in list)
+        {
+            if (x - prev > 1) yield return -1;
+            yield return x;
+            prev = x;
+        }
+    }
+}

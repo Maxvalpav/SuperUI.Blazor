@@ -1,0 +1,141 @@
+@namespace SuperUI.Components
+
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="sgc-nav-group @(_expanded ? "expanded" : "") @(IsMini ? "mini" : "") @(_isActive ? "sgc-active" : "")">
+    <div class="sgc-nav-group-header" 
+         role="button"
+         tabindex="0"
+         aria-expanded="@(_expanded ? "true" : "false")"
+         aria-label="@Title"
+         @onclick="Toggle"
+         @onkeydown="OnKeyDownAsync"
+         title="@Title">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="sgc-nav-icon" aria-hidden="true">
+                @if (Icon.StartsWith("<svg"))
+                {
+                    @((MarkupString)Icon)
+                }
+                else
+                {
+                    @Icon
+                }
+            </span>
+        }
+        @if (!IsMini)
+        {
+            <span class="sgc-nav-label">@Title</span>
+            <span class="sgc-nav-arrow" aria-hidden="true">@(_expanded ? "▾" : "▸")</span>
+        }
+    </div>
+    @if (_expanded && !IsMini)
+    {
+        <div class="sgc-nav-group-items" role="group" aria-label="@Title items">
+            <CascadingValue Value="this" IsFixed="true">
+                @ChildContent
+            </CascadingValue>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<SgNavLink> _links = new();
+
+    internal void Register(SgNavLink link)
+    {
+        if (!_links.Contains(link))
+        {
+            _links.Add(link);
+            CheckActiveState();
+        }
+    }
+
+    internal void Unregister(SgNavLink link)
+    {
+        _links.Remove(link);
+        CheckActiveState();
+    }
+    /// <summary>
+    /// Gets or sets whether the navigation is in mini (collapsed) mode.
+    /// </summary>
+    [CascadingParameter] public bool IsMini { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the group title text.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the icon to display before the group title.
+    /// Supports SVG markup or text.
+    /// </summary>
+    [Parameter] public string? Icon { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the child content containing navigation links.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the group is initially expanded.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool Expanded { get; set; } = false;
+
+    private bool _expanded;
+    private bool _isActive;
+
+    protected override void OnInitialized()
+    {
+        _expanded = Expanded;
+        Navigation.LocationChanged += HandleLocationChanged;
+        CheckActiveState();
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        CheckActiveState();
+        StateHasChanged();
+    }
+
+    private void CheckActiveState()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var isActive = _links.Any(link => 
+        {
+            if (string.IsNullOrEmpty(link.Href)) return false;
+            var linkPath = link.Href.TrimStart('/');
+            return link.Match == NavLinkMatch.All 
+                ? relativePath.Equals(linkPath, StringComparison.OrdinalIgnoreCase)
+                : relativePath.StartsWith(linkPath, StringComparison.OrdinalIgnoreCase);
+        });
+
+        if (_isActive != isActive)
+        {
+            _isActive = isActive;
+            StateHasChanged();
+        }
+    }
+
+    private void Toggle()
+    {
+        _expanded = !_expanded;
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            Toggle();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+}

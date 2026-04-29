@@ -1,0 +1,100 @@
+@namespace SuperUI.Components
+
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<nav class="sgc-bc @CssClass" role="navigation" aria-label="breadcrumb">
+    <ol role="list" style="display: contents; list-style: none; margin: 0; padding: 0;">
+        @{ var arr = GetItems(); }
+        @for (var i = 0; i < arr.Count; i++)
+        {
+            var it = arr[i];
+            var last = i == arr.Count - 1;
+            <li role="listitem" style="display: contents;">
+                @if (!last && !string.IsNullOrEmpty(it.Href))
+                {
+                    <a class="sgc-bc-link" href="@it.Href" aria-label="@it.Text">@it.Text</a>
+                }
+                else
+                {
+                    <span class="@(last ? "sgc-bc-current" : "sgc-bc-text")" 
+                          aria-current="@(last ? "page" : null)">@it.Text</span>
+                }
+                @if (!last)
+                {
+                    <span class="sgc-bc-sep" aria-hidden="true">@Separator</span>
+                }
+            </li>
+        }
+    </ol>
+</nav>
+
+@code {
+    /// <summary>
+    /// Gets or sets the collection of breadcrumb items to display.
+    /// If not provided, items will be auto-generated from the current URI.
+    /// </summary>
+    [Parameter] public IEnumerable<BreadcrumbItem>? Items { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to auto-generate breadcrumbs from the current URI.
+    /// Default is true if <see cref="Items"/> is not provided.
+    /// </summary>
+    [Parameter] public bool AutoGenerate { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the separator character displayed between breadcrumb items.
+    /// Default is "/".
+    /// </summary>
+    [Parameter] public string Separator { get; set; } = "/";
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (Items == null && AutoGenerate)
+        {
+            StateHasChanged();
+        }
+    }
+
+    private List<BreadcrumbItem> GetItems()
+    {
+        if (Items != null) return Items.ToList();
+        if (!AutoGenerate) return new List<BreadcrumbItem>();
+
+        var uri = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var parts = uri.Split('?', StringSplitOptions.RemoveEmptyEntries)[0]
+                       .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var result = new List<BreadcrumbItem> { new BreadcrumbItem("Home", "/") };
+        var path = "";
+
+        foreach (var part in parts)
+        {
+            if (string.IsNullOrEmpty(part)) continue;
+            
+            path += "/" + part;
+            var text = part.Replace("-", " ");
+            if (text.Length > 0)
+            {
+                text = char.ToUpper(text[0]) + (text.Length > 1 ? text[1..] : "");
+            }
+            result.Add(new BreadcrumbItem(text, path));
+        }
+
+        return result;
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= HandleLocationChanged;
+    }
+}

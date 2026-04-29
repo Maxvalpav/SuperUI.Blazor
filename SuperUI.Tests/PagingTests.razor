@@ -1,0 +1,120 @@
+@inherits Bunit.BunitContext
+
+@code {
+    private List<Person> BigData(int n)
+    {
+        var list = new List<Person>(n);
+        var depts = new[] { "IT", "HR", "Sales" };
+        for (var i = 1; i <= n; i++)
+            list.Add(new Person(i, $"Name{i:D5}", depts[i % 3], 50_000m + i));
+        return list;
+    }
+
+    private IRenderedComponent<SgDataGrid<Person>> RenderGrid(List<Person> data, int pageSize = 25)
+    {
+        JSInterop.SetupModule("/_content/SuperUI/superui.js")
+                 .SetupVoid("init", _ => true);
+        return Render<SgDataGrid<Person>>(
+            @<SgDataGrid TItem="Person" Items="data" PageSize="pageSize">
+                <SgDataGridColumn TItem="Person" Title="ID"   Value="p => p.Id" />
+                <SgDataGridColumn TItem="Person" Title="Name" Value="p => p.Name" />
+                <SgDataGridColumn TItem="Person" Title="Dept" Value="p => p.Dept" />
+            </SgDataGrid>
+        );
+    }
+
+    [Fact]
+    public void First_page_shows_pageSize_rows_for_10k_dataset()
+    {
+        var data = BigData(10_000);
+        var cut = RenderGrid(data, pageSize: 25);
+
+        Assert.Equal(25, cut.FindAll("tbody tr").Count);
+        Assert.Contains("из 10000", cut.Find(".sg-foot-info").TextContent);
+    }
+
+    [Fact]
+    public void Next_button_advances_page()
+    {
+        var data = BigData(100);
+        var cut = RenderGrid(data, pageSize: 10);
+
+        Assert.Contains("Name00001", cut.Find("tbody tr").TextContent);
+
+        var nextBtn = cut.FindAll(".sg-page-btn").First(b => b.GetAttribute("aria-label") == "Следующая");
+        nextBtn.Click();
+
+        Assert.Contains("Name00011", cut.Find("tbody tr").TextContent);
+    }
+
+    [Fact]
+    public void Last_button_jumps_to_last_page()
+    {
+        var data = BigData(10_000);
+        var cut = RenderGrid(data, pageSize: 100);
+
+        var lastBtn = cut.FindAll(".sg-page-btn").First(b => b.GetAttribute("aria-label") == "Последняя");
+        lastBtn.Click();
+
+        var rows = cut.FindAll("tbody tr");
+        Assert.Equal(100, rows.Count);
+        Assert.Contains("Name10000", rows.Last().TextContent);
+    }
+
+    [Fact]
+    public void Page_size_select_changes_rows_per_page_and_resets_to_page_one()
+    {
+        var data = BigData(500);
+        var cut = RenderGrid(data, pageSize: 25);
+
+        var nextBtn = cut.FindAll(".sg-page-btn").First(b => b.GetAttribute("aria-label") == "Следующая");
+        nextBtn.Click();
+        nextBtn = cut.FindAll(".sg-page-btn").First(b => b.GetAttribute("aria-label") == "Следующая");
+        nextBtn.Click();
+
+        cut.Find(".sg-pager-size select").Change("50");
+
+        Assert.Equal(50, cut.FindAll("tbody tr").Count);
+        Assert.Contains("Name00001", cut.Find("tbody tr").TextContent);
+    }
+
+    [Fact]
+    public void Prev_and_first_buttons_disabled_on_first_page()
+    {
+        var data = BigData(100);
+        var cut = RenderGrid(data, pageSize: 10);
+
+        var btns = cut.FindAll(".sg-page-btn");
+        Assert.True(btns.First(b => b.GetAttribute("aria-label") == "Первая").HasAttribute("disabled"));
+        Assert.True(btns.First(b => b.GetAttribute("aria-label") == "Предыдущая").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Filter_resets_to_first_page()
+    {
+        var data = BigData(300);
+        var cut = RenderGrid(data, pageSize: 25);
+
+        var nextBtn = cut.FindAll(".sg-page-btn").First(b => b.GetAttribute("aria-label") == "Следующая");
+        nextBtn.Click();
+        nextBtn = cut.FindAll(".sg-page-btn").First(b => b.GetAttribute("aria-label") == "Следующая");
+        nextBtn.Click();
+
+        cut.Find(".sg-search").Input("Name00003");
+
+        var current = cut.FindAll(".sg-page-btn").FirstOrDefault(b => b.ClassList.Contains("current"));
+        Assert.NotNull(current);
+        Assert.Equal("1", current!.TextContent.Trim());
+    }
+
+    [Fact]
+    public void Footer_shows_correct_range()
+    {
+        var data = BigData(10_000);
+        var cut = RenderGrid(data, pageSize: 100);
+
+        Assert.Contains("из 10000", cut.Find(".sg-foot-info").TextContent);
+        Assert.Contains("1", cut.Find(".sg-foot-info").TextContent);
+    }
+}
+

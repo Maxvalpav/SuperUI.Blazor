@@ -1,0 +1,97 @@
+@namespace SuperUI.Components
+@using SuperUI.Services
+@inject SgThemeService ThemeService
+@implements IAsyncDisposable
+
+<button type="button" 
+        class="sgc-theme-toggle @CssClass" 
+        @onclick="ToggleThemeAsync"
+        title="@GetTitle()"
+        aria-label="@GetTitle()">
+    @if (ShowIcon)
+    {
+        <span class="sgc-theme-icon">@GetIcon()</span>
+    }
+    @if (ShowText)
+    {
+        <span class="sgc-theme-text">@GetText()</span>
+    }
+</button>
+
+@code {
+    /// <summary>
+    /// Gets or sets whether to show the theme icon. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowIcon { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to show the theme text. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowText { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS class names.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the theme changes.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnThemeChanged { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ThemeService.InitializeAsync();
+        ThemeService.ThemeChanged += HandleThemeChanged;
+    }
+
+    private async Task ToggleThemeAsync()
+    {
+        await ThemeService.ToggleThemeAsync();
+        if (OnThemeChanged.HasDelegate)
+        {
+            await OnThemeChanged.InvokeAsync(ThemeService.CurrentTheme);
+        }
+    }
+
+    private void HandleThemeChanged(string theme)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetIcon()
+    {
+        return ThemeService.CurrentTheme switch
+        {
+            "dark" => "🌙",
+            "light" => "☀️",
+            _ => "🌓"
+        };
+    }
+
+    private string GetText()
+    {
+        return ThemeService.CurrentTheme switch
+        {
+            "dark" => "Dark",
+            "light" => "Light",
+            _ => "Auto"
+        };
+    }
+
+    private string GetTitle()
+    {
+        return ThemeService.CurrentTheme switch
+        {
+            "dark" => "Switch to light mode",
+            "light" => "Switch to dark mode",
+            _ => "Toggle theme"
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+        await Task.CompletedTask;
+    }
+}

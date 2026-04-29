@@ -1,0 +1,162 @@
+@namespace SuperUI.Components
+
+<div class="sgc-activity-feed @CssClass">
+    @if (HeaderContent is not null || !string.IsNullOrWhiteSpace(Title))
+    {
+        <div class="sgc-activity-feed-header">
+            <div>
+                @if (HeaderContent is not null)
+                {
+                    @HeaderContent
+                }
+                else
+                {
+                    <div class="sgc-activity-feed-title">@Title</div>
+                    @if (!string.IsNullOrWhiteSpace(Subtitle))
+                    {
+                        <div class="sgc-activity-feed-subtitle">@Subtitle</div>
+                    }
+                }
+            </div>
+            @if (ActionsContent is not null)
+            {
+                <div class="sgc-activity-feed-actions">@ActionsContent</div>
+            }
+        </div>
+    }
+
+    @if (!Items.Any())
+    {
+        <div class="sgc-activity-feed-empty">@EmptyText</div>
+    }
+    else
+    {
+        <div class="sgc-activity-feed-list">
+            @if (Virtualize)
+            {
+                <SgVirtualList TItem="ActivityFeedItem" Items="Items" Height="@Height" ItemHeight="100">
+                    <ChildContent>
+                        @RenderItem(context)
+                    </ChildContent>
+                </SgVirtualList>
+            }
+            else if (GroupBy != null)
+            {
+                @foreach (var group in Items.GroupBy(GroupBy))
+                {
+                    <div class="sgc-activity-feed-group">
+                        <div class="sgc-activity-feed-group-title">@group.Key</div>
+                        @foreach (var item in group)
+                        {
+                            @RenderItem(item)
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                @foreach (var item in Items)
+                {
+                    @RenderItem(item)
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private RenderFragment RenderItem(ActivityFeedItem item) => @<div class="sgc-activity-feed-item">
+        <div class="sgc-activity-feed-marker">
+            <div class="sgc-activity-feed-dot" style="background:@item.AccentColor;">
+                @if (item.IconContent is not null)
+                {
+                    @item.IconContent
+                }
+            </div>
+            <div class="sgc-activity-feed-line"></div>
+        </div>
+        <div class="sgc-activity-feed-card">
+            <div class="sgc-activity-feed-row">
+                <div class="sgc-activity-feed-main">
+                    <div class="sgc-activity-feed-item-title">@item.Title</div>
+                    @if (!string.IsNullOrWhiteSpace(item.Description))
+                    {
+                        <div class="sgc-activity-feed-item-description">@item.Description</div>
+                    }
+                </div>
+                @if (!string.IsNullOrWhiteSpace(item.BadgeText))
+                {
+                    <SgBadge Text="@item.BadgeText" Variant="@item.BadgeVariant" />
+                }
+            </div>
+
+            <div class="sgc-activity-feed-meta">
+                @if (!string.IsNullOrWhiteSpace(item.User))
+                {
+                    <span>@item.User</span>
+                }
+                @if (!string.IsNullOrWhiteSpace(item.Time))
+                {
+                    <span>@item.Time</span>
+                }
+            </div>
+
+            @if (item.ExtraContent is not null)
+            {
+                <div class="sgc-activity-feed-extra">@item.ExtraContent</div>
+            }
+        </div>
+    </div>;
+
+    /// <summary>
+    /// Gets or sets the panel title text.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the subtitle text displayed below the title.
+    /// </summary>
+    [Parameter] public string? Subtitle { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of activity feed items to display.
+    /// </summary>
+    [Parameter] public IEnumerable<ActivityFeedItem> Items { get; set; } = Array.Empty<ActivityFeedItem>();
+    
+    /// <summary>
+    /// Gets or sets the text displayed when there are no items.
+    /// Default is "Событий пока нет.".
+    /// </summary>
+    [Parameter] public string EmptyText { get; set; } = "Событий пока нет.";
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to virtualize the feed.
+    /// </summary>
+    [Parameter] public bool Virtualize { get; set; }
+
+    /// <summary>
+    /// Gets or sets the height for virtualization.
+    /// </summary>
+    [Parameter] public string Height { get; set; } = "500px";
+
+    /// <summary>
+    /// Gets or sets a grouping selector (e.g. item => item.Time.Split(' ')[0] for date).
+    /// </summary>
+    [Parameter] public Func<ActivityFeedItem, string>? GroupBy { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom header content.
+    /// Takes precedence over <see cref="Title"/> and <see cref="Subtitle"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the action buttons content displayed in the header.
+    /// </summary>
+    [Parameter] public RenderFragment? ActionsContent { get; set; }
+}

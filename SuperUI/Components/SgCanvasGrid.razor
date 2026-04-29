@@ -1,0 +1,322 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+@using SuperUI.Localization
+@inject IJSRuntime JSRuntime
+@inject ISuperUILocalizer Localizer
+@typeparam TItem
+
+<div class="sg-canvas-grid-wrapper" style="width: @Width; height: @Height;">
+    @if (ShowToolbar)
+    {
+        <div class="sg-canvas-grid-toolbar">
+            <div class="sg-canvas-grid-search">
+                <input type="text" 
+                       class="sg-textbox" 
+                       placeholder="@Locale.Search" 
+                       value="@_filterText"
+                       @oninput="OnSearchInput" />
+            </div>
+            
+            @foreach (var property in _groupBy)
+            {
+                var col = _effectiveColumns.FirstOrDefault(c => c.Property == property);
+                if (col == null) continue;
+                <div class="sg-chip sg-group-chip" style="margin-left: 8px;">
+                    <span>@Locale.Group: @col.Title</span>
+                    <button class="sg-chip-x" title="@Locale.RemoveGroup" @onclick="() => ToggleGroupBy(property)">&times;</button>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(_sortProperty))
+            {
+                var col = _effectiveColumns.FirstOrDefault(c => c.Property == _sortProperty);
+                if (col != null)
+                {
+                    <div class="sg-chip sg-sort-chip" style="margin-left: 8px;">
+                        <span>@(_sortDescending ? "▼" : "▲") @col.Title</span>
+                        <button class="sg-chip-x" title="@Locale.Clear" @onclick="ClearSort">&times;</button>
+                    </div>
+                }
+            }
+
+            <div style="margin-left: auto; display: flex; gap: 8px; align-items: center;">
+                @if (_columnFiltersValues.Any() || _conditionFilters.Any() || !string.IsNullOrEmpty(_filterText))
+                {
+                    <SgButton Text="@Locale.ResetFilters" Size="sm" Variant="ghost" OnClick="ResetAll" />
+                }
+                
+                @if (ShowColumnChooser)
+                {
+                    <SgButton Size="sm" Variant="ghost" OnClick="ToggleColumnChooser" title="@Locale.Columns">
+                        <Icon><i class="sui-icon sui-icon-settings"></i></Icon>
+                    </SgButton>
+                }
+
+                @if (ShowExport)
+                {
+                    <div class="sg-dropdown">
+                        <SgButton Size="sm" Variant="ghost" OnClick="ToggleExportMenu" title="@Locale.Export">
+                            <Icon><i class="sui-icon sui-icon-download"></i></Icon>
+                        </SgButton>
+                        @if (_showExportMenu)
+                        {
+                            <div class="sg-dropdown-menu sg-dropdown-menu-right show">
+                                <div class="sg-dropdown-item" @onclick="() => ExportToCsvAsync()">@Locale.ExportCsv</div>
+                                <div class="sg-dropdown-item" @onclick="() => ExportExcelAsync()">@Locale.ExportExcel</div>
+                                <div class="sg-dropdown-item" @onclick="() => ExportToImageAsync()">@Localizer["ExportPNG"]</div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    
+    @if (_showColumnChooser)
+    {
+        <div class="sgc-context-menu-overlay" @onclick="ToggleColumnChooser"></div>
+        <div class="sgc-context-menu" style="right: 12px; top: 45px; padding: 12px; width: 220px; z-index: 100;">
+            <div style="font-weight: 600; margin-bottom: 8px; font-size: 13px;">@Locale.ShowColumns</div>
+            <div style="max-height: 300px; overflow-y: auto;">
+                @foreach (var col in Columns ?? new())
+                {
+                    <div style="display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer;" @onclick="() => ToggleColumnVisibility(col)">
+                        <input type="checkbox" checked="@(!col.Hidden)" readonly />
+                        <span style="font-size: 13px;">@col.Title</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    <div class="sg-canvas-grid-container" @ref="_container" style="width: 100%;">
+        <canvas @ref="_canvas" class="sg-canvas-grid"></canvas>
+        
+        @* Accessibility Fallback - Hidden but readable by screen readers *@
+        <div class="sg-canvas-grid-a11y-fallback" aria-hidden="true" style="position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0;">
+            <table role="grid">
+                <thead>
+                    <tr>
+                        @foreach (var col in _effectiveColumns)
+                        {
+                            <th scope="col">@col.Title</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (_processedItems != null)
+                    {
+                        @* Render only a subset of items for a11y to avoid bloating DOM *@
+                        @foreach (var item in _processedItems.Take(100))
+                        {
+                            <tr>
+                                @foreach (var col in _effectiveColumns)
+                                {
+                                    <td>@GetDisplay(item, col)</td>
+                                }
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="sg-canvas-grid-scroll-v" @ref="_scrollV" style="top: @(HeaderHeight)px;">
+            <div style="height: @(_totalItems * RowHeight)px; width: 1px;"></div>
+        </div>
+        <div class="sg-canvas-grid-scroll-h" @ref="_scrollH">
+            <div style="width: @(_totalWidth)px; height: 1px;"></div>
+        </div>
+
+        @if (_isLoading)
+        {
+            <div class="sg-canvas-grid-loading">
+                <div class="sg-canvas-grid-loading-inner">
+                    <div class="sg-canvas-spinner">
+                        <div class="sg-canvas-spinner-ring"></div>
+                    </div>
+                    <span class="sg-canvas-loading-text">@Localizer["Loading"]</span>
+                </div>
+            </div>
+        }
+
+        @if (_editingCell != null)
+        {
+            <div class="sg-canvas-grid-editor" style="left: @(_editingCell.Value.X)px; top: @(_editingCell.Value.Y)px; width: @(_editingCell.Value.Width)px; height: @(_editingCell.Value.Height)px;">
+                <input type="text" 
+                       value="@_editingValue" 
+                       @oninput="@(e => _editingValue = e.Value?.ToString() ?? "")"
+                       @onblur="EndEdit" 
+                       @onkeydown="OnEditorKeyDown"
+                       autofocus />
+            </div>
+        }
+
+        @if (_filterPopup != null)
+        {
+            <div class="sgc-context-menu-overlay" @onclick="CloseFilter"></div>
+            <div class="sgc-context-menu" style="left: @(_filterPopup.Value.X)px; top: @(_filterPopup.Value.Y)px; padding: 0; width: 280px; display: flex; flex-direction: column; max-height: 450px; overflow: hidden; background-color: var(--sui-bg-primary); z-index: 5001;">
+                <div style="padding: 10px 12px; border-bottom: 1px solid var(--sui-border-soft); font-weight: 600; display: flex; align-items: center; justify-content: space-between; background: var(--sui-bg-secondary);">
+                    <span>Фильтр: @(_effectiveColumns.FirstOrDefault(c => c.Property == _filterPopup.Value.Property)?.Title ?? _filterPopup.Value.Property)</span>
+                    <button class="sgc-modal-x" @onclick="CloseFilter">×</button>
+                </div>
+
+                <div style="padding: 4px 0; border-bottom: 1px solid var(--sui-border-soft);">
+                    <div class="sg-filter-item" @onclick="@(() => SetSort(_filterPopup.Value.Property, false))" style="padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                        <i class="sui-icon sui-icon-sort-ascending" style="color: var(--sui-muted); width: 14px;"></i> @Locale.Sort (А-Я)
+                    </div>
+                    <div class="sg-filter-item" @onclick="@(() => SetSort(_filterPopup.Value.Property, true))" style="padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                        <i class="sui-icon sui-icon-sort-descending" style="color: var(--sui-muted); width: 14px;"></i> @Locale.Sort (Я-А)
+                    </div>
+                    @if (_sortProperty == _filterPopup.Value.Property)
+                    {
+                        <div class="sg-filter-item" @onclick="ClearSort" style="padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                            <i class="sui-icon sui-icon-close" style="color: var(--sui-muted); width: 14px;"></i> @Locale.ResetSort
+                        </div>
+                    }
+                    <div style="height: 1px; background: var(--sui-border-soft); margin: 4px 0;"></div>
+                    <div class="sg-filter-item" @onclick="@(() => ToggleGroupBy(_filterPopup.Value.Property))" style="padding: 6px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; font-size: 13px;">
+                        <i class="sui-icon sui-icon-group" style="color: var(--sui-muted); width: 14px;"></i> @(_groupBy.Contains(_filterPopup.Value.Property) ? Locale.FilterUnGroupBy : Locale.FilterGroupBy)
+                    </div>
+                </div>
+
+                @{
+                    var tabStyle1 = !_showConditionFilter ? "border-bottom: 2px solid var(--sui-accent); color: var(--sui-accent);" : "color: var(--sui-muted);";
+                    var tabStyle2 = _showConditionFilter ? "border-bottom: 2px solid var(--sui-accent); color: var(--sui-accent);" : "color: var(--sui-muted);";
+                }
+                <div style="display: flex; border-bottom: 1px solid var(--sui-border-soft); background: var(--sui-bg-secondary);">
+                    <div @onclick="@(() => _showConditionFilter = false)" style="flex: 1; padding: 8px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 500; @tabStyle1">@Locale.FilterOrValues.Split(' ')[0]</div>
+                    <div @onclick="@(() => _showConditionFilter = true)" style="flex: 1; padding: 8px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 500; @tabStyle2">@Locale.FilterApply.Split(' ')[0]</div>
+                </div>
+                
+                @if (!_showConditionFilter)
+                {
+                    <div style="padding: 8px; border-bottom: 1px solid var(--sui-border-soft);">
+                        <input type="text" class="sg-textbox" placeholder="@Locale.Search" 
+                               @bind="_columnSearchText[_filterPopup.Value.Property]" 
+                               @bind:event="oninput"
+                               style="width: 100%; height: 32px;"
+                               @onclick:stopPropagation />
+                    </div>
+
+                    <div style="flex: 1; overflow-y: auto; padding: 4px 0; min-height: 120px; max-height: 250px; background: var(--sui-bg-primary);">
+                        <div class="sg-filter-item" @onclick="@(() => SelectAllFilterValues(_filterPopup.Value.Property))" style="padding: 4px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" checked="@(!_columnFiltersValues.ContainsKey(_filterPopup.Value.Property) || !_columnFiltersValues[_filterPopup.Value.Property].Any())" readonly />
+                            <span style="font-size: 13px;">@Locale.FilterAll</span>
+                        </div>
+                        
+                        @foreach (var option in _currentFilterOptions.Where(o => {
+                            var searchText = _columnSearchText.GetValueOrDefault(_filterPopup.Value.Property);
+                            return string.IsNullOrEmpty(searchText) || o.Contains(searchText, StringComparison.OrdinalIgnoreCase);
+                        }))
+                        {
+                            <div class="sg-filter-item" @onclick="@(() => ToggleFilterValue(_filterPopup.Value.Property, option))" style="padding: 4px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" checked="@IsFilterValueSelected(_filterPopup.Value.Property, option)" readonly />
+                                <span style="font-size: 13px;">@(string.IsNullOrEmpty(option) ? Locale.FilterEmpty : option)</span>
+                            </div>
+                        }
+                    </div>
+
+                    <div style="padding: 8px 12px; border-top: 1px solid var(--sui-border-soft); background: var(--sui-bg-secondary); display: flex; justify-content: flex-end; gap: 8px;">
+                        <SgButton Text="@Locale.FilterReset" Size="sm" Variant="ghost" OnClick="@(() => ClearFilter(_filterPopup.Value.Property))" />
+                        <div style="flex: 1;"></div>
+                        <SgButton Text="@Locale.FilterCancel" Size="sm" Variant="ghost" OnClick="CloseFilter" />
+                        <SgButton Text="@Locale.FilterOk" Size="sm" OnClick="ApplyCurrentFilter" />
+                    </div>
+                }
+                else
+                {
+                    <div style="flex: 1; overflow-y: auto; padding: 12px; min-height: 150px; max-height: 300px;">
+                        @for (var i = 0; i < _pendingRules.Count; i++)
+                        {
+                            var idx = i;
+                            <div style="display: flex; gap: 4px; margin-bottom: 8px; align-items: center;">
+                                <select class="sg-select" style="flex: 1; height: 32px; font-size: 12px;" 
+                                        value="@_pendingRules[idx].Condition"
+                                        @onchange="@(e => _pendingRules[idx] = _pendingRules[idx] with { Condition = Enum.Parse<FilterCondition>(e.Value?.ToString() ?? "Contains") })">
+                                    <option value="@FilterCondition.Contains">@Locale.FilterContains</option>
+                                    <option value="@FilterCondition.NotContains">@Locale.FilterNotContains</option>
+                                    <option value="@FilterCondition.Equals">@Locale.FilterEquals</option>
+                                    <option value="@FilterCondition.NotEquals">@Locale.FilterNotEquals</option>
+                                    <option value="@FilterCondition.StartsWith">@Locale.FilterStartsWith</option>
+                                    <option value="@FilterCondition.EndsWith">@Locale.FilterEndsWith</option>
+                                    @if (IsNumericColumn(_filterPopup.Value.Property))
+                                    {
+                                        <option value="@FilterCondition.GreaterThan">@Locale.FilterGreaterThan</option>
+                                        <option value="@FilterCondition.LessThan">@Locale.FilterLessThan</option>
+                                        <option value="@FilterCondition.GreaterOrEqual">@Locale.FilterGreaterOrEqual</option>
+                                        <option value="@FilterCondition.LessOrEqual">@Locale.FilterLessOrEqual</option>
+                                    }
+                                    <option value="@FilterCondition.IsEmpty">@Locale.FilterIsEmpty</option>
+                                    <option value="@FilterCondition.IsNotEmpty">@Locale.FilterIsNotEmpty</option>
+                                </select>
+                                
+                                @if (_pendingRules[idx].Condition != FilterCondition.IsEmpty && _pendingRules[idx].Condition != FilterCondition.IsNotEmpty)
+                                {
+                                    <input type="text" class="sg-textbox" style="flex: 1; height: 32px; font-size: 12px;" 
+                                           placeholder="@Locale.FilterValue"
+                                           value="@_pendingRules[idx].Value"
+                                           @oninput="@(e => _pendingRules[idx] = _pendingRules[idx] with { Value = e.Value?.ToString() })" />
+                                }
+
+                                <SgButton Size="sm" Variant="ghost" OnClick="@(() => RemovePendingRule(idx))" style="padding: 0 4px;">
+                                    <Icon><i class="sui-icon sui-icon-close"></i></Icon>
+                                </SgButton>
+                            </div>
+
+                            @if (idx < _pendingRules.Count - 1)
+                            {
+                                <div style="display: flex; justify-content: center; margin-bottom: 8px;">
+                                    <div class="sg-btn-group">
+                                        <button class="sg-btn sg-btn-sm @(_pendingRulesAnd ? "sg-btn-primary" : "sg-btn-ghost")" @onclick="@(() => _pendingRulesAnd = true)" style="font-size: 10px; padding: 2px 8px;">@Locale.FilterAnd</button>
+                                        <button class="sg-btn sg-btn-sm @(!_pendingRulesAnd ? "sg-btn-primary" : "sg-btn-ghost")" @onclick="@(() => _pendingRulesAnd = false)" style="font-size: 10px; padding: 2px 8px;">@Locale.FilterOr</button>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        
+                        <SgButton Text="@Locale.FilterAddCondition" Size="sm" Variant="ghost" OnClick="AddPendingRule" style="width: 100%; margin-top: 4px;" />
+                        
+                        <div style="margin-top: 12px;">
+                            <SgButton Text="@Locale.FilterApply" Size="sm" OnClick="ApplyConditionFilter" style="width: 100%;" />
+                        </div>
+                    </div>
+
+                    <div style="padding: 8px 12px; border-top: 1px solid var(--sui-border-soft); background: var(--sui-bg-secondary); display: flex; justify-content: flex-end; gap: 8px;">
+                        <SgButton Text="@Locale.FilterReset" Size="sm" Variant="ghost" OnClick="@(() => ClearFilter(_filterPopup.Value.Property))" />
+                        <div style="flex: 1;"></div>
+                        <SgButton Text="@Locale.FilterCancel" Size="sm" Variant="ghost" OnClick="CloseFilter" />
+                        <SgButton Text="@Locale.FilterOk" Size="sm" OnClick="ApplyConditionFilter" />
+                    </div>
+                }
+            </div>
+        }
+    </div>
+    @if (ShowStatus)
+    {
+        <div class="sg-canvas-grid-status" style="border-top: 1px solid var(--sui-border-soft); background: var(--sui-bg-secondary); padding: 4px 12px; font-size: 11px;">
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <span>@Locale.RowsFrom: <strong>@(_processedItems?.Count ?? 0)</strong></span>
+
+                @if (_selectedItems.Count > 0)
+                {
+                    <span>@Locale.Selected: <strong>@_selectedItems.Count</strong></span>
+                }
+            </div>
+
+            @if (_aggregates.Any())
+            {
+                <div style="margin-left: auto; display: flex; gap: 16px; align-items: center;">
+                    @foreach (var agg in _aggregates)
+                    {
+                        <div class="sg-agg-item">
+                            <span style="color: var(--sui-muted); margin-right: 4px;">@(_effectiveColumns.FirstOrDefault(c => c.Property == agg.Key)?.Title):</span>
+                            <strong>@agg.Value</strong>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>

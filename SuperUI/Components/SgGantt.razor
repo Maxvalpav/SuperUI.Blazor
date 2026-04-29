@@ -1,0 +1,603 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-gantt-container @CssClass">
+    <div class="sgc-gantt-toolbar">
+        <div class="sgc-gantt-toolbar-group">
+            <SgButton Text="@Localizer["NewTask"]" Size="sm" OnClick="OnAddTask">
+                <Icon>+</Icon>
+            </SgButton>
+            <SgButton Text="Рассчитать крит. путь" Size="sm" OnClick="CalculateCriticalPath" Variant="ghost" />
+        </div>
+        <div class="sgc-gantt-toolbar-group">
+            <SgButton Size="sm" OnClick="() => ZoomAsync(-4)" Disabled="@(DayWidth <= 12)">
+                <Icon>−</Icon>
+            </SgButton>
+            <span class="sgc-gantt-zoom-label">@Localizer["Scale"]</span>
+            <SgButton Size="sm" OnClick="() => ZoomAsync(4)" Disabled="@(DayWidth >= 64)">
+                <Icon>+</Icon>
+            </SgButton>
+        </div>
+    </div>
+
+    <div class="sgc-gantt" @onpointermove="OnPointerMoveAsync" @onpointerup="OnPointerUpAsync" @onpointerleave="OnPointerUpAsync">
+        <div class="sgc-gantt-scroll-container">
+            <div class="sgc-gantt-header">
+                <div class="sgc-gantt-sidebar-header">@Localizer["Tasks"]</div>
+                <div class="sgc-gantt-timeline-header" style="width: @(TimelineWidth)px; min-width: @(TimelineWidth)px;">
+                    <div class="sgc-gantt-months">
+                        @foreach (var month in _months)
+                        {
+                            <div class="sgc-gantt-month" style="width: @(month.Days * DayWidth)px">
+                                @month.Name
+                            </div>
+                        }
+                    </div>
+                    <div class="sgc-gantt-days">
+                        @for (int i = 0; i < _totalDays; i++)
+                        {
+                            <div class="sgc-gantt-day" style="width: @(DayWidth)px">
+                                @(_startDate.AddDays(i).Day)
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sgc-gantt-body">
+                <div class="sgc-gantt-sidebar">
+                    @{
+                        var rootTasks = Tasks.Where(t => string.IsNullOrEmpty(t.ParentId)).ToList();
+                        foreach (var task in rootTasks)
+                        {
+                            @RenderTaskSidebar(task, 0)
+                        }
+                    }
+                </div>
+                <div class="sgc-gantt-timeline" style="width: @(TimelineWidth)px; min-width: @(TimelineWidth)px;">
+                    <div class="sgc-gantt-grid" style="width: @(TimelineWidth)px;">
+                        @for (int i = 0; i < _totalDays; i++)
+                        {
+                            <div class="sgc-gantt-grid-col @(IsWeekend(_startDate.AddDays(i)) ? "sgc-weekend" : "")" 
+                                 style="width: @(DayWidth)px"></div>
+                        }
+                        @{
+                            var todayLeft = GetTodayLeft();
+                            if (todayLeft >= 0 && todayLeft <= _totalDays * DayWidth)
+                            {
+                                <div class="sgc-gantt-today-line" style="left: @(todayLeft)px">
+                                    <div class="sgc-gantt-today-label">@Localizer["Today"]</div>
+                                </div>
+                            }
+                        }
+                    </div>
+                    <div class="sgc-gantt-tasks" style="width: @(TimelineWidth)px; min-width: @(TimelineWidth)px;">
+                        <svg class="sgc-gantt-dependencies" viewBox="0 0 @TimelineWidth @(Math.Max(GetVisibleTasks().Count * 36, 36))" preserveAspectRatio="none">
+                            @foreach (var task in Tasks.Where(t => IsVisible(t)))
+                            {
+                                foreach (var depId in task.Dependencies)
+                                {
+                                    var depTask = Tasks.FirstOrDefault(t => t.Id == depId);
+                                    if (depTask != null && IsVisible(depTask))
+                                    {
+                                        var fromX = GetDependencyEndX(depTask);
+                                        var fromY = GetVisibleTaskIndex(depTask) * 36 + 18;
+                                        var toX = GetTaskLeft(task);
+                                        var toY = GetVisibleTaskIndex(task) * 36 + 18;
+
+                                        <path d="M @fromX @fromY L @(fromX + 10) @fromY L @(fromX + 10) @toY L @toX @toY" 
+                                              fill="none" stroke="var(--sui-border-strong)" stroke-width="1.5" />
+                                        <path d="M @toX @toY L @(toX - 4) @(toY - 3) L @(toX - 4) @(toY + 3) Z" 
+                                              fill="var(--sui-border-strong)" />
+                                    }
+                                }
+                            }
+                        </svg>
+
+                        @foreach (var task in Tasks.Where(t => IsVisible(t)))
+                        {
+                            var left = GetTaskLeft(task);
+                            var width = GetTaskWidth(task);
+                            var taskBarColor = task.Color ?? "var(--sui-accent)";
+                            
+                            <div class="sgc-gantt-task-row @(_hoveredTaskId == task.Id ? "sgc-hovered" : "") @(task.IsCritical ? "sgc-critical" : "")"
+                                 @onpointerenter="() => _hoveredTaskId = task.Id"
+                                 @onpointerleave="() => _hoveredTaskId = null">
+                                
+                                @* Baseline Bar *@
+                                @if (task.BaselineStart.HasValue && task.BaselineEnd.HasValue)
+                                {
+                                    var bLeft = (task.BaselineStart.Value.Date - _startDate).TotalDays * DayWidth;
+                                    var bWidth = Math.Max(1, (task.BaselineEnd.Value.Date - task.BaselineStart.Value.Date).TotalDays + 1) * DayWidth;
+                                    <div class="sgc-gantt-baseline-bar" style="left: @(bLeft)px; width: @(bWidth)px;"></div>
+                                }
+
+                                <div class="sgc-gantt-task-bar @(task.IsMilestone ? "sgc-gantt-milestone" : null) @(_draggingTask == task ? "sgc-dragging" : "")" 
+                                     style="left: @(left)px; width: @(width)px; background-color: @taskBarColor"
+                                     @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.Move))">
+                                    @if (!task.IsMilestone)
+                                    {
+                                        <div class="sgc-gantt-resize-handle sgc-left" 
+                                             @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeStart))"
+                                             @onpointerdown:stopPropagation="true"></div>
+
+                                        <div class="sgc-gantt-task-progress" style="width: @(task.Progress * 100)%"></div>
+                                        <span class="sgc-gantt-task-label">@((task.Progress * 100).ToString("0"))%</span>
+
+                                        <div class="sgc-gantt-resize-handle sgc-right" 
+                                             @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeEnd))"
+                                             @onpointerdown:stopPropagation="true"></div>
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-gantt-milestone-label">◆</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<SgModal @bind-Visible="_editModalVisible" Title="@(_isNewTask ? Localizer["AddTask"] : Localizer["EditTask"])" Width="400px">
+    <ChildContent>
+        @if (_editingTask != null)
+        {
+            <div style="display:flex; flex-direction:column; gap:12px; padding: 4px;">
+                <SgTextBox Label="@Localizer["TaskName"]" @bind-Value="_editingTask.Name" />
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                    <SgDatePicker Label="@Localizer["Start"]" Value="_editingTask.Start" ValueChanged="@(v => _editingTask.Start = v ?? DateTime.Today)" />
+                    <SgDatePicker Label="@Localizer["End"]" Value="_editingTask.End" ValueChanged="@(v => _editingTask.End = v ?? DateTime.Today)" />
+                </div>
+                <SgNumberEdit TValue="double" Label="@Localizer["Progress"]" Value="_editingTask.Progress" ValueChanged="@(v => _editingTask.Progress = v ?? 0)" Step="0.1" Min="0" Max="1" />
+                <SgColorPicker Label="@Localizer["TaskColor"]" @bind-Value="_editingTask.Color" />
+                <SgCheckBox Label="@Localizer["Milestone"]" Value="_editingTask.IsMilestone" ValueChanged="@(v => _editingTask.IsMilestone = v)" />
+                
+                <SgSelect TValue="string" Label="@Localizer["ParentTask"]" 
+                          Items="@Tasks.Where(t => t.Id != _editingTask.Id).Select(t => t.Id).ToList()"
+                          LabelSelector="@(id => Tasks.FirstOrDefault(t => t.Id == id)?.Name ?? "")"
+                          Value="@(_editingTask.ParentId)"
+                          ValueChanged="@(id => _editingTask.ParentId = id)"
+                          Placeholder="@Localizer["SelectParent"]" AllowClear="true" />
+
+                <SgSelect TValue="string" Label="@Localizer["DependsOn"]" 
+                          Items="@Tasks.Where(t => t.Id != _editingTask.Id).Select(t => t.Id).ToList()"
+                          LabelSelector="@(id => Tasks.FirstOrDefault(t => t.Id == id)?.Name ?? "")"
+                          Value="@(_editingTask.Dependencies.FirstOrDefault())"
+                          ValueChanged="@(id => { _editingTask.Dependencies.Clear(); if (!string.IsNullOrEmpty(id)) _editingTask.Dependencies.Add(id); })"
+                          Placeholder="@Localizer["SelectTask"]" AllowClear="true" />
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="@Localizer["Cancel"]" OnClick="@(() => _editModalVisible = false)" />
+        <SgButton Text="@Localizer["Save"]" Variant="primary" OnClick="SaveTask" />
+    </FooterContent>
+</SgModal>
+
+@code {
+    [Parameter] public List<SgGanttTask> Tasks { get; set; } = new();
+    [Parameter] public int DayWidth { get; set; } = 24;
+    [Parameter] public EventCallback<List<SgGanttTask>> TasksChanged { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    private DateTime _startDate;
+    private DateTime _endDate;
+    private int _totalDays;
+    private List<(string Name, int Days)> _months = new();
+    private int TimelineWidth => _totalDays * DayWidth;
+
+    // Interaction state
+    private SgGanttTask? _draggingTask;
+    private GanttInteractType _interactType;
+    private double _startPointerX;
+    private DateTime _originalStart;
+    private DateTime _originalEnd;
+    private string? _hoveredTaskId;
+
+    // Edit state
+    private bool _editModalVisible;
+    private SgGanttTask? _editingTask;
+    private SgGanttTask? _targetTask;
+    private bool _isNewTask;
+
+    private enum GanttInteractType { Move, ResizeStart, ResizeEnd }
+
+    private readonly Dictionary<string, (double Left, double Width)> _posCache = new();
+
+    protected override void OnParametersSet()
+    {
+        _posCache.Clear();
+        CalculateTimeline();
+    }
+
+    private void CalculateCriticalPath()
+    {
+        // Simple critical path calculation (tasks with no slack)
+        // Reset
+        foreach (var t in Tasks) t.IsCritical = false;
+
+        if (!Tasks.Any()) return;
+
+        // Find end date of project
+        var projectEnd = Tasks.Max(t => t.End);
+        
+        // Mark tasks that end at project end and have no dependents
+        var endTasks = Tasks.Where(t => t.End == projectEnd).ToList();
+        foreach (var t in endTasks)
+        {
+            MarkCriticalRecursive(t);
+        }
+
+        StateHasChanged();
+    }
+
+    private void MarkCriticalRecursive(SgGanttTask task)
+    {
+        task.IsCritical = true;
+        
+        // Find tasks that this task depends on, which end when this task starts
+        var predecessors = Tasks.Where(t => task.Dependencies.Contains(t.Id) && t.End >= task.Start.AddDays(-1)).ToList();
+        foreach (var p in predecessors)
+        {
+            MarkCriticalRecursive(p);
+        }
+    }
+
+    private void CalculateTimeline()
+    {
+        if (!Tasks.Any())
+        {
+            _startDate = DateTime.Today;
+            _endDate = DateTime.Today.AddDays(30);
+        }
+        else
+        {
+            _startDate = Tasks.Min(t => t.Start).Date.AddDays(-5);
+            _endDate = Tasks.Max(t => t.End).Date.AddDays(10);
+            
+            if (Tasks.Any(t => t.BaselineStart.HasValue))
+            {
+                var minB = Tasks.Where(t => t.BaselineStart.HasValue).Min(t => t.BaselineStart!.Value).Date.AddDays(-5);
+                if (minB < _startDate) _startDate = minB;
+            }
+            if (Tasks.Any(t => t.BaselineEnd.HasValue))
+            {
+                var maxB = Tasks.Where(t => t.BaselineEnd.HasValue).Max(t => t.BaselineEnd!.Value).Date.AddDays(10);
+                if (maxB > _endDate) _endDate = maxB;
+            }
+        }
+
+        _startDate = new DateTime(_startDate.Year, _startDate.Month, 1);
+        _endDate = _endDate.Date;
+        _totalDays = Math.Max(1, (int)(_endDate - _startDate).TotalDays + 1);
+        CalculateMonths();
+    }
+
+    private void CalculateMonths()
+    {
+        _months.Clear();
+        var current = _startDate;
+        while (current <= _endDate)
+        {
+            var monthStart = new DateTime(current.Year, current.Month, 1);
+            var monthEnd = monthStart.AddMonths(1).AddDays(-1);
+            var visibleStart = current > monthStart ? current : monthStart;
+            var visibleEnd = _endDate < monthEnd ? _endDate : monthEnd;
+            var days = (int)(visibleEnd - visibleStart).TotalDays + 1;
+
+            _months.Add((monthStart.ToString("MMMM yyyy"), days));
+            current = monthEnd.AddDays(1);
+        }
+    }
+
+    private async Task ZoomAsync(int delta)
+    {
+        DayWidth = Math.Clamp(DayWidth + delta, 12, 64);
+        _posCache.Clear();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnTaskPointerDown(PointerEventArgs e, SgGanttTask task, GanttInteractType type)
+    {
+        _draggingTask = task;
+        _interactType = type;
+        _startPointerX = e.ClientX;
+        _originalStart = task.Start;
+        _originalEnd = task.End;
+        _posCache.Remove(task.Id);
+    }
+
+    private async Task OnPointerMoveAsync(PointerEventArgs e)
+    {
+        if (_draggingTask == null) return;
+
+        var deltaX = e.ClientX - _startPointerX;
+        var deltaDays = (int)Math.Round(deltaX / DayWidth);
+
+        if (deltaDays == 0) return;
+
+        if (_interactType == GanttInteractType.Move)
+        {
+            var diff = TimeSpan.FromDays(deltaDays);
+            MoveTaskWithDependencies(_draggingTask, _originalStart.Add(diff), _originalEnd.Add(diff));
+        }
+        else if (_interactType == GanttInteractType.ResizeStart)
+        {
+            var newStart = _originalStart.AddDays(deltaDays);
+            if (newStart <= _draggingTask.End.Date) 
+            {
+                _draggingTask.Start = newStart;
+            }
+        }
+        else if (_interactType == GanttInteractType.ResizeEnd)
+        {
+            var newEnd = _originalEnd.AddDays(deltaDays);
+            if (newEnd >= _draggingTask.Start.Date) 
+            {
+                _draggingTask.End = newEnd;
+            }
+        }
+        
+        _posCache.Remove(_draggingTask.Id);
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private void MoveTaskWithDependencies(SgGanttTask task, DateTime newStart, DateTime newEnd)
+    {
+        var delta = newStart - task.Start;
+        task.Start = newStart;
+        task.End = newEnd;
+        _posCache.Remove(task.Id);
+
+        // Находим все задачи, которые зависят от этой
+        var dependents = Tasks.Where(t => t.Dependencies.Contains(task.Id)).ToList();
+        foreach (var dep in dependents)
+        {
+            MoveTaskWithDependencies(dep, dep.Start.Add(delta), dep.End.Add(delta));
+        }
+    }
+
+    private void OnPointerUpAsync(PointerEventArgs e)
+    {
+        if (_draggingTask != null)
+        {
+            _posCache.Remove(_draggingTask.Id);
+            _draggingTask = null;
+            CalculateTimeline();
+        }
+    }
+
+    private void OnAddTask()
+    {
+        _isNewTask = true;
+        _editingTask = new SgGanttTask 
+        { 
+            Id = Guid.NewGuid().ToString(),
+            Start = DateTime.Today, 
+            End = DateTime.Today.AddDays(3), 
+            Name = Localizer["NewTask"],
+            Color = "#2196f3"
+        };
+        _editModalVisible = true;
+    }
+
+    private void OnEditTask(SgGanttTask task)
+    {
+        _isNewTask = false;
+        _targetTask = task;
+        _editingTask = new SgGanttTask 
+        { 
+            Id = task.Id, 
+            Name = task.Name, 
+            Start = task.Start, 
+            End = task.End, 
+            IsMilestone = task.IsMilestone,
+            Progress = task.Progress, 
+            Color = task.Color,
+            ParentId = task.ParentId,
+            Dependencies = new List<string>(task.Dependencies),
+            BaselineStart = task.BaselineStart,
+            BaselineEnd = task.BaselineEnd
+        };
+        _editModalVisible = true;
+    }
+
+    private async Task OnDeleteTask(SgGanttTask task)
+    {
+        Tasks.Remove(task);
+        _posCache.Remove(task.Id);
+        
+        // Удаляем зависимости от этой задачи у других задач
+        foreach (var t in Tasks)
+        {
+            t.Dependencies.Remove(task.Id);
+        }
+
+        CalculateTimeline();
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private async Task SaveTask()
+    {
+        if (_editingTask == null) return;
+
+        // Validation
+        if (_editingTask.End < _editingTask.Start)
+        {
+            _editingTask.End = _editingTask.Start;
+        }
+
+        if (_editingTask.IsMilestone)
+        {
+            _editingTask.End = _editingTask.Start;
+            _editingTask.Progress = 1;
+        }
+
+        if (_isNewTask)
+        {
+            if (string.IsNullOrEmpty(_editingTask.Id))
+            {
+                _editingTask.Id = Guid.NewGuid().ToString();
+            }
+            Tasks.Add(_editingTask);
+        }
+        else if (_targetTask != null)
+        {
+            _targetTask.Name = _editingTask.Name;
+            _targetTask.Start = _editingTask.Start;
+            _targetTask.End = _editingTask.End;
+            _targetTask.IsMilestone = _editingTask.IsMilestone;
+            _targetTask.Progress = _editingTask.Progress;
+            _targetTask.Color = _editingTask.Color;
+            _targetTask.ParentId = _editingTask.ParentId;
+            _targetTask.Dependencies = new List<string>(_editingTask.Dependencies);
+            _targetTask.BaselineStart = _editingTask.BaselineStart;
+            _targetTask.BaselineEnd = _editingTask.BaselineEnd;
+            _posCache.Remove(_targetTask.Id);
+        }
+
+        _editModalVisible = false;
+        CalculateTimeline();
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private bool IsWeekend(DateTime date) => date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
+
+    private bool IsTodayInRange(DateTime start, DateTime end) => DateTime.Today >= start.Date && DateTime.Today <= end.Date;
+
+    private double GetTodayLeft() => (DateTime.Today - _startDate).TotalDays * DayWidth;
+
+    private double GetTaskLeft(SgGanttTask task)
+    {
+        if (_posCache.TryGetValue(task.Id, out var pos)) return pos.Left;
+        
+        var val = task.IsMilestone
+            ? (task.Start - _startDate).TotalDays * DayWidth - 8
+            : (task.Start.Date - _startDate).TotalDays * DayWidth;
+            
+        UpdateCache(task.Id, left: val);
+        return val;
+    }
+
+    private double GetTaskWidth(SgGanttTask task)
+    {
+        if (task.IsMilestone) return 16;
+        if (_posCache.TryGetValue(task.Id, out var pos) && pos.Width > 0) return pos.Width;
+
+        var durationDays = Math.Max(1, (task.End.Date - task.Start.Date).TotalDays + 1);
+        var val = durationDays * DayWidth;
+        
+        UpdateCache(task.Id, width: val);
+        return val;
+    }
+
+    private void UpdateCache(string id, double? left = null, double? width = null)
+    {
+        if (_posCache.TryGetValue(id, out var pos))
+        {
+            _posCache[id] = (left ?? pos.Left, width ?? pos.Width);
+        }
+        else
+        {
+            _posCache[id] = (left ?? 0, width ?? 0);
+        }
+    }
+
+    private double GetDependencyEndX(SgGanttTask task)
+    {
+        if (task.IsMilestone)
+        {
+            return (task.End.Date - _startDate).TotalDays * DayWidth;
+        }
+
+        return GetTaskLeft(task) + GetTaskWidth(task);
+    }
+
+    private RenderFragment RenderTaskSidebar(SgGanttTask task, int level) => __builder => {
+        var children = Tasks.Where(t => t.ParentId == task.Id).ToList();
+        var hasChildren = children.Any();
+        
+        <div class="sgc-gantt-task-name @(_hoveredTaskId == task.Id ? "sgc-hovered" : "")" 
+             style="padding-left: @(level * 20 + 8)px"
+             @ondblclick="() => OnEditTask(task)"
+             @onpointerenter="() => _hoveredTaskId = task.Id"
+             @onpointerleave="() => _hoveredTaskId = null">
+            
+            @if (hasChildren)
+            {
+                <span class="sgc-gantt-expand-icon" @onclick="() => task.Expanded = !task.Expanded" @onclick:stopPropagation="true">
+                    @(task.Expanded ? "▼" : "▶")
+                </span>
+            }
+            else
+            {
+                <span class="sgc-gantt-expand-spacer"></span>
+            }
+
+            <span class="sgc-gantt-task-title">@task.Name</span>
+            @if (task.IsMilestone)
+            {
+                <span class="sgc-gantt-task-badge">Milestone</span>
+            }
+            <div class="sgc-gantt-task-actions">
+                <SgButton Variant="ghost" Size="sm" OnClick="() => OnEditTask(task)">
+                    <Icon>✎</Icon>
+                </SgButton>
+                <SgButton Variant="ghost" Size="sm" OnClick="() => OnDeleteTask(task)">
+                    <Icon>✕</Icon>
+                </SgButton>
+            </div>
+        </div>
+
+        if (hasChildren && task.Expanded)
+        {
+            foreach (var child in children)
+            {
+                @RenderTaskSidebar(child, level + 1)
+            }
+        }
+    };
+
+    private bool IsVisible(SgGanttTask task)
+    {
+        if (string.IsNullOrEmpty(task.ParentId)) return true;
+        var parent = Tasks.FirstOrDefault(t => t.Id == task.ParentId);
+        if (parent == null) return true;
+        return parent.Expanded && IsVisible(parent);
+    }
+
+    private int GetVisibleTaskIndex(SgGanttTask task)
+    {
+        var visibleTasks = GetVisibleTasks();
+        return visibleTasks.IndexOf(task);
+    }
+
+    private List<SgGanttTask> GetVisibleTasks()
+    {
+        var result = new List<SgGanttTask>();
+        var rootTasks = Tasks.Where(t => string.IsNullOrEmpty(t.ParentId)).ToList();
+        foreach (var task in rootTasks)
+        {
+            AddVisibleTaskRecursive(task, result);
+        }
+        return result;
+    }
+
+    private void AddVisibleTaskRecursive(SgGanttTask task, List<SgGanttTask> result)
+    {
+        result.Add(task);
+        if (task.Expanded)
+        {
+            var children = Tasks.Where(t => t.ParentId == task.Id).ToList();
+            foreach (var child in children)
+            {
+                AddVisibleTaskRecursive(child, result);
+            }
+        }
+    }
+}

@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="/" />
+    <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="SuperUI.Demo.styles.css" />
+    <link rel="stylesheet" href="_content/SuperUI/superui-theme.css" />
+    <link rel="stylesheet" href="_content/SuperUI/superui-components.css" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.1.0/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@1.1.1/dist/chartjs-chart-matrix.min.js"></script>
+    <style>
+        /* ── Splash — inline so it renders instantly ── */
+        *,*::before,*::after{box-sizing:border-box}
+        body{margin:0;padding:0;font-family:"Segoe UI",Tahoma,Arial,sans-serif}
+
+        .sui-splash{
+            position:fixed;inset:0;
+            background:#f0f4f8;
+            display:flex;align-items:center;justify-content:center;
+            z-index:9999;
+        }
+        .sui-splash.sui-splash-hide{
+            opacity:0;
+            transition:opacity .4s ease;
+            pointer-events:none;
+        }
+
+        /* dot grid */
+        .sui-splash-grid{
+            position:absolute;inset:0;
+            background-image:radial-gradient(circle,rgba(21,104,198,.12) 1px,transparent 1px);
+            background-size:28px 28px;
+            animation:sgrid 18s linear infinite;
+        }
+        @keyframes sgrid{to{background-position:28px 28px}}
+
+        /* ambient glow */
+        .sui-splash::before{
+            content:'';position:absolute;
+            width:500px;height:500px;border-radius:50%;
+            background:radial-gradient(circle,rgba(21,104,198,.12) 0%,transparent 70%);
+            animation:sglow 3s ease-in-out infinite;
+        }
+        @keyframes sglow{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.12);opacity:1}}
+
+        /* card */
+        .sui-splash-card{
+            position:relative;
+            background:rgba(255,255,255,.85);
+            border:1px solid rgba(21,104,198,.15);
+            border-radius:16px;
+            padding:48px 56px 40px;
+            display:flex;flex-direction:column;align-items:center;
+            min-width:340px;
+            backdrop-filter:blur(24px);
+            box-shadow:0 0 0 1px rgba(21,104,198,.12),0 24px 64px rgba(0,0,0,.08),inset 0 1px 0 rgba(255,255,255,.9);
+        }
+
+        /* rings */
+        .sui-splash-logo-wrap{
+            position:relative;width:96px;height:96px;
+            display:flex;align-items:center;justify-content:center;
+            margin-bottom:24px;
+        }
+        .sui-splash-ring{
+            position:absolute;border-radius:50%;
+            border:2px solid transparent;
+        }
+        .sui-splash-ring-1{
+            width:96px;height:96px;
+            border-top-color:#1568c6;
+            border-right-color:rgba(21,104,198,.25);
+            animation:sspin 1.4s linear infinite;
+        }
+        .sui-splash-ring-2{
+            width:74px;height:74px;
+            border-bottom-color:#4a9eff;
+            border-left-color:rgba(74,158,255,.25);
+            animation:sspin 1.0s linear infinite reverse;
+        }
+        .sui-splash-ring-3{
+            width:54px;height:54px;
+            border-top-color:rgba(21,104,198,.45);
+            animation:sspin 2.2s linear infinite;
+        }
+        @keyframes sspin{to{transform:rotate(360deg)}}
+
+        .sui-splash-logo-inner{
+            position:relative;
+            font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1;
+            user-select:none;
+        }
+        .sui-splash-logo-s{color:#4a9eff}
+        .sui-splash-logo-ui{color:#1a2332}
+
+        /* text */
+        .sui-splash-name{
+            font-size:22px;font-weight:700;color:#1a2332;
+            letter-spacing:1px;margin-bottom:6px;
+        }
+        .sui-splash-tagline{
+            font-size:12px;color:rgba(26,35,50,.45);
+            letter-spacing:.5px;margin-bottom:32px;
+        }
+
+        /* progress */
+        .sui-splash-progress-wrap{width:100%;margin-bottom:16px}
+        .sui-splash-progress-track{
+            width:100%;height:3px;
+            background:rgba(21,104,198,.12);
+            border-radius:2px;overflow:hidden;
+        }
+        .sui-splash-progress-fill{
+            height:100%;width:0%;
+            background:linear-gradient(90deg,#1568c6,#4a9eff);
+            border-radius:2px;
+            transition:width .2s ease-out;
+            position:relative;overflow:hidden;
+        }
+        .sui-splash-progress-glow{
+            position:absolute;top:0;right:0;bottom:0;width:60px;
+            background:linear-gradient(90deg,transparent,rgba(255,255,255,.65));
+            animation:sshimmer 1.3s ease-in-out infinite;
+        }
+        @keyframes sshimmer{
+            0%{opacity:0;transform:translateX(-60px)}
+            50%{opacity:1}
+            100%{opacity:0;transform:translateX(0)}
+        }
+
+        /* status */
+        .sui-splash-status{
+            display:flex;align-items:center;gap:8px;width:100%;
+        }
+        .sui-splash-dots{display:flex;gap:4px;align-items:center}
+        .sui-dot{
+            width:5px;height:5px;border-radius:50%;
+            background:#1568c6;
+            animation:sdot 1.2s ease-in-out infinite;
+        }
+        .sui-dot:nth-child(1){animation-delay:0s}
+        .sui-dot:nth-child(2){animation-delay:.2s}
+        .sui-dot:nth-child(3){animation-delay:.4s}
+        @keyframes sdot{
+            0%,80%,100%{transform:scale(.6);opacity:.35}
+            40%{transform:scale(1.1);opacity:1}
+        }
+        .sui-splash-phase{
+            font-size:11px;color:rgba(26,35,50,.45);
+            flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+        }
+        .sui-splash-pct{
+            font-size:11px;font-weight:600;color:#4a9eff;
+            min-width:32px;text-align:right;
+        }
+
+        /* error ui */
+        #blazor-error-ui{
+            display:none;position:fixed;bottom:0;left:0;right:0;
+            background:#c62828;color:#fff;
+            padding:10px 16px;font-size:13px;z-index:10000;
+            align-items:center;gap:12px;
+        }
+        #blazor-error-ui .reload{color:#fff;font-weight:600;text-decoration:underline}
+        #blazor-error-ui .dismiss{margin-left:auto;cursor:pointer;opacity:.8}
+        #blazor-error-ui .dismiss:hover{opacity:1}
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div class="sui-splash">
+            <div class="sui-splash-grid"></div>
+            <div class="sui-splash-card">
+                <div class="sui-splash-logo-wrap">
+                    <div class="sui-splash-ring sui-splash-ring-1"></div>
+                    <div class="sui-splash-ring sui-splash-ring-2"></div>
+                    <div class="sui-splash-ring sui-splash-ring-3"></div>
+                    <div class="sui-splash-logo-inner">
+                        <span class="sui-splash-logo-s">S</span><span class="sui-splash-logo-ui">UI</span>
+                    </div>
+                </div>
+                <div class="sui-splash-name">SuperUI</div>
+                <div class="sui-splash-tagline">Simple Blazor Components</div>
+                <div class="sui-splash-progress-wrap">
+                    <div class="sui-splash-progress-track">
+                        <div class="sui-splash-progress-fill" id="sui-progress-bar">
+                            <div class="sui-splash-progress-glow"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sui-splash-status">
+                    <div class="sui-splash-dots">
+                        <span class="sui-dot"></span>
+                        <span class="sui-dot"></span>
+                        <span class="sui-dot"></span>
+                    </div>
+                    <span class="sui-splash-phase" id="sui-phase-text">Инициализация</span>
+                    <span class="sui-splash-pct" id="sui-progress-text">0%</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui">
+        <span>Произошла ошибка при загрузке.</span>
+        <a href="." class="reload">Перезагрузить</a>
+        <span class="dismiss">✕</span>
+    </div>
+
+    <script>
+        var _suiPct = 0;
+        var _suiDone = false;
+        var _compileInterval = null;
+        var _loadTimeout = null;
+
+        function suiSetProgress(pct, phase) {
+            if (_suiDone) return;
+            _suiPct = Math.min(100, Math.max(_suiPct, pct));
+            var bar = document.getElementById('sui-progress-bar');
+            var txt = document.getElementById('sui-progress-text');
+            var ph  = document.getElementById('sui-phase-text');
+            if (bar) bar.style.width = _suiPct + '%';
+            if (txt) txt.textContent = Math.floor(_suiPct) + '%';
+            if (ph && phase) ph.textContent = phase;
+            console.log('[SuperUI] Progress:', Math.floor(_suiPct) + '%', phase);
+        }
+
+        // Intercept Blazor CSS variable to track real download progress
+        var _origSetProp = CSSStyleDeclaration.prototype.setProperty;
+        CSSStyleDeclaration.prototype.setProperty = function(name, value, priority) {
+            _origSetProp.call(this, name, value, priority);
+            if (name === '--blazor-load-percentage') {
+                var n = parseFloat(value);
+                if (!isNaN(n)) {
+                    if (n < 100) {
+                        suiSetProgress(n * 0.70, 'Загрузка...');
+                    } else {
+                        if (_compileInterval) return;
+                        suiSetProgress(70, 'Загрузка...');
+                        var step = 0;
+                        _compileInterval = setInterval(function() {
+                            step++;
+                            var p = 70 + step * 1.5;
+                            if (p >= 98) { clearInterval(_compileInterval); p = 98; }
+                            suiSetProgress(p, 'Загрузка...');
+                        }, 180);
+                    }
+                }
+            }
+        };
+
+        // Detect first Blazor render via requestAnimationFrame
+        var _origRAF = window.requestAnimationFrame;
+        var _rafCount = 0;
+        window.requestAnimationFrame = function(cb) {
+            _rafCount++;
+            if (_rafCount > 8 && !_suiDone) {
+                suiFinishLoading();
+            }
+            return _origRAF.call(window, cb);
+        };
+
+        // Finish loading and hide splash screen
+        function suiFinishLoading() {
+            if (_suiDone) return;
+            if (_compileInterval) clearInterval(_compileInterval);
+            if (_loadTimeout) clearTimeout(_loadTimeout);
+            
+            suiSetProgress(100, 'Готово');
+            _suiDone = true;
+            
+            var splash = document.querySelector('.sui-splash');
+            if (splash) {
+                splash.classList.add('sui-splash-hide');
+                setTimeout(function() {
+                    splash.style.display = 'none';
+                }, 450);
+            }
+            window.requestAnimationFrame = _origRAF;
+        }
+
+        // Fallback: if loading takes too long, force finish
+        _loadTimeout = setTimeout(function() {
+            if (!_suiDone) {
+                console.warn('[SuperUI] Loading timeout - forcing finish');
+                suiSetProgress(100, 'Готово');
+                suiFinishLoading();
+            }
+        }, 30000); // 30 seconds timeout
+
+        // Handle Blazor errors
+        window.addEventListener('error', function(e) {
+            console.error('[SuperUI] Error:', e.message);
+            suiSetProgress(100, 'Ошибка загрузки');
+        });
+
+        // Log when Blazor starts
+        console.log('[SuperUI] Splash screen initialized');
+    </script>
+
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+</html>

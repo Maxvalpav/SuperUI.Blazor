@@ -1,0 +1,243 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-pop-wrap @CssClass" @ref="_root">
+    <div class="sgc-pop-trigger" @ref="_triggerRef" @onclick="ToggleAsync">
+        @if (TriggerContent is not null)
+        {
+            @TriggerContent
+        }
+        else
+        {
+            <SgButton Text="@ButtonText" Variant="@ButtonVariant" Size="@ButtonSize" />
+        }
+    </div>
+
+    @if (Open || _isClosing)
+    {
+        <div class="sgc-pop @(PlacementClass) @(ShowArrow ? "sgc-pop-arrow" : "") @(_isClosing ? "sgc-closing" : "")" 
+             role="@Role" 
+             aria-labelledby="@_titleId"
+             tabindex="-1"
+             @ref="_popoverRef"
+             @onclick:stopPropagation="true">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <div class="sgc-pop-header" id="@_titleId">@Title</div>
+            }
+            <div class="sgc-pop-body">
+                @ChildContent
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly string _titleId = "popover-title-" + Guid.NewGuid().ToString("N")[..8];
+    private ElementReference _root;
+    private ElementReference _triggerRef;
+    private ElementReference _popoverRef;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgPopover>? _self;
+    private bool _attached;
+    private bool _isDisposed;
+    private bool _isClosing;
+    private bool _previousOpen;
+
+    /// <summary>
+    /// Gets or sets whether the popover is currently open.
+    /// </summary>
+    [Parameter] public bool Open { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the open state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the placement of the popover relative to the trigger.
+    /// Supported values: "top", "top-start", "top-end", "bottom", "bottom-start", "bottom-end", 
+    /// "left", "left-start", "left-end", "right", "right-start", "right-end". Default is "bottom-start".
+    /// </summary>
+    [Parameter] public string Placement { get; set; } = "bottom-start";
+    
+    /// <summary>
+    /// Gets or sets the ARIA role attribute for the popover.
+    /// Default is "dialog".
+    /// </summary>
+    [Parameter] public string Role { get; set; } = "dialog";
+    
+    /// <summary>
+    /// Gets or sets the title text displayed in the popover header.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to display an arrow pointing to the trigger element.
+    /// </summary>
+    [Parameter] public bool ShowArrow { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the popover closes when clicking outside of it.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool CloseOnOutsideClick { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets whether the popover closes when pressing the Escape key.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool CloseOnEscape { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets the text for the default trigger button.
+    /// Only used when <see cref="TriggerContent"/> is not provided. Default is "Open".
+    /// </summary>
+    [Parameter] public string ButtonText { get; set; } = "Open";
+    
+    /// <summary>
+    /// Gets or sets the variant for the default trigger button.
+    /// Only used when <see cref="TriggerContent"/> is not provided. Default is "default".
+    /// </summary>
+    [Parameter] public string ButtonVariant { get; set; } = "default";
+    
+    /// <summary>
+    /// Gets or sets the size for the default trigger button.
+    /// Only used when <see cref="TriggerContent"/> is not provided. Default is "md".
+    /// </summary>
+    [Parameter] public string ButtonSize { get; set; } = "md";
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom trigger content.
+    /// When provided, replaces the default button trigger.
+    /// </summary>
+    [Parameter] public RenderFragment? TriggerContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the content to display inside the popover. Required.
+    /// </summary>
+    [Parameter, EditorRequired] public RenderFragment? ChildContent { get; set; }
+
+    private string PlacementClass => Placement switch
+    {
+        "top-start" => "sgc-pop-top-start",
+        "top-end" => "sgc-pop-top-end",
+        "top" => "sgc-pop-top",
+        "right-start" => "sgc-pop-right-start",
+        "right" => "sgc-pop-right",
+        "right-end" => "sgc-pop-right-end",
+        "left-start" => "sgc-pop-left-start",
+        "left" => "sgc-pop-left",
+        "left-end" => "sgc-pop-left-end",
+        "bottom" => "sgc-pop-bottom",
+        "bottom-end" => "sgc-pop-bottom-end",
+        _ => "sgc-pop-bottom-start"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed) return;
+
+        if (Open && !_previousOpen)
+        {
+            // Popover just opened - reset _attached flag and attach
+            _attached = false;
+            
+            try
+            {
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-popover.js");
+                if (_isDisposed) return;
+
+                _self ??= DotNetObjectReference.Create(this);
+                await _module.InvokeVoidAsync("attach", _root, _popoverRef, _triggerRef, _self, CloseOnOutsideClick, CloseOnEscape);
+                _attached = true;
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+        }
+        else if (!Open && _previousOpen)
+        {
+            // Popover just closed
+            if (_attached && _module is not null)
+            {
+                try 
+                { 
+                    await _module.InvokeVoidAsync("detach", _root);
+                }
+                catch (JSException) { }
+                catch (TaskCanceledException) { }
+                finally
+                {
+                    _attached = false;
+                }
+            }
+
+            // Wait for animation to finish (200ms in CSS)
+            await Task.Delay(200);
+            _isClosing = false;
+        }
+
+        _previousOpen = Open;
+    }
+
+    private async Task ToggleAsync()
+    {
+        await SetOpenAsync(!Open);
+    }
+
+    [JSInvokable]
+    public Task CloseFromJsAsync() => SetOpenAsync(false);
+
+    private async Task SetOpenAsync(bool value)
+    {
+        if (Open == value || _isDisposed) return;
+        
+        if (!value)
+        {
+            _isClosing = true;
+            StateHasChanged();
+        }
+        
+        Open = value;
+        if (OpenChanged.HasDelegate)
+        {
+            await OpenChanged.InvokeAsync(value);
+        }
+        if (!_isDisposed)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        if (_module is not null)
+        {
+            try
+            {
+                if (_attached)
+                {
+                    await _module.InvokeVoidAsync("detach", _root);
+                }
+
+                await _module.DisposeAsync();
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+}

@@ -1,0 +1,340 @@
+@namespace SuperUI.Components
+@typeparam TItem
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@using System.Text.Json
+
+<div class="sgc-saved-views @(string.IsNullOrWhiteSpace(CssClass) ? string.Empty : CssClass)">
+    @if (!string.IsNullOrWhiteSpace(Title) || !string.IsNullOrWhiteSpace(Subtitle))
+    {
+        <div class="sgc-sv-header">
+            <div>
+                @if (!string.IsNullOrWhiteSpace(Title))
+                {
+                    <div class="sgc-sv-title">@Title</div>
+                }
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <div class="sgc-sv-subtitle">@Subtitle</div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="sgc-sv-toolbar">
+        <input class="sgc-sv-input"
+               type="text"
+               placeholder="@Placeholder"
+               @bind="_newViewName"
+               @bind:event="oninput" />
+        <button type="button"
+                class="sgc-sv-btn sgc-sv-btn-primary"
+                @onclick="SaveCurrentAsync"
+                disabled="@(!CanSaveCurrent)">
+            Сохранить текущее
+        </button>
+        @if (ShowResetButton)
+        {
+            <button type="button"
+                    class="sgc-sv-btn"
+                    @onclick="ResetGridAsync"
+                    disabled="@(Grid is null)">
+                Сбросить grid
+            </button>
+        }
+    </div>
+
+    @if (_views.Count == 0)
+    {
+        <div class="sgc-sv-empty">
+            @EmptyText
+        </div>
+    }
+    else
+    {
+        <div class="sgc-sv-list">
+            @foreach (var view in _views.OrderByDescending(x => x.UpdatedAt))
+            {
+                <div class="sgc-sv-item @(view.Id == _selectedViewId ? "sgc-active" : string.Empty)" @key="view.Id">
+                    <button type="button"
+                            class="sgc-sv-item-main"
+                            @onclick="() => ApplyViewAsync(view)">
+                        <span class="sgc-sv-item-name">@view.Name</span>
+                        <span class="sgc-sv-item-meta">@FormatDate(view.UpdatedAt)</span>
+                    </button>
+                    <div class="sgc-sv-item-actions">
+                        <button type="button"
+                                class="sgc-sv-btn"
+                                @onclick="() => UpdateViewAsync(view)"
+                                disabled="@(Grid is null)">
+                            Обновить
+                        </button>
+                        <button type="button"
+                                class="sgc-sv-btn sgc-sv-btn-danger"
+                                @onclick="() => DeleteViewAsync(view)">
+                            Удалить
+                        </button>
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<SavedViewItem> _views = new();
+    private IJSObjectReference? _module;
+    private string _newViewName = string.Empty;
+    private string? _selectedViewId;
+    private string? _loadedStorageKey;
+    private IJSObjectReference? _storageListener;
+    private DotNetObjectReference<SgSavedViews<TItem>>? _self;
+
+    [Parameter] public SgDataGrid<TItem>? Grid { get; set; }
+    [Parameter] public string? StorageKey { get; set; }
+    [Parameter] public string? Title { get; set; } = "Сохраненные представления";
+    [Parameter] public string? Subtitle { get; set; } = "Именованные состояния грида для быстрого переключения";
+    [Parameter] public string Placeholder { get; set; } = "Название представления";
+    [Parameter] public string EmptyText { get; set; } = "Пока нет сохраненных представлений.";
+    [Parameter] public bool ShowResetButton { get; set; } = true;
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to automatically save the last used grid state.
+    /// </summary>
+    [Parameter] public bool AutosaveLastUsed { get; set; } = true;
+
+    /// <summary>
+    /// Callback invoked when a view is shared.
+    /// </summary>
+    [Parameter] public EventCallback<SavedViewItem> OnShareView { get; set; }
+
+    private bool CanSaveCurrent =>
+        Grid is not null && !string.IsNullOrWhiteSpace(_newViewName);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_module is null)
+        {
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui.js");
+            }
+            catch (JSException)
+            {
+                return;
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+        }
+
+        if (firstRender && _module != null)
+        {
+            _self = DotNetObjectReference.Create(this);
+            _storageListener = await _module.InvokeAsync<IJSObjectReference>("initStorageListener", _self);
+        }
+
+        if (_module is not null && !string.Equals(_loadedStorageKey, StorageKey, StringComparison.Ordinal))
+        {
+            await LoadViewsAsync();
+            _loadedStorageKey = StorageKey;
+            
+            if (AutosaveLastUsed && _views.Any(v => v.IsLastUsed))
+            {
+                var last = _views.First(v => v.IsLastUsed);
+                await ApplyViewAsync(last);
+            }
+            
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnStorageChangedFromJsAsync(string key, string? newValue)
+    {
+        if (key == StorageKey)
+        {
+            await LoadViewsAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SaveCurrentAsync()
+    {
+        if (Grid is null)
+            return;
+
+        var name = _newViewName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        var existing = _views.FirstOrDefault(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (existing is null)
+        {
+            existing = new SavedViewItem
+            {
+                Id = Guid.NewGuid().ToString("N"),
+                Name = name,
+                CreatedAt = DateTime.UtcNow
+            };
+            _views.Add(existing);
+        }
+
+        existing.Name = name;
+        existing.StateJson = Grid.ExportStateJson();
+        existing.UpdatedAt = DateTime.UtcNow;
+        existing.IsLastUsed = true;
+        
+        // Reset other last used
+        foreach(var v in _views.Where(x => x.Id != existing.Id)) v.IsLastUsed = false;
+
+        _selectedViewId = existing.Id;
+        _newViewName = string.Empty;
+
+        await PersistViewsAsync();
+    }
+
+    private async Task ApplyViewAsync(SavedViewItem view)
+    {
+        if (Grid is null)
+            return;
+
+        var applied = await Grid.ImportStateJsonAsync(view.StateJson);
+        if (!applied)
+            return;
+
+        _selectedViewId = view.Id;
+        
+        if (AutosaveLastUsed)
+        {
+            foreach(var v in _views) v.IsLastUsed = (v.Id == view.Id);
+        }
+        
+        await PersistViewsAsync();
+    }
+
+    private async Task UpdateViewAsync(SavedViewItem view)
+    {
+        if (Grid is null)
+            return;
+
+        view.StateJson = Grid.ExportStateJson();
+        view.UpdatedAt = DateTime.UtcNow;
+        _selectedViewId = view.Id;
+        await PersistViewsAsync();
+    }
+
+    private async Task DeleteViewAsync(SavedViewItem view)
+    {
+        _views.Remove(view);
+        if (_selectedViewId == view.Id)
+            _selectedViewId = _views.Count > 0 ? _views[^1].Id : null;
+
+        await PersistViewsAsync();
+    }
+
+    private async Task ResetGridAsync()
+    {
+        if (Grid is null)
+            return;
+
+        await Grid.ResetStateAsync();
+        _selectedViewId = null;
+        
+        if (AutosaveLastUsed)
+        {
+            foreach(var v in _views) v.IsLastUsed = false;
+        }
+
+        await PersistViewsAsync();
+    }
+
+    private async Task LoadViewsAsync()
+    {
+        _views.Clear();
+        _selectedViewId = null;
+
+        if (_module is null || string.IsNullOrWhiteSpace(StorageKey))
+            return;
+
+        try
+        {
+            var json = await _module.InvokeAsync<string?>("getLocalStorage", StorageKey);
+            if (string.IsNullOrWhiteSpace(json))
+                return;
+
+            var payload = JsonSerializer.Deserialize<SavedViewStore>(json);
+            if (payload is null)
+                return;
+
+            if (payload.Views is not null)
+                _views.AddRange(payload.Views.Where(x => !string.IsNullOrWhiteSpace(x.Name) && !string.IsNullOrWhiteSpace(x.StateJson)));
+
+            _selectedViewId = payload.SelectedViewId;
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+        catch (JsonException) { }
+    }
+
+    private async Task PersistViewsAsync()
+    {
+        if (_module is null || string.IsNullOrWhiteSpace(StorageKey))
+            return;
+
+        var payload = new SavedViewStore
+        {
+            SelectedViewId = _selectedViewId,
+            Views = _views.ToList()
+        };
+
+        try
+        {
+            var json = JsonSerializer.Serialize(payload);
+            await _module.InvokeVoidAsync("setLocalStorage", StorageKey, json);
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private static string FormatDate(DateTime value) =>
+        value == default
+            ? string.Empty
+            : value.ToLocalTime().ToString("dd.MM.yyyy HH:mm");
+
+    public async ValueTask DisposeAsync()
+    {
+        _self?.Dispose();
+        
+        if (_storageListener is not null)
+        {
+            try { await _storageListener.InvokeVoidAsync("dispose"); await _storageListener.DisposeAsync(); }
+            catch { }
+        }
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+        }
+    }
+
+    private sealed class SavedViewStore
+    {
+        public string? SelectedViewId { get; set; }
+        public List<SavedViewItem> Views { get; set; } = new();
+    }
+
+    public sealed class SavedViewItem
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string StateJson { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
+        public bool IsLastUsed { get; set; }
+    }
+}

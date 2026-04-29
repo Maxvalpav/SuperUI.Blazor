@@ -1,0 +1,123 @@
+@namespace SuperUI.Components
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+    <div class="sgc-tabs @CssClass">
+        <div class="sgc-tabs-strip" role="tablist">
+            @foreach (var t in _tabs)
+            {
+                var tLocal = t;
+                var isActive = _active == tLocal;
+                var tabId = "tab-" + _tabs.IndexOf(tLocal);
+                var panelId = "tabpanel-" + _tabs.IndexOf(tLocal);
+                <div class="sgc-tab @(isActive ? "sgc-active" : "")"
+                     role="tab"
+                     id="@tabId"
+                     aria-selected="@(isActive ? "true" : "false")"
+                     aria-controls="@panelId"
+                     tabindex="@(isActive ? "0" : "-1")"
+                     @onclick="() => ActivateAsync(tLocal)"
+                     @onkeydown="@(e => OnKeyDownAsync(e, tLocal))">
+                    @tLocal.Title
+                </div>
+            }
+        </div>
+        <div class="sgc-tabs-body">
+            @if (_active is not null)
+            {
+                var panelId = "tabpanel-" + _tabs.IndexOf(_active);
+                var tabId = "tab-" + _tabs.IndexOf(_active);
+                <div role="tabpanel" 
+                     id="@panelId" 
+                     aria-labelledby="@tabId"
+                     tabindex="0">
+                    @_active.ChildContent
+                </div>
+            }
+        </div>
+    </div>
+</CascadingValue>
+
+@code {
+    private readonly List<SgTabPanel> _tabs = new();
+    private SgTabPanel? _active;
+
+    /// <summary>
+    /// Gets or sets the child content containing <see cref="SgTabPanel"/> components.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the tabs container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the title of the currently active tab for two-way binding.
+    /// </summary>
+    [Parameter] public string? ActiveTitle { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the active tab changes.
+    /// </summary>
+    [Parameter] public EventCallback<string> ActiveTitleChanged { get; set; }
+
+    internal void Register(SgTabPanel panel)
+    {
+        if (_tabs.Contains(panel)) return;
+        _tabs.Add(panel);
+        if (_active is null || (ActiveTitle is not null && panel.Title == ActiveTitle))
+            _active = panel;
+        StateHasChanged();
+    }
+
+    internal void Unregister(SgTabPanel panel)
+    {
+        _tabs.Remove(panel);
+        if (_active == panel) _active = _tabs.FirstOrDefault();
+        StateHasChanged();
+    }
+
+    internal bool IsActive(SgTabPanel panel) => _active == panel;
+
+    private async Task ActivateAsync(SgTabPanel tab)
+    {
+        if (_active == tab) return;
+        _active = tab;
+        ActiveTitle = tab.Title;
+        if (ActiveTitleChanged.HasDelegate)
+        {
+            await ActiveTitleChanged.InvokeAsync(tab.Title);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e, SgTabPanel tab)
+    {
+        var index = _tabs.IndexOf(tab);
+        if (index < 0) return;
+
+        if (e.Key == "ArrowRight")
+        {
+            var next = (index + 1) % _tabs.Count;
+            await ActivateAsync(_tabs[next]);
+        }
+        else if (e.Key == "ArrowLeft")
+        {
+            var prev = (index - 1 + _tabs.Count) % _tabs.Count;
+            await ActivateAsync(_tabs[prev]);
+        }
+        else if (e.Key == "Home")
+        {
+            await ActivateAsync(_tabs[0]);
+        }
+        else if (e.Key == "End")
+        {
+            await ActivateAsync(_tabs[^1]);
+        }
+        else if (e.Key == "Enter" || e.Key == " ")
+        {
+            await ActivateAsync(tab);
+        }
+    }
+}

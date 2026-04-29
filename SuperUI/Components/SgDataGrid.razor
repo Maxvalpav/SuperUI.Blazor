@@ -1,0 +1,719 @@
+@typeparam TItem
+@using Microsoft.AspNetCore.Components.Web
+@using System.Runtime.CompilerServices
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+<CascadingValue Value="Locale" IsFixed="false">
+<div class="sg-root @(ShowColumnBorders ? "sg-col-borders" : "") @(_editModalVisible ? "sg-modal-open" : "") @CssClass" 
+     id="@_gridId" 
+     @ref="_gridRootRef" 
+     @onclick="CloseFilterMenuAsync" 
+     @onclick:stopPropagation="false"
+     @onkeydown="HandleKeyDownAsync"
+     tabindex="0"
+     style="outline: none;">
+    <div class="sg-toolbar">
+        @if (!string.IsNullOrEmpty(Title))
+        {
+            <div class="sg-title">@Title</div>
+        }
+        @foreach (var gk in GroupByKeys)
+        {
+            var gcol = GetColumnByKey(gk);
+            if (gcol is null) continue;
+            <div class="sg-chip sg-group-chip">
+                <span>@Locale.Group: @gcol.Title</span>
+                <button class="sg-chip-x" title="@Locale.RemoveGroup" @onclick="async () => await ToggleGroupByAsync(gk)">×</button>
+            </div>
+        }
+        @foreach (var sortRule in SortRules)
+        {
+            var scol = GetColumnByKey(sortRule.Key);
+            if (scol is null) continue;
+            <div class="sg-chip sg-sort-chip">
+                <span>@(sortRule.Dir == SortDirection.Ascending ? "▲" : "▼") @scol.Title</span>
+                <button class="sg-chip-x" title="@Locale.Clear" @onclick="async () => await RemoveSortAsync(sortRule.Key)">×</button>
+            </div>
+        }
+        <div class="sg-spacer"></div>
+        @if (ShowSearch)
+        {
+            <input class="sg-search"
+                   placeholder="@Locale.Search"
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        }
+        @if (CanCreateInlineItem)
+        {
+            <button class="sg-btn primary" @onclick="StartCreateModalAsync">@Locale.Add</button>
+        }
+        @if (HasUndoDelete)
+        {
+            <button class="sg-btn" @onclick="UndoDeleteAsync">@Locale.UndoDelete</button>
+        }
+        @if (HasActiveFilters)
+        {
+            <button class="sg-btn" @onclick="ClearAllFiltersAsync" title="@Locale.ResetFilters">@Locale.ResetFilters</button>
+        }
+        @if (HasActiveSort)
+        {
+            <button class="sg-btn" @onclick="ClearSortAsync" title="@Locale.ResetSort">@Locale.ResetSort</button>
+        }
+        @if (AllowAutoFit)
+        {
+            <button class="sg-btn" @onclick="AutoFitAsync" title="@Locale.AutoFit">@Locale.AutoFit</button>
+        }
+        @if (ShowColumnChooser)
+        {
+            <div @ref="_chooserRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleChooserFocusOutAsync" tabindex="-1">
+                <button class="sg-btn" @onclick="ToggleChooserAsync" title="@Locale.Columns">@Locale.Columns</button>
+                @if (_showChooser)
+                {
+                    <div class="sg-chooser-menu">
+                        <div class="sg-chooser-head">@Locale.ShowColumns</div>
+                        @foreach (var col in _columns)
+                        {
+                            var k = col.Key;
+                            <label class="sg-chooser-item">
+                                <input type="checkbox"
+                                       checked="@(!IsColumnHidden(k))"
+                                       @onchange="@(e => ToggleColumnHiddenAsync(k, e.Value is not true))" />
+                                <span>@col.Title</span>
+                            </label>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        @if (ShowExportCsv || ShowExportExcel)
+        {
+            <div @ref="_exportRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleExportFocusOutAsync" tabindex="-1">
+                <button class="sg-btn" @onclick="ToggleExportMenuAsync" title="@Locale.Save">@Locale.Save</button>
+                @if (_showExportMenu)
+                {
+                    <div class="sg-chooser-menu">
+                        @if (ShowExportCsv)
+                        {
+                            <button class="sg-chooser-item sg-btn-link" @onclick="async () => { await ExportCsvAsync(); _showExportMenu = false; }">@Locale.ExportCsv</button>
+                        }
+                        @if (ShowExportExcel)
+                        {
+                            <button class="sg-chooser-item sg-btn-link" @onclick="async () => { await ExportExcelAsync(); _showExportMenu = false; }">@Locale.ExportExcel</button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+        @if (SelectionEnabled && SelectedItems.Count > 0)
+        {
+            <div class="sg-chip">@Locale.Selected: @SelectedItems.Count</div>
+            <button class="sg-btn" @onclick="ClearSelectionAsync">@Locale.Clear</button>
+        }
+    </div>
+
+    <div class="sg-scroll">
+        @{
+            var visibleCols = VisibleColumns;
+        }
+        <table class="sg-table @(FullWidth ? "sg-table-full" : "")" role="grid">
+            <thead>
+                <tr>
+                    @if (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline)
+                    {
+                        <th class="sg-col-expand"></th>
+                    }
+                    @if (SelectionEnabled)
+                    {
+                        <th class="sg-col-check sg-pinned" style="left: 0;">
+                            <input type="checkbox"
+                                   aria-label="@Locale.SelectAll"
+                                   checked="@AllFilteredSelected"
+                                   @onchange="OnToggleAllAsync" />
+                        </th>
+                    }
+                    @for (var i = 0; i < visibleCols.Count; i++)
+                    {
+                        var col = visibleCols[i];
+                        var key = col.Key;
+                        var sort = GetSort(key);
+                        var sortIdx = _sort.Count > 1 ? GetSortIndex(key) : 0;
+                        var hasFilter = _filters.ContainsKey(key);
+                        var menuSide = i >= visibleCols.Count - 1 ? "right" : "left";
+                        var widthStyle = GetColumnWidthStyle(col);
+                        var pinStyle = GetColumnPinStyle(col);
+                        var thClass = "sg-th" + (col.Pinned ? " sg-pinned" : "");
+                        <th data-col-key="@key"
+                            data-col-pinned="@(col.Pinned ? "1" : "0")"
+                            draggable="@(col.Reorderable ? "true" : "false")"
+                            style="@(widthStyle + pinStyle)" class="@thClass">
+                            <div class="sg-th-inner">
+                                <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
+                                      title="@(col.Sortable ? Locale.Sort : "")"
+                                      @onclick="@(async (MouseEventArgs e) => { if (col.Sortable) await ToggleSortAsync(key, e.CtrlKey || e.ShiftKey); })">
+                                    @col.Title
+                                    @if (sort == SortDirection.Ascending)
+                                    {
+                                        <span class="sg-sort-ind">▲@(sortIdx > 0 ? sortIdx.ToString() : "")</span>
+                                    }
+                                    else if (sort == SortDirection.Descending)
+                                    {
+                                        <span class="sg-sort-ind">▼@(sortIdx > 0 ? sortIdx.ToString() : "")</span>
+                                    }
+                                </span>
+                                @if (col.Filterable)
+                                {
+                                    <button class="sg-filter-btn @(hasFilter ? "active" : "")"
+                                            aria-label="Фильтр @col.Title"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="async () => await ToggleFilterMenuAsync(key)">
+                                        ▾
+                                    </button>
+                                }
+                            </div>
+                            @if (_openFilterColumn == key)
+                            {
+                                <div class="sg-filter-menu sg-filter-menu--@menuSide" @onclick:stopPropagation="true">
+
+                                    @* AND / OR toggle *@
+                                    @if (PendingRules.Count > 1)
+                                    {
+                                        <div class="sg-filter-logic" @onclick:stopPropagation="true">
+                                            <button class="sg-btn sg-sm @(PendingRulesAnd ? "sg-btn-active" : "")" type="button"
+                                                    @onclick:stopPropagation="true"
+                                                    @onclick="async () => await SetPendingRulesAndAsync(true)">AND</button>
+                                            <button class="sg-btn sg-sm @(!PendingRulesAnd ? "sg-btn-active" : "")" type="button"
+                                                    @onclick:stopPropagation="true"
+                                                    @onclick="async () => await SetPendingRulesAndAsync(false)">OR</button>
+                                        </div>
+                                    }
+
+                                    @* Rules list *@
+                                    @for (var ri = 0; ri < PendingRules.Count; ri++)
+                                    {
+                                        var rIdx = ri;
+                                        var rule = PendingRules[rIdx];
+                                        <div class="sg-filter-rule">
+                                            <select class="sg-filter-cond-select"
+                                                    value="@rule.Condition.ToString()"
+                                                    @onchange="async e => await SetPendingRuleConditionAsync(rIdx, Enum.Parse<FilterCondition>(e.Value!.ToString()!))">
+                                                <option value="Contains">@Locale.FilterContains</option>
+                                                <option value="NotContains">@Locale.FilterNotContains</option>
+                                                <option value="Equals">@Locale.FilterEquals</option>
+                                                <option value="NotEquals">@Locale.FilterNotEquals</option>
+                                                <option value="StartsWith">@Locale.FilterStartsWith</option>
+                                                <option value="EndsWith">@Locale.FilterEndsWith</option>
+                                                @if (IsNumericColumn(key))
+                                                {
+                                                    <option value="GreaterThan">@Locale.FilterGreaterThan</option>
+                                                    <option value="LessThan">@Locale.FilterLessThan</option>
+                                                    <option value="GreaterOrEqual">@Locale.FilterGreaterOrEqual</option>
+                                                    <option value="LessOrEqual">@Locale.FilterLessOrEqual</option>
+                                                }
+                                                <option value="IsEmpty">@Locale.FilterIsEmpty</option>
+                                                <option value="IsNotEmpty">@Locale.FilterIsNotEmpty</option>
+                                            </select>
+                                            @if (rule.Condition != FilterCondition.IsEmpty && rule.Condition != FilterCondition.IsNotEmpty)
+                                            {
+                                                <input class="sg-filter-rule-input"
+                                                       placeholder="@Locale.FilterValue"
+                                                       value="@rule.Value"
+                                                       @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
+                                            }
+                                            @if (PendingRules.Count > 1)
+                                            {
+                                                <button class="sg-filter-rule-del" type="button"
+                                                        title="@Locale.FilterRemoveCondition"
+                                                        @onclick="async () => await RemovePendingRuleAsync(rIdx)">×</button>
+                                            }
+                                        </div>
+                                    }
+
+                                    @* Add rule *@
+                                    <div class="sg-filter-add-rule">
+                                        <button class="sg-btn sg-sm" type="button" @onclick="AddPendingRuleAsync">@Locale.FilterAddCondition</button>
+                                    </div>
+
+                                    @* Quick apply *@
+                                    <div class="sg-filter-cond-apply">
+                                        <button class="sg-btn primary" style="width:100%" type="button"
+                                                @onclick="async () => await ApplyConditionFilterAsync(key)">
+                                            @Locale.FilterApply
+                                        </button>
+                                    </div>
+
+                                    @* Divider *@
+                                    <div class="sg-filter-divider">@Locale.FilterOrValues</div>
+
+                                    @* Checkbox list *@
+                                    <div class="sg-filter-actions">
+                                        <label class="sg-filter-all">
+                                            <input type="checkbox"
+                                                   checked="@IsPendingAllSelected(key)"
+                                                   @onchange="@(e => TogglePendingAllAsync(key, e.Value is true))" />
+                                            @Locale.FilterAll
+                                        </label>
+                                    </div>
+                                    <div class="sg-filter-list">
+                                        @foreach (var val in GetDistinctValuesForColumn(key))
+                                        {
+                                            var display = val ?? Locale.FilterEmpty;
+                                            var selected = IsPendingValueSelected(val);
+                                            <label class="sg-filter-item" @key="val">
+                                                <input type="checkbox"
+                                                       checked="@selected"
+                                                       @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
+                                                <span>@display</span>
+                                            </label>
+                                        }
+                                    </div>
+
+                                    @* Footer *@
+                                    <div class="sg-filter-foot">
+                                        <button class="sg-btn" title="@(IsGroupedBy(key) ? Locale.FilterUnGroupBy : Locale.FilterGroupBy)"
+                                                @onclick="async () => await ToggleGroupByAsync(key)">
+                                            @(IsGroupedBy(key) ? Locale.FilterUnGroupBy : Locale.FilterGroupBy)
+                                        </button>
+                                        <div class="sg-spacer"></div>
+                                        <button class="sg-btn" @onclick="async () => await ClearPendingAsync(key)">@Locale.FilterReset</button>
+                                        <button class="sg-btn" @onclick="CloseFilterMenuAsync">@Locale.FilterCancel</button>
+                                        <button class="sg-btn primary" @onclick="ApplyFilterAsync">@Locale.FilterOk</button>
+                                    </div>
+                                </div>
+                            }
+                            @if (col.Resizable)
+                            {
+                                <div class="sg-resizer" data-col-key="@key"></div>
+                            }
+                        </th>
+                    }
+                    @if (AllowEdit || AllowDelete)
+                    {
+                        <th class="sg-th sg-col-actions sg-pinned" style="right:0;"></th>
+                    }
+                </tr>
+                @if (ShowQuickFilters)
+                {
+                    <tr class="sg-quick-filter-row">
+                        @if (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline)
+                        {
+                            <th class="sg-col-expand"></th>
+                        }
+                        @if (SelectionEnabled)
+                        {
+                            <th class="sg-col-check sg-pinned" style="left:0;"></th>
+                        }
+                        @foreach (var col in visibleCols)
+                        {
+                            var widthStyle = GetColumnWidthStyle(col);
+                            var pinStyle = GetColumnPinStyle(col);
+                            var thClass = "sg-th" + (col.Pinned ? " sg-pinned" : "");
+                            <th class="@($"{thClass} sg-quick-filter-cell")" style="@(widthStyle + pinStyle)">
+                                @if (col.Filterable)
+                                {
+                                    <input class="sg-quick-filter-input"
+                                           placeholder="@Locale.QuickFilter"
+                                           value="@(_quickFilters.TryGetValue(col.Key, out var quickValue) ? quickValue : string.Empty)"
+                                           @oninput="@(e => OnQuickFilterInputAsync(col.Key, e))" />
+                                }
+                            </th>
+                        }
+                        @if (AllowEdit || AllowDelete)
+                        {
+                            <th class="sg-th sg-col-actions sg-pinned" style="right:0;"></th>
+                        }
+                    </tr>
+                }
+            </thead>
+            <tbody>
+                @{
+                    var hasGroups = GroupByKeys.Count > 0;
+                    var rows = hasGroups ? new List<TItem>() : GetVisibleRows();
+                    var tree = hasGroups ? BuildGroupTree() : null;
+                    var totalVisible = hasGroups ? TotalFilteredCount : rows.Count;
+                    var useVirtualization = ShouldUseVirtualization() && !hasGroups;
+                    var (startIndex, endIndex, topPadding, bottomPadding) = useVirtualization ? CalculateVirtualWindow() : (0, rows.Count, 0, 0);
+                }
+                @if (totalVisible == 0)
+                {
+                    <tr>
+                        <td class="sg-empty" colspan="@ColumnSpan">@EffectiveEmptyText</td>
+                    </tr>
+                }
+                else if (hasGroups && tree is not null)
+                {
+                    @RenderGroups(tree, visibleCols)
+                }
+                else
+                {
+                    @if (useVirtualization && topPadding > 0)
+                    {
+                        <tr style="height: @(topPadding)px;"><td colspan="@ColumnSpan"></td></tr>
+                    }
+                    for (var i = 0; i < rows.Count; i++)
+                    {
+                        @RenderRow(rows[i], visibleCols, 0)
+                    }
+                    @if (useVirtualization && bottomPadding > 0)
+                    {
+                        <tr style="height: @(bottomPadding)px;"><td colspan="@ColumnSpan"></td></tr>
+                    }
+                }
+            </tbody>
+            @if (ShowStatusBar && visibleCols.Any(c => c.Aggregate != Aggregate.None))
+            {
+                <tfoot>
+                    <tr>
+                        @if (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline)
+                        {
+                            <td class="sg-agg sg-col-expand"></td>
+                        }
+                        @if (SelectionEnabled)
+                        {
+                            <td class="sg-agg sg-col-check sg-pinned" style="left:0;"></td>
+                        }
+                        @foreach (var col in visibleCols)
+                        {
+                            var pinStyle = GetColumnPinStyle(col);
+                            var aggClass = "sg-agg" + (col.Pinned ? " sg-pinned" : "");
+                            <td class="@aggClass" style="@pinStyle">
+                                @{
+                                    var agg = ComputeAggregate(col);
+                                }
+                                @if (agg is not null)
+                                {
+                                    <span class="sg-agg-label">@col.Aggregate:</span>
+                                    <span class="sg-agg-val">@agg</span>
+                                }
+                            </td>
+                        }
+                        @if (AllowEdit || AllowDelete)
+                        {
+                            <td class="sg-agg sg-col-actions sg-pinned" style="right:0;"></td>
+                        }
+                    </tr>
+                </tfoot>
+            }
+        </table>
+    </div>
+
+    <div class="sg-foot">
+        @{
+            var filtered = TotalFilteredCount;
+            var tp = TotalPages;
+            var from = filtered == 0 ? 0 : (CurrentPage - 1) * PageSize + 1;
+            var to = Math.Min(filtered, CurrentPage * PageSize);
+        }
+        <span class="sg-foot-info">
+            @if (EnablePaging)
+            {
+                @($"{Locale.RowsFrom} {from}–{to} {Locale.RowsOf} {filtered}")
+            }
+            else
+            {
+                @($"{Locale.RowsShown} {filtered}")
+            }
+            @if (SelectedItems.Count > 0)
+            {
+                <span class="sg-foot-sel"> @Locale.RowsSelectedCount: @SelectedItems.Count</span>
+            }
+        </span>
+        @if (EnablePaging)
+        {
+            <div class="sg-pager">
+                <label class="sg-pager-size">
+                    @Locale.PageSize
+                    <select @onchange="OnPageSizeChange" value="@PageSize">
+                        @foreach (var s in PageSizeOptions)
+                        {
+                            <option value="@s">@s</option>
+                        }
+                    </select>
+                </label>
+                <button class="sg-page-btn" disabled="@(CurrentPage <= 1)"
+                        @onclick="() => GoToPageAsync(1)" aria-label="@Locale.PageFirst">«</button>
+                <button class="sg-page-btn" disabled="@(CurrentPage <= 1)"
+                        @onclick="() => GoToPageAsync(CurrentPage - 1)" aria-label="@Locale.PagePrev">‹</button>
+                @foreach (var p in GetPageWindow())
+                {
+                    if (p == -1)
+                    {
+                        <span class="sg-page-gap">…</span>
+                    }
+                    else
+                    {
+                        var pageNum = p;
+                        <button class="sg-page-btn @(pageNum == CurrentPage ? "current" : "")"
+                                @onclick="() => GoToPageAsync(pageNum)">@pageNum</button>
+                    }
+                }
+                <button class="sg-page-btn" disabled="@(CurrentPage >= tp)"
+                        @onclick="() => GoToPageAsync(CurrentPage + 1)" aria-label="@Locale.PageNext">›</button>
+                <button class="sg-page-btn" disabled="@(CurrentPage >= tp)"
+                        @onclick="() => GoToPageAsync(tp)" aria-label="@Locale.PageLast">»</button>
+            </div>
+        }
+    </div>
+</div>
+</CascadingValue>
+
+@if (DetailTemplate is not null && _detailItem is not null && _detailDrawerVisible)
+{
+    <div class="sgc-drawer-backdrop" @onclick="CloseDetail">
+        <aside class="sgc-drawer sgc-drawer-right" style="width:420px;max-width:100vw;"
+               @onclick:stopPropagation="true">
+            <div class="sgc-drawer-header">
+                <span class="sgc-drawer-title">@EffectiveDetailDrawerTitle</span>
+                <button type="button" class="sgc-modal-x"
+                        @onclick="CloseDetail">×</button>
+            </div>
+            <div class="sgc-drawer-body">
+                @DetailTemplate!(_detailItem!)
+            </div>
+        </aside>
+    </div>
+}
+
+@if (DetailTemplate is not null && _detailItem is not null && _detailWindowVisible)
+{
+    <div class="sgc-win" style="position:fixed;left:120px;top:120px;width:@(DetailWindowWidth)px;height:@(DetailWindowHeight)px;z-index:2000;">
+        <div class="sgc-win-header">
+            <span class="sgc-win-title">@EffectiveDetailWindowTitle</span>
+            <div class="sgc-win-actions">
+                <button type="button" class="sgc-win-btn sgc-win-close"
+                        @onclick="CloseDetail">×</button>
+            </div>
+        </div>
+        <div class="sgc-win-body">@DetailTemplate!(_detailItem!)</div>
+    </div>
+}
+
+@if (_editModalVisible && _editModalItem is not null)
+{
+    <SgModal Visible="true"
+             Title="@_editModalTitle"
+             Width="@_editModalWidth"
+             CloseOnBackdrop="true"
+             CloseOnEscape="true"
+             OnClose="CloseEditModal">
+        <ChildContent>
+            @RenderEditForm()
+        </ChildContent>
+    </SgModal>
+}
+
+@code {
+    private RenderFragment RenderGroups(List<GroupNode> nodes, IReadOnlyList<SgDataGridColumn<TItem>> cols) => builder =>
+    {
+        foreach (var node in nodes)
+        {
+            var nodeLocal = node;
+            var collapsed = IsGroupCollapsed(nodeLocal.Path);
+            builder.OpenElement(0, "tr");
+            builder.AddAttribute(1, "class", "sg-group-row");
+            builder.OpenElement(2, "td");
+            builder.AddAttribute(3, "class", "sg-group-cell");
+            builder.AddAttribute(4, "colspan", ColumnSpan);
+            builder.AddAttribute(5, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => ToggleGroupCollapsedAsync(nodeLocal.Path)));
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "sg-group-indent");
+            builder.AddAttribute(8, "style", $"padding-left:{nodeLocal.Depth * 16}px;");
+            builder.CloseElement();
+            builder.OpenElement(9, "span");
+            builder.AddAttribute(10, "class", "sg-group-toggle");
+            builder.AddContent(11, collapsed ? "▶" : "▼");
+            builder.CloseElement();
+            builder.OpenElement(12, "span");
+            builder.AddAttribute(13, "class", "sg-group-label");
+            builder.AddContent(14, $"{nodeLocal.Column.Title}: {nodeLocal.Label}");
+            builder.CloseElement();
+            builder.OpenElement(15, "span");
+            builder.AddAttribute(16, "class", "sg-group-count");
+            builder.AddContent(17, $" ({nodeLocal.TotalCount})");
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.CloseElement();
+
+            if (!collapsed)
+            {
+                if (nodeLocal.Children.Count > 0)
+                    builder.AddContent(18, RenderGroups(nodeLocal.Children, cols));
+                foreach (var item in nodeLocal.Items)
+                    builder.AddContent(19, RenderRow(item, cols, nodeLocal.Depth + 1));
+            }
+        }
+    };
+
+    private RenderFragment RenderRow(TItem item, IReadOnlyList<SgDataGridColumn<TItem>> cols, int indent) => builder =>
+    {
+        var itemLocal = item;
+        // Only check selection if selection is enabled to avoid unnecessary HashSet lookups
+        var isSelected = SelectionEnabled ? SelectedItems.Contains(itemLocal) : false;
+        // NOTE: Do NOT check IsActiveRow() here - this would trigger re-render on every active row change
+        // The sg-active class is managed by JavaScript to avoid full grid re-renders
+        var rowExpanded = DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline && IsRowExpanded(itemLocal);
+        
+        builder.OpenElement(0, "tr");
+        builder.SetKey(itemLocal);
+        // Only apply sg-selected class, sg-active is managed by JavaScript
+        builder.AddAttribute(1, "class", isSelected ? "sg-selected" : "");
+        builder.AddAttribute(2, "role", "row");
+        // Add onclick when row click should fire RowClicked or surface a Drawer/Window detail.
+        // Inline-detail rows are toggled exclusively via the chevron, not by clicking the row.
+        var rowClickActive = RowClicked.HasDelegate
+            || (DetailTemplate is not null && DetailPlacement != DetailPlacement.Inline);
+        if (rowClickActive)
+        {
+            builder.AddAttribute(3, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => OnRowClickAsync(itemLocal)));
+        }
+        // Only add oncontextmenu handler if OnRowContextMenu delegate is set
+        if (OnRowContextMenu.HasDelegate)
+        {
+            builder.AddAttribute(4, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OnRowContextMenuInternal(e, itemLocal, null)));
+            builder.AddEventPreventDefaultAttribute(5, "oncontextmenu", true);
+        }
+
+        // Only add ondblclick handler if RowDoubleClicked callback is set
+        if (RowDoubleClicked.HasDelegate)
+        {
+            builder.AddAttribute(6, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => OnRowDoubleClickAsync(itemLocal)));
+        }
+
+        var seq = 10;
+
+        if (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline)
+        {
+            builder.OpenElement(seq++, "td");
+            builder.AddAttribute(seq++, "class", "sg-cell sg-col-expand");
+            builder.AddAttribute(seq++, "role", "gridcell");
+            builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
+            builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => OnRowExpandToggle(itemLocal)));
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-expand-icon");
+            builder.AddContent(seq++, rowExpanded ? "▼" : "▶");
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        if (SelectionEnabled)
+        {
+            builder.OpenElement(seq++, "td");
+            builder.AddAttribute(seq++, "class", "sg-cell sg-col-check sg-pinned");
+            builder.AddAttribute(seq++, "style", "left:0;");
+            builder.AddAttribute(seq++, "role", "gridcell");
+            builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "checkbox");
+            builder.AddAttribute(seq++, "class", "sg-row-checkbox");
+            builder.AddAttribute(seq++, "checked", isSelected);
+            builder.AddAttribute(seq++, "aria-label", Locale.SelectRow);
+            builder.AddAttribute(seq++, "onchange", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(this, e => ToggleRowAsync(itemLocal, e.Value is true)));
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+
+        var first = true;
+        foreach (var col in cols)
+        {
+            var colLocal = col;
+            var widthStyle = GetColumnWidthStyle(colLocal);
+            var pinStyle = GetColumnPinStyle(colLocal);
+            var padStyle = first && indent > 0 ? $"padding-left:{8 + indent * 16}px;" : "";
+            var tdClass = GetColumnTdClass(colLocal);
+
+            builder.OpenElement(seq++, "td");
+            builder.AddAttribute(seq++, "class", tdClass);
+            builder.AddAttribute(seq++, "style", widthStyle + pinStyle + padStyle);
+            builder.AddAttribute(seq++, "role", "gridcell");
+            // Only add oncontextmenu handler if OnRowContextMenu delegate is set
+            if (OnRowContextMenu.HasDelegate)
+            {
+                builder.AddAttribute(seq++, "oncontextmenu", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => OnRowContextMenuInternal(e, itemLocal, colLocal)));
+                builder.AddEventPreventDefaultAttribute(seq++, "oncontextmenu", true);
+                builder.AddEventStopPropagationAttribute(seq++, "oncontextmenu", true);
+            }
+
+            if (colLocal.Editable && colLocal.OnValueChanged is not null)
+            {
+                builder.AddAttribute(seq++, "ondblclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => StartEditModalAsync(itemLocal)));
+                builder.AddEventStopPropagationAttribute(seq++, "ondblclick", true);
+            }
+
+            if (colLocal.Template is not null)
+            {
+                builder.AddContent(seq++, colLocal.Template(itemLocal));
+            }
+            else
+            {
+                builder.AddContent(seq++, colLocal.GetDisplay(itemLocal));
+            }
+            builder.CloseElement();
+            first = false;
+        }
+
+        if (AllowEdit || AllowDelete)
+        {
+            builder.OpenElement(seq++, "td");
+            builder.AddAttribute(seq++, "class", "sg-cell sg-col-actions sg-pinned");
+            builder.AddAttribute(seq++, "style", "right:0;");
+            builder.AddAttribute(seq++, "role", "gridcell");
+            builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "sg-actions");
+
+            if (AllowEdit)
+            {
+                builder.OpenElement(seq++, "button");
+                builder.AddAttribute(seq++, "class", "sg-icon-btn primary");
+                builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => StartEditModalAsync(itemLocal)));
+                builder.AddAttribute(seq++, "title", Locale.Edit);
+                builder.OpenElement(seq++, "svg");
+                builder.AddAttribute(seq++, "viewBox", "0 0 24 24");
+                builder.AddAttribute(seq++, "width", "16");
+                builder.AddAttribute(seq++, "height", "16");
+                builder.OpenElement(seq++, "path");
+                builder.AddAttribute(seq++, "fill", "currentColor");
+                builder.AddAttribute(seq++, "d", "M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z");
+                builder.CloseElement();
+                builder.CloseElement();
+                builder.CloseElement();
+            }
+            if (AllowDelete)
+            {
+                builder.OpenElement(seq++, "button");
+                builder.AddAttribute(seq++, "class", "sg-icon-btn danger");
+                builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => DeleteRowAsync(itemLocal)));
+                builder.AddAttribute(seq++, "title", Locale.Delete);
+                builder.OpenElement(seq++, "svg");
+                builder.AddAttribute(seq++, "viewBox", "0 0 24 24");
+                builder.AddAttribute(seq++, "width", "16");
+                builder.AddAttribute(seq++, "height", "16");
+                builder.OpenElement(seq++, "path");
+                builder.AddAttribute(seq++, "fill", "currentColor");
+                builder.AddAttribute(seq++, "d", "M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z");
+                builder.CloseElement();
+                builder.CloseElement();
+                builder.CloseElement();
+            }
+            builder.CloseElement(); // div sg-actions
+            builder.CloseElement(); // td sg-col-actions
+        }
+        builder.CloseElement(); // tr
+
+        if (rowExpanded)
+        {
+            builder.OpenElement(seq++, "tr");
+            builder.AddAttribute(seq++, "class", "sg-detail-row");
+            builder.SetKey($"detail-{(itemLocal is not null ? System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(itemLocal) : 0)}");
+            builder.OpenElement(seq++, "td");
+            builder.AddAttribute(seq++, "class", "sg-detail-cell");
+            builder.AddAttribute(seq++, "colspan", ColumnSpan);
+            builder.AddAttribute(seq++, "role", "gridcell");
+            builder.AddContent(seq++, DetailTemplate!(itemLocal!));
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+    };
+}

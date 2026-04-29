@@ -1,0 +1,83 @@
+@namespace SuperUI.Components
+
+<span class="sgc-avatar sgc-@Size @CssClass" 
+      role="img"
+      aria-label="@(Title ?? "Avatar")"
+      style="@Style" 
+      title="@Title">
+    @if (!string.IsNullOrEmpty(ImageUrl))
+    {
+        <img src="@ImageUrl" alt="@(Title ?? "Avatar")" loading="lazy" srcset="@SrcSet" />
+    }
+    else if (!string.IsNullOrEmpty(ComputedInitials))
+    {
+        @ComputedInitials
+    }
+    else if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+</span>
+
+@code {
+    /// <summary>
+    /// Gets or sets the URL of the avatar image.
+    /// Takes precedence over <see cref="Initials"/> and <see cref="ChildContent"/>.
+    /// </summary>
+    [Parameter] public string? ImageUrl { get; set; }
+
+    /// <summary>
+    /// Gets or sets the srcset attribute for the avatar image.
+    /// </summary>
+    [Parameter] public string? SrcSet { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the initials text to display when no image is provided.
+    /// If not provided, will be generated from <see cref="Title"/>.
+    /// </summary>
+    [Parameter] public string? Initials { get; set; }
+
+    private string? ComputedInitials
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Initials)) return Initials;
+            if (string.IsNullOrEmpty(Title)) return null;
+
+            var parts = Title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return null;
+            if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
+            
+            return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpperInvariant();
+        }
+    }
+    
+    /// <summary>
+    /// Gets or sets the title text for accessibility and tooltip.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom content to render inside the avatar.
+    /// Used when neither <see cref="ImageUrl"/> nor <see cref="Initials"/> are provided.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the avatar size.
+    /// Supported values: "sm", "md", "lg". Default is "md".
+    /// </summary>
+    [Parameter] public string Size { get; set; } = "md";
+    
+    /// <summary>
+    /// Gets or sets the background color for the avatar.
+    /// </summary>
+    [Parameter] public string? Color { get; set; }
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private string Style => string.IsNullOrEmpty(Color) ? "" : $"background:{Color};";
+}

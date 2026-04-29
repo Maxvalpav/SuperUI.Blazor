@@ -1,0 +1,245 @@
+@namespace SuperUI.Components
+@typeparam TItem
+@typeparam TKey
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "")"
+         tabindex="0"
+         @onfocusout="HandleFocusOutAsync"
+         @onclick:stopPropagation="true">
+        <div class="sgc-combo-control" @onclick="ToggleAsync">
+            @{ var selItems = GetSelectedItems().ToList(); }
+            @if (selItems.Count == 0 && !_open)
+            {
+                <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
+            }
+            else
+            {
+                foreach (var it in selItems)
+                {
+                    var itLocal = it;
+                    <span class="sgc-combo-tag">
+                        @LabelFrom(itLocal)
+                        @if (!Disabled)
+                        {
+                            <button class="sgc-combo-tag-x" type="button"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => RemoveAsync(KeySelector(itLocal))">×</button>
+                        }
+                    </span>
+                }
+                @if (_open)
+                {
+                    <input class="sgc-combo-input"
+                           value="@_search"
+                           placeholder="@(selItems.Count == 0 ? EffectivePlaceholder : "")"
+                           @oninput="OnSearchInput"
+                           @onkeydown="OnKeyDownAsync"
+                           @onclick:stopPropagation="true" />
+                }
+            }
+            <span class="sgc-combo-caret">@(_open ? "▲" : "▼")</span>
+        </div>
+        @if (_open)
+        {
+            <div class="sgc-combo-menu">
+                @{ var filtered = GetFilteredItems().ToList(); }
+                @if (filtered.Count == 0)
+                {
+                    <div class="sgc-combo-empty">@EffectiveEmptyText</div>
+                }
+                else
+                {
+                    @foreach (var it in filtered)
+                    {
+                        var itLocal = it;
+                        var isSel = IsSelected(KeySelector(itLocal));
+                        <div class="sgc-combo-option sgc-combo-option-ex @(isSel ? "sgc-selected" : "")"
+                             @onclick:stopPropagation="true"
+                             @onclick="() => ToggleItemAsync(KeySelector(itLocal))">
+                            <input type="checkbox" checked="@isSel" readonly tabindex="-1" style="pointer-events:none;flex-shrink:0;" />
+                            <span class="sgc-combo-opt-content">
+                                <span class="sgc-combo-opt-label">@LabelFrom(itLocal)</span>
+                                @{ var desc = DescriptionSelector?.Invoke(itLocal); }
+                                @if (!string.IsNullOrEmpty(desc))
+                                {
+                                    <span class="sgc-combo-opt-desc">@desc</span>
+                                }
+                            </span>
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private string _search = string.Empty;
+
+    /// <summary>
+    /// Gets or sets the collection of selected item keys.
+    /// </summary>
+    [Parameter] public IEnumerable<TKey>? Values { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the selected values change.
+    /// </summary>
+    [Parameter] public EventCallback<IEnumerable<TKey>> ValuesChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the collection of items to display in the dropdown.
+    /// </summary>
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
+    
+    /// <summary>
+    /// Gets or sets the function to extract the key from an item. Required.
+    /// </summary>
+    [Parameter, EditorRequired] public Func<TItem, TKey> KeySelector { get; set; } = default!;
+    
+    /// <summary>
+    /// Gets or sets the function to extract the display label from an item. Required.
+    /// </summary>
+    [Parameter, EditorRequired] public Func<TItem, string> LabelSelector { get; set; } = default!;
+    
+    /// <summary>
+    /// Gets or sets the function to extract an optional description from an item.
+    /// The description is displayed below the label in the dropdown.
+    /// </summary>
+    [Parameter] public Func<TItem, string>? DescriptionSelector { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the placeholder text displayed when no items are selected.
+    /// If not specified, uses the localized "Select" string.
+    /// </summary>
+    [Parameter] public string? Placeholder { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the text displayed when no items match the search filter.
+    /// If not specified, uses the localized "NoMatches" string.
+    /// </summary>
+    [Parameter] public string? EmptyText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the label text displayed above the multi-select.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the hint text displayed below the multi-select.
+    /// </summary>
+    [Parameter] public string? Hint { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the field is marked as required with a visual indicator.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the multi-select is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the multi-select takes the full width of its container.
+    /// Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the localization provider for translating UI text.
+    /// </summary>
+    [CascadingParameter] public SgDataGridLocale? Locale { get; set; }
+
+    private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
+    private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
+
+    private string LabelFrom(TItem item) => LabelSelector(item);
+
+    private IEnumerable<TItem> GetSelectedItems()
+    {
+        if (Values is null) yield break;
+        var keys = Values.ToHashSet();
+        foreach (var it in Items)
+            if (keys.Contains(KeySelector(it))) yield return it;
+    }
+
+    private bool IsSelected(TKey key)
+    {
+        if (Values is null) return false;
+        foreach (var k in Values)
+            if (EqualityComparer<TKey>.Default.Equals(k, key)) return true;
+        return false;
+    }
+
+    private IEnumerable<TItem> GetFilteredItems()
+    {
+        if (string.IsNullOrEmpty(_search)) return Items;
+        return Items.Where(i =>
+            LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase) ||
+            (DescriptionSelector?.Invoke(i) ?? "").Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private async Task ToggleAsync()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        if (_open) _search = string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleFocusOutAsync(FocusEventArgs e)
+    {
+        // Небольшая задержка, чтобы успел сработать клик по элементу внутри меню
+        await Task.Delay(200);
+        _open = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
+    }
+
+    private async Task ToggleItemAsync(TKey key)
+    {
+        var list = Values?.ToList() ?? new List<TKey>();
+        var idx = list.FindIndex(k => EqualityComparer<TKey>.Default.Equals(k, key));
+        if (idx >= 0) list.RemoveAt(idx); else list.Add(key);
+        Values = list;
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RemoveAsync(TKey key)
+    {
+        var list = Values?.ToList() ?? new List<TKey>();
+        list.RemoveAll(k => EqualityComparer<TKey>.Default.Equals(k, key));
+        Values = list;
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        await InvokeAsync(StateHasChanged);
+    }
+}
+

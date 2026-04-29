@@ -1,0 +1,309 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-filter-builder @CssClass">
+    <div class="sgc-filter-builder-toolbar">
+        <div class="sgc-filter-builder-title-wrap">
+            @if (!string.IsNullOrWhiteSpace(Title))
+            {
+                <div class="sgc-filter-builder-title">@Title</div>
+            }
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <div class="sgc-filter-builder-subtitle">@Subtitle</div>
+            }
+        </div>
+        <div class="sgc-filter-builder-actions">
+            <button type="button" class="sgc-fb-btn" @onclick="AddRuleAsync">@Localizer["AddFilter"]</button>
+            <button type="button" class="sgc-fb-btn" @onclick="ResetAsync">@Localizer["Reset"]</button>
+            @if (ShowApplyButton)
+            {
+                <button type="button" class="sgc-fb-btn sgc-fb-btn-primary" @onclick="ApplyAsync">@(ApplyText ?? Localizer["Apply"])</button>
+            }
+        </div>
+    </div>
+
+    <div class="sgc-filter-builder-body">
+        @foreach (var rule in Filters)
+        {
+            var field = GetField(rule.FieldName);
+            var operators = GetOperatorsForField(field).ToList();
+            <div class="sgc-filter-builder-row">
+                <select class="sgc-fb-select"
+                        value="@(rule.FieldName ?? string.Empty)"
+                        @onchange="e => SetFieldAsync(rule, e.Value?.ToString())">
+                    <option value="">@Localizer["SelectField"]</option>
+                    @foreach (var item in Fields)
+                    {
+                        <option value="@item.Name">@item.Label</option>
+                    }
+                </select>
+
+                <select class="sgc-fb-select"
+                        value="@rule.Operator.ToString()"
+                        @onchange="e => SetOperatorAsync(rule, e.Value?.ToString())">
+                    @foreach (var op in operators)
+                    {
+                        <option value="@op">@GetOperatorLabel(op)</option>
+                    }
+                </select>
+
+                @if (IsUnaryOperator(rule.Operator))
+                {
+                    <div class="sgc-fb-value-placeholder">@Localizer["NoValue"]</div>
+                }
+                else if (IsBooleanField(field))
+                {
+                    <select class="sgc-fb-select"
+                            value="@(rule.Value?.ToString() ?? string.Empty)"
+                            @onchange="e => SetValueAsync(rule, e.Value?.ToString())">
+                        <option value="">@Localizer["SelectValue"]</option>
+                        <option value="true">@Localizer["Yes"]</option>
+                        <option value="false">@Localizer["No"]</option>
+                    </select>
+                }
+                else
+                {
+                    <input class="sgc-fb-input"
+                           value="@(rule.Value?.ToString() ?? string.Empty)"
+                           placeholder="@GetValuePlaceholder(field)"
+                           @onchange="e => SetValueAsync(rule, e.Value?.ToString())" />
+                }
+
+                <button type="button" class="sgc-fb-btn sgc-fb-btn-danger" @onclick="() => RemoveRuleAsync(rule)">@Localizer["Remove"]</button>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public IList<QueryRule> Filters { get; set; } = new List<QueryRule>();
+    [Parameter] public IReadOnlyList<QueryField> Fields { get; set; } = Array.Empty<QueryField>();
+    [Parameter] public bool ShowApplyButton { get; set; } = true;
+    [Parameter] public string? ApplyText { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<QueryRule>> FiltersChanged { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<QueryRule>> OnApply { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<QueryRule>> OnReset { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Filters.Count == 0)
+        {
+            Filters.Add(new QueryRule());
+        }
+    }
+
+    private QueryField? GetField(string? fieldName) =>
+        string.IsNullOrWhiteSpace(fieldName) ? null : Fields.FirstOrDefault(f => f.Name == fieldName);
+
+    private async Task AddRuleAsync()
+    {
+        Filters.Add(new QueryRule());
+        await NotifyChangedAsync();
+    }
+
+    private async Task RemoveRuleAsync(QueryRule rule)
+    {
+        Filters.Remove(rule);
+        if (Filters.Count == 0)
+        {
+            Filters.Add(new QueryRule());
+        }
+
+        await NotifyChangedAsync();
+    }
+
+    private async Task SetFieldAsync(QueryRule rule, string? fieldName)
+    {
+        rule.FieldName = fieldName;
+        rule.Operator = GetOperatorsForField(GetField(fieldName)).First();
+        rule.Value = null;
+        await NotifyChangedAsync();
+    }
+
+    private async Task SetOperatorAsync(QueryRule rule, string? opValue)
+    {
+        if (Enum.TryParse<QueryFieldOperator>(opValue, out var op))
+        {
+            rule.Operator = op;
+            if (IsUnaryOperator(op))
+            {
+                rule.Value = null;
+            }
+
+            await NotifyChangedAsync();
+        }
+    }
+
+    private async Task SetValueAsync(QueryRule rule, string? value)
+    {
+        rule.Value = value;
+        await NotifyChangedAsync();
+    }
+
+    private async Task ResetAsync()
+    {
+        Filters.Clear();
+        Filters.Add(new QueryRule());
+        await NotifyChangedAsync();
+
+        if (OnReset.HasDelegate)
+        {
+            await OnReset.InvokeAsync(Filters.ToList());
+        }
+    }
+
+    private async Task ApplyAsync()
+    {
+        if (OnApply.HasDelegate)
+        {
+            await OnApply.InvokeAsync(Filters.ToList());
+        }
+    }
+
+    private async Task NotifyChangedAsync()
+    {
+        await InvokeAsync(StateHasChanged);
+        if (FiltersChanged.HasDelegate)
+        {
+            await FiltersChanged.InvokeAsync(Filters.ToList());
+        }
+    }
+
+    private static bool IsUnaryOperator(QueryFieldOperator op) =>
+        op == QueryFieldOperator.IsNull || op == QueryFieldOperator.IsNotNull;
+
+    private static bool IsBooleanField(QueryField? field)
+    {
+        if (field is null)
+        {
+            return false;
+        }
+
+        var fieldType = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+        return fieldType == typeof(bool);
+    }
+
+    private static IEnumerable<QueryFieldOperator> GetOperatorsForField(QueryField? field)
+    {
+        if (field is null)
+        {
+            return new[]
+            {
+                QueryFieldOperator.Equals,
+                QueryFieldOperator.NotEquals,
+                QueryFieldOperator.Contains,
+                QueryFieldOperator.IsNull,
+                QueryFieldOperator.IsNotNull
+            };
+        }
+
+        var fieldType = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+        if (fieldType == typeof(string))
+        {
+            return new[]
+            {
+                QueryFieldOperator.Contains,
+                QueryFieldOperator.NotContains,
+                QueryFieldOperator.Equals,
+                QueryFieldOperator.NotEquals,
+                QueryFieldOperator.StartsWith,
+                QueryFieldOperator.EndsWith,
+                QueryFieldOperator.IsNull,
+                QueryFieldOperator.IsNotNull
+            };
+        }
+
+        if (fieldType == typeof(bool))
+        {
+            return new[]
+            {
+                QueryFieldOperator.Equals,
+                QueryFieldOperator.NotEquals,
+                QueryFieldOperator.IsNull,
+                QueryFieldOperator.IsNotNull
+            };
+        }
+
+        if (fieldType == typeof(DateTime) || IsNumericType(fieldType))
+        {
+            return new[]
+            {
+                QueryFieldOperator.Equals,
+                QueryFieldOperator.NotEquals,
+                QueryFieldOperator.GreaterThan,
+                QueryFieldOperator.GreaterThanOrEqual,
+                QueryFieldOperator.LessThan,
+                QueryFieldOperator.LessThanOrEqual,
+                QueryFieldOperator.IsNull,
+                QueryFieldOperator.IsNotNull
+            };
+        }
+
+        return new[]
+        {
+            QueryFieldOperator.Equals,
+            QueryFieldOperator.NotEquals,
+            QueryFieldOperator.IsNull,
+            QueryFieldOperator.IsNotNull
+        };
+    }
+
+    private string GetOperatorLabel(QueryFieldOperator op) =>
+        op switch
+        {
+            QueryFieldOperator.Equals => Localizer["Operator_Equals"],
+            QueryFieldOperator.NotEquals => Localizer["Operator_NotEquals"],
+            QueryFieldOperator.Contains => Localizer["Operator_Contains"],
+            QueryFieldOperator.NotContains => Localizer["Operator_NotContains"],
+            QueryFieldOperator.StartsWith => Localizer["Operator_StartsWith"],
+            QueryFieldOperator.EndsWith => Localizer["Operator_EndsWith"],
+            QueryFieldOperator.GreaterThan => Localizer["Operator_GreaterThan"],
+            QueryFieldOperator.GreaterThanOrEqual => Localizer["Operator_GreaterThanOrEqual"],
+            QueryFieldOperator.LessThan => Localizer["Operator_LessThan"],
+            QueryFieldOperator.LessThanOrEqual => Localizer["Operator_LessThanOrEqual"],
+            QueryFieldOperator.IsNull => Localizer["Operator_IsNull"],
+            QueryFieldOperator.IsNotNull => Localizer["Operator_IsNotNull"],
+            QueryFieldOperator.In => Localizer["Operator_In"],
+            QueryFieldOperator.NotIn => Localizer["Operator_NotIn"],
+            _ => op.ToString()
+        };
+
+    private string GetValuePlaceholder(QueryField? field)
+    {
+        if (field is null)
+        {
+            return Localizer["EnterValue"];
+        }
+
+        var fieldType = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+        if (fieldType == typeof(DateTime))
+        {
+            return Localizer["DateExample"];
+        }
+
+        if (IsNumericType(fieldType))
+        {
+            return Localizer["NumericValue"];
+        }
+
+        return Localizer.GetString("ValueFor", field.Label.ToLowerInvariant());
+    }
+
+    private static bool IsNumericType(Type type) =>
+        type == typeof(byte) ||
+        type == typeof(short) ||
+        type == typeof(int) ||
+        type == typeof(long) ||
+        type == typeof(float) ||
+        type == typeof(double) ||
+        type == typeof(decimal) ||
+        type == typeof(sbyte) ||
+        type == typeof(ushort) ||
+        type == typeof(uint) ||
+        type == typeof(ulong);
+}

@@ -1,0 +1,91 @@
+@namespace SuperUI.Components
+@inherits SgInputBase<string>
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <div class="sgc-color-picker @(Disabled ? "sgc-disabled" : "") @(HasValidationErrors ? "sgc-invalid" : "")">
+        <input id="@_colorInputId"
+               type="color" 
+               class="sgc-color-input" 
+               value="@Value" 
+               @onchange="OnColorChange" 
+               disabled="@Disabled"
+               aria-labelledby="@_labelId"
+               aria-label="@(string.IsNullOrEmpty(Label) ? "Выбор цвета" : null)"
+               aria-invalid="@(HasValidationErrors ? "true" : null)"
+               aria-describedby="@DescribedBy" />
+        <input type="text" 
+               class="sgc-color-hex" 
+               value="@Value" 
+               @onchange="OnTextChange" 
+               disabled="@Disabled"
+               placeholder="#000000"
+               aria-labelledby="@_labelId"
+               aria-label="@(string.IsNullOrEmpty(Label) ? "Hex код цвета" : null)"
+               aria-invalid="@(HasValidationErrors ? "true" : null)"
+               aria-describedby="@DescribedBy" />
+    </div>
+    @if (HasValidationErrors)
+    {
+        <span id="@_errorId" class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
+    }
+</div>
+
+@code {
+    private readonly string _labelId = "sg-color-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _colorInputId = "sg-color-input-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-color-err-" + Guid.NewGuid().ToString("N")[..8];
+
+    /// <summary>
+    /// Gets or sets the label text displayed above the color picker.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether a color selection is required.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the color picker is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the color picker should take full width of its container. Default is true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+    
+    /// <summary>
+    /// Gets or sets additional CSS class names to apply to the field container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private string? DescribedBy => HasValidationErrors ? _errorId : null;
+
+    private async Task OnColorChange(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        await SetValueAsync(val);
+    }
+
+    private async Task OnTextChange(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString();
+        if (string.IsNullOrEmpty(val))
+        {
+            await SetValueAsync(null);
+            return;
+        }
+        
+        if (!val.StartsWith("#")) val = "#" + val;
+        // Simple validation for hex color
+        if (System.Text.RegularExpressions.Regex.IsMatch(val, "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"))
+        {
+            await SetValueAsync(val);
+        }
+    }
+}
