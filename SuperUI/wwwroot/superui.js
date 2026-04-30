@@ -362,6 +362,16 @@ export async function copyToClipboard(text) {
     }
 }
 
+export function sgDownloadFile(fileName, contentType, base64Data) {
+    const link = document.createElement('a');
+    link.download = fileName;
+    link.href = `data:${contentType};base64,${base64Data}`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+window.sgDownloadFile = sgDownloadFile;
+
 export function isWithin(container) {
     if (!container) return false;
     return container.contains(document.activeElement);

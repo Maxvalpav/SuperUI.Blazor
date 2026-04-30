@@ -2,50 +2,192 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 @typeparam TItem
-@implements IDisposable
+@implements IAsyncDisposable
 
 <div class="sgc-pivot-container @CssClass">
+    <div class="sgc-pivot-toolbar">
+        <div class="sgc-pivot-toolbar-left">
+            @if (ShowDesigner)
+            {
+                <SgButton Variant="@(_designerVisible ? "primary" : "ghost")" Size="sm" OnClick="ToggleDesigner">
+                    <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Settings)</span> @Localizer["Designer"]
+                </SgButton>
+            }
+            <SgButton Variant="ghost" Size="sm" OnClick="ExportToCsv" Title="@Localizer["ExportToCSV"]">
+                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.FileText)</span> CSV
+            </SgButton>
+            <SgButton Variant="ghost" Size="sm" OnClick="ExportToExcel" Title="@Localizer["ExportToExcel"]">
+                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Database)</span> Excel
+            </SgButton>
+            @if (!string.IsNullOrEmpty(PersistenceId))
+            {
+                <SgButton Variant="ghost" Size="sm" OnClick="ResetStateAsync" Title="@Localizer["ResetSettings"]">
+                    <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Refresh)</span> Сброс
+                </SgButton>
+            }
+            <SgButton Variant="@(_heatmapEnabled ? "primary" : "ghost")" Size="sm" OnClick="ToggleHeatmap">
+                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Flame)</span> @Localizer["Heatmap"]
+            </SgButton>
+            
+            @if (_chartVisible)
+            {
+                <div class="sgc-pivot-chart-type-selector">
+                    <select @onchange="OnChartTypeChanged" class="sgc-pivot-select-sm">
+                        <option value="@SgChartType.Bar">Гистограмма</option>
+                        <option value="@SgChartType.Line">Линейный</option>
+                        <option value="@SgChartType.Pie">Круговой</option>
+                        <option value="@SgChartType.Doughnut">Кольцевой</option>
+                    </select>
+                </div>
+            }
+
+            <SgButton Variant="@(_chartVisible ? "primary" : "ghost")" Size="sm" OnClick="ToggleChart">
+                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.TrendingUp)</span> @Localizer["Chart"]
+            </SgButton>
+        </div>
+        <div class="sgc-pivot-toolbar-right">
+            @if (_rowPaths.Any() || _columnPaths.Any())
+            {
+                <div class="sgc-pivot-stats">
+                    @_rowPaths.Count @Localizer["Rows"], @_columnPaths.Count @Localizer["Cols"]
+                </div>
+            }
+        </div>
+    </div>
+
     <div class="sgc-pivot-main">
+        @if (ShowDesigner && _designerVisible)
+        {
+            <div class="sgc-pivot-designer-sidebar">
+                <SgPivotDesigner TItem="TItem" State="State" Fields="Fields" Items="Items" AllowCollapse="false" />
+            </div>
+        }
+
         <div class="sgc-pivot-table-wrapper">
-            @if (State.RowFields.Any() || State.ColumnFields.Any())
+            @if (_chartVisible)
+            {
+                <div class="sgc-pivot-chart-container">
+                    @{
+                        var valField = State.ValueFields.FirstOrDefault();
+                        var topLevelRows = _rowPaths.Where(r => r.Split(" | ").Length == 1).ToList();
+                        
+                        var chartData = topLevelRows.Select(row => new PivotChartPoint { 
+                            Label = GetLastSegment(row), 
+                            Value = Convert.ToDouble(GetRowTotal(row, valField ?? new SgPivotField<TItem>()) ?? 0) 
+                        }).ToList();
+                    }
+                    @if (valField == null)
+                    {
+                        <div class="sgc-pivot-empty">Выберите поле в секции "Значения"</div>
+                    }
+                    else
+                    {
+                        <SgChart TItem="PivotChartPoint" 
+                                 ChartType="_selectedChartType" 
+                                 Data="chartData" 
+                                 Height="100%" 
+                                 Width="100%" 
+                                 Title="@(valField.Label + " по " + (State.RowFields.FirstOrDefault()?.Label ?? "строкам"))" />
+                    }
+                </div>
+            }
+            else if (State.RowFields.Any() || State.ColumnFields.Any())
             {
                 <table class="sgc-pivot-table">
                     <thead>
-                        <tr>
-                            <th class="sgc-pivot-corner" rowspan="@(Math.Max(1, State.ColumnFields.Count))">
-                                <div class="sgc-pivot-corner-labels">
-                                    <span class="sgc-pivot-col-label">@string.Join(", ", State.ColumnFields.Select(f => f.Label))</span>
-                                    <span class="sgc-pivot-row-label">@string.Join(", ", State.RowFields.Select(f => f.Label))</span>
-                                </div>
-                            </th>
-                            @foreach (var colPath in _columnPaths)
-                            {
-                                <th class="sgc-pivot-col-header">@colPath</th>
-                            }
-                            @if (ShowTotal)
-                            {
-                                <th class="sgc-pivot-total-header">@Localizer["Total"]</th>
-                            }
-                        </tr>
+                        @for (int level = 0; level < Math.Max(1, State.ColumnFields.Count); level++)
+                        {
+                            var currentLevel = level;
+                            <tr>
+                                @if (currentLevel == 0)
+                                {
+                                    <th class="sgc-pivot-corner" rowspan="@(Math.Max(1, State.ColumnFields.Count + (State.ValueFields.Count > 1 ? 1 : 0)))">
+                                        <div class="sgc-pivot-corner-labels">
+                                            <span class="sgc-pivot-col-label">@string.Join(" / ", State.ColumnFields.Select(f => f.Label))</span>
+                                            <span class="sgc-pivot-row-label">@string.Join(" / ", State.RowFields.Select(f => f.Label))</span>
+                                        </div>
+                                    </th>
+                                }
+                                @foreach (var colPath in GetColsAtLevel(currentLevel))
+                                {
+                                    <th class="sgc-pivot-col-header @(GetSortClass(colPath))" 
+                                        colspan="@(GetColSpan(colPath))"
+                                        @onclick="() => ToggleSort(colPath)">
+                                        @GetLastSegment(colPath)
+                                        @if (currentLevel == State.ColumnFields.Count - 1)
+                                        {
+                                            <span class="sgc-pivot-sort-icon">@GetSortIcon(colPath)</span>
+                                        }
+                                    </th>
+                                }
+                                @if (currentLevel == 0 && ShowTotal)
+                                {
+                                    <th class="sgc-pivot-total-header" 
+                                        rowspan="@(Math.Max(1, State.ColumnFields.Count))"
+                                        colspan="@State.ValueFields.Count">
+                                        @Localizer["Total"]
+                                    </th>
+                                }
+                            </tr>
+                        }
+                        @if (State.ValueFields.Count > 1)
+                        {
+                            <tr>
+                                @foreach (var colPath in GetLeafColumnPaths())
+                                {
+                                    @foreach (var valField in State.ValueFields)
+                                    {
+                                        <th class="sgc-pivot-col-header sgc-pivot-val-header">@valField.Label</th>
+                                    }
+                                }
+                                @if (ShowTotal)
+                                {
+                                    @foreach (var valField in State.ValueFields)
+                                    {
+                                        <th class="sgc-pivot-total-header sgc-pivot-val-header">@valField.Label</th>
+                                    }
+                                }
+                            </tr>
+                        }
                     </thead>
                     <tbody>
                         @foreach (var rowPath in _rowPaths)
                         {
-                            <tr>
-                                <td class="sgc-pivot-row-header">@rowPath</td>
-                                @foreach (var colPath in _columnPaths)
-                                {
-                                    var cellValue = GetValue(rowPath, colPath);
-                                    var cellStyle = GetCellStyle(cellValue);
-                                    <td class="sgc-pivot-cell" style="@cellStyle" @onclick="() => HandleCellClick(rowPath, colPath)">
-                                        @FormatValue(cellValue)
+                            var isCollapsed = IsRowCollapsed(rowPath);
+                            var isHidden = IsRowHidden(rowPath);
+                            
+                            @if (!isHidden)
+                            {
+                                <tr>
+                                    <td class="sgc-pivot-row-header" style="padding-left: @(GetRowPadding(rowPath))px">
+                                        @if (HasChildren(rowPath))
+                                        {
+                                            <span class="sgc-pivot-expand-icon" @onclick="() => ToggleRow(rowPath)">
+                                                @((MarkupString)(isCollapsed ? SgIcons.ChevronRight : SgIcons.ChevronDown))
+                                            </span>
+                                        }
+                                        @GetLastSegment(rowPath)
                                     </td>
-                                }
-                                @if (ShowTotal)
-                                {
-                                    <td class="sgc-pivot-total-cell">@FormatValue(GetRowTotal(rowPath))</td>
-                                }
-                            </tr>
+                                    @foreach (var colPath in GetLeafColumnPaths())
+                                    {
+                                        @foreach (var valField in State.ValueFields)
+                                        {
+                                            var cellValue = GetValue(rowPath, colPath, valField.Name);
+                                            var cellStyle = GetCellStyle(cellValue, valField);
+                                            <td class="sgc-pivot-cell" style="@cellStyle" @onclick="() => HandleCellClick(rowPath, colPath)">
+                                                @FormatValue(cellValue, valField)
+                                            </td>
+                                        }
+                                    }
+                                    @if (ShowTotal)
+                                    {
+                                        @foreach (var valField in State.ValueFields)
+                                        {
+                                            <td class="sgc-pivot-total-cell">@FormatValue(GetRowTotal(rowPath, valField), valField)</td>
+                                        }
+                                    }
+                                </tr>
+                            }
                         }
                     </tbody>
                     @if (ShowTotal)
@@ -53,11 +195,17 @@
                         <tfoot>
                             <tr>
                                 <td class="sgc-pivot-total-header">@Localizer["Total"]</td>
-                                @foreach (var colPath in _columnPaths)
+                                @foreach (var colPath in GetLeafColumnPaths())
                                 {
-                                    <td class="sgc-pivot-total-cell">@FormatValue(GetColumnTotal(colPath))</td>
+                                    @foreach (var valField in State.ValueFields)
+                                    {
+                                        <td class="sgc-pivot-total-cell">@FormatValue(GetColumnTotal(colPath, valField), valField)</td>
+                                    }
                                 }
-                                <td class="sgc-pivot-total-cell sgc-pivot-grand-total">@FormatValue(GetGrandTotal())</td>
+                                @foreach (var valField in State.ValueFields)
+                                {
+                                    <td class="sgc-pivot-total-cell sgc-pivot-grand-total">@FormatValue(GetGrandTotal(valField), valField)</td>
+                                }
                             </tr>
                         </tfoot>
                     }
@@ -66,22 +214,55 @@
             else
             {
                 <div class="sgc-pivot-empty">
+                    <div style="font-size: 32px; margin-bottom: 16px; opacity: 0.5;">📊</div>
                     @Localizer["SelectFieldsForPivot"]
                 </div>
             }
         </div>
-
-        @if (ShowDesigner)
-        {
-            <SgPivotDesigner TItem="TItem" State="State" Fields="Fields" />
-        }
     </div>
 </div>
+
+<SgModal @bind-Visible="_drillDownVisible" Title="@Localizer["Details"]" Width="80%">
+    <ChildContent>
+        <div style="margin-bottom: 12px; display: flex; justify-content: flex-end;">
+            <SgButton Variant="ghost" Size="sm" OnClick="ExportDrillDownToCsv">
+                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Download)</span> Экспорт деталей
+            </SgButton>
+        </div>
+        <div style="max-height: 60vh; overflow: auto; border: 1px solid var(--sui-border); border-radius: var(--sui-radius);">
+            <table class="sgc-pivot-drilldown-table">
+                <thead>
+                    <tr>
+                        @foreach (var field in Fields)
+                        {
+                            <th>@field.Label</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _drillDownItems)
+                    {
+                        <tr>
+                            @foreach (var field in Fields)
+                            {
+                                <td>@field.Selector(item)</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </ChildContent>
+    <FooterContent>
+        <SgButton OnClick="() => _drillDownVisible = false">@Localizer["Close"]</SgButton>
+    </FooterContent>
+</SgModal>
 
 @code {
     [Parameter] public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
     [Parameter, EditorRequired] public SgPivotState<TItem> State { get; set; } = default!;
     [Parameter] public List<SgPivotField<TItem>> Fields { get; set; } = new();
+    [Parameter] public string? PersistenceId { get; set; }
     [Parameter] public bool ShowDesigner { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public bool ShowTotal { get; set; } = true;
@@ -94,8 +275,411 @@
 
     private List<string> _rowPaths = new();
     private List<string> _columnPaths = new();
-    private Dictionary<(string, string), object?> _data = new();
+    private HashSet<string> _collapsedRows = new();
+    private Dictionary<(string, string, string), object?> _data = new();
     private int _lastHash;
+    private bool _designerVisible = true;
+    private bool _heatmapEnabled = false;
+    private bool _chartVisible = false;
+    private SgChartType _selectedChartType = SgChartType.Bar;
+    private bool _drillDownVisible = false;
+    private IEnumerable<TItem> _drillDownItems = Enumerable.Empty<TItem>();
+    private string? _sortCol;
+    private bool _sortAsc = true;
+    private IJSObjectReference? _module;
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private void ToggleDesigner() => _designerVisible = !_designerVisible;
+    private void ToggleHeatmap() => _heatmapEnabled = !_heatmapEnabled;
+    private void ToggleChart() => _chartVisible = !_chartVisible;
+
+    private void OnChartTypeChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<SgChartType>(e.Value?.ToString(), out var type))
+        {
+            _selectedChartType = type;
+        }
+    }
+
+    private class PivotChartPoint
+    {
+        public string Label { get; set; } = "";
+        public double Value { get; set; }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+                if (!string.IsNullOrEmpty(PersistenceId))
+                {
+                    await LoadStateAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"SgPivotTable: failed to load JS module: {ex.Message}");
+            }
+        }
+    }
+
+    private async Task LoadStateAsync()
+    {
+        try
+        {
+            var json = await JS.InvokeAsync<string>("localStorage.getItem", $"sg-pivot-{PersistenceId}");
+            if (!string.IsNullOrEmpty(json))
+            {
+                var dto = System.Text.Json.JsonSerializer.Deserialize<PivotStateDto>(json);
+                if (dto != null)
+                {
+                    State.RowFields.Clear();
+                    State.ColumnFields.Clear();
+                    State.ValueFields.Clear();
+
+                    foreach (var name in dto.Rows) 
+                    {
+                        var f = Fields.FirstOrDefault(x => x.Name == name);
+                        if (f != null) State.RowFields.Add(f);
+                    }
+                    foreach (var name in dto.Cols) 
+                    {
+                        var f = Fields.FirstOrDefault(x => x.Name == name);
+                        if (f != null) State.ColumnFields.Add(f);
+                    }
+                    foreach (var v in dto.Values) 
+                    {
+                        var f = Fields.FirstOrDefault(x => x.Name == v.Name);
+                        if (f != null) 
+                        {
+                            f.AggregateType = v.Type;
+                            State.ValueFields.Add(f);
+                        }
+                    }
+                    CalculateTable();
+                    StateHasChanged();
+                }
+            }
+        }
+        catch { }
+    }
+
+    private async Task SaveStateAsync()
+    {
+        if (string.IsNullOrEmpty(PersistenceId)) return;
+        try
+        {
+            var dto = new PivotStateDto
+            {
+                Rows = State.RowFields.Select(f => f.Name).ToList(),
+                Cols = State.ColumnFields.Select(f => f.Name).ToList(),
+                Values = State.ValueFields.Select(f => new PivotValueDto { Name = f.Name, Type = f.AggregateType }).ToList()
+            };
+            var json = System.Text.Json.JsonSerializer.Serialize(dto);
+            await JS.InvokeVoidAsync("localStorage.setItem", $"sg-pivot-{PersistenceId}", json);
+        }
+        catch { }
+    }
+
+    private async Task ResetStateAsync()
+    {
+        if (string.IsNullOrEmpty(PersistenceId)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.removeItem", $"sg-pivot-{PersistenceId}");
+            // Reload page or re-initialize to apply default state
+            // For now, just clear and re-calc with current default (could be improved to use initial params)
+            State.RowFields.Clear();
+            State.ColumnFields.Clear();
+            State.ValueFields.Clear();
+            CalculateTable();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task ExportDrillDownToCsv()
+    {
+        if (!_drillDownItems.Any()) return;
+        
+        var sb = new System.Text.StringBuilder();
+        sb.Append('\uFEFF'); // BOM
+        
+        // Header
+        sb.AppendLine(string.Join(",", Fields.Select(f => f.Label)));
+        
+        // Rows
+        foreach (var item in _drillDownItems)
+        {
+            var row = Fields.Select(f => {
+                var val = f.Selector(item)?.ToString() ?? "";
+                if (val.Contains(",") || val.Contains("\""))
+                    val = $"\"{val.Replace("\"", "\"\"")}\"";
+                return val;
+            });
+            sb.AppendLine(string.Join(",", row));
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        if (_module != null)
+            await _module.InvokeVoidAsync("sgDownloadFile", "pivot_details.csv", "text/csv", base64);
+        else
+            await JS.InvokeVoidAsync("sgDownloadFile", "pivot_details.csv", "text/csv", base64);
+    }
+
+    private class PivotStateDto
+    {
+        public List<string> Rows { get; set; } = new();
+        public List<string> Cols { get; set; } = new();
+        public List<PivotValueDto> Values { get; set; } = new();
+    }
+
+    private class PivotValueDto
+    {
+        public string Name { get; set; } = "";
+        public SgPivotAggregateType Type { get; set; }
+    }
+
+    private void ToggleSort(string col)
+    {
+        if (_sortCol == col) _sortAsc = !_sortAsc;
+        else { _sortCol = col; _sortAsc = true; }
+        SortData();
+    }
+
+    private string GetSortClass(string col) => _sortCol == col ? "sgc-pivot-sorted" : "";
+    private string GetSortIcon(string col) => _sortCol == col ? (_sortAsc ? "↑" : "↓") : "↕";
+
+    private void SortData()
+    {
+        if (string.IsNullOrEmpty(_sortCol)) return;
+        
+        var field = State.ValueFields.FirstOrDefault();
+        var fieldName = field?.Name ?? "";
+
+        _rowPaths = _rowPaths.OrderBy(row => {
+            var val = GetValue(row, _sortCol, fieldName);
+            return val;
+        }, new PivotValueComparer(_sortAsc)).ToList();
+        StateHasChanged();
+    }
+
+    private class PivotValueComparer : IComparer<object?>
+    {
+        private readonly bool _asc;
+        public PivotValueComparer(bool asc) => _asc = asc;
+        public int Compare(object? x, object? y)
+        {
+            if (x == y) return 0;
+            if (x == null) return _asc ? -1 : 1;
+            if (y == null) return _asc ? 1 : -1;
+            
+            if (x is IComparable cx)
+            {
+                try {
+                    int res = cx.CompareTo(y);
+                    return _asc ? res : -res;
+                } catch { return 0; }
+            }
+            return 0;
+        }
+    }
+
+    private async Task ExportToCsv()
+    {
+        var sb = new System.Text.StringBuilder();
+        // BOM for Excel to recognize UTF-8
+        sb.Append('\uFEFF');
+        
+        // Header
+        sb.Append("Rows/Cols,");
+        foreach (var col in GetLeafColumnPaths())
+        {
+            foreach (var valField in State.ValueFields)
+            {
+                sb.Append($"{col} ({valField.Label}),");
+            }
+        }
+        sb.AppendLine();
+        
+        // Rows
+        foreach (var row in _rowPaths)
+        {
+            sb.Append($"{row},");
+            foreach (var col in GetLeafColumnPaths())
+            {
+                foreach (var valField in State.ValueFields)
+                {
+                    var v = GetValue(row, col, valField.Name);
+                    sb.Append($"{FormatValue(v, valField).Replace(",", ".")},");
+                }
+            }
+            sb.AppendLine();
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        if (_module != null)
+            await _module.InvokeVoidAsync("sgDownloadFile", "pivot_export.csv", "text/csv", base64);
+        else
+            await JS.InvokeVoidAsync("sgDownloadFile", "pivot_export.csv", "text/csv", base64);
+    }
+
+    private async Task ExportToExcel()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("<?xml version=\"1.0\"?>");
+        sb.AppendLine("<?mso-application progid=\"Excel.Sheet\"?>");
+        sb.AppendLine("<Workbook xmlns=\"urn:schemas-microsoft-com:office:spreadsheet\"");
+        sb.AppendLine(" xmlns:o=\"urn:schemas-microsoft-com:office:office\"");
+        sb.AppendLine(" xmlns:x=\"urn:schemas-microsoft-com:office:excel\"");
+        sb.AppendLine(" xmlns:ss=\"urn:schemas-microsoft-com:office:spreadsheet\"");
+        sb.AppendLine(" xmlns:html=\"http://www.w3.org/TR/REC-html40\">");
+        
+        sb.AppendLine(" <Styles>");
+        sb.AppendLine("  <Style ss:ID=\"Default\" ss:Name=\"Normal\"><Alignment ss:Vertical=\"Bottom\"/><Font ss:FontName=\"Calibri\" x:CharSet=\"204\" x:Family=\"Swiss\" ss:Size=\"11\" ss:Color=\"#000000\"/></Style>");
+        sb.AppendLine("  <Style ss:ID=\"Header\"><Alignment ss:Horizontal=\"Center\" ss:Vertical=\"Center\" ss:WrapText=\"1\"/><Font ss:FontName=\"Calibri\" ss:Size=\"11\" ss:Color=\"#000000\" ss:Bold=\"1\"/><Interior ss:Color=\"#E1E1E1\" ss:Pattern=\"Solid\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders></Style>");
+        sb.AppendLine("  <Style ss:ID=\"RowHeader\"><Alignment ss:Horizontal=\"Left\" ss:Vertical=\"Center\"/><Font ss:FontName=\"Calibri\" ss:Size=\"11\" ss:Bold=\"1\"/><Interior ss:Color=\"#F5F5F5\" ss:Pattern=\"Solid\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders></Style>");
+        sb.AppendLine("  <Style ss:ID=\"Cell\"><Alignment ss:Horizontal=\"Right\" ss:Vertical=\"Center\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders></Style>");
+        sb.AppendLine("  <Style ss:ID=\"Total\"><Alignment ss:Horizontal=\"Right\" ss:Vertical=\"Center\"/><Font ss:Bold=\"1\"/><Interior ss:Color=\"#F0F0F0\" ss:Pattern=\"Solid\"/><Borders><Border ss:Position=\"Bottom\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Left\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Right\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/><Border ss:Position=\"Top\" ss:LineStyle=\"Continuous\" ss:Weight=\"1\"/></Borders></Style>");
+        sb.AppendLine(" </Styles>");
+
+        sb.AppendLine(" <Worksheet ss:Name=\"PivotTable\">");
+        sb.AppendLine("  <Table>");
+        
+        // Calculate columns count for merging and width
+        var leafCols = GetLeafColumnPaths();
+        var totalCols = 1 + (leafCols.Count * State.ValueFields.Count) + (ShowTotal ? State.ValueFields.Count : 0);
+        sb.AppendLine("   <Column ss:AutoFitWidth=\"1\" ss:Width=\"150\"/>"); // Row headers column
+        for (int i = 0; i < totalCols - 1; i++) sb.AppendLine("   <Column ss:AutoFitWidth=\"1\" ss:Width=\"80\"/>");
+
+        // Headers
+        sb.AppendLine("   <Row ss:Height=\"20\">");
+        var rowHeaderMergeDown = (State.ValueFields.Count > 1 ? 1 : 0);
+        var rowHeaderText = string.Join(" / ", State.RowFields.Select(f => f.Label));
+        if (string.IsNullOrEmpty(rowHeaderText)) rowHeaderText = "Параметры";
+        sb.AppendLine($"    <Cell ss:StyleID=\"Header\" ss:MergeDown=\"{rowHeaderMergeDown}\"><Data ss:Type=\"String\">{rowHeaderText}</Data></Cell>");
+        
+        foreach (var col in leafCols)
+        {
+            sb.AppendLine($"    <Cell ss:StyleID=\"Header\" ss:MergeAcross=\"{Math.Max(0, State.ValueFields.Count - 1)}\"><Data ss:Type=\"String\">{col}</Data></Cell>");
+        }
+        if (ShowTotal)
+        {
+            sb.AppendLine($"    <Cell ss:StyleID=\"Header\" ss:MergeAcross=\"{Math.Max(0, State.ValueFields.Count - 1)}\"><Data ss:Type=\"String\">{Localizer["Total"]}</Data></Cell>");
+        }
+        sb.AppendLine("   </Row>");
+
+        if (State.ValueFields.Count > 1)
+        {
+            sb.AppendLine("   <Row ss:Height=\"18\">");
+            sb.AppendLine("    <Cell ss:Index=\"1\" ss:StyleID=\"Header\"/>"); // Skip first cell due to MergeDown
+            foreach (var col in leafCols)
+            {
+                foreach (var valField in State.ValueFields)
+                {
+                    sb.AppendLine($"    <Cell ss:StyleID=\"Header\"><Data ss:Type=\"String\">{valField.Label}</Data></Cell>");
+                }
+            }
+            if (ShowTotal)
+            {
+                foreach (var valField in State.ValueFields)
+                {
+                    sb.AppendLine($"    <Cell ss:StyleID=\"Header\"><Data ss:Type=\"String\">{valField.Label}</Data></Cell>");
+                }
+            }
+            sb.AppendLine("   </Row>");
+        }
+
+        // Rows
+        foreach (var rowPath in _rowPaths)
+        {
+            if (IsRowHidden(rowPath)) continue;
+
+            sb.AppendLine("   <Row>");
+            var indentCount = (rowPath.Split(" | ").Length - 1);
+            var padding = new string(' ', indentCount * 4);
+            sb.AppendLine($"    <Cell ss:StyleID=\"RowHeader\"><Data ss:Type=\"String\">{padding}{GetLastSegment(rowPath)}</Data></Cell>");
+            
+            foreach (var col in leafCols)
+            {
+                foreach (var valField in State.ValueFields)
+                {
+                    var val = GetValue(rowPath, col, valField.Name);
+                    WriteCell(sb, val, "Cell");
+                }
+            }
+            
+            if (ShowTotal)
+            {
+                foreach (var valField in State.ValueFields)
+                {
+                    var val = GetRowTotal(rowPath, valField);
+                    WriteCell(sb, val, "Total");
+                }
+            }
+            sb.AppendLine("   </Row>");
+        }
+
+        if (ShowTotal)
+        {
+            sb.AppendLine("   <Row ss:Height=\"18\">");
+            sb.AppendLine($"    <Cell ss:StyleID=\"RowHeader\"><Data ss:Type=\"String\">{Localizer["Total"]}</Data></Cell>");
+            foreach (var col in leafCols)
+            {
+                foreach (var valField in State.ValueFields)
+                {
+                    var val = GetColumnTotal(col, valField);
+                    WriteCell(sb, val, "Total");
+                }
+            }
+            foreach (var valField in State.ValueFields)
+            {
+                var val = GetGrandTotal(valField);
+                WriteCell(sb, val, "Total");
+            }
+            sb.AppendLine("   </Row>");
+        }
+
+        sb.AppendLine("  </Table>");
+        sb.AppendLine(" </Worksheet>");
+        sb.AppendLine("</Workbook>");
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        if (_module != null)
+            await _module.InvokeVoidAsync("sgDownloadFile", "pivot_export.xls", "application/vnd.ms-excel", base64);
+        else
+            await JS.InvokeVoidAsync("sgDownloadFile", "pivot_export.xls", "application/vnd.ms-excel", base64);
+    }
+
+    private void WriteCell(System.Text.StringBuilder sb, object? val, string style)
+    {
+        if (val == null)
+        {
+            sb.AppendLine($"    <Cell ss:StyleID=\"{style}\"><Data ss:Type=\"String\">—</Data></Cell>");
+            return;
+        }
+
+        if (val is double d)
+        {
+            sb.AppendLine($"    <Cell ss:StyleID=\"{style}\"><Data ss:Type=\"Number\">{d.ToString(System.Globalization.CultureInfo.InvariantCulture)}</Data></Cell>");
+        }
+        else if (val is int i)
+        {
+            sb.AppendLine($"    <Cell ss:StyleID=\"{style}\"><Data ss:Type=\"Number\">{i}</Data></Cell>");
+        }
+        else
+        {
+            var str = val.ToString()?.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;") ?? "—";
+            sb.AppendLine($"    <Cell ss:StyleID=\"{style}\"><Data ss:Type=\"String\">{str}</Data></Cell>");
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -123,27 +707,122 @@
         return hash.ToHashCode();
     }
 
-    private void HandleStateChanged()
+    private async void HandleStateChanged()
     {
         _lastHash = CalculateHash();
         CalculateTable();
         StateHasChanged();
+        await SaveStateAsync();
     }
 
     private void CalculateTable()
     {
         if (!State.RowFields.Any() && !State.ColumnFields.Any()) return;
 
-        _rowPaths = Items.Select(GetRowKey).Distinct().OrderBy(x => x).ToList();
-        _columnPaths = Items.Select(GetColKey).Distinct().OrderBy(x => x).ToList();
+        // Apply filters
+        var filteredItems = Items.Where(item => 
+        {
+            foreach (var field in State.RowFields.Concat(State.ColumnFields))
+            {
+                var val = field.Selector(item)?.ToString() ?? "—";
+                if (field.ExcludedValues.Contains(val)) return false;
+            }
+            return true;
+        }).ToList();
 
-        _data = Items
-            .GroupBy(i => (GetRowKey(i), GetColKey(i)))
-            .ToDictionary(
-                g => g.Key,
-                g => AggregateValues(g)
-            );
+        // Calculate hierarchical rows
+        var rowPaths = new HashSet<string>();
+        foreach (var item in filteredItems)
+        {
+            var segments = State.RowFields.Select(f => f.Selector(item)?.ToString() ?? "—").ToList();
+            for (int i = 1; i <= segments.Count; i++)
+            {
+                rowPaths.Add(string.Join(" | ", segments.Take(i)));
+            }
+        }
+        _rowPaths = rowPaths.OrderBy(x => x).ToList();
+        
+        // Calculate hierarchical columns
+        var columnPaths = new HashSet<string>();
+        foreach (var item in filteredItems)
+        {
+            var segments = State.ColumnFields.Select(f => f.Selector(item)?.ToString() ?? "—").ToList();
+            for (int i = 1; i <= segments.Count; i++)
+            {
+                columnPaths.Add(string.Join(" | ", segments.Take(i)));
+            }
+        }
+        _columnPaths = columnPaths.OrderBy(x => x).ToList();
+
+        _data.Clear();
+        
+        // Populate data for all row and column levels
+        foreach (var rowFieldCount in Enumerable.Range(0, State.RowFields.Count + 1))
+        {
+            var currentRows = State.RowFields.Take(rowFieldCount).ToList();
+            Func<TItem, string> rowKeyFunc = i => currentRows.Any() 
+                ? string.Join(" | ", currentRows.Select(f => f.Selector(i)?.ToString() ?? "—"))
+                : Localizer["All"];
+
+            foreach (var colFieldCount in Enumerable.Range(0, State.ColumnFields.Count + 1))
+            {
+                var currentCols = State.ColumnFields.Take(colFieldCount).ToList();
+                Func<TItem, string> colKeyFunc = i => currentCols.Any()
+                    ? string.Join(" | ", currentCols.Select(f => f.Selector(i)?.ToString() ?? "—"))
+                    : Localizer["All"];
+                
+                var groups = filteredItems.GroupBy(i => (rowKeyFunc(i), colKeyFunc(i))).ToList();
+                foreach (var group in groups)
+                {
+                    foreach (var field in State.ValueFields)
+                    {
+                        _data[(group.Key.Item1, group.Key.Item2, field.Name)] = AggregateValues(group, field);
+                    }
+                }
+            }
+        }
     }
+
+    private string GetLastSegment(string path) => path.Split(" | ").Last();
+    private int GetRowPadding(string path) => (path.Split(" | ").Length - 1) * 20 + 12;
+    private bool HasChildren(string path) => _rowPaths.Any(p => p.StartsWith(path + " | "));
+    private bool IsRowCollapsed(string path) => _collapsedRows.Contains(path);
+    private bool IsRowHidden(string path)
+    {
+        var segments = path.Split(" | ");
+        if (segments.Length <= 1) return false;
+        
+        for (int i = 1; i < segments.Length; i++)
+        {
+            var parentPath = string.Join(" | ", segments.Take(i));
+            if (_collapsedRows.Contains(parentPath)) return true;
+        }
+        return false;
+    }
+
+    private void ToggleRow(string path)
+    {
+        if (_collapsedRows.Contains(path)) _collapsedRows.Remove(path);
+        else _collapsedRows.Add(path);
+    }
+
+    private List<string> GetColsAtLevel(int level) => _columnPaths
+        .Where(p => p.Split(" | ").Length == level + 1)
+        .ToList();
+
+    private int GetColSpan(string path)
+    {
+        var leafCount = GetLeafColumnPaths().Count(p => p == path || p.StartsWith(path + " | "));
+        return leafCount * State.ValueFields.Count;
+    }
+
+    private List<string> GetLeafColumnPaths() => _columnPaths
+        .Where(p => p.Split(" | ").Length == State.ColumnFields.Count || !State.ColumnFields.Any())
+        .ToList();
+
+    private List<string> GetVisibleRowPaths() => _rowPaths
+        .Where(p => !IsRowHidden(p))
+        .ToList();
 
     private string GetRowKey(TItem item) => State.RowFields.Any() 
         ? string.Join(" | ", State.RowFields.Select(f => f.Selector(item)?.ToString() ?? "—")) 
@@ -153,18 +832,14 @@
         ? string.Join(" | ", State.ColumnFields.Select(f => f.Selector(item)?.ToString() ?? "—")) 
         : "Все";
 
-    private object? AggregateValues(IEnumerable<TItem> group)
+    private object? AggregateValues(IEnumerable<TItem> group, SgPivotField<TItem> field)
     {
-        if (!State.ValueFields.Any()) return group.Count();
-        
-        var field = State.ValueFields.First();
-        
         if (field.CustomAggregate != null)
         {
             return field.CustomAggregate(group);
         }
 
-        var values = group.Select(field.Selector).Where(v => v != null).Select(v => Convert.ToDouble(v));
+        var values = group.Select(field.Selector).Where(v => v != null).Select(v => Convert.ToDouble(v)).ToList();
 
         if (!values.Any()) return field.AggregateType == SgPivotAggregateType.Count ? 0 : null;
 
@@ -179,46 +854,55 @@
         };
     }
 
-    private string? GetCellStyle(object? value)
+    private string? GetCellStyle(object? value, SgPivotField<TItem> field)
     {
-        if (State.ValueFields.Count > 0)
+        var customStyle = field.CellStyleFunc?.Invoke(value);
+        if (_heatmapEnabled && value is double d)
         {
-            var field = State.ValueFields[0];
-            return field.CellStyleFunc?.Invoke(value);
+            // Exclude totals from max calculation to keep heatmap contrasting
+            var max = _data
+                .Where(kv => kv.Key.Item1 != "Все" && kv.Key.Item2 != "Все" && kv.Key.Item3 == field.Name && kv.Value is double)
+                .Select(kv => (double)kv.Value!)
+                .DefaultIfEmpty(0)
+                .Max();
+
+            if (max > 0)
+            {
+                var ratio = d / max;
+                var alpha = Math.Min(0.7, ratio); // Slightly higher opacity for better contrast
+                return $"background-color: rgba(var(--sui-accent-rgb), {alpha.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)}); {customStyle}";
+            }
         }
-        return null;
+        return customStyle;
     }
 
     private async Task HandleCellClick(string row, string col)
     {
-        if (OnDrillDown.HasDelegate)
-        {
-            var items = Items.Where(i => GetRowKey(i) == row && GetColKey(i) == col);
-            await OnDrillDown.InvokeAsync(items);
+        _drillDownItems = Items.Where(i => 
+            (State.RowFields.Count == 0 || GetRowKey(i).StartsWith(row)) && 
+            (State.ColumnFields.Count == 0 || GetColKey(i).StartsWith(col)));
+        
+        _drillDownVisible = true;
+
+        if (OnDrillDown.HasDelegate) {
+            await OnDrillDown.InvokeAsync(_drillDownItems);
         }
     }
 
-    private object? GetValue(string row, string col) => _data.TryGetValue((row, col), out var val) ? val : null;
+    private object? GetValue(string row, string col, string fieldName) => 
+        _data.TryGetValue((row, col, fieldName), out var val) ? val : null;
 
-    private object? GetRowTotal(string row)
-    {
-        var items = Items.Where(i => GetRowKey(i) == row);
-        return AggregateValues(items);
-    }
+    private object? GetRowTotal(string row, SgPivotField<TItem> field) => GetValue(row, Localizer["All"], field.Name);
 
-    private object? GetColumnTotal(string col)
-    {
-        var items = Items.Where(i => GetColKey(i) == col);
-        return AggregateValues(items);
-    }
+    private object? GetColumnTotal(string col, SgPivotField<TItem> field) => GetValue(Localizer["All"], col, field.Name);
 
-    private object? GetGrandTotal() => AggregateValues(Items);
+    private object? GetGrandTotal(SgPivotField<TItem> field) => GetValue(Localizer["All"], Localizer["All"], field.Name);
 
-    private string FormatValue(object? val)
+    private string FormatValue(object? val, SgPivotField<TItem>? field = null)
     {
         if (val == null) return "—";
         
-        var format = State.ValueFields.FirstOrDefault()?.Format;
+        var format = field?.Format ?? State.ValueFields.FirstOrDefault()?.Format;
         if (val is IFormattable formattable && !string.IsNullOrEmpty(format))
         {
             return formattable.ToString(format, System.Globalization.CultureInfo.CurrentCulture);
@@ -228,8 +912,12 @@
         return val.ToString() ?? "—";
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         State.OnChanged -= HandleStateChanged;
+        if (_module != null)
+        {
+            try { await _module.DisposeAsync(); } catch { }
+        }
     }
 }
