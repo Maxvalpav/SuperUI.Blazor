@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Localization;
 using System.Collections;
@@ -99,6 +100,10 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     
     private int _aggregateCacheItemsVersion = -1;
     private int _aggregateCacheFilterVersion = -1;
+
+    private int _preparedSortsCacheSortVersion = -1;
+    private int _preparedSortsCacheColumnsVersion = -1;
+    private List<(Func<TItem, object?> Selector, bool Descending)>? _preparedSortsCache;
     
     private (int items, int filter, int selection, int count)? _allFilteredSelectedCacheKey;
     private bool _allFilteredSelectedCacheValue;
@@ -126,8 +131,14 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private const int VirtualizationThreshold = 1000;
     private const int MinColumnWidth = 40;
 
+    // Debounce state for text inputs (search + quick filters)
+    private CancellationTokenSource? _searchDebounceCts;
+    private readonly Dictionary<string, CancellationTokenSource> _quickFilterDebounceCts = new(StringComparer.Ordinal);
+    private const int InputDebounceMs = 250;
+
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+    [Inject] private ILogger<SgDataGrid<TItem>> Logger { get; set; } = default!;
 
     private ElementReference _gridRootRef;
     private ElementReference _chooserRef;
@@ -434,7 +445,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
                 await ImportStateJsonAsync(stateJson);
             }
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SgDataGrid: failed to load persisted state for key {Key}", PersistStateKey);
+        }
     }
 
     private async Task SaveStateAsync()
@@ -445,7 +461,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             var stateJson = ExportStateJson();
             await _module.InvokeVoidAsync("setLocalStorage", PersistStateKey, stateJson);
         }
-        catch { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "SgDataGrid: failed to persist state for key {Key}", PersistStateKey);
+        }
     }
 
     protected override bool ShouldRender()
@@ -462,24 +483,40 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         {
             try
             {
-                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+                if (_disposing)
+                {
+                    // Component was disposed while we awaited the import — clean up locally.
+                    try { await module.DisposeAsync(); } catch { }
+                    return;
+                }
+                _module = module;
                 _selfRef = DotNetObjectReference.Create(this);
                 await _module.InvokeVoidAsync("init", _selfRef, _gridRootRef);
+
+                if (_disposing)
+                    return;
 
                 // Initialize virtualization for large datasets
                 if (ShouldUseVirtualization())
                 {
                     await _module.InvokeVoidAsync("initDataGridVirtualization", _selfRef, _gridRootRef);
+                    if (_disposing) return;
                 }
 
                 if (!string.IsNullOrEmpty(PersistStateKey))
                 {
                     await LoadStateAsync();
+                    if (_disposing) return;
                     StateHasChanged();
                 }
             }
-            catch (JSException) { }
+            catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "SgDataGrid: failed to initialize JS interop module");
+            }
         }
     }
 
@@ -519,6 +556,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public async Task SetColumnWidthAsync(string key, int width)
     {
+        if (_disposing) return;
         if (!string.IsNullOrWhiteSpace(key) && width > 0)
             _columnWidths[key] = Math.Max(MinColumnWidth, width);
         await SaveStateAsync();
@@ -528,6 +566,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public async Task ReorderColumnAsync(string dragKey, string targetKey, bool before)
     {
+        if (_disposing) return;
         var ordered = GetOrderedColumns().ToList();
         var drag = ordered.FirstOrDefault(c => c.Key == dragKey);
         var target = ordered.FirstOrDefault(c => c.Key == targetKey);
@@ -551,12 +590,15 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public Task OnScrollAsync(int scrollTop, int viewportHeight)
     {
+        if (_disposing)
+            return Task.CompletedTask;
+
         _scrollTop = scrollTop;
         _viewportHeight = viewportHeight;
-        
+
         // Invalidate visible rows cache to trigger recalculation
         _visibleRowsCacheItemsVersion = -1;
-        
+
         // Trigger re-render
         return InvokeAsync(StateHasChanged);
     }
@@ -564,7 +606,10 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [JSInvokable]
     public Task OnRowHeightMeasuredAsync(int measuredHeight)
     {
-        _estimatedRowHeight = measuredHeight;
+        if (_disposing)
+            return Task.CompletedTask;
+        if (measuredHeight > 0)
+            _estimatedRowHeight = measuredHeight;
         return Task.CompletedTask;
     }
 
@@ -946,14 +991,27 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return _filteredSortedRowsCache;
         }
 
-        var preparedSorts = new List<(Func<TItem, object?> Selector, bool Descending)>(_sort.Count);
-        for (var i = 0; i < _sort.Count; i++)
+        List<(Func<TItem, object?> Selector, bool Descending)> preparedSorts;
+        if (_preparedSortsCache is not null
+            && _preparedSortsCacheSortVersion == _sortVersion
+            && _preparedSortsCacheColumnsVersion == _columnsVersion)
         {
-            var sortRule = _sort[i];
-            var col = GetColumnByKey(sortRule.Key);
-            if (col is null)
-                continue;
-            preparedSorts.Add((col.GetValue, sortRule.Dir == SortDirection.Descending));
+            preparedSorts = _preparedSortsCache;
+        }
+        else
+        {
+            preparedSorts = new List<(Func<TItem, object?> Selector, bool Descending)>(_sort.Count);
+            for (var i = 0; i < _sort.Count; i++)
+            {
+                var sortRule = _sort[i];
+                var col = GetColumnByKey(sortRule.Key);
+                if (col is null)
+                    continue;
+                preparedSorts.Add((col.GetValue, sortRule.Dir == SortDirection.Descending));
+            }
+            _preparedSortsCache = preparedSorts;
+            _preparedSortsCacheSortVersion = _sortVersion;
+            _preparedSortsCacheColumnsVersion = _columnsVersion;
         }
 
         if (preparedSorts.Count == 0)
@@ -1435,16 +1493,23 @@ private static object? ConvertFromString(string? text, Type type)
         return _columnLookup.TryGetValue(key, out var col) ? col : null;
     }
 
-    private async Task OnSearchInput(ChangeEventArgs args)
+    private void OnSearchInput(ChangeEventArgs args)
     {
         _search = args.Value?.ToString();
-        _filterVersion++;  // Increment filter version when search changes
-        _currentPage = 1;
-        await SaveStateAsync();
-        await InvokeAsync(StateHasChanged);
+
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _searchDebounceCts = cts;
+
+        _ = DebounceApplyAsync(cts.Token, () =>
+        {
+            _filterVersion++;
+            _currentPage = 1;
+        });
     }
 
-    private async Task OnQuickFilterInputAsync(string key, ChangeEventArgs args)
+    private void OnQuickFilterInputAsync(string key, ChangeEventArgs args)
     {
         var value = args.Value?.ToString() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(value))
@@ -1452,9 +1517,48 @@ private static object? ConvertFromString(string? text, Type type)
         else
             _quickFilters[key] = value;
 
-        _filterVersion++;  // Increment filter version when quick filter changes
-        _currentPage = 1;
-        await SaveStateAsync();
+        if (_quickFilterDebounceCts.TryGetValue(key, out var existing))
+        {
+            existing.Cancel();
+            existing.Dispose();
+        }
+        var cts = new CancellationTokenSource();
+        _quickFilterDebounceCts[key] = cts;
+
+        _ = DebounceApplyAsync(cts.Token, () =>
+        {
+            _filterVersion++;
+            _currentPage = 1;
+        });
+    }
+
+    private async Task DebounceApplyAsync(CancellationToken ct, Action applyState)
+    {
+        try
+        {
+            await Task.Delay(InputDebounceMs, ct);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (_disposing || ct.IsCancellationRequested)
+            return;
+
+        applyState();
+        try
+        {
+            await SaveStateAsync();
+        }
+        catch (Exception ex) when (ex is JSException or TaskCanceledException or ObjectDisposedException)
+        {
+            // SaveStateAsync already swallows JS errors, but guard the await itself.
+        }
+
+        if (_disposing || ct.IsCancellationRequested)
+            return;
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2128,8 +2232,11 @@ private static object? ConvertFromString(string? text, Type type)
         {
             await _module.InvokeVoidAsync("downloadCsv", "grid.csv", sb.ToString());
         }
-        catch (JSException)
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "SgDataGrid: CSV export failed");
         }
     }
 
@@ -2159,8 +2266,11 @@ private static object? ConvertFromString(string? text, Type type)
         {
             await _module.InvokeVoidAsync("downloadExcel", "grid.xls", sb.ToString());
         }
-        catch (JSException)
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "SgDataGrid: Excel export failed");
         }
     }
 
@@ -2197,8 +2307,11 @@ private static object? ConvertFromString(string? text, Type type)
                 _columnWidths[pair.Key] = pair.Value;
             await InvokeAsync(StateHasChanged);
         }
-        catch (JSException)
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
         {
+            Logger.LogWarning(ex, "SgDataGrid: AutoFit measure failed");
         }
     }
 
@@ -2717,7 +2830,12 @@ private static object? ConvertFromString(string? text, Type type)
         {
             await _module.InvokeVoidAsync("setActiveRow", _gridRootRef, index);
         }
-        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "SgDataGrid: setActiveRow JS call failed");
+        }
     }
 
     private void OnRowExpandToggle(TItem item)
@@ -2773,17 +2891,43 @@ private static object? ConvertFromString(string? text, Type type)
     {
         _disposing = true;
 
+        // Cancel any pending debounce timers so they don't fire after disposal.
+        try
+        {
+            _searchDebounceCts?.Cancel();
+            _searchDebounceCts?.Dispose();
+            _searchDebounceCts = null;
+            foreach (var cts in _quickFilterDebounceCts.Values)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+            _quickFilterDebounceCts.Clear();
+        }
+        catch (ObjectDisposedException) { }
+
         if (_module is not null && _selfRef is not null)
         {
             try
             {
+                await _module.InvokeVoidAsync("disposeDataGridVirtualization", _selfRef);
+            }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "SgDataGrid: virtualization dispose JS call failed");
+            }
+
+            try
+            {
                 await _module.InvokeVoidAsync("dispose", _selfRef);
             }
-            catch (JSException)
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
             {
-            }
-            catch (TaskCanceledException)
-            {
+                Logger.LogDebug(ex, "SgDataGrid: dispose JS call failed");
             }
         }
 
@@ -2793,8 +2937,11 @@ private static object? ConvertFromString(string? text, Type type)
             {
                 await _module.DisposeAsync();
             }
-            catch (JSException)
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (Exception ex)
             {
+                Logger.LogDebug(ex, "SgDataGrid: JS module DisposeAsync failed");
             }
         }
 
