@@ -69,6 +69,28 @@ export function init(dotnetRef, gridRoot) {
 
     gridRoot.addEventListener('dblclick', onDblClick);
 
+    // Virtualization scroll support
+    const scrollContainer = gridRoot.querySelector('.sg-scroll');
+    if (scrollContainer) {
+        let scrollRaf = 0;
+        const onScroll = () => {
+            if (scrollRaf) return;
+            scrollRaf = window.requestAnimationFrame(() => {
+                scrollRaf = 0;
+                try {
+                    if (!dotnetRef._sgDisposed) {
+                        dotnetRef.invokeMethodAsync('OnScrollAsync', 
+                            Math.round(scrollContainer.scrollTop), 
+                            Math.round(scrollContainer.clientHeight));
+                    }
+                } catch (e) { }
+            });
+        };
+        scrollContainer.addEventListener('scroll', onScroll);
+        // Initial viewport height
+        setTimeout(onScroll, 0);
+    }
+
     let dragKey = null;
     let dragPinned = null;
     let dragOverRaf = 0;
@@ -422,6 +444,9 @@ export function initDataGridVirtualization(dotNetRef, gridRoot) {
     };
     
     scrollContainer.addEventListener('scroll', onScroll);
+    
+    // Initial call to set viewport height and initial rows
+    onScroll();
     
     // Store cleanup function
     initDataGridVirtualization._cleanup = initDataGridVirtualization._cleanup || new Map();

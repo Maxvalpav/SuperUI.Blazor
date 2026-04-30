@@ -434,6 +434,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     protected override void OnParametersSet()
     {
         PageSize = Math.Max(1, PageSize);
+        _estimatedRowHeight = EstimatedRowHeight > 0 ? EstimatedRowHeight : 32;
 
         var currentCount = Items is ICollection col ? col.Count : -1;
         if (!ReferenceEquals(_prevItems, Items) || currentCount != _prevItemsCount)
@@ -584,6 +585,33 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Gets or sets whether to enable row virtualization for large datasets. Default is false.
+    /// </summary>
+    [Parameter] public bool EnableVirtualization { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the estimated height of each row in pixels. Default is 32.
+    /// </summary>
+    [Parameter] public int EstimatedRowHeight { get; set; } = 32;
+
+    [JSInvokable]
+    public async Task OnScrollAsync(int scrollTop, int viewportHeight)
+    {
+        if (_disposing) return;
+        if (_scrollTop == scrollTop && _viewportHeight == viewportHeight)
+            return;
+
+        _scrollTop = scrollTop;
+        _viewportHeight = viewportHeight;
+        
+        // Invalidate visible rows cache to trigger recalculation if virtualized
+        if (ShouldUseVirtualization())
+            _visibleRowsCacheItemsVersion = -1;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
     [JSInvokable]
     public async Task SetColumnWidthAsync(string key, int width)
     {
@@ -619,29 +647,16 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     }
 
     [JSInvokable]
-    public Task OnScrollAsync(int scrollTop, int viewportHeight)
+    public async Task OnRowHeightMeasuredAsync(int measuredHeight)
     {
         if (_disposing)
-            return Task.CompletedTask;
-
-        _scrollTop = scrollTop;
-        _viewportHeight = viewportHeight;
-
-        // Invalidate visible rows cache to trigger recalculation
-        _visibleRowsCacheItemsVersion = -1;
-
-        // Trigger re-render
-        return InvokeAsync(StateHasChanged);
-    }
-
-    [JSInvokable]
-    public Task OnRowHeightMeasuredAsync(int measuredHeight)
-    {
-        if (_disposing)
-            return Task.CompletedTask;
-        if (measuredHeight > 0)
+            return;
+        if (measuredHeight > 0 && _estimatedRowHeight != measuredHeight)
+        {
             _estimatedRowHeight = measuredHeight;
-        return Task.CompletedTask;
+            _visibleRowsCacheItemsVersion = -1; // Invalidate cache
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     public SgGridState ExportState()
@@ -924,7 +939,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         if (ShouldUseVirtualization())
         {
             var (startIndex, endIndex, _, _) = CalculateVirtualWindow();
-            _visibleRowsCache = rows.GetRange(startIndex, endIndex - startIndex);
+            var count = Math.Min(endIndex - startIndex + 1, rows.Count - startIndex);
+            _visibleRowsCache = rows.GetRange(startIndex, count);
             _visibleRowsCacheItemsVersion = _itemsVersion;
             _visibleRowsCacheFilterVersion = _filterVersion;
             _visibleRowsCacheSortVersion = _sortVersion;
@@ -965,8 +981,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
     private bool ShouldUseVirtualization()
     {
-        // Don't virtualize if pagination is enabled - pagination already handles chunking
-        if (EnablePaging)
+        if (!EnableVirtualization)
             return false;
 
         // Don't virtualize if grouping is active - grouping has complex rendering
@@ -996,11 +1011,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
         // Add buffer rows above and below the viewport
         var startIndex = Math.Max(0, firstVisibleRow - _virtualizationBufferRows);
-        var endIndex = Math.Min(totalRows, firstVisibleRow + rowsInViewport + _virtualizationBufferRows);
+        var endIndex = Math.Min(totalRows - 1, firstVisibleRow + rowsInViewport + _virtualizationBufferRows);
 
         // Calculate padding to maintain scroll position
         var topPadding = startIndex * _estimatedRowHeight;
-        var bottomPadding = (totalRows - endIndex) * _estimatedRowHeight;
+        var bottomPadding = (totalRows - 1 - endIndex) * _estimatedRowHeight;
 
         return (startIndex, endIndex, topPadding, bottomPadding);
     }
@@ -1166,9 +1181,31 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         for (var q = 0; q < preparedQuickFilters.Count; q++)
         {
             var quickFilter = preparedQuickFilters[q];
-            var display = quickFilter.Column.GetDisplay(item);
-            if (display.IndexOf(quickFilter.Value, StringComparison.CurrentCultureIgnoreCase) < 0)
-                return false;
+            var col = quickFilter.Column;
+            var val = quickFilter.Value;
+
+            var type = col.ValueType ?? typeof(string);
+            type = Nullable.GetUnderlyingType(type) ?? type;
+
+            if (type == typeof(bool))
+            {
+                var rawValue = col.GetValue(item);
+                if (rawValue is bool b)
+                {
+                    var filterBool = bool.Parse(val);
+                    if (b != filterBool) return false;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                var display = col.GetDisplay(item);
+                if (display.IndexOf(val, StringComparison.CurrentCultureIgnoreCase) < 0)
+                    return false;
+            }
         }
 
         for (var v = 0; v < preparedValueFilters.Count; v++)
