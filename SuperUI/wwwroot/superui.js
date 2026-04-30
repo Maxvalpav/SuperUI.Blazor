@@ -55,6 +55,20 @@ export function init(dotnetRef, gridRoot) {
 
     gridRoot.addEventListener('pointerdown', onPointerDown);
 
+    // Column auto-fit on double click
+    const onDblClick = (e) => {
+        const handle = e.target.closest('.sg-resizer');
+        if (!handle) return;
+
+        const key = handle.dataset.colKey;
+        try {
+            if (!dotnetRef._sgDisposed)
+                dotnetRef.invokeMethodAsync('AutoSizeColumnAsync', key);
+        } catch (e) { }
+    };
+
+    gridRoot.addEventListener('dblclick', onDblClick);
+
     let dragKey = null;
     let dragPinned = null;
     let dragOverRaf = 0;

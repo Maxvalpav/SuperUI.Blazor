@@ -107,11 +107,27 @@
                  }
              </div>
          }
-@if (SelectionEnabled && SelectedItems.Count > 0)
+@if (GroupByKeys.Count > 0)
+        {
+            <div class="sg-btn-group">
+                <button class="sg-btn" @onclick="ExpandAllGroupsAsync" title="@Localizer["ExpandAll"]">
+                    <span class="sui-icon">📂</span>
+                </button>
+                <button class="sg-btn" @onclick="CollapseAllGroupsAsync" title="@Localizer["CollapseAll"]">
+                    <span class="sui-icon">📁</span>
+                </button>
+            </div>
+        }
+        
+        @if (SelectionEnabled && SelectedItems.Count > 0)
          {
              <div class="sg-chip">@Localizer["DataGrid_Selected"]: @SelectedItems.Count</div>
              <button class="sg-btn" @onclick="ClearSelectionAsync">@Localizer["Clear"]</button>
          }
+        @if (ToolbarContent is not null)
+        {
+            <div class="sg-toolbar-custom">@ToolbarContent</div>
+        }
     </div>
 
     <div class="sg-scroll">
@@ -340,7 +356,16 @@
                 @if (totalVisible == 0)
                 {
                     <tr>
-                        <td class="sg-empty" colspan="@ColumnSpan">@EffectiveEmptyText</td>
+                        <td class="sg-empty" colspan="@ColumnSpan">
+                            @if (EmptyDataTemplate is not null)
+                            {
+                                @EmptyDataTemplate
+                            }
+                            else
+                            {
+                                @EffectiveEmptyText
+                            }
+                        </td>
                     </tr>
                 }
                 else if (hasGroups && tree is not null)
@@ -617,6 +642,7 @@
             builder.AddAttribute(seq++, "checked", isSelected);
             builder.AddAttribute(seq++, "aria-label", Localizer["DataGrid_SelectRow"]);
             builder.AddAttribute(seq++, "onchange", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(this, e => ToggleRowAsync(itemLocal, e.Value is true)));
+            builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.Web.MouseEventArgs>(this, e => HandleRowSelectionClickAsync(e, itemLocal)));
             builder.CloseElement();
             builder.CloseElement();
         }
