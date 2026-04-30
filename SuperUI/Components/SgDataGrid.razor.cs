@@ -40,6 +40,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private bool _pendingRulesAnd = true;
     private string? _pendingFilterKey;
     private string? _search;
+    private string _filterMenuSearchText = string.Empty;
     private string? _openFilterColumn;
     private bool _showChooser;
     private bool _showExportMenu;
@@ -1197,7 +1198,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         return true;
     }
 
-    private void InvalidateComputedRowsCache()
+    internal void InvalidateComputedRowsCache()
     {
         // This method is called when we need to invalidate caches due to content changes
         // Individual version increments happen at mutation points (OnSearchInput, ApplyFilterAsync, etc.)
@@ -1523,6 +1524,21 @@ private static object? ConvertFromString(string? text, Type type)
         return _columnLookup.TryGetValue(key, out var col) ? col : null;
     }
 
+    private string GetColumnFilterType(string key)
+    {
+        var col = GetColumnByKey(key);
+        if (col is null) return "string";
+        
+        var type = col.ValueType ?? typeof(string);
+        type = Nullable.GetUnderlyingType(type) ?? type;
+
+        if (type == typeof(bool)) return "bool";
+        if (type == typeof(int) || type == typeof(long) || type == typeof(double) || type == typeof(decimal) || type == typeof(float)) return "number";
+        if (type == typeof(DateTime)) return "date";
+        
+        return "string";
+    }
+
     private void OnSearchInput(ChangeEventArgs args)
     {
         _search = args.Value?.ToString();
@@ -1559,6 +1575,8 @@ private static object? ConvertFromString(string? text, Type type)
         {
             _filterVersion++;
             _currentPage = 1;
+            InvalidateComputedRowsCache();
+            StateHasChanged();
         });
     }
 
@@ -1655,6 +1673,7 @@ private static object? ConvertFromString(string? text, Type type)
 
         _openFilterColumn = key;
         _pendingFilterKey = key;
+        _filterMenuSearchText = string.Empty;
         _pendingSelectedValues = _filters.TryGetValue(key, out var current)
             ? current.ToHashSet(StringComparer.Ordinal)
             : GetDistinctNormalizedValuesForColumn(key);

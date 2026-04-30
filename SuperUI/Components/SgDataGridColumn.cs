@@ -27,6 +27,11 @@ public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable
     internal string Key { get; private set; } = Guid.NewGuid().ToString("N");
     internal bool IsSynthetic { get; private set; }
 
+    internal void InvalidateOwnerCache()
+    {
+        Owner?.InvalidateComputedRowsCache();
+    }
+
     internal static SgDataGridColumn<TItem> CreateSynthetic(
         string key,
         string title,
