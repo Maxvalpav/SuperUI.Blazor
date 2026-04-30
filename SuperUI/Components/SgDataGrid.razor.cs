@@ -45,6 +45,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private bool _showExportMenu;
     private int _currentPage = 1;
     private TItem? _activeRow = default;
+    private TItem? _lastSelectedItem = default;
     private TItem? _detailItem;
     private bool _detailDrawerVisible;
     private bool _detailWindowVisible;
@@ -159,6 +160,16 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets the template for rendering row details.
     /// </summary>
     [Parameter] public RenderFragment<TItem>? DetailTemplate { get; set; }
+
+    /// <summary>
+    /// Gets or sets the template for the toolbar content.
+    /// </summary>
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the template displayed when the grid has no data.
+    /// </summary>
+    [Parameter] public RenderFragment? EmptyDataTemplate { get; set; }
     
     /// <summary>
     /// Gets or sets the grid title displayed in the toolbar.
@@ -551,6 +562,25 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     {
         if (!_groupByKeys.Contains(key))
             _groupByKeys.Add(key);
+    }
+
+    [JSInvokable]
+    public async Task AutoSizeColumnAsync(string key)
+    {
+        var col = GetColumnByKey(key);
+        if (col is null) return;
+
+        var rows = GetVisibleRows();
+        var sampleRows = rows.Take(100).ToList(); // Sample first 100 rows for performance
+        var values = sampleRows.Select(r => col.GetDisplay(r)).ToList();
+
+        var widths = await JS.InvokeAsync<Dictionary<string, int>>("measureColumnWidths", 
+            new[] { new { key = col.Key, title = col.Title, values } }, _gridId);
+
+        if (widths.TryGetValue(key, out var width))
+        {
+            await SetColumnWidthAsync(key, width);
+        }
     }
 
     [JSInvokable]
@@ -1917,6 +1947,34 @@ private static object? ConvertFromString(string? text, Type type)
 
     private bool IsGroupedBy(string key) => _groupByKeys.Contains(key);
 
+    public async Task ExpandAllGroupsAsync()
+    {
+        _collapsedGroups.Clear();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task CollapseAllGroupsAsync()
+    {
+        var nodes = GetGroupTree();
+        var allPaths = new List<string>();
+        
+        void Traverse(List<GroupNode> level)
+        {
+            foreach (var node in level)
+            {
+                allPaths.Add(node.Path);
+                if (node.Children.Count > 0)
+                    Traverse(node.Children);
+            }
+        }
+        
+        Traverse(nodes);
+        foreach (var path in allPaths)
+            _collapsedGroups.Add(path);
+            
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task ToggleGroupByAsync(string key)
     {
         if (_groupByKeys.Contains(key))
@@ -2318,14 +2376,54 @@ private static object? ConvertFromString(string? text, Type type)
     private async Task ToggleRowAsync(TItem item, bool selected)
     {
         if (selected)
+        {
             SelectedItems.Add(item);
+            _lastSelectedItem = item;
+        }
         else
+        {
             SelectedItems.Remove(item);
+            if (ReferenceEquals(_lastSelectedItem, item))
+                _lastSelectedItem = default;
+        }
 
         _selectionVersion++;
         _selectionChangedPending = true;
         InvalidateComputedRowsCache();
         await FlushSelectedItemsChangedAsync();
+    }
+
+    private async Task HandleRowSelectionClickAsync(MouseEventArgs args, TItem item)
+    {
+        if (args.ShiftKey && _lastSelectedItem != null && !ReferenceEquals(_lastSelectedItem, item))
+        {
+            var rows = GetVisibleRows();
+            var lastIdx = rows.IndexOf(_lastSelectedItem);
+            var currIdx = rows.IndexOf(item);
+
+            if (lastIdx != -1 && currIdx != -1)
+            {
+                var start = Math.Min(lastIdx, currIdx);
+                var end = Math.Max(lastIdx, currIdx);
+                
+                var shouldSelect = SelectedItems.Contains(_lastSelectedItem);
+                for (var i = start; i <= end; i++)
+                {
+                    if (shouldSelect)
+                        SelectedItems.Add(rows[i]);
+                    else
+                        SelectedItems.Remove(rows[i]);
+                }
+
+                _selectionVersion++;
+                _selectionChangedPending = true;
+                InvalidateComputedRowsCache();
+                await FlushSelectedItemsChangedAsync();
+                return;
+            }
+        }
+        
+        // Regular click (checkbox change will handle it)
     }
 
     private async Task OnToggleAllAsync(ChangeEventArgs args)
