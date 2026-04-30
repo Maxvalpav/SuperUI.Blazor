@@ -4,7 +4,7 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
@@ -25,7 +25,20 @@
                 {
                     var itLocal = it;
                     <span class="sgc-combo-tag">
-                        @LabelFrom(itLocal)
+                        @if (ColumnsSelector != null)
+                        {
+                            var cols = ColumnsSelector(itLocal).ToList();
+                            <span class="sgc-combo-tag-cols">
+                                @for (int i = 0; i < cols.Count; i++)
+                                {
+                                    <span class="sgc-tag-col @(i == 0 ? "sgc-tag-col-main" : "sgc-tag-col-sub")">@cols[i]</span>
+                                }
+                            </span>
+                        }
+                        else
+                        {
+                            @LabelFrom(itLocal)
+                        }
                         @if (!Disabled)
                         {
                             <button class="sgc-combo-tag-x" type="button"
@@ -48,7 +61,22 @@
         </div>
         @if (_open)
         {
-            <div class="sgc-combo-menu">
+            <div class="sgc-combo-menu sgc-combo-multiselect">
+                @if (ColumnsSelector != null)
+                {
+                    <div class="sgc-combo-header">
+                        <div class="sgc-combo-opt-columns">
+                            <span class="sgc-combo-opt-col sgc-combo-opt-check sgc-combo-header-col"></span>
+                            @if (ColumnNames != null)
+                            {
+                                @foreach (var name in ColumnNames)
+                                {
+                                    <span class="sgc-combo-opt-col sgc-combo-header-col">@name</span>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
                 @{ var filtered = GetFilteredItems().ToList(); }
                 @if (filtered.Count == 0)
                 {
@@ -63,15 +91,30 @@
                         <div class="sgc-combo-option sgc-combo-option-ex @(isSel ? "sgc-selected" : "")"
                              @onclick:stopPropagation="true"
                              @onclick="() => ToggleItemAsync(KeySelector(itLocal))">
-                            <input type="checkbox" checked="@isSel" readonly tabindex="-1" style="pointer-events:none;flex-shrink:0;" />
-                            <span class="sgc-combo-opt-content">
-                                <span class="sgc-combo-opt-label">@LabelFrom(itLocal)</span>
-                                @{ var desc = DescriptionSelector?.Invoke(itLocal); }
-                                @if (!string.IsNullOrEmpty(desc))
+                            <div class="sgc-combo-opt-columns">
+                                <span class="sgc-combo-opt-col sgc-combo-opt-check">
+                                    <input type="checkbox" checked="@isSel" readonly tabindex="-1" style="pointer-events:none;flex-shrink:0;" />
+                                </span>
+                                @if (ColumnsSelector != null)
                                 {
-                                    <span class="sgc-combo-opt-desc">@desc</span>
+                                    var rowCols = ColumnsSelector(itLocal);
+                                    @foreach (var colValue in rowCols)
+                                    {
+                                        <span class="sgc-combo-opt-col">@colValue</span>
+                                    }
                                 }
-                            </span>
+                                else
+                                {
+                                    <span class="sgc-combo-opt-col sgc-combo-opt-main">
+                                        <span class="sgc-combo-opt-label">@LabelFrom(itLocal)</span>
+                                        @{ var desc = DescriptionSelector?.Invoke(itLocal); }
+                                        @if (!string.IsNullOrEmpty(desc))
+                                        {
+                                            <span class="sgc-combo-opt-desc">@desc</span>
+                                        }
+                                    </span>
+                                }
+                            </div>
                         </div>
                     }
                 }
@@ -118,6 +161,18 @@
     /// The description is displayed below the label in the dropdown.
     /// </summary>
     [Parameter] public Func<TItem, string>? DescriptionSelector { get; set; }
+
+    /// <summary>
+    /// Gets or sets a function to extract multiple columns for display in the dropdown and in the selected tags.
+    /// If provided, these columns will be displayed next to each other.
+    /// </summary>
+    [Parameter] public Func<TItem, IEnumerable<string>>? ColumnsSelector { get; set; }
+
+    /// <summary>
+    /// Gets or sets the column names to display in the header of the dropdown menu.
+    /// Only used if ColumnsSelector is provided.
+    /// </summary>
+    [Parameter] public IEnumerable<string>? ColumnNames { get; set; }
     
     /// <summary>
     /// Gets or sets the placeholder text displayed when no items are selected.
@@ -135,6 +190,11 @@
     /// Gets or sets the label text displayed above the multi-select.
     /// </summary>
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>
+    /// Gets or sets the position of the label. Default is Top.
+    /// </summary>
+    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
     
     /// <summary>
     /// Gets or sets the hint text displayed below the multi-select.
@@ -188,7 +248,8 @@
         if (string.IsNullOrEmpty(_search)) return Items;
         return Items.Where(i =>
             LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase) ||
-            (DescriptionSelector?.Invoke(i) ?? "").Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+            (DescriptionSelector?.Invoke(i) ?? "").Contains(_search, StringComparison.CurrentCultureIgnoreCase) ||
+            (ColumnsSelector?.Invoke(i).Any(c => c.Contains(_search, StringComparison.CurrentCultureIgnoreCase)) ?? false));
     }
 
     private async Task ToggleAsync()

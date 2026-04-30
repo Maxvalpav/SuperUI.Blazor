@@ -1,5 +1,6 @@
 @page "/inputs-demo"
 @using SuperUI.Components
+@using SuperUI.Demo.Models
 
 <PageTitle>Поля ввода и формы - SUI</PageTitle>
 
@@ -172,6 +173,24 @@
         </div>
     </div>
 
+    <!-- SgTimePicker -->
+    <div style="margin-top: 32px;">
+        <h2>SgTimePicker - Выбор времени</h2>
+        <p>Компонент для выбора времени (часы, минуты, секунды).</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Примеры использования">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgTimePicker @bind-Value="@_time1" Label="Простой выбор" Placeholder="--:--" />
+                    <SgTimePicker @bind-Value="@_time2" Label="С секундами" ShowSeconds="true" />
+                    <SgTimePicker @bind-Value="@_time3" Label="Метка слева" LabelPosition="SgLabelPosition.Left" />
+                </div>
+            </SgCard>
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_timePickerProperties" />
+            </SgCard>
+        </div>
+    </div>
+
     <!-- SgDateRangePicker -->
     <div style="margin-top: 32px;">
         <h2>SgDateRangePicker - Выбор диапазона дат</h2>
@@ -260,12 +279,68 @@
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
             <SgCard Title="Примеры использования">
                 <div style="display: flex; flex-direction: column; gap: 16px;">
-                    <SgMultiSelect TValue="string" @bind-Values="@_multiValues" Items="@_selectItems" Label="Выберите несколько" Placeholder="Выберите..." />
-                    <SgMultiSelect TValue="string" @bind-Values="@_multiValues2" Items="@_selectItems" Label="Отключённый" Disabled="true" />
+                    <SgMultiSelect TItem="string" TKey="string" 
+                                   @bind-Values="@_multiValues" 
+                                   Items="@_selectItems" 
+                                   KeySelector="s => s"
+                                   Label="Выберите несколько" 
+                                   Placeholder="Выберите..." />
+                    
+                    <SgMultiSelect TItem="string" TKey="string" 
+                                   @bind-Values="@_multiValues2" 
+                                   Items="@_selectItems" 
+                                   KeySelector="s => s"
+                                   Label="Отключённый" 
+                                   Disabled="true" />
                 </div>
             </SgCard>
             <SgCard Title="Свойства компонента">
                 <PropertyTable Items="_multiSelectProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- SgMultiSelectEx -->
+    <div style="margin-top: 32px;">
+        <h2>Расширенные компоненты выбора (Ex)</h2>
+        <p>Компоненты с поддержкой множества колонок, поиска и гибкого расположения меток.</p>
+        <div style="display: flex; flex-direction: column; gap: 24px; margin-top: 16px;">
+            <SgCard Title="SgMultiSelectEx & SgComboBoxEx">
+                <div style="display: flex; flex-direction: column; gap: 24px;">
+                    <SgMultiSelectEx TItem="Employee" TKey="int" 
+                                     Items="@_employees" 
+                                     @bind-Values="@_selectedEmployeeIds"
+                                     KeySelector="e => e.Id"
+                                     LabelSelector="e => e.FirstName"
+                                     ColumnsSelector="@(e => (IEnumerable<string>)new[] { e.FirstName, e.LastName, e.Department.ToString() })"
+                                     ColumnNames="@(new[] { "Имя", "Фамилия", "Отдел" })"
+                                     Label="Множественный выбор"
+                                     Placeholder="Выберите сотрудников..." />
+
+                    <SgComboBoxEx TItem="Employee" TKey="int?"
+                                   Items="@_employees"
+                                   @bind-Value="@_selectedEmployeeId"
+                                   KeySelector="e => (int?)e.Id"
+                                   LabelSelector="e => e.FirstName"
+                                   ColumnsSelector="@(e => (IEnumerable<string>)new[] { e.FirstName, e.LastName, e.Department.ToString() })"
+                                   ColumnNames="@(new[] { "Имя", "Фамилия", "Отдел" })"
+                                   Label="Одиночный выбор (Ex)"
+                                   Placeholder="Выберите одного сотрудника..."
+                                   AllowClear="true" />
+                </div>
+            </SgCard>
+            
+            <SgCard Title="Расположение меток (LabelPosition)">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <SgTextBox TValue="string" Label="Метка сверху" LabelPosition="SgLabelPosition.Top" Placeholder="Введите текст..." />
+                        <SgTextBox TValue="string" Label="Метка слева" LabelPosition="SgLabelPosition.Left" Placeholder="Введите текст..." />
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <SgTextBox TValue="string" Label="Метка справа" LabelPosition="SgLabelPosition.Right" Placeholder="Введите текст..." />
+                        <SgSelect TValue="string" Label="Селект слева" LabelPosition="SgLabelPosition.Left" Items="@_selectItems" Placeholder="Выберите..." />
+                    </div>
+                </div>
             </SgCard>
         </div>
     </div>
@@ -358,7 +433,13 @@
     private DateTime? _date1;
     private DateTime? _date2 = DateTime.Today;
     private DateTime? _date3;
-    private DateTime? _date4 = DateTime.Today;
+    private DateTime? _date4;
+
+    // TimePicker
+    private TimeSpan? _time1;
+    private TimeSpan? _time2 = new TimeSpan(10, 30, 0);
+    private TimeSpan? _time3;
+
     private DateTime _minDate = DateTime.Today.AddMonths(-1);
     private DateTime _maxDate = DateTime.Today.AddMonths(1);
 
@@ -390,6 +471,23 @@
     private IEnumerable<string> _multiValues = new List<string>();
     private IEnumerable<string> _multiValues2 = new List<string> { "Вариант 1", "Вариант 3" };
 
+    // MultiSelectEx
+    private List<Employee> _employees = new();
+    private IEnumerable<int> _selectedEmployeeIds = new List<int>();
+    private int? _selectedEmployeeId;
+
+    protected override void OnInitialized()
+    {
+        _employees = new List<Employee>
+        {
+            new() { Id = 1, FirstName = "Иван", LastName = "Иванов", Department = DepartmentType.Engineering },
+            new() { Id = 2, FirstName = "Петр", LastName = "Петров", Department = DepartmentType.HR },
+            new() { Id = 3, FirstName = "Сергей", LastName = "Сидоров", Department = DepartmentType.Marketing },
+            new() { Id = 4, FirstName = "Алексей", LastName = "Алексеев", Department = DepartmentType.Engineering },
+            new() { Id = 5, FirstName = "Дмитрий", LastName = "Дмитриев", Department = DepartmentType.Product }
+        };
+    }
+
     // RadioGroup
     private string? _radioValue = "option1";
     private string? _radioValue2;
@@ -405,11 +503,6 @@
         new() { Value = "b", Label = "Отключённый", Disabled = true },
         new() { Value = "c", Label = "Ещё один" }
     };
-
-    // TimePicker
-    private TimeSpan? _time1;
-    private TimeSpan? _time2 = new TimeSpan(9, 30, 0);
-    private TimeSpan? _time3 = new TimeSpan(12, 0, 0);
 
     // Property tables
     private List<PropertyPanelItem> _buttonProperties = new()
@@ -492,6 +585,17 @@
         new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = "warn" }
     };
 
+    private List<PropertyPanelItem> _timePickerProperties = new()
+    {
+        new() { Label = "Value", Value = "TimeSpan?", BadgeText = "Время", BadgeVariant = "info" },
+        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = "info" },
+        new() { Label = "Placeholder", Value = "string", BadgeText = "Подсказка", BadgeVariant = "info" },
+        new() { Label = "ShowSeconds", Value = "bool", BadgeText = "Секунды", BadgeVariant = "warn" },
+        new() { Label = "LabelPosition", Value = "SgLabelPosition", BadgeText = "Позиция метки", BadgeVariant = "info" },
+        new() { Label = "Required", Value = "bool", BadgeText = "Обязательное", BadgeVariant = "warn" },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = "warn" }
+    };
+
     private List<PropertyPanelItem> _dateRangePickerProperties = new()
     {
         new() { Label = "StartValue", Value = "DateTime?", BadgeText = "Начало", BadgeVariant = "info" },
@@ -553,16 +657,6 @@
         new() { Label = "Value", Value = "TValue", BadgeText = "Значение", BadgeVariant = "info" },
         new() { Label = "Options", Value = "IEnumerable<RadioOption<TValue>>", BadgeText = "Варианты", BadgeVariant = "info" },
         new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = "info" },
-        new() { Label = "Required", Value = "bool", BadgeText = "Обязательное", BadgeVariant = "warn" },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = "warn" }
-    };
-
-    private List<PropertyPanelItem> _timePickerProperties = new()
-    {
-        new() { Label = "Value", Value = "TimeSpan?", BadgeText = "Время", BadgeVariant = "info" },
-        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = "info" },
-        new() { Label = "Placeholder", Value = "string", BadgeText = "Подсказка", BadgeVariant = "info" },
-        new() { Label = "ShowSeconds", Value = "bool", BadgeText = "Секунды", BadgeVariant = "warn" },
         new() { Label = "Required", Value = "bool", BadgeText = "Обязательное", BadgeVariant = "warn" },
         new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = "warn" }
     };
