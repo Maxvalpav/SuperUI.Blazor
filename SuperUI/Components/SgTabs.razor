@@ -10,13 +10,14 @@
                 var isActive = _active == tLocal;
                 var tabId = "tab-" + _tabs.IndexOf(tLocal);
                 var panelId = "tabpanel-" + _tabs.IndexOf(tLocal);
-                <div class="sgc-tab @(isActive ? "sgc-active" : "")"
+                <div class="sgc-tab @(isActive ? "sgc-active" : "") @(tLocal.Disabled ? "sgc-disabled" : "")"
                      role="tab"
                      id="@tabId"
                      aria-selected="@(isActive ? "true" : "false")"
+                     aria-disabled="@(tLocal.Disabled ? "true" : null)"
                      aria-controls="@panelId"
                      tabindex="@(isActive ? "0" : "-1")"
-                     @onclick="() => ActivateAsync(tLocal)"
+                     @onclick="() => { if (!tLocal.Disabled) _ = ActivateAsync(tLocal); }"
                      @onkeydown="@(e => OnKeyDownAsync(e, tLocal))">
                     @if (tLocal.Icon is not null)
                     {
@@ -76,14 +77,15 @@
         _tabs.Add(panel);
         if (_active is null || (ActiveTitle is not null && panel.Title == ActiveTitle))
             _active = panel;
-        StateHasChanged();
+        // Schedule a re-render after the current render cycle completes
+        _ = InvokeAsync(StateHasChanged);
     }
 
     internal void Unregister(SgTabPanel panel)
     {
         _tabs.Remove(panel);
-        if (_active == panel) _active = _tabs.FirstOrDefault();
-        StateHasChanged();
+        if (_active == panel) _active = _tabs.FirstOrDefault(t => !t.Disabled);
+        _ = InvokeAsync(StateHasChanged);
     }
 
     internal bool IsActive(SgTabPanel panel) => _active == panel;
@@ -105,27 +107,38 @@
         var index = _tabs.IndexOf(tab);
         if (index < 0) return;
 
+        SgTabPanel? target = null;
+
         if (e.Key == "ArrowRight")
         {
-            var next = (index + 1) % _tabs.Count;
-            await ActivateAsync(_tabs[next]);
+            for (var i = 1; i <= _tabs.Count; i++)
+            {
+                var t = _tabs[(index + i) % _tabs.Count];
+                if (!t.Disabled) { target = t; break; }
+            }
         }
         else if (e.Key == "ArrowLeft")
         {
-            var prev = (index - 1 + _tabs.Count) % _tabs.Count;
-            await ActivateAsync(_tabs[prev]);
+            for (var i = 1; i <= _tabs.Count; i++)
+            {
+                var t = _tabs[(index - i + _tabs.Count) % _tabs.Count];
+                if (!t.Disabled) { target = t; break; }
+            }
         }
         else if (e.Key == "Home")
         {
-            await ActivateAsync(_tabs[0]);
+            target = _tabs.FirstOrDefault(t => !t.Disabled);
         }
         else if (e.Key == "End")
         {
-            await ActivateAsync(_tabs[^1]);
+            target = _tabs.LastOrDefault(t => !t.Disabled);
         }
         else if (e.Key == "Enter" || e.Key == " ")
         {
-            await ActivateAsync(tab);
+            target = tab.Disabled ? null : tab;
         }
+
+        if (target is not null)
+            await ActivateAsync(target);
     }
 }
