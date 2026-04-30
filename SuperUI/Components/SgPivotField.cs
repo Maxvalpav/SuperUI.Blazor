@@ -26,6 +26,11 @@ public class SgPivotField<TItem>
     /// Optional function to determine CSS style for a cell based on its value.
     /// </summary>
     public Func<object?, string?>? CellStyleFunc { get; set; }
+
+    /// <summary>
+    /// List of values to exclude from the pivot calculation.
+    /// </summary>
+    public HashSet<string> ExcludedValues { get; set; } = new();
 }
 
 public class SgPivotState<TItem>

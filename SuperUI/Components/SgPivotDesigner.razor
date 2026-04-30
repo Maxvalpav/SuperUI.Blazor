@@ -18,15 +18,18 @@
     {
     <div class="sgc-pivot-designer-section">
         <div class="sgc-pivot-designer-label">Доступные поля</div>
+        <div class="sgc-pivot-designer-search">
+            <SgTextBox TValue="string" Placeholder="Поиск полей..." Value="@_searchText" ValueChanged="@OnSearchChanged" />
+        </div>
         <div class="sgc-pivot-field-list">
-            @foreach (var field in Fields.Where(f => !State.RowFields.Contains(f) && !State.ColumnFields.Contains(f) && !State.ValueFields.Contains(f)))
+            @foreach (var field in Fields.Where(f => !State.RowFields.Contains(f) && !State.ColumnFields.Contains(f) && !State.ValueFields.Contains(f) && (string.IsNullOrEmpty(_searchText) || f.Label.Contains(_searchText, StringComparison.OrdinalIgnoreCase))))
             {
                 <div class="sgc-pivot-field-item">
                     <span>@field.Label</span>
                     <div class="sgc-pivot-field-actions">
                         <button @onclick="() => AddToRows(field)" title="В строки">R</button>
                         <button @onclick="() => AddToCols(field)" title="В столбцы">C</button>
-                        <button @onclick="() => AddToValues(field)" title="В значения">Σ</button>
+                        <button @onclick="() => AddToValues(field)" title="В значения">@((MarkupString)SgIcons.Sigma)</button>
                     </div>
                 </div>
             }
@@ -40,45 +43,88 @@
                 @foreach (var field in State.RowFields)
                 {
                     <div class="sgc-pivot-field-item sgc-active-field">
-                        <span>@field.Label</span>
-                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.RowFields)">×</button>
+                        <span @onclick="() => ShowFilter(field)" class="sgc-filter-trigger" title="Фильтровать">
+                            @((MarkupString)SgIcons.Search)
+                        </span>
+                        <span class="sgc-label">@field.Label</span>
+                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.RowFields)">
+                            @((MarkupString)SgIcons.X)
+                        </button>
                     </div>
                 }
             </div>
         </div>
+
         <div class="sgc-pivot-designer-section">
             <div class="sgc-pivot-designer-label">Столбцы</div>
             <div class="sgc-pivot-field-list sgc-active-list">
                 @foreach (var field in State.ColumnFields)
                 {
                     <div class="sgc-pivot-field-item sgc-active-field">
-                        <span>@field.Label</span>
-                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.ColumnFields)">×</button>
+                        <span @onclick="() => ShowFilter(field)" class="sgc-filter-trigger" title="Фильтровать">
+                            @((MarkupString)SgIcons.Search)
+                        </span>
+                        <span class="sgc-label">@field.Label</span>
+                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.ColumnFields)">
+                            @((MarkupString)SgIcons.X)
+                        </button>
                     </div>
                 }
             </div>
         </div>
+
         <div class="sgc-pivot-designer-section">
             <div class="sgc-pivot-designer-label">Значения</div>
             <div class="sgc-pivot-field-list sgc-active-list">
                 @foreach (var field in State.ValueFields)
                 {
-                    <div class="sgc-pivot-field-item sgc-active-field">
-                        <div class="sgc-field-val-info">
-                            <span class="sgc-label">@field.Label</span>
-                            <select value="@field.AggregateType" @onchange="@(e => UpdateAggr(field, e))">
-                                <option value="@SgPivotAggregateType.Sum">Сумма</option>
-                                <option value="@SgPivotAggregateType.Count">Кол-во</option>
-                                <option value="@SgPivotAggregateType.Average">Среднее</option>
-                                <option value="@SgPivotAggregateType.Min">Мин</option>
-                                <option value="@SgPivotAggregateType.Max">Макс</option>
+                    <div class="sgc-pivot-field-item sgc-active-field sgc-value-field">
+                        <div style="display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0;">
+                            <span class="sgc-label" title="@field.Label">@field.Label</span>
+                            <select class="sgc-aggr-select" @onchange="@(e => UpdateAggr(field, e))">
+                                <option value="@SgPivotAggregateType.Sum" selected="@(field.AggregateType == SgPivotAggregateType.Sum)">Sum</option>
+                                <option value="@SgPivotAggregateType.Count" selected="@(field.AggregateType == SgPivotAggregateType.Count)">Count</option>
+                                <option value="@SgPivotAggregateType.Average" selected="@(field.AggregateType == SgPivotAggregateType.Average)">Avg</option>
+                                <option value="@SgPivotAggregateType.Min" selected="@(field.AggregateType == SgPivotAggregateType.Min)">Min</option>
+                                <option value="@SgPivotAggregateType.Max" selected="@(field.AggregateType == SgPivotAggregateType.Max)">Max</option>
                             </select>
                         </div>
-                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.ValueFields)">×</button>
+                        <button class="sgc-remove" @onclick="() => RemoveField(field, State.ValueFields)">
+                            @((MarkupString)SgIcons.X)
+                        </button>
                     </div>
                 }
             </div>
         </div>
+
+        @if (_filterField != null)
+        {
+            <div class="sgc-pivot-filter-overlay" @onclick="() => _filterField = null">
+                <div class="sgc-pivot-filter-popup" @onclick:stopPropagation>
+                    <div class="sgc-pivot-filter-header">
+                        <span>Фильтр: @_filterField.Label</span>
+                        <button @onclick="() => _filterField = null">@((MarkupString)SgIcons.X)</button>
+                    </div>
+                    <div class="sgc-pivot-filter-body">
+                        <div class="sgc-pivot-filter-actions">
+                            <button @onclick="SelectAll">Выбрать все</button>
+                            <button @onclick="ClearAll">Очистить все</button>
+                        </div>
+                        <div class="sgc-pivot-filter-list">
+                            @foreach (var val in GetUniqueValues(_filterField))
+                            {
+                                <label class="sgc-pivot-filter-item">
+                                    <input type="checkbox" 
+                                           checked="@(!_filterField.ExcludedValues.Contains(val))" 
+                                           @onchange="@(e => ToggleFilter(val, e))" />
+                                    <span>@val</span>
+                                </label>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
     </div>
     }
 </div>
@@ -86,16 +132,21 @@
 @code {
     [Parameter, EditorRequired] public SgPivotState<TItem> State { get; set; } = default!;
     [Parameter, EditorRequired] public List<SgPivotField<TItem>> Fields { get; set; } = new();
+    [Parameter, EditorRequired] public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public bool AllowCollapse { get; set; } = true;
     [Parameter] public bool InitiallyCollapsed { get; set; }
 
     private bool _isCollapsed;
+    private string _searchText = "";
+    private SgPivotField<TItem>? _filterField;
 
     protected override void OnInitialized()
     {
         _isCollapsed = InitiallyCollapsed;
     }
+
+    private void OnSearchChanged(string val) => _searchText = val;
 
     private void AddToRows(SgPivotField<TItem> f) { State.RowFields.Add(f); State.NotifyChanged(); }
     private void AddToCols(SgPivotField<TItem> f) { State.ColumnFields.Add(f); State.NotifyChanged(); }
@@ -110,5 +161,27 @@
             f.AggregateType = res;
             State.NotifyChanged();
         }
+    }
+
+    private void ShowFilter(SgPivotField<TItem> f) => _filterField = f;
+
+    private List<string> GetUniqueValues(SgPivotField<TItem> f) => 
+        Items.Select(f.Selector).Where(v => v != null).Select(v => v!.ToString()!).Distinct().OrderBy(x => x).ToList();
+
+    private void ToggleFilter(string val, ChangeEventArgs e)
+    {
+        if (_filterField == null) return;
+        bool isChecked = (bool)(e.Value ?? true);
+        if (isChecked) _filterField.ExcludedValues.Remove(val);
+        else _filterField.ExcludedValues.Add(val);
+        State.NotifyChanged();
+    }
+
+    private void SelectAll() { _filterField?.ExcludedValues.Clear(); State.NotifyChanged(); }
+    private void ClearAll() 
+    { 
+        if (_filterField == null) return;
+        foreach (var v in GetUniqueValues(_filterField)) _filterField.ExcludedValues.Add(v);
+        State.NotifyChanged();
     }
 }
