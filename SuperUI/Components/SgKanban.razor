@@ -6,9 +6,9 @@
     <div class="sgc-kanban-header">
         <div class="sgc-kanban-toolbar">
             <div style="display:flex; gap:8px; align-items:center;">
-                <SgTextBox Placeholder="Поиск задач..." @bind-Value="SearchText" />
+                <SgTextBox TValue="string" Placeholder="Поиск задач..." Value="@SearchText" ValueChanged="@OnSearchChanged" />
                 <SgButton Variant="primary" Size="sm" OnClick="OnAddColumn" Text="Добавить колонку">
-                    <Icon>+</Icon>
+                    <span>+</span>
                 </SgButton>
             </div>
         </div>
@@ -24,7 +24,9 @@
                     <div class="sgc-kanban-swimlane-columns">
                         @foreach (var column in Columns)
                         {
-                            @RenderColumn(column, lane)
+                            <div @key="column.Id" style="display: contents;">
+                                @RenderColumn(column, lane)
+                            </div>
                         }
                     </div>
                 </div>
@@ -34,7 +36,9 @@
         {
             @foreach (var column in Columns)
             {
-                @RenderColumn(column)
+                <div @key="column.Id" style="display: contents;">
+                    @RenderColumn(column)
+                </div>
             }
         }
     </div>
@@ -42,9 +46,9 @@
 
 @code {
     private RenderFragment RenderColumn(SgKanbanColumn column, string? swimlane = null) => @<div 
-        class="sgc-kanban-column @(_dropColumnId == column.Id && _dropSwimlane == swimlane ? "sgc-drop-target" : null)" 
-        draggable="true"
-        @ondragstart="() => OnColumnDragStart(column)"
+        class="sgc-kanban-column @(_dropColumnId == column.Id && _dropSwimlane == swimlane && _draggedColumn != null ? "sgc-drop-target" : null) @(_draggedColumn?.Id == column.Id ? "sgc-dragging" : null)" 
+        @ondragenter="() => OnColumnDragEnter(column.Id, swimlane)"
+        @ondragleave="OnDragLeave"
         ondragover="event.preventDefault();" 
         @ondrop="() => OnDropColumn(column)">
         
@@ -54,82 +58,97 @@
         }
 
         <div class="sgc-kanban-col-header @(isWipExceeded ? "sgc-wip-exceeded" : "")" 
-             style="border-top-color: @(column.Color ?? "var(--sui-border)")"
-             ondragover="event.preventDefault();"
-             @ondrop="() => OnDropColumn(column)">
+             style="border-top-color: @(column.Color ?? "var(--sui-border)")">
+            <span class="sgc-kanban-col-drag-handle" draggable="true" @ondragstart="() => OnColumnDragStart(column)">⠿</span>
             <span class="sgc-kanban-col-title">@column.Title</span>
-            <span class="sgc-kanban-col-count">
+            <span class="sgc-kanban-col-count @(isWipExceeded ? "sgc-wip-limit-exceeded" : "")">
                 @colTasks.Count 
                 @if (column.WipLimit > 0)
                 {
-                    <span>/ @column.WipLimit</span>
+                    <span class="sgc-wip-limit">/ @column.WipLimit</span>
                 }
             </span>
             
             <div class="sgc-kanban-column-actions">
                 <SgButton Variant="ghost" Size="sm" OnClick="() => OnEditColumn(column)">
-                    <Icon>✎</Icon>
+                    <span>✎</span>
                 </SgButton>
                 <SgButton Variant="ghost" Size="sm" OnClick="() => OnDeleteColumn(column)">
-                    <Icon>✕</Icon>
+                    <span>✕</span>
                 </SgButton>
             </div>
         </div>
 
-        <div class="sgc-kanban-tasks">
+        <div class="sgc-kanban-tasks"
+             @ondragenter="() => OnTaskContainerDragEnter(column.Id, swimlane)"
+             @ondragover:preventDefault
+             @ondrop="() => OnDropTask(column.Id, null, swimlane)">
             @foreach (var task in colTasks)
             {
-                <div class="sgc-kanban-task @(_dropTaskId == task.Id ? "sgc-drop-before" : null)" 
+                var currentTask = task;
+                <div @key="currentTask.Id" 
+                     class="sgc-kanban-task @(_dropTaskId == currentTask.Id ? "sgc-drop-before" : null) @(_draggedTask?.Id == currentTask.Id ? "sgc-dragging" : null)" 
                      draggable="true" 
-                     @ondragstart="() => OnDragStart(task)"
+                     @ondragstart="() => OnDragStart(currentTask)"
+                     @ondragenter="() => OnTaskDragEnter(currentTask)"
+                     @ondragleave="OnDragLeave"
                      ondragover="event.preventDefault();"
-                     @ondrop="() => OnDropTask(column.Id, task.Id, swimlane)"
-                     @ondblclick="() => OnEditTask(task)">
+                     @ondrop:stopPropagation
+                     @ondrop="() => OnDropTask(column.Id, currentTask.Id, swimlane)"
+                     @ondblclick="() => OnEditTask(currentTask)">
                     
-                    @if (!string.IsNullOrEmpty(task.Color))
+                    @if (!string.IsNullOrEmpty(currentTask.Color))
                     {
-                        <div class="sgc-kanban-task-color" style="background-color: @task.Color"></div>
+                        <div class="sgc-kanban-task-color" style="background-color: @currentTask.Color"></div>
                     }
 
                     <div class="sgc-kanban-task-content">
-                        <div class="sgc-kanban-task-title">@task.Title</div>
-                        @if (!string.IsNullOrEmpty(task.Description))
+                        <div class="sgc-kanban-task-title">@currentTask.Title</div>
+                        @if (!string.IsNullOrEmpty(currentTask.Description))
                         {
-                            <div class="sgc-kanban-task-desc">@task.Description</div>
+                            <div class="sgc-kanban-task-desc">@currentTask.Description</div>
                         }
                         
                         <div class="sgc-kanban-task-footer">
-                            @if (task.Tags.Any())
-                            {
-                                <div class="sgc-kanban-task-tags">
-                                    @foreach (var tag in task.Tags)
-                                    {
-                                        <SgBadge Text="@tag" />
-                                    }
-                                </div>
-                            }
+                            <div style="display:flex; flex-direction:column; gap:6px; flex:1;">
+                                @if (currentTask.Tags.Any())
+                                {
+                                    <div class="sgc-kanban-task-tags">
+                                        @foreach (var tag in currentTask.Tags)
+                                        {
+                                            <SgBadge Text="@tag" />
+                                        }
+                                    </div>
+                                }
+                                
+                                @if (currentTask.DueDate.HasValue)
+                                {
+                                    <div class="sgc-kanban-task-date @(currentTask.DueDate < DateTime.Today ? "sgc-overdue" : "")">
+                                        <span style="font-size:12px">📅</span>
+                                        @currentTask.DueDate.Value.ToString("d MMM")
+                                    </div>
+                                }
+                            </div>
                             
-                            @if (!string.IsNullOrEmpty(task.Assignee))
+                            @if (!string.IsNullOrEmpty(currentTask.Assignee))
                             {
-                                <SgAvatar Initials="@task.Assignee" Size="sm" />
+                                <SgAvatar Initials="@currentTask.Assignee" Size="sm" Title="@currentTask.Assignee" />
                             }
                         </div>
                     </div>
 
                     <div class="sgc-kanban-task-actions">
-                        <SgButton Variant="ghost" Size="sm" Title="Дублировать" OnClick="() => OnDuplicateTask(task)">
-                            <Icon>⧉</Icon>
+                        <SgButton Variant="ghost" Size="sm" Title="Дублировать" OnClick="() => OnDuplicateTask(currentTask)">
+                            <span>⧉</span>
                         </SgButton>
-                        <SgButton Variant="ghost" Size="sm" OnClick="() => OnDeleteTask(task)">
-                            <Icon>✕</Icon>
+                        <SgButton Variant="ghost" Size="sm" OnClick="() => OnDeleteTask(currentTask)">
+                            <span>✕</span>
                         </SgButton>
                     </div>
                 </div>
             }
             
             <button class="sgc-kanban-add-task"
-                    ondragover="event.preventDefault();"
-                    @ondrop="() => OnDropTask(column.Id, null, swimlane)"
                     @onclick="() => OnAddTask(column.Id, swimlane)">
                 <span>+ Добавить задачу</span>
             </button>
@@ -204,6 +223,12 @@
 
     private string SearchText { get; set; } = "";
 
+    private async Task OnSearchChanged(string value)
+    {
+        SearchText = value;
+        await InvokeAsync(StateHasChanged);
+    }
+
     private List<string> EffectiveSwimlanes => Swimlanes.Any() ? Swimlanes : new List<string>();
 
     private SgKanbanTask? _draggedTask;
@@ -246,57 +271,96 @@
     {
         _draggedColumn = null;
         _draggedTask = task;
+        _dropTaskId = null;
     }
 
     private void OnColumnDragStart(SgKanbanColumn column)
     {
         _draggedTask = null;
         _draggedColumn = column;
+        _dropColumnId = null;
         _dropTaskId = null;
     }
 
-    private async Task OnDropTask(string columnId, string? beforeTaskId = null, string? swimlane = null)
+    private void OnTaskDragEnter(SgKanbanTask task)
+    {
+        if (_draggedTask == null || _draggedTask.Id == task.Id) return;
+        
+        // Use a small delay or check to prevent flickering if needed, 
+        // but for now just setting the drop target
+        _dropTaskId = task.Id;
+        _dropColumnId = task.ColumnId;
+        _dropSwimlane = task.Swimlane;
+    }
+
+    private void OnTaskContainerDragEnter(string columnId, string? swimlane)
+    {
+        if (_draggedTask == null) return;
+        
+        // If entering a column and not over a specific task, clear _dropTaskId
+        _dropColumnId = columnId;
+        _dropSwimlane = swimlane;
+        _dropTaskId = null;
+    }
+
+    private void OnColumnDragEnter(string columnId, string? swimlane)
+    {
+        if (_draggedColumn == null) return;
+        _dropColumnId = columnId;
+        _dropSwimlane = swimlane;
+    }
+
+    private void OnDragLeave()
+    {
+        // We don't necessarily want to clear everything on leave because it might flicker
+    }
+
+    private async Task OnDropTask(string columnId, string? targetTaskId = null, string? swimlane = null)
     {
         if (_draggedTask == null) return;
 
-        _dropColumnId = columnId;
-        _dropSwimlane = swimlane;
-        _dropTaskId = beforeTaskId;
-
         var draggedTask = _draggedTask;
-        var sameTarget = draggedTask.ColumnId == columnId && 
-                         draggedTask.Swimlane == swimlane && 
-                         beforeTaskId == draggedTask.Id;
-                         
-        if (sameTarget)
+        
+        // If dropped on itself
+        if (draggedTask.Id == targetTaskId) 
         {
             ClearDragState();
             return;
         }
 
+        // Change location only
         draggedTask.ColumnId = columnId;
         draggedTask.Swimlane = swimlane;
 
-        // Reorder tasks within the column/lane
-        var colTasks = Tasks.Where(t => t.ColumnId == columnId && t.Swimlane == swimlane).OrderBy(t => t.Order).ToList();
-        colTasks.Remove(draggedTask);
-
-        if (!string.IsNullOrWhiteSpace(beforeTaskId))
+        // If dropped on a specific task, we need to adjust orders in THAT column only
+        if (!string.IsNullOrEmpty(targetTaskId))
         {
-            var idx = colTasks.FindIndex(t => t.Id == beforeTaskId);
-            if (idx >= 0) colTasks.Insert(idx, draggedTask);
-            else colTasks.Add(draggedTask);
+            var targetTasks = Tasks.Where(t => t.ColumnId == columnId && t.Swimlane == swimlane)
+                                   .OrderBy(t => t.Order)
+                                   .ToList();
+            
+            targetTasks.RemoveAll(t => t.Id == draggedTask.Id);
+            var idx = targetTasks.FindIndex(t => t.Id == targetTaskId);
+            if (idx >= 0) targetTasks.Insert(idx, draggedTask);
+            else targetTasks.Add(draggedTask);
+
+            // Normalize orders in target column to make them contiguous
+            for (int i = 0; i < targetTasks.Count; i++)
+            {
+                targetTasks[i].Order = i;
+            }
         }
         else
         {
-            colTasks.Add(draggedTask);
+            // Dropped on empty space - just put at the end
+            var maxOrder = Tasks.Where(t => t.ColumnId == columnId && t.Swimlane == swimlane)
+                                .Max(t => (int?)t.Order) ?? -1;
+            draggedTask.Order = maxOrder + 1;
         }
 
-        // Update orders
-        for (int i = 0; i < colTasks.Count; i++)
-        {
-            colTasks[i].Order = i;
-        }
+        // IMPORTANT: We do NOT re-index the source column. 
+        // The remaining tasks keep their 'Order' values, they just have a gap now.
+        // This prevents them from "moving" or "shifting" unexpectedly.
 
         ClearDragState();
         await TasksChanged.InvokeAsync(Tasks);
@@ -304,27 +368,24 @@
 
     private async Task OnDropColumn(SgKanbanColumn targetColumn)
     {
-        if (_draggedColumn == null) return;
-
-        _dropColumnId = targetColumn.Id;
-        var draggedIndex = Columns.IndexOf(_draggedColumn);
-        var targetIndex = Columns.IndexOf(targetColumn);
-        if (draggedIndex < 0 || targetIndex < 0 || draggedIndex == targetIndex)
+        if (_draggedColumn == null || _draggedColumn.Id == targetColumn.Id) 
         {
             ClearDragState();
             return;
         }
 
-        var dragged = _draggedColumn;
-        Columns.RemoveAt(draggedIndex);
-        if (draggedIndex < targetIndex)
+        var draggedIndex = Columns.FindIndex(c => c.Id == _draggedColumn.Id);
+        var targetIndex = Columns.FindIndex(c => c.Id == targetColumn.Id);
+        
+        if (draggedIndex >= 0 && targetIndex >= 0)
         {
-            targetIndex--;
+            var item = Columns[draggedIndex];
+            Columns.RemoveAt(draggedIndex);
+            Columns.Insert(targetIndex, item);
+            await ColumnsChanged.InvokeAsync(Columns);
         }
 
-        Columns.Insert(targetIndex, dragged);
         ClearDragState();
-        await ColumnsChanged.InvokeAsync(Columns);
     }
 
     private void ClearDragState()
@@ -334,6 +395,7 @@
         _dropColumnId = null;
         _dropSwimlane = null;
         _dropTaskId = null;
+        StateHasChanged();
     }
 
     private void OnAddTask(string columnId, string? swimlane = null)
