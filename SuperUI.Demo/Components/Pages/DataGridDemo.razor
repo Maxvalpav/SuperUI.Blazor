@@ -9,11 +9,11 @@
     
     <!-- 1. Основная таблица с явными колонками -->
     <div style="margin-top: 32px;">
-        <h2>1. Основная таблица - явные колонки (10,000 строк)</h2>
-        <p>Таблица с явно определёнными колонками, поиском, фильтрацией, сортировкой и пагинацией.</p>
+        <h2>1. Основная таблица - явные колонки</h2>
+        <p>Таблица с явно определёнными колонками, поиском, фильтрацией (включая специальный фильтр для <b>bool</b>), сортировкой и пагинацией.</p>
         
         <SgCard Title="Интерактивная таблица" Style="margin-top: 16px;">
-            <div style="height: 600px; overflow: auto; border: 1px solid var(--sui-border); border-radius: 4px;">
+            <div style="height: 500px; border: 1px solid var(--sui-border); border-radius: var(--sui-radius-md); overflow: hidden;">
                 <SgDataGrid TItem="Employee" 
                             Items="_employees"
                             ShowSearch="true"
@@ -21,83 +21,167 @@
                             ShowColumnChooser="true"
                             ShowStatusBar="true"
                             AllowMultiSelect="true"
-                            AllowEdit="true"
-                            AllowDelete="true"
-                            PageSize="50"
+                            PageSize="15"
                             EnablePaging="true">
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Id" Title="ID" Value="@(e => e.Id)" Width="60" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="FirstName" Title="Имя" Value="@(e => e.FirstName)" Width="120" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="LastName" Title="Фамилия" Value="@(e => e.LastName)" Width="120" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Email" Title="Email" Value="@(e => e.Email)" Width="180" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Department" Title="Отдел" Value="@(e => e.Department)" Width="120" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Salary" Title="Зарплата" Value="@(e => e.Salary)" Width="100" Sortable="true" Filterable="true" Format="C2" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="HireDate" Title="Дата найма" Value="@(e => e.HireDate)" Width="120" Sortable="true" Filterable="true" Format="dd.MM.yyyy" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="IsActive" Title="Активен" Value="@(e => e.IsActive)" Width="80" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Notes" Title="Заметки" Value="@(e => e.Notes)" Width="140" Sortable="true" Filterable="true" />
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Id" Title="ID" Value="@(e => e.Id)" Width="60" Sortable="true" Filterable="true" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="FirstName" Title="Имя" Value="@(e => e.FirstName)" Width="120" Sortable="true" Filterable="true" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="LastName" Title="Фамилия" Value="@(e => e.LastName)" Width="120" Sortable="true" Filterable="true" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Department" Title="Отдел" Value="@(e => e.Department)" Width="120" Sortable="true" Filterable="true" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="IsActive" Title="Статус (bool)" Value="@(e => e.IsActive)" Width="120" Sortable="true" Filterable="true">
+                            <Template>
+                                <SgBadge Variant="@(context.IsActive ? "success" : "danger")">
+                                    @(context.IsActive ? "Активен" : "Неактивен")
+                                </SgBadge>
+                            </Template>
+                        </SgDataGridColumn>
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Salary" Title="Зарплата" Value="@(e => e.Salary)" Width="100" Sortable="true" Filterable="true" Format="C0" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="HireDate" Title="Дата найма" Value="@(e => e.HireDate)" Width="120" Sortable="true" Filterable="true" Format="dd.MM.yyyy" />
+                    </ChildContent>
                 </SgDataGrid>
             </div>
         </SgCard>
     </div>
 
-    <!-- 2. Таблица с автогенерацией колонок -->
+    <!-- 2. Master-Detail таблица -->
     <div style="margin-top: 32px;">
-        <h2>2. Таблица с автогенерацией колонок</h2>
+        <h2>2. Master-Detail (Вложенные детали)</h2>
+        <p>Использование <code>DetailTemplate</code> для отображения дополнительной информации при развертывании строки.</p>
+        
+        <SgCard Title="Детализация сотрудников" Style="margin-top: 16px;">
+            <div style="height: 500px; border: 1px solid var(--sui-border); border-radius: var(--sui-radius-md); overflow: hidden;">
+                <SgDataGrid TItem="Employee" 
+                            Items="_employees.Take(100)"
+                            ShowQuickFilters="true"
+                            PageSize="10"
+                            EnablePaging="true">
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Id" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="FullName" Title="ФИО" Value="@(e => $"{e.FirstName} {e.LastName}")" Width="200" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Email" Title="Email" Value="@(e => e.Email)" Width="200" />
+                    </ChildContent>
+                    
+                    <DetailTemplate>
+                        <SgCard Title="Подробная информация" Style="margin: 8px; background: var(--sui-bg-secondary);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                                <div>
+                                    <div style="font-weight: 600; font-size: 12px; color: var(--sui-text-secondary);">ОТДЕЛ</div>
+                                    <div style="font-size: 14px;">@context.Department</div>
+                                </div>
+                                <div>
+                                    <div style="font-weight: 600; font-size: 12px; color: var(--sui-text-secondary);">ЗАРПЛАТА</div>
+                                    <div style="font-size: 14px;">@context.Salary.ToString("C2")</div>
+                                </div>
+                                <div>
+                                    <div style="font-weight: 600; font-size: 12px; color: var(--sui-text-secondary);">ДАТА НАЙМА</div>
+                                    <div style="font-size: 14px;">@context.HireDate.ToLongDateString()</div>
+                                </div>
+                                <div>
+                                    <div style="font-weight: 600; font-size: 12px; color: var(--sui-text-secondary);">СТАТУС</div>
+                                    <SgBadge Variant="@(context.IsActive ? "success" : "danger")">
+                                        @(context.IsActive ? "Действующий сотрудник" : "Уволен")
+                                    </SgBadge>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrEmpty(context.Notes))
+                            {
+                                <div style="margin-top: 16px;">
+                                    <div style="font-weight: 600; font-size: 12px; color: var(--sui-text-secondary);">ЗАМЕТКИ</div>
+                                    <div style="font-size: 13px; font-style: italic;">@context.Notes</div>
+                                </div>
+                            }
+                        </SgCard>
+                    </DetailTemplate>
+                </SgDataGrid>
+            </div>
+        </SgCard>
+    </div>
+
+    <!-- 3. Таблица с кастомным тулбаром -->
+    <div style="margin-top: 32px;">
+        <h2>3. Кастомный тулбар и шаблоны</h2>
+        <p>Использование <code>ToolbarContent</code> для добавления своих кнопок и <code>EmptyDataTemplate</code>.</p>
+        
+        <SgCard Title="Расширенное управление" Style="margin-top: 16px;">
+            <div style="height: 400px; border: 1px solid var(--sui-border); border-radius: var(--sui-radius-md); overflow: hidden;">
+                <SgDataGrid TItem="Employee" 
+                            Items="_employees.Take(5)"
+                            Title="Команда проекта"
+                            ShowStatusBar="true">
+                    <ToolbarContent>
+                        <SgButton Variant="primary" Size="sm">
+                            <Icon>➕</Icon>
+                            <ChildContent>Добавить</ChildContent>
+                        </SgButton>
+                        <SgButton Variant="ghost" Size="sm" @onclick="() => StateHasChanged()">
+                            <Icon>🔄</Icon>
+                            <ChildContent>Обновить</ChildContent>
+                        </SgButton>
+                        <div style="width: 1px; height: 20px; background: var(--sui-border); margin: 0 4px;"></div>
+                        <SgButton Variant="danger" Size="sm" Disabled="true">
+                            <Icon>🗑️</Icon>
+                            <ChildContent>Удалить выбранные</ChildContent>
+                        </SgButton>
+                    </ToolbarContent>
+
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" ColumnKey="FirstName" Title="Имя" Value="@(e => e.FirstName)" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="LastName" Title="Фамилия" Value="@(e => e.LastName)" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Email" Title="Email" Value="@(e => e.Email)" />
+                    </ChildContent>
+                </SgDataGrid>
+            </div>
+        </SgCard>
+    </div>
+
+    <!-- 4. Таблица с автогенерацией колонок -->
+    <div style="margin-top: 32px;">
+        <h2>4. Таблица с автогенерацией колонок</h2>
         <p>Таблица с автоматическим созданием колонок из свойств модели Employee.</p>
         
         <SgCard Title="Таблица с автогенерацией" Style="margin-top: 16px;">
-            <div style="height: 600px; overflow: auto; border: 1px solid var(--sui-border); border-radius: 4px;">
+            <div style="height: 400px; border: 1px solid var(--sui-border); border-radius: var(--sui-radius-md); overflow: hidden;">
                 <SgDataGrid TItem="Employee" 
-                            Items="_employees"
+                            Items="_employees.Take(100)"
                             AutoGenerateColumns="true"
                             ShowSearch="true"
                             ShowQuickFilters="true"
-                            ShowColumnChooser="true"
-                            ShowStatusBar="true"
-                            AllowMultiSelect="true"
-                            AllowEdit="true"
-                            AllowDelete="true"
-                            PageSize="50"
+                            PageSize="10"
                             EnablePaging="true" />
             </div>
         </SgCard>
     </div>
 
-
-    <!-- 4. Таблица с экспортом -->
+    <!-- 5. Таблица с экспортом -->
     <div style="margin-top: 32px;">
-        <h2>4. Таблица с экспортом данных</h2>
+        <h2>5. Таблица с экспортом данных</h2>
         <p>Таблица с возможностью экспорта в CSV и Excel форматы.</p>
         
         <SgCard Title="Таблица с экспортом" Style="margin-top: 16px;">
-            <div style="height: 600px; overflow: auto; border: 1px solid var(--sui-border); border-radius: 4px;">
+            <div style="height: 400px; border: 1px solid var(--sui-border); border-radius: var(--sui-radius-md); overflow: hidden;">
                 <SgDataGrid TItem="Employee" 
-                            Items="_employees"
-                            ShowSearch="true"
-                            ShowColumnChooser="true"
+                            Items="_employees.Take(100)"
                             ShowStatusBar="true"
                             ShowExportCsv="true"
                             ShowExportExcel="true"
                             AllowAutoFit="true"
-                            PageSize="50"
+                            PageSize="10"
                             EnablePaging="true">
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Id" Title="ID" Value="@(e => e.Id)" Width="60" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="FirstName" Title="Имя" Value="@(e => e.FirstName)" Width="120" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="LastName" Title="Фамилия" Value="@(e => e.LastName)" Width="120" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Email" Title="Email" Value="@(e => e.Email)" Width="180" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Department" Title="Отдел" Value="@(e => e.Department)" Width="120" Sortable="true" Filterable="true" />
-                    <SgDataGridColumn TItem="Employee" ColumnKey="Salary" Title="Зарплата" Value="@(e => e.Salary)" Width="100" Sortable="true" Filterable="true" Format="C2" />
+                    <ChildContent>
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Id" Title="ID" Value="@(e => e.Id)" Width="60" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="FirstName" Title="Имя" Value="@(e => e.FirstName)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="LastName" Title="Фамилия" Value="@(e => e.LastName)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Department" Title="Отдел" Value="@(e => e.Department)" Width="120" />
+                        <SgDataGridColumn TItem="Employee" ColumnKey="Salary" Title="Зарплата" Value="@(e => e.Salary)" Width="100" Format="C0" />
+                    </ChildContent>
                 </SgDataGrid>
             </div>
         </SgCard>
     </div>
 
-
-
-
-
-    <!-- 7. Параметры компонента -->
+    <!-- 6. Параметры компонента -->
     <div style="margin-top: 32px;">
-        <h2>7. Параметры компонента</h2>
+        <h2>6. Параметры компонента</h2>
         <p>Полный список параметров SgDataGrid для настройки поведения и внешнего вида.</p>
         
         <SgCard Title="Основные параметры" Style="margin-top: 16px;">

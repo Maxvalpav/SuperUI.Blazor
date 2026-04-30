@@ -8,7 +8,6 @@ public partial class NavigationDemo
 {
     [Inject] private SgToastService Toasts { get; set; } = default!;
     
-    private SgContextMenu? _menu;
     private int _currentStep = 1;
     private int _currentPage = 3;
     private string _tabPosition = "top";
