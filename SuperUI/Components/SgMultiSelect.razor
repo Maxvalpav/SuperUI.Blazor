@@ -1,11 +1,12 @@
 @namespace SuperUI.Components
-@typeparam TValue
+@typeparam TItem
+@typeparam TKey
 @using SuperUI.Localization
 @using System.Linq.Expressions
 @inject ISuperUILocalizer Localizer
 @implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
@@ -23,14 +24,14 @@
          @onfocusout="HandleFocusOutAsync"
          @onclick:stopPropagation="true">
         <div class="sgc-combo-control" @onclick="ToggleAsync">
-            @{ var list = (Values ?? Enumerable.Empty<TValue>()).ToList(); }
-            @if (list.Count == 0 && !_open)
+            @{ var selItems = GetSelectedItems().ToList(); }
+            @if (selItems.Count == 0 && !_open)
             {
                 <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
             }
             else
             {
-                foreach (var v in list)
+                foreach (var v in selItems)
                 {
                     var vLocal = v;
                     <span class="sgc-combo-tag" role="listitem">
@@ -41,7 +42,7 @@
                                     type="button"
                                     aria-label="@Localizer["Remove"] @LabelFrom(vLocal)"
                                     @onclick:stopPropagation="true"
-                                    @onclick="() => RemoveAsync(vLocal)">×</button>
+                                    @onclick="() => RemoveAsync(KeySelector(vLocal))">×</button>
                         }
                     </span>
                 }
@@ -49,7 +50,7 @@
                 {
                     <input class="sgc-combo-input"
                            value="@_search"
-                           placeholder="@(list.Count == 0 ? EffectivePlaceholder : "")"
+                           placeholder="@(selItems.Count == 0 ? EffectivePlaceholder : "")"
                            aria-autocomplete="list"
                            aria-controls="@_listboxId"
                            @oninput="OnSearchInput"
@@ -72,12 +73,12 @@
                     @foreach (var it in filtered)
                     {
                         var itLocal = it;
-                        var selected = IsSelected(itLocal);
+                        var selected = IsSelected(KeySelector(itLocal));
                         <div class="sgc-combo-option @(selected ? "sgc-selected" : "")"
                              role="option"
                              aria-selected="@(selected ? "true" : "false")"
                              @onclick:stopPropagation="true"
-                             @onclick="() => ToggleItemAsync(itLocal)">
+                             @onclick="() => ToggleItemAsync(KeySelector(itLocal))">
                             <input type="checkbox" checked="@selected" readonly tabindex="-1" style="pointer-events:none;" aria-hidden="true" />
                             <span>@LabelFrom(itLocal)</span>
                         </div>
@@ -103,35 +104,40 @@
     private readonly string _errorId = "sg-multi-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private string _search = string.Empty;
-    private SgEditContextBinder<IEnumerable<TValue>?>? _binder;
+    private SgEditContextBinder<IEnumerable<TKey>?>? _binder;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
     /// <summary>
     /// Gets or sets the expression that identifies the bound value for EditContext validation.
     /// </summary>
-    [Parameter] public Expression<Func<IEnumerable<TValue>?>>? ValueExpression { get; set; }
+    [Parameter] public Expression<Func<IEnumerable<TKey>?>>? ValueExpression { get; set; }
     
     /// <summary>
-    /// Gets or sets the collection of currently selected values.
+    /// Gets or sets the collection of currently selected keys.
     /// </summary>
-    [Parameter] public IEnumerable<TValue>? Values { get; set; }
+    [Parameter] public IEnumerable<TKey>? Values { get; set; }
     
     /// <summary>
-    /// Gets or sets the callback invoked when the selected values change.
+    /// Gets or sets the callback invoked when the selected keys change.
     /// </summary>
-    [Parameter] public EventCallback<IEnumerable<TValue>> ValuesChanged { get; set; }
+    [Parameter] public EventCallback<IEnumerable<TKey>> ValuesChanged { get; set; }
     
     /// <summary>
     /// Gets or sets the collection of items to display in the dropdown.
     /// </summary>
-    [Parameter] public IEnumerable<TValue> Items { get; set; } = Array.Empty<TValue>();
+    [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
+
+    /// <summary>
+    /// Gets or sets the function to extract the key from an item. Required.
+    /// </summary>
+    [Parameter, EditorRequired] public Func<TItem, TKey> KeySelector { get; set; } = default!;
     
     /// <summary>
     /// Gets or sets the function to extract display text from each item.
     /// If not specified, uses ToString() on the item.
     /// </summary>
-    [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
+    [Parameter] public Func<TItem, string>? LabelSelector { get; set; }
     
     /// <summary>
     /// Gets or sets the placeholder text shown when no items are selected.
@@ -149,6 +155,11 @@
     /// Gets or sets the label text displayed above the multi-select.
     /// </summary>
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>
+    /// Gets or sets the position of the label. Default is Top.
+    /// </summary>
+    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
     
     /// <summary>
     /// Gets or sets the hint text displayed below the multi-select.
@@ -188,17 +199,25 @@
         ? ErrorText 
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private string LabelFrom(TValue v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
+    private string LabelFrom(TItem v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
 
-    private bool IsSelected(TValue v)
+    private IEnumerable<TItem> GetSelectedItems()
+    {
+        if (Values is null) yield break;
+        var keys = Values.ToHashSet();
+        foreach (var it in Items)
+            if (keys.Contains(KeySelector(it))) yield return it;
+    }
+
+    private bool IsSelected(TKey key)
     {
         if (Values is null) return false;
-        foreach (var x in Values)
-            if (EqualityComparer<TValue>.Default.Equals(x, v)) return true;
+        foreach (var k in Values)
+            if (EqualityComparer<TKey>.Default.Equals(k, key)) return true;
         return false;
     }
 
-    private IEnumerable<TValue> GetFilteredItems()
+    private IEnumerable<TItem> GetFilteredItems()
     {
         if (string.IsNullOrEmpty(_search)) return Items;
         return Items.Where(i => LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
@@ -206,7 +225,7 @@
 
     protected override void OnInitialized()
     {
-        _binder = new SgEditContextBinder<IEnumerable<TValue>?>(StateHasChanged);
+        _binder = new SgEditContextBinder<IEnumerable<TKey>?>(StateHasChanged);
     }
 
     protected override void OnParametersSet()
@@ -241,21 +260,21 @@
         if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
     }
 
-    private async Task ToggleItemAsync(TValue v)
+    private async Task ToggleItemAsync(TKey key)
     {
-        var list = Values?.ToList() ?? new List<TValue>();
-        var idx = list.FindIndex(x => EqualityComparer<TValue>.Default.Equals(x, v));
-        if (idx >= 0) list.RemoveAt(idx); else list.Add(v);
+        var list = Values?.ToList() ?? new List<TKey>();
+        var idx = list.FindIndex(k => EqualityComparer<TKey>.Default.Equals(k, key));
+        if (idx >= 0) list.RemoveAt(idx); else list.Add(key);
         Values = list;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }
 
-    private async Task RemoveAsync(TValue v)
+    private async Task RemoveAsync(TKey key)
     {
-        var list = Values?.ToList() ?? new List<TValue>();
-        list.RemoveAll(x => EqualityComparer<TValue>.Default.Equals(x, v));
+        var list = Values?.ToList() ?? new List<TKey>();
+        list.RemoveAll(k => EqualityComparer<TKey>.Default.Equals(k, key));
         Values = list;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
         _binder?.NotifyFieldChanged();
@@ -264,4 +283,5 @@
 
     public void Dispose() => _binder?.Dispose();
 }
+
 

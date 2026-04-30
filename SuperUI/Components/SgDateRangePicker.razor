@@ -30,7 +30,7 @@
                     }
                     else
                     {
-                        @(string.IsNullOrEmpty(Placeholder) ? $"{StartPlaceholder} - {EndPlaceholder}" : Placeholder)
+                        @(string.IsNullOrEmpty(Placeholder) ? $"{EffectiveStartPlaceholder} - {EffectiveEndPlaceholder}" : Placeholder)
                     }
                 </span>
             }
@@ -47,7 +47,7 @@
             <div id="@_popupId" class="sgc-date-popup sgc-date-range-popup" role="dialog" aria-modal="false">
                 <div class="sgc-date-head">
                     <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)">‹</button>
-                    <span class="sgc-date-title">@_view.ToString("LLLL yyyy", System.Globalization.CultureInfo.CurrentCulture)</span>
+                    <span class="sgc-date-title">@_view.ToString("MMMM yyyy", System.Globalization.CultureInfo.CurrentCulture)</span>
                     <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)">›</button>
                 </div>
                 <div class="sgc-date-grid">
@@ -129,19 +129,21 @@
     
     /// <summary>
     /// Gets or sets the placeholder text displayed when no range is selected.
-    /// Default is "Выберите диапазон".
+    /// If not set, uses the localized resource key "DateRangePlaceholder".
     /// </summary>
-    [Parameter] public string? Placeholder { get; set; } = "Выберите диапазон";
+    [Parameter] public string? Placeholder { get; set; }
 
     /// <summary>
     /// Gets or sets the placeholder for the start date.
+    /// If not set, uses the localized resource key "DateRangeStartPlaceholder".
     /// </summary>
-    [Parameter] public string? StartPlaceholder { get; set; } = "Начало";
+    [Parameter] public string? StartPlaceholder { get; set; }
 
     /// <summary>
     /// Gets or sets the placeholder for the end date.
+    /// If not set, uses the localized resource key "DateRangeEndPlaceholder".
     /// </summary>
-    [Parameter] public string? EndPlaceholder { get; set; } = "Конец";
+    [Parameter] public string? EndPlaceholder { get; set; }
     
     /// <summary>
     /// Gets or sets the label text displayed above the date range picker.
@@ -193,6 +195,9 @@
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
     private string ClearLabel => Localizer["DateRangeClear"];
+    private string DefaultPlaceholder => Localizer["DateRangePlaceholder"];
+    private string DefaultStartPlaceholder => Localizer["DateRangeStartPlaceholder"];
+    private string DefaultEndPlaceholder => Localizer["DateRangeEndPlaceholder"];
 
     private bool HasRange => StartValue.HasValue && EndValue.HasValue;
     private bool HasPartialRange => StartValue.HasValue && !EndValue.HasValue;
@@ -204,6 +209,10 @@
             ? Localizer["DateRangeSelectEnd"]
             : Localizer["DateRangeSelectStart"];
     private string DaysCountText => $"{(EndValue!.Value.Date - StartValue!.Value.Date).Days + 1} {Localizer["Days"]}.";
+    
+    private string EffectivePlaceholder => Placeholder ?? DefaultPlaceholder;
+    private string EffectiveStartPlaceholder => StartPlaceholder ?? DefaultStartPlaceholder;
+    private string EffectiveEndPlaceholder => EndPlaceholder ?? DefaultEndPlaceholder;
 
     protected override void OnParametersSet()
     {
