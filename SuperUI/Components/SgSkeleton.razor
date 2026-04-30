@@ -1,32 +1,49 @@
 @namespace SuperUI.Components
 
-@if (Variant == "lines")
-{
-    <div class="sgc-skeleton-lines @CssClass">
-        @for (var i = 0; i < Lines; i++)
-        {
-            var lineWidth = i == Lines - 1 ? "60%" : "100%";
-            <span class="sgc-skeleton sgc-skeleton-line" style="width:@lineWidth;"></span>
-        }
-    </div>
-}
-else if (Variant == "circle")
-{
-    <span class="sgc-skeleton sgc-skeleton-circle @CssClass" style="@CircleStyle"></span>
-}
-else
-{
-    <span class="sgc-skeleton sgc-skeleton-block @CssClass" style="@BlockStyle"></span>
-}
+<div class="sgc-skeleton @ShapeClass @CssClass" 
+     style="@GetStyle()">
+</div>
 
 @code {
-    [Parameter] public string Variant { get; set; } = "lines"; // lines|circle|block
-    [Parameter] public int Lines { get; set; } = 3;
-    [Parameter] public string Width { get; set; } = "100%";
-    [Parameter] public string Height { get; set; } = "16px";
-    [Parameter] public string Size { get; set; } = "32px";
+    /// <summary>
+    /// Gets or sets the shape of the skeleton. 
+    /// Supported values: "text", "rect", "circle". Default is "text".
+    /// </summary>
+    [Parameter] public string Shape { get; set; } = "text";
+
+    /// <summary>
+    /// Gets or sets the width of the skeleton (e.g., "100%", "200px").
+    /// </summary>
+    [Parameter] public string? Width { get; set; }
+
+    /// <summary>
+    /// Gets or sets the height of the skeleton (e.g., "1rem", "40px").
+    /// </summary>
+    [Parameter] public string? Height { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS class names.
+    /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private string BlockStyle => $"width:{Width}; height:{Height};";
-    private string CircleStyle => $"width:{Size}; height:{Size};";
+    /// <summary>
+    /// Gets or sets whether the skeleton is animated. Default is true.
+    /// </summary>
+    [Parameter] public bool Animated { get; set; } = true;
+
+    private string ShapeClass => Shape switch
+    {
+        "circle" => "sgc-skeleton-circle",
+        "rect" => "sgc-skeleton-rect",
+        _ => "sgc-skeleton-text"
+    };
+
+    private string GetStyle()
+    {
+        var styles = new List<string>();
+        if (!string.IsNullOrEmpty(Width)) styles.Add($"width: {Width}");
+        if (!string.IsNullOrEmpty(Height)) styles.Add($"height: {Height}");
+        if (!Animated) styles.Add("animation: none");
+        return string.Join("; ", styles);
+    }
 }
