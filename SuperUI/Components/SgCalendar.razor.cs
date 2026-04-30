@@ -109,6 +109,15 @@ namespace SuperUI.Components
             _currentMonth = new DateTime(Value.Year, Value.Month, 1);
         }
 
+        protected override void OnParametersSet()
+        {
+            // Keep _currentMonth in sync when Value is changed externally
+            // but don't override it if the user is navigating months
+            var expectedMonth = new DateTime(Value.Year, Value.Month, 1);
+            if (_currentMonth == default)
+                _currentMonth = expectedMonth;
+        }
+
         private async Task HandleDropOnDate(DateTime date)
         {
             if (_draggedEvent == null || !EnableEditing) return;

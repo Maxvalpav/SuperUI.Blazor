@@ -1,49 +1,117 @@
 @namespace SuperUI.Components
 
-<div class="sgc-skeleton @ShapeClass @CssClass" 
-     style="@GetStyle()">
-</div>
+@if (_isCompositeMode)
+{
+    <div class="sgc-skeleton-wrapper @(Active ? "sgc-skeleton-active" : "") @(Round ? "sgc-skeleton-round" : "") @CssClass">
+        @if (Avatar)
+        {
+            <div class="sgc-skeleton-avatar-wrap">
+                <div class="sgc-skeleton-element sgc-skeleton-circle" style="width:40px;height:40px;"></div>
+            </div>
+        }
+        <div class="sgc-skeleton-content">
+            <div class="sgc-skeleton-element sgc-skeleton-title"></div>
+            @if (Paragraph)
+            {
+                <div class="sgc-skeleton-paragraph">
+                    @for (int i = 0; i < ParagraphRows; i++)
+                    {
+                        var isLast = i == ParagraphRows - 1;
+                        <div class="sgc-skeleton-element sgc-skeleton-paragraph-line @(isLast ? "sgc-skeleton-paragraph-line-last" : "")"></div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+else
+{
+    <div class="sgc-skeleton @ShapeClass @CssClass"
+         style="@GetStyle()">
+    </div>
+}
 
 @code {
+    // ── Composite / high-level API ──────────────────────────────────────────
+
     /// <summary>
-    /// Gets or sets the shape of the skeleton. 
-    /// Supported values: "text", "rect", "circle". Default is "text".
+    /// Enables the shimmer animation. Default is false.
+    /// </summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>
+    /// Shows an avatar placeholder circle on the left. Default is false.
+    /// </summary>
+    [Parameter] public bool Avatar { get; set; }
+
+    /// <summary>
+    /// Shows paragraph placeholder lines below the title. Default is true.
+    /// </summary>
+    [Parameter] public bool Paragraph { get; set; } = true;
+
+    /// <summary>
+    /// Number of paragraph rows to render. Default is 3.
+    /// </summary>
+    [Parameter] public int ParagraphRows { get; set; } = 3;
+
+    /// <summary>
+    /// Rounds the edges of the title and paragraph lines. Default is false.
+    /// </summary>
+    [Parameter] public bool Round { get; set; }
+
+    // ── Low-level / primitive API ───────────────────────────────────────────
+
+    /// <summary>
+    /// Shape of the primitive skeleton: "text", "rect", or "circle". Default is "text".
     /// </summary>
     [Parameter] public string Shape { get; set; } = "text";
 
     /// <summary>
-    /// Gets or sets the width of the skeleton (e.g., "100%", "200px").
+    /// Width of the primitive skeleton (e.g. "100%", "200px").
     /// </summary>
     [Parameter] public string? Width { get; set; }
 
     /// <summary>
-    /// Gets or sets the height of the skeleton (e.g., "1rem", "40px").
+    /// Height of the primitive skeleton (e.g. "1rem", "40px").
     /// </summary>
     [Parameter] public string? Height { get; set; }
 
     /// <summary>
-    /// Gets or sets additional CSS class names.
+    /// Inline style string appended to the element.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Additional CSS class names.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
     /// <summary>
-    /// Gets or sets whether the skeleton is animated. Default is true.
+    /// Whether the primitive skeleton is animated. Default is true.
     /// </summary>
     [Parameter] public bool Animated { get; set; } = true;
+
+    // ── Internals ───────────────────────────────────────────────────────────
+
+    // Composite mode is used when any high-level parameter is explicitly set.
+    // We detect this by checking whether Avatar was set or Active was set
+    // alongside Paragraph — i.e. the caller is using the rich API.
+    private bool _isCompositeMode => Active || Avatar;
 
     private string ShapeClass => Shape switch
     {
         "circle" => "sgc-skeleton-circle",
-        "rect" => "sgc-skeleton-rect",
-        _ => "sgc-skeleton-text"
+        "rect"   => "sgc-skeleton-rect",
+        _        => "sgc-skeleton-text"
     };
 
     private string GetStyle()
     {
         var styles = new List<string>();
-        if (!string.IsNullOrEmpty(Width)) styles.Add($"width: {Width}");
+        if (!string.IsNullOrEmpty(Width))  styles.Add($"width: {Width}");
         if (!string.IsNullOrEmpty(Height)) styles.Add($"height: {Height}");
-        if (!Animated) styles.Add("animation: none");
+        if (!Animated)                     styles.Add("animation: none");
+        if (!string.IsNullOrEmpty(Style))  styles.Add(Style);
         return string.Join("; ", styles);
     }
 }
