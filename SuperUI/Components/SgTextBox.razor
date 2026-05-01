@@ -1,45 +1,60 @@
 @namespace SuperUI.Components
 @typeparam TValue
 @inherits SgInputBase<TValue>
+@using System.Timers
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
-    @if (Multiline)
+    <div class="sgc-input-wrap">
+        @if (Multiline)
+        {
+            <textarea id="@_id"
+                      class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "")"
+                      rows="@Rows"
+                      placeholder="@Placeholder"
+                      disabled="@Disabled"
+                      readonly="@ReadOnly"
+                      required="@Required"
+                      maxlength="@MaxLength"
+                      aria-required="@(Required ? "true" : null)"
+                      aria-invalid="@(IsInvalid ? "true" : null)"
+                      aria-describedby="@DescribedBy"
+                      value="@CurrentText"
+                      @oninput="OnInputAsync"
+                      @onchange="OnChangeAsync"
+                      @onkeydown="OnKeyDownAsync"
+                      @attributes="AdditionalAttributes"></textarea>
+        }
+        else
+        {
+            <input id="@_id"
+                   type="@Type"
+                   class="sgc-input @(IsInvalid ? "sgc-invalid" : "") @(ShowClearButton ? "sgc-has-clear" : "")"
+                   placeholder="@Placeholder"
+                   disabled="@Disabled"
+                   readonly="@ReadOnly"
+                   required="@Required"
+                   maxlength="@MaxLength"
+                   aria-required="@(Required ? "true" : null)"
+                   aria-invalid="@(IsInvalid ? "true" : null)"
+                   aria-describedby="@DescribedBy"
+                   value="@CurrentText"
+                   @oninput="OnInputAsync"
+                   @onchange="OnChangeAsync"
+                   @onkeydown="OnKeyDownAsync"
+                   @attributes="AdditionalAttributes" />
+            @if (ShowClearButton && !string.IsNullOrEmpty(CurrentText))
+            {
+                <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="@Localizer["Clear"]">×</button>
+            }
+        }
+    </div>
+    @if (ShowCounter && MaxLength.HasValue)
     {
-        <textarea id="@_id"
-                  class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "")"
-                  rows="@Rows"
-                  placeholder="@Placeholder"
-                  disabled="@Disabled"
-                  readonly="@ReadOnly"
-                  required="@Required"
-                  aria-required="@(Required ? "true" : null)"
-                  aria-invalid="@(IsInvalid ? "true" : null)"
-                  aria-describedby="@DescribedBy"
-                  value="@CurrentText"
-                  @oninput="OnInputAsync"
-                  @onchange="OnChangeAsync"
-                  @attributes="AdditionalAttributes"></textarea>
-    }
-    else
-    {
-        <input id="@_id"
-               type="@Type"
-               class="sgc-input @(IsInvalid ? "sgc-invalid" : "")"
-               placeholder="@Placeholder"
-               disabled="@Disabled"
-               readonly="@ReadOnly"
-               required="@Required"
-               aria-required="@(Required ? "true" : null)"
-               aria-invalid="@(IsInvalid ? "true" : null)"
-               aria-describedby="@DescribedBy"
-               value="@CurrentText"
-               @oninput="OnInputAsync"
-               @onchange="OnChangeAsync"
-               @attributes="AdditionalAttributes" />
+        <span class="sgc-input-counter">@CurrentText?.Length / @MaxLength</span>
     }
     @if (IsInvalid)
     {
@@ -127,11 +142,44 @@
     /// When true, value updates on every keystroke. When false, value updates on blur.
     /// </summary>
     [Parameter] public bool Immediate { get; set; } = true;
-    
+
+    /// <summary>
+    /// Gets or sets the callback invoked when Enter key is pressed.
+    /// </summary>
+    [Parameter] public EventCallback OnEnterPressed { get; set; }
+
+    /// <summary>
+    /// Gets or sets the debounce delay in milliseconds.
+    /// When set, value changes are delayed by this amount after user stops typing.
+    /// Default is 0 (no debounce).
+    /// </summary>
+    [Parameter] public int Debounce { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum length of the input.
+    /// </summary>
+    [Parameter] public int? MaxLength { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show a clear button when input has value.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool ShowClearButton { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show a character counter.
+    /// Requires <see cref="MaxLength"/> to be set. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowCounter { get; set; }
+
     /// <summary>
     /// Gets or sets additional HTML attributes to apply to the input element.
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+
+    private System.Timers.Timer? _debounceTimer;
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
@@ -145,8 +193,41 @@
         ? string.Empty
         : Convert.ToString(Value, CultureInfo.CurrentCulture);
 
-    private Task OnInputAsync(ChangeEventArgs e) => Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
-    private Task OnChangeAsync(ChangeEventArgs e) => !Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
+    private void OnInputAsync(ChangeEventArgs e)
+    {
+        if (Debounce > 0)
+        {
+            _debounceTimer?.Stop();
+            _debounceTimer?.Dispose();
+            _debounceTimer = new System.Timers.Timer(Debounce);
+            _debounceTimer.Elapsed += async (_, _) =>
+            {
+                _debounceTimer?.Stop();
+                await InvokeAsync(async () => await CommitAsync(e.Value?.ToString()));
+            };
+            _debounceTimer.AutoReset = false;
+            _debounceTimer.Start();
+        }
+        else if (Immediate)
+        {
+            _ = CommitAsync(e.Value?.ToString());
+        }
+    }
+
+    private Task OnChangeAsync(ChangeEventArgs e) => !Immediate && Debounce <= 0 ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
+        {
+            await OnEnterPressed.InvokeAsync();
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        await SetValueAsync(default);
+    }
 
     private Task CommitAsync(string? raw) => SetValueAsync(ConvertValue(raw));
 

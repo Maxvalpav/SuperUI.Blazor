@@ -6,7 +6,7 @@
         disabled="@(Disabled || Loading || _isDebouncing)"
         title="@Title"
         @onclick="OnClickAsync"
-        aria-pressed="@(IsToggle ? (_pressed ? "true" : "false") : null)"
+        aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
         @attributes="AdditionalAttributes">
     @if (Loading)
     {
@@ -91,6 +91,16 @@
     [Parameter] public bool IsToggle { get; set; }
 
     /// <summary>
+    /// Gets or sets the pressed state for toggle buttons (two-way binding).
+    /// </summary>
+    [Parameter] public bool Pressed { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the pressed state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> PressedChanged { get; set; }
+
+    /// <summary>
     /// Gets or sets the debounce interval in milliseconds. Default is 300ms. Set to 0 to disable.
     /// </summary>
     [Parameter] public int DebounceInterval { get; set; } = 300;
@@ -133,7 +143,13 @@
 
         if (IsToggle)
         {
-            _pressed = !_pressed;
+            var newPressed = !Pressed;
+            Pressed = newPressed;
+            _pressed = newPressed;
+            if (PressedChanged.HasDelegate)
+            {
+                await PressedChanged.InvokeAsync(newPressed);
+            }
         }
 
         if (OnClick.HasDelegate)

@@ -1,19 +1,47 @@
 @namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
 
-<div class="sgc-progress-wrap @CssClass" style="@Style">
-    <div class="sgc-progress @(Indeterminate ? "sgc-indeterminate" : "") @(Animated ? "sgc-animated" : "") @(Striped ? "sgc-striped" : "")" 
-         role="progressbar"
-         aria-valuemin="0"
-         aria-valuemax="@Max"
-         aria-valuenow="@(Indeterminate ? null : Value)"
-         aria-label="@(Indeterminate ? "Loading" : $"Progress: {Pct:0}%")">
-        <div class="sgc-progress-bar" style="width:@Pct%;"></div>
+@if (Circular)
+{
+    <div class="sgc-progress-circular @CssClass" style="@Style" role="progressbar" aria-valuemin="0" aria-valuemax="@Max" aria-valuenow="@Value" aria-label="@CircularLabel">
+        <svg viewBox="0 0 36 36">
+            <path class="sgc-circular-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+            <path class="sgc-circular-bar" stroke-dasharray="@CircularDashArray" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+        </svg>
+        @if (ShowLabel)
+        {
+            <span class="sgc-circular-label">@CircularText</span>
+        }
     </div>
-    @if (ShowLabel && !Indeterminate)
-    {
-        <span class="sgc-progress-label">@($"{Pct:0}%")</span>
-    }
-</div>
+}
+else
+{
+    <div class="sgc-progress-wrap @(Vertical ? "sgc-vertical" : "") @CssClass" style="@Style">
+        <div class="sgc-progress @(Indeterminate ? "sgc-indeterminate" : "") @(Animated ? "sgc-animated" : "") @(Striped ? "sgc-striped" : "") @(BufferValue.HasValue ? "sgc-buffer" : "")"
+             role="progressbar"
+             aria-valuemin="0"
+             aria-valuemax="@Max"
+             aria-valuenow="@(Indeterminate ? null : Value)"
+             aria-label="@(Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {Pct:0}%")">
+            @if (!Indeterminate)
+            {
+                <div class="sgc-progress-bar" style="@ProgressBarStyle"></div>
+                @if (BufferValue.HasValue)
+                {
+                    <div class="sgc-progress-buffer" style="@BufferBarStyle"></div>
+                }
+            }
+            else
+            {
+                <div class="sgc-progress-bar"></div>
+            }
+        </div>
+        @if (ShowLabel && !Indeterminate)
+        {
+            <span class="sgc-progress-label">@($"{Pct:0}%")</span>
+        }
+    </div>
+}
 
 @code {
     /// <summary>
@@ -47,6 +75,31 @@
     /// Default is true.
     /// </summary>
     [Parameter] public bool ShowLabel { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the buffer value for buffered progress bars.
+    /// When set, displays a secondary buffer bar behind the main progress.
+    /// </summary>
+    [Parameter] public double? BufferValue { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the progress bar is displayed vertically.
+    /// Default is false (horizontal).
+    /// </summary>
+    [Parameter] public bool Vertical { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to render as a circular progress indicator.
+    /// Default is false (linear).
+    /// </summary>
+    [Parameter] public bool Circular { get; set; }
+
+    private string CircularDashArray => $"{Math.Min(100, Math.Max(0, Pct))}, 100";
+    private string CircularText => $"{Pct:0}%";
+    private string CircularLabel => Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {CircularText}";
+    private string ProgressBarStyle => Vertical ? $"height:{Pct}%;" : $"width:{Pct}%;";
+    private string BufferBarStyle => Vertical ? $"height:{BufferPct}%;" : $"width:{BufferPct}%;";
+    private double BufferPct => Math.Max(0, Math.Min(100, Max <= 0 ? 0 : (BufferValue ?? 0) * 100.0 / Max));
     
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
@@ -58,5 +111,5 @@
     /// </summary>
     [Parameter] public string? Style { get; set; }
 
-    private double Pct => Indeterminate ? 35 : Math.Max(0, Math.Min(100, Max <= 0 ? 0 : Value * 100.0 / Max));
+    private double Pct => Indeterminate ? 0 : Math.Max(0, Math.Min(100, Max <= 0 ? 0 : Value * 100.0 / Max));
 }

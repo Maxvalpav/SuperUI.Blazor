@@ -3,7 +3,10 @@
 @inject IJSRuntime JS
 
 <div class="sgc-pop-wrap @CssClass" @ref="_root">
-    <div class="sgc-pop-trigger" @ref="_triggerRef" @onclick="ToggleAsync">
+    <div class="sgc-pop-trigger" @ref="_triggerRef"
+         @onclick="OnTriggerClickAsync"
+         @onmouseenter="OnTriggerMouseEnterAsync"
+         @onmouseleave="OnTriggerMouseLeaveAsync">
         @if (TriggerContent is not null)
         {
             @TriggerContent
@@ -14,7 +17,7 @@
         }
     </div>
 
-    @if (Open || _isClosing)
+    @if (_open || _isClosing)
     {
         <div class="sgc-pop @(PlacementClass) @(ShowArrow ? "sgc-pop-arrow" : "") @(_isClosing ? "sgc-closing" : "")" 
              role="@Role" 
@@ -44,6 +47,8 @@
     private bool _isDisposed;
     private bool _isClosing;
     private bool _previousOpen;
+    private bool _open;
+    private CancellationTokenSource? _closeCts;
 
     /// <summary>
     /// Gets or sets whether the popover is currently open.
@@ -89,6 +94,18 @@
     /// Default is true.
     /// </summary>
     [Parameter] public bool CloseOnEscape { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the trigger behavior for the popover.
+    /// Supported values: "click", "hover", "focus", "manual". Default is "click".
+    /// </summary>
+    [Parameter] public string Trigger { get; set; } = "click";
+
+    /// <summary>
+    /// Gets or sets whether the popover is disabled.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
     
     /// <summary>
     /// Gets or sets the text for the default trigger button.
@@ -140,15 +157,30 @@
         _ => "sgc-pop-bottom-start"
     };
 
+    protected override void OnParametersSet()
+    {
+        // Sync local _open with parameter Open when parent changes it
+        if (Open != _previousOpen)
+        {
+            _open = Open;
+        }
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_isDisposed) return;
 
-        if (Open && !_previousOpen)
+        if (_open && !_previousOpen)
         {
+            // Cancel any pending close delay
+            _closeCts?.Cancel();
+            _closeCts?.Dispose();
+            _closeCts = null;
+
             // Popover just opened - reset _attached flag and attach
             _attached = false;
-            
+            _isClosing = false;
+
             try
             {
                 _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-popover.js");
@@ -161,13 +193,13 @@
             catch (JSException) { }
             catch (TaskCanceledException) { }
         }
-        else if (!Open && _previousOpen)
+        else if (!_open && _previousOpen)
         {
             // Popover just closed
             if (_attached && _module is not null)
             {
-                try 
-                { 
+                try
+                {
                     await _module.InvokeVoidAsync("detach", _root);
                 }
                 catch (JSException) { }
@@ -178,17 +210,54 @@
                 }
             }
 
-            // Wait for animation to finish (200ms in CSS)
-            await Task.Delay(200);
-            _isClosing = false;
+            // Wait for animation to finish (200ms in CSS) with cancellation
+            _closeCts?.Cancel();
+            _closeCts?.Dispose();
+            _closeCts = new CancellationTokenSource();
+            var token = _closeCts.Token;
+            try
+            {
+                await Task.Delay(200, token);
+                if (!_isDisposed && !token.IsCancellationRequested)
+                {
+                    _isClosing = false;
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // Animation was cancelled (popover reopened)
+            }
         }
 
-        _previousOpen = Open;
+        _previousOpen = _open;
     }
+
+    private async Task OnTriggerClickAsync() => await HandleTriggerAsync("click", !_open);
+    private async Task OnTriggerMouseEnterAsync() => await HandleTriggerAsync("hover", true);
+    private async Task OnTriggerMouseLeaveAsync() => await HandleTriggerAsync("hover", false);
+
+    private async Task HandleTriggerAsync(string triggerType, bool show)
+    {
+        if (Disabled) return;
+        if (!Trigger.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(triggerType))
+            return;
+        if (show) await OpenAsync();
+        else await CloseAsync();
+    }
+
+    /// <summary>
+    /// Manually opens the popover. For use when Trigger is "manual".
+    /// </summary>
+    public async Task OpenAsync() => await SetOpenAsync(true);
+
+    /// <summary>
+    /// Manually closes the popover. For use when Trigger is "manual".
+    /// </summary>
+    public async Task CloseAsync() => await SetOpenAsync(false);
 
     private async Task ToggleAsync()
     {
-        await SetOpenAsync(!Open);
+        await SetOpenAsync(!_open);
     }
 
     [JSInvokable]
@@ -196,15 +265,15 @@
 
     private async Task SetOpenAsync(bool value)
     {
-        if (Open == value || _isDisposed) return;
-        
+        if (_open == value || _isDisposed || (value && Disabled)) return;
+
         if (!value)
         {
             _isClosing = true;
             StateHasChanged();
         }
-        
-        Open = value;
+
+        _open = value;
         if (OpenChanged.HasDelegate)
         {
             await OpenChanged.InvokeAsync(value);
@@ -219,6 +288,10 @@
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        _closeCts = null;
 
         var self = _self;
         _self = null;

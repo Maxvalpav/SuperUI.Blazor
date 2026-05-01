@@ -93,14 +93,14 @@
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private double ValueAsDouble => Value is double d ? d : 0;
+    private double ValueAsDouble => Value is not null ? Convert.ToDouble(Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
     private string? DescribedBy => HasValidationErrors ? _errorId : null;
 
     private async Task OnInputAsync(ChangeEventArgs e)
     {
         if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
         {
-            var typedValue = (TValue)(object)v;
+            var typedValue = ConvertValue<TValue>(v);
             await SetValueAsync(typedValue);
         }
     }
@@ -131,7 +131,13 @@
                 return;
         }
 
-        var typedValue = (TValue)(object)newValue;
+        var typedValue = ConvertValue<TValue>(newValue);
         await SetValueAsync(typedValue);
+    }
+
+    private static T ConvertValue<T>(double value)
+    {
+        var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+        return (T)Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
     }
 }

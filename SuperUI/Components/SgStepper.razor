@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
 
 <div class="sgc-stepper @(Vertical ? "sgc-vertical" : "") @CssClass" role="navigation" aria-label="Progress steps">
     @{ var arr = (Steps ?? Array.Empty<StepperItem>()).ToList(); }
@@ -6,16 +7,23 @@
     {
         var idx = i;
         var s = arr[idx];
-        var state = idx < Active ? "done" : idx == Active ? "active" : "todo";
-        var isCurrent = idx == Active;
-        <div class="sgc-step sgc-@state" 
-             role="button"
-             tabindex="@(Clickable ? "0" : "-1")"
+        var status = GetStepStatus(idx, s);
+        var state = status.ToString().ToLowerInvariant();
+        var isCurrent = status == SgStepStatus.Process;
+        var icon = status switch
+        {
+            SgStepStatus.Done => "✓",
+            SgStepStatus.Error => "✕",
+            _ => (idx + 1).ToString()
+        };
+        <div class="sgc-step sgc-@state @(CanNavigateTo(idx) ? "" : "sgc-disabled")"
+             role="@(Clickable && CanNavigateTo(idx) ? "button" : null)"
+             tabindex="@(Clickable && CanNavigateTo(idx) ? (isCurrent ? "0" : "-1") : "-1")"
              aria-current="@(isCurrent ? "step" : null)"
-             aria-label="Step @(idx + 1): @s.Title @(state == "done" ? "(completed)" : state == "active" ? "(current)" : "")"
+             aria-label="@(Localizer.GetString("StepLabel", idx + 1, s.Title, GetStatusLabel(status)))"
              @onclick="() => GoAsync(idx)"
              @onkeydown="(e) => OnKeyDownAsync(e, idx)">
-            <div class="sgc-step-mark" aria-hidden="true">@(idx < Active ? "✓" : (idx + 1).ToString())</div>
+            <div class="sgc-step-mark" aria-hidden="true">@icon</div>
             <div class="sgc-step-text">
                 <div class="sgc-step-title">@s.Title</div>
                 @if (!string.IsNullOrEmpty(s.Description))
@@ -58,7 +66,14 @@
     /// Default is true.
     /// </summary>
     [Parameter] public bool Clickable { get; set; } = true;
-    
+
+    /// <summary>
+    /// Gets or sets whether the stepper uses linear navigation.
+    /// When true, users can only navigate to completed steps or the next pending step.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool Linear { get; set; }
+
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
@@ -69,9 +84,32 @@
     /// </summary>
     [Parameter] public Func<int, int, Task<bool>>? BeforeChangeAsync { get; set; }
 
+    private SgStepStatus GetStepStatus(int idx, StepperItem item)
+    {
+        if (item.Status.HasValue) return item.Status.Value;
+        if (idx < Active) return SgStepStatus.Done;
+        if (idx == Active) return SgStepStatus.Process;
+        return SgStepStatus.Pending;
+    }
+
+    private string GetStatusLabel(SgStepStatus status) => status switch
+    {
+        SgStepStatus.Done => Localizer["Completed"],
+        SgStepStatus.Process => Localizer["Current"],
+        SgStepStatus.Error => Localizer["Error"],
+        _ => ""
+    };
+
+    private bool CanNavigateTo(int idx)
+    {
+        if (!Linear) return true;
+        // In linear mode, allow navigation to completed steps, current step, or the immediate next step
+        return idx <= Active + 1 || GetStepStatus(idx, (Steps ?? Array.Empty<StepperItem>()).ElementAtOrDefault(idx) ?? new StepperItem()) == SgStepStatus.Done;
+    }
+
     private async Task GoAsync(int i)
     {
-        if (!Clickable || i == Active) return;
+        if (!Clickable || i == Active || !CanNavigateTo(i)) return;
 
         if (BeforeChangeAsync is not null)
         {
