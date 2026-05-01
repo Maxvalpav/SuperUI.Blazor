@@ -9,26 +9,34 @@ namespace SuperUI.Localization;
 public sealed class SuperUILocalizer : ISuperUILocalizer
 {
     private readonly ResourceManager _resourceManager;
-    private readonly CultureInfo _culture;
+    private readonly CultureInfo? _fixedCulture;
 
     /// <summary>
-    /// Initializes a new instance of <see cref="SuperUILocalizer"/>.
+    /// Initializes a new instance of <see cref="SuperUILocalizer"/>. Reads
+    /// <see cref="CultureInfo.CurrentUICulture"/> on each lookup so language switches
+    /// take effect immediately without re-creating the service.
     /// </summary>
-    public SuperUILocalizer() : this(CultureInfo.CurrentUICulture)
+    public SuperUILocalizer()
     {
-    }
-
-    /// <summary>
-    /// Initializes a new instance of <see cref="SuperUILocalizer"/> with a specific culture.
-    /// </summary>
-    /// <param name="culture">The culture to use for localization.</param>
-    public SuperUILocalizer(CultureInfo culture)
-    {
-        _culture = culture;
+        _fixedCulture = null;
         _resourceManager = new ResourceManager(
             "SuperUI.Resources.SuperUIStrings",
             typeof(SuperUILocalizer).Assembly);
     }
+
+    /// <summary>
+    /// Initializes a new instance of <see cref="SuperUILocalizer"/> pinned to a specific culture.
+    /// </summary>
+    /// <param name="culture">The culture to use for localization.</param>
+    public SuperUILocalizer(CultureInfo culture)
+    {
+        _fixedCulture = culture;
+        _resourceManager = new ResourceManager(
+            "SuperUI.Resources.SuperUIStrings",
+            typeof(SuperUILocalizer).Assembly);
+    }
+
+    private CultureInfo Culture => _fixedCulture ?? CultureInfo.CurrentUICulture;
 
     /// <inheritdoc/>
     public string this[string key]
@@ -37,7 +45,7 @@ public sealed class SuperUILocalizer : ISuperUILocalizer
         {
             try
             {
-                var value = _resourceManager.GetString(key, _culture);
+                var value = _resourceManager.GetString(key, Culture);
                 return value ?? key;
             }
             catch
@@ -53,7 +61,7 @@ public sealed class SuperUILocalizer : ISuperUILocalizer
         var format = this[key];
         try
         {
-            return string.Format(_culture, format, args);
+            return string.Format(Culture, format, args);
         }
         catch
         {

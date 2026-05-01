@@ -439,16 +439,21 @@ namespace SuperUI.Components
         {
             if (_module is null || _isDisposed) return;
 
+            // Cancel previous update if still running and dispose its CTS to prevent leaks
+            var prevCts = _updateCts;
+            _updateCts = new CancellationTokenSource();
+            var token = _updateCts.Token;
+            if (prevCts is not null)
+            {
+                try { prevCts.Cancel(); } catch (ObjectDisposedException) { }
+                prevCts.Dispose();
+            }
+
             if (!Loading)
             {
                 _isLoading = true;
                 await InvokeAsync(StateHasChanged); // show spinner
             }
-
-            // Cancel previous update if still running
-            _updateCts?.Cancel();
-            _updateCts = new CancellationTokenSource();
-            var token = _updateCts.Token;
 
             // Snapshot UI-thread state so the background pass cannot race with
             // concurrent mutations (column resize, filter changes, etc.).
@@ -472,8 +477,10 @@ namespace SuperUI.Components
                 CurrentPage = _currentPage,
             };
 
-            // Yield to the renderer so the spinner paints before heavy work starts.
-            await Task.Delay(1).ConfigureAwait(true);
+            // Yield twice so Blazor's render queue flushes and the browser paints
+            // the spinner before we kick off heavy work.
+            await Task.Yield();
+            await Task.Delay(16).ConfigureAwait(true);
 
             try
             {
@@ -491,9 +498,11 @@ namespace SuperUI.Components
                 // Send data to JS on UI thread
                 await InvokeAsync(async () =>
                 {
+                    var module = _module;
+                    if (module is null || _isDisposed) return;
                     try
                     {
-                        await _module.InvokeVoidAsync(
+                        await module.InvokeVoidAsync(
                             "setData",
                             _canvas,
                             result.Data,
@@ -503,12 +512,13 @@ namespace SuperUI.Components
                             result.ActiveFilters,
                             _aggregates,
                             snap.GroupBy,
-                            result.DataColumnKeys);
-                        if (!string.IsNullOrEmpty(_sortProperty))
-                            await _module.InvokeVoidAsync("setSort", _canvas, _sortProperty, _sortDescending);
+                            result.DataColumnKeys,
+                            snap.SortProperty,
+                            snap.SortDescending);
                     }
                     catch (JSException) { }
                     catch (TaskCanceledException) { }
+                    catch (ObjectDisposedException) { }
 
                     if (!Loading)
                     {
@@ -1487,7 +1497,7 @@ var prefix = col.Aggregate switch
 
             if (AllowSelection)
             {
-                var changedIndices = new List<int>();
+                var changedSet = new HashSet<int>();
                 var isSelectedNow = _selectedItemsSet.Contains(item);
 
                 if (MultiSelect && shift && _lastClickedIndex != -1 && _lastClickedIndex < _rowItemMap.Count)
@@ -1500,7 +1510,7 @@ var prefix = col.Aggregate switch
                         for (int i = 0; i < _rowItemMap.Count; i++)
                         {
                             var r = _rowItemMap[i];
-                            if (r is not null && _selectedItemsSet.Contains(r)) changedIndices.Add(i);
+                            if (r is not null && _selectedItemsSet.Contains(r)) changedSet.Add(i);
                         }
                         _selectedItems.Clear();
                         _selectedItemsSet.Clear();
@@ -1512,7 +1522,7 @@ var prefix = col.Aggregate switch
                         {
                             _selectedItems.Add(r);
                             _selectedItemsSet.Add(r);
-                            if (!changedIndices.Contains(i)) changedIndices.Add(i);
+                            changedSet.Add(i);
                         }
                     }
                 }
@@ -1528,7 +1538,7 @@ var prefix = col.Aggregate switch
                         _selectedItems.Add(item);
                         _selectedItemsSet.Add(item);
                     }
-                    changedIndices.Add(index);
+                    changedSet.Add(index);
                 }
                 else
                 {
@@ -1536,54 +1546,39 @@ var prefix = col.Aggregate switch
                     for (int i = 0; i < _rowItemMap.Count; i++)
                     {
                         var r = _rowItemMap[i];
-                        if (r is not null && _selectedItemsSet.Contains(r)) changedIndices.Add(i);
+                        if (r is not null && _selectedItemsSet.Contains(r)) changedSet.Add(i);
                     }
                     _selectedItems.Clear();
                     _selectedItemsSet.Clear();
                     _selectedItems.Add(item);
                     _selectedItemsSet.Add(item);
-                    if (!changedIndices.Contains(index)) changedIndices.Add(index);
+                    changedSet.Add(index);
                 }
 
                 _lastClickedIndex = index;
                 await SelectedItemsChanged.InvokeAsync(_selectedItems);
 
                 // Лёгкий путь: если нет группировки, шлём только индексы
-                if (_groupBy.Count == 0 && _module is not null && !_isDisposed)
+                if (_groupBy.Count == 0 && _module is not null && !_isDisposed && changedSet.Count > 0)
                 {
+                    var selectedIndices = new List<int>();
+                    var unselectedIndices = new List<int>();
+                    foreach (var i in changedSet)
+                    {
+                        var r = _rowItemMap[i];
+                        if (r is null) continue;
+                        if (_selectedItemsSet.Contains(r)) selectedIndices.Add(i);
+                        else unselectedIndices.Add(i);
+                    }
+
                     try
                     {
-                        // В JS передаём только те индексы, которые поменялись. 
-                        // Но проще передать index и флаг, если это одиночный клик.
-                        // Для Shift-кликов передаём пачку.
-                        if (changedIndices.Count > 0)
-                        {
-                            // В JS функции setSelectionAt мы просто пройдём по индексам и выставим r._selected = !!selected.
-                            // Но у нас разные строки могут иметь разное состояние после операции.
-                            // Для простоты: OnRowClickInternal либо инвертирует один (ctrl/checkbox), 
-                            // либо ставит диапазон в true (shift), либо ставит один в true а остальные в false.
-                            
-                            // Самый надёжный "лёгкий" путь здесь — вызвать UpdateData, 
-                            // НО мы можем оптимизировать UpdateData, чтобы он не пересоздавал всё.
-                            // Однако пользователь просил именно setSelectionAt.
-                            
-                            // Переделаем логику: в JS setSelectionAt будет принимать (canvas, indices, selected).
-                            // Если selected null, то JS может брать состояние из C#? Нет, JS не знает о C#.
-                            // Значит C# должен сказать JS: "вот эти индексы теперь selected, а вот эти - нет".
-                            
-                            // Но в JS у нас: r._selected = !!selected;
-                            // Значит нам нужно вызвать setSelectionAt отдельно для тех кто стал selected и тех кто перестал.
-                            
-                            var selectedIndices = changedIndices.Where(i => _rowItemMap[i] is not null && _selectedItemsSet.Contains(_rowItemMap[i]!)).ToList();
-                            var unselectedIndices = changedIndices.Where(i => _rowItemMap[i] is not null && !_selectedItemsSet.Contains(_rowItemMap[i]!)).ToList();
-                            
-                            if (selectedIndices.Count > 0)
-                                await _module.InvokeVoidAsync("setSelectionAt", _canvas, selectedIndices, true);
-                            if (unselectedIndices.Count > 0)
-                                await _module.InvokeVoidAsync("setSelectionAt", _canvas, unselectedIndices, false);
-                        }
+                        if (selectedIndices.Count > 0)
+                            await _module.InvokeVoidAsync("setSelectionAt", _canvas, selectedIndices, true);
+                        if (unselectedIndices.Count > 0)
+                            await _module.InvokeVoidAsync("setSelectionAt", _canvas, unselectedIndices, false);
                     }
-                    catch (JSException) { } catch (TaskCanceledException) { }
+                    catch (JSException) { } catch (TaskCanceledException) { } catch (ObjectDisposedException) { }
                     StateHasChanged();
                     return;
                 }
@@ -1600,23 +1595,31 @@ var prefix = col.Aggregate switch
             _filterText = e.Value?.ToString() ?? string.Empty;
             _filterVersion++;
             _currentPage = 1;
-            _searchDebounce?.Cancel();
+            var prev = _searchDebounce;
             _searchDebounce = new CancellationTokenSource();
             var token = _searchDebounce.Token;
+            if (prev is not null)
+            {
+                try { prev.Cancel(); } catch (ObjectDisposedException) { }
+                prev.Dispose();
+            }
             try
             {
                 await Task.Delay(300, token);
                 await UpdateData();
             }
             catch (TaskCanceledException) { }
+            catch (OperationCanceledException) { }
         }
 
         public async ValueTask DisposeAsync()
         {
             if (_isDisposed) return;
             _isDisposed = true;
-            _searchDebounce?.Cancel();
+            try { _searchDebounce?.Cancel(); } catch (ObjectDisposedException) { }
             _searchDebounce?.Dispose();
+            try { _updateCts?.Cancel(); } catch (ObjectDisposedException) { }
+            _updateCts?.Dispose();
             if (_module is not null)
             {
                 try { await _module.InvokeVoidAsync("dispose", _canvas); }

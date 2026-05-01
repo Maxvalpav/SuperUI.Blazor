@@ -83,10 +83,16 @@
         new() { Label = "PageSize", Value = "int", BadgeText = "На странице", BadgeVariant = "info" }
     };
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _employees = SampleDataService.GenerateEmployees(100000);
-        _columns = new List<CanvasGridColumn<Employee>>
+        _columns = BuildColumns();
+        // Generate 100K rows on background thread so initial navigation/layout isn't blocked.
+        _employees = await Task.Run(() => SampleDataService.GenerateEmployees(100000));
+    }
+
+    private static List<CanvasGridColumn<Employee>> BuildColumns()
+    {
+        return new List<CanvasGridColumn<Employee>>
         {
             new() { Title = "ID", Property = nameof(Employee.Id), Width = 70, Align = "right", Sortable = true, Filterable = true, Pinned = true, ValueType = typeof(int) },
             new() { Title = "Имя", Property = nameof(Employee.FirstName), Width = 130, Sortable = true, Filterable = true, Editable = true },
