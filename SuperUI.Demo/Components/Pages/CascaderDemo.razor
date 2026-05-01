@@ -1,0 +1,145 @@
+@page "/cascader-demo"
+@using SuperUI.Components
+
+<PageTitle>Cascader - SUI</PageTitle>
+
+<SgCard Title="SgCascader - Cascaded Selection"
+        Subtitle="Multi-level dropdown for hierarchical data such as locations or categories.">
+
+    <div style="margin-top: 32px;">
+        <h2>Basic Usage</h2>
+        <p>Select a path through nested options.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Example">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Location picker</div>
+                        <SgCascader Options="_locations" @bind-Value="_selectedLocation" Placeholder="Select location" />
+                        <div style="margin-top: 8px; font-size: 12px;">
+                            Selected: <strong>@string.Join(" / ", _selectedLocation.Select(GetLabel))</strong>
+                        </div>
+                    </div>
+                </div>
+            </SgCard>
+
+            <SgCard Title="Properties">
+                <PropertyTable Items="_basicProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Disabled Options</h2>
+        <p>Individual options can be disabled to prevent selection.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Example">
+                <SgCascader Options="_categories" @bind-Value="_selectedCategory" Placeholder="Select category" />
+                <div style="margin-top: 8px; font-size: 12px; color: var(--sui-text-muted);">
+                    Laptops is disabled and cannot be selected.
+                </div>
+            </SgCard>
+
+            <SgCard Title="Option Model">
+                <PropertyTable Items="_optionProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private List<string> _selectedLocation = new();
+    private List<string> _selectedCategory = new();
+
+    private List<SgCascaderOption> _locations = new()
+    {
+        new SgCascaderOption
+        {
+            Value = "usa", Label = "United States",
+            Children = new()
+            {
+                new SgCascaderOption { Value = "ny", Label = "New York" },
+                new SgCascaderOption { Value = "ca", Label = "California" },
+                new SgCascaderOption { Value = "tx", Label = "Texas" }
+            }
+        },
+        new SgCascaderOption
+        {
+            Value = "uk", Label = "United Kingdom",
+            Children = new()
+            {
+                new SgCascaderOption { Value = "ldn", Label = "London" },
+                new SgCascaderOption { Value = "mcr", Label = "Manchester" }
+            }
+        },
+        new SgCascaderOption
+        {
+            Value = "de", Label = "Germany",
+            Children = new()
+            {
+                new SgCascaderOption { Value = "ber", Label = "Berlin" },
+                new SgCascaderOption { Value = "mun", Label = "Munich" },
+                new SgCascaderOption { Value = "ham", Label = "Hamburg" }
+            }
+        }
+    };
+
+    private List<SgCascaderOption> _categories = new()
+    {
+        new SgCascaderOption
+        {
+            Value = "electronics", Label = "Electronics",
+            Children = new()
+            {
+                new SgCascaderOption { Value = "phones", Label = "Phones" },
+                new SgCascaderOption { Value = "laptops", Label = "Laptops", Disabled = true },
+                new SgCascaderOption { Value = "accessories", Label = "Accessories" }
+            }
+        },
+        new SgCascaderOption
+        {
+            Value = "clothing", Label = "Clothing",
+            Children = new()
+            {
+                new SgCascaderOption { Value = "men", Label = "Men" },
+                new SgCascaderOption { Value = "women", Label = "Women" }
+            }
+        }
+    };
+
+    private string GetLabel(string val)
+    {
+        var opt = FindOption(_locations, val) ?? FindOption(_categories, val);
+        return opt?.Label ?? val;
+    }
+
+    private SgCascaderOption? FindOption(List<SgCascaderOption> list, string val)
+    {
+        foreach (var o in list)
+        {
+            if (o.Value == val) return o;
+            var child = FindOption(o.Children, val);
+            if (child != null) return child;
+        }
+        return null;
+    }
+
+    private List<PropertyPanelItem> _basicProperties = new()
+    {
+        new() { Label = "Options", Value = "List<SgCascaderOption>", BadgeText = "Root options" },
+        new() { Label = "Value", Value = "List<string>", BadgeText = "Selected path (two-way)" },
+        new() { Label = "Placeholder", Value = "string?", BadgeText = "Placeholder text" },
+        new() { Label = "Separator", Value = "string? (default: /)", BadgeText = "Display separator" },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "Disabled state" }
+    };
+
+    private List<PropertyPanelItem> _optionProperties = new()
+    {
+        new() { Label = "Value", Value = "string", BadgeText = "Unique value" },
+        new() { Label = "Label", Value = "string", BadgeText = "Display text" },
+        new() { Label = "Children", Value = "List<SgCascaderOption>", BadgeText = "Nested options" },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "Cannot select" }
+    };
+}

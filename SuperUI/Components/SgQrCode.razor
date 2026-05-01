@@ -1,0 +1,88 @@
+@namespace SuperUI.Components
+@using Net.Codecrete.QrCodeGenerator
+
+<div class="sgc-qrcode @CssClass" style="width: @(Size)px; height: @(Size)px;">
+    @if (!string.IsNullOrEmpty(_svg))
+    {
+        @((MarkupString)_svg)
+    }
+</div>
+
+@code {
+    private string _svg = "";
+
+    /// <summary>
+    /// Gets or sets the text or URL to encode in the QR code.
+    /// </summary>
+    [Parameter] public string Value { get; set; } = "";
+
+    /// <summary>
+    /// Gets or sets the display size in pixels. Default is 200.
+    /// </summary>
+    [Parameter] public int Size { get; set; } = 200;
+
+    /// <summary>
+    /// Gets or sets the error correction level.
+    /// Supported values: "low", "medium", "quartile", "high". Default is "medium".
+    /// </summary>
+    [Parameter] public string ErrorCorrection { get; set; } = "medium";
+
+    /// <summary>
+    /// Gets or sets the QR code border size in modules. Default is 2.
+    /// </summary>
+    [Parameter] public int Border { get; set; } = 2;
+
+    /// <summary>
+    /// Gets or sets the fill color. Default is "#000000".
+    /// </summary>
+    [Parameter] public string FillColor { get; set; } = "#000000";
+
+    /// <summary>
+    /// Gets or sets the background color. Default is "#ffffff".
+    /// </summary>
+    [Parameter] public string BackgroundColor { get; set; } = "#ffffff";
+
+    /// <summary>
+    /// Gets or sets additional CSS class names.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        GenerateSvg();
+    }
+
+    private void GenerateSvg()
+    {
+        if (string.IsNullOrEmpty(Value))
+        {
+            _svg = "";
+            return;
+        }
+
+        try
+        {
+            var ecc = ErrorCorrection.ToLowerInvariant() switch
+            {
+                "low" or "l" => QrCode.Ecc.Low,
+                "quartile" or "q" => QrCode.Ecc.Quartile,
+                "high" or "h" => QrCode.Ecc.High,
+                _ => QrCode.Ecc.Medium
+            };
+
+            var qr = QrCode.EncodeText(Value, ecc);
+            var svg = qr.ToSvgString(Border);
+
+            // Adjust colors and make SVG fill container
+            svg = svg.Replace("fill=\"#000000\"", $"fill=\"{FillColor}\"");
+            svg = svg.Replace("fill=\"#FFFFFF\"", $"fill=\"{BackgroundColor}\"");
+            svg = svg.Replace("<svg ", $"<svg width=\"100%\" height=\"100%\" ");
+
+            _svg = svg;
+        }
+        catch
+        {
+            _svg = "";
+        }
+    }
+}

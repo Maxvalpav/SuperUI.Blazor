@@ -1,0 +1,140 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-cascader @(Block ? "sgc-block" : "") @CssClass"
+     role="combobox"
+     aria-expanded="@(_open ? "true" : "false")"
+     tabindex="@(_open ? "-1" : "0")"
+     @onfocusout="HandleFocusOutAsync">
+    <div class="sgc-cascader-control" @onclick="ToggleAsync">
+        @if (!string.IsNullOrEmpty(DisplayText))
+        {
+            <span class="sgc-cascader-value">@DisplayText</span>
+        }
+        else
+        {
+            <span class="sgc-cascader-placeholder">@Placeholder</span>
+        }
+        <span class="sgc-cascader-caret" aria-hidden="true">@(_open ? "▲" : "▼")</span>
+    </div>
+    @if (_open)
+    {
+        <div class="sgc-cascader-menu" @onclick:stopPropagation="true">
+            @RenderColumns(Options, 0)
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private List<string> _selectedPath = new();
+
+    [Parameter] public List<SgCascaderOption> Options { get; set; } = new();
+    [Parameter] public List<string> Value { get; set; } = new();
+    [Parameter] public EventCallback<List<string>> ValueChanged { get; set; }
+    [Parameter] public string? Placeholder { get; set; } = "Select";
+    [Parameter] public string? Separator { get; set; } = " / ";
+    [Parameter] public bool Block { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    private string DisplayText => Value.Count > 0 ? string.Join(Separator, Value.Select(GetLabelForValue)) : "";
+
+    private string GetLabelForValue(string val)
+    {
+        var opt = FindOption(Options, val);
+        return opt?.Label ?? val;
+    }
+
+    private SgCascaderOption? FindOption(List<SgCascaderOption> list, string val)
+    {
+        foreach (var o in list)
+        {
+            if (o.Value == val) return o;
+            var child = FindOption(o.Children, val);
+            if (child != null) return child;
+        }
+        return null;
+    }
+
+    private List<SgCascaderOption> GetOptionsAtLevel(int level)
+    {
+        if (level == 0) return Options;
+        var current = Options;
+        for (int i = 0; i < level && i < _selectedPath.Count; i++)
+        {
+            var found = current.FirstOrDefault(o => o.Value == _selectedPath[i]);
+            current = found?.Children ?? new();
+        }
+        return current;
+    }
+
+    private RenderFragment RenderColumns(List<SgCascaderOption> options, int level) => __builder =>
+    {
+        if (options.Count == 0 && level > 0) return;
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "sgc-cascader-column");
+        foreach (var opt in options)
+        {
+            var isSelected = _selectedPath.Count > level && _selectedPath[level] == opt.Value;
+            var hasChildren = opt.Children.Count > 0;
+            __builder.OpenElement(2, "div");
+            __builder.AddAttribute(3, "class", $"sgc-cascader-option {(isSelected ? "sgc-selected" : "")} {(opt.Disabled ? "sgc-disabled" : "")}");
+            __builder.AddAttribute(4, "role", "option");
+            __builder.AddAttribute(5, "aria-selected", isSelected ? "true" : "false");
+            __builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => SelectAsync(opt, level)));
+            __builder.AddContent(7, opt.Label);
+            if (hasChildren)
+            {
+                __builder.OpenElement(8, "span");
+                __builder.AddAttribute(9, "class", "sgc-cascader-option-arrow");
+                __builder.AddContent(10, "›");
+                __builder.CloseElement();
+            }
+            __builder.CloseElement();
+        }
+        __builder.CloseElement();
+
+        var childOpts = GetOptionsAtLevel(level + 1);
+        if (_selectedPath.Count > level && childOpts.Count > 0)
+        {
+            __builder.AddContent(11, RenderColumns(childOpts, level + 1));
+        }
+    };
+
+    private async Task SelectAsync(SgCascaderOption option, int level)
+    {
+        if (option.Disabled) return;
+        while (_selectedPath.Count > level) _selectedPath.RemoveAt(_selectedPath.Count - 1);
+        _selectedPath.Add(option.Value);
+
+        if (option.Children.Count == 0)
+        {
+            Value = new List<string>(_selectedPath);
+            _open = false;
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(Value);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task ToggleAsync()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        if (_open) _selectedPath = new List<string>(Value);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleFocusOutAsync(FocusEventArgs e)
+    {
+        await Task.Delay(150);
+        if (_open)
+        {
+            _open = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => _open = false;
+}

@@ -1,0 +1,64 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-dropdown @CssClass" @onfocusout="HandleFocusOutAsync">
+    <div class="sgc-dropdown-trigger" @onclick="ToggleAsync">
+        @if (TriggerContent is not null)
+        {
+            @TriggerContent
+        }
+        else
+        {
+            <SgButton Text="@Text" Icon="@Icon" Variant="@Variant" Size="@Size" Disabled="@Disabled" />
+        }
+    </div>
+    @if (_open)
+    {
+        <div class="sgc-dropdown-menu" role="menu" @onclick:stopPropagation="true">
+            @ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public RenderFragment? Icon { get; set; }
+    [Parameter] public string Variant { get; set; } = "default";
+    [Parameter] public string Size { get; set; } = "md";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public RenderFragment? TriggerContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    public async Task ToggleAsync()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        if (OpenChanged.HasDelegate)
+            await OpenChanged.InvokeAsync(_open);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task CloseAsync()
+    {
+        if (!_open) return;
+        _open = false;
+        if (OpenChanged.HasDelegate)
+            await OpenChanged.InvokeAsync(false);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleFocusOutAsync(FocusEventArgs e)
+    {
+        await Task.Delay(100);
+        if (_open) await CloseAsync();
+    }
+
+    public void Dispose()
+    {
+        _open = false;
+    }
+}

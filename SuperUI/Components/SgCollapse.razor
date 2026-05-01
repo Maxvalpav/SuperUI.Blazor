@@ -1,0 +1,159 @@
+@namespace SuperUI.Components
+
+<div class="sgc-collapse @(_open ? "sgc-open" : "") @CssClass">
+    <button type="button"
+            class="sgc-collapse-header"
+            @onclick="ToggleAsync"
+            disabled="@Disabled"
+            aria-expanded="@(_open ? "true" : "false")"
+            aria-controls="@_contentId"
+            id="@_headerId">
+        @if (HeaderContent is not null)
+        {
+            @HeaderContent
+        }
+        else
+        {
+            <span class="sgc-collapse-title">@Title</span>
+        }
+        @if (ShowArrow)
+        {
+            <span class="sgc-collapse-arrow">▶</span>
+        }
+        @if (ExtraContent is not null)
+        {
+            <span class="sgc-collapse-extra" @onclick:stopPropagation="true">@ExtraContent</span>
+        }
+    </button>
+    <div class="sgc-collapse-content-wrapper"
+         id="@_contentId"
+         role="region"
+         aria-labelledby="@_headerId">
+        <div class="sgc-collapse-content">
+            <div class="sgc-collapse-content-inner">
+                @ChildContent
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly string _id = Guid.NewGuid().ToString("N")[..8];
+    private string _headerId => $"sg-col-h-{_id}";
+    private string _contentId => $"sg-col-c-{_id}";
+    private bool _open;
+    private bool _initialized;
+
+    /// <summary>
+    /// Gets or sets the title text displayed in the collapse header.
+    /// Ignored if <see cref="HeaderContent"/> is provided.
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "";
+
+    /// <summary>
+    /// Gets or sets custom header content. Takes precedence over <see cref="Title"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content to display when the panel is expanded.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets extra content rendered in the header (e.g. actions).
+    /// Click events are stopped from propagating to the toggle.
+    /// </summary>
+    [Parameter] public RenderFragment? ExtraContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the panel is expanded. Supports two-way binding via <see cref="ExpandedChanged"/>.
+    /// </summary>
+    [Parameter] public bool Expanded { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the expanded state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> ExpandedChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the collapse toggle is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the expand/collapse arrow. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowArrow { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the panel is expanded.
+    /// </summary>
+    [Parameter] public EventCallback OnExpand { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the panel is collapsed.
+    /// </summary>
+    [Parameter] public EventCallback OnCollapse { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+            _open = Expanded;
+        }
+        else if (_open != Expanded)
+        {
+            _open = Expanded;
+        }
+    }
+
+    public async Task ToggleAsync()
+    {
+        if (Disabled) return;
+
+        _open = !_open;
+
+        if (ExpandedChanged.HasDelegate)
+        {
+            await ExpandedChanged.InvokeAsync(_open);
+        }
+
+        if (_open && OnExpand.HasDelegate)
+        {
+            await OnExpand.InvokeAsync();
+        }
+        else if (!_open && OnCollapse.HasDelegate)
+        {
+            await OnCollapse.InvokeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Expands the panel programmatically.
+    /// </summary>
+    public async Task ExpandAsync()
+    {
+        if (!_open)
+        {
+            await ToggleAsync();
+        }
+    }
+
+    /// <summary>
+    /// Collapses the panel programmatically.
+    /// </summary>
+    public async Task CollapseAsync()
+    {
+        if (_open)
+        {
+            await ToggleAsync();
+        }
+    }
+}
