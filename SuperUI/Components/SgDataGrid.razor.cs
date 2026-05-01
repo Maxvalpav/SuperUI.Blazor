@@ -54,6 +54,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private string? _editModalTitle;
     private List<SgDataGridColumn<TItem>>? _editFormColumns;
     private readonly Dictionary<string, string?> _editFormValues = new(StringComparer.Ordinal);
+    private TItem? _editingCellItem;
+    private string? _editingCellColumnKey;
+    private string? _editingCellValue;
     private bool _isEditMode; // true = editing existing item, false = adding new item
     private TItem? _editModalItem;
     private bool _isSyntheticColumnsInitialized;
@@ -1579,17 +1582,17 @@ private static object? ConvertFromString(string? text, Type type)
     private void OnSearchInput(ChangeEventArgs args)
     {
         _search = args.Value?.ToString();
+        _filterVersion++;
+        _currentPage = 1;
+        InvalidateComputedRowsCache();
+        StateHasChanged();
 
         _searchDebounceCts?.Cancel();
         _searchDebounceCts?.Dispose();
         var cts = new CancellationTokenSource();
         _searchDebounceCts = cts;
 
-        _ = DebounceApplyAsync(cts.Token, () =>
-        {
-            _filterVersion++;
-            _currentPage = 1;
-        });
+        _ = DebounceApplyAsync(cts.Token, static () => { });
     }
 
     private void OnQuickFilterInputAsync(string key, ChangeEventArgs args)
@@ -2517,6 +2520,67 @@ private static object? ConvertFromString(string? text, Type type)
         InvalidateComputedRowsCache();
         await SaveStateAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private bool IsEditingCell(TItem item, SgDataGridColumn<TItem> column) =>
+        _editingCellColumnKey == column.Key &&
+        _editingCellItem is not null &&
+        EqualityComparer<TItem>.Default.Equals(_editingCellItem, item);
+
+    private void StartCellEdit(TItem item, SgDataGridColumn<TItem> column)
+    {
+        _editingCellItem = item;
+        _editingCellColumnKey = column.Key;
+        _editingCellValue = column.GetValue(item)?.ToString() ?? string.Empty;
+    }
+
+    private void OnCellEditInput(ChangeEventArgs args)
+    {
+        _editingCellValue = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private async Task OnCellEditKeyDownAsync(KeyboardEventArgs args, TItem item, SgDataGridColumn<TItem> column)
+    {
+        if (args.Key == "Enter")
+        {
+            await CommitCellEditAsync(item, column);
+        }
+        else if (args.Key == "Escape")
+        {
+            CancelCellEdit();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task CommitCellEditAsync(TItem item, SgDataGridColumn<TItem> column)
+    {
+        column.OnValueChanged?.Invoke(item, ConvertCellEditValue(_editingCellValue, column, item));
+        CancelCellEdit();
+        InvalidateComputedRowsCache();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelCellEdit()
+    {
+        _editingCellItem = default;
+        _editingCellColumnKey = null;
+        _editingCellValue = null;
+    }
+
+    private static object? ConvertCellEditValue(string? value, SgDataGridColumn<TItem> column, TItem item)
+    {
+        var targetType = column.ValueType ?? column.GetValue(item)?.GetType();
+        if (targetType is null || targetType == typeof(string))
+            return value;
+
+        targetType = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        if (string.IsNullOrWhiteSpace(value))
+            return targetType.IsValueType ? Activator.CreateInstance(targetType) : null;
+
+        if (targetType.IsEnum)
+            return Enum.Parse(targetType, value, ignoreCase: true);
+
+        return Convert.ChangeType(value, targetType, CultureInfo.CurrentCulture);
     }
 
     private async Task OnPageSizeChange(ChangeEventArgs args)
