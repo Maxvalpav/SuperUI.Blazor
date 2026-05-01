@@ -1,0 +1,183 @@
+@namespace SuperUI.Components
+
+<div class="sgc-orgchart @CssClass">
+    <div class="sgc-orgchart-level">
+        @foreach (var node in Nodes)
+        {
+            @RenderNode(node)
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Root nodes of the org chart.</summary>
+    [Parameter] public List<SgOrgChartNode> Nodes { get; set; } = new();
+
+    /// <summary>Custom template for rendering each node card.</summary>
+    [Parameter] public RenderFragment<SgOrgChartNode>? NodeTemplate { get; set; }
+
+    /// <summary>Whether nodes can be expanded/collapsed. Default is true.</summary>
+    [Parameter] public bool Expandable { get; set; } = true;
+
+    /// <summary>Callback invoked when a node is clicked.</summary>
+    [Parameter] public EventCallback<SgOrgChartNode> OnNodeClick { get; set; }
+
+    /// <summary>
+    /// When true, computes and displays a cumulative numeric sum on each node.
+    /// Leaf nodes use their <see cref="SgOrgChartNode.Value"/>;
+    /// parent nodes show the sum of all descendants.
+    /// </summary>
+    [Parameter] public bool ShowSum { get; set; }
+
+    /// <summary>
+    /// Label shown before the sum value (e.g. "Budget:", "Total:").
+    /// Default is empty — only the number is shown.
+    /// </summary>
+    [Parameter] public string? SumLabel { get; set; }
+
+    /// <summary>
+    /// Format string for the sum value. Default is "N0" (integer with thousands separator).
+    /// Examples: "N2", "C2", "F1".
+    /// </summary>
+    [Parameter] public string SumFormat { get; set; } = "N0";
+
+    /// <summary>Additional CSS class names.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (ShowSum)
+            foreach (var root in Nodes)
+                ComputeSum(root);
+    }
+
+    // ── Sum computation (post-order: children first, then self) ──────────────
+
+    /// <summary>
+    /// Recursively computes bottom-up:
+    ///   ChildrenSum = sum of all children's ComputedSum
+    ///   ComputedSum = own Value + ChildrenSum
+    /// Every node (leaf or parent) contributes its own Value to the total.
+    /// </summary>
+    private static double ComputeSum(SgOrgChartNode node)
+    {
+        double childrenTotal = 0;
+        foreach (var child in node.Children)
+            childrenTotal += ComputeSum(child);
+
+        node.ChildrenSum = childrenTotal;
+        node.ComputedSum = (node.Value ?? 0) + childrenTotal;
+        return node.ComputedSum;
+    }
+
+    // ── Rendering ────────────────────────────────────────────────────────────
+
+    private RenderFragment RenderNode(SgOrgChartNode node) => @<div class="sgc-orgchart-node-wrapper">
+        <div class="sgc-orgchart-card-wrapper">
+            @if (NodeTemplate is not null)
+            {
+                <div class="sgc-orgchart-card" @onclick="async () => await OnNodeClickAsync(node)">
+                    @NodeTemplate(node)
+                </div>
+            }
+            else
+            {
+                <div class="sgc-orgchart-card" @onclick="async () => await OnNodeClickAsync(node)"
+                     style="@(string.IsNullOrEmpty(node.Color) ? "" : $"--node-accent:{node.Color};")">
+                    @if (!string.IsNullOrEmpty(node.AvatarUrl))
+                    {
+                        <img src="@node.AvatarUrl" alt="@node.Name" class="sgc-orgchart-avatar" />
+                    }
+                    else
+                    {
+                        <div class="sgc-orgchart-avatar sgc-orgchart-avatar--initials">@(node.Initials ?? GetInitials(node.Name))</div>
+                    }
+                    <div class="sgc-orgchart-info">
+                        <div class="sgc-orgchart-name">@node.Name</div>
+                        @if (!string.IsNullOrEmpty(node.Title))
+                        {
+                            <div class="sgc-orgchart-title">@node.Title</div>
+                        }
+                        @if (!string.IsNullOrEmpty(node.Department))
+                        {
+                            <div class="sgc-orgchart-dept">@node.Department</div>
+                        }
+                        @if (ShowSum)
+                        {
+                            var fmt     = SumFormat;
+                            var culture = System.Globalization.CultureInfo.CurrentCulture;
+                            var ownLabel = string.IsNullOrEmpty(SumLabel) ? "Own:" : SumLabel;
+
+                            // Format helper: show "—" for zero, number otherwise
+                            string Fmt(double v) => v == 0
+                                ? "—"
+                                : v.ToString(fmt, culture);
+
+                            <div class="sgc-orgchart-sum-block">
+                                <div class="sgc-orgchart-sum sgc-orgchart-sum--own">
+                                    <span class="sgc-orgchart-sum-label">@ownLabel</span>
+                                    <span class="sgc-orgchart-sum-value @(node.Value is null || node.Value == 0 ? "sgc-orgchart-sum-zero" : "")">
+                                        @Fmt(node.Value ?? 0)
+                                    </span>
+                                </div>
+                                <div class="sgc-orgchart-sum sgc-orgchart-sum--children">
+                                    <span class="sgc-orgchart-sum-label">Children:</span>
+                                    <span class="sgc-orgchart-sum-value @(node.ChildrenSum == 0 ? "sgc-orgchart-sum-zero" : "")">
+                                        @Fmt(node.ChildrenSum)
+                                    </span>
+                                </div>
+                                <div class="sgc-orgchart-sum sgc-orgchart-sum--total @(node.ComputedSum != 0 ? "sgc-orgchart-sum--accent" : "")">
+                                    <span class="sgc-orgchart-sum-label">Total:</span>
+                                    <span class="sgc-orgchart-sum-value @(node.ComputedSum == 0 ? "sgc-orgchart-sum-zero" : "")">
+                                        @Fmt(node.ComputedSum)
+                                    </span>
+                                    <span class="sgc-orgchart-sum-icon" title="Own + all descendants">Σ</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            @if (Expandable && node.Children.Count > 0)
+            {
+                <button type="button" class="sgc-orgchart-toggle"
+                        @onclick:stopPropagation="true"
+                        @onclick="() => Toggle(node)">
+                    @(node.Expanded ? "−" : "+")
+                </button>
+            }
+        </div>
+        @if (node.Expanded && node.Children.Count > 0)
+        {
+            <div class="sgc-orgchart-children">
+                @foreach (var child in node.Children)
+                {
+                    @RenderNode(child)
+                }
+            </div>
+        }
+    </div>;
+
+    private async Task OnNodeClickAsync(SgOrgChartNode node)
+    {
+        if (OnNodeClick.HasDelegate)
+            await OnNodeClick.InvokeAsync(node);
+    }
+
+    private void Toggle(SgOrgChartNode node)
+    {
+        node.Expanded = !node.Expanded;
+        StateHasChanged();
+    }
+
+    private static string GetInitials(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
+        return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpperInvariant();
+    }
+}

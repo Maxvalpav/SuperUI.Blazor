@@ -1,0 +1,255 @@
+@namespace SuperUI.Components
+
+<div class="sgc-diagram @CssClass" style="width:@(_canvasWidth)px;min-height:@(_canvasHeight)px;">
+    <svg class="sgc-diagram-svg"
+         width="@_canvasWidth"
+         height="@_canvasHeight"
+         viewBox="0 0 @_canvasWidth @_canvasHeight"
+         xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="sgc-diagram-arrow" markerWidth="10" markerHeight="7"
+                    refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="var(--sui-border)" />
+            </marker>
+            <marker id="sgc-diagram-arrow-accent" markerWidth="10" markerHeight="7"
+                    refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="var(--sui-accent)" />
+            </marker>
+        </defs>
+        @foreach (var edge in Edges)
+        {
+            var path = GetEdgePath(edge);
+            var color = string.IsNullOrEmpty(edge.Color) ? "var(--sui-border)" : edge.Color;
+            var marker = string.IsNullOrEmpty(edge.Color) ? "url(#sgc-diagram-arrow)" : "url(#sgc-diagram-arrow-accent)";
+            <path d="@path"
+                  stroke="@color"
+                  stroke-width="1.5"
+                  fill="none"
+                  marker-end="@marker" />
+            @if (!string.IsNullOrEmpty(edge.Label))
+            {
+                var mid = GetEdgeMidpoint(edge);
+                @((MarkupString)$"<text x=\"{mid.x}\" y=\"{mid.y}\" text-anchor=\"middle\" dominant-baseline=\"middle\" class=\"sgc-diagram-edge-label\">{System.Net.WebUtility.HtmlEncode(edge.Label)}</text>")
+            }
+        }
+    </svg>
+
+    <div class="sgc-diagram-nodes">
+        @foreach (var node in Nodes)
+        {
+            <div class="sgc-diagram-node sgc-diagram-node--@(node.Shape.ToString().ToLowerInvariant())"
+                 style="left:@(node.X)px;top:@(node.Y)px;width:@(node.Width)px;height:@(node.Height)px;--node-accent:@(node.Color ?? "var(--sui-accent)");"
+                 @onclick="async () => await OnNodeClickAsync(node)">
+                @if (node.Shape == SgDiagramNodeShape.Diamond)
+                {
+                    <div class="sgc-diagram-diamond-shape" style="border-color:var(--node-accent);"></div>
+                }
+                <div class="sgc-diagram-node-inner">
+                    @if (NodeTemplate is not null)
+                    {
+                        @NodeTemplate(node)
+                    }
+                    else
+                    {
+                        <div class="sgc-diagram-node-default">
+                            <span class="sgc-diagram-node-label">@node.Label</span>
+                        </div>
+                    }
+                </div>
+                @if (AllowDelete)
+                {
+                    <button type="button"
+                            class="sgc-diagram-node-delete"
+                            @onclick:stopPropagation="true"
+                            @onclick="async () => await OnNodeDeleteAsync(node)">
+                        &#10005;
+                    </button>
+                }
+                @if (AllowAdd)
+                {
+                    <button type="button"
+                            class="sgc-diagram-node-add"
+                            @onclick:stopPropagation="true"
+                            @onclick="async () => await OnAddChildAsync(node)">
+                        +
+                    </button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>Nodes to display on the diagram canvas.</summary>
+    [Parameter] public List<SgDiagramNode> Nodes { get; set; } = new();
+
+    /// <summary>Edges connecting the nodes.</summary>
+    [Parameter] public List<SgDiagramEdge> Edges { get; set; } = new();
+
+    /// <summary>Auto-layout algorithm. Default is None (use provided X/Y).</summary>
+    [Parameter] public SgDiagramLayoutType Layout { get; set; } = SgDiagramLayoutType.None;
+
+    /// <summary>Horizontal gap between nodes in hierarchy layout. Default is 40.</summary>
+    [Parameter] public double HorizontalGap { get; set; } = 40;
+
+    /// <summary>Vertical gap between levels in hierarchy layout. Default is 60.</summary>
+    [Parameter] public double VerticalGap { get; set; } = 60;
+
+    /// <summary>Padding around the diagram. Default is 24.</summary>
+    [Parameter] public double Padding { get; set; } = 24;
+
+    /// <summary>Custom template for rendering each node.</summary>
+    [Parameter] public RenderFragment<SgDiagramNode>? NodeTemplate { get; set; }
+
+    /// <summary>Callback invoked when a node is clicked.</summary>
+    [Parameter] public EventCallback<SgDiagramNode> OnNodeClick { get; set; }
+
+    /// <summary>Whether to show an add-child button on each node. Default is false.</summary>
+    [Parameter] public bool AllowAdd { get; set; }
+
+    /// <summary>Whether to show a delete button on each node. Default is false.</summary>
+    [Parameter] public bool AllowDelete { get; set; }
+
+    /// <summary>Callback invoked when the add-child button is clicked.</summary>
+    [Parameter] public EventCallback<SgDiagramNode> OnAddChild { get; set; }
+
+    /// <summary>Callback invoked when the delete button is clicked.</summary>
+    [Parameter] public EventCallback<SgDiagramNode> OnNodeDelete { get; set; }
+
+    /// <summary>Additional CSS class names.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private double _canvasWidth = 400;
+    private double _canvasHeight = 300;
+
+    protected override void OnParametersSet()
+    {
+        if (Layout == SgDiagramLayoutType.Hierarchy)
+        {
+            ApplyHierarchyLayout();
+        }
+        ComputeCanvasSize();
+    }
+
+    private void ComputeCanvasSize()
+    {
+        if (Nodes.Count == 0)
+        {
+            _canvasWidth = 400;
+            _canvasHeight = 300;
+            return;
+        }
+        var maxX = Nodes.Max(n => n.X + n.Width) + Padding;
+        var maxY = Nodes.Max(n => n.Y + n.Height) + Padding;
+        _canvasWidth = Math.Max(maxX, 400);
+        _canvasHeight = Math.Max(maxY, 200);
+    }
+
+    private void ApplyHierarchyLayout()
+    {
+        var childrenMap = new Dictionary<string, List<string>>();
+        var parentMap = new Dictionary<string, string>();
+
+        foreach (var edge in Edges)
+        {
+            if (!childrenMap.ContainsKey(edge.SourceId))
+                childrenMap[edge.SourceId] = new List<string>();
+            childrenMap[edge.SourceId].Add(edge.TargetId);
+            parentMap[edge.TargetId] = edge.SourceId;
+        }
+
+        var roots = Nodes.Where(n => !parentMap.ContainsKey(n.Id)).Select(n => n.Id).ToList();
+        var nodeDict = Nodes.ToDictionary(n => n.Id);
+        var subtreeWidth = new Dictionary<string, double>();
+
+        double ComputeSubtreeWidth(string nodeId)
+        {
+            if (subtreeWidth.ContainsKey(nodeId)) return subtreeWidth[nodeId];
+            if (!childrenMap.TryGetValue(nodeId, out var children) || children.Count == 0)
+            {
+                subtreeWidth[nodeId] = nodeDict[nodeId].Width + HorizontalGap;
+                return subtreeWidth[nodeId];
+            }
+            var w = children.Sum(c => ComputeSubtreeWidth(c));
+            subtreeWidth[nodeId] = w;
+            return w;
+        }
+
+        foreach (var root in roots) ComputeSubtreeWidth(root);
+
+        void PositionNode(string nodeId, double x, int level)
+        {
+            var node = nodeDict[nodeId];
+            node.X = x + subtreeWidth[nodeId] / 2 - node.Width / 2;
+            node.Y = level * (node.Height + VerticalGap) + Padding;
+
+            if (childrenMap.TryGetValue(nodeId, out var children))
+            {
+                double childX = x;
+                foreach (var child in children)
+                {
+                    PositionNode(child, childX, level + 1);
+                    childX += subtreeWidth[child];
+                }
+            }
+        }
+
+        double rootX = Padding;
+        foreach (var root in roots)
+        {
+            PositionNode(root, rootX, 0);
+            rootX += subtreeWidth[root];
+        }
+    }
+
+    private string GetEdgePath(SgDiagramEdge edge)
+    {
+        var source = Nodes.FirstOrDefault(n => n.Id == edge.SourceId);
+        var target = Nodes.FirstOrDefault(n => n.Id == edge.TargetId);
+        if (source is null || target is null) return "";
+
+        var sx = source.X + source.Width / 2;
+        var sy = source.Y + source.Height;
+        var tx = target.X + target.Width / 2;
+        var ty = target.Y;
+
+        return edge.Type switch
+        {
+            SgDiagramEdgeType.Curved => $"M {sx} {sy} C {sx} {(sy + ty) / 2} {tx} {(sy + ty) / 2} {tx} {ty}",
+            SgDiagramEdgeType.Orthogonal => $"M {sx} {sy} L {sx} {(sy + ty) / 2} L {tx} {(sy + ty) / 2} L {tx} {ty}",
+            _ => $"M {sx} {sy} L {tx} {ty}"
+        };
+    }
+
+    private (double x, double y) GetEdgeMidpoint(SgDiagramEdge edge)
+    {
+        var source = Nodes.FirstOrDefault(n => n.Id == edge.SourceId);
+        var target = Nodes.FirstOrDefault(n => n.Id == edge.TargetId);
+        if (source is null || target is null) return (0, 0);
+
+        var sx = source.X + source.Width / 2;
+        var sy = source.Y + source.Height;
+        var tx = target.X + target.Width / 2;
+        var ty = target.Y;
+
+        return ((sx + tx) / 2, (sy + ty) / 2 - 6);
+    }
+
+    private async Task OnNodeClickAsync(SgDiagramNode node)
+    {
+        if (OnNodeClick.HasDelegate)
+            await OnNodeClick.InvokeAsync(node);
+    }
+
+    private async Task OnAddChildAsync(SgDiagramNode node)
+    {
+        if (OnAddChild.HasDelegate)
+            await OnAddChild.InvokeAsync(node);
+    }
+
+    private async Task OnNodeDeleteAsync(SgDiagramNode node)
+    {
+        if (OnNodeDelete.HasDelegate)
+            await OnNodeDelete.InvokeAsync(node);
+    }
+}

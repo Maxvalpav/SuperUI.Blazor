@@ -1,0 +1,697 @@
+@namespace SuperUI.Components
+@using Microsoft.AspNetCore.Components.Web
+@* SgDiagramEditor v2 — predictable interactions *@
+
+@*
+  INTERACTION MODEL
+  ─────────────────
+  Mode = select  (default)
+    • Click canvas          → deselect all
+    • Click node            → select node, open panel
+    • Click edge hit-area   → select edge, open panel
+    • MouseDown node        → start drag (track OffsetX/Y on SVG)
+    • MouseMove SVG         → move dragged node
+    • MouseUp   SVG/window  → commit drag position
+
+  Mode = place
+    • Toolbar shows "Click canvas to place node"
+    • Click canvas          → place new node at cursor, return to select
+    • Click node            → cancel place mode
+
+  Mode = connect
+    • Click node (source)   → highlight, draw live wire to cursor
+    • Click node (target)   → create edge, stay in connect mode
+    • Click same node again → cancel
+    • Click canvas          → cancel
+    • Esc                   → cancel / return to select
+*@
+
+<div class="sgc-dge @CssClass" @ref="_root">
+
+    <!-- ── Toolbar ─────────────────────────────────────────────────────── -->
+    <div class="sgc-dge-toolbar">
+        <div class="sgc-dge-toolbar-left">
+            <!-- Place mode button — click to activate, then click canvas to drop -->
+            @if (_mode == "place")
+            {
+                <SgButton Text="✕ Cancel place" Size="sm" OnClick="_ => CancelMode()" />
+                <span class="sgc-dge-hint">Click on canvas to place node</span>
+            }
+            else
+            {
+                <SgButton Text="+ Node" Variant="primary" Size="sm"
+                          OnClick="_ => StartPlace()" />
+            }
+
+            <span class="sgc-dge-sep"></span>
+
+            <span class="sgc-dge-label">Shape</span>
+            <SgSegmented TValue="string" Value="_newShape"
+                         ValueChanged="v => _newShape = v"
+                         Options="_shapeOpts" />
+
+            <span class="sgc-dge-sep"></span>
+
+            <span class="sgc-dge-label">Edge</span>
+            <SgSegmented TValue="string" Value="_newEdgeType"
+                         ValueChanged="v => _newEdgeType = v"
+                         Options="_edgeOpts" />
+
+            <span class="sgc-dge-sep"></span>
+
+            <!-- Connect toggle -->
+            @if (_mode == "connect")
+            {
+                <SgButton Text="✕ Cancel connect" Size="sm" OnClick="_ => CancelMode()" />
+                @if (_connectSource is not null)
+                {
+                    <span class="sgc-dge-hint">Click target node</span>
+                }
+                else
+                {
+                    <span class="sgc-dge-hint">Click source node</span>
+                }
+            }
+            else
+            {
+                <SgButton Text="⤳ Connect" Size="sm" OnClick="_ => StartConnect()" />
+            }
+        </div>
+        <div class="sgc-dge-toolbar-right">
+            @if (_nodes.Count > 0)
+            {
+                <SgButton Text="Reset" Variant="danger" Size="sm" OnClick="_ => _confirmReset = true" />
+            }
+        </div>
+    </div>
+
+    <!-- ── Canvas ──────────────────────────────────────────────────────── -->
+    <div class="sgc-dge-canvas-wrap sgc-dge-canvas--@_mode">
+        <svg class="sgc-dge-svg"
+             width="@_svgW" height="@_svgH"
+             @onmousemove="OnSvgMouseMove"
+             @onmouseup="OnSvgMouseUp"
+             @onmouseleave="OnSvgMouseLeave"
+             @onclick="OnSvgClick">
+
+            <defs>
+                <marker id="sgc-dge-arrow" markerWidth="10" markerHeight="7"
+                        refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0,10 3.5,0 7" fill="var(--sui-border)" />
+                </marker>
+                <marker id="sgc-dge-arrow-sel" markerWidth="10" markerHeight="7"
+                        refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0,10 3.5,0 7" fill="var(--sui-accent)" />
+                </marker>
+            </defs>
+
+            <!-- Edges -->
+            @foreach (var edge in _edges)
+            {
+                var sel  = _selectedEdgeId == edge.Id;
+                var path = EdgePath(edge);
+                var mid  = EdgeMid(edge);
+                var col  = sel ? "var(--sui-accent)" : (edge.Color ?? "var(--sui-border)");
+                var mrk  = sel ? "url(#sgc-dge-arrow-sel)" : "url(#sgc-dge-arrow)";
+                <!-- wide transparent hit area -->
+                <path d="@path" stroke="transparent" stroke-width="14" fill="none"
+                      style="cursor:pointer"
+                      @onclick:stopPropagation="true"
+                      @onclick="() => SelectEdge(edge.Id)" />
+                <!-- visible line -->
+                <path d="@path" stroke="@col" stroke-width="@(sel ? 2.5 : 1.5)"
+                      fill="none" marker-end="@mrk" style="pointer-events:none" />
+                @if (!string.IsNullOrEmpty(edge.Label))
+                {
+                    @((MarkupString)$"<text x=\"{mid.x}\" y=\"{mid.y - 6}\" text-anchor=\"middle\" dominant-baseline=\"middle\" class=\"sgc-diagram-edge-label\" style=\"pointer-events:none\">{System.Net.WebUtility.HtmlEncode(edge.Label)}</text>")
+                }
+                @if (sel)
+                {
+                    <g style="cursor:pointer"
+                       @onclick:stopPropagation="true"
+                       @onclick="() => DeleteEdge(edge.Id)">
+                        <circle cx="@mid.x" cy="@(mid.y - 18)" r="9"
+                                fill="var(--sui-danger-bg)" stroke="var(--sui-danger)" stroke-width="1.5" />
+                        @((MarkupString)$"<text x=\"{mid.x}\" y=\"{mid.y - 18}\" text-anchor=\"middle\" dominant-baseline=\"middle\" style=\"font-size:11px;font-weight:700;fill:var(--sui-danger);pointer-events:none\">✕</text>")
+                    </g>
+                }
+            }
+
+            <!-- Live wire while connecting -->
+            @if (_mode == "connect" && _connectSource is not null && _wireEnd.HasValue)
+            {
+                var src = _nodes.FirstOrDefault(n => n.Id == _connectSource);
+                @if (src is not null)
+                {
+                    var sx = src.X + src.Width / 2;
+                    var sy = src.Y + src.Height / 2;
+                    <line x1="@sx" y1="@sy"
+                          x2="@_wireEnd.Value.x" y2="@_wireEnd.Value.y"
+                          stroke="var(--sui-accent)" stroke-width="1.5"
+                          stroke-dasharray="6 3"
+                          marker-end="url(#sgc-dge-arrow-sel)"
+                          style="pointer-events:none" />
+                }
+            }
+
+            <!-- Place-mode ghost cursor -->
+            @if (_mode == "place" && _wireEnd.HasValue)
+            {
+                var (gx, gy) = _wireEnd.Value;
+                var (gw, gh) = NodeSize(ParseShape(_newShape));
+                <rect x="@(gx - gw/2)" y="@(gy - gh/2)"
+                      width="@gw" height="@gh"
+                      rx="6"
+                      fill="color-mix(in srgb, var(--sui-accent) 15%, transparent)"
+                      stroke="var(--sui-accent)" stroke-width="1.5"
+                      stroke-dasharray="5 3"
+                      style="pointer-events:none" />
+            }
+        </svg>
+
+        <!-- Nodes (HTML overlay, z-index above SVG) -->
+        @foreach (var node in _nodes)
+        {
+            var isSel  = _selectedNodeId == node.Id;
+            var isConn = _mode == "connect" && _connectSource == node.Id;
+            var isConnTarget = _mode == "connect" && _connectSource is not null
+                               && _connectSource != node.Id;
+            <div class="sgc-dge-node sgc-dge-node--@node.Shape.ToString().ToLower()
+                         @(isSel      ? " sgc-dge-node--selected"   : "")
+                         @(isConn     ? " sgc-dge-node--src"        : "")
+                         @(isConnTarget ? " sgc-dge-node--tgt"      : "")"
+                 style="left:@(node.X)px;top:@(node.Y)px;
+                        width:@(node.Width)px;height:@(node.Height)px;
+                        --na:@(node.Color ?? "var(--sui-accent)");"
+                 @onmousedown="e => OnNodeMouseDown(e, node)"
+                 @onmouseup:stopPropagation="true"
+                 @onclick:stopPropagation="true"
+                 @onclick="() => OnNodeClick(node)">
+
+                @if (node.Shape == SgDiagramNodeShape.Diamond)
+                {
+                    <div class="sgc-dge-diamond" style="border-color:var(--na)"></div>
+                }
+                <div class="sgc-dge-node-inner">
+                    <span class="sgc-dge-node-label">@node.Label</span>
+                </div>
+
+                <!-- delete button — always rendered, shown on hover via CSS -->
+                <button class="sgc-dge-del" type="button"
+                        @onmousedown:stopPropagation="true"
+                        @onclick:stopPropagation="true"
+                        @onclick="async () => await DeleteNode(node.Id)">✕</button>
+            </div>
+        }
+
+        <!-- Empty state -->
+        @if (_nodes.Count == 0 && _mode != "place")
+        {
+            <div class="sgc-dge-empty">
+                <div style="font-size:32px;margin-bottom:8px;opacity:.3">⬡</div>
+                <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Empty canvas</div>
+                <div style="font-size:12px;color:var(--sui-muted);margin-bottom:16px;">
+                    Click <strong>+ Node</strong>, then click on the canvas to place it
+                </div>
+                <SgButton Text="+ Node" Variant="primary" Size="sm"
+                          OnClick="_ => StartPlace()" />
+            </div>
+        }
+        @if (_mode == "place")
+        {
+            <div class="sgc-dge-place-hint">
+                Click anywhere on the canvas to place the node · <kbd>Esc</kbd> to cancel
+            </div>
+        }
+    </div>
+
+    <!-- ── Properties panel ────────────────────────────────────────────── -->
+    @if (_selectedNodeId is not null && _editNode is not null)
+    {
+        <div class="sgc-dge-panel">
+            <div class="sgc-dge-panel-hdr">
+                <span class="sgc-dge-panel-title">Node</span>
+                <button class="sgc-modal-x" type="button" @onclick="ClosePanel">×</button>
+            </div>
+            <div class="sgc-dge-panel-body">
+                <SgTextBox TValue="string" Label="Label"
+                           Value="@_editNode.Label"
+                           ValueChanged="async v => { _editNode.Label = v; await Refresh(); }"
+                           Placeholder="Node label" />
+
+                <div style="margin-top:12px">
+                    <div class="sgc-label" style="margin-bottom:4px">Shape</div>
+                    <SgSegmented TValue="string"
+                                 Value="@ShapeStr(_editNode.Shape)"
+                                 ValueChanged="async v => { ApplyShape(_editNode, v); await Refresh(); }"
+                                 Options="_shapeOpts" />
+                </div>
+
+                <div style="margin-top:12px">
+                    <SgColorPicker Label="Color"
+                                   Value="@(_editNode.Color ?? "#6366f1")"
+                                   ValueChanged="async v => { _editNode.Color = v; await Refresh(); }" />
+                </div>
+
+                <div style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+                    <SgButton Text="Delete" Variant="danger" Size="sm"
+                              OnClick="async _ => { await DeleteNode(_editNode.Id); ClosePanel(); }" />
+                    <SgButton Text="Done" Variant="primary" Size="sm"
+                              OnClick="_ => ClosePanel()" />
+                </div>
+            </div>
+        </div>
+    }
+    @if (_selectedEdgeId is not null && _editEdge is not null)
+    {
+        var edgeSrc = _nodes.FirstOrDefault(n => n.Id == _editEdge.SourceId)?.Label ?? _editEdge.SourceId;
+        var edgeTgt = _nodes.FirstOrDefault(n => n.Id == _editEdge.TargetId)?.Label ?? _editEdge.TargetId;
+        <div class="sgc-dge-panel">
+            <div class="sgc-dge-panel-hdr">
+                <span class="sgc-dge-panel-title">Edge</span>
+                <button class="sgc-modal-x" type="button" @onclick="ClosePanel">×</button>
+            </div>
+            <div class="sgc-dge-panel-body">
+                <div style="font-size:11px;color:var(--sui-muted);margin-bottom:12px">
+                    @edgeSrc → @edgeTgt
+                </div>
+
+                <SgTextBox TValue="string" Label="Label"
+                           Value="@_editEdge.Label"
+                           ValueChanged="async v => { _editEdge.Label = v; await Refresh(); }"
+                           Placeholder="Edge label (optional)" />
+
+                <div style="margin-top:12px">
+                    <div class="sgc-label" style="margin-bottom:4px">Style</div>
+                    <SgSegmented TValue="string"
+                                 Value="@EdgeTypeStr(_editEdge.Type)"
+                                 ValueChanged="async v => { _editEdge.Type = ParseEdgeType(v); await Refresh(); }"
+                                 Options="_edgeOpts" />
+                </div>
+
+                <div style="margin-top:12px">
+                    <SgColorPicker Label="Color"
+                                   Value="@(_editEdge.Color ?? "#94a3b8")"
+                                   ValueChanged="async v => { _editEdge.Color = v; await Refresh(); }" />
+                </div>
+
+                <div style="margin-top:16px">
+                    <SgButton Text="Delete edge" Variant="danger" Size="sm"
+                              OnClick="async _ => { await DeleteEdge(_editEdge.Id); ClosePanel(); }" />
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<!-- Reset confirm -->
+<SgModal @bind-Visible="_confirmReset" Title="Reset canvas" Width="360px">
+    <ChildContent>
+        <p style="margin:0;font-size:14px">All nodes and edges will be removed. Continue?</p>
+    </ChildContent>
+    <FooterContent>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+            <SgButton Text="Cancel" OnClick="_ => _confirmReset = false" />
+            <SgButton Text="Reset" Variant="danger" OnClick="async _ => await ConfirmReset()" />
+        </div>
+    </FooterContent>
+</SgModal>
+
+@code {
+    // ── Parameters ─────────────────────────────────────────────────────────
+
+    [Parameter] public List<SgDiagramNode> Nodes { get; set; } = new();
+    [Parameter] public EventCallback<List<SgDiagramNode>> NodesChanged { get; set; }
+    [Parameter] public List<SgDiagramEdge> Edges { get; set; } = new();
+    [Parameter] public EventCallback<List<SgDiagramEdge>> EdgesChanged { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    // ── Internal state ──────────────────────────────────────────────────────
+
+    private List<SgDiagramNode> _nodes = new();
+    private List<SgDiagramEdge> _edges = new();
+
+    // "select" | "place" | "connect"
+    private string _mode = "select";
+
+    private string _newShape    = "Rectangle";
+    private string _newEdgeType = "Curved";
+
+    // Selection / editing
+    private string?         _selectedNodeId;
+    private string?         _selectedEdgeId;
+    private SgDiagramNode?  _editNode;
+    private SgDiagramEdge?  _editEdge;
+
+    // Drag — OffsetX/Y relative to SVG
+    private SgDiagramNode? _dragging;
+    private double _dragOffX, _dragOffY;
+    private bool   _didDrag;
+
+    // Connect wire
+    private string?               _connectSource;
+    private (double x, double y)? _wireEnd;
+
+    // Canvas
+    private double _svgW = 800;
+    private double _svgH = 500;
+
+    private bool _confirmReset;
+    private int  _counter = 1;
+    private ElementReference _root;
+
+    // ── Option lists ────────────────────────────────────────────────────────
+
+    private static readonly List<SgSegmentedOption<string>> _shapeOpts = new()
+    {
+        new() { Value = "Rectangle", Label = "Rect"   },
+        new() { Value = "Circle",    Label = "Circle"  },
+        new() { Value = "Diamond",   Label = "Diamond" },
+    };
+    private static readonly List<SgSegmentedOption<string>> _edgeOpts = new()
+    {
+        new() { Value = "Straight",   Label = "Straight" },
+        new() { Value = "Curved",     Label = "Curved"   },
+        new() { Value = "Orthogonal", Label = "Ortho"    },
+    };
+
+    // ── Lifecycle ───────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (_nodes != Nodes) _nodes = new List<SgDiagramNode>(Nodes);
+        if (_edges != Edges) _edges = new List<SgDiagramEdge>(Edges);
+        RecalcCanvas();
+    }
+
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
+    private static SgDiagramNodeShape ParseShape(string s) => s switch
+    {
+        "Circle"  => SgDiagramNodeShape.Circle,
+        "Diamond" => SgDiagramNodeShape.Diamond,
+        _         => SgDiagramNodeShape.Rectangle,
+    };
+    private static string ShapeStr(SgDiagramNodeShape s) => s switch
+    {
+        SgDiagramNodeShape.Circle  => "Circle",
+        SgDiagramNodeShape.Diamond => "Diamond",
+        _                          => "Rectangle",
+    };
+    private static SgDiagramEdgeType ParseEdgeType(string s) => s switch
+    {
+        "Curved"     => SgDiagramEdgeType.Curved,
+        "Orthogonal" => SgDiagramEdgeType.Orthogonal,
+        _            => SgDiagramEdgeType.Straight,
+    };
+    private static string EdgeTypeStr(SgDiagramEdgeType t) => t switch
+    {
+        SgDiagramEdgeType.Curved     => "Curved",
+        SgDiagramEdgeType.Orthogonal => "Orthogonal",
+        _                            => "Straight",
+    };
+    private static (double w, double h) NodeSize(SgDiagramNodeShape s) => s switch
+    {
+        SgDiagramNodeShape.Diamond => (80, 80),
+        SgDiagramNodeShape.Circle  => (80, 80),
+        _                          => (150, 48),
+    };
+    private static void ApplyShape(SgDiagramNode n, string s)
+    {
+        n.Shape = ParseShape(s);
+        var (w, h) = NodeSize(n.Shape);
+        n.Width = w; n.Height = h;
+    }
+
+    private void SetMode(string mode)
+    {
+        _mode = mode;
+        _connectSource = null;
+        _wireEnd = null;
+        _dragging = null;
+    }
+
+    private void StartPlace()   => SetMode("place");
+    private void StartConnect() => SetMode("connect");
+    private void CancelMode()   => SetMode("select");
+
+    private void RecalcCanvas()
+    {
+        if (_nodes.Count == 0) { _svgW = 800; _svgH = 500; return; }
+        _svgW = Math.Max(_nodes.Max(n => n.X + n.Width)  + 100, 800);
+        _svgH = Math.Max(_nodes.Max(n => n.Y + n.Height) + 100, 500);
+    }
+
+    private async Task Refresh()
+    {
+        RecalcCanvas();
+        if (NodesChanged.HasDelegate) await NodesChanged.InvokeAsync(_nodes);
+        if (EdgesChanged.HasDelegate) await EdgesChanged.InvokeAsync(_edges);
+    }
+
+    // ── Edge geometry ────────────────────────────────────────────────────────
+
+    private string EdgePath(SgDiagramEdge edge)
+    {
+        var src = _nodes.FirstOrDefault(n => n.Id == edge.SourceId);
+        var tgt = _nodes.FirstOrDefault(n => n.Id == edge.TargetId);
+        if (src is null || tgt is null) return "";
+
+        var sx = src.X + src.Width  / 2;
+        var sy = src.Y + src.Height / 2;
+        var tx = tgt.X + tgt.Width  / 2;
+        var ty = tgt.Y + tgt.Height / 2;
+
+        (sx, sy) = ClipToBorder(sx, sy, tx, ty, src);
+        (tx, ty) = ClipToBorder(tx, ty, sx, sy, tgt);
+
+        return edge.Type switch
+        {
+            SgDiagramEdgeType.Curved =>
+                $"M {F(sx)} {F(sy)} C {F(sx)} {F((sy+ty)/2)} {F(tx)} {F((sy+ty)/2)} {F(tx)} {F(ty)}",
+            SgDiagramEdgeType.Orthogonal =>
+                $"M {F(sx)} {F(sy)} L {F(sx)} {F((sy+ty)/2)} L {F(tx)} {F((sy+ty)/2)} L {F(tx)} {F(ty)}",
+            _ => $"M {F(sx)} {F(sy)} L {F(tx)} {F(ty)}",
+        };
+    }
+
+    private (double x, double y) EdgeMid(SgDiagramEdge edge)
+    {
+        var src = _nodes.FirstOrDefault(n => n.Id == edge.SourceId);
+        var tgt = _nodes.FirstOrDefault(n => n.Id == edge.TargetId);
+        if (src is null || tgt is null) return (0, 0);
+        return ((src.X + src.Width/2 + tgt.X + tgt.Width/2) / 2,
+                (src.Y + src.Height/2 + tgt.Y + tgt.Height/2) / 2);
+    }
+
+    private static string F(double v) =>
+        v.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static (double x, double y) ClipToBorder(
+        double px, double py, double fx, double fy, SgDiagramNode n)
+    {
+        var cx = n.X + n.Width  / 2;
+        var cy = n.Y + n.Height / 2;
+
+        if (n.Shape == SgDiagramNodeShape.Circle)
+        {
+            var r   = n.Width / 2;
+            var dx  = fx - cx; var dy = fy - cy;
+            var len = Math.Sqrt(dx*dx + dy*dy);
+            if (len < 1) return (cx, cy);
+            return (cx + r * dx / len, cy + r * dy / len);
+        }
+
+        var ddx = fx - cx; var ddy = fy - cy;
+        if (Math.Abs(ddx) < 0.001 && Math.Abs(ddy) < 0.001) return (cx, cy);
+
+        double best = double.MaxValue, bx = cx, by = cy;
+        void Try(double x1, double y1, double x2, double y2)
+        {
+            var denom = ddx*(y2-y1) - ddy*(x2-x1);
+            if (Math.Abs(denom) < 0.001) return;
+            var tt = ((x1-cx)*(y2-y1) - (y1-cy)*(x2-x1)) / denom;
+            var uu = ((x1-cx)*ddy - (y1-cy)*ddx) / denom;
+            if (tt > 0 && uu >= 0 && uu <= 1 && tt < best)
+            { best = tt; bx = cx + ddx*tt; by = cy + ddy*tt; }
+        }
+        var l = n.X; var rr = n.X + n.Width; var t = n.Y; var b = n.Y + n.Height;
+        Try(l,t,rr,t); Try(rr,t,rr,b); Try(rr,b,l,b); Try(l,b,l,t);
+        return (bx, by);
+    }
+
+    // ── Canvas events ────────────────────────────────────────────────────────
+
+    private async Task OnSvgClick(MouseEventArgs e)
+    {
+        if (_mode == "place")
+        {
+            await PlaceNodeAt(e.OffsetX, e.OffsetY);
+            SetMode("select");
+            return;
+        }
+        if (_mode == "connect")
+        {
+            _connectSource = null; _wireEnd = null;
+            return;
+        }
+        // select: click empty canvas → deselect (only if not ending a drag)
+        if (!_didDrag)
+        {
+            _selectedNodeId = null; _editNode = null;
+            _selectedEdgeId = null; _editEdge = null;
+        }
+        _didDrag = false;
+    }
+
+    private void OnSvgMouseMove(MouseEventArgs e)
+    {
+        if (_mode == "place" || (_mode == "connect" && _connectSource is not null))
+        {
+            _wireEnd = (e.OffsetX, e.OffsetY);
+            StateHasChanged();
+            return;
+        }
+        if (_dragging is null) return;
+
+        // OffsetX/Y on SVG = canvas-relative coords
+        var nx = e.OffsetX - _dragOffX;
+        var ny = e.OffsetY - _dragOffY;
+        if (Math.Abs(nx - _dragging.X) > 2 || Math.Abs(ny - _dragging.Y) > 2)
+            _didDrag = true;
+        _dragging.X = Math.Max(0, nx);
+        _dragging.Y = Math.Max(0, ny);
+        RecalcCanvas();
+        StateHasChanged();
+    }
+
+    private async Task OnSvgMouseUp(MouseEventArgs e)
+    {
+        if (_dragging is not null) { _dragging = null; await Refresh(); }
+    }
+
+    private async Task OnSvgMouseLeave(MouseEventArgs e)
+    {
+        // Release drag when mouse leaves canvas so node doesn't get stuck
+        if (_dragging is not null) { _dragging = null; await Refresh(); }
+    }
+
+    // ── Node events ──────────────────────────────────────────────────────────
+
+    private void OnNodeMouseDown(MouseEventArgs e, SgDiagramNode node)
+    {
+        if (_mode != "select") return;
+        _dragging = node;
+        // e.OffsetX/Y here are relative to the node div.
+        // When SVG mousemove fires, OffsetX/Y are relative to SVG.
+        // So drag offset = node position + click offset within node.
+        _dragOffX = node.X + e.OffsetX;
+        _dragOffY = node.Y + e.OffsetY;
+        _didDrag  = false;
+    }
+
+    private async Task OnNodeClick(SgDiagramNode node)
+    {
+        if (_mode == "place") { SetMode("select"); return; }
+        if (_mode == "connect") { await OnConnectNodeClick(node); return; }
+        if (_didDrag) { _didDrag = false; return; }
+        _selectedEdgeId = null; _editEdge = null;
+        _selectedNodeId = node.Id;
+        _editNode = node;
+    }
+
+    // ── Place mode ───────────────────────────────────────────────────────────
+
+    private async Task PlaceNodeAt(double cx, double cy)
+    {
+        var shape = ParseShape(_newShape);
+        var (w, h) = NodeSize(shape);
+        var node = new SgDiagramNode
+        {
+            Id    = $"n{_counter++}",
+            Label = $"Node {_counter - 1}",
+            Shape = shape, Width = w, Height = h,
+            X     = Math.Max(0, cx - w / 2),
+            Y     = Math.Max(0, cy - h / 2),
+            Color = "#6366f1",
+        };
+        _nodes = new List<SgDiagramNode>(_nodes) { node };
+        _edges = new List<SgDiagramEdge>(_edges);
+        _selectedNodeId = node.Id; _editNode = node;
+        _selectedEdgeId = null;    _editEdge = null;
+        await Refresh();
+    }
+
+    // ── Connect mode ─────────────────────────────────────────────────────────
+
+    private async Task OnConnectNodeClick(SgDiagramNode node)
+    {
+        if (_connectSource is null)
+        {
+            _connectSource = node.Id;
+            _wireEnd = (node.X + node.Width / 2, node.Y + node.Height / 2);
+            return;
+        }
+        if (_connectSource == node.Id) { _connectSource = null; _wireEnd = null; return; }
+
+        if (!_edges.Any(e => e.SourceId == _connectSource && e.TargetId == node.Id))
+        {
+            _edges = new List<SgDiagramEdge>(_edges)
+            {
+                new SgDiagramEdge
+                {
+                    SourceId = _connectSource,
+                    TargetId = node.Id,
+                    Type     = ParseEdgeType(_newEdgeType),
+                }
+            };
+            await Refresh();
+        }
+        _connectSource = null; _wireEnd = null;
+    }
+
+    // ── Edge actions ─────────────────────────────────────────────────────────
+
+    private void SelectEdge(string id)
+    {
+        _selectedNodeId = null; _editNode = null;
+        _selectedEdgeId = id;
+        _editEdge = _edges.FirstOrDefault(e => e.Id == id);
+    }
+
+    private async Task DeleteEdge(string id)
+    {
+        if (_selectedEdgeId == id) { _selectedEdgeId = null; _editEdge = null; }
+        _edges = _edges.Where(e => e.Id != id).ToList();
+        await Refresh();
+    }
+
+    // ── Node actions ─────────────────────────────────────────────────────────
+
+    private async Task DeleteNode(string id)
+    {
+        if (_selectedNodeId == id) { _selectedNodeId = null; _editNode = null; }
+        _nodes = _nodes.Where(n => n.Id != id).ToList();
+        _edges = _edges.Where(e => e.SourceId != id && e.TargetId != id).ToList();
+        await Refresh();
+    }
+
+    // ── Panel ────────────────────────────────────────────────────────────────
+
+    private void ClosePanel()
+    {
+        _selectedNodeId = null; _editNode = null;
+        _selectedEdgeId = null; _editEdge = null;
+    }
+
+    // ── Reset ────────────────────────────────────────────────────────────────
+
+    private async Task ConfirmReset()
+    {
+        _confirmReset = false; SetMode("select");
+        _selectedNodeId = null; _editNode = null;
+        _selectedEdgeId = null; _editEdge = null;
+        _nodes = new(); _edges = new();
+        await Refresh();
+    }
+}

@@ -1,0 +1,187 @@
+@namespace SuperUI.Components
+
+<div class="sgc-dashboard @CssClass" style="--dashboard-columns: @Columns;">
+    @foreach (var item in Items)
+    {
+        var isDragging = _draggedItem?.Id == item.Id;
+        var isDropTarget = _dropTargetId == item.Id && _draggedItem?.Id != item.Id;
+
+        <div class="sgc-dashboard-widget @(isDragging ? "sgc-dragging" : "") @(isDropTarget ? "sgc-drop-target" : "")"
+             style="grid-column: span @item.ColumnSpan; @(item.RowSpan > 1 ? $"grid-row: span {item.RowSpan};" : "")">
+
+            <div class="sgc-dashboard-widget-header"
+                 draggable="true"
+                 @ondragstart="() => OnDragStart(item)"
+                 @ondragenter="() => OnDragEnter(item)"
+                 @ondragleave="OnDragLeave"
+                 @ondragover:preventDefault="true"
+                 @ondrop="() => OnDrop(item)">
+                <span class="sgc-dashboard-widget-drag">@((MarkupString)SgIcons.GripVertical)</span>
+                @if (!string.IsNullOrEmpty(item.Icon))
+                {
+                    <span class="sgc-dashboard-widget-icon">@((MarkupString)item.Icon)</span>
+                }
+                <span class="sgc-dashboard-widget-title">@item.Title</span>
+
+                @if (AllowResize)
+                {
+                    <span class="sgc-dashboard-widget-resize">
+                        <button type="button"
+                                class="sgc-dashboard-widget-resize-btn"
+                                title="Decrease width"
+                                disabled="@(item.ColumnSpan <= MinColumnSpan)"
+                                @ondragstart:preventDefault="true"
+                                @onclick="() => DecreaseColumnSpanAsync(item)">-</button>
+                        <span class="sgc-dashboard-widget-resize-label" title="Column span">@item.ColumnSpan</span>
+                        <button type="button"
+                                class="sgc-dashboard-widget-resize-btn"
+                                title="Increase width"
+                                disabled="@(item.ColumnSpan >= MaxColumnSpan)"
+                                @ondragstart:preventDefault="true"
+                                @onclick="() => IncreaseColumnSpanAsync(item)">+</button>
+                    </span>
+                }
+
+                @if (AllowDelete)
+                {
+                    <button type="button"
+                            class="sgc-dashboard-widget-delete"
+                            title="Remove widget"
+                            @ondragstart:preventDefault="true"
+                            @onclick="() => DeleteWidgetAsync(item)">@((MarkupString)SgIcons.X)</button>
+                }
+            </div>
+
+            <div class="sgc-dashboard-widget-body">
+                @if (WidgetTemplate != null)
+                {
+                    @WidgetTemplate(item)
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the list of widgets displayed on the dashboard.
+    /// </summary>
+    [Parameter] public List<SgDashboardWidgetItem> Items { get; set; } = new();
+
+    /// <summary>
+    /// Callback invoked when the widget list is reordered, resized, or deleted.
+    /// </summary>
+    [Parameter] public EventCallback<List<SgDashboardWidgetItem>> ItemsChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of grid columns. Default is 3.
+    /// </summary>
+    [Parameter] public int Columns { get; set; } = 3;
+
+    /// <summary>
+    /// Template used to render the body of each widget.
+    /// </summary>
+    [Parameter] public RenderFragment<SgDashboardWidgetItem>? WidgetTemplate { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS class names.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// When true, shows +/- buttons to resize widget column span.
+    /// </summary>
+    [Parameter] public bool AllowResize { get; set; }
+
+    /// <summary>
+    /// When true, shows a delete button on each widget header.
+    /// </summary>
+    [Parameter] public bool AllowDelete { get; set; }
+
+    /// <summary>
+    /// Minimum column span for resize. Default is 1.
+    /// </summary>
+    [Parameter] public int MinColumnSpan { get; set; } = 1;
+
+    /// <summary>
+    /// Maximum column span for resize. Default is 6.
+    /// </summary>
+    [Parameter] public int MaxColumnSpan { get; set; } = 6;
+
+    private SgDashboardWidgetItem? _draggedItem;
+    private string? _dropTargetId;
+
+    private void OnDragStart(SgDashboardWidgetItem item)
+    {
+        _draggedItem = item;
+        _dropTargetId = null;
+    }
+
+    private void OnDragEnter(SgDashboardWidgetItem item)
+    {
+        if (_draggedItem == null || _draggedItem.Id == item.Id) return;
+        _dropTargetId = item.Id;
+    }
+
+    private void OnDragLeave()
+    {
+        // Intentionally left empty to avoid flicker during drag-over
+    }
+
+    private async Task OnDrop(SgDashboardWidgetItem targetItem)
+    {
+        if (_draggedItem == null || _draggedItem.Id == targetItem.Id)
+        {
+            ClearDragState();
+            return;
+        }
+
+        var draggedIndex = Items.FindIndex(i => i.Id == _draggedItem.Id);
+        var targetIndex = Items.FindIndex(i => i.Id == targetItem.Id);
+
+        if (draggedIndex >= 0 && targetIndex >= 0)
+        {
+            var item = Items[draggedIndex];
+            Items.RemoveAt(draggedIndex);
+            Items.Insert(targetIndex, item);
+
+            if (ItemsChanged.HasDelegate)
+                await ItemsChanged.InvokeAsync(Items);
+        }
+
+        ClearDragState();
+    }
+
+    private async Task IncreaseColumnSpanAsync(SgDashboardWidgetItem item)
+    {
+        if (item.ColumnSpan < MaxColumnSpan)
+        {
+            item.ColumnSpan++;
+            if (ItemsChanged.HasDelegate)
+                await ItemsChanged.InvokeAsync(Items);
+        }
+    }
+
+    private async Task DecreaseColumnSpanAsync(SgDashboardWidgetItem item)
+    {
+        if (item.ColumnSpan > MinColumnSpan)
+        {
+            item.ColumnSpan--;
+            if (ItemsChanged.HasDelegate)
+                await ItemsChanged.InvokeAsync(Items);
+        }
+    }
+
+    private async Task DeleteWidgetAsync(SgDashboardWidgetItem item)
+    {
+        Items.Remove(item);
+        if (ItemsChanged.HasDelegate)
+            await ItemsChanged.InvokeAsync(Items);
+    }
+
+    private void ClearDragState()
+    {
+        _draggedItem = null;
+        _dropTargetId = null;
+    }
+}

@@ -249,7 +249,7 @@ builder.Services.AddSuperUI(options =>
 | **Charts**     | SgChart (line/bar/area/pie/scatter/heatmap/matrix) |
 | **Feedback**   | SgAlert, SgBadge, SgProgressBar, SgSkeleton, SgSpinner |
 
-Full list: [`SuperUI/Components/COMPONENTS_DOCUMENTATION.md`](SuperUI/Components/COMPONENTS_DOCUMENTATION.md).
+
 
 ---
 
