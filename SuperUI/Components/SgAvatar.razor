@@ -4,8 +4,9 @@
 <span class="sgc-avatar sgc-@Size @ShapeClass @(StatusDot != SgAvatarStatus.None ? $"sgc-status-{StatusDot.ToString().ToLowerInvariant()}" : "") @CssClass"
       role="img"
       aria-label="@(Title ?? "Avatar")"
-      style="@Style"
-      title="@Title">
+      style="@BuildStyle()"
+      title="@Title"
+      @attributes="AdditionalAttributes">
     @if (!string.IsNullOrEmpty(ImageUrl) && !_imageFailed)
     {
         <img src="@ImageUrl" alt="@(Title ?? "Avatar")" loading="lazy" srcset="@SrcSet" @onerror="OnImageError" />
@@ -117,7 +118,21 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private string Style => string.IsNullOrEmpty(Color) ? "" : $"background:{Color};";
+    /// <summary>
+    /// Gets or sets additional inline styles to apply to the component.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional HTML attributes to apply to the root element.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string BuildStyle()
+    {
+        var bg = string.IsNullOrEmpty(Color) ? "" : $"background:{Color};";
+        return string.IsNullOrEmpty(Style) ? bg : bg + Style;
+    }
 
     private bool _imageFailed;
     private string? _lastImageUrl;

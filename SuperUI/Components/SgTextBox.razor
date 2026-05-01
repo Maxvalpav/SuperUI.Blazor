@@ -210,11 +210,20 @@
         }
         else if (Immediate)
         {
-            _ = CommitAsync(e.Value?.ToString());
+            _ = SafeCommitAsync(e.Value?.ToString());
         }
     }
 
     private Task OnChangeAsync(ChangeEventArgs e) => !Immediate && Debounce <= 0 ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
+
+    private async Task SafeCommitAsync(string? raw)
+    {
+        try { await CommitAsync(raw); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SgTextBox.CommitAsync] {ex}");
+        }
+    }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {

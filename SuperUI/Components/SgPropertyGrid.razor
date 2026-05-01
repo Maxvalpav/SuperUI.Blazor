@@ -297,12 +297,12 @@
 
         @if (CustomEditor != null)
         {
-            @CustomEditor(new PropertyEditorContext 
-            { 
-                Property = prop.Property, 
-                Value = value, 
-                Target = SelectedObject!, 
-                OnChanged = (val) => _ = SetValueAsync(prop, val) 
+            @CustomEditor(new PropertyEditorContext
+            {
+                Property = prop.Property,
+                Value = value,
+                Target = SelectedObject!,
+                OnChanged = (val) => _ = SafeSetValueAsync(prop, val)
             })
         }
         else if (prop.ReadOnly)
@@ -442,6 +442,15 @@
         {
             SetErrors(prop, "Некорректный формат значения.");
             await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task SafeSetValueAsync(PropertyItem prop, object? value)
+    {
+        try { await SetValueAsync(prop, value); }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SgPropertyGrid.SetValueAsync] {ex}");
         }
     }
 

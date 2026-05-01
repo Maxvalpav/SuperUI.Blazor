@@ -270,10 +270,22 @@ namespace SuperUI.Components
                 await _module.InvokeVoidAsync("init", _canvas, _container, _objRef);
                 if (_isDisposed) return;
                 // Fire-and-forget to avoid blocking initial paint
-                _ = UpdateData();
+                _ = SafeUpdateDataAsync();
             }
             catch (JSException) { }
             catch (TaskCanceledException) { }
+        }
+
+        private async Task SafeUpdateDataAsync()
+        {
+            try { await UpdateData(); }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[SgCanvasGrid.UpdateData] {ex}");
+            }
         }
 
         protected override void OnParametersSet()
@@ -294,7 +306,7 @@ namespace SuperUI.Components
             RebuildEffectiveColumns();
 
             if (itemsChanged || columnsChanged)
-                _ = UpdateData();
+                _ = SafeUpdateDataAsync();
         }
 
         private void RebuildEffectiveColumns()
@@ -959,7 +971,7 @@ namespace SuperUI.Components
         }
 
         [JSInvokable]
-        public async Task OnShowFilter(string property, double x, double y)
+        public async Task OnShowFilter(string property, double x, double y, double containerWidth = 0, double containerHeight = 0)
         {
             if (Items is null) return;
 
@@ -990,7 +1002,26 @@ namespace SuperUI.Components
                 return list;
             });
 
-            _filterPopup = (property, x, y);
+            // Clamp popup position to grid container so it doesn't overflow.
+            const double popupWidth = 280;
+            const double popupHeight = 450;
+            const double margin = 8;
+            var clampedX = x;
+            var clampedY = y;
+            if (containerWidth > 0)
+            {
+                if (clampedX + popupWidth + margin > containerWidth)
+                    clampedX = Math.Max(margin, containerWidth - popupWidth - margin);
+                if (clampedX < margin) clampedX = margin;
+            }
+            if (containerHeight > 0)
+            {
+                if (clampedY + popupHeight + margin > containerHeight)
+                    clampedY = Math.Max(margin, containerHeight - popupHeight - margin);
+                if (clampedY < margin) clampedY = margin;
+            }
+
+            _filterPopup = (property, clampedX, clampedY);
 
             if (_conditionFilters.TryGetValue(property, out var cf))
             {
@@ -1005,11 +1036,11 @@ namespace SuperUI.Components
                 _showConditionFilter = false;
             }
 
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
 
         [JSInvokable]
-        public void OnColumnResized(List<ColumnResizeInfo> columnInfos)
+        public async Task OnColumnResized(List<ColumnResizeInfo> columnInfos)
         {
             if (Columns == null) return;
 
@@ -1020,7 +1051,7 @@ namespace SuperUI.Components
                 {
                     col.Width = (int)info.Width;
                 }
-                
+
                 // Also update effective columns
                 var effCol = _effectiveColumns.FirstOrDefault(c => c.Property == info.Property);
                 if (effCol != null)
@@ -1028,7 +1059,7 @@ namespace SuperUI.Components
                     effCol.Width = (int)info.Width;
                 }
             }
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
 
         public class ColumnResizeInfo

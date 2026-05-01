@@ -273,7 +273,7 @@ export function init(canvas, container, dotNet) {
                 if (col.property === '__selection') {
                     state.dotNet.invokeMethodAsync('OnToggleSelectAll');
                 } else if (x > drawX + col.width - 45 && x < drawX + col.width - 25) {
-                    state.dotNet.invokeMethodAsync('OnShowFilter', col.property, drawX, state.headerHeight);
+                    state.dotNet.invokeMethodAsync('OnShowFilter', col.property, drawX, state.headerHeight, state.width, state.height);
                 } else {
                     state.dotNet.invokeMethodAsync('OnHeaderClick', col.property);
                 }

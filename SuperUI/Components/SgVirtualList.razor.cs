@@ -215,12 +215,12 @@ namespace SuperUI.Components
         }
 
         [JSInvokable]
-        public void OnScroll(double scrollTop)
+        public async Task OnScroll(double scrollTop)
         {
             _scrollTop = ClampScrollTop(scrollTop);
             if (_isInViewport)
             {
-                StateHasChanged();
+                await InvokeAsync(StateHasChanged);
             }
         }
 
