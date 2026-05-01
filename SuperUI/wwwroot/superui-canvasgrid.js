@@ -379,7 +379,7 @@ function readCell(state, row, property) {
     return row ? row[property] : undefined;
 }
 
-export function setData(canvas, data, columns, rowHeight, headerHeight, columnFilters, aggregates, groupBy, columnKeys) {
+export function setData(canvas, data, columns, rowHeight, headerHeight, columnFilters, aggregates, groupBy, columnKeys, sortProperty, sortDescending) {
     const state = canvas?._sgGrid;
     if (!state) return;
     state.data = Array.isArray(data) ? data : [];
@@ -390,6 +390,10 @@ export function setData(canvas, data, columns, rowHeight, headerHeight, columnFi
     state.aggregates = aggregates || {};
     state.groupBy = Array.isArray(groupBy) ? groupBy : [];
     state.hoveredRowIndex = -1;
+    if (sortProperty !== undefined) {
+        state.sortProperty = sortProperty || null;
+        state.sortDescending = !!sortDescending;
+    }
 
     state.columnKeys = Array.isArray(columnKeys) ? columnKeys : [];
     const idx = {};
