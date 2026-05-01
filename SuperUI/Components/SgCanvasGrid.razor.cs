@@ -154,8 +154,33 @@ namespace SuperUI.Components
             var val = acc.Get(item);
             if (val is null) return string.Empty;
             if (val is bool b) return b ? "✓" : "✗";
-            if (!string.IsNullOrEmpty(col.Format) && val is IFormattable f)
-                return f.ToString(col.Format, CultureInfo.CurrentCulture);
+            if (!string.IsNullOrEmpty(col.Format))
+            {
+                // Check if format is a composite format string like "{0:N2} ₽"
+                if (col.Format.Contains('{') && col.Format.Contains('}'))
+                {
+                    try
+                    {
+                        return string.Format(CultureInfo.CurrentCulture, col.Format, val);
+                    }
+                    catch
+                    {
+                        // Fallback to standard formatting
+                    }
+                }
+                // Standard format specifier like "N2", "C2", etc.
+                if (val is IFormattable f)
+                {
+                    try
+                    {
+                        return f.ToString(col.Format, CultureInfo.CurrentCulture);
+                    }
+                    catch
+                    {
+                        // Fallback to ToString
+                    }
+                }
+            }
             return val.ToString() ?? string.Empty;
         }
 
@@ -334,11 +359,8 @@ namespace SuperUI.Components
 
         private static string? ExtractFormat(string? raw)
         {
-            if (string.IsNullOrEmpty(raw)) return null;
-            var start = raw.IndexOf(':');
-            var end = raw.IndexOf('}');
-            if (start > 0 && end > start) return raw.Substring(start + 1, end - start - 1);
-            return raw;
+            // Preserve full DataFormatString to support both simple (N2) and composite ({0:N2} ₽) formats
+            return string.IsNullOrWhiteSpace(raw) ? null : raw;
         }
 
         private static string SplitPascalCase(string s)
@@ -426,8 +448,36 @@ namespace SuperUI.Components
                 var ca = dataCols[ci];
                 var val = ca.Acc?.Get(item);
                 if (val is bool b) arr[ci] = b ? "✓" : "✗";
-                else if (val is not null && !string.IsNullOrEmpty(ca.Col.Format) && val is IFormattable formattable)
-                    arr[ci] = formattable.ToString(ca.Col.Format, CultureInfo.CurrentCulture);
+                else if (val is not null && !string.IsNullOrEmpty(ca.Col.Format))
+                {
+                    // Check if format is a composite format string like "{0:N2} ₽"
+                    if (ca.Col.Format.Contains('{') && ca.Col.Format.Contains('}'))
+                    {
+                        try
+                        {
+                            arr[ci] = string.Format(CultureInfo.CurrentCulture, ca.Col.Format, val);
+                        }
+                        catch
+                        {
+                            arr[ci] = val?.ToString();
+                        }
+                    }
+                    else if (val is IFormattable formattable)
+                    {
+                        try
+                        {
+                            arr[ci] = formattable.ToString(ca.Col.Format, CultureInfo.CurrentCulture);
+                        }
+                        catch
+                        {
+                            arr[ci] = val?.ToString();
+                        }
+                    }
+                    else
+                    {
+                        arr[ci] = val;
+                    }
+                }
                 else
                     arr[ci] = val;
             }
