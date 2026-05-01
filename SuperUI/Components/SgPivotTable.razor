@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@using Microsoft.JSInterop
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 @typeparam TItem
@@ -320,9 +321,9 @@
                     await LoadStateAsync();
                 }
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is JSException or InvalidOperationException)
             {
-                Console.WriteLine($"SgPivotTable: failed to load JS module: {ex.Message}");
+                // JS interop can be unavailable during prerendering or tests.
             }
         }
     }
@@ -707,7 +708,12 @@
         return hash.ToHashCode();
     }
 
-    private async void HandleStateChanged()
+    private void HandleStateChanged()
+    {
+        _ = InvokeAsync(HandleStateChangedAsync);
+    }
+
+    private async Task HandleStateChangedAsync()
     {
         _lastHash = CalculateHash();
         CalculateTable();
