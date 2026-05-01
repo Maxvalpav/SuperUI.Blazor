@@ -1,0 +1,209 @@
+@namespace SuperUI.Components
+@typeparam TItem
+
+<div class="sgc-matrix @CssClass">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <div class="sgc-matrix-title">@Title</div>
+    }
+    <div class="sgc-matrix-wrap">
+        <table class="sgc-matrix-table">
+            <thead>
+                <tr>
+                    <th class="sgc-matrix-corner">
+                        <span class="sgc-matrix-corner-col">@ColumnTitle</span>
+                        <span class="sgc-matrix-corner-row">@RowTitle</span>
+                    </th>
+                    @foreach (var col in _columns)
+                    {
+                        <th class="sgc-matrix-col-header">@col</th>
+                    }
+                    @if (_showTotals)
+                    {
+                        <th class="sgc-matrix-total-header">Total</th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    <tr>
+                        <td class="sgc-matrix-row-header">@row</td>
+                        @foreach (var col in _columns)
+                        {
+                            var cellItems = GetCellItems(row, col);
+                            <td class="sgc-matrix-cell @(cellItems.Count == 0 ? "sgc-matrix-empty" : "")">
+                                @if (CellTemplate is not null)
+                                {
+                                    @CellTemplate(new SgDataMatrixCellContext<TItem>
+                                    {
+                                        RowKey = row,
+                                        ColumnKey = col,
+                                        Items = cellItems,
+                                        AggregateValue = GetAggregate(row, col)
+                                    })
+                                }
+                                else
+                                {
+                                    @FormatValue(GetAggregate(row, col))
+                                }
+                            </td>
+                        }
+                        @if (_showTotals)
+                        {
+                            <td class="sgc-matrix-total-cell">@FormatValue(GetRowTotal(row))</td>
+                        }
+                    </tr>
+                }
+            </tbody>
+            @if (_showTotals)
+            {
+                <tfoot>
+                    <tr>
+                        <td class="sgc-matrix-total-header">Total</td>
+                        @foreach (var col in _columns)
+                        {
+                            <td class="sgc-matrix-total-cell">@FormatValue(GetColumnTotal(col))</td>
+                        }
+                        <td class="sgc-matrix-grand-total">@FormatValue(_grandTotal)</td>
+                    </tr>
+                </tfoot>
+            }
+        </table>
+    </div>
+</div>
+
+@code {
+    /// <summary>Source data items.</summary>
+    [Parameter] public List<TItem> Items { get; set; } = new();
+
+    /// <summary>Function that extracts the row key from an item.</summary>
+    [Parameter] public Func<TItem, string> RowField { get; set; } = _ => "";
+
+    /// <summary>Function that extracts the column key from an item.</summary>
+    [Parameter] public Func<TItem, string> ColumnField { get; set; } = _ => "";
+
+    /// <summary>Function that extracts the numeric value from an item. Optional — when null the matrix works in template mode.</summary>
+    [Parameter] public Func<TItem, decimal?>? ValueField { get; set; }
+
+    /// <summary>Custom render fragment for each cell. Receives the items at the row/column intersection.</summary>
+    [Parameter] public RenderFragment<SgDataMatrixCellContext<TItem>>? CellTemplate { get; set; }
+
+    /// <summary>Aggregation method. Default is Sum. Used only when <see cref="ValueField"/> is set.</summary>
+    [Parameter] public SgPivotAggregateType Aggregate { get; set; } = SgPivotAggregateType.Sum;
+
+    /// <summary>Optional format string (e.g. "N2", "C2", "P1"). Default is "N0". Used only when <see cref="ValueField"/> is set.</summary>
+    [Parameter] public string Format { get; set; } = "N0";
+
+    /// <summary>Text shown when a cell has no data. Default is "—". Used only when <see cref="ValueField"/> is set.</summary>
+    [Parameter] public string EmptyValue { get; set; } = "—";
+
+    /// <summary>Whether to show total row and column. Default is true. Ignored when <see cref="CellTemplate"/> is used.</summary>
+    [Parameter] public bool ShowTotals { get; set; } = true;
+
+    /// <summary>Title displayed above the matrix.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Header text for rows (top-left corner). Default is empty.</summary>
+    [Parameter] public string RowTitle { get; set; } = "";
+
+    /// <summary>Header text for columns (top-left corner). Default is empty.</summary>
+    [Parameter] public string ColumnTitle { get; set; } = "";
+
+    /// <summary>Additional CSS class names.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private List<string> _rows = new();
+    private List<string> _columns = new();
+    private Dictionary<(string, string), List<TItem>> _cellItems = new();
+    private Dictionary<(string, string), List<decimal>> _groups = new();
+    private decimal? _grandTotal;
+    private bool _showTotals => ShowTotals && ValueField is not null && CellTemplate is null;
+
+    protected override void OnParametersSet()
+    {
+        BuildMatrix();
+    }
+
+    private void BuildMatrix()
+    {
+        _cellItems = new Dictionary<(string, string), List<TItem>>();
+        _groups = new Dictionary<(string, string), List<decimal>>();
+
+        foreach (var item in Items)
+        {
+            var row = RowField(item) ?? "";
+            var col = ColumnField(item) ?? "";
+            var key = (row, col);
+
+            if (!_cellItems.ContainsKey(key))
+                _cellItems[key] = new List<TItem>();
+            _cellItems[key].Add(item);
+
+            if (ValueField is not null)
+            {
+                var val = ValueField(item);
+                if (val.HasValue)
+                {
+                    if (!_groups.ContainsKey(key))
+                        _groups[key] = new List<decimal>();
+                    _groups[key].Add(val.Value);
+                }
+            }
+        }
+
+        _rows = _cellItems.Keys.Select(k => k.Item1).Distinct().OrderBy(r => r).ToList();
+        _columns = _cellItems.Keys.Select(k => k.Item2).Distinct().OrderBy(c => c).ToList();
+
+        if (ValueField is not null)
+            _grandTotal = Compute(_groups.Values.SelectMany(v => v));
+    }
+
+    private List<TItem> GetCellItems(string row, string col)
+    {
+        if (_cellItems.TryGetValue((row, col), out var items))
+            return items;
+        return new List<TItem>();
+    }
+
+    private decimal? GetAggregate(string row, string col)
+    {
+        if (_groups.TryGetValue((row, col), out var vals))
+            return Compute(vals);
+        return null;
+    }
+
+    private decimal? GetRowTotal(string row)
+    {
+        var vals = _columns.Select(c => GetAggregate(row, c)).Where(v => v.HasValue).Select(v => v!.Value).ToList();
+        return Compute(vals);
+    }
+
+    private decimal? GetColumnTotal(string col)
+    {
+        var vals = _rows.Select(r => GetAggregate(r, col)).Where(v => v.HasValue).Select(v => v!.Value).ToList();
+        return Compute(vals);
+    }
+
+    private decimal? Compute(IEnumerable<decimal> vals)
+    {
+        var list = vals as List<decimal> ?? vals.ToList();
+        if (list.Count == 0) return null;
+        return Aggregate switch
+        {
+            SgPivotAggregateType.Sum => list.Sum(),
+            SgPivotAggregateType.Count => list.Count,
+            SgPivotAggregateType.Average => list.Average(),
+            SgPivotAggregateType.Min => list.Min(),
+            SgPivotAggregateType.Max => list.Max(),
+            _ => list.Sum()
+        };
+    }
+
+    private string? FormatValue(decimal? val)
+    {
+        if (!val.HasValue) return EmptyValue;
+        try { return val.Value.ToString(Format); }
+        catch { return val.Value.ToString(); }
+    }
+}

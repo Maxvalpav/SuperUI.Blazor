@@ -1,0 +1,329 @@
+@namespace SuperUI.Components
+@inherits SgInputBase<string>
+@using System.Globalization
+@using System.Text
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
+    }
+    <div class="sgc-input-wrap">
+        <input id="@_id"
+               type="text"
+               inputmode="@InputMode"
+               class="sgc-input @(IsInvalid ? "sgc-invalid" : "") @(_isNumeric ? "sgc-text-right" : "")"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               readonly="@ReadOnly"
+               required="@Required"
+               aria-required="@(Required ? "true" : null)"
+               aria-invalid="@(IsInvalid ? "true" : null)"
+               aria-describedby="@DescribedBy"
+               value="@DisplayValue"
+               maxlength="@MaxDisplayLength"
+               @oninput="OnInputAsync"
+               @onchange="OnChangeAsync"
+               @onkeydown="OnKeyDownAsync"
+               @attributes="AdditionalAttributes" />
+        @if (ShowClearButton && !string.IsNullOrEmpty(Value))
+        {
+            <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="Clear">×</button>
+        }
+    </div>
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _id = "sg-" + Guid.NewGuid().ToString("N")[..8];
+    private string _hintId => _id + "-hint";
+    private string _errorId => _id + "-err";
+
+    /// <summary>Label text displayed above the input.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Label position. Default is Top.</summary>
+    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
+
+    /// <summary>Mask preset type. Default is <see cref="SgMaskType.Custom"/>.</summary>
+    [Parameter] public SgMaskType MaskType { get; set; } = SgMaskType.Custom;
+
+    /// <summary>Custom mask pattern used when <see cref="MaskType"/> is <see cref="SgMaskType.Custom"/>.
+    /// Use 9 for digit, a for letter, * for any char. Other chars are treated as literals.</summary>
+    [Parameter] public string? Mask { get; set; }
+
+    /// <summary>Placeholder shown when input is empty.</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>Hint text displayed below the input.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Error text to display. Takes precedence over validation messages.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Whether the input is required.</summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Whether the input is disabled.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Whether the input is read-only.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Whether the input takes full width. Default is true.</summary>
+    [Parameter] public bool Block { get; set; } = true;
+
+    /// <summary>Additional CSS classes for the field container.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Whether to show a clear button. Default is false.</summary>
+    [Parameter] public bool ShowClearButton { get; set; }
+
+    /// <summary>Culture used for numeric formatting (currency / percent). Default is current culture.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
+
+    /// <summary>Number of decimal places for currency / percent. Default is 2.</summary>
+    [Parameter] public int DecimalPlaces { get; set; } = 2;
+
+    /// <summary>Currency symbol for <see cref="SgMaskType.Currency"/>. Default is "₽".</summary>
+    [Parameter] public string CurrencySymbol { get; set; } = "₽";
+
+    /// <summary>Callback invoked when Enter key is pressed.</summary>
+    [Parameter] public EventCallback OnEnterPressed { get; set; }
+
+    /// <summary>Additional HTML attributes for the input element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private bool _isNumeric => MaskType is SgMaskType.Currency or SgMaskType.Percent;
+
+    private string InputMode => MaskType switch
+    {
+        SgMaskType.Phone or SgMaskType.Inn or SgMaskType.Kpp or SgMaskType.Account => "numeric",
+        SgMaskType.Currency or SgMaskType.Percent => "decimal",
+        _ => "text"
+    };
+
+    private string DisplayValue => GetDisplayValue();
+
+    private string GetDisplayValue()
+    {
+        if (string.IsNullOrEmpty(Value)) return string.Empty;
+        return MaskType switch
+        {
+            SgMaskType.Currency => FormatCurrency(Value),
+            SgMaskType.Percent => FormatPercent(Value),
+            _ => ApplyMask(Value, GetMaskPattern())
+        };
+    }
+
+    private string GetMaskPattern() => MaskType switch
+    {
+        SgMaskType.Phone => "+7 (999) 999-99-99",
+        SgMaskType.Inn => "9999 9999 99",
+        SgMaskType.Kpp => "999999999",
+        SgMaskType.Account => "9999 9999 9999 9999 9999",
+        _ => Mask ?? ""
+    };
+
+    private int? MaxDisplayLength => MaskType switch
+    {
+        SgMaskType.Currency or SgMaskType.Percent => null,
+        _ => GetMaskPattern().Length > 0 ? GetMaskPattern().Length : null
+    };
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        await ProcessInputAsync(e.Value?.ToString() ?? "");
+    }
+
+    private Task OnChangeAsync(ChangeEventArgs e) => Task.CompletedTask;
+
+    private async Task ProcessInputAsync(string rawInput)
+    {
+        try
+        {
+            string nextRaw = MaskType switch
+            {
+                SgMaskType.Currency => ParseNumericInput(rawInput, true),
+                SgMaskType.Percent => ParseNumericInput(rawInput, false),
+                _ => StripToSignificantChars(rawInput, GetMaskPattern())
+            };
+
+            // Enforce max length for masked types
+            if (MaskType is not SgMaskType.Currency and not SgMaskType.Percent)
+            {
+                int maxLen = CountSignificantChars(GetMaskPattern());
+                if (nextRaw.Length > maxLen)
+                    nextRaw = nextRaw[..maxLen];
+            }
+
+            await SetValueAsync(nextRaw);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SgMaskedInput] {ex}");
+        }
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
+            await OnEnterPressed.InvokeAsync();
+    }
+
+    private async Task ClearAsync()
+    {
+        await SetValueAsync(null);
+    }
+
+    // ---------- Mask engine ----------
+
+    private static string ApplyMask(string raw, string mask)
+    {
+        if (string.IsNullOrEmpty(mask)) return raw;
+        var sb = new StringBuilder();
+        int ri = 0;
+        foreach (char m in mask)
+        {
+            if (ri >= raw.Length) break;
+            switch (m)
+            {
+                case '9':
+                    if (char.IsDigit(raw[ri])) { sb.Append(raw[ri]); ri++; }
+                    break;
+                case 'a':
+                    if (char.IsLetter(raw[ri])) { sb.Append(raw[ri]); ri++; }
+                    break;
+                case '*':
+                    sb.Append(raw[ri]); ri++;
+                    break;
+                default:
+                    sb.Append(m);
+                    break;
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static string StripToSignificantChars(string input, string mask)
+    {
+        if (string.IsNullOrEmpty(mask)) return new string(input.Where(char.IsLetterOrDigit).ToArray());
+        var sb = new StringBuilder();
+        int mi = 0;
+        foreach (char c in input)
+        {
+            if (mi >= mask.Length) break;
+            char m = mask[mi];
+            bool matches = m switch
+            {
+                '9' => char.IsDigit(c),
+                'a' => char.IsLetter(c),
+                '*' => true,
+                _ => c == m
+            };
+            if (matches)
+            {
+                if (m is '9' or 'a' or '*')
+                    sb.Append(c);
+                mi++;
+            }
+            else if (char.IsLetterOrDigit(c))
+            {
+                // User typed a significant char where a literal was expected — skip the literal and try again
+                while (mi < mask.Length && mask[mi] is not '9' and not 'a' and not '*')
+                    mi++;
+                if (mi < mask.Length)
+                {
+                    m = mask[mi];
+                    matches = m switch
+                    {
+                        '9' => char.IsDigit(c),
+                        'a' => char.IsLetter(c),
+                        '*' => true,
+                        _ => false
+                    };
+                    if (matches)
+                    {
+                        sb.Append(c);
+                        mi++;
+                    }
+                }
+            }
+        }
+        return sb.ToString();
+    }
+
+    private static int CountSignificantChars(string mask)
+    {
+        int n = 0;
+        foreach (char c in mask)
+            if (c is '9' or 'a' or '*') n++;
+        return n;
+    }
+
+    // ---------- Numeric formatting ----------
+
+    private string ParseNumericInput(string input, bool isCurrency)
+    {
+        var culture = Culture ?? CultureInfo.CurrentCulture;
+        // Strip everything except digits, decimal separator, and minus
+        char decSep = culture.NumberFormat.NumberDecimalSeparator[0];
+        var sb = new StringBuilder();
+        bool hasDecimal = false;
+        foreach (char c in input)
+        {
+            if (char.IsDigit(c))
+            {
+                sb.Append(c);
+            }
+            else if ((c == '.' || c == ',') && !hasDecimal)
+            {
+                sb.Append(decSep);
+                hasDecimal = true;
+            }
+            else if (c == '-' && sb.Length == 0)
+            {
+                sb.Append(c);
+            }
+        }
+        return sb.ToString();
+    }
+
+    private string FormatCurrency(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        var culture = Culture ?? CultureInfo.CurrentCulture;
+        if (decimal.TryParse(raw, NumberStyles.Any, culture, out var d))
+        {
+            var format = (NumberFormatInfo)culture.NumberFormat.Clone();
+            format.CurrencySymbol = CurrencySymbol;
+            return d.ToString("C" + DecimalPlaces, format);
+        }
+        return raw;
+    }
+
+    private string FormatPercent(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return string.Empty;
+        var culture = Culture ?? CultureInfo.CurrentCulture;
+        if (decimal.TryParse(raw, NumberStyles.Any, culture, out var d))
+        {
+            // Store raw as decimal (e.g. 12.5), display with %
+            return d.ToString($"N{DecimalPlaces}", culture) + " %";
+        }
+        return raw;
+    }
+}

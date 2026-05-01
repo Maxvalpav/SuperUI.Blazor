@@ -1,0 +1,222 @@
+@page "/data-matrix-demo"
+@using SuperUI.Components
+
+<PageTitle>Data Matrix - SUI</PageTitle>
+
+<SgCard Title="SgDataMatrix - Cross-Tabular Display"
+        Subtitle="Generic data matrix with custom cell templates for text, boolean, badges, or any content. Also supports numeric aggregation.">
+
+    <div style="margin-top: 32px;">
+        <h2>User Permission Matrix</h2>
+        <p>CellTemplate renders checkmarks for granted permissions. No numeric fields needed.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Example">
+                <SgDataMatrix TItem="PermissionGrant"
+                              Items="_permissions"
+                              RowField="p => p.Role"
+                              ColumnField="p => p.Right"
+                              RowTitle="Role"
+                              ColumnTitle="Permission">
+                    <CellTemplate>
+                        @if (context.Items.Any())
+                        {
+                            <span style="color: var(--sui-success); font-weight: 700;">&#10003;</span>
+                        }
+                        else
+                        {
+                            <span style="color: var(--sui-muted);">&#10007;</span>
+                        }
+                    </CellTemplate>
+                </SgDataMatrix>
+            </SgCard>
+
+            <SgCard Title="Properties">
+                <PropertyTable Items="_templateProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Project Status Matrix</h2>
+        <p>CellTemplate renders status badges per project phase. Each cell contains a single status item.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Example">
+                <SgDataMatrix TItem="ProjectStatus"
+                              Items="_projectStatus"
+                              RowField="p => p.Project"
+                              ColumnField="p => p.Phase"
+                              RowTitle="Project"
+                              ColumnTitle="Phase">
+                    <CellTemplate>
+                        @if (context.Items.FirstOrDefault() is { } status)
+                        {
+                            <span class="sgc-badge @GetStatusBadgeClass(status.Status)">@status.Status</span>
+                        }
+                        else
+                        {
+                            <span style="color: var(--sui-muted);">—</span>
+                        }
+                    </CellTemplate>
+                </SgDataMatrix>
+            </SgCard>
+
+            <SgCard Title="Properties">
+                <PropertyTable Items="_badgeProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Sales by Region &amp; Product</h2>
+        <p>Classic numeric aggregation with totals. Same data displayed with Sum, Count, and Average.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Sum">
+                <SgDataMatrix TItem="Sale"
+                              Items="_sales"
+                              RowField="s => s.Region"
+                              ColumnField="s => s.Product"
+                              ValueField="s => s.Amount"
+                              Aggregate="SgPivotAggregateType.Sum"
+                              Format="N0"
+                              RowTitle="Region"
+                              ColumnTitle="Product" />
+            </SgCard>
+
+            <SgCard Title="Count">
+                <SgDataMatrix TItem="Sale"
+                              Items="_sales"
+                              RowField="s => s.Region"
+                              ColumnField="s => s.Product"
+                              ValueField="s => s.Amount"
+                              Aggregate="SgPivotAggregateType.Count"
+                              Format="N0"
+                              RowTitle="Region"
+                              ColumnTitle="Product" />
+            </SgCard>
+
+            <SgCard Title="Average">
+                <SgDataMatrix TItem="Sale"
+                              Items="_sales"
+                              RowField="s => s.Region"
+                              ColumnField="s => s.Product"
+                              ValueField="s => s.Amount"
+                              Aggregate="SgPivotAggregateType.Average"
+                              Format="N2"
+                              RowTitle="Region"
+                              ColumnTitle="Product" />
+            </SgCard>
+        </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Without Totals</h2>
+        <p>Clean numeric matrix without total row and column.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Example">
+                <SgDataMatrix TItem="Sale"
+                              Items="_sales"
+                              RowField="s => s.Region"
+                              ColumnField="s => s.Product"
+                              ValueField="s => s.Amount"
+                              Aggregate="SgPivotAggregateType.Sum"
+                              Format="N0"
+                              ShowTotals="false"
+                              RowTitle="Region"
+                              ColumnTitle="Product" />
+            </SgCard>
+
+            <SgCard Title="Properties">
+                <PropertyTable Items="_numericProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private List<PermissionGrant> _permissions = new()
+    {
+        new("Admin", "Create"),
+        new("Admin", "Read"),
+        new("Admin", "Update"),
+        new("Admin", "Delete"),
+        new("Manager", "Create"),
+        new("Manager", "Read"),
+        new("Manager", "Update"),
+        new("Editor", "Read"),
+        new("Editor", "Update"),
+        new("Viewer", "Read"),
+        new("Viewer", "Export"),
+    };
+
+    private List<ProjectStatus> _projectStatus = new()
+    {
+        new("Alpha", "Design", "Done"),
+        new("Alpha", "Dev", "In Progress"),
+        new("Alpha", "Testing", "Pending"),
+        new("Beta", "Design", "Done"),
+        new("Beta", "Dev", "Done"),
+        new("Beta", "Testing", "In Progress"),
+        new("Gamma", "Design", "Blocked"),
+        new("Gamma", "Dev", "Pending"),
+    };
+
+    private List<Sale> _sales = new()
+    {
+        new("North", "Laptops", 120000),
+        new("North", "Phones", 85000),
+        new("North", "Tablets", 45000),
+        new("South", "Laptops", 95000),
+        new("South", "Phones", 110000),
+        new("East", "Laptops", 130000),
+        new("East", "Phones", 75000),
+        new("East", "Tablets", 60000),
+        new("West", "Phones", 90000),
+        new("West", "Tablets", 55000),
+        new("North", "Laptops", 25000),
+        new("South", "Tablets", 30000),
+    };
+
+    private List<PropertyPanelItem> _templateProperties = new()
+    {
+        new() { Label = "Items", Value = "List<TItem>", BadgeText = "Source data", BadgeVariant = "warn" },
+        new() { Label = "RowField", Value = "Func<TItem, string>", BadgeText = "Row key", BadgeVariant = "warn" },
+        new() { Label = "ColumnField", Value = "Func<TItem, string>", BadgeText = "Column key", BadgeVariant = "warn" },
+        new() { Label = "CellTemplate", Value = "RenderFragment<SgDataMatrixCellContext<TItem>>", BadgeText = "Custom cell", BadgeVariant = "warn" },
+        new() { Label = "ValueField", Value = "Func<TItem, decimal?>?", BadgeText = "Optional", BadgeVariant = "info" },
+    };
+
+    private List<PropertyPanelItem> _badgeProperties = new()
+    {
+        new() { Label = "CellTemplate", Value = "RenderFragment<SgDataMatrixCellContext<TItem>>", BadgeText = "Custom cell", BadgeVariant = "warn" },
+        new() { Label = "context.RowKey", Value = "string", BadgeText = "Current row", BadgeVariant = "info" },
+        new() { Label = "context.ColumnKey", Value = "string", BadgeText = "Current col", BadgeVariant = "info" },
+        new() { Label = "context.Items", Value = "List<TItem>", BadgeText = "Cell items", BadgeVariant = "info" },
+        new() { Label = "context.AggregateValue", Value = "decimal?", BadgeText = "If ValueField set", BadgeVariant = "info" },
+    };
+
+    private List<PropertyPanelItem> _numericProperties = new()
+    {
+        new() { Label = "ValueField", Value = "Func<TItem, decimal?>", BadgeText = "Required for numbers", BadgeVariant = "warn" },
+        new() { Label = "Aggregate", Value = "SgPivotAggregateType", BadgeText = "Sum/Count/Avg", BadgeVariant = "info" },
+        new() { Label = "Format", Value = "string", BadgeText = "N0, N2, C2", BadgeVariant = "info" },
+        new() { Label = "ShowTotals", Value = "bool (default: true)", BadgeText = "Row/Col totals", BadgeVariant = "info" },
+        new() { Label = "EmptyValue", Value = "string (default: —)", BadgeText = "Empty cell", BadgeVariant = "info" },
+    };
+
+    public record PermissionGrant(string Role, string Right);
+    public record ProjectStatus(string Project, string Phase, string Status);
+    public record Sale(string Region, string Product, decimal Amount);
+
+    private string GetStatusBadgeClass(string status) => status switch
+    {
+        "Done" => "sgc-success",
+        "In Progress" => "sgc-info",
+        "Blocked" => "sgc-danger",
+        _ => "sgc-muted"
+    };
+}
