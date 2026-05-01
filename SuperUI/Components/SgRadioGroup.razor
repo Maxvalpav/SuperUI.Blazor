@@ -4,27 +4,32 @@
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass"
      role="radiogroup"
-     aria-label="@Label"
+     aria-labelledby="@(string.IsNullOrEmpty(Label) ? null : _labelId)"
      aria-required="@(Required ? "true" : null)"
-     aria-invalid="@(HasValidationErrors ? "true" : null)">
+     aria-invalid="@(HasValidationErrors ? "true" : null)"
+     @attributes="AdditionalAttributes">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div style="display:flex; gap:12px; flex-wrap:wrap;">
-        @foreach (var opt in Options)
+    <div style="display:flex; gap:12px; flex-wrap:wrap;" @onkeydown="OnKeyDownAsync">
+        @{
+            var optionList = Options as IList<RadioOption<TValue>> ?? Options.ToList();
+        }
+        @for (var i = 0; i < optionList.Count; i++)
         {
-            var o = opt;
+            var idx = i;
+            var o = optionList[idx];
             var checkedNow = EqualityComparer<TValue>.Default.Equals(Value, o.Value);
-            <label class="sgc-check @(Disabled || o.Disabled ? "sgc-disabled" : "")">
+            var optDisabled = Disabled || o.Disabled;
+            <label class="sgc-check @(optDisabled ? "sgc-disabled" : "")">
                 <input type="radio"
-                       role="radio"
                        name="@_name"
                        checked="@checkedNow"
-                       disabled="@(Disabled || o.Disabled)"
-                       aria-checked="@(checkedNow ? "true" : "false")"
-                       @onchange="() => SelectAsync(o.Value)"
-                       @attributes="AdditionalAttributes" />
+                       disabled="@optDisabled"
+                       tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
+                       data-sg-rg-index="@idx"
+                       @onchange="() => SelectAsync(o.Value)" />
                 <span>@o.Label</span>
             </label>
         }
@@ -37,6 +42,21 @@
 
 @code {
     private readonly string _name = "sgrg-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _labelId = "sgrg-lbl-" + Guid.NewGuid().ToString("N")[..8];
+
+    private int _firstEnabledIndex
+    {
+        get
+        {
+            var i = 0;
+            foreach (var o in Options)
+            {
+                if (!(Disabled || o.Disabled)) return i;
+                i++;
+            }
+            return 0;
+        }
+    }
 
     /// <summary>
     /// Gets or sets the collection of radio button options to display.
@@ -74,4 +94,59 @@
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private Task SelectAsync(TValue? value) => SetValueAsync(value);
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        var list = Options as IList<RadioOption<TValue>> ?? Options.ToList();
+        if (list.Count == 0) return;
+
+        var current = -1;
+        for (var i = 0; i < list.Count; i++)
+        {
+            if (EqualityComparer<TValue>.Default.Equals(Value, list[i].Value))
+            {
+                current = i;
+                break;
+            }
+        }
+
+        int next = current;
+        switch (e.Key)
+        {
+            case "ArrowRight":
+            case "ArrowDown":
+                next = NextEnabled(list, current, +1);
+                break;
+            case "ArrowLeft":
+            case "ArrowUp":
+                next = NextEnabled(list, current, -1);
+                break;
+            case "Home":
+                next = NextEnabled(list, -1, +1);
+                break;
+            case "End":
+                next = NextEnabled(list, list.Count, -1);
+                break;
+            default:
+                return;
+        }
+
+        if (next >= 0 && next != current)
+        {
+            await SelectAsync(list[next].Value);
+        }
+    }
+
+    private static int NextEnabled(IList<RadioOption<TValue>> list, int from, int step)
+    {
+        var n = list.Count;
+        if (n == 0) return -1;
+        for (var k = 1; k <= n; k++)
+        {
+            var i = ((from + step * k) % n + n) % n;
+            if (!list[i].Disabled) return i;
+        }
+        return -1;
+    }
 }

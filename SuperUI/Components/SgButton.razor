@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@implements IDisposable
 
 <button type="@Type"
         class="sgc-btn @VariantClass @SizeClass @(Block ? "sgc-block" : "") @CssClass"
@@ -28,6 +29,8 @@
 @code {
     private bool _isDebouncing;
     private bool _pressed;
+    private CancellationTokenSource? _debounceCts;
+    private bool _disposed;
 
     /// <summary>
     /// Gets or sets the button text content.
@@ -145,10 +148,30 @@
 
             if (DebounceInterval > 0)
             {
-                await Task.Delay(DebounceInterval);
+                _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
+                _debounceCts = new CancellationTokenSource();
+                var token = _debounceCts.Token;
+                try
+                {
+                    await Task.Delay(DebounceInterval, token);
+                }
+                catch (TaskCanceledException)
+                {
+                    return;
+                }
+                if (_disposed || token.IsCancellationRequested) return;
                 _isDebouncing = false;
                 StateHasChanged();
             }
         }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+        _debounceCts = null;
     }
 }

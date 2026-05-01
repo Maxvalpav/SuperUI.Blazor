@@ -1,13 +1,14 @@
 @namespace SuperUI.Components
+@using System.Globalization
 
-<span class="sgc-avatar sgc-@Size @CssClass" 
+<span class="sgc-avatar sgc-@Size @CssClass"
       role="img"
       aria-label="@(Title ?? "Avatar")"
-      style="@Style" 
+      style="@Style"
       title="@Title">
-    @if (!string.IsNullOrEmpty(ImageUrl))
+    @if (!string.IsNullOrEmpty(ImageUrl) && !_imageFailed)
     {
-        <img src="@ImageUrl" alt="@(Title ?? "Avatar")" loading="lazy" srcset="@SrcSet" />
+        <img src="@ImageUrl" alt="@(Title ?? "Avatar")" loading="lazy" srcset="@SrcSet" @onerror="OnImageError" />
     }
     else if (!string.IsNullOrEmpty(ComputedInitials))
     {
@@ -46,10 +47,24 @@
 
             var parts = Title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 0) return null;
-            if (parts.Length == 1) return parts[0][..Math.Min(2, parts[0].Length)].ToUpperInvariant();
-            
-            return (parts[0][0].ToString() + parts[1][0].ToString()).ToUpperInvariant();
+            if (parts.Length == 1) return FirstGraphemes(parts[0], 2).ToUpperInvariant();
+
+            return (FirstGraphemes(parts[0], 1) + FirstGraphemes(parts[1], 1)).ToUpperInvariant();
         }
+    }
+
+    private static string FirstGraphemes(string s, int count)
+    {
+        if (string.IsNullOrEmpty(s) || count <= 0) return string.Empty;
+        var enumerator = StringInfo.GetTextElementEnumerator(s);
+        var sb = new System.Text.StringBuilder();
+        var taken = 0;
+        while (enumerator.MoveNext() && taken < count)
+        {
+            sb.Append((string)enumerator.Current);
+            taken++;
+        }
+        return sb.ToString();
     }
     
     /// <summary>
@@ -80,4 +95,21 @@
     [Parameter] public string? CssClass { get; set; }
 
     private string Style => string.IsNullOrEmpty(Color) ? "" : $"background:{Color};";
+
+    private bool _imageFailed;
+    private string? _lastImageUrl;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.Equals(_lastImageUrl, ImageUrl, StringComparison.Ordinal))
+        {
+            _lastImageUrl = ImageUrl;
+            _imageFailed = false;
+        }
+    }
+
+    private void OnImageError()
+    {
+        _imageFailed = true;
+    }
 }

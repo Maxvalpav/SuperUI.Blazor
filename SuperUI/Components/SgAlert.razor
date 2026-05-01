@@ -1,9 +1,9 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
 
-@if (_visible)
+@if (IsVisible)
 {
-    <div class="sgc-alert @VariantClass @(Dense ? "sgc-alert-dense" : "") @CssClass" role="@Role" style="@Style">
+    <div class="sgc-alert @VariantClass @(Dense ? "sgc-alert-dense" : "") @CssClass" role="@ResolvedRole" aria-live="@ResolvedAriaLive" style="@Style">
         @if (ShowIcon)
         {
             <div class="sgc-alert-icon" aria-hidden="true">@IconToRender</div>
@@ -79,9 +79,21 @@
     [Parameter] public bool Dense { get; set; }
     
     /// <summary>
-    /// Gets or sets the ARIA role attribute. Default is "status".
+    /// Gets or sets the ARIA role attribute. If null (default), the role is derived from <see cref="Variant"/>:
+    /// "alert" for "danger"/"warn"; "status" otherwise.
     /// </summary>
-    [Parameter] public string Role { get; set; } = "status";
+    [Parameter] public string? Role { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the alert is visible. When null (default), the alert manages its own visibility
+    /// internally and resets to visible when re-rendered after being closed via <see cref="CloseAsync"/>.
+    /// </summary>
+    [Parameter] public bool? Visible { get; set; }
+
+    /// <summary>
+    /// Callback invoked when <see cref="Visible"/> changes (controlled mode).
+    /// </summary>
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
     
     /// <summary>
     /// Gets or sets additional CSS class names to apply to the alert.
@@ -127,9 +139,27 @@
             _ => "i"
         };
 
+    private bool IsVisible => Visible ?? _visible;
+
+    private string ResolvedRole => Role ?? (Variant is "danger" or "warn" ? "alert" : "status");
+
+    private string ResolvedAriaLive => Variant is "danger" or "warn" ? "assertive" : "polite";
+
+    protected override void OnParametersSet()
+    {
+        if (Visible is true)
+        {
+            _visible = true;
+        }
+    }
+
     private async Task CloseAsync()
     {
         _visible = false;
+        if (VisibleChanged.HasDelegate)
+        {
+            await VisibleChanged.InvokeAsync(false);
+        }
         if (OnClose.HasDelegate)
         {
             await OnClose.InvokeAsync();
