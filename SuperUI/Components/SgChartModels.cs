@@ -7,6 +7,7 @@ namespace SuperUI.Components
     {
         Line,
         Bar,
+        BarHorizontal,
         Area,
         Pie,
         Doughnut,
@@ -52,6 +53,9 @@ namespace SuperUI.Components
         public bool EnableDecimation { get; set; } = true;
         public int DecimationThreshold { get; set; } = 10000;
         public int? DecimationTargetPoints { get; set; } = 1000;
+        public string BorderColor { get; set; } = "#2196f3";
+        public string BackgroundColor { get; set; } = "rgba(33, 150, 243, 0.5)";
+        public List<string>? Colors { get; set; }
     }
 
     public class SgChartClickEventArgs

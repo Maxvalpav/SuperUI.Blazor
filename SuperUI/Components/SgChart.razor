@@ -133,7 +133,13 @@
         var datasets = BuildDatasets(data);
 
         // For heatmap, use 'matrix' type instead of 'heatmap'
-        var chartType = ChartType == SgChartType.Heatmap ? "matrix" : ChartType.ToString().ToLower();
+        var chartType = ChartType switch
+        {
+            SgChartType.Heatmap => "matrix",
+            SgChartType.Area => "line",
+            SgChartType.BarHorizontal => "bar",
+            _ => ChartType.ToString().ToLower()
+        };
 
         var config = new
         {
@@ -147,12 +153,14 @@
             {
                 responsive = options.Responsive,
                 maintainAspectRatio = true,
+                indexAxis = ChartType == SgChartType.BarHorizontal ? "y" : "x",
+                animation = new { duration = 750, easing = "easeInOutQuart" },
                 plugins = new
                 {
                     legend = new { display = options.ShowLegend },
                     title = new { display = !string.IsNullOrEmpty(Title), text = Title ?? "" }
                 },
-                scales = BuildScales()
+                scales = BuildScales(options)
             }
         };
 
@@ -201,11 +209,19 @@
         // For Pie and Doughnut charts, use different styling
         if (ChartType == SgChartType.Pie || ChartType == SgChartType.Doughnut)
         {
-            var colors = new[] 
-            { 
-                "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", 
-                "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FF6384" 
-            };
+            List<string> colors;
+            if (options.Colors?.Count > 0)
+            {
+                colors = options.Colors;
+            }
+            else
+            {
+                colors = new List<string>
+                { 
+                    "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF", 
+                    "#FF9F40", "#FF6384", "#C9CBCF", "#4BC0C0", "#FF6384" 
+                };
+            }
 
             return new List<object>
             {
@@ -232,8 +248,8 @@
                 {
                     label = "Data",
                     data = scatterData,
-                    borderColor = "#2196f3",
-                    backgroundColor = "rgba(33, 150, 243, 0.5)",
+                    borderColor = options.BorderColor,
+                    backgroundColor = options.BackgroundColor,
                     borderWidth = 2,
                     pointRadius = 4,
                     pointHoverRadius = 6
@@ -251,22 +267,41 @@
                 {
                     label = "Data",
                     data = values,
-                    borderColor = "#2196f3",
-                    backgroundColor = "rgba(33, 150, 243, 0.5)",
+                    borderColor = options.BorderColor,
+                    backgroundColor = options.BackgroundColor,
                     borderWidth = 2
                 }
             };
         }
 
-        // For Line and Bar charts (including stacked)
+        // For Area chart
+        if (ChartType == SgChartType.Area)
+        {
+            return new List<object>
+            {
+                new
+                {
+                    label = "Data",
+                    data = values,
+                    borderColor = options.BorderColor,
+                    backgroundColor = options.BackgroundColor.Replace("0.5", "0.2"),
+                    borderWidth = 2,
+                    fill = true,
+                    tension = 0.4
+                }
+            };
+        }
+
+        // For Line, Bar and Horizontal Bar charts
+        var bgColor = ChartType == SgChartType.Line ? "transparent" : options.BackgroundColor;
         return new List<object>
         {
             new
             {
                 label = "Data",
                 data = values,
-                borderColor = "#2196f3",
-                backgroundColor = ChartType == SgChartType.Line ? "transparent" : "rgba(33, 150, 243, 0.5)",
+                borderColor = options.BorderColor,
+                backgroundColor = bgColor,
                 borderWidth = 2,
                 fill = ChartType == SgChartType.Line ? false : true,
                 tension = 0.4,
@@ -275,20 +310,76 @@
         };
     }
 
-    private object BuildScales()
+    private object BuildScales(SgChartOptions options)
     {
-        return new
+        if (ChartType == SgChartType.BarHorizontal)
         {
-            y = new
+            var yScale = new
             {
+                type = _yAxis?.Type ?? "category",
+                display = _yAxis?.Display ?? true,
+                title = new { display = _yAxis != null && !string.IsNullOrEmpty(_yAxis.Title), text = _yAxis?.Title ?? "" },
+                grid = new
+                {
+                    display = options.ShowGrid && (_yAxis?.ShowGrid ?? true),
+                    color = _yAxis?.GridColor
+                },
+                ticks = new { display = options.ShowLabels }
+            };
+
+            var xScale = new
+            {
+                type = _xAxis?.Type ?? "linear",
+                display = _xAxis?.Display ?? true,
                 beginAtZero = true,
-                title = new { display = _yAxis != null, text = _yAxis?.Title ?? "" }
-            },
-            x = new
+                min = options.MinValue ?? _xAxis?.Min,
+                max = options.MaxValue ?? _xAxis?.Max,
+                title = new { display = _xAxis != null && !string.IsNullOrEmpty(_xAxis.Title), text = _xAxis?.Title ?? "" },
+                grid = new
+                {
+                    display = options.ShowGrid && (_xAxis?.ShowGrid ?? true),
+                    color = _xAxis?.GridColor
+                },
+                ticks = new { display = options.ShowLabels }
+            };
+
+            return new { y = yScale, x = xScale };
+        }
+        else
+        {
+            var yScale = new
             {
-                title = new { display = _xAxis != null, text = _xAxis?.Title ?? "" }
-            }
-        };
+                type = _yAxis?.Type ?? "linear",
+                display = _yAxis?.Display ?? true,
+                beginAtZero = true,
+                min = options.MinValue ?? _yAxis?.Min,
+                max = options.MaxValue ?? _yAxis?.Max,
+                title = new { display = _yAxis != null && !string.IsNullOrEmpty(_yAxis.Title), text = _yAxis?.Title ?? "" },
+                grid = new
+                {
+                    display = options.ShowGrid && (_yAxis?.ShowGrid ?? true),
+                    color = _yAxis?.GridColor
+                },
+                ticks = new { display = options.ShowLabels }
+            };
+
+            var xScale = new
+            {
+                type = _xAxis?.Type ?? "category",
+                display = _xAxis?.Display ?? true,
+                min = _xAxis?.Min,
+                max = _xAxis?.Max,
+                title = new { display = _xAxis != null && !string.IsNullOrEmpty(_xAxis.Title), text = _xAxis?.Title ?? "" },
+                grid = new
+                {
+                    display = options.ShowGrid && (_xAxis?.ShowGrid ?? true),
+                    color = _xAxis?.GridColor
+                },
+                ticks = new { display = options.ShowLabels }
+            };
+
+            return new { y = yScale, x = xScale };
+        }
     }
 
     /// <summary>
