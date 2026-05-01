@@ -10,7 +10,8 @@
 {
     <div class="sgc-win @(_maximized ? "sgc-win-maximized" : "") @(_isFocused ? "sgc-win-focus" : "") @CssClass"
          style="@ComputedStyle"
-         @ref="_el">
+         @ref="_el"
+         @attributes="AdditionalAttributes">
         <div class="sgc-win-header">
             <span class="sgc-win-title">@Title</span>
             <div class="sgc-win-actions">
@@ -50,6 +51,10 @@
     private bool _isFocused;
     private bool _isDisposed;
     private int _zIndex;
+    private double _savedLeft;
+    private double _savedTop;
+    private double _savedWidth;
+    private double _savedHeight;
 
     [Parameter] public bool Visible { get; set; } = true;
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
@@ -65,6 +70,13 @@
     [Parameter] public bool ShowMinimize { get; set; } = true;
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+
+    [Parameter] public EventCallback<double> LeftChanged { get; set; }
+    [Parameter] public EventCallback<double> TopChanged { get; set; }
+    [Parameter] public EventCallback<double> WidthChanged { get; set; }
+    [Parameter] public EventCallback<double> HeightChanged { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string ComputedStyle
     {
@@ -154,10 +166,38 @@
         return InvokeAsync(StateHasChanged);
     }
 
-    private Task ToggleMaximizeAsync()
+    [JSInvokable]
+    public Task ToggleMaximizeAsync()
     {
+        if (!_maximized)
+        {
+            _savedLeft = Left;
+            _savedTop = Top;
+            _savedWidth = Width;
+            _savedHeight = Height;
+        }
+        else
+        {
+            Left = _savedLeft;
+            Top = _savedTop;
+            Width = _savedWidth;
+            Height = _savedHeight;
+        }
         _maximized = !_maximized;
         return InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task UpdateBoundsAsync(double left, double top, double width, double height)
+    {
+        Left = left;
+        Top = top;
+        Width = width;
+        Height = height;
+        if (LeftChanged.HasDelegate) await LeftChanged.InvokeAsync(left);
+        if (TopChanged.HasDelegate) await TopChanged.InvokeAsync(top);
+        if (WidthChanged.HasDelegate) await WidthChanged.InvokeAsync(width);
+        if (HeightChanged.HasDelegate) await HeightChanged.InvokeAsync(height);
     }
 
     [JSInvokable]

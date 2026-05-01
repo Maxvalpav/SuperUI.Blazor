@@ -1,0 +1,643 @@
+@namespace SuperUI.Components
+@using System.Globalization
+
+<div class="sg-scheduler" style="height: @Height;">
+    <div class="sg-scheduler-header">
+        <div class="sg-scheduler-title">
+            @GetHeaderTitle()
+        </div>
+        <div class="sg-scheduler-actions">
+            <div style="width: 200px;">
+                <SgTextBox Placeholder="Поиск событий..." 
+                           @bind-Value="_searchText" />
+            </div>
+            <div class="sg-scheduler-view-switch">
+                <button class="@GetViewButtonClass(SgSchedulerView.Day)" @onclick="() => SetView(SgSchedulerView.Day)">День</button>
+                <button class="@GetViewButtonClass(SgSchedulerView.Week)" @onclick="() => SetView(SgSchedulerView.Week)">Неделя</button>
+                <button class="@GetViewButtonClass(SgSchedulerView.Month)" @onclick="() => SetView(SgSchedulerView.Month)">Месяц</button>
+                <button class="@GetViewButtonClass(SgSchedulerView.Agenda)" @onclick="() => SetView(SgSchedulerView.Agenda)">Повестка</button>
+            </div>
+            <button class="sg-scheduler-btn" @onclick="PreviousRange">&lt;</button>
+            <button class="sg-scheduler-btn" @onclick="GoToToday">Сегодня</button>
+            <button class="sg-scheduler-btn" @onclick="NextRange">&gt;</button>
+            @if (OnAddEvent.HasDelegate || EnableCreation)
+            {
+                <button class="sg-scheduler-btn sg-scheduler-btn-primary" @onclick="() => HandleAddClick(DateTime.Today)">+ Событие</button>
+            }
+        </div>
+    </div>
+    <div class="sg-scheduler-body">
+        @if (View == SgSchedulerView.Day)
+        {
+            <div class="sg-scheduler-day-view">
+                <div class="sg-scheduler-day-header">
+                    <div class="sg-scheduler-day-title">@GetWeekdayHeader(Value)</div>
+                </div>
+                <div class="sg-scheduler-day-grid">
+                    <div class="sg-scheduler-time-column">
+                        @for (int hour = 0; hour < 24; hour++)
+                        {
+                            <div class="sg-scheduler-time-slot">
+                                <span class="sg-scheduler-time-label">@hour.ToString("00"):00</span>
+                            </div>
+                        }
+                    </div>
+                    <div class="sg-scheduler-events-column">
+                        @for (int hour = 0; hour < 24; hour++)
+                        {
+                            var slotStart = Value.Date.AddHours(hour);
+                            <div class="sg-scheduler-time-slot" 
+                                 @onclick="() => HandleSlotClick(slotStart)"
+                                 ondragover="event.preventDefault();"
+                                 @ondrop="() => HandleDropOnSlot(slotStart)">
+                                @foreach (var ev in GetEventsForSlot(slotStart, slotStart.AddHours(1)))
+                                {
+                                    var tooltipText = $"{ev.Title}\n{ev.Start.ToString("HH:mm")} - {ev.End.ToString("HH:mm")}{(!string.IsNullOrWhiteSpace(ev.Description) ? $"\n{ev.Description}" : "")}";
+                                    <SgTooltip Text="@tooltipText">
+                                        <div class="sg-scheduler-event"
+                                             draggable="true"
+                                             @ondragstart="() => _draggedEvent = ev"
+                                             style="@(string.IsNullOrEmpty(ev.Color) ? "" : $"background-color: {ev.Color}; border-left-color: {ev.Color};")"
+                                             @onclick:stopPropagation="true"
+                                             @onclick="() => HandleEventClick(ev)">
+                                            <span class="sg-scheduler-event-time">@ev.Start.ToString("HH:mm") - @ev.End.ToString("HH:mm")</span>
+                                            <span class="sg-scheduler-event-title">@ev.Title</span>
+                                        </div>
+                                    </SgTooltip>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+        else if (View == SgSchedulerView.Week)
+        {
+            <div class="sg-scheduler-week-view">
+                <div class="sg-scheduler-week-header">
+                    <div class="sg-scheduler-time-header"></div>
+                    @foreach (var date in GetWeekDays())
+                    {
+                        <div class="sg-scheduler-day-header-cell">
+                            <div class="sg-scheduler-weekday">@GetWeekdayHeader(date)</div>
+                            <div class="sg-scheduler-date">@date.Day</div>
+                        </div>
+                    }
+                </div>
+                <div class="sg-scheduler-week-grid">
+                    <div class="sg-scheduler-time-column">
+                        @for (int hour = 0; hour < 24; hour++)
+                        {
+                            <div class="sg-scheduler-time-slot">
+                                <span class="sg-scheduler-time-label">@hour.ToString("00"):00</span>
+                            </div>
+                        }
+                    </div>
+                    @foreach (var date in GetWeekDays())
+                    {
+                        <div class="sg-scheduler-day-column">
+                            @for (int hour = 0; hour < 24; hour++)
+                            {
+                                var slotStart = date.Date.AddHours(hour);
+                                <div class="sg-scheduler-time-slot" 
+                                     @onclick="() => HandleSlotClick(slotStart)"
+                                     ondragover="event.preventDefault();"
+                                     @ondrop="() => HandleDropOnSlot(slotStart)">
+                                    @foreach (var ev in GetEventsForSlot(slotStart, slotStart.AddHours(1)))
+                                    {
+                                        var tooltipText = $"{ev.Title}\n{ev.Start.ToString("HH:mm")} - {ev.End.ToString("HH:mm")}{(!string.IsNullOrWhiteSpace(ev.Description) ? $"\n{ev.Description}" : "")}";
+                                        <SgTooltip Text="@tooltipText">
+                                            <div class="sg-scheduler-event"
+                                                 draggable="true"
+                                                 @ondragstart="() => _draggedEvent = ev"
+                                                 style="@(string.IsNullOrEmpty(ev.Color) ? "" : $"background-color: {ev.Color}; border-left-color: {ev.Color};")"
+                                                 @onclick:stopPropagation="true"
+                                                 @onclick="() => HandleEventClick(ev)">
+                                                <span class="sg-scheduler-event-title">@ev.Title</span>
+                                            </div>
+                                        </SgTooltip>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (View == SgSchedulerView.Month)
+        {
+            <div class="sg-scheduler-month-view">
+                <div class="sg-scheduler-month-weekdays">
+                    @foreach (var day in GetWeekdayNames())
+                    {
+                        <div class="sg-scheduler-weekday">@day</div>
+                    }
+                </div>
+                <div class="sg-scheduler-month-grid">
+                    @foreach (var date in GetDays())
+                    {
+                        <div class="@GetDayClass(date)" 
+                         @onclick="() => SelectDate(date)"
+                         ondragover="event.preventDefault();"
+                         @ondrop="() => HandleDropOnDate(date)">
+                        <div class="sg-scheduler-date-header">
+                                <span class="sg-scheduler-date-value">@date.Day</span>
+                            </div>
+                            <div class="sg-scheduler-date-content">
+                                @foreach (var ev in GetEventsForDate(date))
+                                {
+                                    var tooltipText = $"{ev.Title}{(ev.IsAllDay ? "\nВесь день" : $"\n{ev.Start.ToString("HH:mm")} - {ev.End.ToString("HH:mm")}")}{(!string.IsNullOrWhiteSpace(ev.Description) ? $"\n{ev.Description}" : "")}";
+                                    <SgTooltip Text="@tooltipText">
+                                        <div class="sg-scheduler-event"
+                                             draggable="true"
+                                             @ondragstart="() => _draggedEvent = ev"
+                                             style="@(string.IsNullOrEmpty(ev.Color) ? "" : $"background-color: {ev.Color}; border-left-color: {ev.Color};")"
+                                             @onclick:stopPropagation="true"
+                                             @onclick="() => HandleEventClick(ev)">
+                                            <span class="sg-scheduler-event-title">@ev.Title</span>
+                                        </div>
+                                    </SgTooltip>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else if (View == SgSchedulerView.Agenda)
+        {
+            <div class="sg-scheduler-agenda-view">
+                @if (GetAllEvents().Any())
+                {
+                    @foreach (var ev in GetAllEvents().OrderBy(e => e.Start))
+                    {
+                        <div class="sg-scheduler-agenda-item"
+                             @onclick="() => HandleEventClick(ev)">
+                            <div class="sg-scheduler-agenda-date">
+                                <div class="sg-scheduler-agenda-day">@ev.Start.ToString("dd")</div>
+                                <div class="sg-scheduler-agenda-month">@ev.Start.ToString("MMM", CultureInfo.CurrentCulture)</div>
+                            </div>
+                            <div class="sg-scheduler-agenda-content">
+                                <div class="sg-scheduler-agenda-title">@ev.Title</div>
+                                <div class="sg-scheduler-agenda-time">
+                                    @if (ev.IsAllDay)
+                                    {
+                                        <span>Весь день</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@ev.Start.ToString("HH:mm") - @ev.End.ToString("HH:mm")</span>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(ev.Description))
+                                {
+                                    <div class="sg-scheduler-agenda-desc">@ev.Description</div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div class="sg-scheduler-empty">Нет событий</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+<SgModal @bind-Visible="_isModalVisible" Title="@(_isNewEvent ? "Новое событие" : "Редактировать событие")" Width="500px">
+    <ChildContent>
+        <SgStack Orientation="vertical" Gap="16px">
+            <SgTextBox Label="Название" @bind-Value="_editingEvent.Title" Required="true" />
+            <SgTextBox Label="Описание" @bind-Value="_editingEvent.Description" Multiline="true" Rows="3" />
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <SgDatePicker Label="Дата начала" @bind-Value="_editingStartDate" Required="true" />
+                <SgTimePicker Label="Время начала" @bind-Value="_editingStartTime" />
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <SgDatePicker Label="Дата окончания" @bind-Value="_editingEndDate" Required="true" />
+                <SgTimePicker Label="Время окончания" @bind-Value="_editingEndTime" />
+            </div>
+            <SgCheckBox Label="Весь день" @bind-Value="_editingEvent.IsAllDay" />
+            <SgColorPicker Label="Цвет" @bind-Value="_editingEvent.Color" />
+            <SgTextBox Label="Иконка" @bind-Value="_editingEvent.Icon" Placeholder="SVG или иконка" />
+        </SgStack>
+    </ChildContent>
+    <FooterContent>
+        <div style="display: flex; gap: 8px; justify-content: space-between;">
+            @if (!_isNewEvent && (OnDeleteEvent.HasDelegate || EnableEditing))
+            {
+                <SgButton Text="Удалить" Variant="danger" OnClick="HandleDeleteEvent" />
+            }
+            <div style="display: flex; gap: 8px;">
+                <SgButton Text="Отмена" OnClick="@(() => _isModalVisible = false)" />
+                <SgButton Text="Сохранить" Variant="primary" OnClick="SaveEvent" />
+            </div>
+        </div>
+    </FooterContent>
+</SgModal>
+
+@code {
+    [Parameter]
+    public SgSchedulerView View { get; set; } = SgSchedulerView.Week;
+
+    [Parameter]
+    public DateTime Value { get; set; } = DateTime.Today;
+
+    [Parameter]
+    public EventCallback<DateTime> ValueChanged { get; set; }
+
+    [Parameter]
+    public IEnumerable<SgSchedulerEvent>? Events { get; set; }
+
+    [Parameter]
+    public string Height { get; set; } = "600px";
+
+    [Parameter]
+    public bool EnableCreation { get; set; } = true;
+
+    [Parameter]
+    public bool EnableEditing { get; set; } = true;
+
+    [Parameter]
+    public EventCallback<SgSchedulerEvent> OnAddEvent { get; set; }
+
+    [Parameter]
+    public EventCallback<SgSchedulerEvent> OnUpdateEvent { get; set; }
+
+    [Parameter]
+    public EventCallback<SgSchedulerEvent> OnDeleteEvent { get; set; }
+
+    [Parameter]
+    public EventCallback<SgSchedulerEvent> OnEventClick { get; set; }
+
+    [Parameter]
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (_searchText != value)
+            {
+                _searchText = value;
+                InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private bool _isModalVisible;
+    private bool _isNewEvent;
+    private SgSchedulerEvent _editingEvent = new();
+    private DateTime? _editingStartDate;
+    private TimeSpan? _editingStartTime;
+    private DateTime? _editingEndDate;
+    private TimeSpan? _editingEndTime;
+    private List<SgSchedulerEvent> _internalEvents = new();
+    private SgSchedulerEvent? _draggedEvent;
+    private string _searchText = "";
+
+    protected override void OnInitialized()
+    {
+        if (Events != null)
+        {
+            _internalEvents = Events.ToList();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (Events != null)
+        {
+            _internalEvents = Events.ToList();
+        }
+    }
+
+    private string GetHeaderTitle()
+    {
+        return View switch
+        {
+            SgSchedulerView.Day => Value.ToString("dddd, dd MMMM yyyy", CultureInfo.CurrentCulture),
+            SgSchedulerView.Week => $"{GetWeekStart().ToString("dd MMMM")} - {GetWeekEnd().ToString("dd MMMM yyyy")}",
+            SgSchedulerView.Month => Value.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
+            SgSchedulerView.Agenda => "Повестка дня",
+            _ => ""
+        };
+    }
+
+    private string GetViewButtonClass(SgSchedulerView view)
+    {
+        return View == view ? "sg-scheduler-view-btn sg-scheduler-view-btn-active" : "sg-scheduler-view-btn";
+    }
+
+    private void SetView(SgSchedulerView view)
+    {
+        View = view;
+    }
+
+    private void PreviousRange()
+    {
+        Value = View switch
+        {
+            SgSchedulerView.Day => Value.AddDays(-1),
+            SgSchedulerView.Week => Value.AddDays(-7),
+            SgSchedulerView.Month => Value.AddMonths(-1),
+            _ => Value
+        };
+        ValueChanged.InvokeAsync(Value);
+    }
+
+    private void NextRange()
+    {
+        Value = View switch
+        {
+            SgSchedulerView.Day => Value.AddDays(1),
+            SgSchedulerView.Week => Value.AddDays(7),
+            SgSchedulerView.Month => Value.AddMonths(1),
+            _ => Value
+        };
+        ValueChanged.InvokeAsync(Value);
+    }
+
+    private void GoToToday()
+    {
+        Value = DateTime.Today;
+        ValueChanged.InvokeAsync(Value);
+    }
+
+    private DateTime GetWeekStart()
+    {
+        var dayOfWeek = (int)Value.DayOfWeek;
+        var diff = dayOfWeek == 0 ? -6 : 1 - dayOfWeek;
+        return Value.AddDays(diff).Date;
+    }
+
+    private DateTime GetWeekEnd()
+    {
+        return GetWeekStart().AddDays(6);
+    }
+
+    private List<DateTime> GetWeekDays()
+    {
+        var start = GetWeekStart();
+        return Enumerable.Range(0, 7).Select(i => start.AddDays(i)).ToList();
+    }
+
+    private List<DateTime> GetDays()
+    {
+        var firstDay = new DateTime(Value.Year, Value.Month, 1);
+        var days = new List<DateTime>();
+        
+        var startDay = (int)firstDay.DayOfWeek;
+        startDay = startDay == 0 ? 6 : startDay - 1;
+        
+        for (int i = startDay; i > 0; i--)
+        {
+            days.Add(firstDay.AddDays(-i));
+        }
+        
+        var daysInMonth = DateTime.DaysInMonth(Value.Year, Value.Month);
+        for (int i = 0; i < daysInMonth; i++)
+        {
+            days.Add(firstDay.AddDays(i));
+        }
+        
+        var remaining = 42 - days.Count;
+        for (int i = 0; i < remaining; i++)
+        {
+            days.Add(firstDay.AddDays(daysInMonth + i));
+        }
+        
+        return days;
+    }
+
+    private string GetWeekdayHeader(DateTime date)
+    {
+        return date.ToString("dddd", CultureInfo.CurrentCulture);
+    }
+
+    private List<string> GetWeekdayNames()
+    {
+        return new List<string> { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
+    }
+
+    private string GetDayClass(DateTime date)
+    {
+        var classes = new List<string> { "sg-scheduler-day" };
+        
+        if (date.Month != Value.Month)
+            classes.Add("sg-scheduler-day-other-month");
+        
+        if (date.Date == DateTime.Today)
+            classes.Add("sg-scheduler-day-today");
+        
+        if (date.Date == Value.Date)
+            classes.Add("sg-scheduler-day-selected");
+        
+        return string.Join(" ", classes);
+    }
+
+    private void SelectDate(DateTime date)
+    {
+        Value = date;
+        ValueChanged.InvokeAsync(Value);
+        
+        if (View == SgSchedulerView.Month)
+        {
+            View = SgSchedulerView.Day;
+        }
+    }
+
+    private List<SgSchedulerEvent> FilterEvents(List<SgSchedulerEvent> events)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return events;
+        }
+        
+        var searchLower = _searchText.ToLowerInvariant();
+        return events.Where(e => 
+            (e.Title != null && e.Title.ToLowerInvariant().Contains(searchLower)) ||
+            (e.Description != null && e.Description.ToLowerInvariant().Contains(searchLower))).ToList();
+    }
+
+    private List<SgSchedulerEvent> GetEventsForDate(DateTime date)
+    {
+        var events = _internalEvents.Where(e => 
+            e.Start.Date <= date.Date && 
+            e.End.Date >= date.Date).ToList();
+        return FilterEvents(events);
+    }
+
+    private List<SgSchedulerEvent> GetEventsForSlot(DateTime start, DateTime end)
+    {
+        var events = _internalEvents.Where(e => 
+            e.Start < end && 
+            e.End > start).ToList();
+        return FilterEvents(events);
+    }
+
+    private List<SgSchedulerEvent> GetAllEvents()
+    {
+        return FilterEvents(_internalEvents);
+    }
+
+    private void HandleSlotClick(DateTime slotStart)
+    {
+        if (OnAddEvent.HasDelegate || EnableCreation)
+        {
+            HandleAddClick(slotStart);
+        }
+    }
+
+    private void HandleAddClick(DateTime date)
+    {
+        _isNewEvent = true;
+        _editingEvent = new SgSchedulerEvent
+        {
+            Start = date.Date.AddHours(9),
+            End = date.Date.AddHours(10)
+        };
+        _editingStartDate = _editingEvent.Start.Date;
+        _editingStartTime = _editingEvent.Start.TimeOfDay;
+        _editingEndDate = _editingEvent.End.Date;
+        _editingEndTime = _editingEvent.End.TimeOfDay;
+        _isModalVisible = true;
+    }
+
+    private void HandleEventClick(SgSchedulerEvent ev)
+    {
+        if (OnEventClick.HasDelegate)
+        {
+            OnEventClick.InvokeAsync(ev);
+        }
+        else if (EnableEditing)
+        {
+            _isNewEvent = false;
+            _editingEvent = new SgSchedulerEvent
+            {
+                Id = ev.Id,
+                Title = ev.Title,
+                Description = ev.Description,
+                Start = ev.Start,
+                End = ev.End,
+                IsAllDay = ev.IsAllDay,
+                Color = ev.Color,
+                Icon = ev.Icon,
+                RecurrenceRule = ev.RecurrenceRule,
+                Data = ev.Data
+            };
+            _editingStartDate = _editingEvent.Start.Date;
+            _editingStartTime = _editingEvent.Start.TimeOfDay;
+            _editingEndDate = _editingEvent.End.Date;
+            _editingEndTime = _editingEvent.End.TimeOfDay;
+            _isModalVisible = true;
+        }
+    }
+
+    private async Task SaveEvent()
+    {
+        if (_editingStartDate.HasValue)
+        {
+            _editingEvent.Start = _editingStartDate.Value.Add(_editingStartTime ?? TimeSpan.Zero);
+        }
+        if (_editingEndDate.HasValue)
+        {
+            _editingEvent.End = _editingEndDate.Value.Add(_editingEndTime ?? TimeSpan.Zero);
+        }
+        
+        if (_isNewEvent)
+        {
+            if (OnAddEvent.HasDelegate)
+            {
+                await OnAddEvent.InvokeAsync(_editingEvent);
+            }
+            else
+            {
+                _internalEvents.Add(_editingEvent);
+            }
+        }
+        else
+        {
+            var existing = _internalEvents.FirstOrDefault(e => e.Id == _editingEvent.Id);
+            if (existing != null)
+            {
+                if (OnUpdateEvent.HasDelegate)
+                {
+                    await OnUpdateEvent.InvokeAsync(_editingEvent);
+                }
+                else
+                {
+                    var index = _internalEvents.IndexOf(existing);
+                    _internalEvents[index] = _editingEvent;
+                }
+            }
+        }
+        
+        _isModalVisible = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleDeleteEvent()
+    {
+        if (!_isNewEvent)
+        {
+            if (OnDeleteEvent.HasDelegate)
+            {
+                await OnDeleteEvent.InvokeAsync(_editingEvent);
+            }
+            else
+            {
+                var existing = _internalEvents.FirstOrDefault(e => e.Id == _editingEvent.Id);
+                if (existing != null)
+                {
+                    _internalEvents.Remove(existing);
+                }
+            }
+            _isModalVisible = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleDropOnDate(DateTime date)
+    {
+        if (_draggedEvent == null)
+            return;
+
+        var duration = _draggedEvent.End - _draggedEvent.Start;
+        var newStart = date.Date.Add(_draggedEvent.Start.TimeOfDay);
+        var newEnd = newStart.Add(duration);
+
+        _draggedEvent.Start = newStart;
+        _draggedEvent.End = newEnd;
+
+        if (OnUpdateEvent.HasDelegate)
+        {
+            await OnUpdateEvent.InvokeAsync(_draggedEvent);
+        }
+
+        _draggedEvent = null;
+        StateHasChanged();
+    }
+
+    private async Task HandleDropOnSlot(DateTime slotStart)
+    {
+        if (_draggedEvent == null)
+            return;
+
+        var duration = _draggedEvent.End - _draggedEvent.Start;
+        var newStart = slotStart;
+        var newEnd = newStart.Add(duration);
+
+        _draggedEvent.Start = newStart;
+        _draggedEvent.End = newEnd;
+
+        if (OnUpdateEvent.HasDelegate)
+        {
+            await OnUpdateEvent.InvokeAsync(_draggedEvent);
+        }
+
+        _draggedEvent = null;
+        StateHasChanged();
+    }
+}

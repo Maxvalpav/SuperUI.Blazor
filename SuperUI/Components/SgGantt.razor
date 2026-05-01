@@ -1,6 +1,8 @@
 @namespace SuperUI.Components
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
+@inject SgConfirmService ConfirmService
 
 <div class="sgc-gantt-container @CssClass">
     <div class="sgc-gantt-toolbar">
@@ -8,15 +10,31 @@
             <SgButton Text="@Localizer["NewTask"]" Size="sm" OnClick="OnAddTask">
                 <Icon>+</Icon>
             </SgButton>
+            <SgButton Text="Сохранить базовый план" Size="sm" OnClick="() => SaveBaseline()" Variant="ghost" />
+            <SgButton Text="Очистить базовый план" Size="sm" OnClick="() => ClearBaseline()" Variant="ghost" />
             <SgButton Text="Рассчитать крит. путь" Size="sm" OnClick="CalculateCriticalPath" Variant="ghost" />
         </div>
         <div class="sgc-gantt-toolbar-group">
+            <SgButton Size="sm" OnClick="() => SetView(GanttView.Day)" Variant="@(_currentView == GanttView.Day ? "primary" : "ghost")">
+                День
+            </SgButton>
+            <SgButton Size="sm" OnClick="() => SetView(GanttView.Week)" Variant="@(_currentView == GanttView.Week ? "primary" : "ghost")">
+                Неделя
+            </SgButton>
+            <SgButton Size="sm" OnClick="() => SetView(GanttView.Month)" Variant="@(_currentView == GanttView.Month ? "primary" : "ghost")">
+                Месяц
+            </SgButton>
+            <div style="width: 1px; height: 24px; background: var(--sui-border); margin: 0 8px;"></div>
             <SgButton Size="sm" OnClick="() => ZoomAsync(-4)" Disabled="@(DayWidth <= 12)">
                 <Icon>−</Icon>
             </SgButton>
             <span class="sgc-gantt-zoom-label">@Localizer["Scale"]</span>
             <SgButton Size="sm" OnClick="() => ZoomAsync(4)" Disabled="@(DayWidth >= 64)">
                 <Icon>+</Icon>
+            </SgButton>
+            <div style="width: 1px; height: 24px; background: var(--sui-border); margin: 0 8px;"></div>
+            <SgButton Size="sm" OnClick="ExportToPng" Variant="ghost">
+                <Icon>📷</Icon>
             </SgButton>
         </div>
     </div>
@@ -100,8 +118,9 @@
                             var left = GetTaskLeft(task);
                             var width = GetTaskWidth(task);
                             var taskBarColor = task.Color ?? "var(--sui-accent)";
+                            var isOverdue = !task.IsMilestone && task.End < DateTime.Today && task.Progress < 1;
                             
-                            <div class="sgc-gantt-task-row @(_hoveredTaskId == task.Id ? "sgc-hovered" : "") @(task.IsCritical ? "sgc-critical" : "")"
+                            <div class="sgc-gantt-task-row @(_hoveredTaskId == task.Id ? "sgc-hovered" : "") @(task.IsCritical ? "sgc-critical" : "") @(isOverdue ? "sgc-overdue" : "")"
                                  @onpointerenter="() => _hoveredTaskId = task.Id"
                                  @onpointerleave="() => _hoveredTaskId = null">
                                 
@@ -113,27 +132,29 @@
                                     <div class="sgc-gantt-baseline-bar" style="left: @(bLeft)px; width: @(bWidth)px;"></div>
                                 }
 
-                                <div class="sgc-gantt-task-bar @(task.IsMilestone ? "sgc-gantt-milestone" : null) @(_draggingTask == task ? "sgc-dragging" : "")" 
-                                     style="left: @(left)px; width: @(width)px; background-color: @taskBarColor"
-                                     @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.Move))">
-                                    @if (!task.IsMilestone)
-                                    {
-                                        <div class="sgc-gantt-resize-handle sgc-left" 
-                                             @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeStart))"
-                                             @onpointerdown:stopPropagation="true"></div>
+                                <SgTooltip Text="@GetTaskTooltipText(task)" Placement="top">
+                                    <div class="sgc-gantt-task-bar @(task.IsMilestone ? "sgc-gantt-milestone" : null) @(_draggingTask == task ? "sgc-dragging" : "")" 
+                                         style="left: @(left)px; width: @(width)px; background-color: @taskBarColor"
+                                         @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.Move))">
+                                        @if (!task.IsMilestone)
+                                        {
+                                            <div class="sgc-gantt-resize-handle sgc-left" 
+                                                 @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeStart))"
+                                                 @onpointerdown:stopPropagation="true"></div>
 
-                                        <div class="sgc-gantt-task-progress" style="width: @(task.Progress * 100)%"></div>
-                                        <span class="sgc-gantt-task-label">@((task.Progress * 100).ToString("0"))%</span>
+                                            <div class="sgc-gantt-task-progress" style="width: @(task.Progress * 100)%"></div>
+                                            <span class="sgc-gantt-task-label">@((task.Progress * 100).ToString("0"))%</span>
 
-                                        <div class="sgc-gantt-resize-handle sgc-right" 
-                                             @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeEnd))"
-                                             @onpointerdown:stopPropagation="true"></div>
-                                    }
-                                    else
-                                    {
-                                        <span class="sgc-gantt-milestone-label">◆</span>
-                                    }
-                                </div>
+                                            <div class="sgc-gantt-resize-handle sgc-right" 
+                                                 @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeEnd))"
+                                                 @onpointerdown:stopPropagation="true"></div>
+                                        }
+                                        else
+                                        {
+                                            <span class="sgc-gantt-milestone-label">◆</span>
+                                        }
+                                    </div>
+                                </SgTooltip>
                             </div>
                         }
                     </div>
@@ -164,12 +185,31 @@
                           ValueChanged="@(id => _editingTask.ParentId = id)"
                           Placeholder="@Localizer["SelectParent"]" AllowClear="true" />
 
-                <SgSelect TValue="string" Label="@Localizer["DependsOn"]" 
-                          Items="@Tasks.Where(t => t.Id != _editingTask.Id).Select(t => t.Id).ToList()"
-                          LabelSelector="@(id => Tasks.FirstOrDefault(t => t.Id == id)?.Name ?? "")"
-                          Value="@(_editingTask.Dependencies.FirstOrDefault())"
-                          ValueChanged="@(id => { _editingTask.Dependencies.Clear(); if (!string.IsNullOrEmpty(id)) _editingTask.Dependencies.Add(id); })"
-                          Placeholder="@Localizer["SelectTask"]" AllowClear="true" />
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                    <label class="sg-label">@Localizer["DependsOn"]</label>
+                    <div class="sg-dependencies-editor">
+                        @if (_editingTask != null)
+                        {
+                            @foreach (var depId in _editingTask.Dependencies.ToList())
+                            {
+                                var depTask = Tasks.FirstOrDefault(t => t.Id == depId);
+                                if (depTask != null)
+                                {
+                                    <span class="sg-dependency-tag">
+                                        @depTask.Name
+                                        <button type="button" class="sg-dependency-remove"
+                                                @onclick="@(() => _editingTask.Dependencies.Remove(depId))">×</button>
+                                    </span>
+                                }
+                            }
+                        }
+                        <SgSelect TValue="string" 
+                                  Items="@Tasks.Where(t => t.Id != _editingTask?.Id && !_editingTask.Dependencies.Contains(t.Id)).Select(t => t.Id).ToList()"
+                                  LabelSelector="@(id => Tasks.FirstOrDefault(t => t.Id == id)?.Name ?? "")"
+                                  ValueChanged="@(id => { if (!string.IsNullOrEmpty(id) && _editingTask != null) _editingTask.Dependencies.Add(id); })"
+                                  Placeholder="Добавить зависимость..." AllowClear="false" />
+                    </div>
+                </div>
             </div>
         }
     </ChildContent>
@@ -190,6 +230,7 @@
     private int _totalDays;
     private List<(string Name, int Days)> _months = new();
     private int TimelineWidth => _totalDays * DayWidth;
+    private GanttView _currentView = GanttView.Day;
 
     // Interaction state
     private SgGanttTask? _draggingTask;
@@ -206,6 +247,7 @@
     private bool _isNewTask;
 
     private enum GanttInteractType { Move, ResizeStart, ResizeEnd }
+    private enum GanttView { Day, Week, Month }
 
     private readonly Dictionary<string, (double Left, double Width)> _posCache = new();
 
@@ -293,6 +335,55 @@
             _months.Add((monthStart.ToString("MMMM yyyy"), days));
             current = monthEnd.AddDays(1);
         }
+    }
+
+    private void SetView(GanttView view)
+    {
+        _currentView = view;
+        DayWidth = view switch
+        {
+            GanttView.Day => 24,
+            GanttView.Week => 48,
+            GanttView.Month => 12,
+            _ => 24
+        };
+        _posCache.Clear();
+        StateHasChanged();
+    }
+
+    private void SaveBaseline()
+    {
+        foreach (var task in Tasks)
+        {
+            task.BaselineStart = task.Start;
+            task.BaselineEnd = task.End;
+        }
+        TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private void ClearBaseline()
+    {
+        foreach (var task in Tasks)
+        {
+            task.BaselineStart = null;
+            task.BaselineEnd = null;
+        }
+        TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private async Task ExportToPng()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", @"
+                const container = document.querySelector('.sgc-gantt-container');
+                if (!container) return;
+                
+                // Simple export using canvas (would need html2canvas for full export)
+                alert('Для полноценного экспорта в PNG рекомендуется подключить библиотеку html2canvas');
+            ");
+        }
+        catch { }
     }
 
     private async Task ZoomAsync(int delta)
@@ -409,17 +500,27 @@
 
     private async Task OnDeleteTask(SgGanttTask task)
     {
-        Tasks.Remove(task);
-        _posCache.Remove(task.Id);
-        
-        // Удаляем зависимости от этой задачи у других задач
-        foreach (var t in Tasks)
-        {
-            t.Dependencies.Remove(task.Id);
-        }
+        var confirmed = await ConfirmService.ConfirmAsync(
+            message: $"Вы уверены, что хотите удалить задачу \"{task.Name}\"? Это действие нельзя отменить.",
+            title: "Удалить задачу?",
+            variant: "danger",
+            confirmText: "Удалить",
+            cancelText: "Отмена");
 
-        CalculateTimeline();
-        await TasksChanged.InvokeAsync(Tasks);
+        if (confirmed)
+        {
+            Tasks.Remove(task);
+            _posCache.Remove(task.Id);
+            
+            // Удаляем зависимости от этой задачи у других задач
+            foreach (var t in Tasks)
+            {
+                t.Dependencies.Remove(task.Id);
+            }
+
+            CalculateTimeline();
+            await TasksChanged.InvokeAsync(Tasks);
+        }
     }
 
     private async Task SaveTask()
@@ -469,6 +570,29 @@
     private bool IsWeekend(DateTime date) => date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday;
 
     private bool IsTodayInRange(DateTime start, DateTime end) => DateTime.Today >= start.Date && DateTime.Today <= end.Date;
+
+    private string GetTaskTooltipText(SgGanttTask task)
+    {
+        var duration = (task.End - task.Start).Days + 1;
+        var tooltip = $"{task.Name}\n";
+        tooltip += $"Начало: {task.Start:dd.MM.yyyy}\n";
+        tooltip += $"Окончание: {task.End:dd.MM.yyyy}\n";
+        tooltip += $"Длительность: {duration} дн.\n";
+        tooltip += $"Прогресс: {(task.Progress * 100):0}%";
+        
+        if (task.BaselineStart.HasValue && task.BaselineEnd.HasValue)
+        {
+            var baselineDuration = (task.BaselineEnd.Value - task.BaselineStart.Value).Days + 1;
+            tooltip += $"\nБазовый план: {task.BaselineStart.Value:dd.MM.yyyy} - {task.BaselineEnd.Value:dd.MM.yyyy}";
+        }
+        
+        if (task.IsCritical)
+        {
+            tooltip += "\n⚠️ Критический путь";
+        }
+        
+        return tooltip;
+    }
 
     private double GetTodayLeft() => (DateTime.Today - _startDate).TotalDays * DayWidth;
 

@@ -68,6 +68,21 @@
 - Интерактивные подсказки
 - Масштабирование по осям
 
+### Area - Площадной график
+Для визуализации объемов и накопительных данных.
+
+```razor
+<SgChart TItem="DataPoint" 
+         ChartType="SgChartType.Area" 
+         Data="@data" />
+```
+
+**Особенности:**
+- Заполненная область под линией
+- Множественные наборы данных
+- Кастомные цвета
+- Прозрачность
+
 ### Bar - Столбчатый график
 Для сравнения категорий и дискретных значений.
 
@@ -82,6 +97,21 @@
 - Множественные наборы данных
 - Кастомные цвета
 - Интерактивные элементы
+
+### BarHorizontal - Горизонтальные столбцы
+Для сравнения категорий с длинными метками.
+
+```razor
+<SgChart TItem="DataPoint" 
+         ChartType="SgChartType.BarHorizontal" 
+         Data="@data" />
+```
+
+**Особенности:**
+- Горизонтальные столбцы
+- Лучшая читаемость длинных меток
+- Множественные наборы данных
+- Кастомные цвета
 
 ### Pie - Круговой график
 Для отображения пропорций и процентов.
@@ -182,6 +212,11 @@ public class SgChartOptions
     public bool EnableDecimation { get; set; } = true;   // Включить оптимизацию
     public int DecimationThreshold { get; set; } = 10000; // Порог для оптимизации
     public int? DecimationTargetPoints { get; set; } = 1000; // Целевое количество точек
+    
+    // Кастомизация цветов
+    public string BorderColor { get; set; } = "#2196f3"; // Цвет границ
+    public string BackgroundColor { get; set; } = "rgba(33, 150, 243, 0.5)"; // Цвет фона
+    public List<string>? Colors { get; set; }              // Палитра цветов для Pie/Doughnut
 }
 ```
 

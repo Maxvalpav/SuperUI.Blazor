@@ -1,0 +1,71 @@
+@namespace SuperUI.Components
+@inject IJSRuntime JS
+
+<SgSelect TValue="string" 
+          Items="_languages"
+          LabelSelector="GetLanguageLabel"
+          @bind-Value="CurrentLanguage"
+          Placeholder="Выберите язык"
+          Style="width: 150px;" />
+
+@code {
+    private readonly List<string> _languages = new() { "en-US", "ru-RU" };
+    private string _currentLanguage = "ru-RU";
+    private bool _initialized;
+
+    private string CurrentLanguage
+    {
+        get => _currentLanguage;
+        set
+        {
+            if (_currentLanguage != value && _initialized)
+            {
+                _currentLanguage = value;
+                _ = ApplyLanguageAsync(true);
+            }
+            else
+            {
+                _currentLanguage = value;
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !_initialized)
+        {
+            _initialized = true;
+            var savedLang = await JS.InvokeAsync<string>("localStorage.getItem", "sui-language");
+            if (!string.IsNullOrEmpty(savedLang) && _languages.Contains(savedLang))
+            {
+                _currentLanguage = savedLang;
+                await ApplyLanguageAsync(false);
+            }
+            StateHasChanged();
+        }
+    }
+
+    private string GetLanguageLabel(string lang)
+    {
+        return lang switch
+        {
+            "en-US" => "English",
+            "ru-RU" => "Русский",
+            _ => lang
+        };
+    }
+
+    private async Task ApplyLanguageAsync(bool reload)
+    {
+        var culture = new System.Globalization.CultureInfo(_currentLanguage);
+        System.Globalization.CultureInfo.CurrentCulture = culture;
+        System.Globalization.CultureInfo.CurrentUICulture = culture;
+        
+        await JS.InvokeVoidAsync("localStorage.setItem", "sui-language", _currentLanguage);
+        
+        if (reload)
+        {
+            await JS.InvokeVoidAsync("location.reload");
+        }
+    }
+}
