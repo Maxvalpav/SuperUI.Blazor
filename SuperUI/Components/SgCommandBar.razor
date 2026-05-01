@@ -1,0 +1,270 @@
+@namespace SuperUI.Components
+@inject IPermissionService PermissionService
+@inject ISuperUILocalizer Localizer
+@implements IAsyncDisposable
+
+<div class="sgc-cmdbar @CssClass" role="toolbar" aria-label="@AriaLabel" @ref="_elementRef">
+    <div class="sgc-cmdbar-primary" @ref="_primaryRef">
+        @foreach (var item in _visibleItems.Where(i => !i.IsSeparator))
+        {
+            @RenderItem(item)
+        }
+    </div>
+    
+    @if (_overflowItems.Any())
+    {
+        <div class="sgc-cmdbar-overflow">
+            <button type="button"
+                    class="sgc-cmdbar-btn sgc-cmdbar-overflow-btn"
+                    @onclick="ToggleOverflow"
+                    aria-expanded="@_overflowOpen"
+                    aria-haspopup="true"
+                    title="@Localizer["MoreCommands"]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="5" r="2"/>
+                    <circle cx="12" cy="12" r="2"/>
+                    <circle cx="12" cy="19" r="2"/>
+                </svg>
+            </button>
+            
+            @if (_overflowOpen)
+            {
+                <div class="sgc-cmdbar-overflow-menu">
+                    @foreach (var item in _overflowItems)
+                    {
+                        @RenderOverflowItem(item)
+                    }
+                </div>
+            }
+        </div>
+    }
+    
+    @if (FarContent != null)
+    {
+        <div class="sgc-cmdbar-far">
+            @FarContent
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference _elementRef;
+    private ElementReference _primaryRef;
+    private List<CommandBarItem> _allItems = new();
+    private List<CommandBarItem> _visibleItems = new();
+    private List<CommandBarItem> _overflowItems = new();
+    private bool _overflowOpen;
+    private DotNetObjectReference<SgCommandBar>? _dotNetRef;
+    private IJSObjectReference? _jsModule;
+    
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    /// <summary>
+    /// Gets or sets the collection of command items to display.
+    /// </summary>
+    [Parameter] public IEnumerable<CommandBarItem> Items { get; set; } = Array.Empty<CommandBarItem>();
+
+    /// <summary>
+    /// Gets or sets the custom content to render on the right side of the command bar.
+    /// </summary>
+    [Parameter] public RenderFragment? FarContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the ARIA label for the toolbar.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the command bar should be sticky at the top. Default is false.
+    /// </summary>
+    [Parameter] public bool Sticky { get; set; }
+
+    /// <summary>
+    /// Gets or sets the minimum width in pixels before items move to overflow. Default is 40.
+    /// </summary>
+    [Parameter] public int ItemMinWidth { get; set; } = 40;
+
+    protected override void OnParametersSet()
+    {
+        _allItems = Items.ToList();
+        UpdateVisibleItems();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-components.js");
+            await _jsModule.InvokeVoidAsync("initCommandBar", _elementRef, _dotNetRef);
+        }
+    }
+
+    [JSInvokable]
+    public void UpdateOverflow(double availableWidth)
+    {
+        var width = (int)Math.Max(0, availableWidth);
+        var totalItems = _allItems.Where(i => i.Visible && !i.IsSeparator).ToList();
+        var visibleCount = CalculateVisibleCount(totalItems, width);
+        
+        _visibleItems = totalItems.Take(visibleCount).ToList();
+        _overflowItems = totalItems.Skip(visibleCount).ToList();
+        
+        StateHasChanged();
+    }
+
+    private int CalculateVisibleCount(List<CommandBarItem> items, int availableWidth)
+    {
+        if (availableWidth <= 0) return items.Count;
+        
+        var widthUsed = 0;
+        var count = 0;
+        
+        foreach (var item in items.OrderByDescending(i => i.Priority).ThenBy(i => items.IndexOf(i)))
+        {
+            var itemWidth = EstimateItemWidth(item);
+            if (widthUsed + itemWidth <= availableWidth - (_overflowItems.Any() ? 40 : 0))
+            {
+                widthUsed += itemWidth;
+                count++;
+            }
+            else
+            {
+                break;
+            }
+        }
+        
+        return count;
+    }
+
+    private int EstimateItemWidth(CommandBarItem item)
+    {
+        if (item.Content != null) return 80;
+        var baseWidth = 32;
+        if (!string.IsNullOrEmpty(item.Icon)) baseWidth += 20;
+        if (!string.IsNullOrEmpty(item.Text)) baseWidth += item.Text.Length * 7;
+        return baseWidth;
+    }
+
+    private void UpdateVisibleItems()
+    {
+        _visibleItems = _allItems.Where(i => i.Visible && !i.IsSeparator).ToList();
+    }
+
+    private void ToggleOverflow()
+    {
+        _overflowOpen = !_overflowOpen;
+    }
+
+    private async Task HandleItemClick(CommandBarItem item)
+    {
+        if (item.Disabled) return;
+        
+        if (item.IsToggle)
+        {
+            item.IsPressed = !item.IsPressed;
+        }
+        
+        if (item.OnClick.HasDelegate)
+        {
+            await item.OnClick.InvokeAsync(item);
+        }
+        
+        if (item.HasSubmenu)
+        {
+            // Submenu handling would be here
+        }
+        
+        _overflowOpen = false;
+    }
+
+    private RenderFragment RenderItem(CommandBarItem item) => __builder =>
+    {
+        if (item.IsSeparator)
+        {
+            <span class="sgc-cmdbar-sep"></span>
+            return;
+        }
+
+        if (item.Content != null)
+        {
+            <div class="sgc-cmdbar-custom">@item.Content</div>
+            return;
+        }
+
+        var cssClass = "sgc-cmdbar-btn";
+        if (item.IsToggle && item.IsPressed) cssClass += " sgc-pressed";
+        if (item.Disabled) cssClass += " sgc-disabled";
+        if (item.HasSubmenu) cssClass += " sgc-has-submenu";
+        if (string.IsNullOrEmpty(item.Text)) cssClass += " sgc-icon-only";
+
+        <button type="button"
+                class="@cssClass"
+                disabled="@item.Disabled"
+                title="@(item.Title ?? item.Shortcut)"
+                @onclick="() => HandleItemClick(item)"
+                aria-pressed="@(item.IsToggle ? item.IsPressed.ToString().ToLower() : null)">
+            @if (!string.IsNullOrEmpty(item.Icon))
+            {
+                <span class="sgc-cmdbar-icon">@((MarkupString)item.Icon)</span>
+            }
+            @if (!string.IsNullOrEmpty(item.Text))
+            {
+                <span class="sgc-cmdbar-text">@item.Text</span>
+            }
+            @if (item.HasSubmenu)
+            {
+                <svg class="sgc-cmdbar-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            }
+        </button>
+    };
+
+    private RenderFragment RenderOverflowItem(CommandBarItem item) => __builder =>
+    {
+        if (item.IsSeparator)
+        {
+            <div class="sgc-cmdbar-overflow-sep"></div>
+            return;
+        }
+
+        <button type="button"
+                class="sgc-cmdbar-overflow-item @(item.Disabled ? "sgc-disabled" : "")"
+                disabled="@item.Disabled"
+                @onclick="() => HandleItemClick(item)">
+            @if (!string.IsNullOrEmpty(item.Icon))
+            {
+                <span class="sgc-cmdbar-overflow-icon">@((MarkupString)item.Icon)</span>
+            }
+            else
+            {
+                <span class="sgc-cmdbar-overflow-placeholder"></span>
+            }
+            <span class="sgc-cmdbar-overflow-text">@item.Text</span>
+            @if (!string.IsNullOrEmpty(item.Shortcut))
+            {
+                <kbd class="sgc-cmdbar-shortcut">@item.Shortcut</kbd>
+            }
+        </button>
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("disposeCommandBar", _elementRef);
+                await _jsModule.DisposeAsync();
+            }
+            catch { }
+        }
+        _dotNetRef?.Dispose();
+    }
+}
