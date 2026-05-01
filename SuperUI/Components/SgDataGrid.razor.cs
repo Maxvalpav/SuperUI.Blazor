@@ -1624,30 +1624,38 @@ private static object? ConvertFromString(string? text, Type type)
     {
         try
         {
-            await Task.Delay(InputDebounceMs, ct);
+            try
+            {
+                await Task.Delay(InputDebounceMs, ct);
+            }
+            catch (TaskCanceledException)
+            {
+                return;
+            }
+
+            if (_disposing || ct.IsCancellationRequested)
+                return;
+
+            applyState();
+            try
+            {
+                await SaveStateAsync();
+            }
+            catch (Exception ex) when (ex is JSException or TaskCanceledException or ObjectDisposedException)
+            {
+                // SaveStateAsync already swallows JS errors, but guard the await itself.
+            }
+
+            if (_disposing || ct.IsCancellationRequested)
+                return;
+
+            await InvokeAsync(StateHasChanged);
         }
-        catch (TaskCanceledException)
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
         {
-            return;
+            Console.Error.WriteLine($"[SgDataGrid.DebounceApplyAsync] {ex}");
         }
-
-        if (_disposing || ct.IsCancellationRequested)
-            return;
-
-        applyState();
-        try
-        {
-            await SaveStateAsync();
-        }
-        catch (Exception ex) when (ex is JSException or TaskCanceledException or ObjectDisposedException)
-        {
-            // SaveStateAsync already swallows JS errors, but guard the await itself.
-        }
-
-        if (_disposing || ct.IsCancellationRequested)
-            return;
-
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ToggleSortAsync(string key, bool multi)

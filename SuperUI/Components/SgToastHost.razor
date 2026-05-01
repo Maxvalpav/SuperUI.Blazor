@@ -46,7 +46,8 @@
 
     private void OnAdd(SgToast t)
     {
-        if (!_disposed) _ = AddAsync(t);
+        if (_disposed) return;
+        _ = SafeAsync(() => AddAsync(t), nameof(OnAdd));
     }
 
     private async Task AddAsync(SgToast t)
@@ -89,7 +90,8 @@
 
     private void OnRemove(string id)
     {
-        if (!_disposed) _ = RemoveAsync(id);
+        if (_disposed) return;
+        _ = SafeAsync(() => RemoveAsync(id), nameof(OnRemove));
     }
 
     private async Task RemoveAsync(string id)
@@ -118,10 +120,20 @@
         if (_queue.Count > 0)
         {
             var next = _queue.Dequeue();
-            _ = AddAsync(next);
+            _ = SafeAsync(() => AddAsync(next), nameof(RemoveAsync));
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private static async Task SafeAsync(Func<Task> action, string source)
+    {
+        try { await action(); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SgToastHost.{source}] {ex}");
+        }
     }
 
     private static string VariantClass(string v) => v switch

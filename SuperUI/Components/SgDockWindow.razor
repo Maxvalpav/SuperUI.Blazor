@@ -55,6 +55,10 @@
     private double _savedTop;
     private double _savedWidth;
     private double _savedHeight;
+    private double _lastParentLeft = double.NaN;
+    private double _lastParentTop = double.NaN;
+    private double _lastParentWidth = double.NaN;
+    private double _lastParentHeight = double.NaN;
 
     [Parameter] public bool Visible { get; set; } = true;
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
@@ -105,7 +109,37 @@
     protected override void OnInitialized()
     {
         ZIndex.TopOwnerChanged += HandleTopOwnerChanged;
+        _lastParentLeft = Left;
+        _lastParentTop = Top;
+        _lastParentWidth = Width;
+        _lastParentHeight = Height;
     }
+
+    // Track parent-supplied parameter values separately from JS-driven runtime state.
+    // Without this, any parent re-render (e.g. typing in an unrelated input) resets
+    // Left/Top back to the literal values supplied in markup, undoing user drag/resize.
+    protected override void OnParametersSet()
+    {
+        var leftChangedByParent = !double.IsNaN(_lastParentLeft) && Left != _lastParentLeft;
+        var topChangedByParent = !double.IsNaN(_lastParentTop) && Top != _lastParentTop;
+        var widthChangedByParent = !double.IsNaN(_lastParentWidth) && Width != _lastParentWidth;
+        var heightChangedByParent = !double.IsNaN(_lastParentHeight) && Height != _lastParentHeight;
+
+        if (!leftChangedByParent && _runtimeLeft is { } rl) Left = rl;
+        if (!topChangedByParent && _runtimeTop is { } rt) Top = rt;
+        if (!widthChangedByParent && _runtimeWidth is { } rw) Width = rw;
+        if (!heightChangedByParent && _runtimeHeight is { } rh) Height = rh;
+
+        _lastParentLeft = Left;
+        _lastParentTop = Top;
+        _lastParentWidth = Width;
+        _lastParentHeight = Height;
+    }
+
+    private double? _runtimeLeft;
+    private double? _runtimeTop;
+    private double? _runtimeWidth;
+    private double? _runtimeHeight;
 
     private void HandleTopOwnerChanged(object? topOwner)
     {
@@ -194,6 +228,14 @@
         Top = top;
         Width = width;
         Height = height;
+        _runtimeLeft = left;
+        _runtimeTop = top;
+        _runtimeWidth = width;
+        _runtimeHeight = height;
+        _lastParentLeft = left;
+        _lastParentTop = top;
+        _lastParentWidth = width;
+        _lastParentHeight = height;
         if (LeftChanged.HasDelegate) await LeftChanged.InvokeAsync(left);
         if (TopChanged.HasDelegate) await TopChanged.InvokeAsync(top);
         if (WidthChanged.HasDelegate) await WidthChanged.InvokeAsync(width);

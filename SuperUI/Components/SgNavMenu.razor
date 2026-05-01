@@ -2,7 +2,7 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<nav class="sgc-nav @(_mini ? "sgc-nav-mini" : "") @(_collapsed ? "sgc-nav-collapsed" : "") @CssClass">
+<nav class="sgc-nav @(_mini ? "sgc-nav-mini" : "") @(_collapsed ? "sgc-nav-collapsed" : "") @(_mobileOpen ? "sgc-nav-mobile-open" : "") @CssClass">
     <div class="sgc-nav-header">
         @if (!_mini)
         {
@@ -32,7 +32,7 @@
         <button type="button" class="sgc-nav-collapse-btn" @onclick="ToggleMiniAsync" title="@collapseTitle">
             @(_mini ? "›" : "‹")
         </button>
-        <button type="button" class="sgc-nav-toggle" @onclick="ToggleAsync" aria-label="Меню">
+        <button type="button" class="sgc-nav-toggle" @onclick="ToggleMobileAsync" aria-label="Меню">
             <span></span><span></span><span></span>
         </button>
     </div>
@@ -51,7 +51,11 @@
     }
 </nav>
 
-@if (_collapsed)
+@if (_mobileOpen)
+{
+    <div class="sgc-nav-backdrop sgc-show" @onclick="CloseMobileAsync"></div>
+}
+else if (_collapsed)
 {
     <div class="sgc-nav-backdrop" @onclick="ToggleAsync"></div>
 }
@@ -59,6 +63,7 @@
 @code {
     private bool _mini = false;
     private bool _collapsed = false;
+    private bool _mobileOpen = false;
 
     [Parameter] public string? Title { get; set; }
     [Parameter] public RenderFragment? LogoContent { get; set; }
@@ -81,6 +86,19 @@
     public Task CollapseAsync()
     {
         _collapsed = false;
+        _mobileOpen = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public Task ToggleMobileAsync()
+    {
+        _mobileOpen = !_mobileOpen;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public Task CloseMobileAsync()
+    {
+        _mobileOpen = false;
         return InvokeAsync(StateHasChanged);
     }
 }
