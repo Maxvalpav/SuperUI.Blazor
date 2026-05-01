@@ -3,7 +3,7 @@
 @inject ISuperUILocalizer Localizer
 @inject IJSRuntime JS
 
-<div class="sgc-pager @CssClass">
+<div class="sgc-pager @(Compact ? "sgc-compact" : "") @CssClass">
     <button class="sgc-pager-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(1)" title="@Localizer["First"]">«</button>
     <button class="sgc-pager-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(Page - 1)" title="@Localizer["Previous"]">‹</button>
     @foreach (var p in BuildPages())
@@ -29,11 +29,22 @@
     {
         <div class="sgc-pager-jump">
             <span>@Localizer["GoTo"]</span>
-            <input type="number" 
-                   class="sgc-pager-input" 
-                   value="@Page" 
+            <input type="number"
+                   class="sgc-pager-input"
+                   value="@Page"
                    @onchange="OnJumpChanged"
                    min="1" max="@TotalPages" />
+        </div>
+    }
+    @if (PageSizeOptions?.Any() == true)
+    {
+        <div class="sgc-pager-size">
+            <select value="@PageSize" @onchange="OnPageSizeChangedAsync">
+                @foreach (var size in PageSizeOptions)
+                {
+                    <option value="@size">@Localizer.GetString("PerPage", size)</option>
+                }
+            </select>
         </div>
     }
 </div>
@@ -89,6 +100,23 @@
     /// </summary>
     [Parameter] public bool ScrollToTop { get; set; }
 
+    /// <summary>
+    /// Gets or sets the available page size options for a dropdown.
+    /// When set, displays a page size selector.
+    /// </summary>
+    [Parameter] public IEnumerable<int>? PageSizeOptions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the page size changes.
+    /// </summary>
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to use compact mode (shows fewer page buttons).
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
+
     private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalItems / Math.Max(1, PageSize)));
 
     private async Task GoAsync(int p)
@@ -100,7 +128,12 @@
 
         if (ScrollToTop)
         {
-            try { await JS.InvokeVoidAsync("window.scrollTo", 0, 0); } catch { }
+            try
+            {
+                await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+            }
+            catch (InvalidOperationException) { /* Prerendering - JS not available */ }
+            catch (JSException) { }
         }
     }
 
@@ -109,6 +142,16 @@
         if (int.TryParse(e.Value?.ToString(), out var p))
         {
             await GoAsync(p);
+        }
+    }
+
+    private async Task OnPageSizeChangedAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size))
+        {
+            PageSize = size;
+            await GoAsync(1); // Reset to first page when changing page size
+            if (PageSizeChanged.HasDelegate) await PageSizeChanged.InvokeAsync(size);
         }
     }
 

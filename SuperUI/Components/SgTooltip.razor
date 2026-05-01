@@ -3,12 +3,13 @@
 @inject IJSRuntime JS
 @inject SgZIndexService ZIndex
 
-<span class="sgc-tt-wrap @CssClass" 
+<span class="sgc-tt-wrap @CssClass"
       @ref="_triggerRef"
-      @onmouseenter="ShowAsync" 
-      @onmouseleave="HideAsync"
-      @onfocus="ShowAsync"
-      @onblur="HideAsync">
+      @onmouseenter="OnMouseEnterAsync"
+      @onmouseleave="OnMouseLeaveAsync"
+      @onfocus="OnFocusAsync"
+      @onblur="OnBlurAsync"
+      @onclick="OnClickAsync">
     @ChildContent
     @if (_visible)
     {
@@ -46,70 +47,166 @@
     /// Gets or sets the preferred placement of the tooltip: "top", "bottom", "left", "right". Default is "top".
     /// </summary>
     [Parameter] public string Placement { get; set; } = "top";
-    
+
+    /// <summary>
+    /// Gets or sets the trigger behavior for the tooltip.
+    /// Supported values: "hover", "focus", "click", "manual". Default is "hover".
+    /// </summary>
+    [Parameter] public string Trigger { get; set; } = "hover";
+
+    /// <summary>
+    /// Gets or sets the delay in milliseconds before showing the tooltip.
+    /// Default is 0 (no delay).
+    /// </summary>
+    [Parameter] public int OpenDelay { get; set; }
+
+    /// <summary>
+    /// Gets or sets the delay in milliseconds before hiding the tooltip.
+    /// Default is 0 (no delay).
+    /// </summary>
+    [Parameter] public int CloseDelay { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the tooltip is disabled.
+    /// Default is false.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    private System.Timers.Timer? _delayTimer;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed || !_visible) return;
+        if (_isDisposed) return;
 
-        try
+        if (firstRender)
         {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-tooltip.js");
-            if (_isDisposed) return;
+            try
+            {
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-tooltip.js");
+                if (_isDisposed) return;
 
-            _self ??= DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync("attach", _triggerRef, _tooltipRef, Placement, _self);
+                _self ??= DotNetObjectReference.Create(this);
+                await _module.InvokeVoidAsync("attach", _triggerRef, _tooltipRef, Placement, _self);
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
         }
-        catch (JSException) { }
-        catch (TaskCanceledException) { }
     }
 
-    private async Task ShowAsync()
+    private async Task OnMouseEnterAsync() => await HandleTriggerAsync("hover", true);
+    private async Task OnMouseLeaveAsync() => await HandleTriggerAsync("hover", false);
+    private async Task OnFocusAsync() => await HandleTriggerAsync("focus", true);
+    private async Task OnBlurAsync() => await HandleTriggerAsync("focus", false);
+    private async Task OnClickAsync() => await HandleTriggerAsync("click", !_visible);
+
+    private async Task HandleTriggerAsync(string triggerType, bool show)
     {
-        if (_isDisposed || _visible) return;
-        
+        if (!Trigger.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(triggerType))
+            return;
+        if (show) await ShowAsync();
+        else await HideAsync();
+    }
+
+    /// <summary>
+    /// Manually shows the tooltip. For use when Trigger is "manual".
+    /// </summary>
+    public async Task ShowAsync()
+    {
+        if (_isDisposed || _visible || Disabled) return;
+
+        CancelDelay();
+        if (OpenDelay > 0)
+        {
+            _delayTimer = new System.Timers.Timer(OpenDelay);
+            _delayTimer.Elapsed += async (_, _) =>
+            {
+                CancelDelay();
+                await InvokeAsync(DoShowAsync);
+            };
+            _delayTimer.AutoReset = false;
+            _delayTimer.Start();
+            return;
+        }
+        await DoShowAsync();
+    }
+
+    private async Task DoShowAsync()
+    {
         _visible = true;
         _zIndex = ZIndex.Allocate(this, SgZIndexService.TooltipBase);
         _tooltipStyle = $"position: fixed; pointer-events: none; z-index: {_zIndex}; opacity: 0; transition: opacity 0.15s;";
-        
+
         StateHasChanged();
-        
+
+        // Wait for render to complete so _tooltipRef is populated
+        await Task.Yield();
+
         try
         {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-tooltip.js");
-            if (_isDisposed) return;
-            await _module.InvokeVoidAsync("show", _triggerRef, _tooltipRef, Placement);
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("show", _triggerRef, _tooltipRef, Placement);
+            }
         }
         catch (JSException) { }
         catch (TaskCanceledException) { }
     }
 
-    private async Task HideAsync()
+    private void CancelDelay()
+    {
+        _delayTimer?.Stop();
+        _delayTimer?.Dispose();
+        _delayTimer = null;
+    }
+
+    /// <summary>
+    /// Manually hides the tooltip. For use when Trigger is "manual".
+    /// </summary>
+    public async Task HideAsync()
     {
         if (_isDisposed || !_visible) return;
-        
+
+        CancelDelay();
+        if (CloseDelay > 0)
+        {
+            _delayTimer = new System.Timers.Timer(CloseDelay);
+            _delayTimer.Elapsed += async (_, _) =>
+            {
+                CancelDelay();
+                await InvokeAsync(DoHideAsync);
+            };
+            _delayTimer.AutoReset = false;
+            _delayTimer.Start();
+            return;
+        }
+        await DoHideAsync();
+    }
+
+    private async Task DoHideAsync()
+    {
         _visible = false;
-        
+
         if (_zIndex > 0)
         {
             ZIndex.Release(this);
             _zIndex = 0;
         }
-        
-        if (_module is not null)
+
+        try
         {
-            try
+            if (_module is not null)
             {
                 await _module.InvokeVoidAsync("hide", _tooltipRef);
             }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
         }
-        
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+
         StateHasChanged();
     }
 
@@ -120,6 +217,8 @@
     {
         if (_isDisposed) return;
         _isDisposed = true;
+
+        CancelDelay();
 
         if (_zIndex > 0)
         {

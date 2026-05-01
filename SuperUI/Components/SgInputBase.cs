@@ -109,7 +109,7 @@ public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
 
     private void HandleValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
-        StateHasChanged();
+        _ = InvokeAsync(StateHasChanged);
     }
 
     public virtual void Dispose()
