@@ -2,13 +2,116 @@
 
 ## Содержание
 
-1. [Компоненты данных](#компоненты-данных)
-2. [Компоненты ввода](#компоненты-ввода)
-3. [Компоненты отображения](#компоненты-отображения)
-4. [Компоненты навигации](#компоненты-навигации)
-5. [Компоненты макета](#компоненты-макета)
-6. [Компоненты обратной связи](#компоненты-обратной-связи)
-7. [Компоненты визуализации](#компоненты-визуализации)
+1. [Enterprise компоненты](#enterprise-компоненты)
+2. [Компоненты данных](#компоненты-данных)
+3. [Компоненты ввода](#компоненты-ввода)
+4. [Компоненты отображения](#компоненты-отображения)
+5. [Компоненты навигации](#компоненты-навигации)
+6. [Компоненты макета](#компоненты-макета)
+7. [Компоненты обратной связи](#компоненты-обратной-связи)
+8. [Компоненты визуализации](#компоненты-визуализации)
+
+---
+
+## Enterprise компоненты
+
+### SgPermissionGate - Условный рендеринг по правам доступа
+
+Компонент для управления доступом на основе прав и ролей пользователя.
+
+```razor
+<SgPermissionGate Permission="CanEdit">
+    <button>Редактировать</button>
+</SgPermissionGate>
+
+<SgPermissionGate Roles="@(new[] { "Admin", "Manager" })">
+    <AdminPanel />
+</SgPermissionGate>
+
+<SgPermissionGate Permission="AdminOnly">
+    <SecretContent />
+    <FallbackContent>
+        <p>У вас нет доступа к этому контенту.</p>
+    </FallbackContent>
+</SgPermissionGate>
+```
+
+#### Параметры
+
+| Параметр | Тип | Описание |
+|----------|-----|---------|
+| `Permission` | string | Требуемое разрешение |
+| `Permissions` | IEnumerable<string> | Любое из разрешений (OR) |
+| `RequireAllPermissions` | IEnumerable<string> | Все разрешения (AND) |
+| `Role` | string | Требуемая роль |
+| `Roles` | IEnumerable<string> | Любая из ролей |
+| `RequireAll` | bool | Требовать все разрешения |
+| `AuthorizeAsync` | Func<Task<bool>> | Кастомная проверка |
+
+---
+
+### SgCommandBar - Панель команд
+
+Панель команд в стиле Office 365 с адаптивным overflow меню.
+
+```razor
+<SgCommandBar Items="@commands">
+    <FarContent>
+        <SgButton Text="Настройки" />
+    </FarContent>
+</SgCommandBar>
+
+@code {
+    var commands = new List<CommandBarItem>
+    {
+        new() { Text = "Сохранить", Icon = icon, OnClick = OnSave },
+        new() { Text = "Удалить", Icon = trashIcon, Disabled = !canDelete },
+        new() { Text = "Жирный", Icon = boldIcon, IsToggle = true, IsPressed = isBold }
+    };
+}
+```
+
+#### Параметры
+
+| Параметр | Тип | Описание |
+|----------|-----|---------|
+| `Items` | IEnumerable<CommandBarItem> | Команды для отображения |
+| `FarContent` | RenderFragment | Контент справа |
+| `AriaLabel` | string | ARIA метка |
+| `Sticky` | bool | Фиксированная панель |
+
+---
+
+### SgRichTextEditor - WYSIWYG редактор
+
+Мощный текстовый редактор с поддержкой форматирования.
+
+```razor
+<SgRichTextEditor @bind-Value="@content" 
+                  Placeholder="Введите текст..."
+                  ShowToolbar="true"
+                  ShowStatusBar="true" />
+```
+
+#### Параметры
+
+| Параметр | Тип | Описание |
+|----------|-----|---------|
+| `Value` | string | HTML контент |
+| `Placeholder` | string | Подсказка |
+| `ReadOnly` | bool | Только чтение |
+| `ShowToolbar` | bool | Показывать тулбар |
+| `ShowStatusBar` | bool | Показывать статус-бар |
+| `Height` | string | Высота редактора |
+
+#### Горячие клавиши
+
+- `Ctrl+B` - Жирный
+- `Ctrl+I` - Курсив
+- `Ctrl+U` - Подчеркнутый
+- `Ctrl+Z` - Отменить
+- `Ctrl+Y` - Повторить
+- `Ctrl+K` - Вставить ссылку
 
 ---
 

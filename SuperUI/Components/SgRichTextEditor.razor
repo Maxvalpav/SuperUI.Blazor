@@ -1,0 +1,614 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+@implements IAsyncDisposable
+
+<div class="sgc-richtext @CssClass @(ReadOnly ? "sgc-readonly" : "") @_stateClass"
+     @ref="_elementRef">
+    
+    @if (!ReadOnly && ShowToolbar)
+    {
+        <div class="sgc-richtext-toolbar" role="toolbar" aria-label="@Localizer["TextFormatting"]">
+            @if (ToolbarCustomContent != null)
+            {
+                @ToolbarCustomContent
+            }
+            else
+            {
+                <div class="sgc-richtext-group">
+                    <button type="button"
+                            class="sgc-richtext-btn @(_activeFormats.Contains("bold") ? "sgc-active" : "")"
+                            @onclick='() => ExecuteCommandAsync("bold", null)'
+                            title="@Localizer["Bold"] (Ctrl+B)"
+                            aria-pressed="@_activeFormats.Contains("bold").ToString().ToLower()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M6 4h8a4 4 0 014 4 4 4 0 01-4 4H6V4z"/>
+                            <path d="M6 12h9a4 4 0 014 4 4 4 0 01-4 4H6v-8z"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn @(_activeFormats.Contains("italic") ? "sgc-active" : "")"
+                            @onclick='() => ExecuteCommandAsync("italic", null)'
+                            title="@Localizer["Italic"] (Ctrl+I)"
+                            aria-pressed="@_activeFormats.Contains("italic").ToString().ToLower()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <line x1="19" y1="4" x2="10" y2="4"/>
+                            <line x1="14" y1="20" x2="5" y2="20"/>
+                            <line x1="15" y1="4" x2="9" y2="20"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn @(_activeFormats.Contains("underline") ? "sgc-active" : "")"
+                            @onclick='() => ExecuteCommandAsync("underline", null)'
+                            title="@Localizer["Underline"] (Ctrl+U)"
+                            aria-pressed="@_activeFormats.Contains("underline").ToString().ToLower()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M6 3v7a6 6 0 006 6 6 6 0 006-6V3"/>
+                            <line x1="4" y1="21" x2="20" y2="21"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn @(_activeFormats.Contains("strikeThrough") ? "sgc-active" : "")"
+                            @onclick='() => ExecuteCommandAsync("strikeThrough", null)'
+                            title="@Localizer["Strikethrough"]"
+                            aria-pressed="@_activeFormats.Contains("strikeThrough").ToString().ToLower()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M17.3 19c-1.4 1.4-3.3 2-5.3 2-4.4 0-8-3.6-8-8"/>
+                            <path d="M6.7 5c1.4-1.4 3.3-2 5.3-2 4.4 0 8 3.6 8 8"/>
+                            <line x1="4" y1="12" x2="20" y2="12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="sgc-richtext-sep"></div>
+
+                <div class="sgc-richtext-group">
+                    <button type="button"
+                            class="sgc-richtext-btn @(_activeFormats.Contains("insertUnorderedList") ? "sgc-active" : "")"
+                            @onclick='() => ExecuteCommandAsync("insertUnorderedList", null)'
+                            title="@Localizer["BulletList"]"
+                            aria-pressed="@_activeFormats.Contains("insertUnorderedList").ToString().ToLower()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="8" y1="6" x2="21" y2="6"/>
+                            <line x1="8" y1="12" x2="21" y2="12"/>
+                            <line x1="8" y1="18" x2="21" y2="18"/>
+                            <line x1="3" y1="6" x2="3.01" y2="6"/>
+                            <line x1="3" y1="12" x2="3.01" y2="12"/>
+                            <line x1="3" y1="18" x2="3.01" y2="18"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn @(_activeFormats.Contains("insertOrderedList") ? "sgc-active" : "")"
+                            @onclick='() => ExecuteCommandAsync("insertOrderedList", null)'
+                            title="@Localizer["NumberedList"]"
+                            aria-pressed="@_activeFormats.Contains("insertOrderedList").ToString().ToLower()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="10" y1="6" x2="21" y2="6"/>
+                            <line x1="10" y1="12" x2="21" y2="12"/>
+                            <line x1="10" y1="18" x2="21" y2="18"/>
+                            <path d="M4 6h1v4"/>
+                            <path d="M4 10h2"/>
+                            <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="sgc-richtext-sep"></div>
+
+                <div class="sgc-richtext-group">
+                    <select class="sgc-richtext-select"
+                            value="@_currentHeading"
+                            @onchange="OnHeadingChangeAsync"
+                            title="@Localizer["HeadingStyle"]">
+                        <option value="">@Localizer["Normal"]</option>
+                        <option value="H1">@Localizer["Heading"] 1</option>
+                        <option value="H2">@Localizer["Heading"] 2</option>
+                        <option value="H3">@Localizer["Heading"] 3</option>
+                    </select>
+                </div>
+
+                <div class="sgc-richtext-sep"></div>
+
+                <div class="sgc-richtext-group">
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick='() => ExecuteCommandAsync("justifyLeft", null)'
+                            title="@Localizer["AlignLeft"]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="17" y1="10" x2="3" y2="10"/>
+                            <line x1="21" y1="6" x2="3" y2="6"/>
+                            <line x1="21" y1="14" x2="3" y2="14"/>
+                            <line x1="17" y1="18" x2="3" y2="18"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick='() => ExecuteCommandAsync("justifyCenter", null)'
+                            title="@Localizer["AlignCenter"]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="21" y1="10" x2="3" y2="10"/>
+                            <line x1="18" y1="6" x2="6" y2="6"/>
+                            <line x1="21" y1="14" x2="3" y2="14"/>
+                            <line x1="18" y1="18" x2="6" y2="18"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick='() => ExecuteCommandAsync("justifyRight", null)'
+                            title="@Localizer["AlignRight"]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="21" y1="10" x2="7" y2="10"/>
+                            <line x1="21" y1="6" x2="3" y2="6"/>
+                            <line x1="21" y1="14" x2="3" y2="14"/>
+                            <line x1="21" y1="18" x2="7" y2="18"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="sgc-richtext-sep"></div>
+
+                <div class="sgc-richtext-group">
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick="InsertLinkAsync"
+                            title="@Localizer["InsertLink"]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                            <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick="InsertImageAsync"
+                            title="@Localizer["InsertImage"]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <circle cx="8.5" cy="8.5" r="1.5"/>
+                            <polyline points="21 15 16 10 5 21"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="sgc-richtext-sep"></div>
+
+                <div class="sgc-richtext-group">
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick="ClearFormattingAsync"
+                            title="@Localizer["ClearFormatting"]">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7h18"/>
+                            <path d="M6 7v12a2 2 0 002 2h8a2 2 0 002-2V7"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/>
+                            <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick="UndoAsync"
+                            title="@Localizer["Undo"] (Ctrl+Z)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 7v6h6"/>
+                            <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13"/>
+                        </svg>
+                    </button>
+                    <button type="button"
+                            class="sgc-richtext-btn"
+                            @onclick="RedoAsync"
+                            title="@Localizer["Redo"] (Ctrl+Y)">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 7v6h-6"/>
+                            <path d="M3 17a9 9 0 019-9 9 9 0 016 2.3L21 13"/>
+                        </svg>
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
+    <div class="sgc-richtext-editor"
+         contenteditable="@(!ReadOnly)"
+         @ref="_editorRef"
+         @oninput="OnInputAsync"
+         @onkeydown="OnKeyDownAsync"
+         @onmouseup="UpdateActiveFormatsAsync"
+         @onkeyup="UpdateActiveFormatsAsync"
+         @onfocus="OnFocusAsync"
+         @onblur="OnBlurAsync"
+         role="textbox"
+         aria-multiline="true"
+         aria-label="@AriaLabel"
+         aria-readonly="@ReadOnly.ToString().ToLower()">
+    </div>
+
+    @if (ShowStatusBar)
+    {
+        <div class="sgc-richtext-status">
+            <span>@_wordCount @Localizer["Words"]</span>
+            <span>@_charCount @Localizer["Characters"]</span>
+            @if (!string.IsNullOrEmpty(_currentFormat))
+            {
+                <span class="sgc-richtext-format">@_currentFormat</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private ElementReference _elementRef;
+    private ElementReference _editorRef;
+    private IJSObjectReference? _jsModule;
+    private string _stateClass = "";
+    private HashSet<string> _activeFormats = new();
+    private string _currentHeading = "";
+    private string _currentFormat = "";
+    private int _wordCount;
+    private int _charCount;
+    private DotNetObjectReference<SgRichTextEditor>? _dotNetRef;
+    private bool _isUpdating;
+
+    /// <summary>
+    /// Gets or sets the HTML content of the editor.
+    /// </summary>
+    [Parameter]
+    public string Value { get; set; } = "";
+
+    /// <summary>
+    /// Callback invoked when the content changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the HTML content changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> HtmlChanged { get; set; }
+
+    /// <summary>
+    /// Callback invoked when plain text content changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<string> TextChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the placeholder text displayed when the editor is empty.
+    /// </summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the editor is read-only. Default is false.
+    /// </summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the formatting toolbar. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to show the status bar. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowStatusBar { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the editor is disabled. Default is false.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets the height of the editor area (e.g., "200px", "100%").
+    /// </summary>
+    [Parameter] public string? Height { get; set; }
+
+    /// <summary>
+    /// Gets or sets the minimum height of the editor area.
+    /// </summary>
+    [Parameter] public string? MinHeight { get; set; } = "100px";
+
+    /// <summary>
+    /// Gets or sets the maximum height of the editor area.
+    /// </summary>
+    [Parameter] public string? MaxHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets the ARIA label for the editor.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; } = "Rich text editor";
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom content for the toolbar.
+    /// </summary>
+    [Parameter] public RenderFragment? ToolbarCustomContent { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the editor receives focus.
+    /// </summary>
+    [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the editor loses focus.
+    /// </summary>
+    [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-components.js");
+            await _jsModule.InvokeVoidAsync("initRichTextEditor", _editorRef, _dotNetRef, Placeholder);
+            
+            if (!string.IsNullOrEmpty(Value))
+            {
+                await _jsModule.InvokeVoidAsync("setHtmlContent", _editorRef, Value);
+            }
+            
+            await UpdateStatsAsync();
+        }
+    }
+
+    private async Task OnInputAsync(ChangeEventArgs e)
+    {
+        if (_isUpdating) return;
+        
+        await UpdateContentAsync();
+        await UpdateActiveFormatsAsync();
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.CtrlKey || e.MetaKey)
+        {
+            var handled = true;
+            switch (e.Key.ToLower())
+            {
+                case "b":
+                    await ExecuteCommandAsync("bold");
+                    break;
+                case "i":
+                    await ExecuteCommandAsync("italic");
+                    break;
+                case "u":
+                    await ExecuteCommandAsync("underline");
+                    break;
+                case "z":
+                    await UndoAsync();
+                    break;
+                case "y":
+                    await RedoAsync();
+                    break;
+                case "k":
+                    await InsertLinkAsync();
+                    break;
+                default:
+                    handled = false;
+                    break;
+            }
+            
+            if (handled)
+            {
+                return;
+            }
+        }
+
+        if (OnKeyDown.HasDelegate)
+        {
+            await OnKeyDown.InvokeAsync(e);
+        }
+    }
+
+    [Parameter] public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
+
+    private async Task OnFocusAsync(FocusEventArgs e)
+    {
+        _stateClass = "sgc-focused";
+        if (OnFocus.HasDelegate)
+        {
+            await OnFocus.InvokeAsync(e);
+        }
+    }
+
+    private async Task OnBlurAsync(FocusEventArgs e)
+    {
+        _stateClass = "";
+        await UpdateContentAsync();
+        if (OnBlur.HasDelegate)
+        {
+            await OnBlur.InvokeAsync(e);
+        }
+    }
+
+    private async Task ExecuteCommandAsync(string command, string? value = null)
+    {
+        if (_jsModule != null)
+        {
+            await _jsModule.InvokeVoidAsync("execCommand", command, value);
+            await UpdateActiveFormatsAsync();
+            await UpdateContentAsync();
+            await _jsModule.InvokeVoidAsync("focus", _editorRef);
+        }
+    }
+
+    private async Task OnHeadingChangeAsync(ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(value))
+        {
+            await ExecuteCommandAsync("formatBlock", "p");
+        }
+        else
+        {
+            await ExecuteCommandAsync("formatBlock", value);
+        }
+        _currentHeading = value;
+    }
+
+    private async Task InsertLinkAsync()
+    {
+        var url = await JS.InvokeAsync<string>("prompt", Localizer["EnterLinkUrl"]);
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            await ExecuteCommandAsync("createLink", url);
+        }
+    }
+
+    private async Task InsertImageAsync()
+    {
+        var url = await JS.InvokeAsync<string>("prompt", Localizer["EnterImageUrl"]);
+        if (!string.IsNullOrWhiteSpace(url))
+        {
+            await ExecuteCommandAsync("insertImage", url);
+        }
+    }
+
+    private async Task ClearFormattingAsync()
+    {
+        await ExecuteCommandAsync("removeFormat");
+        await ExecuteCommandAsync("formatBlock", "p");
+    }
+
+    private async Task UndoAsync() => await ExecuteCommandAsync("undo");
+    private async Task RedoAsync() => await ExecuteCommandAsync("redo");
+
+    [JSInvokable]
+    public async Task UpdateActiveFormats()
+    {
+        await UpdateActiveFormatsAsync();
+    }
+
+    private async Task UpdateActiveFormatsAsync()
+    {
+        if (_jsModule == null) return;
+        
+        var formats = await _jsModule.InvokeAsync<string[]>("queryActiveFormats");
+        _activeFormats = new HashSet<string>(formats);
+        
+        // Check current heading format
+        var blockFormat = await _jsModule.InvokeAsync<string>("queryCommandValue", "formatBlock");
+        _currentHeading = blockFormat?.ToUpperInvariant() switch
+        {
+            "H1" => "H1",
+            "H2" => "H2",
+            "H3" => "H3",
+            _ => ""
+        };
+        
+        // Get current format name for status bar
+        _currentFormat = formats.FirstOrDefault() switch
+        {
+            "bold" => Localizer["Bold"],
+            "italic" => Localizer["Italic"],
+            "underline" => Localizer["Underline"],
+            _ => ""
+        };
+        
+        StateHasChanged();
+    }
+
+    private async Task UpdateContentAsync()
+    {
+        if (_jsModule == null || _isUpdating) return;
+        
+        _isUpdating = true;
+        
+        var html = await _jsModule.InvokeAsync<string>("getHtmlContent", _editorRef);
+        var text = await _jsModule.InvokeAsync<string>("getTextContent", _editorRef);
+        
+        if (html != Value)
+        {
+            Value = html;
+            await ValueChanged.InvokeAsync(html);
+            await HtmlChanged.InvokeAsync(html);
+            await TextChanged.InvokeAsync(text);
+            await UpdateStatsAsync();
+        }
+        
+        _isUpdating = false;
+    }
+
+    private async Task UpdateStatsAsync()
+    {
+        if (_jsModule == null) return;
+        
+        var text = await _jsModule.InvokeAsync<string>("getTextContent", _editorRef);
+        _charCount = text?.Length ?? 0;
+        _wordCount = string.IsNullOrWhiteSpace(text) ? 0 : text.Split(new[] { ' ', '\n', '\r', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+        
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// Gets the HTML content from the editor.
+    /// </summary>
+    public async Task<string> GetHtmlAsync()
+    {
+        if (_jsModule == null) return Value;
+        return await _jsModule.InvokeAsync<string>("getHtmlContent", _editorRef);
+    }
+
+    /// <summary>
+    /// Gets the plain text content from the editor.
+    /// </summary>
+    public async Task<string> GetTextAsync()
+    {
+        if (_jsModule == null) return "";
+        return await _jsModule.InvokeAsync<string>("getTextContent", _editorRef);
+    }
+
+    /// <summary>
+    /// Sets the HTML content of the editor.
+    /// </summary>
+    public async Task SetHtmlAsync(string html)
+    {
+        Value = html;
+        if (_jsModule != null)
+        {
+            await _jsModule.InvokeVoidAsync("setHtmlContent", _editorRef, html);
+            await UpdateStatsAsync();
+        }
+    }
+
+    /// <summary>
+    /// Inserts HTML at the current cursor position.
+    /// </summary>
+    public async Task InsertHtmlAsync(string html)
+    {
+        if (_jsModule != null)
+        {
+            await _jsModule.InvokeVoidAsync("insertHtml", html);
+            await UpdateContentAsync();
+        }
+    }
+
+    /// <summary>
+    /// Focuses the editor.
+    /// </summary>
+    public async Task FocusAsync()
+    {
+        if (_jsModule != null)
+        {
+            await _jsModule.InvokeVoidAsync("focus", _editorRef);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("disposeRichTextEditor", _editorRef);
+                await _jsModule.DisposeAsync();
+            }
+            catch { }
+        }
+        _dotNetRef?.Dispose();
+    }
+}
