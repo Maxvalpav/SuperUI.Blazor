@@ -1,0 +1,142 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-treeselect @(Block ? "sgc-block" : "") @CssClass"
+     role="combobox"
+     aria-expanded="@(_open ? "true" : "false")"
+     tabindex="@(_open ? "-1" : "0")"
+     @onfocusout="HandleFocusOutAsync">
+    <div class="sgc-treeselect-control" @onclick="ToggleAsync">
+        @if (!string.IsNullOrEmpty(DisplayText))
+        {
+            <span class="sgc-treeselect-value">@DisplayText</span>
+        }
+        else
+        {
+            <span class="sgc-treeselect-placeholder">@Placeholder</span>
+        }
+        <span class="sgc-treeselect-caret" aria-hidden="true">@(_open ? "▲" : "▼")</span>
+    </div>
+    @if (_open)
+    {
+        <div class="sgc-treeselect-menu" @onclick:stopPropagation="true">
+            @if (ShowSearch)
+            {
+                <input type="text"
+                       class="sgc-treeselect-search"
+                       placeholder="@SearchPlaceholder"
+                       @bind="_search"
+                       @bind:event="oninput" />
+            }
+            <div class="sgc-treeselect-tree">
+                @foreach (var node in FilteredNodes)
+                {
+                    @RenderNode(node, 0)
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private string _search = "";
+
+    [Parameter] public List<TreeNode> Nodes { get; set; } = new();
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Placeholder { get; set; } = "Select";
+    [Parameter] public bool Block { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool ShowSearch { get; set; }
+    [Parameter] public string SearchPlaceholder { get; set; } = "Search...";
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public Func<TreeNode, string>? TextSelector { get; set; }
+
+    private string NodeText(TreeNode n) => TextSelector?.Invoke(n) ?? n.Text;
+    private string DisplayText => string.IsNullOrEmpty(Value) ? "" : FindText(Nodes, Value) ?? Value;
+
+    private string? FindText(List<TreeNode> list, string key)
+    {
+        foreach (var n in list)
+        {
+            if (n.Key == key) return NodeText(n);
+            var child = FindText(n.Children, key);
+            if (child != null) return child;
+        }
+        return null;
+    }
+
+    private List<TreeNode> FilteredNodes => string.IsNullOrWhiteSpace(_search)
+        ? Nodes
+        : FilterTree(Nodes, _search).ToList();
+
+    private IEnumerable<TreeNode> FilterTree(List<TreeNode> nodes, string query)
+    {
+        foreach (var n in nodes)
+        {
+            var matchedChildren = FilterTree(n.Children, query).ToList();
+            if (NodeText(n).Contains(query, StringComparison.OrdinalIgnoreCase) || matchedChildren.Count > 0)
+            {
+                yield return new TreeNode
+                {
+                    Key = n.Key,
+                    Text = n.Text,
+                    Children = matchedChildren,
+                    Expanded = true
+                };
+            }
+        }
+    }
+
+    private RenderFragment RenderNode(TreeNode node, int level) => __builder =>
+    {
+        var isSelected = Value == node.Key;
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "sgc-treeselect-node");
+        __builder.AddAttribute(2, "style", $"padding-left: {level * 16}px");
+
+        __builder.OpenElement(3, "div");
+        __builder.AddAttribute(4, "class", $"sgc-treeselect-node-content {(isSelected ? "sgc-selected" : "")}");
+        __builder.AddAttribute(5, "onclick", EventCallback.Factory.Create(this, () => SelectAsync(node.Key)));
+        __builder.AddContent(6, NodeText(node));
+        __builder.CloseElement();
+
+        if (node.Children.Count > 0)
+        {
+            foreach (var child in node.Children)
+            {
+                __builder.AddContent(7, RenderNode(child, level + 1));
+            }
+        }
+        __builder.CloseElement();
+    };
+
+    private async Task SelectAsync(string key)
+    {
+        Value = key;
+        _open = false;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(key);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task ToggleAsync()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleFocusOutAsync(FocusEventArgs e)
+    {
+        await Task.Delay(150);
+        if (_open)
+        {
+            _open = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public void Dispose() => _open = false;
+}
