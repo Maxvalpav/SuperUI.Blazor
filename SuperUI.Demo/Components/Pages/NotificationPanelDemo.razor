@@ -1,0 +1,149 @@
+@page "/notification-panel-demo"
+@using SuperUI.Components
+@implements IDisposable
+@inject SgToastService Toasts
+@inject SgNotificationService Notifications
+
+<PageTitle>Панель уведомлений - SUI</PageTitle>
+
+<SgCard Title="SgNotificationPanel - Панель уведомлений"
+        Subtitle="Список уведомлений с фильтром, отметкой прочитано/непрочитано, удалением и группировкой. Через SgNotificationService можно слать уведомления и в колокольчик в шапке.">
+
+    <div style="margin-top: 24px;">
+        <h2>Отправить уведомление</h2>
+        <p>Кнопки ниже добавляют запись в общий <code>SgNotificationService</code>. Запись появится здесь и в колокольчике в шапке.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px;">
+            <SgButton Text="Info" Variant="default" OnClick="@(() => Push("info"))" />
+            <SgButton Text="Success" Variant="success" OnClick="@(() => Push("success"))" />
+            <SgButton Text="Warning" Variant="warn" OnClick="@(() => Push("warn"))" />
+            <SgButton Text="Danger" Variant="danger" OnClick="@(() => Push("danger"))" />
+            <SgButton Text="Очистить" Variant="default" OnClick="@(() => Notifications.Clear())" />
+        </div>
+    </div>
+
+    <div style="margin-top: 24px; display: grid; grid-template-columns: minmax(360px, 420px) 1fr; gap: 24px; align-items: flex-start;">
+        <SgNotificationPanel Items="Notifications.Items"
+                             OnItemClick="HandleItemClick"
+                             OnReadToggle="HandleReadToggle"
+                             OnDismiss="HandleDismiss"
+                             OnMarkAllRead="HandleMarkAllRead"
+                             OnClearAll="HandleClearAll">
+            <FooterContent>
+                <a href="#" @onclick:preventDefault="true" @onclick="HandleViewAll">Все уведомления →</a>
+            </FooterContent>
+        </SgNotificationPanel>
+
+        <SgCard Title="Свойства компонента">
+            <PropertyTable Items="_properties" />
+        </SgCard>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>С группировкой по категории</h2>
+        <p>Используйте параметр <code>GroupBy</code>, чтобы сгруппировать уведомления.</p>
+
+        <div style="max-width: 420px;">
+            <SgNotificationPanel Items="_grouped"
+                                 GroupBy="@(n => n.Category ?? "Прочее")"
+                                 ShowFilter="false"
+                                 ShowDefaultActions="false" />
+        </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Пустое состояние</h2>
+        <div style="max-width: 420px;">
+            <SgNotificationPanel Items="_empty" EmptyText="Пока нет уведомлений" />
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private int _counter;
+
+    private List<NotificationItem> _grouped = new()
+    {
+        new() { Title = "Резервное копирование", Message = "Бэкап БД выполнен", Time = "10:00", Variant = "success", Category = "Система" },
+        new() { Title = "Сертификат истекает", Message = "TLS-сертификат истечёт через 7 дней", Time = "Вчера", Variant = "warn", Category = "Система" },
+        new() { Title = "Новый клиент", Message = "ООО \"Ромашка\" подписал договор", Time = "Сегодня", Variant = "info", Category = "Продажи" },
+        new() { Title = "Счёт оплачен", Message = "Счёт #INV-00481 оплачен", Time = "Сегодня", Variant = "success", Category = "Биллинг" }
+    };
+
+    private List<NotificationItem> _empty = new();
+
+    private List<PropertyPanelItem> _properties = new()
+    {
+        new() { Label = "Items", Value = "IEnumerable<NotificationItem>", BadgeText = "Список", BadgeVariant = "info" },
+        new() { Label = "Title", Value = "string", BadgeText = "Заголовок панели", BadgeVariant = "info" },
+        new() { Label = "ShowFilter", Value = "bool", BadgeText = "Вкладки фильтра", BadgeVariant = "info" },
+        new() { Label = "ShowDefaultActions", Value = "bool", BadgeText = "Кнопки в заголовке", BadgeVariant = "info" },
+        new() { Label = "AllowDismiss", Value = "bool", BadgeText = "Удаление", BadgeVariant = "info" },
+        new() { Label = "AllowClear", Value = "bool", BadgeText = "Очистить все", BadgeVariant = "info" },
+        new() { Label = "GroupBy", Value = "Func<NotificationItem,string>?", BadgeText = "Группировка", BadgeVariant = "info" },
+        new() { Label = "MaxHeight", Value = "string?", BadgeText = "Высота скролла", BadgeVariant = "info" },
+        new() { Label = "EmptyText", Value = "string", BadgeText = "Пустое состояние", BadgeVariant = "info" },
+        new() { Label = "OnItemClick", Value = "EventCallback<NotificationItem>", BadgeText = "Событие", BadgeVariant = "success" },
+        new() { Label = "OnReadToggle", Value = "EventCallback<NotificationItem>", BadgeText = "Событие", BadgeVariant = "success" },
+        new() { Label = "OnDismiss", Value = "EventCallback<NotificationItem>", BadgeText = "Событие", BadgeVariant = "success" },
+        new() { Label = "OnMarkAllRead", Value = "EventCallback", BadgeText = "Событие", BadgeVariant = "success" },
+        new() { Label = "OnClearAll", Value = "EventCallback", BadgeText = "Событие", BadgeVariant = "success" }
+    };
+
+    protected override void OnInitialized()
+    {
+        Notifications.Changed += OnChanged;
+        if (Notifications.Items.Count == 0)
+        {
+            Notifications.Push("Новый комментарий", "Иван Петров ответил на ваш комментарий в задаче #142.", "info", "Сообщения", "5 мин назад");
+            Notifications.Push("Деплой завершён", "Сборка v1.2.0 успешно задеплоена на production.", "success", "Система", "30 мин назад");
+            Notifications.Push("Высокая нагрузка на API", "Превышен порог 80% по CPU на сервере api-2.", "warn", "Система", "1 ч назад");
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void Push(string variant)
+    {
+        _counter++;
+        var (title, message) = variant switch
+        {
+            "success" => ("Операция выполнена", $"Успешное событие №{_counter}"),
+            "warn"    => ("Внимание", $"Предупреждение №{_counter}"),
+            "danger"  => ("Ошибка", $"Сбой при обработке №{_counter}"),
+            _         => ("Информация", $"Информационное событие №{_counter}")
+        };
+        Notifications.Push(title, message, variant, "Демо", "только что");
+        Toasts.Show($"Уведомление отправлено в шапку (#{_counter})", "Готово", variant);
+    }
+
+    private void HandleItemClick(NotificationItem item)
+    {
+        Notifications.MarkAsRead(item.Id);
+        Toasts.Info($"Открыто: {item.Title}", "Уведомление");
+    }
+
+    private void HandleReadToggle(NotificationItem item) => Notifications.MarkAsRead(item.Id);
+
+    private void HandleDismiss(NotificationItem item)
+    {
+        Notifications.Remove(item.Id);
+        Toasts.Show($"Удалено: {item.Title}", "Уведомление", "default");
+    }
+
+    private void HandleMarkAllRead()
+    {
+        Notifications.MarkAllAsRead();
+        Toasts.Success("Все уведомления отмечены как прочитанные");
+    }
+
+    private void HandleClearAll()
+    {
+        Notifications.Clear();
+        Toasts.Show("Список уведомлений очищен", "Уведомление", "default");
+    }
+
+    private void HandleViewAll() => Toasts.Info("Переход на страницу всех уведомлений", "Навигация");
+
+    public void Dispose() => Notifications.Changed -= OnChanged;
+}

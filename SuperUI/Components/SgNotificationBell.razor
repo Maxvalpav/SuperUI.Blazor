@@ -1,0 +1,107 @@
+@namespace SuperUI.Components
+@implements IDisposable
+@inject SgNotificationService Notifications
+
+<SgPopover Placement="@Placement" Trigger="click" CssClass="sgc-notification-bell">
+    <TriggerContent>
+        <button type="button" class="sgc-notification-bell-btn" aria-label="@AriaLabel">
+            @if (IconContent is not null)
+            {
+                @IconContent
+            }
+            else
+            {
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"></path>
+                    <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"></path>
+                </svg>
+            }
+            @if (Notifications.UnreadCount > 0)
+            {
+                <span class="sgc-notification-bell-badge" aria-label="@($"{Notifications.UnreadCount} непрочитанных")">
+                    @(Notifications.UnreadCount > 99 ? "99+" : Notifications.UnreadCount.ToString())
+                </span>
+            }
+        </button>
+    </TriggerContent>
+    <ChildContent>
+        <div class="sgc-notification-bell-pop">
+            <SgNotificationPanel Items="Notifications.Items"
+                                 Title="@Title"
+                                 MaxHeight="@MaxHeight"
+                                 OnItemClick="HandleItemClick"
+                                 OnReadToggle="HandleReadToggle"
+                                 OnDismiss="HandleDismiss"
+                                 OnMarkAllRead="HandleMarkAllRead"
+                                 OnClearAll="HandleClearAll"
+                                 FooterContent="FooterContent" />
+        </div>
+    </ChildContent>
+</SgPopover>
+
+@code {
+    /// <summary>
+    /// Gets or sets the panel header title.
+    /// </summary>
+    [Parameter] public string Title { get; set; } = "Уведомления";
+
+    /// <summary>
+    /// Gets or sets the popover placement (see <see cref="SgPopover.Placement"/>).
+    /// </summary>
+    [Parameter] public string Placement { get; set; } = "bottom-end";
+
+    /// <summary>
+    /// Gets or sets the max height of the scrollable list area.
+    /// </summary>
+    [Parameter] public string? MaxHeight { get; set; } = "420px";
+
+    /// <summary>
+    /// Gets or sets the accessibility label for the trigger button.
+    /// </summary>
+    [Parameter] public string AriaLabel { get; set; } = "Уведомления";
+
+    /// <summary>
+    /// Gets or sets a custom icon for the trigger button. Defaults to a bell glyph.
+    /// </summary>
+    [Parameter] public RenderFragment? IconContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the footer content for the panel.
+    /// </summary>
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    /// <summary>
+    /// Raised when the user clicks on an item.
+    /// </summary>
+    [Parameter] public EventCallback<NotificationItem> OnItemClick { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Notifications.Changed += OnChanged;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task HandleItemClick(NotificationItem item)
+    {
+        Notifications.MarkAsRead(item.Id);
+        if (OnItemClick.HasDelegate) await OnItemClick.InvokeAsync(item);
+    }
+
+    private void HandleReadToggle(NotificationItem item)
+    {
+        // SgNotificationPanel already toggled IsRead; just notify subscribers.
+        Notifications.MarkAsRead(item.Id);
+    }
+
+    private void HandleDismiss(NotificationItem item) => Notifications.Remove(item.Id);
+
+    private void HandleMarkAllRead() => Notifications.MarkAllAsRead();
+
+    private void HandleClearAll() => Notifications.Clear();
+
+    public void Dispose()
+    {
+        Notifications.Changed -= OnChanged;
+    }
+}
