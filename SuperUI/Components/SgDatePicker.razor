@@ -93,6 +93,7 @@
     private bool _open;
     private DateTime _view = DateTime.Today;
     private SgEditContextBinder<DateTime?>? _binder;
+    private CancellationTokenSource? _blurCts;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
@@ -197,17 +198,21 @@
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        await Task.Delay(200);
-        if (_open)
+        _blurCts?.Cancel();
+        _blurCts = new CancellationTokenSource();
+        var token = _blurCts.Token;
+        try
         {
-            _open = false;
-            await InvokeAsync(StateHasChanged);
+            await Task.Delay(200, token);
+            if (_open) { _open = false; await InvokeAsync(StateHasChanged); }
         }
+        catch (TaskCanceledException) { }
     }
 
     private Task ToggleAsync()
     {
         if (Disabled) return Task.CompletedTask;
+        _blurCts?.Cancel();
         _open = !_open;
         if (_open && Value.HasValue) _view = new DateTime(Value.Value.Year, Value.Value.Month, 1);
         return InvokeAsync(StateHasChanged);
@@ -228,9 +233,8 @@
     {
         if (Min.HasValue && d.Date < Min.Value.Date) return;
         if (Max.HasValue && d.Date > Max.Value.Date) return;
-        Value = d.Date;
         _open = false;
-        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(d.Date);
         _binder?.NotifyFieldChanged();
     }
 
@@ -238,13 +242,17 @@
 
     private async Task ClearAsync()
     {
-        Value = null;
         _open = false;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => _binder?.Dispose();
+    public void Dispose()
+    {
+        _blurCts?.Cancel();
+        _blurCts?.Dispose();
+        _binder?.Dispose();
+    }
 }
 

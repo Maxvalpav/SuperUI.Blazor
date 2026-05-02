@@ -1,7 +1,6 @@
 @namespace SuperUI.Components
 @typeparam TValue
 @inherits SgInputBase<TValue>
-@using System.Timers
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -71,142 +70,54 @@
     private string _hintId => _id + "-hint";
     private string _errorId => _id + "-err";
 
-    /// <summary>
-    /// Gets or sets the label text displayed above the input.
-    /// </summary>
     [Parameter] public string? Label { get; set; }
-
-    /// <summary>
-    /// Gets or sets the position of the label. Default is Top.
-    /// </summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    
-    /// <summary>
-    /// Gets or sets the placeholder text shown when the input is empty.
-    /// </summary>
     [Parameter] public string? Placeholder { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the input.
-    /// </summary>
     [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
     [Parameter] public string? ErrorText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the HTML input type. Default is "text".
-    /// Supported values: "text", "password", "email", "tel", "url", "search", etc.
-    /// </summary>
     [Parameter] public string Type { get; set; } = "text";
-    
-    /// <summary>
-    /// Gets or sets whether to render a textarea instead of an input. Default is false.
-    /// </summary>
     [Parameter] public bool Multiline { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the number of visible text rows when <see cref="Multiline"/> is true. Default is 3.
-    /// </summary>
     [Parameter] public int Rows { get; set; } = 3;
-    
-    /// <summary>
-    /// Gets or sets whether the input is required.
-    /// </summary>
     [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the input is disabled.
-    /// </summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the input is read-only.
-    /// </summary>
     [Parameter] public bool ReadOnly { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the input should take full width of its container. Default is true.
-    /// </summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether value updates on input (true) or on change (false). Default is true.
-    /// When true, value updates on every keystroke. When false, value updates on blur.
-    /// </summary>
     [Parameter] public bool Immediate { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the callback invoked when Enter key is pressed.
-    /// </summary>
     [Parameter] public EventCallback OnEnterPressed { get; set; }
-
-    /// <summary>
-    /// Gets or sets the debounce delay in milliseconds.
-    /// When set, value changes are delayed by this amount after user stops typing.
-    /// Default is 0 (no debounce).
-    /// </summary>
     [Parameter] public int Debounce { get; set; }
-
-    /// <summary>
-    /// Gets or sets the maximum length of the input.
-    /// </summary>
     [Parameter] public int? MaxLength { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to show a clear button when input has value.
-    /// Default is false.
-    /// </summary>
     [Parameter] public bool ShowClearButton { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to show a character counter.
-    /// Requires <see cref="MaxLength"/> to be set. Default is false.
-    /// </summary>
     [Parameter] public bool ShowCounter { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the input element.
-    /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
 
-    private System.Timers.Timer? _debounceTimer;
+    private CancellationTokenSource? _debounceCts;
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
-        ? ErrorText
-        : ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid
-        ? _errorId
-        : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-
-    private string? CurrentText => Value is null
-        ? string.Empty
-        : Convert.ToString(Value, CultureInfo.CurrentCulture);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+    private string? CurrentText => Value is null ? string.Empty : Convert.ToString(Value, CultureInfo.CurrentCulture);
 
     private void OnInputAsync(ChangeEventArgs e)
     {
         if (Debounce > 0)
         {
-            _debounceTimer?.Stop();
-            _debounceTimer?.Dispose();
-            _debounceTimer = new System.Timers.Timer(Debounce);
-            _debounceTimer.Elapsed += async (_, _) =>
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+            _debounceCts = new CancellationTokenSource();
+            var token = _debounceCts.Token;
+            var raw = e.Value?.ToString();
+            _ = Task.Run(async () =>
             {
-                _debounceTimer?.Stop();
-                await InvokeAsync(async () => await CommitAsync(e.Value?.ToString()));
-            };
-            _debounceTimer.AutoReset = false;
-            _debounceTimer.Start();
+                try
+                {
+                    await Task.Delay(Debounce, token);
+                    await InvokeAsync(() => CommitAsync(raw));
+                }
+                catch (TaskCanceledException) { }
+            });
         }
         else if (Immediate)
         {
@@ -219,32 +130,22 @@
     private async Task SafeCommitAsync(string? raw)
     {
         try { await CommitAsync(raw); }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[SgTextBox.CommitAsync] {ex}");
-        }
+        catch (Exception ex) { Console.Error.WriteLine($"[SgTextBox.CommitAsync] {ex}"); }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
-        {
             await OnEnterPressed.InvokeAsync();
-        }
     }
 
-    private async Task ClearAsync()
-    {
-        await SetValueAsync(default);
-    }
-
+    private Task ClearAsync() => SetValueAsync(default);
     private Task CommitAsync(string? raw) => SetValueAsync(ConvertValue(raw));
 
     private static TValue? ConvertValue(string? raw)
     {
         var t = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
-        if (string.IsNullOrEmpty(raw))
-            return default;
+        if (string.IsNullOrEmpty(raw)) return default;
         try
         {
             if (t == typeof(string)) return (TValue)(object)raw!;
@@ -256,8 +157,8 @@
 
     public override void Dispose()
     {
-        _debounceTimer?.Stop();
-        _debounceTimer?.Dispose();
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
         base.Dispose();
     }
 }
