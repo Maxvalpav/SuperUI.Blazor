@@ -84,19 +84,32 @@ export function attach(el, dotnetRef) {
     if (header) {
         const onDblClick = (e) => {
             if (e.target.closest('.sgc-win-btn')) return;
+            if (el.classList.contains('sgc-win-minimized')) {
+                invoke('MinimizeAsync');
+                return;
+            }
             invoke('ToggleMaximizeAsync');
         };
         header.addEventListener('dblclick', onDblClick);
 
         const onDragStart = (e) => {
+            if (e.button !== 0) return;
             if (e.target.closest('.sgc-win-btn')) return;
             if (el.classList.contains('sgc-win-maximized')) return;
+            if (el.classList.contains('sgc-win-minimized')) return;
             e.preventDefault();
             const rect = el.getBoundingClientRect();
             const offX = e.clientX - rect.left;
             const offY = e.clientY - rect.top;
             el.classList.add('sgc-win-dragging');
 
+            let pendingX = rect.left, pendingY = rect.top, rafId = 0;
+            const apply = () => {
+                rafId = 0;
+                el.style.left = pendingX + 'px';
+                el.style.top  = pendingY + 'px';
+                el.style.right = el.style.bottom = 'auto';
+            };
             const onMove = (ev) => {
                 const ww = window.innerWidth, wh = window.innerHeight;
                 let nx = ev.clientX - offX, ny = ev.clientY - offY;
@@ -116,13 +129,13 @@ export function attach(el, dotnetRef) {
                     if (Math.abs(ny - o.top)                < SNAP_THRESHOLD) ny = o.top;
                     if (Math.abs(nx - o.left)               < SNAP_THRESHOLD) nx = o.left;
                 }
-                el.style.left = nx + 'px';
-                el.style.top  = ny + 'px';
-                el.style.right = el.style.bottom = 'auto';
+                pendingX = nx; pendingY = ny;
+                if (!rafId) rafId = requestAnimationFrame(apply);
             };
             const onUp = () => {
                 window.removeEventListener('pointermove', onMove);
                 window.removeEventListener('pointerup', onUp);
+                if (rafId) { cancelAnimationFrame(rafId); apply(); }
                 el.classList.remove('sgc-win-dragging');
                 const fr = el.getBoundingClientRect();
                 invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
@@ -136,23 +149,30 @@ export function attach(el, dotnetRef) {
     const handle = el.querySelector('.sgc-win-resize');
     if (handle) {
         const onResizeStart = (e) => {
+            if (e.button !== 0) return;
             if (el.classList.contains('sgc-win-maximized')) return;
             e.preventDefault(); e.stopPropagation();
             const rect = el.getBoundingClientRect();
             const startW = rect.width, startH = rect.height;
             const startX = e.clientX, startY = e.clientY;
             el.classList.add('sgc-win-resizing');
+            let pendingW = startW, pendingH = startH, rafId = 0;
+            const apply = () => {
+                rafId = 0;
+                el.style.width  = pendingW + 'px';
+                el.style.height = pendingH + 'px';
+            };
             const onMove = (ev) => {
                 const left = parseFloat(el.style.left) || rect.left;
                 const top  = parseFloat(el.style.top)  || rect.top;
-                const nw = Math.max(180, Math.min(window.innerWidth  - left, startW + (ev.clientX - startX)));
-                const nh = Math.max(100, Math.min(window.innerHeight - top,  startH + (ev.clientY - startY)));
-                el.style.width  = nw + 'px';
-                el.style.height = nh + 'px';
+                pendingW = Math.max(180, Math.min(window.innerWidth  - left, startW + (ev.clientX - startX)));
+                pendingH = Math.max(100, Math.min(window.innerHeight - top,  startH + (ev.clientY - startY)));
+                if (!rafId) rafId = requestAnimationFrame(apply);
             };
             const onUp = () => {
                 window.removeEventListener('pointermove', onMove);
                 window.removeEventListener('pointerup', onUp);
+                if (rafId) { cancelAnimationFrame(rafId); apply(); }
                 el.classList.remove('sgc-win-resizing');
                 const fr = el.getBoundingClientRect();
                 invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);

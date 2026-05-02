@@ -126,7 +126,9 @@
                       fill="none" marker-end="@mrk" style="pointer-events:none" />
                 @if (!string.IsNullOrEmpty(edge.Label))
                 {
-                    @((MarkupString)$"<text x=\"{mid.x}\" y=\"{mid.y - 6}\" text-anchor=\"middle\" dominant-baseline=\"middle\" class=\"sgc-diagram-edge-label\" style=\"pointer-events:none\">{System.Net.WebUtility.HtmlEncode(edge.Label)}</text>")
+                    var labelW = Math.Max(24, edge.Label.Length * 6 + 12);
+                    @((MarkupString)$"<rect class=\"sgc-dge-edge-label-bg\" x=\"{F(mid.x - labelW/2.0)}\" y=\"{F(mid.y - 14)}\" width=\"{labelW}\" height=\"16\" rx=\"3\" style=\"pointer-events:none\" />")
+                    @((MarkupString)$"<text x=\"{F(mid.x)}\" y=\"{F(mid.y - 6)}\" text-anchor=\"middle\" dominant-baseline=\"middle\" class=\"sgc-diagram-edge-label\" style=\"pointer-events:none\">{System.Net.WebUtility.HtmlEncode(edge.Label)}</text>")
                 }
                 @if (sel)
                 {
@@ -721,6 +723,43 @@
                 { var id = _selectedNodeId; _swallowKey = true; await DeleteNode(id); }
                 else if (_selectedEdgeId is not null)
                 { var id = _selectedEdgeId; _swallowKey = true; await DeleteEdge(id); }
+                break;
+            case "ArrowUp":
+            case "ArrowDown":
+            case "ArrowLeft":
+            case "ArrowRight":
+                if (_selectedNodeId is not null && _editNode is not null)
+                {
+                    var step = e.ShiftKey ? 1.0 : 10.0;
+                    if (e.Key == "ArrowUp")    _editNode.Y = Math.Max(0, _editNode.Y - step);
+                    if (e.Key == "ArrowDown")  _editNode.Y += step;
+                    if (e.Key == "ArrowLeft")  _editNode.X = Math.Max(0, _editNode.X - step);
+                    if (e.Key == "ArrowRight") _editNode.X += step;
+                    _swallowKey = true;
+                    await Refresh();
+                }
+                break;
+            case "d":
+            case "D":
+                if (e.CtrlKey && _selectedNodeId is not null && _editNode is not null)
+                {
+                    _swallowKey = true;
+                    var src = _editNode;
+                    var clone = new SgDiagramNode
+                    {
+                        Id     = $"n{_counter++}",
+                        Label  = src.Label + " copy",
+                        Shape  = src.Shape,
+                        Width  = src.Width,
+                        Height = src.Height,
+                        X      = src.X + 24,
+                        Y      = src.Y + 24,
+                        Color  = src.Color,
+                    };
+                    _nodes = new List<SgDiagramNode>(_nodes) { clone };
+                    _selectedNodeId = clone.Id; _editNode = clone;
+                    await Refresh();
+                }
                 break;
         }
     }
