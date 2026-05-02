@@ -46,6 +46,8 @@
     private bool _isClosing;
     private int _zIndex;
     private int _backdropZIndex;
+    private CancellationTokenSource? _closeCts;
+    private string _runtimeSize = string.Empty;
 
     /// <summary>
     /// Gets or sets whether the drawer is visible.
@@ -121,20 +123,13 @@
     {
         get
         {
+            var sz = string.IsNullOrEmpty(_runtimeSize) ? Size : _runtimeSize;
             var styles = new List<string>();
             if (_zIndex > 0) styles.Add($"z-index: {_zIndex}");
-            
             if (Placement is "left" or "right")
-            {
-                styles.Add($"width:{Size}");
-                styles.Add("max-width:100vw");
-            }
+            { styles.Add($"width:{sz}"); styles.Add("max-width:100vw"); }
             else
-            {
-                styles.Add($"height:{Size}");
-                styles.Add("max-height:100vh");
-            }
-            
+            { styles.Add($"height:{sz}"); styles.Add("max-height:100vh"); }
             return string.Join("; ", styles) + ";";
         }
     }
@@ -194,26 +189,26 @@
     [JSInvokable]
     public async Task UpdateSizeFromJs(string newSize)
     {
-        Size = newSize;
-        if (SizeChanged.HasDelegate)
-        {
-            await SizeChanged.InvokeAsync(newSize);
-        }
+        _runtimeSize = newSize;
+        if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(newSize);
+        await InvokeAsync(StateHasChanged);
     }
 
     public async Task CloseAsync()
     {
         if (_isDisposed || _isClosing) return;
 
+        _closeCts?.Cancel();
+        _closeCts = new CancellationTokenSource();
+        var token = _closeCts.Token;
+
         _isClosing = true;
         StateHasChanged();
 
-        // Wait for animation to finish (300ms in CSS for slide)
-        await Task.Delay(300);
+        try { await Task.Delay(300, token); }
+        catch (TaskCanceledException) { return; }
 
-        Visible = false;
         _isClosing = false;
-
         if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(false);
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
     }
@@ -225,11 +220,10 @@
         if (_isDisposed) return;
         _isDisposed = true;
 
-        if (_zIndex > 0)
-        {
-            ZIndex.Release(this);
-            _zIndex = 0;
-        }
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+
+        if (_zIndex > 0) { ZIndex.Release(this); _zIndex = 0; }
 
         var self = _self;
         _self = null;

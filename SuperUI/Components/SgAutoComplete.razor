@@ -28,6 +28,7 @@
                    aria-autocomplete="list"
                    aria-controls="@_listboxId"
                    @onfocus="OpenAsync"
+                   @onblur="HandleBlurAsync"
                    @oninput="OnSearchInput"
                    @onkeydown="OnKeyDownAsync" />
             @if (AllowClear && Value is not null && !Disabled)
@@ -84,6 +85,7 @@
     private string _search = string.Empty;
     private int _activeIndex = -1;
     private SgEditContextBinder<TItem?>? _binder;
+    private CancellationTokenSource? _blurCts;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
@@ -211,14 +213,28 @@
 
         return Items
             .Where(item => LabelFrom(item).Contains(_search, StringComparison.CurrentCultureIgnoreCase))
-            .Take(Math.Max(1, MaxResults));
+            .Take(MaxResults > 0 ? MaxResults : int.MaxValue);
     }
 
     private Task OpenAsync()
     {
         if (Disabled) return Task.CompletedTask;
+        _blurCts?.Cancel();
         _open = true;
         return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleBlurAsync(FocusEventArgs e)
+    {
+        _blurCts?.Cancel();
+        _blurCts = new CancellationTokenSource();
+        var token = _blurCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            await CloseAsync();
+        }
+        catch (TaskCanceledException) { }
     }
 
     private Task CloseAsync()
@@ -280,12 +296,10 @@
 
     private async Task PickAsync(TItem item)
     {
+        _blurCts?.Cancel();
         Value = item;
         _search = LabelFrom(item);
-        if (ValueChanged.HasDelegate)
-        {
-            await ValueChanged.InvokeAsync(item);
-        }
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(item);
         _binder?.NotifyFieldChanged();
         await CloseAsync();
     }
@@ -304,6 +318,11 @@
         await InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => _binder?.Dispose();
+    public void Dispose()
+    {
+        _blurCts?.Cancel();
+        _blurCts?.Dispose();
+        _binder?.Dispose();
+    }
 }
 

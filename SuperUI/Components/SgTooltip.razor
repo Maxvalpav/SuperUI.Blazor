@@ -77,7 +77,7 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private System.Timers.Timer? _delayTimer;
+    private CancellationTokenSource? _delayCts;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -87,7 +87,7 @@
         {
             try
             {
-                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-tooltip.js");
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-tooltip.js");
                 if (_isDisposed) return;
 
                 _self ??= DotNetObjectReference.Create(this);
@@ -118,18 +118,17 @@
     public async Task ShowAsync()
     {
         if (_isDisposed || _visible || Disabled) return;
-
         CancelDelay();
         if (OpenDelay > 0)
         {
-            _delayTimer = new System.Timers.Timer(OpenDelay);
-            _delayTimer.Elapsed += async (_, _) =>
+            _delayCts = new CancellationTokenSource();
+            var token = _delayCts.Token;
+            try
             {
-                CancelDelay();
+                await Task.Delay(OpenDelay, token);
                 await InvokeAsync(DoShowAsync);
-            };
-            _delayTimer.AutoReset = false;
-            _delayTimer.Start();
+            }
+            catch (TaskCanceledException) { }
             return;
         }
         await DoShowAsync();
@@ -159,9 +158,9 @@
 
     private void CancelDelay()
     {
-        _delayTimer?.Stop();
-        _delayTimer?.Dispose();
-        _delayTimer = null;
+        _delayCts?.Cancel();
+        _delayCts?.Dispose();
+        _delayCts = null;
     }
 
     /// <summary>
@@ -170,18 +169,17 @@
     public async Task HideAsync()
     {
         if (_isDisposed || !_visible) return;
-
         CancelDelay();
         if (CloseDelay > 0)
         {
-            _delayTimer = new System.Timers.Timer(CloseDelay);
-            _delayTimer.Elapsed += async (_, _) =>
+            _delayCts = new CancellationTokenSource();
+            var token = _delayCts.Token;
+            try
             {
-                CancelDelay();
+                await Task.Delay(CloseDelay, token);
                 await InvokeAsync(DoHideAsync);
-            };
-            _delayTimer.AutoReset = false;
-            _delayTimer.Start();
+            }
+            catch (TaskCanceledException) { }
             return;
         }
         await DoHideAsync();

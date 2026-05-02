@@ -1,3 +1,7 @@
+export function setIndeterminate(el, value) {
+    if (el) el.indeterminate = value;
+}
+
 export function init(dotnetRef, gridRoot) {
     if (!gridRoot) return;
     

@@ -79,8 +79,8 @@ export function show(trigger, tooltip, placement = 'top') {
     left = Math.max(padding, Math.min(pos.left, vw - tooltipRect.width - padding));
     top = Math.max(padding, Math.min(pos.top, vh - tooltipRect.height - padding));
 
-    tooltip.style.top = `${top + window.scrollY}px`;
-    tooltip.style.left = `${left + window.scrollX}px`;
+    tooltip.style.top = `${top}px`;
+    tooltip.style.left = `${left}px`;
     tooltip.style.visibility = 'visible';
     tooltip.style.opacity = '1';
 }
