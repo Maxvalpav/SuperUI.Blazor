@@ -7,26 +7,52 @@ export function attach(el, dotnetRef) {
     if (!el || el._sgWinAttached) return;
     el._sgWinAttached = true;
 
+    // Clamp initial position into viewport so a window declared with
+    // off-screen Left/Top (e.g. legacy state) is still reachable.
+    if (!el.classList.contains('sgc-win-maximized')) {
+        const r = el.getBoundingClientRect();
+        if (r.width > 0 && r.height > 0) {
+            const maxL = Math.max(0, window.innerWidth  - r.width);
+            const maxT = Math.max(0, window.innerHeight - r.height);
+            const cl = Math.max(0, Math.min(maxL, r.left));
+            const ct = Math.max(0, Math.min(maxT, r.top));
+            if (cl !== r.left || ct !== r.top) {
+                el.style.left = cl + 'px';
+                el.style.top  = ct + 'px';
+                dotnetRef.invokeMethodAsync('UpdateBoundsAsync', cl, ct, r.width, r.height);
+            }
+        }
+    }
+
     el.addEventListener('pointerdown', () => {
         dotnetRef.invokeMethodAsync('FocusAsync');
     }, true);
 
     // Keyboard handlers
+    const isEditableTarget = () => {
+        const a = document.activeElement;
+        if (!a) return false;
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return true;
+        const ce = a.getAttribute && a.getAttribute('contenteditable');
+        return ce && ce !== 'false';
+    };
+
     el.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-            dotnetRef.invokeMethodAsync('CloseAsync');
-        }
-        
-        // Ctrl+F4 to close
+        // Ctrl+F4 to close — works regardless of input focus
         if (e.ctrlKey && e.key === 'F4') {
             e.preventDefault();
             dotnetRef.invokeMethodAsync('CloseAsync');
+            return;
         }
-        
+
+        // Esc closes only when not inside a text input (don't hijack form cancellation)
+        if (e.key === 'Escape' && !isEditableTarget()) {
+            dotnetRef.invokeMethodAsync('CloseAsync');
+            return;
+        }
+
         // Arrow keys to move window (only if not in a text input)
-        const isTextInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || 
-                            (document.activeElement?.hasAttribute('contenteditable') && document.activeElement.getAttribute('contenteditable') !== 'false');
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && !el.classList.contains('sgc-win-maximized') && !isTextInput) {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && !el.classList.contains('sgc-win-maximized') && !isEditableTarget()) {
             e.preventDefault();
             const windowWidth = window.innerWidth;
             const windowHeight = window.innerHeight;

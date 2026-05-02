@@ -26,7 +26,10 @@
     • Esc                   → cancel / return to select
 *@
 
-<div class="sgc-dge @CssClass" @ref="_root">
+<div class="sgc-dge @CssClass" @ref="_root"
+     tabindex="0"
+     @onkeydown="OnKeyDown"
+     @onkeydown:preventDefault="_swallowKey">
 
     <!-- ── Toolbar ─────────────────────────────────────────────────────── -->
     <div class="sgc-dge-toolbar">
@@ -346,6 +349,7 @@
     // Drag — OffsetX/Y relative to SVG
     private SgDiagramNode? _dragging;
     private double _dragOffX, _dragOffY;
+    private double _dragStartX, _dragStartY;
     private bool   _didDrag;
 
     // Connect wire
@@ -358,6 +362,7 @@
 
     private bool _confirmReset;
     private int  _counter = 1;
+    private bool _swallowKey;
     private ElementReference _root;
 
     // ── Option lists ────────────────────────────────────────────────────────
@@ -495,11 +500,13 @@
 
         if (n.Shape == SgDiagramNodeShape.Circle)
         {
-            var r   = n.Width / 2;
-            var dx  = fx - cx; var dy = fy - cy;
-            var len = Math.Sqrt(dx*dx + dy*dy);
-            if (len < 1) return (cx, cy);
-            return (cx + r * dx / len, cy + r * dy / len);
+            var rx = n.Width  / 2;
+            var ry = n.Height / 2;
+            var dx = fx - cx; var dy = fy - cy;
+            if (Math.Abs(dx) < 0.001 && Math.Abs(dy) < 0.001) return (cx, cy);
+            // Ellipse clip — works for circle (rx == ry) too.
+            var k = 1.0 / Math.Sqrt((dx*dx) / (rx*rx) + (dy*dy) / (ry*ry));
+            return (cx + dx * k, cy + dy * k);
         }
 
         var ddx = fx - cx; var ddy = fy - cy;
@@ -515,8 +522,17 @@
             if (tt > 0 && uu >= 0 && uu <= 1 && tt < best)
             { best = tt; bx = cx + ddx*tt; by = cy + ddy*tt; }
         }
-        var l = n.X; var rr = n.X + n.Width; var t = n.Y; var b = n.Y + n.Height;
-        Try(l,t,rr,t); Try(rr,t,rr,b); Try(rr,b,l,b); Try(l,b,l,t);
+
+        if (n.Shape == SgDiagramNodeShape.Diamond)
+        {
+            var l = n.X; var rr = n.X + n.Width; var t = n.Y; var b = n.Y + n.Height;
+            // Diamond corners: top, right, bottom, left.
+            Try(cx,t, rr,cy); Try(rr,cy, cx,b); Try(cx,b, l,cy); Try(l,cy, cx,t);
+            return (bx, by);
+        }
+
+        var ll = n.X; var rrr = n.X + n.Width; var tt2 = n.Y; var bb = n.Y + n.Height;
+        Try(ll,tt2,rrr,tt2); Try(rrr,tt2,rrr,bb); Try(rrr,bb,ll,bb); Try(ll,bb,ll,tt2);
         return (bx, by);
     }
 
@@ -555,12 +571,13 @@
         if (_dragging is null) return;
 
         // OffsetX/Y on SVG = canvas-relative coords
-        var nx = e.OffsetX - _dragOffX;
-        var ny = e.OffsetY - _dragOffY;
-        if (Math.Abs(nx - _dragging.X) > 2 || Math.Abs(ny - _dragging.Y) > 2)
+        var nx = Math.Max(0, e.OffsetX - _dragOffX);
+        var ny = Math.Max(0, e.OffsetY - _dragOffY);
+        if (!_didDrag &&
+            (Math.Abs(nx - _dragStartX) > 3 || Math.Abs(ny - _dragStartY) > 3))
             _didDrag = true;
-        _dragging.X = Math.Max(0, nx);
-        _dragging.Y = Math.Max(0, ny);
+        _dragging.X = nx;
+        _dragging.Y = ny;
         RecalcCanvas();
         StateHasChanged();
     }
@@ -582,11 +599,13 @@
     {
         if (_mode != "select") return;
         _dragging = node;
-        // e.OffsetX/Y here are relative to the node div.
-        // When SVG mousemove fires, OffsetX/Y are relative to SVG.
-        // So drag offset = node position + click offset within node.
-        _dragOffX = node.X + e.OffsetX;
-        _dragOffY = node.Y + e.OffsetY;
+        // e.OffsetX/Y here are relative to the node div (the click point inside the node).
+        // SVG mousemove provides OffsetX/Y relative to the SVG (canvas-relative).
+        // So new node position = canvasX - clickOffsetInsideNode.
+        _dragOffX = e.OffsetX;
+        _dragOffY = e.OffsetY;
+        _dragStartX = node.X;
+        _dragStartY = node.Y;
         _didDrag  = false;
     }
 
@@ -682,6 +701,28 @@
     {
         _selectedNodeId = null; _editNode = null;
         _selectedEdgeId = null; _editEdge = null;
+    }
+
+    // ── Keyboard ─────────────────────────────────────────────────────────────
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        _swallowKey = false;
+        switch (e.Key)
+        {
+            case "Escape":
+                if (_mode != "select") { CancelMode(); _swallowKey = true; }
+                else if (_selectedNodeId is not null || _selectedEdgeId is not null)
+                { ClosePanel(); _swallowKey = true; }
+                break;
+            case "Delete":
+            case "Backspace":
+                if (_selectedNodeId is not null)
+                { var id = _selectedNodeId; _swallowKey = true; await DeleteNode(id); }
+                else if (_selectedEdgeId is not null)
+                { var id = _selectedEdgeId; _swallowKey = true; await DeleteEdge(id); }
+                break;
+        }
     }
 
     // ── Reset ────────────────────────────────────────────────────────────────
