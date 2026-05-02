@@ -13,6 +13,7 @@ namespace SuperUI.Components;
 /// <typeparam name="TValue">Type of the bound value.</typeparam>
 public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
 {
+    private bool _disposed;
     private bool _hasInitializedParameters;
     private EditContext? _previousEditContext;
     private Expression<Func<TValue?>>? _previousValueExpression;
@@ -109,11 +110,16 @@ public abstract class SgInputBase<TValue> : ComponentBase, IDisposable
 
     private void HandleValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
-        _ = InvokeAsync(StateHasChanged);
+        if (_disposed) return;
+        _ = InvokeAsync(StateHasChanged).ContinueWith(
+            t => Console.Error.WriteLine($"[SgInputBase] StateHasChanged failed: {t.Exception}"),
+            System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
     }
 
     public virtual void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
         if (_previousEditContext is not null)
         {
             _previousEditContext.OnValidationStateChanged -= HandleValidationStateChanged;

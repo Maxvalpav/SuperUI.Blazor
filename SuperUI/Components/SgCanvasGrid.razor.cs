@@ -278,6 +278,7 @@ namespace SuperUI.Components
 
         private async Task SafeUpdateDataAsync()
         {
+            if (_isDisposed) return;
             try { await UpdateData(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
