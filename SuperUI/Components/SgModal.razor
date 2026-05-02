@@ -48,6 +48,7 @@
     private bool _isClosing;
     private int _zIndex;
     private int _backdropZIndex;
+    private CancellationTokenSource? _closeCts;
 
     /// <summary>
     /// Gets or sets whether the modal is visible.
@@ -174,16 +175,18 @@
     public async Task CloseAsync()
     {
         if (_isDisposed || _isClosing) return;
-        
+
+        _closeCts?.Cancel();
+        _closeCts = new CancellationTokenSource();
+        var token = _closeCts.Token;
+
         _isClosing = true;
         StateHasChanged();
 
-        // Wait for animation to finish (200ms in CSS)
-        await Task.Delay(200);
-        
-        Visible = false;
+        try { await Task.Delay(200, token); }
+        catch (TaskCanceledException) { return; }
+
         _isClosing = false;
-        
         if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(false);
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
     }
@@ -204,11 +207,10 @@
         if (_isDisposed) return;
         _isDisposed = true;
 
-        if (_zIndex > 0)
-        {
-            ZIndex.Release(this);
-            _zIndex = 0;
-        }
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+
+        if (_zIndex > 0) { ZIndex.Release(this); _zIndex = 0; }
 
         var self = _self;
         _self = null;

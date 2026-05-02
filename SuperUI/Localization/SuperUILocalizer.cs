@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Resources;
 
@@ -45,11 +46,11 @@ public sealed class SuperUILocalizer : ISuperUILocalizer
         {
             try
             {
-                var value = _resourceManager.GetString(key, Culture);
-                return value ?? key;
+                return _resourceManager.GetString(key, Culture) ?? key;
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.Fail($"[SuperUI] Localization lookup failed for key '{key}': {ex.Message}");
                 return key;
             }
         }
@@ -63,8 +64,9 @@ public sealed class SuperUILocalizer : ISuperUILocalizer
         {
             return string.Format(Culture, format, args);
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.Fail($"[SuperUI] string.Format failed for key '{key}': {ex.Message}");
             return format;
         }
     }

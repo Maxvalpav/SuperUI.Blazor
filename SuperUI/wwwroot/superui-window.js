@@ -3,12 +3,19 @@
 const SNAP_THRESHOLD = 15;
 const ARROW_KEY_STEP = 10;
 
+// WeakMap<el, cleanup()> — lets detach() remove all listeners precisely.
+const _cleanup = new WeakMap();
+
 export function attach(el, dotnetRef) {
     if (!el || el._sgWinAttached) return;
     el._sgWinAttached = true;
 
-    // Clamp initial position into viewport so a window declared with
-    // off-screen Left/Top (e.g. legacy state) is still reachable.
+    const invoke = (method, ...args) => {
+        if (dotnetRef._sgDisposed) return;
+        dotnetRef.invokeMethodAsync(method, ...args).catch(() => {});
+    };
+
+    // Clamp initial position into viewport.
     if (!el.classList.contains('sgc-win-maximized')) {
         const r = el.getBoundingClientRect();
         if (r.width > 0 && r.height > 0) {
@@ -19,17 +26,15 @@ export function attach(el, dotnetRef) {
             if (cl !== r.left || ct !== r.top) {
                 el.style.left = cl + 'px';
                 el.style.top  = ct + 'px';
-                dotnetRef.invokeMethodAsync('UpdateBoundsAsync', cl, ct, r.width, r.height);
+                invoke('UpdateBoundsAsync', cl, ct, r.width, r.height);
             }
         }
     }
 
-    el.addEventListener('pointerdown', () => {
-        dotnetRef.invokeMethodAsync('FocusAsync');
-    }, true);
+    const onFocusDown = () => invoke('FocusAsync');
+    el.addEventListener('pointerdown', onFocusDown, true);
 
-    // Keyboard handlers
-    const isEditableTarget = () => {
+    const isEditable = () => {
         const a = document.activeElement;
         if (!a) return false;
         if (['INPUT', 'TEXTAREA', 'SELECT'].includes(a.tagName)) return true;
@@ -37,80 +42,53 @@ export function attach(el, dotnetRef) {
         return ce && ce !== 'false';
     };
 
-    el.addEventListener('keydown', (e) => {
-        // Ctrl+F4 to close — works regardless of input focus
+    const onKeyDown = (e) => {
         if (e.ctrlKey && e.key === 'F4') {
             e.preventDefault();
-            dotnetRef.invokeMethodAsync('CloseAsync');
+            invoke('CloseAsync');
             return;
         }
-
-        // Esc closes only when not inside a text input (don't hijack form cancellation)
-        if (e.key === 'Escape' && !isEditableTarget()) {
-            dotnetRef.invokeMethodAsync('CloseAsync');
+        if (e.key === 'Escape' && !isEditable()) {
+            invoke('CloseAsync');
             return;
         }
-
-        // Arrow keys to move window (only if not in a text input)
-        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && !el.classList.contains('sgc-win-maximized') && !isEditableTarget()) {
+        if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)
+            && !el.classList.contains('sgc-win-maximized') && !isEditable()) {
             e.preventDefault();
-            const windowWidth = window.innerWidth;
-            const windowHeight = window.innerHeight;
             const rect = el.getBoundingClientRect();
             let left = parseFloat(el.style.left) || rect.left;
-            let top = parseFloat(el.style.top) || rect.top;
-            
-            switch (e.key) {
-                case 'ArrowUp':
-                    top -= ARROW_KEY_STEP;
-                    break;
-                case 'ArrowDown':
-                    top += ARROW_KEY_STEP;
-                    break;
-                case 'ArrowLeft':
-                    left -= ARROW_KEY_STEP;
-                    break;
-                case 'ArrowRight':
-                    left += ARROW_KEY_STEP;
-                    break;
-            }
-            
-            // Keep window inside viewport
-            left = Math.max(0, Math.min(windowWidth - rect.width, left));
-            top = Math.max(0, Math.min(windowHeight - rect.height, top));
-            
+            let top  = parseFloat(el.style.top)  || rect.top;
+            if (e.key === 'ArrowUp')    top  -= ARROW_KEY_STEP;
+            if (e.key === 'ArrowDown')  top  += ARROW_KEY_STEP;
+            if (e.key === 'ArrowLeft')  left -= ARROW_KEY_STEP;
+            if (e.key === 'ArrowRight') left += ARROW_KEY_STEP;
+            left = Math.max(0, Math.min(window.innerWidth  - rect.width,  left));
+            top  = Math.max(0, Math.min(window.innerHeight - rect.height, top));
             el.style.left = left + 'px';
-            el.style.top = top + 'px';
-            el.style.right = 'auto';
-            el.style.bottom = 'auto';
-            
-            dotnetRef.invokeMethodAsync('UpdateBoundsAsync', left, top, rect.width, rect.height);
+            el.style.top  = top  + 'px';
+            el.style.right = el.style.bottom = 'auto';
+            invoke('UpdateBoundsAsync', left, top, rect.width, rect.height);
         }
-        
         if (e.key === 'Tab') {
-            const items = Array.from(el.querySelectorAll('button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])'));
-            if (items.length === 0) return;
-            const first = items[0];
-            const last = items[items.length - 1];
-            if (e.shiftKey && document.activeElement === first) {
-                e.preventDefault();
-                last.focus();
-            } else if (!e.shiftKey && document.activeElement === last) {
-                e.preventDefault();
-                first.focus();
-            }
+            const items = Array.from(el.querySelectorAll(
+                'button, a, input, select, textarea, [tabindex]:not([tabindex="-1"])'));
+            if (!items.length) return;
+            const first = items[0], last = items[items.length - 1];
+            if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+            else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
         }
-    });
+    };
+    el.addEventListener('keydown', onKeyDown);
 
     const header = el.querySelector('.sgc-win-header');
     if (header) {
-        // Double-click to toggle maximize
-        header.addEventListener('dblclick', (e) => {
+        const onDblClick = (e) => {
             if (e.target.closest('.sgc-win-btn')) return;
-            dotnetRef.invokeMethodAsync('ToggleMaximizeAsync');
-        });
-        
-        header.addEventListener('pointerdown', (e) => {
+            invoke('ToggleMaximizeAsync');
+        };
+        header.addEventListener('dblclick', onDblClick);
+
+        const onDragStart = (e) => {
             if (e.target.closest('.sgc-win-btn')) return;
             if (el.classList.contains('sgc-win-maximized')) return;
             e.preventDefault();
@@ -118,114 +96,84 @@ export function attach(el, dotnetRef) {
             const offX = e.clientX - rect.left;
             const offY = e.clientY - rect.top;
             el.classList.add('sgc-win-dragging');
-            
+
             const onMove = (ev) => {
-                const windowWidth = window.innerWidth;
-                const windowHeight = window.innerHeight;
-                const winWidth = rect.width;
-                const winHeight = rect.height;
-                
-                let nx = ev.clientX - offX;
-                let ny = ev.clientY - offY;
-                
-                // Keep window completely inside viewport
-                nx = Math.max(0, Math.min(windowWidth - winWidth, nx));
-                ny = Math.max(0, Math.min(windowHeight - winHeight, ny));
-                
-                // Snap to viewport edges
+                const ww = window.innerWidth, wh = window.innerHeight;
+                let nx = ev.clientX - offX, ny = ev.clientY - offY;
+                nx = Math.max(0, Math.min(ww - rect.width,  nx));
+                ny = Math.max(0, Math.min(wh - rect.height, ny));
                 if (nx < SNAP_THRESHOLD) nx = 0;
                 if (ny < SNAP_THRESHOLD) ny = 0;
-                if (windowWidth - winWidth - nx < SNAP_THRESHOLD) nx = windowWidth - winWidth;
-                if (windowHeight - winHeight - ny < SNAP_THRESHOLD) ny = windowHeight - winHeight;
-                
-                // Snap to other windows
-                const otherWindows = Array.from(document.querySelectorAll('.sgc-win')).filter(w => w !== el && !w.classList.contains('sgc-win-maximized'));
-                for (const other of otherWindows) {
-                    const otherRect = other.getBoundingClientRect();
-                    
-                    if (Math.abs(nx - otherRect.right) < SNAP_THRESHOLD) {
-                        nx = otherRect.right;
-                    }
-                    if (Math.abs(nx + winWidth - otherRect.left) < SNAP_THRESHOLD) {
-                        nx = otherRect.left - winWidth;
-                    }
-                    if (Math.abs(ny - otherRect.bottom) < SNAP_THRESHOLD) {
-                        ny = otherRect.bottom;
-                    }
-                    if (Math.abs(ny + winHeight - otherRect.top) < SNAP_THRESHOLD) {
-                        ny = otherRect.top - winHeight;
-                    }
-                    if (Math.abs(ny - otherRect.top) < SNAP_THRESHOLD) {
-                        ny = otherRect.top;
-                    }
-                    if (Math.abs(nx - otherRect.left) < SNAP_THRESHOLD) {
-                        nx = otherRect.left;
-                    }
+                if (ww - rect.width  - nx < SNAP_THRESHOLD) nx = ww - rect.width;
+                if (wh - rect.height - ny < SNAP_THRESHOLD) ny = wh - rect.height;
+                for (const other of document.querySelectorAll('.sgc-win')) {
+                    if (other === el || other.classList.contains('sgc-win-maximized')) continue;
+                    const o = other.getBoundingClientRect();
+                    if (Math.abs(nx - o.right)              < SNAP_THRESHOLD) nx = o.right;
+                    if (Math.abs(nx + rect.width - o.left)  < SNAP_THRESHOLD) nx = o.left - rect.width;
+                    if (Math.abs(ny - o.bottom)             < SNAP_THRESHOLD) ny = o.bottom;
+                    if (Math.abs(ny + rect.height - o.top)  < SNAP_THRESHOLD) ny = o.top - rect.height;
+                    if (Math.abs(ny - o.top)                < SNAP_THRESHOLD) ny = o.top;
+                    if (Math.abs(nx - o.left)               < SNAP_THRESHOLD) nx = o.left;
                 }
-                
                 el.style.left = nx + 'px';
-                el.style.top = ny + 'px';
-                el.style.right = 'auto';
-                el.style.bottom = 'auto';
+                el.style.top  = ny + 'px';
+                el.style.right = el.style.bottom = 'auto';
             };
-            
             const onUp = () => {
                 window.removeEventListener('pointermove', onMove);
                 window.removeEventListener('pointerup', onUp);
                 el.classList.remove('sgc-win-dragging');
-                const finalRect = el.getBoundingClientRect();
-                dotnetRef.invokeMethodAsync('UpdateBoundsAsync', 
-                    parseFloat(el.style.left), 
-                    parseFloat(el.style.top), 
-                    finalRect.width, 
-                    finalRect.height);
+                const fr = el.getBoundingClientRect();
+                invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
             };
-            
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp, { once: true });
-        });
+        };
+        header.addEventListener('pointerdown', onDragStart);
     }
 
     const handle = el.querySelector('.sgc-win-resize');
     if (handle) {
-        handle.addEventListener('pointerdown', (e) => {
+        const onResizeStart = (e) => {
             if (el.classList.contains('sgc-win-maximized')) return;
-            e.preventDefault();
-            e.stopPropagation();
+            e.preventDefault(); e.stopPropagation();
             const rect = el.getBoundingClientRect();
-            const startW = rect.width;
-            const startH = rect.height;
-            const startX = e.clientX;
-            const startY = e.clientY;
+            const startW = rect.width, startH = rect.height;
+            const startX = e.clientX, startY = e.clientY;
             el.classList.add('sgc-win-resizing');
-            
             const onMove = (ev) => {
-                const windowWidth = window.innerWidth;
-                const windowHeight = window.innerHeight;
                 const left = parseFloat(el.style.left) || rect.left;
-                const top = parseFloat(el.style.top) || rect.top;
-                
-                const nw = Math.max(180, Math.min(windowWidth - left, startW + (ev.clientX - startX)));
-                const nh = Math.max(100, Math.min(windowHeight - top, startH + (ev.clientY - startY)));
-                
-                el.style.width = nw + 'px';
+                const top  = parseFloat(el.style.top)  || rect.top;
+                const nw = Math.max(180, Math.min(window.innerWidth  - left, startW + (ev.clientX - startX)));
+                const nh = Math.max(100, Math.min(window.innerHeight - top,  startH + (ev.clientY - startY)));
+                el.style.width  = nw + 'px';
                 el.style.height = nh + 'px';
             };
-            
             const onUp = () => {
                 window.removeEventListener('pointermove', onMove);
                 window.removeEventListener('pointerup', onUp);
                 el.classList.remove('sgc-win-resizing');
-                const finalRect = el.getBoundingClientRect();
-                dotnetRef.invokeMethodAsync('UpdateBoundsAsync', 
-                    parseFloat(el.style.left), 
-                    parseFloat(el.style.top), 
-                    finalRect.width, 
-                    finalRect.height);
+                const fr = el.getBoundingClientRect();
+                invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
             };
-            
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp, { once: true });
-        });
+        };
+        handle.addEventListener('pointerdown', onResizeStart);
     }
+
+    _cleanup.set(el, () => {
+        el.removeEventListener('pointerdown', onFocusDown, true);
+        el.removeEventListener('keydown', onKeyDown);
+        el._sgWinAttached = false;
+    });
+}
+
+export function detach(el) {
+    if (!el) return;
+    const cleanup = _cleanup.get(el);
+    if (cleanup) { cleanup(); _cleanup.delete(el); }
+    // Mark disposed so any in-flight drag/resize onUp won't call .NET
+    if (el._dotnetRef) el._dotnetRef._sgDisposed = true;
 }
