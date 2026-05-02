@@ -3,111 +3,162 @@
 
 <PageTitle>Временная шкала - SUI</PageTitle>
 
-<SgCard Title="SgTimeline - Временная шкала"
-        Subtitle="Компонент для отображения последовательности событий. Поддерживает различные статусы, цвета и иконки.">
+<SgCard Title="SgTimeline — Временная шкала"
+        Subtitle="Компонент для отображения последовательности событий. Поддерживает статусы, цвета, иконки и режимы выравнивания.">
 
     <div style="margin-top: 32px;">
         <h2>История проекта</h2>
-        <p>Хронология ключевых событий проекта.</p>
+        <p>Хронология ключевых событий с цветовыми статусами.</p>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Примеры использования">
+            <SgCard Title="Режим left (по умолчанию)">
                 <SgTimeline Items="_projectTimeline" />
             </SgCard>
 
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_timelineProperties" />
+            <SgCard Title="Режим alternate">
+                <SgTimeline Items="_projectTimeline" Mode="alternate" />
             </SgCard>
         </div>
     </div>
 
     <div style="margin-top: 32px;">
-        <h2>Лента активности</h2>
-        <p>Последние действия пользователей в системе.</p>
+        <h2>Статусы задачи</h2>
+        <p>Используйте <code>Status</code> для семантической окраски точки без явного цвета.</p>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Статусы (default / active / done / error / pending)">
+                <SgTimeline Items="_taskTimeline" />
+            </SgCard>
+
             <SgCard Title="Активность за сегодня">
                 <SgTimeline Items="_activityTimeline" />
             </SgCard>
-
-            <SgCard Title="Статусы задач">
-                <SgTimeline Items="_taskTimeline" />
-            </SgCard>
         </div>
     </div>
 
     <div style="margin-top: 32px;">
-        <h2>SgActivityFeed - Лента активности</h2>
-        <p>Компонент для отображения ленты событий с аватарами пользователей.</p>
+        <h2>Свойства компонента</h2>
+        <PropertyTable Items="_timelineProperties" />
+    </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Примеры использования">
-                <SgActivityFeed Items="_activityFeedItems" />
-            </SgCard>
+</SgCard>
 
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_activityFeedProperties" />
-            </SgCard>
-        </div>
+<SgCard Title="SgActivityFeed — Лента активности"
+        Subtitle="Компонент для отображения ленты событий с аватарами пользователей, группировкой и поддержкой кликов."
+        style="margin-top: 24px;">
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+        <SgCard Title="Базовый пример">
+            <SgActivityFeed Items="_activityFeedItems"
+                            Title="Активность"
+                            Subtitle="Последние действия в системе"
+                            OnItemClick="OnFeedItemClick" />
+        </SgCard>
+
+        <SgCard Title="С группировкой по дате">
+            <SgActivityFeed Items="_activityFeedGrouped"
+                            GroupBy="@(item => item.Time ?? "")" />
+        </SgCard>
+    </div>
+
+    @if (_lastClicked is not null)
+    {
+        <SgAlert Variant="info" Text="@($"Клик: {_lastClicked.Title}")" Dismissible="true" style="margin-top: 16px;" />
+    }
+
+    <div style="margin-top: 24px;">
+        <h2>Свойства компонента</h2>
+        <PropertyTable Items="_activityFeedProperties" />
     </div>
 
 </SgCard>
 
 @code {
-    private List<TimelineItem> _projectTimeline = new()
+    private ActivityFeedItem? _lastClicked;
+
+    private void OnFeedItemClick(ActivityFeedItem item) => _lastClicked = item;
+
+    // ── SgTimeline data ──────────────────────────────────────────────────────
+
+    private readonly List<TimelineItem> _projectTimeline = new()
     {
-        new() { Title = "Проект создан", Description = "Инициализация репозитория и настройка окружения разработки", Time = "15 января 2026", Color = "#52c41a" },
-        new() { Title = "Первый релиз v1.0", Description = "Выпуск базовых компонентов: Button, TextBox, Select, Card", Time = "1 февраля 2026", Color = "#52c41a" },
-        new() { Title = "Добавлены компоненты данных", Description = "DataGrid, Pivot Table, Kanban, Gantt", Time = "10 марта 2026", Color = "#52c41a" },
-        new() { Title = "Релиз v1.2 — SgChart", Description = "Интеграция Chart.js, 7 типов графиков, LTTB-decimation", Time = "28 апреля 2026", Color = "#faad14" },
-        new() { Title = "Планируемый релиз v2.0", Description = "Полная поддержка WCAG 2.1 AA, новые компоненты", Time = "Июнь 2026", Color = "#d9d9d9" }
+        new() { Title = "Проект создан",              Description = "Инициализация репозитория и настройка окружения",    Time = "15 янв 2026", Status = "done",    Color = "#16a34a" },
+        new() { Title = "Первый релиз v1.0",          Description = "Базовые компоненты: Button, TextBox, Select, Card",  Time = "1 фев 2026",  Status = "done",    Color = "#16a34a" },
+        new() { Title = "Компоненты данных",          Description = "DataGrid, PivotTable, Kanban, Gantt",                Time = "10 мар 2026", Status = "done",    Color = "#16a34a" },
+        new() { Title = "Релиз v1.2 — SgChart",       Description = "Chart.js, 7 типов графиков, LTTB-decimation",        Time = "28 апр 2026", Status = "active",  Color = "#2563eb" },
+        new() { Title = "Планируемый релиз v2.0",     Description = "Полная поддержка WCAG 2.1 AA, новые компоненты",     Time = "Июнь 2026",   Status = "pending" },
     };
 
-    private List<TimelineItem> _activityTimeline = new()
+    private readonly List<TimelineItem> _taskTimeline = new()
     {
-        new() { Title = "Иван создал задачу", Description = "Реализовать SgChart компонент", Time = "10:30", Color = "#1890ff" },
-        new() { Title = "Мария закрыла баг", Description = "Исправлен баг в SgModal при вложении", Time = "11:15", Color = "#52c41a" },
-        new() { Title = "Деплой на staging", Description = "Версия 1.2.0-rc1 задеплоена", Time = "12:00", Color = "#722ed1" },
-        new() { Title = "Алексей добавил тест", Description = "Unit-тесты для DataDecimation.cs", Time = "14:30", Color = "#fa8c16" },
-        new() { Title = "Code review завершён", Description = "PR #142 одобрен и смержен", Time = "16:00", Color = "#52c41a" }
+        new() { Title = "Задача создана",   Description = "Добавлена в бэклог",          Time = "Пн 09:00", Status = "done"    },
+        new() { Title = "Взята в работу",   Description = "Назначена разработчику",       Time = "Вт 10:00", Status = "done"    },
+        new() { Title = "На проверке",      Description = "Отправлена на code review",    Time = "Ср 15:00", Status = "active"  },
+        new() { Title = "Ошибка в тестах",  Description = "Упали 2 unit-теста",           Time = "Ср 17:00", Status = "error"   },
+        new() { Title = "Завершена",        Description = "Принята и закрыта",            Time = "Чт 11:00", Status = "pending" },
     };
 
-    private List<TimelineItem> _taskTimeline = new()
+    private readonly List<TimelineItem> _activityTimeline = new()
     {
-        new() { Title = "Задача создана", Description = "Добавлена в бэклог", Time = "Пн 09:00", Color = "#d9d9d9" },
-        new() { Title = "Взята в работу", Description = "Назначена разработчику", Time = "Вт 10:00", Color = "#1890ff" },
-        new() { Title = "На проверке", Description = "Отправлена на code review", Time = "Ср 15:00", Color = "#faad14" },
-        new() { Title = "Завершена", Description = "Принята и закрыта", Time = "Чт 11:00", Color = "#52c41a" }
+        new() { Title = "Иван создал задачу",      Description = "Реализовать SgChart компонент",    Time = "10:30", Color = "#2563eb" },
+        new() { Title = "Мария закрыла баг",       Description = "Исправлен баг в SgModal",          Time = "11:15", Color = "#16a34a" },
+        new() { Title = "Деплой на staging",       Description = "Версия 1.2.0-rc1 задеплоена",      Time = "12:00", Color = "#7c3aed" },
+        new() { Title = "Алексей добавил тест",    Description = "Unit-тесты для DataDecimation.cs", Time = "14:30", Color = "#ea580c" },
+        new() { Title = "Code review завершён",    Description = "PR #142 одобрен и смержен",        Time = "16:00", Color = "#16a34a" },
     };
 
-    private List<ActivityFeedItem> _activityFeedItems = new()
+    // ── SgActivityFeed data ──────────────────────────────────────────────────
+
+    private readonly List<ActivityFeedItem> _activityFeedItems = new()
     {
-        new() { Title = "Иван Петров создал задачу", Description = "Реализовать SgChart компонент", Time = "5 мин назад", User = "ИП", AccentColor = "#1890ff" },
-        new() { Title = "Мария Сидорова закрыла задачу", Description = "Исправить баг в SgModal", Time = "20 мин назад", User = "МС", AccentColor = "#52c41a" },
-        new() { Title = "Алексей Козлов прокомментировал", Description = "Обновить документацию", Time = "1 час назад", User = "АК", AccentColor = "#722ed1" },
-        new() { Title = "Деплой выполнен", Description = "v1.2.0 задеплоена на production", Time = "2 часа назад", User = "⚙", AccentColor = "#fa8c16" },
-        new() { Title = "Елена Новикова добавила комментарий", Description = "Дизайн главной страницы", Time = "3 часа назад", User = "ЕН", AccentColor = "#eb2f96" }
+        new() { Title = "Иван Петров создал задачу",        Description = "Реализовать SgChart компонент",   Time = "5 мин назад",  User = "Иван Петров",    AccentColor = "#2563eb" },
+        new() { Title = "Мария Сидорова закрыла задачу",    Description = "Исправить баг в SgModal",         Time = "20 мин назад", User = "Мария Сидорова", AccentColor = "#16a34a" },
+        new() { Title = "Алексей Козлов прокомментировал",  Description = "Обновить документацию",           Time = "1 час назад",  User = "Алексей Козлов", AccentColor = "#7c3aed" },
+        new() { Title = "Деплой выполнен",                  Description = "v1.2.0 задеплоена на production", Time = "2 часа назад", User = "⚙",              AccentColor = "#ea580c" },
+        new() { Title = "Елена Новикова добавила комментарий", Description = "Дизайн главной страницы",      Time = "3 часа назад", User = "Елена Новикова", AccentColor = "#db2777" },
     };
 
-    private List<PropertyPanelItem> _timelineProperties = new()
+    private readonly List<ActivityFeedItem> _activityFeedGrouped = new()
     {
-        new() { Label = "Items", Value = "List<TimelineItem>", BadgeText = "Элементы", BadgeVariant = "info" },
-        new() { Label = "Title", Value = "string", BadgeText = "Заголовок элемента", BadgeVariant = "info" },
-        new() { Label = "Description", Value = "string", BadgeText = "Описание", BadgeVariant = "info" },
-        new() { Label = "Time", Value = "string", BadgeText = "Время/дата", BadgeVariant = "info" },
-        new() { Label = "Color", Value = "string", BadgeText = "Цвет точки", BadgeVariant = "info" },
-        new() { Label = "Icon", Value = "string", BadgeText = "Иконка", BadgeVariant = "info" }
+        new() { Title = "Иван создал задачу",   Description = "SgChart компонент",  Time = "Сегодня",  User = "ИП", AccentColor = "#2563eb" },
+        new() { Title = "Мария закрыла баг",    Description = "SgModal",            Time = "Сегодня",  User = "МС", AccentColor = "#16a34a" },
+        new() { Title = "Деплой на staging",    Description = "v1.2.0-rc1",         Time = "Вчера",    User = "⚙",  AccentColor = "#ea580c" },
+        new() { Title = "Code review завершён", Description = "PR #142 смержен",    Time = "Вчера",    User = "АК", AccentColor = "#7c3aed" },
+        new() { Title = "Проект создан",        Description = "Инициализация репо", Time = "15 янв",   User = "ИП", AccentColor = "#2563eb" },
     };
 
-    private List<PropertyPanelItem> _activityFeedProperties = new()
+    // ── Property tables ──────────────────────────────────────────────────────
+
+    private readonly List<PropertyPanelItem> _timelineProperties = new()
     {
-        new() { Label = "Items", Value = "IEnumerable<ActivityFeedItem>", BadgeText = "Элементы", BadgeVariant = "info" },
-        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = "info" },
-        new() { Label = "Description", Value = "string", BadgeText = "Описание", BadgeVariant = "info" },
-        new() { Label = "Time", Value = "string", BadgeText = "Время", BadgeVariant = "info" },
-        new() { Label = "User", Value = "string", BadgeText = "Пользователь", BadgeVariant = "info" },
-        new() { Label = "AccentColor", Value = "string", BadgeText = "Цвет акцента", BadgeVariant = "info" },
-        new() { Label = "BadgeText", Value = "string", BadgeText = "Текст значка", BadgeVariant = "info" },
-        new() { Label = "BadgeVariant", Value = "string", BadgeText = "Вариант значка", BadgeVariant = "info" }
+        new() { Label = "Items",      Value = "IEnumerable<TimelineItem>", BadgeText = "Список элементов",          BadgeVariant = "info"    },
+        new() { Label = "Mode",       Value = "string",                    BadgeText = "left / right / alternate",  BadgeVariant = "info"    },
+        new() { Label = "Reverse",    Value = "bool",                      BadgeText = "Обратный порядок",          BadgeVariant = "default" },
+        new() { Label = "Virtualize", Value = "bool",                      BadgeText = "Виртуализация",             BadgeVariant = "default" },
+        new() { Label = "EmptyText",  Value = "string",                    BadgeText = "Текст при пустом списке",   BadgeVariant = "default" },
+        new() { Label = "Title",      Value = "string",                    BadgeText = "Заголовок элемента",        BadgeVariant = "info"    },
+        new() { Label = "Description",Value = "string",                    BadgeText = "Описание",                  BadgeVariant = "info"    },
+        new() { Label = "Time",       Value = "string",                    BadgeText = "Метка времени",             BadgeVariant = "info"    },
+        new() { Label = "Status",     Value = "string",                    BadgeText = "default/active/done/error/pending", BadgeVariant = "info" },
+        new() { Label = "Color",      Value = "string",                    BadgeText = "Цвет точки (hex / var)",    BadgeVariant = "info"    },
+        new() { Label = "Icon",       Value = "RenderFragment",            BadgeText = "Иконка внутри точки",       BadgeVariant = "warn"    },
+        new() { Label = "DotContent", Value = "RenderFragment",            BadgeText = "Полная замена точки",       BadgeVariant = "warn"    },
+        new() { Label = "ExtraContent",Value = "RenderFragment",           BadgeText = "Доп. контент под описанием",BadgeVariant = "warn"    },
+    };
+
+    private readonly List<PropertyPanelItem> _activityFeedProperties = new()
+    {
+        new() { Label = "Items",       Value = "IEnumerable<ActivityFeedItem>", BadgeText = "Список событий",          BadgeVariant = "info"    },
+        new() { Label = "Title",       Value = "string",                        BadgeText = "Заголовок панели",         BadgeVariant = "default" },
+        new() { Label = "Subtitle",    Value = "string",                        BadgeText = "Подзаголовок",             BadgeVariant = "default" },
+        new() { Label = "EmptyText",   Value = "string",                        BadgeText = "Текст при пустом списке",  BadgeVariant = "default" },
+        new() { Label = "GroupBy",     Value = "Func<ActivityFeedItem,string>", BadgeText = "Группировка",              BadgeVariant = "info"    },
+        new() { Label = "Virtualize",  Value = "bool",                          BadgeText = "Виртуализация",            BadgeVariant = "default" },
+        new() { Label = "OnItemClick", Value = "EventCallback<ActivityFeedItem>",BadgeText = "Клик по элементу",        BadgeVariant = "warn"    },
+        new() { Label = "User",        Value = "string",                        BadgeText = "Имя / инициалы аватара",   BadgeVariant = "info"    },
+        new() { Label = "AvatarUrl",   Value = "string",                        BadgeText = "URL изображения аватара",  BadgeVariant = "info"    },
+        new() { Label = "AccentColor", Value = "string",                        BadgeText = "Цвет аватара",             BadgeVariant = "info"    },
+        new() { Label = "BadgeText",   Value = "string",                        BadgeText = "Текст значка",             BadgeVariant = "info"    },
+        new() { Label = "ExtraContent",Value = "RenderFragment",                BadgeText = "Доп. контент в карточке",  BadgeVariant = "warn"    },
     };
 }

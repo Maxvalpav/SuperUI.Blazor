@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
         services.Configure(configure);
         services.TryAddScoped<SgToastService>();
         services.TryAddScoped<SgConfirmService>();
+        services.TryAddScoped<SgNotificationService>();
         services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
         services.TryAddScoped<SgZIndexService>();
         services.TryAddScoped<SgThemeService>();
