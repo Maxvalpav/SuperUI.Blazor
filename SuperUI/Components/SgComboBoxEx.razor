@@ -3,6 +3,7 @@
 @typeparam TKey
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
+@implements IDisposable
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -10,8 +11,14 @@
         <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
     <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "")"
-         tabindex="0"
+         role="combobox"
+         aria-expanded="@(_open ? "true" : "false")"
+         aria-haspopup="listbox"
+         aria-required="@(Required ? "true" : null)"
+         aria-disabled="@(Disabled ? "true" : null)"
+         tabindex="@(Disabled ? "-1" : "0")"
          @onfocusout="HandleFocusOutAsync"
+         @onkeydown="@((!Editable || !_open) ? EventCallback.Factory.Create<KeyboardEventArgs>(this, OnKeyDownAsync) : default)"
          @onclick:stopPropagation="true">
         <div class="sgc-combo-control" @onclick="ToggleAsync">
             @if (Editable && _open)
@@ -90,7 +97,7 @@
                              @onclick="() => PickAsync(it)">
                             <div class="sgc-combo-opt-columns">
                                 <span class="sgc-combo-opt-col sgc-combo-opt-check">
-                                    <input type="checkbox" checked="@isSel" readonly tabindex="-1" style="pointer-events:none;flex-shrink:0;" />
+                                    <span class="sgc-combo-check-icon" aria-hidden="true">@(isSel ? "✓" : "")</span>
                                 </span>
                                 @if (ColumnsSelector != null)
                                 {
@@ -128,114 +135,31 @@
     private bool _open;
     private string _search = string.Empty;
     private int _activeIndex = -1;
+    private CancellationTokenSource? _blurCts;
 
-    /// <summary>
-    /// Gets or sets the selected item key.
-    /// </summary>
     [Parameter] public TKey Value { get; set; } = default!;
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the selected value changes.
-    /// </summary>
     [Parameter] public EventCallback<TKey> ValueChanged { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the collection of items to display in the dropdown.
-    /// </summary>
     [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
-    
-    /// <summary>
-    /// Gets or sets the function to extract the key from an item. Required.
-    /// </summary>
     [Parameter, EditorRequired] public Func<TItem, TKey> KeySelector { get; set; } = default!;
-    
-    /// <summary>
-    /// Gets or sets the function to extract the display label from an item. Required.
-    /// </summary>
     [Parameter, EditorRequired] public Func<TItem, string> LabelSelector { get; set; } = default!;
-    
-    /// <summary>
-    /// Gets or sets the function to extract an optional description from an item.
-    /// The description is displayed below the label in the dropdown.
-    /// </summary>
     [Parameter] public Func<TItem, string>? DescriptionSelector { get; set; }
-
-    /// <summary>
-    /// Gets or sets a function to extract multiple columns for display in the dropdown and in the selected value.
-    /// If provided, these columns will be displayed next to each other.
-    /// </summary>
     [Parameter] public Func<TItem, IEnumerable<string>>? ColumnsSelector { get; set; }
-
-    /// <summary>
-    /// Gets or sets the column names to display in the header of the dropdown menu.
-    /// Only used if ColumnsSelector is provided.
-    /// </summary>
     [Parameter] public IEnumerable<string>? ColumnNames { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the placeholder text displayed when no item is selected.
-    /// If not specified, uses the localized "Select" string.
-    /// </summary>
     [Parameter] public string? Placeholder { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the text displayed when no items match the search filter.
-    /// If not specified, uses the localized "NoMatches" string.
-    /// </summary>
     [Parameter] public string? EmptyText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the combo box.
-    /// </summary>
     [Parameter] public string? Label { get; set; }
-
-    /// <summary>
-    /// Gets or sets the position of the label. Default is Top.
-    /// </summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the combo box.
-    /// </summary>
     [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the clear button is displayed when an item is selected.
-    /// Default is true.
-    /// </summary>
     [Parameter] public bool AllowClear { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether the combo box allows text input for filtering items.
-    /// Default is true.
-    /// </summary>
     [Parameter] public bool Editable { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether the field is marked as required with a visual indicator.
-    /// </summary>
     [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the combo box is disabled.
-    /// </summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the combo box takes the full width of its container.
-    /// Default is true.
-    /// </summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
     private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
     private string ClearLabel => Localizer["Clear"];
-
     private string LabelFrom(TItem item) => LabelSelector(item);
 
     private TItem? GetSelectedItem()
@@ -258,6 +182,7 @@
     private async Task ToggleAsync()
     {
         if (Disabled) return;
+        _blurCts?.Cancel();
         _open = !_open;
         if (_open) { _search = string.Empty; _activeIndex = -1; }
         await InvokeAsync(StateHasChanged);
@@ -265,10 +190,16 @@
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        // Небольшая задержка, чтобы успел сработать клик по элементу внутри меню
-        await Task.Delay(200);
-        _open = false;
-        await InvokeAsync(StateHasChanged);
+        _blurCts?.Cancel();
+        _blurCts = new CancellationTokenSource();
+        var token = _blurCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            _open = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task CloseAsync()
@@ -295,16 +226,20 @@
 
     private async Task PickAsync(TItem item)
     {
-        Value = KeySelector(item);
-        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
+        _blurCts?.Cancel();
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(KeySelector(item));
         await CloseAsync();
     }
 
     private async Task ClearAsync()
     {
-        Value = default!;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default!);
         await InvokeAsync(StateHasChanged);
     }
-}
 
+    public void Dispose()
+    {
+        _blurCts?.Cancel();
+        _blurCts?.Dispose();
+    }
+}

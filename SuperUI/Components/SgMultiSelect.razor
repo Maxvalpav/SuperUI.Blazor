@@ -105,6 +105,7 @@
     private bool _open;
     private string _search = string.Empty;
     private SgEditContextBinder<IEnumerable<TKey>?>? _binder;
+    private CancellationTokenSource? _blurCts;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
@@ -236,6 +237,7 @@
     private async Task ToggleAsync()
     {
         if (Disabled) return;
+        _blurCts?.Cancel();
         _open = !_open;
         if (_open) _search = string.Empty;
         await InvokeAsync(StateHasChanged);
@@ -243,10 +245,16 @@
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        // Небольшая задержка, чтобы успел сработать клик по элементу внутри меню
-        await Task.Delay(200);
-        _open = false;
-        await InvokeAsync(StateHasChanged);
+        _blurCts?.Cancel();
+        _blurCts = new CancellationTokenSource();
+        var token = _blurCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            _open = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { }
     }
 
     private Task OnSearchInput(ChangeEventArgs e)
@@ -265,7 +273,6 @@
         var list = Values?.ToList() ?? new List<TKey>();
         var idx = list.FindIndex(k => EqualityComparer<TKey>.Default.Equals(k, key));
         if (idx >= 0) list.RemoveAt(idx); else list.Add(key);
-        Values = list;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
@@ -275,13 +282,17 @@
     {
         var list = Values?.ToList() ?? new List<TKey>();
         list.RemoveAll(k => EqualityComparer<TKey>.Default.Equals(k, key));
-        Values = list;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose() => _binder?.Dispose();
+    public void Dispose()
+    {
+        _blurCts?.Cancel();
+        _blurCts?.Dispose();
+        _binder?.Dispose();
+    }
 }
 
 

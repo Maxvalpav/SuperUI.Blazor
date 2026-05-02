@@ -1,6 +1,5 @@
 @namespace SuperUI.Components
 @inherits SgInputBase<string>
-@using System.Timers
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -46,7 +45,6 @@
     private readonly string _id = "sg-ta-" + Guid.NewGuid().ToString("N")[..8];
     private string _hintId => _id + "-hint";
     private string _errorId => _id + "-err";
-    private System.Timers.Timer? _debounceTimer;
 
     [Parameter] public string? Label { get; set; }
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
@@ -67,6 +65,8 @@
     [Parameter] public bool AutoResize { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private CancellationTokenSource? _debounceCts;
+
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
@@ -75,16 +75,20 @@
     {
         if (Debounce > 0)
         {
-            _debounceTimer?.Stop();
-            _debounceTimer?.Dispose();
-            _debounceTimer = new System.Timers.Timer(Debounce);
-            _debounceTimer.Elapsed += async (_, _) =>
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+            _debounceCts = new CancellationTokenSource();
+            var token = _debounceCts.Token;
+            var raw = e.Value?.ToString();
+            _ = Task.Run(async () =>
             {
-                _debounceTimer?.Stop();
-                await InvokeAsync(async () => await CommitAsync(e.Value?.ToString()));
-            };
-            _debounceTimer.AutoReset = false;
-            _debounceTimer.Start();
+                try
+                {
+                    await Task.Delay(Debounce, token);
+                    await InvokeAsync(() => CommitAsync(raw));
+                }
+                catch (TaskCanceledException) { }
+            });
         }
         else if (Immediate)
         {
@@ -100,17 +104,13 @@
         catch (Exception ex) { Console.Error.WriteLine($"[SgTextArea.CommitAsync] {ex}"); }
     }
 
-    private async Task ClearAsync()
-    {
-        await SetValueAsync(string.Empty);
-    }
-
+    private Task ClearAsync() => SetValueAsync(string.Empty);
     private Task CommitAsync(string? raw) => SetValueAsync(raw ?? string.Empty);
 
     public override void Dispose()
     {
-        _debounceTimer?.Stop();
-        _debounceTimer?.Dispose();
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
         base.Dispose();
     }
 }
