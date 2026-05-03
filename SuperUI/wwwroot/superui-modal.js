@@ -17,6 +17,7 @@ function getFocusableElements(element) {
 
 export function attach(modalElement, dotnetRef, closeOnEscape) {
     const previousFocus = document.activeElement;
+    let isDisposed = false;
 
     // Lock body scroll if it's the first modal
     if (modalStack.length === 0) {
@@ -32,7 +33,12 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
         previousFocus,
         dragHandler: null,
         dragMoveHandler: null,
-        dragEndHandler: null
+        dragEndHandler: null,
+        isDisposed: false,
+        dispose: () => {
+            entry.isDisposed = true;
+            entry.dotnet = null;
+        }
     };
 
     modalStack.push(entry);
@@ -42,10 +48,12 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
         escapeHandler = (e) => {
             if (e.key === 'Escape') {
                 const top = getTopModal();
-                if (top && top.closeOnEscape) {
+                if (top && top.closeOnEscape && !top.isDisposed && top.dotnet) {
                     e.preventDefault();
                     e.stopPropagation();
-                    top.dotnet.invokeMethodAsync('CloseFromJsAsync');
+                    try {
+                        top.dotnet.invokeMethodAsync('CloseFromJsAsync').catch(() => {});
+                    } catch { }
                 }
             }
         };
@@ -56,7 +64,7 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
         focusTrapHandler = (e) => {
             if (e.key !== 'Tab') return;
             const top = getTopModal();
-            if (!top) return;
+            if (!top || top.isDisposed) return;
 
             const focusableElements = getFocusableElements(top.element);
             if (focusableElements.length === 0) {
@@ -87,11 +95,13 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
 
     // Focus first focusable element in modal
     setTimeout(() => {
-        const focusableElements = getFocusableElements(modalElement);
-        if (focusableElements.length > 0) {
-            focusableElements[0].focus();
-        } else {
-            modalElement.focus();
+        if (!entry.isDisposed && entry.element && entry.element.isConnected) {
+            const focusableElements = getFocusableElements(entry.element);
+            if (focusableElements.length > 0) {
+                focusableElements[0].focus();
+            } else {
+                entry.element.focus();
+            }
         }
     }, 50);
 }
@@ -148,6 +158,9 @@ export function initDrag(modalElement, headerElement) {
 export function detach() {
     const entry = modalStack.pop();
     if (!entry) return;
+
+    // Mark as disposed first
+    if (entry.dispose) entry.dispose();
 
     // Restore previous focus
     if (entry.previousFocus && typeof entry.previousFocus.focus === 'function') {

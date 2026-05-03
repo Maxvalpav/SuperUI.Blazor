@@ -10,9 +10,13 @@ export function attach(el, dotnetRef) {
     if (!el || el._sgWinAttached) return;
     el._sgWinAttached = true;
 
+    let isDisposed = false;
+
     const invoke = (method, ...args) => {
-        if (dotnetRef._sgDisposed) return;
-        dotnetRef.invokeMethodAsync(method, ...args).catch(() => {});
+        if (isDisposed || !dotnetRef) return;
+        try {
+            dotnetRef.invokeMethodAsync(method, ...args).catch(() => {});
+        } catch { }
     };
 
     // Clamp initial position into viewport.
@@ -43,6 +47,8 @@ export function attach(el, dotnetRef) {
     };
 
     const onKeyDown = (e) => {
+        if (isDisposed || !dotnetRef) return;
+        
         if (e.ctrlKey && e.key === 'F4') {
             e.preventDefault();
             invoke('CloseAsync');
@@ -83,6 +89,7 @@ export function attach(el, dotnetRef) {
     const header = el.querySelector('.sgc-win-header');
     if (header) {
         const onDblClick = (e) => {
+            if (isDisposed || !dotnetRef) return;
             if (e.target.closest('.sgc-win-btn')) return;
             if (el.classList.contains('sgc-win-minimized')) {
                 invoke('MinimizeAsync');
@@ -93,6 +100,7 @@ export function attach(el, dotnetRef) {
         header.addEventListener('dblclick', onDblClick);
 
         const onDragStart = (e) => {
+            if (isDisposed || !dotnetRef) return;
             if (e.button !== 0) return;
             if (e.target.closest('.sgc-win-btn')) return;
             if (el.classList.contains('sgc-win-maximized')) return;
@@ -111,6 +119,7 @@ export function attach(el, dotnetRef) {
                 el.style.right = el.style.bottom = 'auto';
             };
             const onMove = (ev) => {
+                if (isDisposed || !dotnetRef) return;
                 const ww = window.innerWidth, wh = window.innerHeight;
                 let nx = ev.clientX - offX, ny = ev.clientY - offY;
                 nx = Math.max(0, Math.min(ww - rect.width,  nx));
@@ -137,8 +146,10 @@ export function attach(el, dotnetRef) {
                 window.removeEventListener('pointerup', onUp);
                 if (rafId) { cancelAnimationFrame(rafId); apply(); }
                 el.classList.remove('sgc-win-dragging');
-                const fr = el.getBoundingClientRect();
-                invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
+                if (!isDisposed && dotnetRef) {
+                    const fr = el.getBoundingClientRect();
+                    invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
+                }
             };
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp, { once: true });
@@ -149,6 +160,7 @@ export function attach(el, dotnetRef) {
     const handle = el.querySelector('.sgc-win-resize');
     if (handle) {
         const onResizeStart = (e) => {
+            if (isDisposed || !dotnetRef) return;
             if (e.button !== 0) return;
             if (el.classList.contains('sgc-win-maximized')) return;
             e.preventDefault(); e.stopPropagation();
@@ -163,6 +175,7 @@ export function attach(el, dotnetRef) {
                 el.style.height = pendingH + 'px';
             };
             const onMove = (ev) => {
+                if (isDisposed || !dotnetRef) return;
                 const left = parseFloat(el.style.left) || rect.left;
                 const top  = parseFloat(el.style.top)  || rect.top;
                 pendingW = Math.max(180, Math.min(window.innerWidth  - left, startW + (ev.clientX - startX)));
@@ -174,8 +187,10 @@ export function attach(el, dotnetRef) {
                 window.removeEventListener('pointerup', onUp);
                 if (rafId) { cancelAnimationFrame(rafId); apply(); }
                 el.classList.remove('sgc-win-resizing');
-                const fr = el.getBoundingClientRect();
-                invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
+                if (!isDisposed && dotnetRef) {
+                    const fr = el.getBoundingClientRect();
+                    invoke('UpdateBoundsAsync', parseFloat(el.style.left), parseFloat(el.style.top), fr.width, fr.height);
+                }
             };
             window.addEventListener('pointermove', onMove);
             window.addEventListener('pointerup', onUp, { once: true });
@@ -184,6 +199,8 @@ export function attach(el, dotnetRef) {
     }
 
     _cleanup.set(el, () => {
+        isDisposed = true;
+        dotnetRef = null;
         el.removeEventListener('pointerdown', onFocusDown, true);
         el.removeEventListener('keydown', onKeyDown);
         el._sgWinAttached = false;
@@ -194,6 +211,4 @@ export function detach(el) {
     if (!el) return;
     const cleanup = _cleanup.get(el);
     if (cleanup) { cleanup(); _cleanup.delete(el); }
-    // Mark disposed so any in-flight drag/resize onUp won't call .NET
-    if (el._dotnetRef) el._dotnetRef._sgDisposed = true;
 }

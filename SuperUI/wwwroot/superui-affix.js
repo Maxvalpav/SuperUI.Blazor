@@ -15,6 +15,7 @@ export function attach(host, fixedEl, dotnet, opts) {
     let active = false;
     let placeholderHeight = 0;
     let rafId = 0;
+    let isDisposed = false;
 
     function getViewportRect() {
         if (scroller === window) {
@@ -25,7 +26,7 @@ export function attach(host, fixedEl, dotnet, opts) {
 
     function compute() {
         rafId = 0;
-        if (!host.isConnected) return;
+        if (!host.isConnected || isDisposed) return;
 
         // Measure the natural (unfixed) host rect — when active, the placeholder keeps the size.
         const hostRect = host.getBoundingClientRect();
@@ -68,7 +69,11 @@ export function attach(host, fixedEl, dotnet, opts) {
             }
             if (!active) {
                 active = true;
-                try { dotnet.invokeMethodAsync('OnAffixed', true); } catch { /* noop */ }
+                try { 
+                    if (dotnet && !isDisposed) {
+                        dotnet.invokeMethodAsync('OnAffixed', true).catch(() => {});
+                    }
+                } catch { /* noop */ }
             }
         } else {
             // Reset placeholder + fixed styles.
@@ -81,13 +86,17 @@ export function attach(host, fixedEl, dotnet, opts) {
             fixedEl.style.bottom = '';
             if (active) {
                 active = false;
-                try { dotnet.invokeMethodAsync('OnAffixed', false); } catch { /* noop */ }
+                try { 
+                    if (dotnet && !isDisposed) {
+                        dotnet.invokeMethodAsync('OnAffixed', false).catch(() => {});
+                    }
+                } catch { /* noop */ }
             }
         }
     }
 
     function update() {
-        if (rafId) return;
+        if (rafId || isDisposed) return;
         rafId = requestAnimationFrame(compute);
     }
 
@@ -104,14 +113,24 @@ export function attach(host, fixedEl, dotnet, opts) {
         resizeObserver.observe(fixedEl);
     }
 
-    host._sgAffix = { scroller, onScroll, onResize, resizeObserver, update,
-                      cancel: () => { if (rafId) cancelAnimationFrame(rafId); rafId = 0; } };
+    host._sgAffix = { 
+        scroller, onScroll, onResize, resizeObserver, update,
+        cancel: () => { if (rafId) cancelAnimationFrame(rafId); rafId = 0; },
+        dispose: () => {
+            isDisposed = true;
+            dotnet = null;
+        }
+    };
     update();
 }
 
 export function detach(host) {
     if (!host || !host._sgAffix) return;
-    const { scroller, onScroll, onResize, resizeObserver, cancel } = host._sgAffix;
+    const { scroller, onScroll, onResize, resizeObserver, cancel, dispose } = host._sgAffix;
+    
+    // Mark as disposed first to prevent any pending callbacks
+    if (dispose) dispose();
+    
     scroller.removeEventListener('scroll', onScroll);
     window.removeEventListener('resize', onResize);
     if (resizeObserver) resizeObserver.disconnect();
@@ -138,17 +157,24 @@ export function backtopAttach(dotnet, opts) {
     let target = targetSelector ? document.querySelector(targetSelector) : window;
     const threshold = opts?.threshold ?? 200;
     let visible = false;
+    let isDisposed = false;
 
     function getY() { return target === window ? window.scrollY : target.scrollTop; }
 
     function check() {
+        if (isDisposed || !dotnet) return;
+        
         if (targetSelector && (!target || !document.querySelector(targetSelector))) {
             target = document.querySelector(targetSelector) || window;
         }
         const next = getY() > threshold;
         if (next !== visible) {
             visible = next;
-            try { dotnet.invokeMethodAsync('OnVisibilityChanged', visible); } catch { /* noop */ }
+            try { 
+                if (dotnet && !isDisposed) {
+                    dotnet.invokeMethodAsync('OnVisibilityChanged', visible).catch(() => {});
+                }
+            } catch { /* noop */ }
         }
     }
 
@@ -160,7 +186,16 @@ export function backtopAttach(dotnet, opts) {
 
     attachToTarget();
     const id = ++_backtopSeq;
-    _backtopHandles.set(id, { targetSelector, target, check, attachToTarget });
+    _backtopHandles.set(id, { 
+        targetSelector, 
+        target, 
+        check, 
+        attachToTarget,
+        dispose: () => {
+            isDisposed = true;
+            dotnet = null;
+        }
+    });
     // Initial check after registration so first visibility report fires.
     check();
     return id;
@@ -169,6 +204,10 @@ export function backtopAttach(dotnet, opts) {
 export function backtopDetach(id) {
     const handle = _backtopHandles.get(id);
     if (!handle) return;
+    
+    // Mark as disposed first
+    if (handle.dispose) handle.dispose();
+    
     if (handle.target && handle.target.removeEventListener) {
         handle.target.removeEventListener('scroll', handle.check);
     }

@@ -7,6 +7,7 @@ export function attach(root, dotnet) {
     if (!root) return;
     if (root._sgDashAttached) detach(root);
 
+    let isDisposed = false;
     const state = {
         mode: null,           // 'drag' | 'resize' | null
         sourceId: null,
@@ -22,6 +23,11 @@ export function attach(root, dotnet) {
         gap: 0,
         pointerId: 0,
         armed: false,
+        isDisposed: false,
+        dispose: function() {
+            isDisposed = true;
+            dotnet = null;
+        }
     };
 
     function getColumns() {
@@ -79,7 +85,7 @@ export function attach(root, dotnet) {
     }
 
     function onPointerDown(e) {
-        if (e.button !== 0 || state.mode) return;
+        if (isDisposed || !dotnet || e.button !== 0 || state.mode) return;
 
         const handle = e.target.closest('.sgc-dashboard-widget-resize-handle');
         if (handle && root.contains(handle)) {
@@ -129,7 +135,7 @@ export function attach(root, dotnet) {
     }
 
     function onPointerMove(e) {
-        if (!state.mode) return;
+        if (isDisposed || !dotnet || !state.mode) return;
 
         if (state.mode === 'drag') {
             const dx = e.clientX - state.startX;
@@ -189,8 +195,8 @@ export function attach(root, dotnet) {
             clearTargetHighlight();
             if (state.ghost && state.ghost.parentNode) state.ghost.parentNode.removeChild(state.ghost);
             state.ghost = null;
-            if (state.armed && src && tgt && src !== tgt) {
-                try { dotnet.invokeMethodAsync('JsReorder', src, tgt); } catch { /* noop */ }
+            if (state.armed && src && tgt && src !== tgt && !isDisposed && dotnet) {
+                try { dotnet.invokeMethodAsync('JsReorder', src, tgt).catch(() => {}); } catch { /* noop */ }
             }
         } else if (state.mode === 'resize') {
             const id = state.sourceId;
@@ -201,8 +207,8 @@ export function attach(root, dotnet) {
                 state.widgetEl.style.gridColumn = '';
                 state.widgetEl.style.gridRow = '';
             }
-            if (id && (col !== state.startColSpan || row !== state.startRowSpan)) {
-                try { dotnet.invokeMethodAsync('JsResize', id, col, row); } catch { /* noop */ }
+            if (id && (col !== state.startColSpan || row !== state.startRowSpan) && !isDisposed && dotnet) {
+                try { dotnet.invokeMethodAsync('JsResize', id, col, row).catch(() => {}); } catch { /* noop */ }
             }
         }
 
@@ -222,6 +228,11 @@ export function attach(root, dotnet) {
 export function detach(root) {
     if (!root || !root._sgDashAttached) return;
     const { onPointerDown, onPointerMove, onPointerUp, state } = root._sgDashAttached;
+    
+    if (state && state.dispose) {
+        state.dispose();
+    }
+    
     root.removeEventListener('pointerdown', onPointerDown);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);

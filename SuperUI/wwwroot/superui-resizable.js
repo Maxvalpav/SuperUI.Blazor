@@ -5,6 +5,7 @@ export function attach(root, dotnet, opts) {
     if (!root) return;
     if (root._sgResizable) detach(root);
 
+    let isDisposed = false;
     const cfg = {
         minWidth: opts?.minWidth ?? 80,
         minHeight: opts?.minHeight ?? 60,
@@ -15,6 +16,7 @@ export function attach(root, dotnet, opts) {
     let active = null;
 
     function onPointerDown(e) {
+        if (isDisposed || !dotnet) return;
         const handle = e.target.closest('.sgc-resizable-handle');
         if (!handle || !root.contains(handle)) return;
         if (e.button !== 0) return;
@@ -37,7 +39,7 @@ export function attach(root, dotnet, opts) {
     }
 
     function onPointerMove(e) {
-        if (!active) return;
+        if (isDisposed || !dotnet || !active) return;
         const dx = e.clientX - active.startX;
         const dy = e.clientY - active.startY;
         let w = active.startW;
@@ -61,16 +63,32 @@ export function attach(root, dotnet, opts) {
         const w = active._w ?? active.startW;
         const h = active._h ?? active.startH;
         active = null;
-        try { dotnet.invokeMethodAsync('SetSize', w, h); } catch { /* noop */ }
+        if (!isDisposed && dotnet) {
+            try { dotnet.invokeMethodAsync('SetSize', w, h).catch(() => {}); } catch { /* noop */ }
+        }
     }
 
     root.addEventListener('pointerdown', onPointerDown);
-    root._sgResizable = { onPointerDown, onPointerMove, onPointerUp };
+    root._sgResizable = { 
+        onPointerDown, 
+        onPointerMove, 
+        onPointerUp,
+        isDisposed: false,
+        dispose: function() {
+            isDisposed = true;
+            dotnet = null;
+        }
+    };
 }
 
 export function detach(root) {
     if (!root || !root._sgResizable) return;
     const { onPointerDown, onPointerMove, onPointerUp } = root._sgResizable;
+    
+    if (root._sgResizable.dispose) {
+        root._sgResizable.dispose();
+    }
+    
     root.removeEventListener('pointerdown', onPointerDown);
     window.removeEventListener('pointermove', onPointerMove);
     window.removeEventListener('pointerup', onPointerUp);
