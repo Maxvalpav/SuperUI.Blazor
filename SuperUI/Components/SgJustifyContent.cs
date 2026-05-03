@@ -15,5 +15,7 @@ public enum SgJustifyContent
     /// <summary>Items are evenly distributed with space between them.</summary>
     SpaceBetween,
     /// <summary>Items are evenly distributed with space around them.</summary>
-    SpaceAround
+    SpaceAround,
+    /// <summary>Items are evenly distributed with equal space between, before, and after.</summary>
+    SpaceEvenly
 }

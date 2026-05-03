@@ -13,5 +13,7 @@ public enum SgAlignItems
     /// <summary>Items align to the center of the cross axis.</summary>
     Center,
     /// <summary>Items align to the end of the cross axis.</summary>
-    End
+    End,
+    /// <summary>Items align to their text baseline.</summary>
+    Baseline
 }
