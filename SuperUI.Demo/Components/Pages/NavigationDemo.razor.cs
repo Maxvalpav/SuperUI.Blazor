@@ -116,7 +116,7 @@ public partial class NavigationDemo
     private void OnPageChanged(int page)
     {
         _currentPage = page;
-        Toasts.Show($"Переход на страницу {page}", "Навигация", "info");
+        Toasts.Show($"Переход на страницу {page}", "Навигация", SgToastVariant.Default);
     }
 
     private void HandleTabTitleChanged(string value)

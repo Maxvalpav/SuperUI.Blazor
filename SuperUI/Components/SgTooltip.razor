@@ -44,15 +44,14 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
     
     /// <summary>
-    /// Gets or sets the preferred placement of the tooltip: "top", "bottom", "left", "right". Default is "top".
+    /// Gets or sets the preferred placement of the tooltip. Default is <see cref="SgPlacement.Top"/>.
     /// </summary>
-    [Parameter] public string Placement { get; set; } = "top";
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.Top;
 
     /// <summary>
-    /// Gets or sets the trigger behavior for the tooltip.
-    /// Supported values: "hover", "focus", "click", "manual". Default is "hover".
+    /// Gets or sets the trigger behavior for the tooltip. Default is <see cref="SgTrigger.Hover"/>.
     /// </summary>
-    [Parameter] public string Trigger { get; set; } = "hover";
+    [Parameter] public SgTrigger Trigger { get; set; } = SgTrigger.Hover;
 
     /// <summary>
     /// Gets or sets the delay in milliseconds before showing the tooltip.
@@ -91,23 +90,30 @@
                 if (_isDisposed) return;
 
                 _self ??= DotNetObjectReference.Create(this);
-                await _module.InvokeVoidAsync("attach", _triggerRef, _tooltipRef, Placement, _self);
+                await _module.InvokeVoidAsync("attach", _triggerRef, _tooltipRef, PlacementString, _self);
             }
             catch (JSException) { }
             catch (TaskCanceledException) { }
         }
     }
 
-    private async Task OnMouseEnterAsync() => await HandleTriggerAsync("hover", true);
-    private async Task OnMouseLeaveAsync() => await HandleTriggerAsync("hover", false);
-    private async Task OnFocusAsync() => await HandleTriggerAsync("focus", true);
-    private async Task OnBlurAsync() => await HandleTriggerAsync("focus", false);
-    private async Task OnClickAsync() => await HandleTriggerAsync("click", !_visible);
-
-    private async Task HandleTriggerAsync(string triggerType, bool show)
+    private string PlacementString => Placement switch
     {
-        if (!Trigger.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(triggerType))
-            return;
+        SgPlacement.Bottom => "bottom",
+        SgPlacement.Left   => "left",
+        SgPlacement.Right  => "right",
+        _                  => "top"
+    };
+
+    private async Task OnMouseEnterAsync() => await HandleTriggerAsync(SgTrigger.Hover, true);
+    private async Task OnMouseLeaveAsync() => await HandleTriggerAsync(SgTrigger.Hover, false);
+    private async Task OnFocusAsync() => await HandleTriggerAsync(SgTrigger.Focus, true);
+    private async Task OnBlurAsync() => await HandleTriggerAsync(SgTrigger.Focus, false);
+    private async Task OnClickAsync() => await HandleTriggerAsync(SgTrigger.Click, !_visible);
+
+    private async Task HandleTriggerAsync(SgTrigger triggerType, bool show)
+    {
+        if (Trigger != triggerType) return;
         if (show) await ShowAsync();
         else await HideAsync();
     }
@@ -149,7 +155,7 @@
         {
             if (_module is not null)
             {
-                await _module.InvokeVoidAsync("show", _triggerRef, _tooltipRef, Placement);
+                await _module.InvokeVoidAsync("show", _triggerRef, _tooltipRef, PlacementString);
             }
         }
         catch (JSException) { }

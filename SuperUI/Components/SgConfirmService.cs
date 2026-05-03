@@ -20,9 +20,9 @@ public sealed class SgConfirmRequest
     public string Message { get; init; } = string.Empty;
 
     /// <summary>
-    /// Gets or initializes the dialog variant: "danger", "warn", "info", or "success".
+    /// Gets or initializes the dialog variant. Default is <see cref="SgAlertVariant.Danger"/>.
     /// </summary>
-    public string Variant { get; init; } = "danger";
+    public SgAlertVariant Variant { get; init; } = SgAlertVariant.Danger;
 
     /// <summary>
     /// Gets or initializes the confirm button text.
@@ -75,14 +75,14 @@ public sealed class SgConfirmService : IAsyncDisposable
     /// </summary>
     /// <param name="message">The confirmation message.</param>
     /// <param name="title">Optional dialog title.</param>
-    /// <param name="variant">Dialog variant: "danger", "warn", "info", or "success".</param>
+    /// <param name="variant">Dialog variant. Default is <see cref="SgAlertVariant.Danger"/>.</param>
     /// <param name="confirmText">Optional confirm button text.</param>
     /// <param name="cancelText">Optional cancel button text.</param>
     /// <returns>True if the user confirmed, false otherwise.</returns>
     public Task<bool> ConfirmAsync(
         string message,
         string? title = null,
-        string variant = "danger",
+        SgAlertVariant variant = SgAlertVariant.Danger,
         string? confirmText = null,
         string? cancelText = null)
     {
@@ -108,10 +108,7 @@ public sealed class SgConfirmService : IAsyncDisposable
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        
-        // Unsubscribe all event handlers to prevent memory leaks
         Requested = null;
-        
         await ValueTask.CompletedTask;
     }
 }

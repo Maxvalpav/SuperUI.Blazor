@@ -2892,14 +2892,14 @@ private static object? ConvertFromString(string? text, Type type)
         
 // Save button
         builder.OpenComponent(2, typeof(SgButton));
-        builder.AddAttribute(3, "Type", "submit");
+        builder.AddAttribute(3, "Type", SgButtonType.Submit);
         builder.AddAttribute(4, "Text", Localizer["Save"]);
-        builder.AddAttribute(5, "Variant", "primary");
+        builder.AddAttribute(5, "Variant", SgButtonVariant.Primary);
         builder.CloseComponent();
 
         // Cancel button
         builder.OpenComponent(6, typeof(SgButton));
-        builder.AddAttribute(7, "Type", "button");
+        builder.AddAttribute(7, "Type", SgButtonType.Button);
         builder.AddAttribute(8, "Text", Localizer["Cancel"]);
         builder.AddAttribute(9, "OnClick", EventCallback.Factory.Create<MouseEventArgs>(this, async _ => await CloseEditModal()));
         builder.CloseComponent();

@@ -57,7 +57,7 @@
                             </ChildContent>
                             <FallbackContent>
                                 <div style="padding: 12px; background: var(--sui-bg-secondary); border-radius: var(--sui-radius);">
-                                    <SgBadge Text="Ограниченный доступ" Variant="warn" />
+                                    <SgBadge Text="Ограниченный доступ" Variant="SgBadgeVariant.Warn" />
                                     <p style="margin: 8px 0 0; font-size: 12px;">
                                         У вас нет прав для просмотра этого контента.
                                     </p>
@@ -117,14 +117,62 @@
     </div>
 
     <div style="margin-top: 32px;">
-        <h3>Интеграция с IPermissionService</h3>
+        <h2>Интеграция с IPermissionService</h2>
         <p>Реализуйте интерфейс для интеграции с вашей системой авторизации:</p>
-        <pre style="background: var(--sui-bg-secondary); padding: 16px; border-radius: var(--sui-radius); overflow-x: auto;">
-<code>@("public interface IPermissionService\n{\n    Task<bool> HasPermissionAsync(string permission);\n    Task<bool> IsInRoleAsync(string role);\n    Task<IEnumerable<string>> GetUserPermissionsAsync();\n    Task<IEnumerable<string>> GetUserRolesAsync();\n}")</code>
-        </pre>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="IPermissionService">
+                <SgCode Language="SgCodeLanguage.CSharp" Code="@_interfaceCode" />
+            </SgCard>
+            <SgCard Title="Использование в разметке">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_usageCode" />
+            </SgCard>
+        </div>
     </div>
 
 </SgCard>
 
 @code {
+    private string _interfaceCode = """
+        public interface IPermissionService
+        {
+            Task<bool> HasPermissionAsync(string permission);
+            Task<bool> IsInRoleAsync(string role);
+            Task<IEnumerable<string>> GetUserPermissionsAsync();
+            Task<IEnumerable<string>> GetUserRolesAsync();
+        }
+        """;
+
+    private string _usageCode = """
+        <!-- Одно разрешение -->
+        <SgPermissionGate Permission="CanEdit">
+            <SgButton Text="Редактировать" />
+        </SgPermissionGate>
+
+        <!-- Любое из разрешений (OR) -->
+        <SgPermissionGate Permissions="@(new[] { "CanView", "CanEdit" })">
+            <div>Контент</div>
+        </SgPermissionGate>
+
+        <!-- Все разрешения (AND) -->
+        <SgPermissionGate Permissions="@(new[] { "CanCreate", "CanEdit" })"
+                          RequireAll="true">
+            <div>Полный доступ</div>
+        </SgPermissionGate>
+
+        <!-- С fallback -->
+        <SgPermissionGate Permission="AdminOnly">
+            <ChildContent>
+                <div>Только для администратора</div>
+            </ChildContent>
+            <FallbackContent>
+                <SgBadge Text="Нет доступа" Variant="SgBadgeVariant.Warn" />
+            </FallbackContent>
+        </SgPermissionGate>
+
+        <!-- По роли -->
+        <SgPermissionGate Role="Admin">
+            <div>Панель администратора</div>
+        </SgPermissionGate>
+        """;
 }

@@ -9,7 +9,7 @@ public sealed class PropertyPanelItem
     public string? Hint { get; set; }
     public string? Description { get; set; }
     public string? BadgeText { get; set; }
-    public string BadgeVariant { get; set; } = "default";
+    public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
     public int Span { get; set; } = 1;
     public RenderFragment? ValueTemplate { get; set; }
 }

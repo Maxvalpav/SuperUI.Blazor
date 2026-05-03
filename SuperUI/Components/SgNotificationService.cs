@@ -38,7 +38,7 @@ public sealed class SgNotificationService
     /// <summary>
     /// Adds a notification using the supplied parts.
     /// </summary>
-    public NotificationItem Push(string? title, string? message, string variant = "default", string? category = null, string? time = null)
+    public NotificationItem Push(string? title, string? message, SgBadgeVariant variant = SgBadgeVariant.Default, string? category = null, string? time = null)
     {
         var item = new NotificationItem
         {

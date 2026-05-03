@@ -33,9 +33,9 @@ public sealed class NotificationItem
     public DateTimeOffset? Timestamp { get; set; }
 
     /// <summary>
-    /// Gets or sets the variant: "default", "info", "success", "warn", "danger".
+    /// Gets or sets the variant. Default is <see cref="SgBadgeVariant.Default"/>.
     /// </summary>
-    public string Variant { get; set; } = "default";
+    public SgBadgeVariant Variant { get; set; } = SgBadgeVariant.Default;
 
     /// <summary>
     /// Gets or sets a category/group name (e.g. "Система", "Сообщения").

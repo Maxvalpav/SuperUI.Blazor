@@ -9,7 +9,7 @@
 @if (Visible || _isClosing)
 {
     <div class="sgc-drawer-backdrop @(_isClosing ? "sgc-closing" : "")" style="z-index: @_backdropZIndex" @onclick="BackdropAsync">
-        <aside class="sgc-drawer sgc-drawer-@Placement @CssClass"
+        <aside class="sgc-drawer sgc-drawer-@PlacementClass @CssClass"
                style="@SizeStyle"
                role="complementary"
                aria-labelledby="@_titleId"
@@ -25,7 +25,7 @@
             </div>
             @if (Resizable)
             {
-                <div class="sgc-drawer-resizer sgc-drawer-resizer-@Placement" role="separator" aria-label="Resize drawer" aria-orientation="@(Placement is "left" or "right" ? "vertical" : "horizontal")"></div>
+                <div class="sgc-drawer-resizer sgc-drawer-resizer-@PlacementClass" role="separator" aria-label="Resize drawer" aria-orientation="@(Placement is SgPlacement.Left or SgPlacement.Right ? "vertical" : "horizontal")"></div>
             }
             <div class="sgc-drawer-body">@ChildContent</div>
             @if (FooterContent is not null)
@@ -75,9 +75,9 @@
     [Parameter] public RenderFragment? FooterContent { get; set; }
 
     /// <summary>
-    /// Gets or sets the drawer placement: "right", "left", "top", or "bottom". Default is "right".
+    /// Gets or sets the drawer placement. Default is <see cref="SgPlacement.Right"/>.
     /// </summary>
-    [Parameter] public string Placement { get; set; } = "right";
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.Right;
 
     /// <summary>
     /// Gets or sets the drawer size (width for left/right, height for top/bottom). Default is "360px".
@@ -119,6 +119,14 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    private string PlacementClass => Placement switch
+    {
+        SgPlacement.Left   => "left",
+        SgPlacement.Top    => "top",
+        SgPlacement.Bottom => "bottom",
+        _                  => "right"
+    };
+
     private string SizeStyle
     {
         get
@@ -126,7 +134,7 @@
             var sz = string.IsNullOrEmpty(_runtimeSize) ? Size : _runtimeSize;
             var styles = new List<string>();
             if (_zIndex > 0) styles.Add($"z-index: {_zIndex}");
-            if (Placement is "left" or "right")
+            if (Placement is SgPlacement.Left or SgPlacement.Right)
             { styles.Add($"width:{sz}"); styles.Add("max-width:100vw"); }
             else
             { styles.Add($"height:{sz}"); styles.Add("max-height:100vh"); }
@@ -154,7 +162,7 @@
                 
                 if (Resizable)
                 {
-                    await _module.InvokeVoidAsync("initResize", _drawerRef, _self, Placement);
+                    await _module.InvokeVoidAsync("initResize", _drawerRef, _self, PlacementClass);
                 }
             }
             catch (JSException) { }
