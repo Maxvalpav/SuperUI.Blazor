@@ -11,7 +11,7 @@ public sealed class SgAlertTests : BunitContext
         var cut = Render<SgAlert>(parameters => parameters
             .Add(x => x.Title, "Saved")
             .Add(x => x.Text, "Settings were updated.")
-            .Add(x => x.Variant, "success"));
+            .Add(x => x.Variant, SgAlertVariant.Success));
 
         cut.MarkupMatches(@"
 <div class=""sgc-alert sgc-success  "" role=""status"">

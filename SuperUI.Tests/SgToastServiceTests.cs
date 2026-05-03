@@ -214,7 +214,7 @@ public class SgToastServiceTests
         service.Success("Success message", "Success Title");
 
         // Assert
-        Assert.Equal("success", capturedToast!.Variant);
+        Assert.Equal(SgToastVariant.Success, capturedToast!.Variant);
         Assert.Equal("Success message", capturedToast.Message);
         Assert.Equal("Success Title", capturedToast.Title);
     }
@@ -231,7 +231,7 @@ public class SgToastServiceTests
         service.Error("Error message", "Error Title");
 
         // Assert
-        Assert.Equal("danger", capturedToast!.Variant);
+        Assert.Equal(SgToastVariant.Danger, capturedToast!.Variant);
         Assert.Equal("Error message", capturedToast.Message);
     }
 
@@ -247,7 +247,7 @@ public class SgToastServiceTests
         service.Warn("Warning message", "Warning Title");
 
         // Assert
-        Assert.Equal("warn", capturedToast!.Variant);
+        Assert.Equal(SgToastVariant.Warn, capturedToast!.Variant);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class SgToastServiceTests
         service.Info("Info message", "Info Title");
 
         // Assert
-        Assert.Equal("default", capturedToast!.Variant);
+        Assert.Equal(SgToastVariant.Default, capturedToast!.Variant);
     }
 
     [Fact]
@@ -339,7 +339,7 @@ public class SgToastServiceTests
         var toast = new SgToast();
 
         // Assert
-        Assert.Equal("default", toast.Variant);
+        Assert.Equal(SgToastVariant.Default, toast.Variant);
     }
 
     [Fact]
