@@ -16,9 +16,9 @@
                    @oninput="OnSearchInput" />
             <button type="button"
                     class="sgc-pg-btn @(GroupByLines ? "sgc-active" : "")"
-                    title="Группировать по категориям"
+                    title="@Localizer["PropertyGrid_GroupByCategories"]"
                     @onclick="ToggleGrouping">
-                Категории
+                @Localizer["PropertyGrid_Categories"]
             </button>
         </div>
     }
@@ -63,7 +63,7 @@
                                             @prop.DisplayName
                                             @if (ShowRequiredIndicator && IsRequired(prop))
                                             {
-                                                <span class="sgc-pg-required" title="Обязательное поле">*</span>
+                                                <span class="sgc-pg-required" title="@Localizer["PropertyGrid_RequiredField"]">*</span>
                                             }
                                         </div>
                                         @if (!string.IsNullOrWhiteSpace(prop.Description))
@@ -102,7 +102,7 @@
                             @prop.DisplayName
                             @if (ShowRequiredIndicator && IsRequired(prop))
                             {
-                                <span class="sgc-pg-required" title="Обязательное поле">*</span>
+                                <span class="sgc-pg-required" title="@Localizer["PropertyGrid_RequiredField"]">*</span>
                             }
                         </div>
                         @if (!string.IsNullOrWhiteSpace(prop.Description))
@@ -266,10 +266,10 @@
         ValidateAllProperties();
     }
 
-    private static PropertyItem CreatePropertyItem(PropertyInfo property)
+    private PropertyItem CreatePropertyItem(PropertyInfo property)
     {
         var display = property.GetCustomAttribute<DisplayAttribute>();
-        var category = property.GetCustomAttribute<CategoryAttribute>()?.Category ?? "Общее";
+        var category = property.GetCustomAttribute<CategoryAttribute>()?.Category ?? Localizer["PropertyGrid_General"];
         var description =
             property.GetCustomAttribute<DescriptionAttribute>()?.Description ??
             display?.GetDescription();
@@ -346,7 +346,7 @@
             @* Nested Object *@
             <div class="sgc-pg-nested">
                 <button type="button" class="sg-btn sg-btn-sm sg-btn-ghost" @onclick="() => ToggleObject(prop.Name)">
-                    @(IsObjectExpanded(prop.Name) ? "Свернуть" : "Развернуть")
+                    @(IsObjectExpanded(prop.Name) ? Localizer["PropertyGrid_Collapse"] : Localizer["PropertyGrid_Expand"])
                 </button>
                 @if (IsObjectExpanded(prop.Name) && value != null)
                 {
@@ -440,7 +440,7 @@
         }
         else
         {
-            SetErrors(prop, "Некорректный формат значения.");
+            SetErrors(prop, Localizer["PropertyGrid_InvalidFormat"]);
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -560,11 +560,11 @@
             ? dateTime.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
             : string.Empty;
 
-    private static string FormatDisplayValue(object? value) =>
+    private string FormatDisplayValue(object? value) =>
         value switch
         {
             null => "—",
-            bool boolValue => boolValue ? "Да" : "Нет",
+            bool boolValue => boolValue ? Localizer["PropertyGrid_Yes"] : Localizer["PropertyGrid_No"],
             DateTime dateTime => dateTime.ToString("g", CultureInfo.CurrentCulture),
             _ => value.ToString() ?? "—"
         };
@@ -631,13 +631,13 @@
 
             if (members.Count == 0)
             {
-                _modelValidationErrors.Add(result.ErrorMessage ?? "Некорректное значение.");
+                _modelValidationErrors.Add(result.ErrorMessage ?? Localizer["PropertyGrid_InvalidValue"]);
                 continue;
             }
 
             foreach (var member in members)
             {
-                AddError(member, result.ErrorMessage ?? "Некорректное значение.");
+                AddError(member, result.ErrorMessage ?? Localizer["PropertyGrid_InvalidValue"]);
             }
         }
     }
@@ -661,7 +661,7 @@
 
         foreach (var result in results)
         {
-            errors.Add(result.ErrorMessage ?? "Некорректное значение.");
+            errors.Add(result.ErrorMessage ?? Localizer["PropertyGrid_InvalidValue"]);
         }
 
         return false;

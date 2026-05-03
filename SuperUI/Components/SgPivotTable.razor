@@ -23,7 +23,7 @@
             @if (!string.IsNullOrEmpty(PersistenceId))
             {
                 <SgButton Variant="ghost" Size="sm" OnClick="ResetStateAsync" Title="@Localizer["ResetSettings"]">
-                    <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Refresh)</span> Сброс
+                    <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Refresh)</span> @Localizer["PivotTable_Reset"]
                 </SgButton>
             }
             <SgButton Variant="@(_heatmapEnabled ? "primary" : "ghost")" Size="sm" OnClick="ToggleHeatmap">
@@ -34,10 +34,10 @@
             {
                 <div class="sgc-pivot-chart-type-selector">
                     <select @onchange="OnChartTypeChanged" class="sgc-pivot-select-sm">
-                        <option value="@SgChartType.Bar">Гистограмма</option>
-                        <option value="@SgChartType.Line">Линейный</option>
-                        <option value="@SgChartType.Pie">Круговой</option>
-                        <option value="@SgChartType.Doughnut">Кольцевой</option>
+                        <option value="@SgChartType.Bar">@Localizer["PivotTable_BarChart"]</option>
+                        <option value="@SgChartType.Line">@Localizer["PivotTable_LineChart"]</option>
+                        <option value="@SgChartType.Pie">@Localizer["PivotTable_PieChart"]</option>
+                        <option value="@SgChartType.Doughnut">@Localizer["PivotTable_DoughnutChart"]</option>
                     </select>
                 </div>
             }
@@ -79,7 +79,7 @@
                     }
                     @if (valField == null)
                     {
-                        <div class="sgc-pivot-empty">Выберите поле в секции "Значения"</div>
+                        <div class="sgc-pivot-empty">@Localizer["PivotTable_SelectValueField"]</div>
                     }
                     else
                     {
@@ -88,7 +88,7 @@
                                  Data="chartData" 
                                  Height="100%" 
                                  Width="100%" 
-                                 Title="@(valField.Label + " по " + (State.RowFields.FirstOrDefault()?.Label ?? "строкам"))" />
+                                 Title="@(valField.Label + " по " + (State.RowFields.FirstOrDefault()?.Label ?? Localizer["PivotTable_All"]))" />
                     }
                 </div>
             }
@@ -227,7 +227,7 @@
     <ChildContent>
         <div style="margin-bottom: 12px; display: flex; justify-content: flex-end;">
             <SgButton Variant="ghost" Size="sm" OnClick="ExportDrillDownToCsv">
-                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Download)</span> Экспорт деталей
+                <span class="sgc-pivot-btn-icon">@((MarkupString)SgIcons.Download)</span> @Localizer["PivotTable_ExportDetails"]
             </SgButton>
         </div>
         <div style="max-height: 60vh; overflow: auto; border: 1px solid var(--sui-border); border-radius: var(--sui-radius);">
@@ -563,7 +563,7 @@
         sb.AppendLine("   <Row ss:Height=\"20\">");
         var rowHeaderMergeDown = (State.ValueFields.Count > 1 ? 1 : 0);
         var rowHeaderText = string.Join(" / ", State.RowFields.Select(f => f.Label));
-        if (string.IsNullOrEmpty(rowHeaderText)) rowHeaderText = "Параметры";
+        if (string.IsNullOrEmpty(rowHeaderText)) rowHeaderText = Localizer["PivotTable_Parameters"];
         sb.AppendLine($"    <Cell ss:StyleID=\"Header\" ss:MergeDown=\"{rowHeaderMergeDown}\"><Data ss:Type=\"String\">{rowHeaderText}</Data></Cell>");
         
         foreach (var col in leafCols)
@@ -832,11 +832,11 @@
 
     private string GetRowKey(TItem item) => State.RowFields.Any() 
         ? string.Join(" | ", State.RowFields.Select(f => f.Selector(item)?.ToString() ?? "—")) 
-        : "Все";
+        : Localizer["PivotTable_All"];
 
     private string GetColKey(TItem item) => State.ColumnFields.Any() 
         ? string.Join(" | ", State.ColumnFields.Select(f => f.Selector(item)?.ToString() ?? "—")) 
-        : "Все";
+        : Localizer["PivotTable_All"];
 
     private object? AggregateValues(IEnumerable<TItem> group, SgPivotField<TItem> field)
     {
@@ -866,8 +866,9 @@
         if (_heatmapEnabled && value is double d)
         {
             // Exclude totals from max calculation to keep heatmap contrasting
+            var allKey = Localizer["PivotTable_All"];
             var max = _data
-                .Where(kv => kv.Key.Item1 != "Все" && kv.Key.Item2 != "Все" && kv.Key.Item3 == field.Name && kv.Value is double)
+                .Where(kv => kv.Key.Item1 != allKey && kv.Key.Item2 != allKey && kv.Key.Item3 == field.Name && kv.Value is double)
                 .Select(kv => (double)kv.Value!)
                 .DefaultIfEmpty(0)
                 .Max();

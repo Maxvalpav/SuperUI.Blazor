@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @using System.Globalization
+@inject ISuperUILocalizer Localizer
 
 <div class="sg-scheduler" style="height: @Height;">
     <div class="sg-scheduler-header">
@@ -8,21 +9,21 @@
         </div>
         <div class="sg-scheduler-actions">
             <div style="width: 200px;">
-                <SgTextBox Placeholder="Поиск событий..." 
+                <SgTextBox Placeholder="@Localizer["Scheduler_SearchEvents"]" 
                            @bind-Value="_searchText" />
             </div>
             <div class="sg-scheduler-view-switch">
-                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Day)" @onclick="() => SetView(SgSchedulerView.Day)">День</button>
-                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Week)" @onclick="() => SetView(SgSchedulerView.Week)">Неделя</button>
-                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Month)" @onclick="() => SetView(SgSchedulerView.Month)">Месяц</button>
-                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Agenda)" @onclick="() => SetView(SgSchedulerView.Agenda)">Повестка</button>
+                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Day)" @onclick="() => SetView(SgSchedulerView.Day)">@Localizer["Scheduler_Day"]</button>
+                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Week)" @onclick="() => SetView(SgSchedulerView.Week)">@Localizer["Scheduler_Week"]</button>
+                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Month)" @onclick="() => SetView(SgSchedulerView.Month)">@Localizer["Scheduler_Month"]</button>
+                <button type="button" class="@GetViewButtonClass(SgSchedulerView.Agenda)" @onclick="() => SetView(SgSchedulerView.Agenda)">@Localizer["Scheduler_Agenda"]</button>
             </div>
-            <button type="button" class="sg-scheduler-btn" aria-label="Предыдущий период" @onclick="PreviousRange">&lt;</button>
-            <button type="button" class="sg-scheduler-btn" @onclick="GoToToday">Сегодня</button>
-            <button type="button" class="sg-scheduler-btn" aria-label="Следующий период" @onclick="NextRange">&gt;</button>
+            <button type="button" class="sg-scheduler-btn" aria-label="@Localizer["Scheduler_PreviousPeriod"]" @onclick="PreviousRange">&lt;</button>
+            <button type="button" class="sg-scheduler-btn" @onclick="GoToToday">@Localizer["Scheduler_Today"]</button>
+            <button type="button" class="sg-scheduler-btn" aria-label="@Localizer["Scheduler_NextPeriod"]" @onclick="NextRange">&gt;</button>
             @if (OnAddEvent.HasDelegate || EnableCreation)
             {
-                <button type="button" class="sg-scheduler-btn sg-scheduler-btn-primary" @onclick="() => HandleAddClick(DateTime.Today)">+ Событие</button>
+                <button type="button" class="sg-scheduler-btn sg-scheduler-btn-primary" @onclick="() => HandleAddClick(DateTime.Today)">@Localizer["Scheduler_AddEvent"]</button>
             }
         </div>
     </div>
@@ -146,7 +147,7 @@
                             <div class="sg-scheduler-date-content">
                                 @foreach (var ev in GetEventsForDate(date))
                                 {
-                                    var tooltipText = $"{ev.Title}{(ev.IsAllDay ? "\nВесь день" : $"\n{ev.Start.ToString("HH:mm")} - {ev.End.ToString("HH:mm")}")}{(!string.IsNullOrWhiteSpace(ev.Description) ? $"\n{ev.Description}" : "")}";
+                                    var tooltipText = $"{ev.Title}{(ev.IsAllDay ? $"\n{Localizer["Scheduler_AllDay"]}" : $"\n{ev.Start.ToString("HH:mm")} - {ev.End.ToString("HH:mm")}")}{(!string.IsNullOrWhiteSpace(ev.Description) ? $"\n{ev.Description}" : "")}";
                                     <SgTooltip Text="@tooltipText">
                                         <div class="sg-scheduler-event"
                                              draggable="true"
@@ -182,7 +183,7 @@
                                 <div class="sg-scheduler-agenda-time">
                                     @if (ev.IsAllDay)
                                     {
-                                        <span>Весь день</span>
+                                        <span>@Localizer["Scheduler_AllDay"]</span>
                                     }
                                     else
                                     {
@@ -199,40 +200,40 @@
                 }
                 else
                 {
-                    <div class="sg-scheduler-empty">Нет событий</div>
+                    <div class="sg-scheduler-empty">@Localizer["Scheduler_NoEvents"]</div>
                 }
             </div>
         }
     </div>
 </div>
 
-<SgModal @bind-Visible="_isModalVisible" Title="@(_isNewEvent ? "Новое событие" : "Редактировать событие")" Width="500px">
+<SgModal @bind-Visible="_isModalVisible" Title="@(_isNewEvent ? Localizer["Scheduler_NewEvent"] : Localizer["Scheduler_EditEvent"])" Width="500px">
     <ChildContent>
         <SgStack Orientation="vertical" Gap="16px">
-            <SgTextBox Label="Название" @bind-Value="_editingEvent.Title" Required="true" />
-            <SgTextBox Label="Описание" @bind-Value="_editingEvent.Description" Multiline="true" Rows="3" />
+            <SgTextBox Label="@Localizer["Scheduler_Title"]" @bind-Value="_editingEvent.Title" Required="true" />
+            <SgTextBox Label="@Localizer["Scheduler_Description"]" @bind-Value="_editingEvent.Description" Multiline="true" Rows="3" />
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <SgDatePicker Label="Дата начала" @bind-Value="_editingStartDate" Required="true" />
-                <SgTimePicker Label="Время начала" @bind-Value="_editingStartTime" />
+                <SgDatePicker Label="@Localizer["Scheduler_StartDate"]" @bind-Value="_editingStartDate" Required="true" />
+                <SgTimePicker Label="@Localizer["Scheduler_StartTime"]" @bind-Value="_editingStartTime" />
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <SgDatePicker Label="Дата окончания" @bind-Value="_editingEndDate" Required="true" />
-                <SgTimePicker Label="Время окончания" @bind-Value="_editingEndTime" />
+                <SgDatePicker Label="@Localizer["Scheduler_EndDate"]" @bind-Value="_editingEndDate" Required="true" />
+                <SgTimePicker Label="@Localizer["Scheduler_EndTime"]" @bind-Value="_editingEndTime" />
             </div>
-            <SgCheckBox Label="Весь день" @bind-Value="_editingEvent.IsAllDay" />
-            <SgColorPicker Label="Цвет" @bind-Value="_editingEvent.Color" />
-            <SgTextBox Label="Иконка" @bind-Value="_editingEvent.Icon" Placeholder="SVG или иконка" />
+            <SgCheckBox Label="@Localizer["Scheduler_AllDayEvent"]" @bind-Value="_editingEvent.IsAllDay" />
+            <SgColorPicker Label="@Localizer["Scheduler_Color"]" @bind-Value="_editingEvent.Color" />
+            <SgTextBox Label="@Localizer["Scheduler_Icon"]" @bind-Value="_editingEvent.Icon" Placeholder="SVG или иконка" />
         </SgStack>
     </ChildContent>
     <FooterContent>
         <div style="display: flex; gap: 8px; justify-content: space-between;">
             @if (!_isNewEvent && (OnDeleteEvent.HasDelegate || EnableEditing))
             {
-                <SgButton Text="Удалить" Variant="danger" OnClick="HandleDeleteEvent" />
+                <SgButton Text="@Localizer["Delete"]" Variant="danger" OnClick="HandleDeleteEvent" />
             }
             <div style="display: flex; gap: 8px;">
-                <SgButton Text="Отмена" OnClick="@(() => _isModalVisible = false)" />
-                <SgButton Text="Сохранить" Variant="primary" OnClick="SaveEvent" />
+                <SgButton Text="@Localizer["Scheduler_Cancel"]" OnClick="@(() => _isModalVisible = false)" />
+                <SgButton Text="@Localizer["Scheduler_Save"]" Variant="primary" OnClick="SaveEvent" />
             </div>
         </div>
     </FooterContent>
@@ -314,7 +315,7 @@
             SgSchedulerView.Day => Value.ToString("dddd, dd MMMM yyyy", CultureInfo.CurrentCulture),
             SgSchedulerView.Week => $"{GetWeekStart().ToString("dd MMMM")} - {GetWeekEnd().ToString("dd MMMM yyyy")}",
             SgSchedulerView.Month => Value.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
-            SgSchedulerView.Agenda => "Повестка дня",
+            SgSchedulerView.Agenda => Localizer["Scheduler_AgendaTitle"],
             _ => ""
         };
     }

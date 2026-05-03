@@ -2,6 +2,7 @@
 @typeparam TItem
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
 @using System.Text.Json
 
 <div class="sgc-saved-views @(string.IsNullOrWhiteSpace(CssClass) ? string.Empty : CssClass)">
@@ -31,7 +32,7 @@
                 class="sgc-sv-btn sgc-sv-btn-primary"
                 @onclick="SaveCurrentAsync"
                 disabled="@(!CanSaveCurrent)">
-            Сохранить текущее
+            @Localizer["SavedViews_SaveCurrent"]
         </button>
         @if (ShowResetButton)
         {
@@ -39,7 +40,7 @@
                     class="sgc-sv-btn"
                     @onclick="ResetGridAsync"
                     disabled="@(Grid is null)">
-                Сбросить grid
+                @Localizer["SavedViews_ResetGrid"]
             </button>
         }
     </div>
@@ -67,12 +68,12 @@
                                 class="sgc-sv-btn"
                                 @onclick="() => UpdateViewAsync(view)"
                                 disabled="@(Grid is null)">
-                            Обновить
+                            @Localizer["SavedViews_Update"]
                         </button>
                         <button type="button"
                                 class="sgc-sv-btn sgc-sv-btn-danger"
                                 @onclick="() => DeleteViewAsync(view)">
-                            Удалить
+                            @Localizer["SavedViews_Delete"]
                         </button>
                     </div>
                 </div>
@@ -92,12 +93,24 @@
 
     [Parameter] public SgDataGrid<TItem>? Grid { get; set; }
     [Parameter] public string? StorageKey { get; set; }
-    [Parameter] public string? Title { get; set; } = "Сохраненные представления";
-    [Parameter] public string? Subtitle { get; set; } = "Именованные состояния грида для быстрого переключения";
-    [Parameter] public string Placeholder { get; set; } = "Название представления";
-    [Parameter] public string EmptyText { get; set; } = "Пока нет сохраненных представлений.";
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string Placeholder { get; set; } = string.Empty;
+    [Parameter] public string EmptyText { get; set; } = string.Empty;
     [Parameter] public bool ShowResetButton { get; set; } = true;
     [Parameter] public string? CssClass { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrEmpty(Title))
+            Title = Localizer["SavedViews_Title"];
+        if (string.IsNullOrEmpty(Subtitle))
+            Subtitle = Localizer["SavedViews_Subtitle"];
+        if (string.IsNullOrEmpty(Placeholder))
+            Placeholder = Localizer["SavedViews_Placeholder"];
+        if (string.IsNullOrEmpty(EmptyText))
+            EmptyText = Localizer["SavedViews_Empty"];
+    }
 
     /// <summary>
     /// Gets or sets whether to automatically save the last used grid state.
