@@ -3,45 +3,134 @@
 
 // ----- RichTextEditor -----
 
+const savedRanges = new WeakMap();
+
+function isInsideEditor(editor, node) {
+    if (!editor || !node) return false;
+    return editor === node || editor.contains(node);
+}
+
+function rememberRange(editor) {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (isInsideEditor(editor, range.commonAncestorContainer)) {
+        savedRanges.set(editor, range.cloneRange());
+    }
+}
+
+function restoreRange(editor) {
+    const range = savedRanges.get(editor);
+    if (!range) return false;
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return true;
+}
+
 export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
     if (!editorElement) return;
-    
+
     editorElement._dotnetRef = dotnetRef;
-    
+
     if (placeholder) {
         editorElement.setAttribute('data-placeholder', placeholder);
     }
-    
-    // Handle paste to clean up unwanted content
+
+    // Sanitised paste — strip scripts and event handlers, keep formatting.
     editorElement.addEventListener('paste', (e) => {
         e.preventDefault();
-        const text = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
-        document.execCommand('insertHTML', false, text);
+        const html = e.clipboardData.getData('text/html');
+        const text = e.clipboardData.getData('text/plain');
+        if (html) {
+            const tpl = document.createElement('template');
+            tpl.innerHTML = html;
+            tpl.content.querySelectorAll('script, style, link, meta').forEach(n => n.remove());
+            tpl.content.querySelectorAll('*').forEach(el => {
+                [...el.attributes].forEach(a => {
+                    if (a.name.startsWith('on')) el.removeAttribute(a.name);
+                });
+            });
+            document.execCommand('insertHTML', false, tpl.innerHTML);
+        } else if (text) {
+            document.execCommand('insertText', false, text);
+        }
     });
-    
-    // Update active formats on selection change
+
+    // Drag & drop image support — embeds as data URL.
+    editorElement.addEventListener('dragover', (e) => {
+        if (e.dataTransfer && [...e.dataTransfer.items].some(i => i.kind === 'file')) {
+            e.preventDefault();
+            editorElement.classList.add('sgc-richtext-dropping');
+        }
+    });
+    editorElement.addEventListener('dragleave', () => {
+        editorElement.classList.remove('sgc-richtext-dropping');
+    });
+    editorElement.addEventListener('drop', (e) => {
+        editorElement.classList.remove('sgc-richtext-dropping');
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+        const images = [...files].filter(f => f.type.startsWith('image/'));
+        if (images.length === 0) return;
+        e.preventDefault();
+        editorElement.focus();
+        images.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = () => {
+                document.execCommand('insertHTML', false,
+                    `<img src="${reader.result}" alt="${file.name.replace(/"/g, '')}" />`);
+                if (dotnetRef) dotnetRef.invokeMethodAsync('NotifyContentChanged');
+            };
+            reader.readAsDataURL(file);
+        });
+    });
+
+    // Track caret so toolbar popovers can restore the selection.
+    const trackSelection = () => rememberRange(editorElement);
+    editorElement.addEventListener('keyup', trackSelection);
+    editorElement.addEventListener('mouseup', trackSelection);
+    editorElement.addEventListener('focus', trackSelection);
+    editorElement._trackSelection = trackSelection;
+
     const onSelectionChange = () => {
-        if (dotnetRef) {
-            dotnetRef.invokeMethodAsync('UpdateActiveFormats');
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 &&
+            isInsideEditor(editorElement, sel.anchorNode)) {
+            rememberRange(editorElement);
+            if (dotnetRef) dotnetRef.invokeMethodAsync('UpdateActiveFormats');
         }
     };
-    
     document.addEventListener('selectionchange', onSelectionChange);
     editorElement._selectionChangeHandler = onSelectionChange;
 }
 
 export function disposeRichTextEditor(editorElement) {
     if (!editorElement) return;
-    
+
     if (editorElement._selectionChangeHandler) {
         document.removeEventListener('selectionchange', editorElement._selectionChangeHandler);
     }
-    
+    if (editorElement._trackSelection) {
+        editorElement.removeEventListener('keyup', editorElement._trackSelection);
+        editorElement.removeEventListener('mouseup', editorElement._trackSelection);
+        editorElement.removeEventListener('focus', editorElement._trackSelection);
+    }
+
     editorElement._dotnetRef = null;
 }
 
 export function execCommand(command, value = null) {
     document.execCommand(command, false, value);
+}
+
+export function execCommandOn(editorElement, command, value = null) {
+    if (editorElement) {
+        editorElement.focus();
+        restoreRange(editorElement);
+    }
+    document.execCommand(command, false, value);
+    if (editorElement) rememberRange(editorElement);
 }
 
 export function queryCommandValue(command) {
@@ -52,16 +141,15 @@ export function queryActiveFormats() {
     const formats = [];
     const commands = [
         'bold', 'italic', 'underline', 'strikeThrough',
+        'subscript', 'superscript',
         'insertUnorderedList', 'insertOrderedList',
         'justifyLeft', 'justifyCenter', 'justifyRight', 'justifyFull'
     ];
-    
+
     commands.forEach(cmd => {
-        if (document.queryCommandState(cmd)) {
-            formats.push(cmd);
-        }
+        try { if (document.queryCommandState(cmd)) formats.push(cmd); } catch { }
     });
-    
+
     return formats;
 }
 
@@ -71,6 +159,11 @@ export function getHtmlContent(editorElement) {
 
 export function getTextContent(editorElement) {
     return editorElement?.innerText || '';
+}
+
+export function getSelectedText() {
+    const sel = window.getSelection();
+    return sel ? sel.toString() : '';
 }
 
 export function setHtmlContent(editorElement, html) {
@@ -83,8 +176,52 @@ export function insertHtml(html) {
     document.execCommand('insertHTML', false, html);
 }
 
+export function insertHtmlAt(editorElement, html) {
+    if (!editorElement) return;
+    editorElement.focus();
+    restoreRange(editorElement);
+    document.execCommand('insertHTML', false, html);
+    rememberRange(editorElement);
+}
+
 export function focus(editorElement) {
     editorElement?.focus();
+}
+
+export function saveSelection(editorElement) {
+    rememberRange(editorElement);
+}
+
+export function restoreSelection(editorElement) {
+    if (!editorElement) return;
+    editorElement.focus();
+    restoreRange(editorElement);
+}
+
+export function setBlockFormat(editorElement, tag) {
+    if (!editorElement) return;
+    editorElement.focus();
+    restoreRange(editorElement);
+    document.execCommand('formatBlock', false, tag);
+    rememberRange(editorElement);
+}
+
+export function readImageFile(input) {
+    return new Promise((resolve, reject) => {
+        if (!input || !input.files || input.files.length === 0) {
+            resolve(null);
+            return;
+        }
+        const file = input.files[0];
+        if (!file.type.startsWith('image/')) {
+            resolve(null);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
 }
 
 // ----- CommandBar -----
