@@ -90,7 +90,7 @@ public sealed class SgTooltipTests : BunitContext
 
         var cut = Render<SgTooltip>(parameters => parameters
             .Add(x => x.Text, "Test tooltip")
-            .Add(x => x.Placement, "bottom")
+            .Add(x => x.Placement, SgPlacement.Bottom)
             .AddChildContent("<button>Hover me</button>"));
 
         cut.Find(".sgc-tt-wrap").MouseEnter();
