@@ -1,0 +1,148 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-resizable @CssClass" style="@RootStyle" @ref="_root">
+    <div class="sgc-resizable-content">
+        @ChildContent
+    </div>
+
+    @foreach (var dir in EnabledHandles)
+    {
+        <div class="sgc-resizable-handle sgc-resizable-handle-@dir" data-dir="@dir"></div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Content of the resizable container.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Initial width in pixels. Use 0 to leave unset (auto). Default 320.
+    /// </summary>
+    [Parameter] public double Width { get; set; } = 320;
+
+    /// <summary>
+    /// Initial height in pixels. Use 0 to leave unset (auto). Default 200.
+    /// </summary>
+    [Parameter] public double Height { get; set; } = 200;
+
+    /// <summary>
+    /// Minimum width in pixels. Default 80.
+    /// </summary>
+    [Parameter] public double MinWidth { get; set; } = 80;
+
+    /// <summary>
+    /// Minimum height in pixels. Default 60.
+    /// </summary>
+    [Parameter] public double MinHeight { get; set; } = 60;
+
+    /// <summary>
+    /// Maximum width in pixels. Default 4000.
+    /// </summary>
+    [Parameter] public double MaxWidth { get; set; } = 4000;
+
+    /// <summary>
+    /// Maximum height in pixels. Default 4000.
+    /// </summary>
+    [Parameter] public double MaxHeight { get; set; } = 4000;
+
+    /// <summary>
+    /// Comma-separated list of enabled handles: any of n, s, e, w, ne, nw, se, sw.
+    /// Default "se,e,s" — bottom-right corner plus right and bottom edges.
+    /// </summary>
+    [Parameter] public string Handles { get; set; } = "se,e,s";
+
+    /// <summary>
+    /// Raised when the user finishes resizing. The argument is the new (width, height).
+    /// </summary>
+    [Parameter] public EventCallback<(double Width, double Height)> SizeChanged { get; set; }
+
+    /// <summary>
+    /// Additional CSS class for the host wrapper.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private ElementReference _root;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgResizable>? _self;
+    private bool _attached;
+    private bool _isDisposed;
+
+    private static readonly string[] _allDirs = new[] { "n", "s", "e", "w", "ne", "nw", "se", "sw" };
+
+    private IEnumerable<string> EnabledHandles
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(Handles)) yield break;
+            var set = new HashSet<string>(
+                Handles.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+                StringComparer.OrdinalIgnoreCase);
+            foreach (var d in _allDirs)
+                if (set.Contains(d)) yield return d;
+        }
+    }
+
+    private string RootStyle
+    {
+        get
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var w = Width > 0 ? $"width:{Width.ToString(inv)}px;" : "";
+            var h = Height > 0 ? $"height:{Height.ToString(inv)}px;" : "";
+            return w + h;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-resizable.js");
+            if (_isDisposed) return;
+            _self ??= DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("attach", _root, _self,
+                new { minWidth = MinWidth, minHeight = MinHeight, maxWidth = MaxWidth, maxHeight = MaxHeight });
+            _attached = true;
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    [JSInvokable]
+    public async Task SetSize(double width, double height)
+    {
+        if (_isDisposed) return;
+        var changed = false;
+        if (Math.Abs(width - Width) > 0.5) { Width = width; changed = true; }
+        if (Math.Abs(height - Height) > 0.5) { Height = height; changed = true; }
+        if (!changed) return;
+        if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync((Width, Height));
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        if (_module is not null)
+        {
+            try
+            {
+                if (_attached) await _module.InvokeVoidAsync("detach", _root);
+                await _module.DisposeAsync();
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+}

@@ -1,0 +1,98 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-affix @CssClass" @ref="_host">
+    <div class="sgc-affix-inner @(_affixed ? "sgc-affix-active" : "")" @ref="_inner">
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Content that should stick to the viewport when scrolled past the threshold.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Pixel offset from the top of the viewport (or scroll target) where the element should pin.
+    /// Set this OR <see cref="OffsetBottom"/>, not both. Default is 0.
+    /// </summary>
+    [Parameter] public int? OffsetTop { get; set; } = 0;
+
+    /// <summary>
+    /// Pixel offset from the bottom of the viewport.
+    /// </summary>
+    [Parameter] public int? OffsetBottom { get; set; }
+
+    /// <summary>
+    /// CSS selector for a custom scrollable container. Defaults to the window.
+    /// </summary>
+    [Parameter] public string? Target { get; set; }
+
+    /// <summary>
+    /// Raised when the affixed state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> AffixedChanged { get; set; }
+
+    /// <summary>
+    /// Additional CSS class for the host wrapper.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private ElementReference _host;
+    private ElementReference _inner;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgAffix>? _self;
+    private bool _attached;
+    private bool _isDisposed;
+    private bool _affixed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-affix.js");
+            if (_isDisposed) return;
+            _self ??= DotNetObjectReference.Create(this);
+            int? offsetTop = OffsetBottom.HasValue ? null : (OffsetTop ?? 0);
+            int? offsetBottom = OffsetBottom;
+            await _module.InvokeVoidAsync("attach", _host, _inner, _self,
+                new { offsetTop, offsetBottom, target = Target });
+            _attached = true;
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnAffixed(bool active)
+    {
+        if (_isDisposed || _affixed == active) return;
+        _affixed = active;
+        if (AffixedChanged.HasDelegate) await AffixedChanged.InvokeAsync(active);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        if (_module is not null)
+        {
+            try
+            {
+                if (_attached) await _module.InvokeVoidAsync("detach", _host);
+                await _module.DisposeAsync();
+            }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+        }
+    }
+}
