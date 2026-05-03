@@ -360,7 +360,7 @@ All component parameters use strongly-typed enums — no magic strings:
   <tr>
     <td><img src="docs/screenshots/grid2.png" alt="Data Grid" width="380" /></td>
     <td><img src="docs/screenshots/input.png" alt="Inputs"    width="380" /></td>
-    <td><img src="docs/screenshots/input.org" alt="Org"    width="380" /></td>
+    <td><img src="docs/screenshots/orgchart.png" alt="Org"    width="380" /></td>
   </tr>
 </table>
 
