@@ -7,6 +7,6 @@ public sealed class StatusPanelItem
     public string? Subtitle { get; set; }
     public string? Hint { get; set; }
     public string? BadgeText { get; set; }
-    public string BadgeVariant { get; set; } = "default";
+    public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
     public double? TrendValue { get; set; }
 }

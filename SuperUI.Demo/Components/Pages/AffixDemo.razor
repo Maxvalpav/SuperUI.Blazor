@@ -13,7 +13,7 @@
                 <div style="display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--sui-text-muted);">
                     <span>Состояние:</span>
                     <SgBadge Text="@(_topAffixed ? "Pinned" : "Inline")"
-                             Variant="@(_topAffixed ? "success" : "info")" />
+                             Variant="@(_topAffixed ? SgBadgeVariant.Success : SgBadgeVariant.Default)" />
                 </div>
 
                 <SgAffix OffsetTop="0" AffixedChanged="@(b => _topAffixed = b)">
@@ -23,7 +23,7 @@
                             <span style="color: var(--sui-text-muted); font-size: 12px;">
                                 @(context ? "Я закреплён сверху" : "Я остаюсь у верхнего края при скролле")
                             </span>
-                            <SgButton Text="Action" Variant="primary" Size="sm" Style="margin-left:auto;" />
+                            <SgButton Text="Action" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" Style="margin-left:auto;" />
                         </div>
                     </Template>
                 </SgAffix>
@@ -64,8 +64,8 @@
                                 @(context ? "Я прижат к низу" : "Появлюсь у нижнего края при скролле")
                             </span>
                             <div style="margin-left: auto; display: flex; gap: 6px;">
-                                <SgButton Text="Save" Variant="primary" Size="sm" />
-                                <SgButton Text="Cancel" Variant="ghost" Size="sm" />
+                                <SgButton Text="Save" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                                <SgButton Text="Cancel" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
                             </div>
                         </div>
                     </Template>
@@ -98,6 +98,11 @@
         <!-- ─── Properties ─── -->
         <SgCard Title="Свойства SgAffix">
             <PropertyTable Items="_props" />
+        </SgCard>
+
+        <!-- Code example -->
+        <SgCard Title="Примеры кода">
+            <SgCode Language="SgCodeLanguage.Razor" Code="@_affixCode" />
         </SgCard>
     </div>
 
@@ -145,13 +150,45 @@
 
     private List<PropertyPanelItem> _props = new()
     {
-        new() { Label = "OffsetTop", Value = "int? (default 0)", BadgeText = "Порог сверху", BadgeVariant = "info" },
-        new() { Label = "OffsetBottom", Value = "int?", BadgeText = "Порог снизу", BadgeVariant = "info" },
-        new() { Label = "Target", Value = "string?", BadgeText = "CSS-селектор контейнера", BadgeVariant = "info" },
-        new() { Label = "AffixedChanged", Value = "EventCallback<bool>", BadgeText = "Событие", BadgeVariant = "success" },
-        new() { Label = "OnAffix / OnUnaffix", Value = "EventCallback", BadgeText = "Точечные события", BadgeVariant = "success" },
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Содержимое", BadgeVariant = "info" },
-        new() { Label = "Template", Value = "RenderFragment<bool>", BadgeText = "Зависит от состояния", BadgeVariant = "info" },
-        new() { Label = "RefreshAsync()", Value = "метод", BadgeText = "Принудительный пересчёт", BadgeVariant = "warning" }
+        new() { Label = "OffsetTop",       Value = "int? (default 0)",        BadgeText = "Порог сверху",           BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OffsetBottom",    Value = "int?",                    BadgeText = "Порог снизу",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Target",          Value = "string?",                 BadgeText = "CSS-селектор контейнера",BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AffixedChanged",  Value = "EventCallback<bool>",     BadgeText = "Событие",               BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnAffix",         Value = "EventCallback",           BadgeText = "При закреплении",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnUnaffix",       Value = "EventCallback",           BadgeText = "При откреплении",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ChildContent",    Value = "RenderFragment",          BadgeText = "Содержимое",             BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Template",        Value = "RenderFragment<bool>",    BadgeText = "Зависит от состояния",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "RefreshAsync()",  Value = "метод",                   BadgeText = "Принудительный пересчёт",BadgeVariant = SgBadgeVariant.Warn }
     };
+
+    // ── Code snippet ──────────────────────────────────────────────────────────
+    private string _affixCode = """
+        <!-- Закрепить сверху при прокрутке -->
+        <SgAffix OffsetTop="0" AffixedChanged="@(b => _pinned = b)">
+            <div class="toolbar">Sticky toolbar</div>
+        </SgAffix>
+
+        <!-- С шаблоном — меняет вид при закреплении -->
+        <SgAffix OffsetTop="72">
+            <Template>
+                <div class="@(context ? "toolbar-pinned" : "toolbar")">
+                    @(context ? "📌 Закреплён" : "Обычный вид")
+                </div>
+            </Template>
+        </SgAffix>
+
+        <!-- Снизу -->
+        <SgAffix OffsetBottom="0">
+            <div class="action-bar">
+                <SgButton Text="Сохранить" Variant="SgButtonVariant.Primary" />
+            </div>
+        </SgAffix>
+
+        <!-- В контейнере -->
+        <SgAffix OffsetTop="0" Target=".my-scroll-container">
+            <div>Закреплён внутри контейнера</div>
+        </SgAffix>
+
+        @code { private bool _pinned; }
+        """;
 }

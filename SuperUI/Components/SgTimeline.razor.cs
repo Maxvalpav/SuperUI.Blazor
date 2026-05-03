@@ -18,9 +18,9 @@ public partial class SgTimeline : ComponentBase
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// Gets or sets the layout mode. Supported values: "left" (default), "right", "alternate".
+    /// Gets or sets the layout mode. Default is <see cref="SgTimelineMode.Left"/>.
     /// </summary>
-    [Parameter] public string Mode { get; set; } = "left";
+    [Parameter] public SgTimelineMode Mode { get; set; } = SgTimelineMode.Left;
 
     /// <summary>
     /// Gets or sets whether the item order is reversed (newest first).

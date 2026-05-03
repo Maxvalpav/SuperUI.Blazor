@@ -1,0 +1,210 @@
+@namespace SuperUI.Components
+@inject IJSRuntime JS
+
+<div class="sgc-code @CssClass" style="@Style" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <div class="sgc-code-header">
+            <span class="sgc-code-title">@Title</span>
+            <div class="sgc-code-actions">
+                @if (ShowLanguage && Language != SgCodeLanguage.Text)
+                {
+                    <span class="sgc-code-lang">@LanguageLabel</span>
+                }
+                @if (ShowCopy)
+                {
+                    <button type="button" class="sgc-code-copy @(_copied ? "sgc-code-copy-done" : "")" @onclick="CopyAsync" title="Копировать">
+                        @if (_copied)
+                        {
+                            <span>✓ Скопировано</span>
+                        }
+                        else
+                        {
+                            <span>⎘ Копировать</span>
+                        }
+                    </button>
+                }
+            </div>
+        </div>
+    }
+    else if (ShowCopy || (ShowLanguage && Language != SgCodeLanguage.Text))
+    {
+        <div class="sgc-code-header sgc-code-header-slim">
+            <div class="sgc-code-actions">
+                @if (ShowLanguage && Language != SgCodeLanguage.Text)
+                {
+                    <span class="sgc-code-lang">@LanguageLabel</span>
+                }
+                @if (ShowCopy)
+                {
+                    <button type="button" class="sgc-code-copy @(_copied ? "sgc-code-copy-done" : "")" @onclick="CopyAsync" title="Копировать">
+                        @if (_copied)
+                        {
+                            <span>✓ Скопировано</span>
+                        }
+                        else
+                        {
+                            <span>⎘ Копировать</span>
+                        }
+                    </button>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="sgc-code-body @(MaxHeight.HasValue ? "sgc-code-scroll" : "")"
+         style="@(MaxHeight.HasValue ? $"max-height:{MaxHeight}px;overflow-y:auto;" : "")">
+        @if (ShowLineNumbers)
+        {
+            <div class="sgc-code-lines">
+                @for (int i = 1; i <= _lineCount; i++)
+                {
+                    <span class="sgc-code-line-num">@i</span>
+                }
+            </div>
+        }
+        <pre class="sgc-code-pre"><code class="sgc-code-content sgc-lang-@LanguageClass">@_displayCode</code></pre>
+    </div>
+</div>
+
+@code {
+    private bool _copied;
+    private string _displayCode = "";
+    private int _lineCount;
+    private CancellationTokenSource? _copyCts;
+
+    /// <summary>
+    /// Gets or sets the code string to display.
+    /// </summary>
+    [Parameter] public string? Code { get; set; }
+
+    /// <summary>
+    /// Gets or sets the programming language for syntax highlighting hint.
+    /// Default is <see cref="SgCodeLanguage.Razor"/>.
+    /// </summary>
+    [Parameter] public SgCodeLanguage Language { get; set; } = SgCodeLanguage.Razor;
+
+    /// <summary>
+    /// Gets or sets an optional title shown in the code block header.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the copy-to-clipboard button. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowCopy { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to show line numbers. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowLineNumbers { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the language label badge. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowLanguage { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum height in pixels before the code block scrolls.
+    /// When null (default) the block expands to fit its content.
+    /// </summary>
+    [Parameter] public int? MaxHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the root element.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional inline styles to apply to the root element.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional HTML attributes to apply to the root element.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        _displayCode = (Code ?? "").TrimEnd('\r', '\n');
+        // Trim common leading indentation so embedded string literals look clean
+        _displayCode = TrimIndent(_displayCode);
+        _lineCount = _displayCode.Split('\n').Length;
+    }
+
+    private async Task CopyAsync()
+    {
+        if (_copied) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _displayCode);
+        }
+        catch
+        {
+            // Clipboard API may be unavailable in some environments — silently ignore
+        }
+        _copied = true;
+        StateHasChanged();
+
+        _copyCts?.Cancel();
+        _copyCts?.Dispose();
+        _copyCts = new CancellationTokenSource();
+        var token = _copyCts.Token;
+        try
+        {
+            await Task.Delay(2000, token);
+        }
+        catch (TaskCanceledException) { return; }
+        if (!token.IsCancellationRequested)
+        {
+            _copied = false;
+            StateHasChanged();
+        }
+    }
+
+    private string LanguageLabel => Language switch
+    {
+        SgCodeLanguage.Razor      => "Razor",
+        SgCodeLanguage.CSharp     => "C#",
+        SgCodeLanguage.Html       => "HTML",
+        SgCodeLanguage.Css        => "CSS",
+        SgCodeLanguage.Json       => "JSON",
+        SgCodeLanguage.JavaScript => "JavaScript",
+        SgCodeLanguage.TypeScript => "TypeScript",
+        SgCodeLanguage.Xml        => "XML",
+        SgCodeLanguage.Bash       => "Bash",
+        SgCodeLanguage.Sql        => "SQL",
+        _                         => ""
+    };
+
+    private string LanguageClass => Language switch
+    {
+        SgCodeLanguage.Razor      => "razor",
+        SgCodeLanguage.CSharp     => "csharp",
+        SgCodeLanguage.Html       => "html",
+        SgCodeLanguage.Css        => "css",
+        SgCodeLanguage.Json       => "json",
+        SgCodeLanguage.JavaScript => "js",
+        SgCodeLanguage.TypeScript => "ts",
+        SgCodeLanguage.Xml        => "xml",
+        SgCodeLanguage.Bash       => "bash",
+        SgCodeLanguage.Sql        => "sql",
+        _                         => "text"
+    };
+
+    /// <summary>
+    /// Removes the common leading whitespace from all non-empty lines so that
+    /// code embedded as a C# string literal renders without extra indentation.
+    /// </summary>
+    private static string TrimIndent(string code)
+    {
+        if (string.IsNullOrEmpty(code)) return code;
+        var lines = code.Split('\n');
+        var nonEmpty = lines.Where(l => l.Trim().Length > 0).ToList();
+        if (nonEmpty.Count == 0) return code;
+        var minIndent = nonEmpty.Min(l => l.Length - l.TrimStart().Length);
+        if (minIndent == 0) return code;
+        return string.Join('\n', lines.Select(l => l.Length >= minIndent ? l[minIndent..] : l));
+    }
+}

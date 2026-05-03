@@ -25,8 +25,8 @@ public sealed class ActivityFeedItem
     /// <summary>Gets or sets the badge label shown in the top-right of the card.</summary>
     public string? BadgeText { get; set; }
 
-    /// <summary>Gets or sets the badge variant: "default", "info", "success", "warn", "danger".</summary>
-    public string BadgeVariant { get; set; } = "default";
+    /// <summary>Gets or sets the badge variant. Default is <see cref="SgBadgeVariant.Default"/>.</summary>
+    public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
 
     /// <summary>Gets or sets the accent color used for the avatar background and timeline line.</summary>
     public string AccentColor { get; set; } = "var(--sui-accent, #2563eb)";

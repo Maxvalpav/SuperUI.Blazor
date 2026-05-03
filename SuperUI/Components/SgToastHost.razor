@@ -3,8 +3,8 @@
 @inject SgToastService Toasts
 @inject Microsoft.Extensions.Options.IOptions<SuperUI.SuperUiOptions> Options
 
-<div class="sgc-toast-container sgc-toast-@Placement.ToLowerInvariant()" role="region" aria-label="Notifications" aria-live="polite">
-    @foreach (var t in (Placement.EndsWith("Top") ? _items.AsEnumerable().Reverse() : _items))
+<div class="sgc-toast-container sgc-toast-@PlacementClass" role="region" aria-label="Notifications" aria-live="polite">
+    @foreach (var t in (Placement is SgToastPlacement.TopRight or SgToastPlacement.TopLeft or SgToastPlacement.TopCenter ? _items.AsEnumerable().Reverse() : _items))
     {
         var tLocal = t;
         <div class="sgc-toast @VariantClass(tLocal.Variant) @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")" 
@@ -33,10 +33,10 @@
     private bool _disposed;
 
     /// <summary>
-    /// Gets or sets the toast container placement: "TopRight", "TopLeft", "BottomRight", "BottomLeft".
-    /// Default is "TopRight".
+    /// Gets or sets the toast container placement.
+    /// Default is <see cref="SgToastPlacement.TopRight"/>.
     /// </summary>
-    [Parameter] public string Placement { get; set; } = "TopRight";
+    [Parameter] public SgToastPlacement Placement { get; set; } = SgToastPlacement.TopRight;
 
     protected override void OnInitialized()
     {
@@ -136,12 +136,22 @@
         }
     }
 
-    private static string VariantClass(string v) => v switch
+    private string PlacementClass => Placement switch
     {
-        "success" => "sgc-success",
-        "danger" => "sgc-danger",
-        "warn" => "sgc-warn",
-        _ => ""
+        SgToastPlacement.TopLeft      => "topleft",
+        SgToastPlacement.TopCenter    => "topcenter",
+        SgToastPlacement.BottomRight  => "bottomright",
+        SgToastPlacement.BottomLeft   => "bottomleft",
+        SgToastPlacement.BottomCenter => "bottomcenter",
+        _                             => "topright"
+    };
+
+    private static string VariantClass(SgToastVariant v) => v switch
+    {
+        SgToastVariant.Success => "sgc-success",
+        SgToastVariant.Danger  => "sgc-danger",
+        SgToastVariant.Warn    => "sgc-warn",
+        _                      => ""
     };
 
     async ValueTask IAsyncDisposable.DisposeAsync()

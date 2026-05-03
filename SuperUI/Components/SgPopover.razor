@@ -61,15 +61,12 @@
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
     
     /// <summary>
-    /// Gets or sets the placement of the popover relative to the trigger.
-    /// Supported values: "top", "top-start", "top-end", "bottom", "bottom-start", "bottom-end", 
-    /// "left", "left-start", "left-end", "right", "right-start", "right-end". Default is "bottom-start".
+    /// Gets or sets the placement of the popover relative to the trigger. Default is <see cref="SgPlacement.BottomStart"/>.
     /// </summary>
-    [Parameter] public string Placement { get; set; } = "bottom-start";
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
     
     /// <summary>
-    /// Gets or sets the ARIA role attribute for the popover.
-    /// Default is "dialog".
+    /// Gets or sets the ARIA role attribute for the popover. Default is "dialog".
     /// </summary>
     [Parameter] public string Role { get; set; } = "dialog";
     
@@ -84,46 +81,39 @@
     [Parameter] public bool ShowArrow { get; set; }
     
     /// <summary>
-    /// Gets or sets whether the popover closes when clicking outside of it.
-    /// Default is true.
+    /// Gets or sets whether the popover closes when clicking outside of it. Default is true.
     /// </summary>
     [Parameter] public bool CloseOnOutsideClick { get; set; } = true;
     
     /// <summary>
-    /// Gets or sets whether the popover closes when pressing the Escape key.
-    /// Default is true.
+    /// Gets or sets whether the popover closes when pressing the Escape key. Default is true.
     /// </summary>
     [Parameter] public bool CloseOnEscape { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the trigger behavior for the popover.
-    /// Supported values: "click", "hover", "focus", "manual". Default is "click".
+    /// Gets or sets the trigger behavior for the popover. Default is <see cref="SgTrigger.Click"/>.
     /// </summary>
-    [Parameter] public string Trigger { get; set; } = "click";
+    [Parameter] public SgTrigger Trigger { get; set; } = SgTrigger.Click;
 
     /// <summary>
     /// Gets or sets whether the popover is disabled.
-    /// Default is false.
     /// </summary>
     [Parameter] public bool Disabled { get; set; }
     
     /// <summary>
-    /// Gets or sets the text for the default trigger button.
-    /// Only used when <see cref="TriggerContent"/> is not provided. Default is "Open".
+    /// Gets or sets the text for the default trigger button. Default is "Open".
     /// </summary>
     [Parameter] public string ButtonText { get; set; } = "Open";
     
     /// <summary>
-    /// Gets or sets the variant for the default trigger button.
-    /// Only used when <see cref="TriggerContent"/> is not provided. Default is "default".
+    /// Gets or sets the variant for the default trigger button. Default is <see cref="SgButtonVariant.Default"/>.
     /// </summary>
-    [Parameter] public string ButtonVariant { get; set; } = "default";
+    [Parameter] public SgButtonVariant ButtonVariant { get; set; } = SgButtonVariant.Default;
     
     /// <summary>
-    /// Gets or sets the size for the default trigger button.
-    /// Only used when <see cref="TriggerContent"/> is not provided. Default is "md".
+    /// Gets or sets the size for the default trigger button. Default is <see cref="SgSize.Md"/>.
     /// </summary>
-    [Parameter] public string ButtonSize { get; set; } = "md";
+    [Parameter] public SgSize ButtonSize { get; set; } = SgSize.Md;
     
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
@@ -143,18 +133,18 @@
 
     private string PlacementClass => Placement switch
     {
-        "top-start" => "sgc-pop-top-start",
-        "top-end" => "sgc-pop-top-end",
-        "top" => "sgc-pop-top",
-        "right-start" => "sgc-pop-right-start",
-        "right" => "sgc-pop-right",
-        "right-end" => "sgc-pop-right-end",
-        "left-start" => "sgc-pop-left-start",
-        "left" => "sgc-pop-left",
-        "left-end" => "sgc-pop-left-end",
-        "bottom" => "sgc-pop-bottom",
-        "bottom-end" => "sgc-pop-bottom-end",
-        _ => "sgc-pop-bottom-start"
+        SgPlacement.TopStart    => "sgc-pop-top-start",
+        SgPlacement.TopEnd      => "sgc-pop-top-end",
+        SgPlacement.Top         => "sgc-pop-top",
+        SgPlacement.RightStart  => "sgc-pop-right-start",
+        SgPlacement.Right       => "sgc-pop-right",
+        SgPlacement.RightEnd    => "sgc-pop-right-end",
+        SgPlacement.LeftStart   => "sgc-pop-left-start",
+        SgPlacement.Left        => "sgc-pop-left",
+        SgPlacement.LeftEnd     => "sgc-pop-left-end",
+        SgPlacement.Bottom      => "sgc-pop-bottom",
+        SgPlacement.BottomEnd   => "sgc-pop-bottom-end",
+        _                       => "sgc-pop-bottom-start"
     };
 
     protected override void OnParametersSet()
@@ -232,15 +222,14 @@
         _previousOpen = _open;
     }
 
-    private async Task OnTriggerClickAsync() => await HandleTriggerAsync("click", !_open);
-    private async Task OnTriggerMouseEnterAsync() => await HandleTriggerAsync("hover", true);
-    private async Task OnTriggerMouseLeaveAsync() => await HandleTriggerAsync("hover", false);
+    private async Task OnTriggerClickAsync() => await HandleTriggerAsync(SgTrigger.Click, !_open);
+    private async Task OnTriggerMouseEnterAsync() => await HandleTriggerAsync(SgTrigger.Hover, true);
+    private async Task OnTriggerMouseLeaveAsync() => await HandleTriggerAsync(SgTrigger.Hover, false);
 
-    private async Task HandleTriggerAsync(string triggerType, bool show)
+    private async Task HandleTriggerAsync(SgTrigger triggerType, bool show)
     {
         if (Disabled) return;
-        if (!Trigger.Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains(triggerType))
-            return;
+        if (Trigger != triggerType) return;
         if (show) await OpenAsync();
         else await CloseAsync();
     }

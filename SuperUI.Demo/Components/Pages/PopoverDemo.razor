@@ -17,7 +17,7 @@
                         <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Информационный поповер</div>
                         <SgPopover Title="Информация" @bind-Open="_pop1">
                             <TriggerContent>
-                                <SgButton Text="Нажмите для информации" Variant="primary" />
+                                <SgButton Text="Нажмите для информации" Variant=SgButtonVariant.Primary" />
                             </TriggerContent>
                             <ChildContent>
                                 <p style="margin: 0;">Это всплывающее окно с дополнительной информацией о компоненте.</p>
@@ -29,13 +29,13 @@
                         <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Поповер подтверждения</div>
                         <SgPopover Title="Подтверждение" @bind-Open="_pop2">
                             <TriggerContent>
-                                <SgButton Text="Удалить запись" Variant="danger" />
+                                <SgButton Text="Удалить запись" Variant="SgButtonVariant.Danger" />
                             </TriggerContent>
                             <ChildContent>
                                 <p style="margin: 0 0 12px;">Вы уверены, что хотите удалить эту запись?</p>
                                 <div style="display: flex; gap: 8px;">
-                                    <SgButton Text="Удалить" Variant="danger" Size="sm" OnClick="DeleteRecord" />
-                                    <SgButton Text="Отмена" Size="sm" OnClick="@(() => _pop2 = false)" />
+                                    <SgButton Text="Удалить" Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="DeleteRecord" />
+                                    <SgButton Text="Отмена" Size="SgSize.Sm" OnClick="@(() => _pop2 = false)" />
                                 </div>
                             </ChildContent>
                         </SgPopover>
@@ -70,10 +70,9 @@
                 @foreach (var placement in _placements)
                 {
                     var p = placement;
-                    var open = _placementOpen.ContainsKey(p) && _placementOpen[p];
-                    <SgPopover Title="@p" Placement="@p" @bind-Open="_placementOpen[p]">
+                    <SgPopover Title="@p.ToString()" Placement="@p" @bind-Open="_placementOpen[p]">
                         <TriggerContent>
-                            <SgButton Text="@p" Size="sm" />
+                            <SgButton Text="@p.ToString()" Size="SgSize.Sm" />
                         </TriggerContent>
                         <ChildContent>
                             <p style="margin: 0;">Позиция: <strong>@p</strong></p>
@@ -82,6 +81,20 @@
                 }
             </div>
         </SgCard>
+    </div>
+
+    <!-- Enum + code -->
+    <div style="margin-top: 32px;">
+        <h2>Перечисления и примеры кода</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="SgPlacement (12 позиций)">
+                <PropertyTable Items="_placementEnum" />
+            </SgCard>
+            <SgCard Title="Пример кода">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_popoverCode" />
+            </SgCard>
+        </div>
     </div>
 
 </SgCard>
@@ -96,32 +109,68 @@
         _pop2 = false;
     }
 
-    private List<string> _placements = new()
+    private List<SgPlacement> _placements = new()
     {
-        "top-start", "top", "top-end",
-        "bottom-start", "bottom", "bottom-end",
-        "left-start", "left", "left-end",
-        "right-start", "right", "right-end"
+        SgPlacement.TopStart,    SgPlacement.Top,    SgPlacement.TopEnd,
+        SgPlacement.BottomStart, SgPlacement.Bottom, SgPlacement.BottomEnd,
+        SgPlacement.LeftStart,   SgPlacement.Left,   SgPlacement.LeftEnd,
+        SgPlacement.RightStart,  SgPlacement.Right,  SgPlacement.RightEnd
     };
 
-    private Dictionary<string, bool> _placementOpen = new()
+    private Dictionary<SgPlacement, bool> _placementOpen = new()
     {
-        ["top-start"] = false, ["top"] = false, ["top-end"] = false,
-        ["bottom-start"] = false, ["bottom"] = false, ["bottom-end"] = false,
-        ["left-start"] = false, ["left"] = false, ["left-end"] = false,
-        ["right-start"] = false, ["right"] = false, ["right-end"] = false
+        [SgPlacement.TopStart]    = false, [SgPlacement.Top]    = false, [SgPlacement.TopEnd]    = false,
+        [SgPlacement.BottomStart] = false, [SgPlacement.Bottom] = false, [SgPlacement.BottomEnd] = false,
+        [SgPlacement.LeftStart]   = false, [SgPlacement.Left]   = false, [SgPlacement.LeftEnd]   = false,
+        [SgPlacement.RightStart]  = false, [SgPlacement.Right]  = false, [SgPlacement.RightEnd]  = false
     };
 
     private List<PropertyPanelItem> _popoverProperties = new()
     {
-        new() { Label = "Open", Value = "bool", BadgeText = "Открыт", BadgeVariant = "warn" },
-        new() { Label = "OpenChanged", Value = "EventCallback<bool>", BadgeText = "Событие", BadgeVariant = "success" },
-        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = "info" },
-        new() { Label = "Placement", Value = "top|bottom|left|right + start/end", BadgeText = "Позиция", BadgeVariant = "info" },
-        new() { Label = "ShowArrow", Value = "bool", BadgeText = "Стрелка", BadgeVariant = "warn" },
-        new() { Label = "CloseOnOutsideClick", Value = "bool", BadgeText = "Закрыть снаружи", BadgeVariant = "warn" },
-        new() { Label = "CloseOnEscape", Value = "bool", BadgeText = "Закрыть по Esc", BadgeVariant = "warn" },
-        new() { Label = "TriggerContent", Value = "RenderFragment", BadgeText = "Триггер", BadgeVariant = "info" },
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Содержимое", BadgeVariant = "info" }
+        new() { Label = "Open",                Value = "bool",                    BadgeText = "Открыт",              BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "OpenChanged",         Value = "EventCallback<bool>",     BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Title",               Value = "string",                  BadgeText = "Заголовок",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Placement",           Value = "top|bottom|left|right…",  BadgeText = "Позиция (SgPlacement)", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Trigger",             Value = "click|hover|focus|manual",BadgeText = "Триггер (SgTrigger)", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowArrow",           Value = "bool",                    BadgeText = "Стрелка",             BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CloseOnOutsideClick", Value = "bool",                    BadgeText = "Закрыть снаружи",     BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CloseOnEscape",       Value = "bool",                    BadgeText = "Закрыть по Esc",      BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "TriggerContent",      Value = "RenderFragment",          BadgeText = "Триггер",             BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent",        Value = "RenderFragment",          BadgeText = "Содержимое",          BadgeVariant = SgBadgeVariant.Info }
     };
+
+    // ── Enum tables ──────────────────────────────────────────────────────────
+    private List<PropertyPanelItem> _placementEnum = new()
+    {
+        new() { Label = "SgPlacement.Bottom",      Value = "\"bottom\"",       BadgeText = "Снизу по центру",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgPlacement.BottomStart", Value = "\"bottom-start\"", BadgeText = "Снизу слева",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.BottomEnd",   Value = "\"bottom-end\"",   BadgeText = "Снизу справа",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.Top",         Value = "\"top\"",          BadgeText = "Сверху по центру",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.TopStart",    Value = "\"top-start\"",    BadgeText = "Сверху слева",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.TopEnd",      Value = "\"top-end\"",      BadgeText = "Сверху справа",      BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.Left",        Value = "\"left\"",         BadgeText = "Слева",              BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgPlacement.Right",       Value = "\"right\"",        BadgeText = "Справа",             BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private string _popoverCode = """
+        <SgPopover Title="Подтверждение"
+                   Placement="SgPlacement.BottomStart"
+                   ShowArrow="true"
+                   @bind-Open="_open">
+            <TriggerContent>
+                <SgButton Text="Удалить" Variant="SgButtonVariant.Danger" />
+            </TriggerContent>
+            <ChildContent>
+                <p>Вы уверены?</p>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <SgButton Text="Да" Variant="SgButtonVariant.Danger" Size="SgSize.Sm"
+                              OnClick="@(() => _open = false)" />
+                    <SgButton Text="Нет" Size="SgSize.Sm"
+                              OnClick="@(() => _open = false)" />
+                </div>
+            </ChildContent>
+        </SgPopover>
+
+        @code { private bool _open; }
+        """;
 }
