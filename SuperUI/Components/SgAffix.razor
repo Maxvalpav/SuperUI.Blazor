@@ -2,9 +2,16 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="sgc-affix @CssClass" @ref="_host">
+<div class="sgc-affix @(_isBottom ? "sgc-affix-bottom" : "sgc-affix-top") @CssClass" @ref="_host">
     <div class="sgc-affix-inner @(_affixed ? "sgc-affix-active" : "")" @ref="_inner">
-        @ChildContent
+        @if (Template is not null)
+        {
+            @Template(_affixed)
+        }
+        else
+        {
+            @ChildContent
+        }
     </div>
 </div>
 
@@ -13,6 +20,12 @@
     /// Content that should stick to the viewport when scrolled past the threshold.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Optional template that receives the current affixed state, useful for changing
+    /// the rendered content (e.g. a denser toolbar) when pinned.
+    /// </summary>
+    [Parameter] public RenderFragment<bool>? Template { get; set; }
 
     /// <summary>
     /// Pixel offset from the top of the viewport (or scroll target) where the element should pin.
@@ -36,6 +49,16 @@
     [Parameter] public EventCallback<bool> AffixedChanged { get; set; }
 
     /// <summary>
+    /// Raised once when the element pins to the viewport.
+    /// </summary>
+    [Parameter] public EventCallback OnAffix { get; set; }
+
+    /// <summary>
+    /// Raised once when the element returns to its natural position.
+    /// </summary>
+    [Parameter] public EventCallback OnUnaffix { get; set; }
+
+    /// <summary>
     /// Additional CSS class for the host wrapper.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
@@ -47,6 +70,11 @@
     private bool _attached;
     private bool _isDisposed;
     private bool _affixed;
+
+    private bool _isBottom => OffsetBottom.HasValue;
+
+    /// <summary>Returns true while the element is pinned.</summary>
+    public bool IsAffixed => _affixed;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -72,7 +100,21 @@
         if (_isDisposed || _affixed == active) return;
         _affixed = active;
         if (AffixedChanged.HasDelegate) await AffixedChanged.InvokeAsync(active);
+        if (active && OnAffix.HasDelegate) await OnAffix.InvokeAsync();
+        if (!active && OnUnaffix.HasDelegate) await OnUnaffix.InvokeAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Forces the affix to recompute its pinned state. Call this after layout changes.</summary>
+    public async Task RefreshAsync()
+    {
+        if (_module is null || !_attached || _isDisposed) return;
+        try
+        {
+            await _module.InvokeVoidAsync("refresh", _host);
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
     }
 
     public async ValueTask DisposeAsync()

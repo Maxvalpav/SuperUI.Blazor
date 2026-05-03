@@ -13,29 +13,30 @@ export function attach(host, fixedEl, dotnet, opts) {
 
     const scroller = options.target ? document.querySelector(options.target) : window;
     let active = false;
-    let lastWidth = 0;
-
-    function getScrollY() {
-        return scroller === window ? window.scrollY : scroller.scrollTop;
-    }
+    let placeholderHeight = 0;
+    let rafId = 0;
 
     function getViewportRect() {
         if (scroller === window) {
-            return { top: 0, bottom: window.innerHeight, left: 0 };
+            return { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
         }
         return scroller.getBoundingClientRect();
     }
 
-    function update() {
+    function compute() {
+        rafId = 0;
+        if (!host.isConnected) return;
+
+        // Measure the natural (unfixed) host rect — when active, the placeholder keeps the size.
         const hostRect = host.getBoundingClientRect();
         const vp = getViewportRect();
         const w = host.offsetWidth;
-        if (w !== lastWidth) lastWidth = w;
 
         let shouldFix = false;
         let top = null, bottom = null, left = null;
 
         if (options.offsetTop !== null) {
+            // host's distance from viewport-top; pin once it scrolls above the threshold.
             if (hostRect.top <= vp.top + options.offsetTop) {
                 shouldFix = true;
                 top = vp.top + options.offsetTop;
@@ -50,7 +51,11 @@ export function attach(host, fixedEl, dotnet, opts) {
         }
 
         if (shouldFix) {
-            host.style.height = host.style.height || (hostRect.height + 'px');
+            // Lock the placeholder height once, so layout doesn't jitter on first pin.
+            if (placeholderHeight === 0) {
+                placeholderHeight = fixedEl.offsetHeight || hostRect.height;
+                host.style.height = placeholderHeight + 'px';
+            }
             fixedEl.style.position = 'fixed';
             fixedEl.style.width = w + 'px';
             fixedEl.style.left = left + 'px';
@@ -66,7 +71,9 @@ export function attach(host, fixedEl, dotnet, opts) {
                 try { dotnet.invokeMethodAsync('OnAffixed', true); } catch { /* noop */ }
             }
         } else {
+            // Reset placeholder + fixed styles.
             host.style.height = '';
+            placeholderHeight = 0;
             fixedEl.style.position = '';
             fixedEl.style.width = '';
             fixedEl.style.left = '';
@@ -79,33 +86,65 @@ export function attach(host, fixedEl, dotnet, opts) {
         }
     }
 
-    const onScroll = () => update();
-    const onResize = () => update();
+    function update() {
+        if (rafId) return;
+        rafId = requestAnimationFrame(compute);
+    }
+
+    const onScroll = update;
+    const onResize = update;
 
     scroller.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', onResize);
 
-    host._sgAffix = { scroller, onScroll, onResize, update };
+    // ResizeObserver re-pins when the inner element changes height (e.g. expanded panels).
+    let resizeObserver = null;
+    if (typeof ResizeObserver !== 'undefined') {
+        resizeObserver = new ResizeObserver(update);
+        resizeObserver.observe(fixedEl);
+    }
+
+    host._sgAffix = { scroller, onScroll, onResize, resizeObserver, update,
+                      cancel: () => { if (rafId) cancelAnimationFrame(rafId); rafId = 0; } };
     update();
 }
 
 export function detach(host) {
     if (!host || !host._sgAffix) return;
-    const { scroller, onScroll, onResize } = host._sgAffix;
+    const { scroller, onScroll, onResize, resizeObserver, cancel } = host._sgAffix;
     scroller.removeEventListener('scroll', onScroll);
     window.removeEventListener('resize', onResize);
+    if (resizeObserver) resizeObserver.disconnect();
+    if (cancel) cancel();
     delete host._sgAffix;
 }
 
+export function refresh(host) {
+    if (host && host._sgAffix) host._sgAffix.update();
+}
+
 // BackTop module: report scroll position past threshold and provide scrollToTop.
+const _backtopHandles = new Map();
+let _backtopSeq = 0;
+
+function findTarget(selector) {
+    if (!selector) return window;
+    let target = document.querySelector(selector);
+    return target || window;
+}
+
 export function backtopAttach(dotnet, opts) {
-    const target = opts?.target ? document.querySelector(opts.target) : window;
+    const targetSelector = opts?.target;
+    let target = targetSelector ? document.querySelector(targetSelector) : window;
     const threshold = opts?.threshold ?? 200;
     let visible = false;
 
     function getY() { return target === window ? window.scrollY : target.scrollTop; }
 
     function check() {
+        if (targetSelector && (!target || !document.querySelector(targetSelector))) {
+            target = document.querySelector(targetSelector) || window;
+        }
         const next = getY() > threshold;
         if (next !== visible) {
             visible = next;
@@ -113,17 +152,27 @@ export function backtopAttach(dotnet, opts) {
         }
     }
 
-    target.addEventListener('scroll', check, { passive: true });
+    function attachToTarget() {
+        if (target && target.addEventListener) {
+            target.addEventListener('scroll', check, { passive: true });
+        }
+    }
+
+    attachToTarget();
+    const id = ++_backtopSeq;
+    _backtopHandles.set(id, { targetSelector, target, check, attachToTarget });
+    // Initial check after registration so first visibility report fires.
     check();
-    return {
-        target,
-        check,
-    };
+    return id;
 }
 
-export function backtopDetach(handle) {
+export function backtopDetach(id) {
+    const handle = _backtopHandles.get(id);
     if (!handle) return;
-    handle.target.removeEventListener('scroll', handle.check);
+    if (handle.target && handle.target.removeEventListener) {
+        handle.target.removeEventListener('scroll', handle.check);
+    }
+    _backtopHandles.delete(id);
 }
 
 export function scrollToTop(targetSelector, smooth) {
