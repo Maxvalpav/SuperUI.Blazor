@@ -285,17 +285,31 @@
             _zIndex = 0;
         }
 
-        _self?.Dispose();
+        // 1. Уведомить JS о dispose
+        if (_module is not null && _attached)
+        {
+            try { await _module.InvokeVoidAsync("detach", _el); }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+        }
+
+        // 2. Очистить DotNetObjectReference
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        // 3. Очистить JS модуль
         if (_module is not null)
         {
             try
             {
-                if (_attached) await _module.InvokeVoidAsync("detach", _el);
                 await _module.DisposeAsync();
             }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
+            _module = null;
         }
     }
 }

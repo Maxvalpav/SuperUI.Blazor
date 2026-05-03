@@ -29,7 +29,12 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
         element: drawerElement,
         dotnet: dotnetRef,
         closeOnEscape,
-        previousFocus
+        previousFocus,
+        isDisposed: false,
+        dispose: () => {
+            entry.isDisposed = true;
+            entry.dotnet = null;
+        }
     };
 
     drawerStack.push(entry);
@@ -39,10 +44,12 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
         escapeHandler = (e) => {
             if (e.key === 'Escape') {
                 const top = getTopDrawer();
-                if (top && top.closeOnEscape) {
+                if (top && top.closeOnEscape && !top.isDisposed && top.dotnet) {
                     e.preventDefault();
                     e.stopPropagation();
-                    top.dotnet.invokeMethodAsync('CloseFromJsAsync');
+                    try {
+                        top.dotnet.invokeMethodAsync('CloseFromJsAsync').catch(() => {});
+                    } catch { }
                 }
             }
         };
@@ -54,7 +61,7 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
         focusTrapHandler = (e) => {
             if (e.key !== 'Tab') return;
             const top = getTopDrawer();
-            if (!top) return;
+            if (!top || top.isDisposed) return;
 
             const focusableElements = getFocusableElements(top.element);
             if (focusableElements.length === 0) {
@@ -85,11 +92,13 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
 
     // Focus first focusable element in drawer
     setTimeout(() => {
-        const focusableElements = getFocusableElements(drawerElement);
-        if (focusableElements.length > 0) {
-            focusableElements[0].focus();
-        } else {
-            drawerElement.focus();
+        if (!entry.isDisposed && entry.element && entry.element.isConnected) {
+            const focusableElements = getFocusableElements(entry.element);
+            if (focusableElements.length > 0) {
+                focusableElements[0].focus();
+            } else {
+                entry.element.focus();
+            }
         }
     }, 50);
 }
@@ -101,9 +110,10 @@ export function initResize(drawerElement, dotnetRef, placement) {
     let isResizing = false;
     let startSize = 0;
     let startPos = 0;
+    let isDisposed = false;
 
     const onPointerMove = (e) => {
-        if (!isResizing) return;
+        if (!isResizing || isDisposed) return;
 
         let delta = 0;
         if (placement === 'right') {
@@ -134,15 +144,20 @@ export function initResize(drawerElement, dotnetRef, placement) {
         document.removeEventListener('pointercancel', onPointerUp);
         document.body.style.cursor = '';
         
-        const currentSize = (placement === 'left' || placement === 'right') 
-            ? drawerElement.offsetWidth 
-            : drawerElement.offsetHeight;
-        dotnetRef.invokeMethodAsync('UpdateSizeFromJs', `${currentSize}px`);
+        if (!isDisposed && dotnetRef) {
+            const currentSize = (placement === 'left' || placement === 'right') 
+                ? drawerElement.offsetWidth 
+                : drawerElement.offsetHeight;
+            try {
+                dotnetRef.invokeMethodAsync('UpdateSizeFromJs', `${currentSize}px`).catch(() => {});
+            } catch { }
+        }
     };
 
     resizer.style.cursor = (placement === 'left' || placement === 'right') ? 'col-resize' : 'row-resize';
     
     resizer.addEventListener('pointerdown', (e) => {
+        if (isDisposed) return;
         e.preventDefault();
         isResizing = true;
         startSize = (placement === 'left' || placement === 'right') 
@@ -155,11 +170,20 @@ export function initResize(drawerElement, dotnetRef, placement) {
         document.addEventListener('pointercancel', onPointerUp);
         document.body.style.cursor = (placement === 'left' || placement === 'right') ? 'col-resize' : 'row-resize';
     });
+
+    // Store dispose function on resizer for cleanup
+    resizer._dispose = () => {
+        isDisposed = true;
+        dotnetRef = null;
+    };
 }
 
 export function detach() {
     const entry = drawerStack.pop();
     if (!entry) return;
+
+    // Mark as disposed first
+    if (entry.dispose) entry.dispose();
 
     // Restore previous focus
     if (entry.previousFocus && typeof entry.previousFocus.focus === 'function') {

@@ -31,7 +31,9 @@ function restoreRange(editor) {
 export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
     if (!editorElement) return;
 
+    let isDisposed = false;
     editorElement._dotnetRef = dotnetRef;
+    editorElement._isDisposed = false;
 
     if (placeholder) {
         editorElement.setAttribute('data-placeholder', placeholder);
@@ -39,6 +41,7 @@ export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
 
     // Sanitised paste — strip scripts and event handlers, keep formatting.
     editorElement.addEventListener('paste', (e) => {
+        if (isDisposed || !dotnetRef) return;
         e.preventDefault();
         const html = e.clipboardData.getData('text/html');
         const text = e.clipboardData.getData('text/plain');
@@ -59,6 +62,7 @@ export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
 
     // Drag & drop image support — embeds as data URL.
     editorElement.addEventListener('dragover', (e) => {
+        if (isDisposed || !dotnetRef) return;
         if (e.dataTransfer && [...e.dataTransfer.items].some(i => i.kind === 'file')) {
             e.preventDefault();
             editorElement.classList.add('sgc-richtext-dropping');
@@ -68,6 +72,7 @@ export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
         editorElement.classList.remove('sgc-richtext-dropping');
     });
     editorElement.addEventListener('drop', (e) => {
+        if (isDisposed || !dotnetRef) return;
         editorElement.classList.remove('sgc-richtext-dropping');
         const files = e.dataTransfer?.files;
         if (!files || files.length === 0) return;
@@ -78,9 +83,13 @@ export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
         images.forEach(file => {
             const reader = new FileReader();
             reader.onload = () => {
-                document.execCommand('insertHTML', false,
-                    `<img src="${reader.result}" alt="${file.name.replace(/"/g, '')}" />`);
-                if (dotnetRef) dotnetRef.invokeMethodAsync('NotifyContentChanged');
+                if (!isDisposed && dotnetRef) {
+                    document.execCommand('insertHTML', false,
+                        `<img src="${reader.result}" alt="${file.name.replace(/"/g, '')}" />`);
+                    try {
+                        dotnetRef.invokeMethodAsync('NotifyContentChanged').catch(() => {});
+                    } catch { }
+                }
             };
             reader.readAsDataURL(file);
         });
@@ -94,19 +103,32 @@ export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
     editorElement._trackSelection = trackSelection;
 
     const onSelectionChange = () => {
+        if (isDisposed || !dotnetRef) return;
         const sel = window.getSelection();
         if (sel && sel.rangeCount > 0 &&
             isInsideEditor(editorElement, sel.anchorNode)) {
             rememberRange(editorElement);
-            if (dotnetRef) dotnetRef.invokeMethodAsync('UpdateActiveFormats');
+            try {
+                dotnetRef.invokeMethodAsync('UpdateActiveFormats').catch(() => {});
+            } catch { }
         }
     };
     document.addEventListener('selectionchange', onSelectionChange);
     editorElement._selectionChangeHandler = onSelectionChange;
+    
+    // Store dispose function
+    editorElement._dispose = function() {
+        isDisposed = true;
+        dotnetRef = null;
+    };
 }
 
 export function disposeRichTextEditor(editorElement) {
     if (!editorElement) return;
+
+    if (editorElement._dispose) {
+        editorElement._dispose();
+    }
 
     if (editorElement._selectionChangeHandler) {
         document.removeEventListener('selectionchange', editorElement._selectionChangeHandler);
@@ -231,25 +253,42 @@ const commandBarInstances = new Map();
 export function initCommandBar(cmdBarElement, dotnetRef) {
     if (!cmdBarElement) return;
     
+    let isDisposed = false;
+    
     const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-            const width = entry.contentRect.width;
-            // Account for overflow button and far content
-            const availableWidth = Math.round(width - 60);
-            if (dotnetRef) {
-                dotnetRef.invokeMethodAsync('UpdateOverflow', Math.max(0, availableWidth));
+        if (isDisposed || !dotnetRef) return;
+        
+        try {
+            for (const entry of entries) {
+                const width = entry.contentRect.width;
+                // Account for overflow button and far content
+                const availableWidth = Math.round(width - 60);
+                if (dotnetRef && !isDisposed) {
+                    dotnetRef.invokeMethodAsync('UpdateOverflow', Math.max(0, availableWidth)).catch(() => {});
+                }
             }
-        }
+        } catch { }
     });
     
     resizeObserver.observe(cmdBarElement);
     
-    commandBarInstances.set(cmdBarElement, { resizeObserver, dotnetRef });
+    commandBarInstances.set(cmdBarElement, { 
+        resizeObserver, 
+        dotnetRef,
+        isDisposed: false,
+        dispose: function() {
+            this.isDisposed = true;
+            dotnetRef = null;
+        }
+    });
 }
 
 export function disposeCommandBar(cmdBarElement) {
     const instance = commandBarInstances.get(cmdBarElement);
     if (instance) {
+        if (instance.dispose) {
+            instance.dispose();
+        }
         instance.resizeObserver.disconnect();
         commandBarInstances.delete(cmdBarElement);
     }

@@ -256,15 +256,30 @@
 
     public async ValueTask DisposeAsync()
     {
+        // 1. Уведомить JS о dispose
         if (_jsModule is not null)
         {
             try
             {
                 await _jsModule.InvokeVoidAsync("disposeCommandBar", _elementRef);
-                await _jsModule.DisposeAsync();
             }
             catch { }
         }
-        _dotNetRef?.Dispose();
+
+        // 2. Очистить DotNetObjectReference
+        var dotNetRef = _dotNetRef;
+        _dotNetRef = null;
+        dotNetRef?.Dispose();
+
+        // 3. Очистить JS модуль
+        if (_jsModule is not null)
+        {
+            try
+            {
+                await _jsModule.DisposeAsync();
+            }
+            catch { }
+            _jsModule = null;
+        }
     }
 }

@@ -2,8 +2,10 @@
 
 let attachedTooltip = null;
 let dotnetRef = null;
+let isDisposed = false;
 
 export function attach(trigger, tooltip, placement = 'top', dotnet) {
+    isDisposed = false;
     attachedTooltip = { trigger, tooltip, placement };
     dotnetRef = dotnet;
     
@@ -14,6 +16,7 @@ export function attach(trigger, tooltip, placement = 'top', dotnet) {
 }
 
 export function detach() {
+    isDisposed = true;
     if (attachedTooltip?.trigger) {
         attachedTooltip.trigger.removeEventListener('blur', handleTriggerBlur);
     }
@@ -22,8 +25,10 @@ export function detach() {
 }
 
 function handleTriggerBlur() {
-    if (dotnetRef) {
-        dotnetRef.invokeMethodAsync('HideFromJsAsync').catch(() => {});
+    if (!isDisposed && dotnetRef) {
+        try {
+            dotnetRef.invokeMethodAsync('HideFromJsAsync').catch(() => {});
+        } catch { }
     }
 }
 

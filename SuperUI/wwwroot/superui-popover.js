@@ -100,20 +100,26 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
     // Clean up any existing handlers first
     detach(root);
 
+    let isDisposed = false;
+
     const onPointerDown = (event) => {
-        if (!closeOnOutsideClick) return;
+        if (isDisposed || !closeOnOutsideClick) return;
         if (!root || root.contains(event.target)) return;
 
         try {
-            dotnetRef.invokeMethodAsync("CloseFromJsAsync");
+            if (dotnetRef && !isDisposed) {
+                dotnetRef.invokeMethodAsync("CloseFromJsAsync").catch(() => {});
+            }
         } catch { }
     };
 
     const onKeyDown = (event) => {
-        if (!closeOnEscape || event.key !== "Escape") return;
+        if (isDisposed || !closeOnEscape || event.key !== "Escape") return;
 
         try {
-            dotnetRef.invokeMethodAsync("CloseFromJsAsync");
+            if (dotnetRef && !isDisposed) {
+                dotnetRef.invokeMethodAsync("CloseFromJsAsync").catch(() => {});
+            }
         } catch { }
     };
 
@@ -121,11 +127,20 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
     document.addEventListener("keydown", onKeyDown);
     
     // Store handlers for cleanup
-    handlers.set(root, { onPointerDown, onKeyDown, triggerElement });
+    handlers.set(root, { 
+        onPointerDown, 
+        onKeyDown, 
+        triggerElement,
+        isDisposed: false,
+        dispose: () => {
+            isDisposed = true;
+            dotnetRef = null;
+        }
+    });
 
     // Smart positioning and focus management
     setTimeout(() => {
-        if (!popoverElement) return;
+        if (isDisposed || !popoverElement) return;
 
         // Get current placement from CSS classes
         let placement = 'bottom-start';
@@ -156,6 +171,9 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
 export function detach(root) {
     const entry = handlers.get(root);
     if (!entry) return;
+
+    // Mark as disposed first
+    if (entry.dispose) entry.dispose();
 
     document.removeEventListener("pointerdown", entry.onPointerDown);
     document.removeEventListener("keydown", entry.onKeyDown);

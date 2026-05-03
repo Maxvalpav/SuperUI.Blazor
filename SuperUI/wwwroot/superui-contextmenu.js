@@ -1,6 +1,6 @@
 // superui-contextmenu.js
 
-const _state = new WeakMap(); // menuElement → { esc, kbd, scroll, prevFocus }
+const _state = new WeakMap(); // menuElement → { esc, kbd, scroll, prevFocus, isDisposed, dispose }
 
 function getFocusableItems(el) {
     return Array.from(el.querySelectorAll(
@@ -12,17 +12,22 @@ export function attach(menuElement, dotnetRef) {
     // Idempotent: detach any previous handlers on this element first.
     detachElement(menuElement);
 
+    let isDisposed = false;
     const prevFocus = document.activeElement;
 
     const esc = (e) => {
+        if (isDisposed || !dotnetRef) return;
         if (e.key === 'Escape') {
             e.preventDefault();
             e.stopPropagation();
-            dotnetRef.invokeMethodAsync('CloseFromJsAsync');
+            try {
+                dotnetRef.invokeMethodAsync('CloseFromJsAsync').catch(() => {});
+            } catch { }
         }
     };
 
     const kbd = (e) => {
+        if (isDisposed || !dotnetRef) return;
         if (!menuElement.contains(document.activeElement)) return;
         const items = getFocusableItems(menuElement);
         if (!items.length) return;
@@ -42,13 +47,28 @@ export function attach(menuElement, dotnetRef) {
         }
     };
 
-    const scroll = () => dotnetRef.invokeMethodAsync('CloseFromJsAsync');
+    const scroll = () => {
+        if (isDisposed || !dotnetRef) return;
+        try {
+            dotnetRef.invokeMethodAsync('CloseFromJsAsync').catch(() => {});
+        } catch { }
+    };
 
     document.addEventListener('keydown', esc, true);
     document.addEventListener('keydown', kbd, true);
     window.addEventListener('scroll', scroll, true);
 
-    _state.set(menuElement, { esc, kbd, scroll, prevFocus });
+    _state.set(menuElement, { 
+        esc, 
+        kbd, 
+        scroll, 
+        prevFocus,
+        isDisposed: false,
+        dispose: function() {
+            isDisposed = true;
+            dotnetRef = null;
+        }
+    });
 
     setTimeout(() => { const items = getFocusableItems(menuElement); items[0]?.focus(); }, 50);
 }
@@ -56,6 +76,11 @@ export function attach(menuElement, dotnetRef) {
 function detachElement(menuElement) {
     const s = _state.get(menuElement);
     if (!s) return;
+    
+    if (s.dispose) {
+        s.dispose();
+    }
+    
     document.removeEventListener('keydown', s.esc, true);
     document.removeEventListener('keydown', s.kbd, true);
     window.removeEventListener('scroll', s.scroll, true);
