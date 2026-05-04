@@ -1,0 +1,342 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-dock @CssClass" style="@RootStyle" @ref="_root">
+
+    @* ── Top toolbar ── *@
+    @if (ToolbarContent is not null)
+    {
+        <div class="sgc-dock-toolbar">@ToolbarContent</div>
+    }
+
+    @* ── Main area: [left] | [center+bottom] | [right] ── *@
+    <div class="sgc-dock-body">
+
+        @* LEFT panel *@
+        @{ var leftPanels  = VisiblePanels(SgDockPosition.Left);  }
+        @{ var rightPanels = VisiblePanels(SgDockPosition.Right); }
+        @{ var botPanels   = VisiblePanels(SgDockPosition.Bottom);}
+        @{ var cenPanels   = VisiblePanels(SgDockPosition.Center);}
+
+        @if (leftPanels.Count > 0 && !_leftCollapsed)
+        {
+            <div class="sgc-dock-side sgc-dock-left" style="width: @(_leftSize.ToString("F0"))px; min-width: @MinSideSize px;">
+                @RenderPaneGroup(leftPanels, SgDockPosition.Left)
+            </div>
+            <div class="sgc-dock-sash sgc-dock-sash-v"
+                 data-sash="left"
+                 @ref="_leftSash"
+                 title="Drag to resize"></div>
+        }
+
+        @* CENTER + BOTTOM column *@
+        <div class="sgc-dock-center-col">
+            <div class="sgc-dock-center" style="@(botPanels.Count > 0 && !_bottomCollapsed ? $"height: calc(100% - {_bottomSize:F0}px - 4px)" : "height: 100%")">
+                @RenderPaneGroup(cenPanels, SgDockPosition.Center)
+            </div>
+
+            @if (botPanels.Count > 0 && !_bottomCollapsed)
+            {
+                <div class="sgc-dock-sash sgc-dock-sash-h"
+                     data-sash="bottom"
+                     @ref="_bottomSash"
+                     title="Drag to resize"></div>
+                <div class="sgc-dock-side sgc-dock-bottom" style="height: @(_bottomSize.ToString("F0"))px; min-height: @MinSideSize px;">
+                    @RenderPaneGroup(botPanels, SgDockPosition.Bottom)
+                </div>
+            }
+        </div>
+
+        @* RIGHT panel *@
+        @if (rightPanels.Count > 0 && !_rightCollapsed)
+        {
+            <div class="sgc-dock-sash sgc-dock-sash-v"
+                 data-sash="right"
+                 @ref="_rightSash"
+                 title="Drag to resize"></div>
+            <div class="sgc-dock-side sgc-dock-right" style="width: @(_rightSize.ToString("F0"))px; min-width: @MinSideSize px;">
+                @RenderPaneGroup(rightPanels, SgDockPosition.Right)
+            </div>
+        }
+    </div>
+
+    @* ── Status bar ── *@
+    @if (StatusBarContent is not null)
+    {
+        <div class="sgc-dock-statusbar">@StatusBarContent</div>
+    }
+</div>
+
+@code {
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>List of panels managed by the dock.</summary>
+    [Parameter] public List<SgDockPanel> Panels { get; set; } = new();
+
+    /// <summary>Callback when the panel list changes (close, reorder).</summary>
+    [Parameter] public EventCallback<List<SgDockPanel>> PanelsChanged { get; set; }
+
+    /// <summary>Template for rendering panel content. Receives the active <see cref="SgDockPanel"/>.</summary>
+    [Parameter] public RenderFragment<SgDockPanel>? PanelTemplate { get; set; }
+
+    /// <summary>Optional toolbar rendered above the dock layout.</summary>
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>Optional status bar rendered below the dock layout.</summary>
+    [Parameter] public RenderFragment? StatusBarContent { get; set; }
+
+    /// <summary>Initial width of the left panel in pixels. Default 220.</summary>
+    [Parameter] public double LeftSize { get; set; } = 220;
+
+    /// <summary>Initial width of the right panel in pixels. Default 240.</summary>
+    [Parameter] public double RightSize { get; set; } = 240;
+
+    /// <summary>Initial height of the bottom panel in pixels. Default 180.</summary>
+    [Parameter] public double BottomSize { get; set; } = 180;
+
+    /// <summary>Minimum size (px) for any side panel. Default 80.</summary>
+    [Parameter] public double MinSideSize { get; set; } = 80;
+
+    /// <summary>Maximum size (px) for side panels. Default 600.</summary>
+    [Parameter] public double MaxSideSize { get; set; } = 600;
+
+    /// <summary>Additional CSS class for the root element.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline style for the root element (e.g. height).</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Callback when the active panel changes.</summary>
+    [Parameter] public EventCallback<SgDockPanel?> ActivePanelChanged { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private ElementReference _root;
+    private ElementReference _leftSash;
+    private ElementReference _rightSash;
+    private ElementReference _bottomSash;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgDockManager>? _self;
+    private bool _attached;
+    private bool _isDisposed;
+    private bool _initDone;
+
+    private double _leftSize;
+    private double _rightSize;
+    private double _bottomSize;
+
+    private bool _leftCollapsed;
+    private bool _rightCollapsed;
+    private bool _bottomCollapsed;
+
+    // active tab per position
+    private readonly Dictionary<SgDockPosition, string?> _activeTab = new();
+
+    private string RootStyle => string.IsNullOrEmpty(Style) ? "" : Style;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (!_initDone)
+        {
+            _initDone = true;
+            _leftSize   = LeftSize;
+            _rightSize  = RightSize;
+            _bottomSize = BottomSize;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import", "/_content/SuperUI/superui-dockmanager.js");
+            if (_isDisposed) return;
+            _self ??= DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("attach", _root, _self);
+            _attached = true;
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    // ── JS callbacks ──────────────────────────────────────────────────────────
+
+    [JSInvokable]
+    public async Task JsResizeLeft(double size)
+    {
+        _leftSize = Math.Clamp(size, MinSideSize, MaxSideSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task JsResizeRight(double size)
+    {
+        _rightSize = Math.Clamp(size, MinSideSize, MaxSideSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task JsResizeBottom(double size)
+    {
+        _bottomSize = Math.Clamp(size, MinSideSize, MaxSideSize);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private List<SgDockPanel> VisiblePanels(SgDockPosition pos)
+        => Panels.Where(p => p.Position == pos && p.Visible).ToList();
+
+    private string? GetActiveTab(SgDockPosition pos)
+    {
+        if (_activeTab.TryGetValue(pos, out var id) && id != null)
+        {
+            if (VisiblePanels(pos).Any(p => p.Id == id)) return id;
+        }
+        var first = VisiblePanels(pos).FirstOrDefault();
+        return first?.Id;
+    }
+
+    private void SetActiveTab(SgDockPosition pos, string id)
+    {
+        _activeTab[pos] = id;
+        var panel = Panels.FirstOrDefault(p => p.Id == id);
+        if (panel != null && ActivePanelChanged.HasDelegate)
+            _ = ActivePanelChanged.InvokeAsync(panel);
+    }
+
+    private async Task ClosePanelAsync(SgDockPanel panel)
+    {
+        panel.Visible = false;
+        if (PanelsChanged.HasDelegate)
+            await PanelsChanged.InvokeAsync(Panels);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleCollapse(SgDockPosition pos)
+    {
+        switch (pos)
+        {
+            case SgDockPosition.Left:   _leftCollapsed   = !_leftCollapsed;   break;
+            case SgDockPosition.Right:  _rightCollapsed  = !_rightCollapsed;  break;
+            case SgDockPosition.Bottom: _bottomCollapsed = !_bottomCollapsed; break;
+        }
+    }
+
+    // ── Render helpers ────────────────────────────────────────────────────────
+
+    private RenderFragment RenderPaneGroup(List<SgDockPanel> panels, SgDockPosition pos) => __builder =>
+    {
+        var activeId = GetActiveTab(pos);
+
+        // Tab bar
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "sgc-dock-tabbar");
+
+        foreach (var p in panels)
+        {
+            var pLocal = p;
+            var isActive = pLocal.Id == activeId;
+
+            __builder.OpenElement(10, "div");
+            __builder.AddAttribute(11, "class", "sgc-dock-tab" + (isActive ? " sgc-dock-tab-active" : ""));
+            __builder.AddAttribute(12, "title", pLocal.Title);
+            __builder.AddAttribute(13, "onclick",
+                EventCallback.Factory.Create(this, () => SetActiveTab(pos, pLocal.Id)));
+
+            // icon
+            if (!string.IsNullOrEmpty(pLocal.Icon))
+            {
+                __builder.OpenElement(20, "span");
+                __builder.AddAttribute(21, "class", "sgc-dock-tab-icon");
+                __builder.AddContent(22, (MarkupString)pLocal.Icon);
+                __builder.CloseElement();
+            }
+
+            // title
+            __builder.OpenElement(30, "span");
+            __builder.AddAttribute(31, "class", "sgc-dock-tab-title");
+            __builder.AddContent(32, pLocal.Title);
+            __builder.CloseElement();
+
+            // close button
+            if (pLocal.Closable)
+            {
+                __builder.OpenElement(40, "button");
+                __builder.AddAttribute(41, "type", "button");
+                __builder.AddAttribute(42, "class", "sgc-dock-tab-close");
+                __builder.AddAttribute(43, "title", "Close");
+                __builder.AddAttribute(44, "onclick",
+                    EventCallback.Factory.Create(this, () => ClosePanelAsync(pLocal)));
+                __builder.AddEventStopPropagationAttribute(45, "onclick", true);
+                __builder.AddContent(46, (MarkupString)SgIcons.X);
+                __builder.CloseElement();
+            }
+
+            __builder.CloseElement(); // tab
+        }
+
+        // collapse button (not for center)
+        if (pos != SgDockPosition.Center)
+        {
+            __builder.OpenElement(50, "button");
+            __builder.AddAttribute(51, "type", "button");
+            __builder.AddAttribute(52, "class", "sgc-dock-tabbar-collapse");
+            __builder.AddAttribute(53, "title", "Collapse panel");
+            __builder.AddAttribute(54, "onclick",
+                EventCallback.Factory.Create(this, () => { ToggleCollapse(pos); StateHasChanged(); }));
+            __builder.AddContent(55, pos == SgDockPosition.Bottom
+                ? (MarkupString)SgIcons.ChevronDown
+                : pos == SgDockPosition.Left
+                    ? (MarkupString)SgIcons.ChevronRight
+                    : (MarkupString)SgIcons.ChevronRight);
+            __builder.CloseElement();
+        }
+
+        __builder.CloseElement(); // tabbar
+
+        // Panel body — only active tab
+        var activePanel = panels.FirstOrDefault(p => p.Id == activeId);
+        if (activePanel != null && PanelTemplate != null)
+        {
+            __builder.OpenElement(60, "div");
+            __builder.AddAttribute(61, "class", "sgc-dock-pane-body");
+            __builder.AddContent(62, PanelTemplate(activePanel));
+            __builder.CloseElement();
+        }
+    };
+
+    // ── Disposal ──────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null && _attached)
+        {
+            try { await _module.InvokeVoidAsync("detach", _root); }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+        }
+
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+            _module = null;
+        }
+    }
+}
