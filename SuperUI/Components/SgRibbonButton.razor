@@ -1,0 +1,79 @@
+@namespace SuperUI.Components
+
+<button type="button"
+        class="sgc-ribbon-btn @SizeClass @(Pressed ? "sgc-ribbon-btn-pressed" : "") @(Disabled ? "sgc-ribbon-btn-disabled" : "") @(Danger ? "sgc-ribbon-btn-danger" : "") @CssClass"
+        disabled="@Disabled"
+        title="@(string.IsNullOrEmpty(Tooltip) ? null : Tooltip)"
+        aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+        @onclick="OnClickAsync">
+
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="sgc-ribbon-btn-icon">@((MarkupString)Icon)</span>
+    }
+
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        <span class="sgc-ribbon-btn-text">@Text</span>
+    }
+
+    @if (Size == SgRibbonButtonSize.Large && !string.IsNullOrEmpty(Shortcut))
+    {
+        <span class="sgc-ribbon-btn-shortcut">@Shortcut</span>
+    }
+</button>
+
+@code {
+    /// <summary>Button label text.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>SVG icon markup.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Tooltip text shown on hover.</summary>
+    [Parameter] public string? Tooltip { get; set; }
+
+    /// <summary>Keyboard shortcut hint shown under large buttons.</summary>
+    [Parameter] public string? Shortcut { get; set; }
+
+    /// <summary>Button display size. Default is <see cref="SgRibbonButtonSize.Large"/>.</summary>
+    [Parameter] public SgRibbonButtonSize Size { get; set; } = SgRibbonButtonSize.Large;
+
+    /// <summary>When true, the button acts as a toggle and shows pressed state.</summary>
+    [Parameter] public bool IsToggle { get; set; }
+
+    /// <summary>Gets or sets the pressed state for toggle buttons.</summary>
+    [Parameter] public bool Pressed { get; set; }
+
+    /// <summary>Callback when Pressed changes.</summary>
+    [Parameter] public EventCallback<bool> PressedChanged { get; set; }
+
+    /// <summary>When true, the button is disabled.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>When true, the button is styled in danger/destructive colour.</summary>
+    [Parameter] public bool Danger { get; set; }
+
+    /// <summary>Click callback.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private string SizeClass => Size == SgRibbonButtonSize.Small
+        ? "sgc-ribbon-btn-sm"
+        : "sgc-ribbon-btn-lg";
+
+    private async Task OnClickAsync(MouseEventArgs e)
+    {
+        if (Disabled) return;
+        if (IsToggle)
+        {
+            Pressed = !Pressed;
+            if (PressedChanged.HasDelegate)
+                await PressedChanged.InvokeAsync(Pressed);
+        }
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(e);
+    }
+}

@@ -1,0 +1,86 @@
+@namespace SuperUI.Components
+
+<div class="sgc-ribbon-split @SizeClass @(Disabled ? "sgc-ribbon-btn-disabled" : "") @CssClass">
+    @* Main action button *@
+    <button type="button"
+            class="sgc-ribbon-split-main"
+            disabled="@Disabled"
+            title="@Tooltip"
+            @onclick="OnMainClickAsync">
+        @if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="sgc-ribbon-btn-icon">@((MarkupString)Icon)</span>
+        }
+        @if (!string.IsNullOrEmpty(Text))
+        {
+            <span class="sgc-ribbon-btn-text">@Text</span>
+        }
+    </button>
+
+    @* Dropdown arrow *@
+    <button type="button"
+            class="sgc-ribbon-split-arrow"
+            disabled="@Disabled"
+            title="Ещё варианты"
+            aria-haspopup="true"
+            aria-expanded="@(_open ? "true" : "false")"
+            @onclick="ToggleDropdown"
+            @onclick:stopPropagation="true">
+        <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+        </svg>
+    </button>
+
+    @* Dropdown menu *@
+    @if (_open && DropdownContent is not null)
+    {
+        <div class="sgc-ribbon-split-menu" @onclick:stopPropagation="true">
+            @DropdownContent
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+
+    /// <summary>Button label text.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>SVG icon markup.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Tooltip text.</summary>
+    [Parameter] public string? Tooltip { get; set; }
+
+    /// <summary>Button display size. Default is <see cref="SgRibbonButtonSize.Large"/>.</summary>
+    [Parameter] public SgRibbonButtonSize Size { get; set; } = SgRibbonButtonSize.Large;
+
+    /// <summary>When true, the button is disabled.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Main action click callback.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Content rendered inside the dropdown menu.</summary>
+    [Parameter] public RenderFragment? DropdownContent { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private string SizeClass => Size == SgRibbonButtonSize.Small
+        ? "sgc-ribbon-btn-sm"
+        : "sgc-ribbon-btn-lg";
+
+    private async Task OnMainClickAsync(MouseEventArgs e)
+    {
+        if (Disabled) return;
+        _open = false;
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(e);
+    }
+
+    private void ToggleDropdown()
+    {
+        if (!Disabled) _open = !_open;
+    }
+}
