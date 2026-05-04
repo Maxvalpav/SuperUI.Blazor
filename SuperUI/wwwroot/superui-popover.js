@@ -93,7 +93,7 @@ function getSmartPosition(triggerElement, popoverElement, placement) {
         top = viewportHeight - popoverRect.height - padding;
     }
 
-    return { top, left };
+    return { top, left, placement: finalPlacement };
 }
 
 export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnOutsideClick, closeOnEscape) {
@@ -142,21 +142,46 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
     setTimeout(() => {
         if (isDisposed || !popoverElement) return;
 
-        // Get current placement from CSS classes
+        // Get current placement from CSS classes. Only sgc-pop-<placement> classes are
+        // considered — generic helpers like sgc-pop-arrow / sgc-pop-wrap / sgc-pop-body
+        // must not be picked up.
+        const validPlacements = [
+            'top', 'top-start', 'top-end',
+            'bottom', 'bottom-start', 'bottom-end',
+            'left', 'left-start', 'left-end',
+            'right', 'right-start', 'right-end'
+        ];
         let placement = 'bottom-start';
-        const classList = Array.from(popoverElement.classList);
-        const placementClass = classList.find(c => c.startsWith('sgc-pop-'));
-        if (placementClass) {
-            placement = placementClass.replace('sgc-pop-', '');
+        let originalClass = null;
+        for (const cls of popoverElement.classList) {
+            if (cls.startsWith('sgc-pop-')) {
+                const candidate = cls.substring('sgc-pop-'.length);
+                if (validPlacements.includes(candidate)) {
+                    placement = candidate;
+                    originalClass = cls;
+                    break;
+                }
+            }
         }
 
-        // Calculate smart position
+        // Calculate smart position (may flip placement to fit viewport)
         const pos = getSmartPosition(triggerElement, popoverElement, placement);
-        
-        // Apply position adjustments
+
+        // If JS flipped the side, swap the CSS class so the arrow + variant styles match.
+        if (originalClass && pos.placement !== placement) {
+            popoverElement.classList.remove(originalClass);
+            popoverElement.classList.add('sgc-pop-' + pos.placement);
+        }
+
+        // Apply position adjustments. Reset any CSS-class anchors that would conflict
+        // with the fixed-position coords we just computed.
         popoverElement.style.position = 'fixed';
         popoverElement.style.top = pos.top + 'px';
         popoverElement.style.left = pos.left + 'px';
+        popoverElement.style.right = 'auto';
+        popoverElement.style.bottom = 'auto';
+        popoverElement.style.transform = 'none';
+        popoverElement.style.margin = '0';
 
         // Focus first focusable element in popover
         const focusableElements = getFocusableElements(popoverElement);

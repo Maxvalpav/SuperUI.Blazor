@@ -1,19 +1,60 @@
 @namespace SuperUI.Components
 @implements IDisposable
 
-<div class="sgc-treeselect @(Block ? "sgc-block" : "") @CssClass"
+<div class="sgc-treeselect @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @CssClass"
      role="combobox"
      aria-expanded="@(_open ? "true" : "false")"
-     tabindex="@(_open ? "-1" : "0")"
+     aria-haspopup="tree"
+     aria-disabled="@(Disabled ? "true" : null)"
+     tabindex="@(Disabled ? "-1" : "0")"
+     @onkeydown="OnRootKeyDownAsync"
      @onfocusout="HandleFocusOutAsync">
     <div class="sgc-treeselect-control" @onclick="ToggleAsync">
-        @if (!string.IsNullOrEmpty(DisplayText))
+        @{ var selectedKeys = GetSelectedKeys(); }
+        @if (Multiple)
         {
-            <span class="sgc-treeselect-value">@DisplayText</span>
+            @if (selectedKeys.Count == 0)
+            {
+                <span class="sgc-treeselect-placeholder">@Placeholder</span>
+            }
+            else
+            {
+                foreach (var k in selectedKeys)
+                {
+                    var kLocal = k;
+                    var label = FindText(Nodes, kLocal) ?? kLocal;
+                    <span class="sgc-treeselect-tag">
+                        <span class="sgc-treeselect-tag-text">@label</span>
+                        @if (!Disabled)
+                        {
+                            <button type="button"
+                                    class="sgc-treeselect-tag-x"
+                                    aria-label="Remove"
+                                    @onclick:stopPropagation="true"
+                                    @onclick="() => RemoveKeyAsync(kLocal)">×</button>
+                        }
+                    </span>
+                }
+            }
         }
         else
         {
-            <span class="sgc-treeselect-placeholder">@Placeholder</span>
+            @if (!string.IsNullOrEmpty(Value))
+            {
+                <span class="sgc-treeselect-value">@DisplayText</span>
+            }
+            else
+            {
+                <span class="sgc-treeselect-placeholder">@Placeholder</span>
+            }
+        }
+        @if (Clearable && !Disabled && HasSelection)
+        {
+            <button type="button"
+                    class="sgc-treeselect-clear"
+                    aria-label="Clear"
+                    @onclick:stopPropagation="true"
+                    @onclick="ClearAsync">×</button>
         }
         <span class="sgc-treeselect-caret" aria-hidden="true">@(_open ? "▲" : "▼")</span>
     </div>
@@ -25,13 +66,22 @@
                 <input type="text"
                        class="sgc-treeselect-search"
                        placeholder="@SearchPlaceholder"
-                       @bind="_search"
-                       @bind:event="oninput" />
+                       value="@_search"
+                       @oninput="OnSearchInput"
+                       @onkeydown="OnSearchKeyDownAsync" />
             }
-            <div class="sgc-treeselect-tree">
-                @foreach (var node in FilteredNodes)
+            <div class="sgc-treeselect-tree" role="tree">
+                @{ var visible = GetVisibleNodes().ToList(); }
+                @if (visible.Count == 0)
                 {
-                    @RenderNode(node, 0)
+                    <div class="sgc-treeselect-empty">@EmptyText</div>
+                }
+                else
+                {
+                    foreach (var entry in visible)
+                    {
+                        @RenderRow(entry)
+                    }
                 }
             </div>
         </div>
@@ -41,20 +91,72 @@
 @code {
     private bool _open;
     private string _search = "";
+    private string? _focusedKey;
+    private readonly HashSet<string> _expanded = new();
+    private bool _expandInitialized;
 
     [Parameter] public List<TreeNode> Nodes { get; set; } = new();
+
+    // Single-select API
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    // Multi-select API
+    [Parameter] public bool Multiple { get; set; }
+    [Parameter] public IEnumerable<string>? Values { get; set; }
+    [Parameter] public EventCallback<IEnumerable<string>> ValuesChanged { get; set; }
+
     [Parameter] public string? Placeholder { get; set; } = "Select";
     [Parameter] public bool Block { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ShowSearch { get; set; }
     [Parameter] public string SearchPlaceholder { get; set; } = "Search...";
+    [Parameter] public string EmptyText { get; set; } = "No results";
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public Func<TreeNode, string>? TextSelector { get; set; }
 
+    // Behavior
+    [Parameter] public bool Cascade { get; set; } = true;
+    [Parameter] public bool Clearable { get; set; }
+    [Parameter] public bool LeafOnly { get; set; }
+    [Parameter] public bool ExpandAll { get; set; }
+
     private string NodeText(TreeNode n) => TextSelector?.Invoke(n) ?? n.Text;
-    private string DisplayText => string.IsNullOrEmpty(Value) ? "" : FindText(Nodes, Value) ?? Value;
+    private string DisplayText => string.IsNullOrEmpty(Value) ? "" : FindText(Nodes, Value!) ?? Value!;
+
+    private bool HasSelection => Multiple
+        ? (Values?.Any() ?? false)
+        : !string.IsNullOrEmpty(Value);
+
+    protected override void OnParametersSet()
+    {
+        if (!_expandInitialized)
+        {
+            _expandInitialized = true;
+            InitExpansion(Nodes);
+        }
+    }
+
+    private void InitExpansion(IEnumerable<TreeNode> nodes)
+    {
+        foreach (var n in nodes)
+        {
+            if (ExpandAll || n.Expanded) _expanded.Add(n.Key);
+            if (n.Children.Count > 0) InitExpansion(n.Children);
+        }
+    }
+
+    private List<string> GetSelectedKeys()
+    {
+        if (Multiple) return Values?.ToList() ?? new List<string>();
+        return string.IsNullOrEmpty(Value) ? new List<string>() : new List<string> { Value! };
+    }
+
+    private bool IsSelected(string key)
+    {
+        if (Multiple) return Values?.Contains(key) ?? false;
+        return Value == key;
+    }
 
     private string? FindText(List<TreeNode> list, string key)
     {
@@ -67,64 +169,215 @@
         return null;
     }
 
-    private List<TreeNode> FilteredNodes => string.IsNullOrWhiteSpace(_search)
-        ? Nodes
-        : FilterTree(Nodes, _search).ToList();
+    private TreeNode? FindNode(List<TreeNode> list, string key)
+    {
+        foreach (var n in list)
+        {
+            if (n.Key == key) return n;
+            var found = FindNode(n.Children, key);
+            if (found != null) return found;
+        }
+        return null;
+    }
 
-    private IEnumerable<TreeNode> FilterTree(List<TreeNode> nodes, string query)
+    // --- Visible (flattened) row computation ---
+    private record struct VisibleRow(TreeNode Node, int Level, bool MatchesSearch);
+
+    private IEnumerable<VisibleRow> GetVisibleNodes()
+    {
+        var query = _search?.Trim() ?? "";
+        var hasQuery = !string.IsNullOrEmpty(query);
+        var matched = hasQuery ? CollectMatched(Nodes, query) : null;
+        return Walk(Nodes, 0, hasQuery, matched);
+    }
+
+    private HashSet<string> CollectMatched(List<TreeNode> nodes, string query)
+    {
+        var result = new HashSet<string>();
+        bool Visit(TreeNode n)
+        {
+            var self = NodeText(n).Contains(query, StringComparison.OrdinalIgnoreCase);
+            var anyChild = false;
+            foreach (var c in n.Children)
+                if (Visit(c)) anyChild = true;
+            if (self || anyChild) { result.Add(n.Key); return true; }
+            return false;
+        }
+        foreach (var n in nodes) Visit(n);
+        return result;
+    }
+
+    private IEnumerable<VisibleRow> Walk(List<TreeNode> nodes, int level, bool hasQuery, HashSet<string>? matched)
     {
         foreach (var n in nodes)
         {
-            var matchedChildren = FilterTree(n.Children, query).ToList();
-            if (NodeText(n).Contains(query, StringComparison.OrdinalIgnoreCase) || matchedChildren.Count > 0)
+            if (hasQuery && (matched == null || !matched.Contains(n.Key))) continue;
+            var selfMatches = !hasQuery || NodeText(n).Contains(_search!, StringComparison.OrdinalIgnoreCase);
+            yield return new VisibleRow(n, level, selfMatches);
+            var open = hasQuery || _expanded.Contains(n.Key);
+            if (open && n.Children.Count > 0)
             {
-                yield return new TreeNode
-                {
-                    Key = n.Key,
-                    Text = n.Text,
-                    Children = matchedChildren,
-                    Expanded = true
-                };
+                foreach (var r in Walk(n.Children, level + 1, hasQuery, matched))
+                    yield return r;
             }
         }
     }
 
-    private RenderFragment RenderNode(TreeNode node, int level) => __builder =>
+    // --- Cascade / check state ---
+    private enum CheckState { Unchecked, Checked, Indeterminate }
+
+    private CheckState GetCheckState(TreeNode node)
     {
-        var isSelected = Value == node.Key;
-        __builder.OpenElement(0, "div");
-        __builder.AddAttribute(1, "class", "sgc-treeselect-node");
-        __builder.AddAttribute(2, "style", $"padding-left: {level * 16}px");
+        if (!Multiple) return IsSelected(node.Key) ? CheckState.Checked : CheckState.Unchecked;
 
-        __builder.OpenElement(3, "div");
-        __builder.AddAttribute(4, "class", $"sgc-treeselect-node-content {(isSelected ? "sgc-selected" : "")}");
-        __builder.AddAttribute(5, "onclick", EventCallback.Factory.Create(this, () => SelectAsync(node.Key)));
-        __builder.AddContent(6, NodeText(node));
-        __builder.CloseElement();
+        var values = Values?.ToHashSet() ?? new HashSet<string>();
+        if (!Cascade)
+            return values.Contains(node.Key) ? CheckState.Checked : CheckState.Unchecked;
 
-        if (node.Children.Count > 0)
+        if (node.Children.Count == 0)
+            return values.Contains(node.Key) ? CheckState.Checked : CheckState.Unchecked;
+
+        var (total, checkedCount) = CountLeafState(node, values);
+        if (checkedCount == 0) return CheckState.Unchecked;
+        if (checkedCount == total) return CheckState.Checked;
+        return CheckState.Indeterminate;
+    }
+
+    private (int total, int @checked) CountLeafState(TreeNode node, HashSet<string> values)
+    {
+        if (node.Children.Count == 0)
+            return (1, values.Contains(node.Key) ? 1 : 0);
+        int total = 0, ch = 0;
+        foreach (var c in node.Children)
         {
-            foreach (var child in node.Children)
-            {
-                __builder.AddContent(7, RenderNode(child, level + 1));
-            }
+            var (t, k) = CountLeafState(c, values);
+            total += t; ch += k;
         }
-        __builder.CloseElement();
-    };
+        return (total, ch);
+    }
 
-    private async Task SelectAsync(string key)
+    private void CollectLeafKeys(TreeNode node, List<string> bag)
+    {
+        if (node.Children.Count == 0) { bag.Add(node.Key); return; }
+        foreach (var c in node.Children) CollectLeafKeys(c, bag);
+    }
+
+    private void CollectAllKeys(TreeNode node, List<string> bag)
+    {
+        bag.Add(node.Key);
+        foreach (var c in node.Children) CollectAllKeys(c, bag);
+    }
+
+    // --- Selection actions ---
+    private async Task OnRowClickAsync(TreeNode node)
+    {
+        if (Disabled) return;
+        if (Multiple)
+        {
+            await ToggleNodeAsync(node);
+        }
+        else
+        {
+            if (LeafOnly && node.Children.Count > 0)
+            {
+                ToggleExpand(node.Key);
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+            await SelectSingleAsync(node.Key);
+        }
+    }
+
+    private async Task SelectSingleAsync(string key)
     {
         Value = key;
         _open = false;
-        if (ValueChanged.HasDelegate)
-            await ValueChanged.InvokeAsync(key);
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(key);
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task ToggleNodeAsync(TreeNode node)
+    {
+        var current = (Values?.ToList()) ?? new List<string>();
+        var set = new HashSet<string>(current);
+        var state = GetCheckState(node);
+        var willCheck = state != CheckState.Checked; // unchecked or indeterminate -> check
+
+        if (Cascade)
+        {
+            var keys = new List<string>();
+            if (LeafOnly) CollectLeafKeys(node, keys); else CollectAllKeys(node, keys);
+            if (willCheck) foreach (var k in keys) set.Add(k);
+            else foreach (var k in keys) set.Remove(k);
+            // Recompute parent presence (only relevant when !LeafOnly)
+            if (!LeafOnly) RecomputeAncestors(set);
+        }
+        else
+        {
+            if (willCheck) set.Add(node.Key); else set.Remove(node.Key);
+        }
+
+        var newList = set.ToList();
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(newList);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void RecomputeAncestors(HashSet<string> set)
+    {
+        // Walk all parents; if all children present -> add parent, else remove.
+        bool Visit(TreeNode n)
+        {
+            if (n.Children.Count == 0) return set.Contains(n.Key);
+            var allChecked = true;
+            foreach (var c in n.Children)
+                if (!Visit(c)) allChecked = false;
+            if (allChecked) set.Add(n.Key); else set.Remove(n.Key);
+            return allChecked;
+        }
+        foreach (var r in Nodes) Visit(r);
+    }
+
+    private async Task RemoveKeyAsync(string key)
+    {
+        var node = FindNode(Nodes, key);
+        if (node != null) { await ToggleNodeAsync(node); return; }
+        // fallback: just remove key
+        var set = (Values?.ToHashSet()) ?? new HashSet<string>();
+        set.Remove(key);
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(set.ToList());
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ClearAsync()
+    {
+        if (Multiple)
+        {
+            if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(Array.Empty<string>());
+        }
+        else
+        {
+            Value = null;
+            if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // --- Expansion ---
+    private void ToggleExpand(string key)
+    {
+        if (!_expanded.Add(key)) _expanded.Remove(key);
+    }
+
+    // --- Open/close & focus ---
     public async Task ToggleAsync()
     {
         if (Disabled) return;
         _open = !_open;
+        if (_open && _focusedKey == null)
+        {
+            var first = GetVisibleNodes().FirstOrDefault();
+            _focusedKey = first.Node?.Key;
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -137,6 +390,183 @@
             await InvokeAsync(StateHasChanged);
         }
     }
+
+    private Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        var first = GetVisibleNodes().FirstOrDefault();
+        _focusedKey = first.Node?.Key;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    // --- Keyboard ---
+    private async Task OnRootKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        if (!_open)
+        {
+            if (e.Key == "Enter" || e.Key == " " || e.Key == "ArrowDown")
+            {
+                await ToggleAsync();
+            }
+            return;
+        }
+        await HandleMenuKeyAsync(e);
+    }
+
+    private Task OnSearchKeyDownAsync(KeyboardEventArgs e) => HandleMenuKeyAsync(e);
+
+    private async Task HandleMenuKeyAsync(KeyboardEventArgs e)
+    {
+        var rows = GetVisibleNodes().ToList();
+        if (rows.Count == 0)
+        {
+            if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
+            return;
+        }
+        var idx = _focusedKey == null ? -1 : rows.FindIndex(r => r.Node.Key == _focusedKey);
+
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                idx = idx < 0 ? 0 : Math.Min(rows.Count - 1, idx + 1);
+                _focusedKey = rows[idx].Node.Key;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowUp":
+                idx = idx <= 0 ? 0 : idx - 1;
+                _focusedKey = rows[idx].Node.Key;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowRight":
+                if (idx >= 0)
+                {
+                    var n = rows[idx].Node;
+                    if (n.Children.Count > 0 && !_expanded.Contains(n.Key))
+                    {
+                        _expanded.Add(n.Key);
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    else if (n.Children.Count > 0 && idx + 1 < rows.Count)
+                    {
+                        _focusedKey = rows[idx + 1].Node.Key;
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                break;
+            case "ArrowLeft":
+                if (idx >= 0)
+                {
+                    var n = rows[idx].Node;
+                    if (n.Children.Count > 0 && _expanded.Contains(n.Key))
+                    {
+                        _expanded.Remove(n.Key);
+                        await InvokeAsync(StateHasChanged);
+                    }
+                    else
+                    {
+                        // jump to parent
+                        var lvl = rows[idx].Level;
+                        for (var p = idx - 1; p >= 0; p--)
+                        {
+                            if (rows[p].Level < lvl) { _focusedKey = rows[p].Node.Key; break; }
+                        }
+                        await InvokeAsync(StateHasChanged);
+                    }
+                }
+                break;
+            case "Home":
+                _focusedKey = rows[0].Node.Key;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "End":
+                _focusedKey = rows[^1].Node.Key;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "Enter":
+            case " ":
+                if (idx >= 0)
+                {
+                    await OnRowClickAsync(rows[idx].Node);
+                }
+                break;
+            case "Escape":
+                _open = false;
+                await InvokeAsync(StateHasChanged);
+                break;
+        }
+    }
+
+    // --- Render row ---
+    private RenderFragment RenderRow(VisibleRow row) => __builder =>
+    {
+        var node = row.Node;
+        var level = row.Level;
+        var checkState = GetCheckState(node);
+        var isSelected = !Multiple && IsSelected(node.Key);
+        var isFocused = _focusedKey == node.Key;
+        var hasChildren = node.Children.Count > 0;
+        var isExpanded = _expanded.Contains(node.Key) || !string.IsNullOrEmpty(_search?.Trim());
+        var disabledLeafSelect = !Multiple && LeafOnly && hasChildren;
+
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class",
+            "sgc-treeselect-row" +
+            (isSelected ? " sgc-selected" : "") +
+            (isFocused ? " sgc-focused" : "") +
+            (disabledLeafSelect ? " sgc-non-selectable" : ""));
+        __builder.AddAttribute(2, "role", "treeitem");
+        __builder.AddAttribute(3, "aria-level", (level + 1).ToString());
+        __builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
+        if (hasChildren) __builder.AddAttribute(5, "aria-expanded", isExpanded ? "true" : "false");
+        __builder.AddAttribute(6, "style", $"padding-left: {6 + level * 16}px");
+        __builder.AddAttribute(7, "onclick", EventCallback.Factory.Create(this, () => OnRowClickAsync(node)));
+
+        // Toggle
+        __builder.OpenElement(10, "span");
+        __builder.AddAttribute(11, "class", "sgc-treeselect-toggle" + (hasChildren ? "" : " sgc-empty"));
+        if (hasChildren)
+        {
+            __builder.AddAttribute(12, "onclick",
+                EventCallback.Factory.Create<MouseEventArgs>(this, _ =>
+                {
+                    ToggleExpand(node.Key);
+                    return InvokeAsync(StateHasChanged);
+                }));
+            __builder.AddEventStopPropagationAttribute(13, "onclick", true);
+            __builder.AddContent(14, isExpanded ? "▾" : "▸");
+        }
+        __builder.CloseElement();
+
+        // Checkbox (multi)
+        if (Multiple)
+        {
+            __builder.OpenElement(20, "span");
+            __builder.AddAttribute(21, "class",
+                "sgc-treeselect-check" +
+                (checkState == CheckState.Checked ? " sgc-checked" : "") +
+                (checkState == CheckState.Indeterminate ? " sgc-indeterminate" : ""));
+            __builder.AddAttribute(22, "aria-hidden", "true");
+            __builder.CloseElement();
+        }
+
+        // Icon
+        if (!string.IsNullOrEmpty(node.Icon))
+        {
+            __builder.OpenElement(30, "span");
+            __builder.AddAttribute(31, "class", "sgc-treeselect-icon");
+            __builder.AddContent(32, node.Icon);
+            __builder.CloseElement();
+        }
+
+        // Label
+        __builder.OpenElement(40, "span");
+        __builder.AddAttribute(41, "class", "sgc-treeselect-label");
+        __builder.AddContent(42, NodeText(node));
+        __builder.CloseElement();
+
+        __builder.CloseElement();
+    };
 
     public void Dispose() => _open = false;
 }
