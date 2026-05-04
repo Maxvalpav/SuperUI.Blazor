@@ -1,0 +1,240 @@
+@page "/dock-manager-demo"
+@using SuperUI.Components
+
+<PageTitle>DockManager - SUI</PageTitle>
+
+<SgCard Title="SgDockManager — IDE-style Dock Layout"
+        Subtitle="Панели с вкладками, разделители с перетаскиванием, боковые и нижняя панели. Стиль Visual Studio / VS Code.">
+
+    <div style="margin-top: 24px;">
+        <h2>Полный макет</h2>
+        <p>Перетащите разделители между панелями. Закрывайте вкладки кнопкой ×. Сворачивайте боковые панели кнопкой ›.</p>
+
+        <div style="height: 520px; margin-top: 16px;">
+            <SgDockManager Panels="_panels"
+                           PanelsChanged="p => { _panels = p; StateHasChanged(); }"
+                           LeftSize="220"
+                           RightSize="240"
+                           BottomSize="160"
+                           ActivePanelChanged="p => _activePanel = p">
+                <ToolbarContent>
+                    <SgButton Text="File" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    <SgButton Text="Edit" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    <SgButton Text="View" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    <SgButton Text="Run" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    <span style="flex:1"></span>
+                    <SgButton Text="▶ Run" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                </ToolbarContent>
+
+                <PanelTemplate Context="panel">
+                    @switch (panel.Id)
+                    {
+                        case "explorer":
+                            <div style="padding: 8px 0; font-size: 12px;">
+                                <div style="padding: 4px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--sui-muted); letter-spacing: .06em;">Explorer</div>
+                                @foreach (var f in _files)
+                                {
+                                    <div style="padding: 3px 12px 3px @(f.Indent * 16 + 12)px; cursor: pointer; display:flex; align-items:center; gap:6px; color: var(--sui-fg);"
+                                         @onclick="() => OpenFile(f)">
+                                        <span style="color: var(--sui-muted); font-size: 11px;">@f.Icon</span>
+                                        <span>@f.Name</span>
+                                    </div>
+                                }
+                            </div>
+                            break;
+
+                        case "search":
+                            <div style="padding: 8px;">
+                                <input type="text" placeholder="Search..." style="width:100%; padding:4px 8px; border:1px solid var(--sui-border); border-radius:var(--sui-radius); font-size:12px; background:var(--sui-bg-primary); color:var(--sui-fg); outline:none; box-sizing:border-box;" />
+                                <div style="margin-top: 8px; font-size: 11px; color: var(--sui-muted);">No results</div>
+                            </div>
+                            break;
+
+                        case "editor1":
+                            <div style="padding: 16px; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.6; color: var(--sui-fg);">
+                                <div><span style="color:#569cd6;">public class</span> <span style="color:#4ec9b0;">Program</span></div>
+                                <div>{</div>
+                                <div style="padding-left:20px;"><span style="color:#569cd6;">static void</span> <span style="color:#dcdcaa;">Main</span>(<span style="color:#569cd6;">string</span>[] args)</div>
+                                <div style="padding-left:20px;">{</div>
+                                <div style="padding-left:40px;"><span style="color:#4ec9b0;">Console</span>.<span style="color:#dcdcaa;">WriteLine</span>(<span style="color:#ce9178;">"Hello, World!"</span>);</div>
+                                <div style="padding-left:20px;">}</div>
+                                <div>}</div>
+                            </div>
+                            break;
+
+                        case "editor2":
+                            <div style="padding: 16px; font-family: 'Consolas', monospace; font-size: 12px; line-height: 1.6; color: var(--sui-fg);">
+                                <div><span style="color:#569cd6;">namespace</span> <span style="color:#4ec9b0;">SuperUI.Components</span>;</div>
+                                <div style="margin-top:8px;"><span style="color:#569cd6;">public sealed class</span> <span style="color:#4ec9b0;">SgButton</span></div>
+                                <div>{</div>
+                                <div style="padding-left:20px;"><span style="color:#569cd6;">public string</span> Text { <span style="color:#569cd6;">get</span>; <span style="color:#569cd6;">set</span>; } = <span style="color:#ce9178;">""</span>;</div>
+                                <div>}</div>
+                            </div>
+                            break;
+
+                        case "editor3":
+                            <div style="padding: 16px; font-size: 12px; color: var(--sui-fg);">
+                                <div style="font-weight:600; margin-bottom:8px;">README.md</div>
+                                <div style="color: var(--sui-muted); line-height: 1.7;">
+                                    <p><strong>SuperUI</strong> — Blazor component library.</p>
+                                    <p>25+ components including data grid, forms, overlays, navigation, and layout.</p>
+                                </div>
+                            </div>
+                            break;
+
+                        case "output":
+                            <div style="padding: 8px 12px; font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.7; color: var(--sui-fg);">
+                                <div><span style="color:#4ec9b0;">Build started...</span></div>
+                                <div>  Restoring packages for SuperUI.csproj...</div>
+                                <div>  SuperUI -&gt; bin/Debug/net10.0/SuperUI.dll</div>
+                                <div><span style="color:#4ec9b0;">Build succeeded.</span></div>
+                                <div style="color: var(--sui-muted);">    0 Warning(s)</div>
+                                <div style="color: var(--sui-muted);">    0 Error(s)</div>
+                                <div style="color: var(--sui-muted);">Time Elapsed 00:00:04.86</div>
+                            </div>
+                            break;
+
+                        case "terminal":
+                            <div style="padding: 8px 12px; font-family: 'Consolas', monospace; font-size: 11px; line-height: 1.7; background: #1e1e1e; color: #d4d4d4; height: 100%; box-sizing: border-box;">
+                                <div><span style="color:#4ec9b0;">PS</span> C:\SuperUI&gt; dotnet build</div>
+                                <div style="color:#4ec9b0;">Build succeeded.</div>
+                                <div><span style="color:#4ec9b0;">PS</span> C:\SuperUI&gt; <span style="animation: blink 1s step-end infinite;">█</span></div>
+                            </div>
+                            break;
+
+                        case "properties":
+                            <div style="padding: 8px 0; font-size: 12px;">
+                                <div style="padding: 4px 12px; font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--sui-muted); letter-spacing: .06em;">Properties</div>
+                                @foreach (var prop in _properties)
+                                {
+                                    <div style="display:flex; padding: 3px 12px; gap: 8px; border-bottom: 1px solid var(--sui-border);">
+                                        <span style="flex:1; color: var(--sui-muted);">@prop.Key</span>
+                                        <span style="flex:1; color: var(--sui-fg);">@prop.Value</span>
+                                    </div>
+                                }
+                            </div>
+                            break;
+
+                        default:
+                            <div style="padding: 16px; color: var(--sui-muted); font-size: 12px;">@panel.Title</div>
+                            break;
+                    }
+                </PanelTemplate>
+
+                <StatusBarContent>
+                    <span>main</span>
+                    <span style="opacity:.6;">|</span>
+                    <span>C#</span>
+                    <span style="opacity:.6;">|</span>
+                    <span>UTF-8</span>
+                    <span style="flex:1"></span>
+                    @if (_activePanel != null)
+                    {
+                        <span>@_activePanel.Title</span>
+                    }
+                    <span style="opacity:.6;">Ln 1, Col 1</span>
+                </StatusBarContent>
+            </SgDockManager>
+        </div>
+    </div>
+
+    <div style="margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <SgCard Title="Параметры SgDockManager">
+            <PropertyTable Items="_props" />
+        </SgCard>
+        <SgCard Title="SgDockPanel">
+            <PropertyTable Items="_panelProps" />
+        </SgCard>
+    </div>
+
+</SgCard>
+
+@code {
+    private SgDockPanel? _activePanel;
+
+    private List<SgDockPanel> _panels = new()
+    {
+        // Left
+        new() { Id = "explorer",   Title = "Explorer",    Icon = SgIcons.FileText,  Position = SgDockPosition.Left,   Closable = false },
+        new() { Id = "search",     Title = "Search",      Icon = SgIcons.Search,    Position = SgDockPosition.Left,   Closable = true  },
+        // Center
+        new() { Id = "editor1",    Title = "Program.cs",  Icon = SgIcons.FileText,  Position = SgDockPosition.Center, Closable = true  },
+        new() { Id = "editor2",    Title = "SgButton.cs", Icon = SgIcons.FileText,  Position = SgDockPosition.Center, Closable = true  },
+        new() { Id = "editor3",    Title = "README.md",   Icon = SgIcons.FileText,  Position = SgDockPosition.Center, Closable = true  },
+        // Bottom
+        new() { Id = "output",     Title = "Output",      Icon = SgIcons.BarChart,  Position = SgDockPosition.Bottom, Closable = false },
+        new() { Id = "terminal",   Title = "Terminal",    Icon = SgIcons.Database,  Position = SgDockPosition.Bottom, Closable = true  },
+        // Right
+        new() { Id = "properties", Title = "Properties",  Icon = SgIcons.Settings,  Position = SgDockPosition.Right,  Closable = true  },
+    };
+
+    private record FileEntry(string Name, string Icon, int Indent);
+    private List<FileEntry> _files = new()
+    {
+        new("SuperUI",          "📁", 0),
+        new("Components",       "📁", 1),
+        new("SgButton.cs",      "📄", 2),
+        new("SgCard.razor",     "📄", 2),
+        new("SgDockManager.razor","📄",2),
+        new("wwwroot",          "📁", 1),
+        new("superui-theme.css","📄", 2),
+        new("README.md",        "📄", 0),
+    };
+
+    private Dictionary<string, string> _properties = new()
+    {
+        ["Name"]    = "SgDockManager",
+        ["Version"] = "1.0.0",
+        ["Target"]  = "net10.0",
+        ["Author"]  = "SuperUI",
+    };
+
+    private void OpenFile(FileEntry f)
+    {
+        if (f.Name.EndsWith(".cs") || f.Name.EndsWith(".razor") || f.Name.EndsWith(".md"))
+        {
+            var existing = _panels.FirstOrDefault(p => p.Title == f.Name && p.Position == SgDockPosition.Center);
+            if (existing != null)
+            {
+                existing.Visible = true;
+            }
+            else
+            {
+                _panels.Add(new SgDockPanel
+                {
+                    Id       = Guid.NewGuid().ToString("N")[..8],
+                    Title    = f.Name,
+                    Icon     = SgIcons.FileText,
+                    Position = SgDockPosition.Center,
+                    Closable = true
+                });
+            }
+            StateHasChanged();
+        }
+    }
+
+    private List<PropertyPanelItem> _props = new()
+    {
+        new() { Label = "Panels",             Value = "List<SgDockPanel>",          BadgeText = "Панели",          BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "PanelsChanged",      Value = "EventCallback<List>",        BadgeText = "Изменение",       BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "PanelTemplate",      Value = "RenderFragment<SgDockPanel>",BadgeText = "Контент",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ToolbarContent",     Value = "RenderFragment",             BadgeText = "Тулбар",          BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "StatusBarContent",   Value = "RenderFragment",             BadgeText = "Статус-бар",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "LeftSize",           Value = "double (default 220)",       BadgeText = "Ширина левой",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "RightSize",          Value = "double (default 240)",       BadgeText = "Ширина правой",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "BottomSize",         Value = "double (default 180)",       BadgeText = "Высота нижней",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "MinSideSize",        Value = "double (default 80)",        BadgeText = "Минимум",         BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ActivePanelChanged", Value = "EventCallback<SgDockPanel>", BadgeText = "Активная панель", BadgeVariant = SgBadgeVariant.Success },
+    };
+
+    private List<PropertyPanelItem> _panelProps = new()
+    {
+        new() { Label = "Id",       Value = "string",          BadgeText = "Уникальный ID",  BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title",    Value = "string",          BadgeText = "Заголовок вкладки", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Icon",     Value = "string? (SVG)",   BadgeText = "Иконка",         BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Position", Value = "SgDockPosition",  BadgeText = "Left/Right/Bottom/Center", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Closable", Value = "bool (default true)", BadgeText = "Кнопка ×",   BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Visible",  Value = "bool (default true)", BadgeText = "Видимость",  BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Tag",      Value = "object?",         BadgeText = "Данные",         BadgeVariant = SgBadgeVariant.Info },
+    };
+}
