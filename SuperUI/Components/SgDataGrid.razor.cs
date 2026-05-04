@@ -125,6 +125,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private Dictionary<string, int>? _pinnedLeftOffsetsCache;
     private readonly Dictionary<string, List<string?>> _distinctValuesCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HashSet<string>> _distinctNormalizedValuesCache = new(StringComparer.Ordinal);
+    // Maps display label -> raw filter key (for numeric/date/enum columns)
+    private readonly Dictionary<string, Dictionary<string, string>> _displayToRawKeyCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, object?> _aggregateCache = new(StringComparer.Ordinal);
     private bool _selectionChangedPending;
 
@@ -1192,6 +1194,18 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             var type = col.ValueType ?? typeof(string);
             type = Nullable.GetUnderlyingType(type) ?? type;
 
+            // If ValueType not set, try to infer from actual value
+            if (col.ValueType is null)
+            {
+                var sample = col.GetValue(item);
+                if (sample is not null)
+                {
+                    var sampleType = Nullable.GetUnderlyingType(sample.GetType()) ?? sample.GetType();
+                    if (sampleType != typeof(string))
+                        type = sampleType;
+                }
+            }
+
             if (type == typeof(bool))
             {
                 var rawValue = col.GetValue(item);
@@ -1205,6 +1219,73 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
                     return false;
                 }
             }
+            else if (type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(DateOnly))
+            {
+                // <input type="date"> returns "yyyy-MM-dd"
+                // <input type="datetime-local"> returns "yyyy-MM-ddTHH:mm"
+                var rawValue = col.GetValue(item);
+
+                DateTime? itemDate = rawValue switch
+                {
+                    DateTime dt => dt,
+                    DateTimeOffset dto => dto.DateTime,
+                    DateOnly d => d.ToDateTime(TimeOnly.MinValue),
+                    _ => null
+                };
+
+                if (itemDate is null) return false;
+
+                // Try datetime-local ISO format first ("yyyy-MM-ddTHH:mm")
+                if (DateTime.TryParseExact(val, "yyyy-MM-ddTHH:mm",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var isoDateTime))
+                {
+                    // ShowTime=true: compare to the minute
+                    var itemTrunc = new DateTime(itemDate.Value.Year, itemDate.Value.Month, itemDate.Value.Day,
+                        itemDate.Value.Hour, itemDate.Value.Minute, 0);
+                    if (itemTrunc != isoDateTime) return false;
+                }
+                // Try date-only ISO format ("yyyy-MM-dd")
+                else if (DateTime.TryParseExact(val, "yyyy-MM-dd",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var isoDate))
+                {
+                    if (itemDate.Value.Date != isoDate.Date) return false;
+                }
+                // Fallback: current culture parse
+                else if (DateTime.TryParse(val, CultureInfo.CurrentCulture,
+                        System.Globalization.DateTimeStyles.None, out var locDate))
+                {
+                    // If filter has time component, compare to the minute; otherwise date only
+                    if (locDate.TimeOfDay == TimeSpan.Zero)
+                    {
+                        if (itemDate.Value.Date != locDate.Date) return false;
+                    }
+                    else
+                    {
+                        var itemTrunc = new DateTime(itemDate.Value.Year, itemDate.Value.Month, itemDate.Value.Day,
+                            itemDate.Value.Hour, itemDate.Value.Minute, 0);
+                        var filterTrunc = new DateTime(locDate.Year, locDate.Month, locDate.Day,
+                            locDate.Hour, locDate.Minute, 0);
+                        if (itemTrunc != filterTrunc) return false;
+                    }
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            else if (type.IsEnum)
+            {
+                // Match against display label (from [Display]/[Description]) or enum name
+                var rawValue = col.GetValue(item);
+                var enumDisplay = col.GetDisplay(item);
+                // Also try matching against the enum member name directly
+                var enumName = rawValue?.ToString() ?? string.Empty;
+                if (enumDisplay.IndexOf(val, StringComparison.CurrentCultureIgnoreCase) < 0 &&
+                    enumName.IndexOf(val, StringComparison.CurrentCultureIgnoreCase) < 0)
+                    return false;
+            }
             else
             {
                 var display = col.GetDisplay(item);
@@ -1216,8 +1297,30 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         for (var v = 0; v < preparedValueFilters.Count; v++)
         {
             var valueFilter = preparedValueFilters[v];
-            var display = NormalizeFilterValue(valueFilter.Column.GetDisplay(item));
-            if (!valueFilter.Values.Contains(display))
+            var col = valueFilter.Column;
+            var filterType = GetColumnFilterType(col.Key);
+            var useRaw = filterType == "number" || filterType == "date" || filterType == "datetime" || filterType == "enum";
+
+            string rawKey;
+            if (useRaw)
+            {
+                var raw = col.GetValue(item);
+                rawKey = raw switch
+                {
+                    null => string.Empty,
+                    DateTime dt => dt.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    DateTimeOffset dto => dto.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    Enum e => e.ToString(),
+                    _ => raw.ToString() ?? string.Empty
+                };
+            }
+            else
+            {
+                rawKey = NormalizeFilterValue(col.GetDisplay(item));
+            }
+
+            if (!valueFilter.Values.Contains(rawKey))
                 return false;
         }
 
@@ -1319,6 +1422,18 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
     private static bool MatchesQueryRulePrepared(object? rawValue, string display, Type targetType, QueryRule rule)
     {
+        var target = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        // For enum columns, use the display label for text-based operators
+        if (target.IsEnum && rawValue is not null)
+        {
+            var enumItems = SgEnumHelper.GetItems(target);
+            var enumName = rawValue.ToString() ?? string.Empty;
+            var enumLabel = enumItems.FirstOrDefault(ei =>
+                ei.Name.Equals(enumName, StringComparison.OrdinalIgnoreCase))?.Label ?? enumName;
+            display = enumLabel;
+        }
+
         return rule.Operator switch
         {
             QueryFieldOperator.Equals => CompareQueryValue(rawValue, rule.Value, targetType) == 0,
@@ -1341,7 +1456,18 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
     private static bool MatchesRule(object? rawValue, Type targetType, FilterRule rule)
     {
+        var target = Nullable.GetUnderlyingType(targetType) ?? targetType;
         var display = rawValue?.ToString() ?? string.Empty;
+
+        // For enum columns, use the display label (from [Display]/[Description]) for text ops
+        if (target.IsEnum && rawValue is not null)
+        {
+            var enumItems = SgEnumHelper.GetItems(target);
+            var enumName = rawValue.ToString() ?? string.Empty;
+            var enumLabel = enumItems.FirstOrDefault(ei =>
+                ei.Name.Equals(enumName, StringComparison.OrdinalIgnoreCase))?.Label ?? enumName;
+            display = enumLabel;
+        }
 
         return rule.Condition switch
         {
@@ -1381,8 +1507,34 @@ private static object? ConvertForComparison(object? value, Type type)
             return null;
 
         var target = Nullable.GetUnderlyingType(type) ?? type;
+
+        // Enum: use integer value for numeric ordering (GreaterThan/LessThan work correctly)
         if (target.IsEnum)
+        {
+            if (value is Enum)
+                return Convert.ToInt32(value);
+            // If value is already a string (e.g. from display), try to parse
+            if (value is string s && Enum.TryParse(target, s, true, out var parsed))
+                return Convert.ToInt32(parsed);
             return value.ToString();
+        }
+
+        // DateTime/DateTimeOffset: strip time component so date-only comparisons work
+        if (target == typeof(DateTime))
+        {
+            if (value is DateTime dt) return dt.Date;
+            if (value is DateTimeOffset dto) return dto.Date;
+        }
+        if (target == typeof(DateTimeOffset))
+        {
+            if (value is DateTimeOffset dto2) return dto2.Date;
+            if (value is DateTime dt2) return dt2.Date;
+        }
+        if (target == typeof(DateOnly))
+        {
+            if (value is DateOnly d) return d;
+            if (value is DateTime dt3) return DateOnly.FromDateTime(dt3);
+        }
 
         // Normalize value to target type for proper numeric comparison
         var valueType = Nullable.GetUnderlyingType(value.GetType()) ?? value.GetType();
@@ -1458,12 +1610,55 @@ private static object? ConvertFromString(string? text, Type type)
                 return short.Parse(text, CultureInfo.CurrentCulture);
             if (target == typeof(byte))
                 return byte.Parse(text, CultureInfo.CurrentCulture);
+
             if (target == typeof(DateTime))
-                return DateTime.Parse(text, CultureInfo.CurrentCulture);
+            {
+                // Handle datetime-local ISO format "yyyy-MM-ddTHH:mm" from <input type="datetime-local">
+                if (DateTime.TryParseExact(text, "yyyy-MM-ddTHH:mm",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var isoDateTime))
+                    return isoDateTime;
+                // Handle date-only ISO format "yyyy-MM-dd" from <input type="date">
+                if (DateTime.TryParseExact(text, "yyyy-MM-dd",
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.None, out var isoDate))
+                    return isoDate.Date;
+                // Fallback: current culture
+                if (DateTime.TryParse(text, CultureInfo.CurrentCulture,
+                        System.Globalization.DateTimeStyles.None, out var locDate))
+                    return locDate;
+                return null;
+            }
+            if (target == typeof(DateTimeOffset))
+            {
+                if (DateTimeOffset.TryParse(text, CultureInfo.CurrentCulture, System.Globalization.DateTimeStyles.None, out var dto))
+                    return dto;
+                return null;
+            }
+            if (target == typeof(DateOnly))
+            {
+                if (DateOnly.TryParse(text, CultureInfo.CurrentCulture, out var d))
+                    return d;
+                return null;
+            }
+
             if (target == typeof(Guid))
                 return Guid.Parse(text);
+
             if (target.IsEnum)
-                return Enum.Parse(target, text, true);
+            {
+                // Try by name first (case-insensitive), then by int value
+                if (Enum.TryParse(target, text, true, out var enumVal))
+                    return enumVal;
+                // Try matching display label via SgEnumHelper
+                var items = SgEnumHelper.GetItems(target);
+                var match = items.FirstOrDefault(ei =>
+                    ei.Label.Equals(text, StringComparison.CurrentCultureIgnoreCase) ||
+                    ei.Name.Equals(text, StringComparison.CurrentCultureIgnoreCase));
+                if (match is not null)
+                    return Enum.Parse(target, match.Name, true);
+                return text; // fallback to string comparison
+            }
 
             return Convert.ChangeType(text, target, CultureInfo.CurrentCulture);
         }
@@ -1570,14 +1765,31 @@ private static object? ConvertFromString(string? text, Type type)
     {
         var col = GetColumnByKey(key);
         if (col is null) return "string";
-        
-        var type = col.ValueType ?? typeof(string);
+
+        // Prefer explicit ValueType, then sample first non-null value
+        var type = col.ValueType;
+        if (type is null)
+        {
+            // Try to infer from data
+            var items = Items?.Take(20) ?? Enumerable.Empty<TItem>();
+            foreach (var item in items)
+            {
+                var v = col.GetValue(item);
+                if (v is null) continue;
+                type = Nullable.GetUnderlyingType(v.GetType()) ?? v.GetType();
+                break;
+            }
+        }
+
+        if (type is null) return "string";
         type = Nullable.GetUnderlyingType(type) ?? type;
 
         if (type == typeof(bool)) return "bool";
-        if (type == typeof(int) || type == typeof(long) || type == typeof(double) || type == typeof(decimal) || type == typeof(float)) return "number";
-        if (type == typeof(DateTime)) return "date";
-        
+        if (type == typeof(DateTime) || type == typeof(DateTimeOffset) || type == typeof(DateOnly))
+            return col.ShowTime ? "datetime" : "date";
+        if (type.IsEnum) return "enum";
+        if (IsNumericType(type)) return "number";
+
         return "string";
     }
 
@@ -1831,6 +2043,7 @@ private static object? ConvertFromString(string? text, Type type)
         {
             _distinctValuesCache.Clear();
             _distinctNormalizedValuesCache.Clear();
+            _displayToRawKeyCache.Clear();
             _distinctValuesCacheItemsVersion = _itemsVersion;
         }
 
@@ -1841,22 +2054,85 @@ private static object? ConvertFromString(string? text, Type type)
         if (col is null)
             return new List<string?>();
 
+        var filterType = GetColumnFilterType(key);
+        var useRaw = filterType == "number" || filterType == "date" || filterType == "datetime" || filterType == "enum";
+
+        // displayToRaw: rawKey -> displayLabel (for showing in checkboxes)
+        var displayToRaw = new Dictionary<string, string>(StringComparer.Ordinal);
+
         var seen = new HashSet<string?>(StringComparer.Ordinal);
         var values = new List<string?>();
+
         if (Items is not null)
         {
             foreach (var item in Items)
             {
-                var display = col.GetDisplay(item);
-                var normalized = string.IsNullOrEmpty(display) ? null : display;
+                string rawKey;
+                string displayLabel;
+
+                if (useRaw)
+                {
+                    var raw = col.GetValue(item);
+                    // Build rawKey from the actual value — no formatting
+                    rawKey = raw switch
+                    {
+                        null => string.Empty,
+                        DateTime dt => dt.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        DateTimeOffset dto => dto.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                        Enum e => e.ToString(),          // enum name
+                        _ => raw.ToString() ?? string.Empty  // numeric: plain number string
+                    };
+                    // Display label: formatted for UI
+                    displayLabel = col.GetDisplay(item);
+                }
+                else
+                {
+                    displayLabel = col.GetDisplay(item);
+                    rawKey = displayLabel;
+                }
+
+                var normalized = string.IsNullOrEmpty(rawKey) ? null : rawKey;
                 if (seen.Add(normalized))
+                {
                     values.Add(normalized);
+                    if (useRaw && normalized is not null)
+                        displayToRaw[normalized] = displayLabel;
+                }
             }
         }
-        values.Sort((a, b) => string.Compare(a, b, StringComparison.CurrentCulture));
+
+        values.Sort((a, b) =>
+        {
+            if (filterType == "number")
+            {
+                // Sort numerically by rawKey (plain number string)
+                var aIsNum = decimal.TryParse(a ?? string.Empty,
+                    System.Globalization.NumberStyles.Any, CultureInfo.InvariantCulture, out var aNum);
+                var bIsNum = decimal.TryParse(b ?? string.Empty,
+                    System.Globalization.NumberStyles.Any, CultureInfo.InvariantCulture, out var bNum);
+                if (aIsNum && bIsNum) return aNum.CompareTo(bNum);
+                if (aIsNum) return -1;
+                if (bIsNum) return 1;
+            }
+            return string.Compare(a, b, StringComparison.CurrentCulture);
+        });
 
         _distinctValuesCache[key] = values;
+        if (useRaw)
+            _displayToRawKeyCache[key] = displayToRaw;
+
         return values;
+    }
+
+    /// <summary>Returns the display label for a rawKey in the filter checkbox list.</summary>
+    private string GetDisplayLabelForFilterValue(string key, string? rawKey)
+    {
+        if (rawKey is null) return Localizer["DataGrid_FilterEmpty"];
+        if (_displayToRawKeyCache.TryGetValue(key, out var map) &&
+            map.TryGetValue(rawKey, out var label))
+            return label;
+        return rawKey;
     }
 
     private HashSet<string> GetDistinctNormalizedValuesForColumn(string key)
@@ -1952,6 +2228,37 @@ private static object? ConvertFromString(string? text, Type type)
         return numericCount >= 3; // If 3+ of first 10 values are numeric, treat as numeric column
     }
 
+    private bool IsDateColumn(string key)
+    {
+        var ft = GetColumnFilterType(key);
+        return ft == "date" || ft == "datetime";
+    }
+
+    private bool IsBoolColumn(string key)
+        => GetColumnFilterType(key) == "bool";
+
+    private bool IsEnumColumn(string key)
+        => GetColumnFilterType(key) == "enum";
+
+    /// <summary>Returns enum items for a column, or empty list if not an enum column.</summary>
+    private List<SgEnumItem> GetColumnEnumItems(string key)
+    {
+        var col = GetColumnByKey(key);
+        if (col is null) return new();
+        var type = col.ValueType;
+        if (type is null)
+        {
+            var sample = Items?.Take(20)
+                .Select(i => col.GetValue(i))
+                .FirstOrDefault(v => v is not null);
+            if (sample is not null)
+                type = Nullable.GetUnderlyingType(sample.GetType()) ?? sample.GetType();
+        }
+        if (type is null) return new();
+        type = Nullable.GetUnderlyingType(type) ?? type;
+        return type.IsEnum ? SgEnumHelper.GetItems(type) : new();
+    }
+
     private static bool IsNumericType(Type type) =>
         type == typeof(byte) || type == typeof(sbyte) || type == typeof(short) || type == typeof(ushort) ||
         type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) ||
@@ -2001,13 +2308,18 @@ private static object? ConvertFromString(string? text, Type type)
     private static Type ResolveColumnType(SgDataGridColumn<TItem>? col, object? rawValue = null)
     {
         if (col?.ValueType is not null)
-            return col.ValueType;
+        {
+            var t = Nullable.GetUnderlyingType(col.ValueType) ?? col.ValueType;
+            return t;
+        }
 
         // Try to infer type from the actual value
         if (rawValue is not null)
         {
             var valueType = Nullable.GetUnderlyingType(rawValue.GetType()) ?? rawValue.GetType();
-            if (IsNumericType(valueType))
+            if (IsNumericType(valueType) || valueType == typeof(DateTime) ||
+                valueType == typeof(DateTimeOffset) || valueType == typeof(DateOnly) ||
+                valueType == typeof(bool) || valueType.IsEnum)
                 return valueType;
         }
 
@@ -2353,7 +2665,7 @@ private static object? ConvertFromString(string? text, Type type)
         var sb = new StringBuilder();
         sb.AppendLine(string.Join(';', cols.Select(c => EscapeCsv(c.Title))));
         foreach (var row in GetFilteredSortedRows())
-            sb.AppendLine(string.Join(';', cols.Select(c => EscapeCsv(c.GetDisplay(row)))));
+            sb.AppendLine(string.Join(';', cols.Select(c => EscapeCsv(GetExportValue(c, row)))));
 
         try
         {
@@ -2383,7 +2695,39 @@ private static object? ConvertFromString(string? text, Type type)
         {
             sb.Append("<tr>");
             foreach (var col in cols)
-                sb.Append("<td>").Append(HtmlEncoder.Default.Encode(col.GetDisplay(row))).Append("</td>");
+            {
+                var raw = col.GetValue(row);
+                var colType = GetColumnFilterType(col.Key);
+
+                if (colType == "number" && raw is not null && IsNumericValue(raw))
+                {
+                    // Numeric cell — no formatting, Excel will treat as number
+                    var numStr = Convert.ToDecimal(raw, CultureInfo.InvariantCulture)
+                        .ToString(CultureInfo.InvariantCulture);
+                    sb.Append("<td style=\"mso-number-format:'0\\.##########'\">")
+                      .Append(HtmlEncoder.Default.Encode(numStr))
+                      .Append("</td>");
+                }
+                else if ((colType == "date" || colType == "datetime") && raw is not null)
+                {
+                    var dateStr = raw switch
+                    {
+                        DateTime dt => col.ShowTime
+                            ? dt.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)
+                            : dt.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                        DateTimeOffset dto => col.ShowTime
+                            ? dto.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture)
+                            : dto.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                        DateOnly d => d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                        _ => col.GetDisplay(row)
+                    };
+                    sb.Append("<td>").Append(HtmlEncoder.Default.Encode(dateStr)).Append("</td>");
+                }
+                else
+                {
+                    sb.Append("<td>").Append(HtmlEncoder.Default.Encode(col.GetDisplay(row))).Append("</td>");
+                }
+            }
             sb.Append("</tr>");
         }
 
@@ -2398,6 +2742,68 @@ private static object? ConvertFromString(string? text, Type type)
         catch (Exception ex)
         {
             Logger.LogWarning(ex, "SgDataGrid: Excel export failed");
+        }
+    }
+
+    /// <summary>
+    /// Returns a clean export value for a cell — no currency symbols, no thousand separators.
+    /// Numbers → invariant decimal string. Dates → ISO or locale date. Enum → display label.
+    /// </summary>
+    private string GetExportValue(SgDataGridColumn<TItem> col, TItem item)
+    {
+        var raw = col.GetValue(item);
+        if (raw is null) return string.Empty;
+
+        var colType = GetColumnFilterType(col.Key);
+
+        switch (colType)
+        {
+            case "number":
+                if (IsNumericValue(raw))
+                {
+                    try
+                    {
+                        return Convert.ToDecimal(raw, CultureInfo.InvariantCulture)
+                            .ToString(CultureInfo.InvariantCulture);
+                    }
+                    catch { /* fall through */ }
+                }
+                return raw.ToString() ?? string.Empty;
+
+            case "date":
+                return raw switch
+                {
+                    DateTime dt => dt.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                    DateTimeOffset dto => dto.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                    DateOnly d => d.ToString("dd.MM.yyyy", CultureInfo.InvariantCulture),
+                    _ => col.GetDisplay(item)
+                };
+
+            case "datetime":
+                return raw switch
+                {
+                    DateTime dt => dt.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture),
+                    DateTimeOffset dto => dto.ToString("dd.MM.yyyy HH:mm", CultureInfo.InvariantCulture),
+                    _ => col.GetDisplay(item)
+                };
+
+            case "enum":
+            {
+                // Use display label from [Display]/[Description]
+                var type = Nullable.GetUnderlyingType(raw.GetType()) ?? raw.GetType();
+                if (type.IsEnum)
+                {
+                    var items = SgEnumHelper.GetItems(type);
+                    var name = raw.ToString() ?? string.Empty;
+                    var ei = items.FirstOrDefault(x =>
+                        x.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                    return ei?.Label ?? name;
+                }
+                return col.GetDisplay(item);
+            }
+
+            default:
+                return col.GetDisplay(item);
         }
     }
 
@@ -3250,6 +3656,17 @@ private sealed class GridObjectComparer : IComparer<object?>
              var xType = Nullable.GetUnderlyingType(x.GetType()) ?? x.GetType();
              var yType = Nullable.GetUnderlyingType(y.GetType()) ?? y.GetType();
 
+             // Enum: compare by underlying integer value so ordering is correct
+             if (xType.IsEnum && yType.IsEnum && xType == yType)
+             {
+                 var xi = Convert.ToInt32(x);
+                 var yi = Convert.ToInt32(y);
+                 return xi.CompareTo(yi);
+             }
+             // Enum vs int (after ConvertForComparison returns int)
+             if (xType == typeof(int) && yType == typeof(int))
+                 return ((int)x).CompareTo((int)y);
+
              // Handle comparison of numeric types with different types (int vs double, etc.)
              if (IsNumericType(xType) && IsNumericType(yType))
              {
@@ -3266,8 +3683,24 @@ private sealed class GridObjectComparer : IComparer<object?>
                  }
              }
 
+             // DateTime: compare as dates (time already stripped by ConvertForComparison)
+             if (xType == typeof(DateTime) && yType == typeof(DateTime))
+                 return ((DateTime)x).CompareTo((DateTime)y);
+             if (xType == typeof(DateTimeOffset) && yType == typeof(DateTimeOffset))
+                 return ((DateTimeOffset)x).CompareTo((DateTimeOffset)y);
+             if (xType == typeof(DateOnly) && yType == typeof(DateOnly))
+                 return ((DateOnly)x).CompareTo((DateOnly)y);
+
              if (xType == yType && x is IComparable comparable)
                  return comparable.CompareTo(y);
+
+             // Numeric string fallback: if both strings look like numbers, compare numerically
+             if (x is string xs && y is string ys)
+             {
+                 if (decimal.TryParse(xs, System.Globalization.NumberStyles.Any, CultureInfo.CurrentCulture, out var xd) &&
+                     decimal.TryParse(ys, System.Globalization.NumberStyles.Any, CultureInfo.CurrentCulture, out var yd))
+                     return xd.CompareTo(yd);
+             }
 
              return string.Compare(x.ToString(), y.ToString(), true, CultureInfo.CurrentCulture);
          }
