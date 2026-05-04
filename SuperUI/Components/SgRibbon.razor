@@ -1,0 +1,151 @@
+@namespace SuperUI.Components
+
+<div class="sgc-ribbon @(Collapsed ? "sgc-ribbon-collapsed" : "") @CssClass"
+     role="toolbar"
+     aria-label="@(AriaLabel ?? "Ribbon")">
+
+    @* Render ChildContent invisibly so SgRibbonTab children can register themselves *@
+    <div style="display:none" aria-hidden="true">
+        <CascadingValue Value="this" IsFixed="true">
+            @ChildContent
+        </CascadingValue>
+    </div>
+
+    @* ── Tab bar ── *@
+    <div class="sgc-ribbon-tabbar" role="tablist">
+        @foreach (var tab in _tabs)
+        {
+            var t = tab;
+            <button type="button"
+                    class="sgc-ribbon-tab @(_activeTab == t ? "sgc-ribbon-tab-active" : "") @(t.Highlight ? "sgc-ribbon-tab-highlight" : "")"
+                    role="tab"
+                    aria-selected="@(_activeTab == t ? "true" : "false")"
+                    aria-controls="@($"ribbon-panel-{t.Id}")"
+                    disabled="@t.Disabled"
+                    @onclick="() => ActivateTab(t)">
+                @if (!string.IsNullOrEmpty(t.Icon))
+                {
+                    <span class="sgc-ribbon-tab-icon">@((MarkupString)t.Icon)</span>
+                }
+                @t.Title
+            </button>
+        }
+
+        @* Collapse toggle *@
+        @if (AllowCollapse)
+        {
+            <button type="button"
+                    class="sgc-ribbon-collapse-btn"
+                    title="@(Collapsed ? "Развернуть ленту" : "Свернуть ленту")"
+                    @onclick="ToggleCollapse">
+                @if (Collapsed)
+                {
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                }
+                else
+                {
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                }
+            </button>
+        }
+
+        @if (TabBarFarContent is not null)
+        {
+            <div class="sgc-ribbon-tabbar-far">@TabBarFarContent</div>
+        }
+    </div>
+
+    @* ── Content panel ── *@
+    @if (!Collapsed && _activeTab is not null)
+    {
+        <div class="sgc-ribbon-panel"
+             id="@($"ribbon-panel-{_activeTab.Id}")"
+             role="tabpanel"
+             aria-labelledby="@_activeTab.Id">
+            @_activeTab.ChildContent
+        </div>
+    }
+</div>
+
+@code {
+    private readonly List<SgRibbonTab> _tabs = new();
+    private SgRibbonTab? _activeTab;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Child content — should contain <see cref="SgRibbonTab"/> components.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Additional CSS class for the root element.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>ARIA label for the ribbon toolbar.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>When true, shows a collapse/expand toggle button. Default true.</summary>
+    [Parameter] public bool AllowCollapse { get; set; } = true;
+
+    /// <summary>When true, the ribbon content panel is hidden (only tab bar visible).</summary>
+    [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>Callback when Collapsed state changes.</summary>
+    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
+
+    /// <summary>Optional content rendered on the far-right of the tab bar.</summary>
+    [Parameter] public RenderFragment? TabBarFarContent { get; set; }
+
+    // ── Internal API for child tabs ───────────────────────────────────────────
+
+    internal void RegisterTab(SgRibbonTab tab)
+    {
+        if (!_tabs.Contains(tab))
+        {
+            _tabs.Add(tab);
+            if (_activeTab is null && !tab.Disabled)
+                _activeTab = tab;
+            StateHasChanged();
+        }
+    }
+
+    internal void UnregisterTab(SgRibbonTab tab)
+    {
+        _tabs.Remove(tab);
+        if (_activeTab == tab)
+            _activeTab = _tabs.FirstOrDefault(t => !t.Disabled);
+        StateHasChanged();
+    }
+
+    private void ActivateTab(SgRibbonTab tab)
+    {
+        if (tab.Disabled) return;
+        if (_activeTab == tab && AllowCollapse)
+        {
+            // Click active tab → toggle collapse
+            _ = ToggleCollapse();
+            return;
+        }
+        _activeTab = tab;
+        if (Collapsed)
+            _ = SetCollapsed(false);
+    }
+
+    private async Task ToggleCollapse()
+    {
+        await SetCollapsed(!Collapsed);
+    }
+
+    private async Task SetCollapsed(bool value)
+    {
+        Collapsed = value;
+        if (CollapsedChanged.HasDelegate)
+            await CollapsedChanged.InvokeAsync(value);
+        StateHasChanged();
+    }
+
+    /// <summary>Programmatically activate a tab by its title.</summary>
+    public void ActivateTabByTitle(string title)
+    {
+        var tab = _tabs.FirstOrDefault(t => t.Title == title);
+        if (tab is not null) ActivateTab(tab);
+    }
+}
