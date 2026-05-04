@@ -19,12 +19,14 @@
 
     @if (_open || _isClosing)
     {
-        <div class="sgc-pop @(PlacementClass) @(ShowArrow ? "sgc-pop-arrow" : "") @(_isClosing ? "sgc-closing" : "")" 
-             role="@Role" 
+        <div class="sgc-pop @(PlacementClass) @(ShowArrow ? "sgc-pop-arrow" : "") @(_isClosing ? "sgc-closing" : "")"
+             role="@Role"
              aria-labelledby="@_titleId"
              tabindex="-1"
              @ref="_popoverRef"
-             @onclick:stopPropagation="true">
+             @onclick:stopPropagation="true"
+             @onmouseenter="OnPopoverMouseEnterAsync"
+             @onmouseleave="OnPopoverMouseLeaveAsync">
             @if (!string.IsNullOrWhiteSpace(Title))
             {
                 <div class="sgc-pop-header" id="@_titleId">@Title</div>
@@ -37,6 +39,9 @@
 </div>
 
 @code {
+    private const int CloseAnimationMs = 200;
+    private const int HoverGraceMs = 120;
+
     private readonly string _titleId = "popover-title-" + Guid.NewGuid().ToString("N")[..8];
     private ElementReference _root;
     private ElementReference _triggerRef;
@@ -46,45 +51,47 @@
     private bool _attached;
     private bool _isDisposed;
     private bool _isClosing;
-    private bool _previousOpen;
+    private bool _lastRenderedOpen;
     private bool _open;
+    private bool _lastSyncedOpen;
     private CancellationTokenSource? _closeCts;
+    private CancellationTokenSource? _hoverCts;
 
     /// <summary>
     /// Gets or sets whether the popover is currently open.
     /// </summary>
     [Parameter] public bool Open { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when the open state changes.
     /// </summary>
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the placement of the popover relative to the trigger. Default is <see cref="SgPlacement.BottomStart"/>.
     /// </summary>
     [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
-    
+
     /// <summary>
     /// Gets or sets the ARIA role attribute for the popover. Default is "dialog".
     /// </summary>
     [Parameter] public string Role { get; set; } = "dialog";
-    
+
     /// <summary>
     /// Gets or sets the title text displayed in the popover header.
     /// </summary>
     [Parameter] public string? Title { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to display an arrow pointing to the trigger element.
     /// </summary>
     [Parameter] public bool ShowArrow { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the popover closes when clicking outside of it. Default is true.
     /// </summary>
     [Parameter] public bool CloseOnOutsideClick { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets whether the popover closes when pressing the Escape key. Default is true.
     /// </summary>
@@ -92,6 +99,7 @@
 
     /// <summary>
     /// Gets or sets the trigger behavior for the popover. Default is <see cref="SgTrigger.Click"/>.
+    /// When <see cref="SgTrigger.Manual"/>, use <see cref="OpenAsync"/>/<see cref="CloseAsync"/> or the <see cref="Open"/> parameter.
     /// </summary>
     [Parameter] public SgTrigger Trigger { get; set; } = SgTrigger.Click;
 
@@ -99,33 +107,33 @@
     /// Gets or sets whether the popover is disabled.
     /// </summary>
     [Parameter] public bool Disabled { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the text for the default trigger button. Default is "Open".
     /// </summary>
     [Parameter] public string ButtonText { get; set; } = "Open";
-    
+
     /// <summary>
     /// Gets or sets the variant for the default trigger button. Default is <see cref="SgButtonVariant.Default"/>.
     /// </summary>
     [Parameter] public SgButtonVariant ButtonVariant { get; set; } = SgButtonVariant.Default;
-    
+
     /// <summary>
     /// Gets or sets the size for the default trigger button. Default is <see cref="SgSize.Md"/>.
     /// </summary>
     [Parameter] public SgSize ButtonSize { get; set; } = SgSize.Md;
-    
+
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the custom trigger content.
     /// When provided, replaces the default button trigger.
     /// </summary>
     [Parameter] public RenderFragment? TriggerContent { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the content to display inside the popover. Required.
     /// </summary>
@@ -149,9 +157,11 @@
 
     protected override void OnParametersSet()
     {
-        // Sync local _open with parameter Open when parent changes it
-        if (Open != _previousOpen)
+        // Sync local _open with parameter Open only when the parameter itself changed,
+        // not on every render (which would clobber clicks/hover-driven state).
+        if (Open != _lastSyncedOpen)
         {
+            _lastSyncedOpen = Open;
             _open = Open;
         }
     }
@@ -160,94 +170,143 @@
     {
         if (_isDisposed) return;
 
-        if (_open && !_previousOpen)
+        if (_open && !_lastRenderedOpen)
         {
-            // Cancel any pending close delay
-            _closeCts?.Cancel();
-            _closeCts?.Dispose();
-            _closeCts = null;
+            _lastRenderedOpen = true;
+            await AttachJsAsync();
+        }
+        else if (!_open && _lastRenderedOpen)
+        {
+            _lastRenderedOpen = false;
+            await DetachJsAsync();
+            await ScheduleClosingFlagResetAsync();
+        }
+    }
 
-            // Popover just opened - reset _attached flag and attach
+    private async Task AttachJsAsync()
+    {
+        // Cancel any pending close-animation so reopening is immediate.
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        _closeCts = null;
+
+        _attached = false;
+        _isClosing = false;
+
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-popover.js");
+            if (_isDisposed) return;
+
+            _self ??= DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("attach", _root, _popoverRef, _triggerRef, _self, CloseOnOutsideClick, CloseOnEscape);
+            _attached = true;
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task DetachJsAsync()
+    {
+        if (!_attached || _module is null) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("detach", _root);
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+        finally
+        {
             _attached = false;
-            _isClosing = false;
-
-            try
-            {
-                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-popover.js");
-                if (_isDisposed) return;
-
-                _self ??= DotNetObjectReference.Create(this);
-                await _module.InvokeVoidAsync("attach", _root, _popoverRef, _triggerRef, _self, CloseOnOutsideClick, CloseOnEscape);
-                _attached = true;
-            }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
         }
-        else if (!_open && _previousOpen)
+    }
+
+    private async Task ScheduleClosingFlagResetAsync()
+    {
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        _closeCts = new CancellationTokenSource();
+        var token = _closeCts.Token;
+        try
         {
-            // Popover just closed
-            if (_attached && _module is not null)
+            await Task.Delay(CloseAnimationMs, token);
+            if (!_isDisposed && !token.IsCancellationRequested)
             {
-                try
-                {
-                    await _module.InvokeVoidAsync("detach", _root);
-                }
-                catch (JSException) { }
-                catch (TaskCanceledException) { }
-                finally
-                {
-                    _attached = false;
-                }
-            }
-
-            // Wait for animation to finish (200ms in CSS) with cancellation
-            _closeCts?.Cancel();
-            _closeCts?.Dispose();
-            _closeCts = new CancellationTokenSource();
-            var token = _closeCts.Token;
-            try
-            {
-                await Task.Delay(200, token);
-                if (!_isDisposed && !token.IsCancellationRequested)
-                {
-                    _isClosing = false;
-                }
-            }
-            catch (TaskCanceledException)
-            {
-                // Animation was cancelled (popover reopened)
+                _isClosing = false;
+                StateHasChanged();
             }
         }
-
-        _previousOpen = _open;
+        catch (TaskCanceledException) { }
     }
 
-    private async Task OnTriggerClickAsync() => await HandleTriggerAsync(SgTrigger.Click, !_open);
-    private async Task OnTriggerMouseEnterAsync() => await HandleTriggerAsync(SgTrigger.Hover, true);
-    private async Task OnTriggerMouseLeaveAsync() => await HandleTriggerAsync(SgTrigger.Hover, false);
-
-    private async Task HandleTriggerAsync(SgTrigger triggerType, bool show)
+    private async Task OnTriggerClickAsync()
     {
-        if (Disabled) return;
-        if (Trigger != triggerType) return;
-        if (show) await OpenAsync();
-        else await CloseAsync();
-    }
-
-    /// <summary>
-    /// Manually opens the popover. For use when Trigger is "manual".
-    /// </summary>
-    public async Task OpenAsync() => await SetOpenAsync(true);
-
-    /// <summary>
-    /// Manually closes the popover. For use when Trigger is "manual".
-    /// </summary>
-    public async Task CloseAsync() => await SetOpenAsync(false);
-
-    private async Task ToggleAsync()
-    {
+        if (Disabled || Trigger != SgTrigger.Click) return;
         await SetOpenAsync(!_open);
     }
+
+    private async Task OnTriggerMouseEnterAsync()
+    {
+        if (Disabled || Trigger != SgTrigger.Hover) return;
+        CancelHoverClose();
+        await SetOpenAsync(true);
+    }
+
+    private Task OnTriggerMouseLeaveAsync()
+    {
+        if (Disabled || Trigger != SgTrigger.Hover) return Task.CompletedTask;
+        ScheduleHoverClose();
+        return Task.CompletedTask;
+    }
+
+    private Task OnPopoverMouseEnterAsync()
+    {
+        if (Trigger != SgTrigger.Hover) return Task.CompletedTask;
+        CancelHoverClose();
+        return Task.CompletedTask;
+    }
+
+    private Task OnPopoverMouseLeaveAsync()
+    {
+        if (Trigger != SgTrigger.Hover) return Task.CompletedTask;
+        ScheduleHoverClose();
+        return Task.CompletedTask;
+    }
+
+    private void CancelHoverClose()
+    {
+        _hoverCts?.Cancel();
+        _hoverCts?.Dispose();
+        _hoverCts = null;
+    }
+
+    private void ScheduleHoverClose()
+    {
+        CancelHoverClose();
+        _hoverCts = new CancellationTokenSource();
+        var token = _hoverCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(HoverGraceMs, token);
+                if (token.IsCancellationRequested || _isDisposed) return;
+                await InvokeAsync(() => SetOpenAsync(false));
+            }
+            catch (TaskCanceledException) { }
+        });
+    }
+
+    /// <summary>
+    /// Manually opens the popover. For use when Trigger is <see cref="SgTrigger.Manual"/>.
+    /// </summary>
+    public Task OpenAsync() => SetOpenAsync(true);
+
+    /// <summary>
+    /// Manually closes the popover. For use when Trigger is <see cref="SgTrigger.Manual"/>.
+    /// </summary>
+    public Task CloseAsync() => SetOpenAsync(false);
 
     [JSInvokable]
     public Task CloseFromJsAsync() => SetOpenAsync(false);
@@ -259,17 +318,19 @@
         if (!value)
         {
             _isClosing = true;
-            StateHasChanged();
         }
 
         _open = value;
+        _lastSyncedOpen = value;
+
         if (OpenChanged.HasDelegate)
         {
             await OpenChanged.InvokeAsync(value);
         }
+
         if (!_isDisposed)
         {
-            await InvokeAsync(StateHasChanged);
+            StateHasChanged();
         }
     }
 
@@ -282,7 +343,10 @@
         _closeCts?.Dispose();
         _closeCts = null;
 
-        // Notify JS to dispose first
+        _hoverCts?.Cancel();
+        _hoverCts?.Dispose();
+        _hoverCts = null;
+
         if (_module is not null)
         {
             try
@@ -297,12 +361,10 @@
             catch (ObjectDisposedException) { }
         }
 
-        // Then dispose DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // Finally dispose JS module
         if (_module is not null)
         {
             try

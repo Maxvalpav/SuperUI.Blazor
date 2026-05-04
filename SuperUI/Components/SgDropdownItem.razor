@@ -1,28 +1,107 @@
 @namespace SuperUI.Components
+@implements IDisposable
 
-<button type="button" class="sgc-dropdown-item @(Disabled ? "sgc-disabled" : "") @(Danger ? "sgc-danger" : "") @CssClass"
-        role="menuitem"
-        disabled="@Disabled"
-        @onclick="OnClickAsync">
-    @if (!string.IsNullOrEmpty(Icon))
-    {
-        <span class="sgc-dropdown-item-icon">@((MarkupString)Icon)</span>
-    }
-    <span class="sgc-dropdown-item-text">@Text</span>
-</button>
+@if (Divider)
+{
+    <div class="sgc-dropdown-divider @CssClass" role="separator"></div>
+}
+else
+{
+    <button type="button"
+            class="sgc-dropdown-item @(Disabled ? "sgc-disabled" : "") @(Danger ? "sgc-danger" : "") @(Selected ? "sgc-selected" : "") @CssClass"
+            role="menuitem"
+            disabled="@Disabled"
+            tabindex="-1"
+            @ref="_btn"
+            @onclick="OnClickAsync">
+        @if (Selected)
+        {
+            <span class="sgc-dropdown-item-check" aria-hidden="true">✓</span>
+        }
+        else if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="sgc-dropdown-item-icon">@((MarkupString)Icon)</span>
+        }
+        else
+        {
+            <span class="sgc-dropdown-item-icon" aria-hidden="true"></span>
+        }
+        <span class="sgc-dropdown-item-text">
+            @if (ChildContent is not null)
+            {
+                @ChildContent
+            }
+            else
+            {
+                @Text
+            }
+        </span>
+        @if (!string.IsNullOrEmpty(Shortcut))
+        {
+            <span class="sgc-dropdown-item-shortcut">@Shortcut</span>
+        }
+    </button>
+}
 
 @code {
+    private ElementReference _btn;
+
+    [CascadingParameter] private SgDropdown? Parent { get; set; }
+
+    /// <summary>Item label.</summary>
     [Parameter] public string Text { get; set; } = "";
+
+    /// <summary>Optional leading icon (raw markup/SVG).</summary>
     [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Optional right-aligned shortcut hint (e.g. "⌘K").</summary>
+    [Parameter] public string? Shortcut { get; set; }
+
+    /// <summary>When true, renders a horizontal separator instead of a clickable item.</summary>
+    [Parameter] public bool Divider { get; set; }
+
+    /// <summary>When true, shows a leading checkmark and "selected" styling.</summary>
+    [Parameter] public bool Selected { get; set; }
+
+    /// <summary>Disables the item.</summary>
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Applies destructive styling.</summary>
     [Parameter] public bool Danger { get; set; }
+
+    /// <summary>Additional class on the item element.</summary>
     [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Custom item body; replaces <see cref="Text"/> when supplied.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Click handler. The dropdown closes after this fires (when CloseOnSelect is true).</summary>
     [Parameter] public EventCallback OnClick { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (!Divider) Parent?.RegisterItem(this);
+    }
+
+    internal ValueTask FocusAsync() => Divider || Disabled ? ValueTask.CompletedTask : _btn.FocusAsync();
+
+    internal async Task ActivateAsync()
+    {
+        if (Divider || Disabled) return;
+        await OnClickAsync();
+    }
 
     private async Task OnClickAsync()
     {
         if (Disabled) return;
         if (OnClick.HasDelegate)
             await OnClick.InvokeAsync();
+        if (Parent is not null)
+            await Parent.NotifyItemSelectedAsync();
+    }
+
+    public void Dispose()
+    {
+        if (!Divider) Parent?.UnregisterItem(this);
     }
 }
