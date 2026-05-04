@@ -57,25 +57,53 @@
         @if (_open)
         {
             <div id="@_listboxId" class="sgc-combo-menu" role="listbox">
-                @{ var filtered = GetFilteredItems().ToList(); }
-                @if (filtered.Count == 0)
+                @if (IsEnumMode)
                 {
-                    <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    var filteredEnum = GetFilteredEnumItems().ToList();
+                    @if (filteredEnum.Count == 0)
+                    {
+                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    }
+                    else
+                    {
+                        @for (var i = 0; i < filteredEnum.Count; i++)
+                        {
+                            var idx = i;
+                            var ei = filteredEnum[idx];
+                            var isSelected = IsEnumItemSelected(ei);
+                            <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
+                                 role="option"
+                                 aria-selected="@(isSelected ? "true" : "false")"
+                                 title="@ei.Description"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="() => PickEnumAsync(ei)">
+                                @ei.Label
+                            </div>
+                        }
+                    }
                 }
                 else
                 {
-                    @for (var i = 0; i < filtered.Count; i++)
+                    var filtered = GetFilteredItems().ToList();
+                    @if (filtered.Count == 0)
                     {
-                        var idx = i;
-                        var it = filtered[idx];
-                        var isSelected = IsSelected(it);
-                        <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
-                             role="option"
-                             aria-selected="@(isSelected ? "true" : "false")"
-                             @onclick:stopPropagation="true"
-                             @onclick="() => PickAsync(it)">
-                            @LabelFrom(it)
-                        </div>
+                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    }
+                    else
+                    {
+                        @for (var i = 0; i < filtered.Count; i++)
+                        {
+                            var idx = i;
+                            var it = filtered[idx];
+                            var isSelected = IsSelected(it);
+                            <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
+                                 role="option"
+                                 aria-selected="@(isSelected ? "true" : "false")"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="() => PickAsync(it)">
+                                @LabelFrom(it)
+                            </div>
+                        }
                     }
                 }
             </div>
@@ -102,6 +130,10 @@
     private SgEditContextBinder<TValue?>? _binder;
     private CancellationTokenSource? _blurCts;
 
+    // enum support
+    private List<SgEnumItem>? _enumItems;
+    private Type? _lastEnumType;
+
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
     /// <summary>
@@ -121,12 +153,26 @@
     
     /// <summary>
     /// Gets or sets the collection of items to display in the dropdown.
+    /// Ignored when <see cref="EnumType"/> is set.
     /// </summary>
     [Parameter] public IEnumerable<TValue> Items { get; set; } = Array.Empty<TValue>();
+
+    /// <summary>
+    /// When set, populates the dropdown from the specified enum type instead of
+    /// <see cref="Items"/>. Supports <c>[Display]</c> and <c>[Description]</c> attributes.
+    /// </summary>
+    [Parameter] public Type? EnumType { get; set; }
+
+    /// <summary>
+    /// Determines whether the enum key is the member <see cref="SgEnumKeyMode.Name"/> (default)
+    /// or the underlying <see cref="SgEnumKeyMode.IntValue"/>.
+    /// Only relevant when <see cref="EnumType"/> is set.
+    /// </summary>
+    [Parameter] public SgEnumKeyMode EnumKeyMode { get; set; } = SgEnumKeyMode.Name;
     
     /// <summary>
     /// Gets or sets the function to extract display text from each item.
-    /// If not specified, uses ToString() on the item.
+    /// If not specified, uses ToString() on the item (or the enum label when EnumType is set).
     /// </summary>
     [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
     
@@ -194,15 +240,10 @@
         ? ErrorText 
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private string LabelFrom(TValue v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
-    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
 
-    private IEnumerable<TValue> GetFilteredItems()
-    {
-        if (string.IsNullOrEmpty(_search)) return Items;
-        return Items.Where(i =>
-            LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
-    }
+    // ── Enum support ──────────────────────────────────────────────────────────
+
+    private bool IsEnumMode => _enumItems is not null;
 
     protected override void OnInitialized()
     {
@@ -212,7 +253,65 @@
     protected override void OnParametersSet()
     {
         _binder?.Update(CascadedEditContext, ValueExpression);
+
+        if (EnumType is not null && EnumType != _lastEnumType)
+        {
+            _lastEnumType = EnumType;
+            _enumItems = SgEnumHelper.GetItems(EnumType);
+        }
+        else if (EnumType is null)
+        {
+            _enumItems = null;
+            _lastEnumType = null;
+        }
     }
+
+    // ── Label helpers ─────────────────────────────────────────────────────────
+
+    private string LabelFrom(TValue v)
+    {
+        if (LabelSelector is not null) return LabelSelector(v);
+        if (IsEnumMode)
+        {
+            var str = v?.ToString() ?? "";
+            var ei = _enumItems!.FirstOrDefault(e => e.Name == str || e.IntValue.ToString() == str);
+            return ei?.Label ?? str;
+        }
+        return v?.ToString() ?? "";
+    }
+
+    // Label from SgEnumItem directly (used in dropdown list)
+    private string EnumItemLabel(SgEnumItem ei) => ei.Label;
+
+    // ── Filtered items ────────────────────────────────────────────────────────
+
+    private IEnumerable<TValue> GetFilteredItems()
+    {
+        if (IsEnumMode) return Array.Empty<TValue>(); // handled separately
+        if (string.IsNullOrEmpty(_search)) return Items;
+        return Items.Where(i =>
+            LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private IEnumerable<SgEnumItem> GetFilteredEnumItems()
+    {
+        if (_enumItems is null) return Array.Empty<SgEnumItem>();
+        if (string.IsNullOrEmpty(_search)) return _enumItems;
+        return _enumItems.Where(ei =>
+            ei.Label.Contains(_search, StringComparison.CurrentCultureIgnoreCase) ||
+            ei.Name.Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+    }
+
+    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
+
+    private bool IsEnumItemSelected(SgEnumItem ei)
+    {
+        if (Value is null) return false;
+        var str = Value.ToString() ?? "";
+        return ei.Name == str || ei.IntValue.ToString() == str;
+    }
+
+    // ── Toggle / focus ────────────────────────────────────────────────────────
 
     private async Task ToggleAsync()
     {
@@ -259,10 +358,13 @@
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        var filtered = GetFilteredItems().ToList();
+        var count = IsEnumMode
+            ? GetFilteredEnumItems().Count()
+            : GetFilteredItems().Count();
+
         if (e.Key == "ArrowDown")
         {
-            _activeIndex = Math.Min(filtered.Count - 1, _activeIndex + 1);
+            _activeIndex = Math.Min(count - 1, _activeIndex + 1);
             await InvokeAsync(StateHasChanged);
         }
         else if (e.Key == "ArrowUp")
@@ -272,8 +374,21 @@
         }
         else if (e.Key == "Enter")
         {
-            if (_activeIndex >= 0 && _activeIndex < filtered.Count)
-                await PickAsync(filtered[_activeIndex]);
+            if (_activeIndex >= 0)
+            {
+                if (IsEnumMode)
+                {
+                    var items = GetFilteredEnumItems().ToList();
+                    if (_activeIndex < items.Count)
+                        await PickEnumAsync(items[_activeIndex]);
+                }
+                else
+                {
+                    var items = GetFilteredItems().ToList();
+                    if (_activeIndex < items.Count)
+                        await PickAsync(items[_activeIndex]);
+                }
+            }
         }
         else if (e.Key == "Escape")
         {
@@ -281,12 +396,42 @@
         }
     }
 
+    // ── Pick ──────────────────────────────────────────────────────────────────
+
     private async Task PickAsync(TValue v)
     {
         Value = v;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(v);
         _binder?.NotifyFieldChanged();
         await CloseAsync();
+    }
+
+    private async Task PickEnumAsync(SgEnumItem ei)
+    {
+        var v = ParseEnumValue(ei);
+        Value = v;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(v);
+        _binder?.NotifyFieldChanged();
+        await CloseAsync();
+    }
+
+    private TValue? ParseEnumValue(SgEnumItem ei)
+    {
+        var targetType = typeof(TValue);
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        try
+        {
+            if (underlying == typeof(string))
+                return (TValue)(object)(EnumKeyMode == SgEnumKeyMode.IntValue
+                    ? ei.IntValue.ToString()
+                    : ei.Name);
+            if (underlying == typeof(int))
+                return (TValue)(object)ei.IntValue;
+            if (underlying.IsEnum)
+                return (TValue)Enum.Parse(underlying, ei.Name);
+        }
+        catch { }
+        return default;
     }
 
     private async Task ClearAsync()
