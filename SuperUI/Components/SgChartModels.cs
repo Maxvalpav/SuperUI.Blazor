@@ -56,6 +56,45 @@ namespace SuperUI.Components
         public string BorderColor { get; set; } = "#2196f3";
         public string BackgroundColor { get; set; } = "rgba(33, 150, 243, 0.5)";
         public List<string>? Colors { get; set; }
+
+        /// <summary>Smooths line tension; 0 = straight segments, ~0.4 = soft curve.</summary>
+        public double LineTension { get; set; } = 0.35;
+
+        /// <summary>Render points on line/area datasets.</summary>
+        public bool ShowPoints { get; set; } = true;
+
+        /// <summary>Stack bar/area datasets along the value axis.</summary>
+        public bool Stacked { get; set; }
+
+        /// <summary>Render a built-in toolbar (zoom reset, export PNG).</summary>
+        public bool ShowToolbar { get; set; }
+
+        /// <summary>Animation duration in ms. 0 disables animations.</summary>
+        public int AnimationDuration { get; set; } = 400;
+
+        /// <summary>Optional units suffix appended to tick / tooltip values (e.g. "%", " ms").</summary>
+        public string? ValueSuffix { get; set; }
+
+        /// <summary>Optional decimals for tooltip / tick formatting.</summary>
+        public int? ValueDecimals { get; set; }
+
+        /// <summary>When true, hover highlights the whole index across datasets.</summary>
+        public bool SharedTooltip { get; set; } = true;
+    }
+
+    /// <summary>Defines a named series projecting a numeric value out of TItem.</summary>
+    public class SgChartSeries<TItem>
+    {
+        public string Name { get; set; } = "";
+        public Func<TItem, double> Value { get; set; } = _ => 0;
+
+        public SgChartSeries() { }
+
+        public SgChartSeries(string name, Func<TItem, double> value)
+        {
+            Name = name;
+            Value = value;
+        }
     }
 
     public class SgChartClickEventArgs

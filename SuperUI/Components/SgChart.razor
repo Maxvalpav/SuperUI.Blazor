@@ -13,13 +13,31 @@
 
     @if (_error is not null)
     {
-        <div class="sg-chart-error">
+        <div class="sg-chart-error" role="alert">
             <p>@_error</p>
             <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Chart_Retry"]</button>
         </div>
     }
     else
     {
+        @if (Options?.ShowToolbar == true && _chartReady)
+        {
+            <div class="sg-chart-toolbar" role="toolbar">
+                <button type="button" class="sg-chart-tool" title="@Localizer["Chart_ResetZoom"]"
+                        @onclick="ResetZoomAsync" aria-label="@Localizer["Chart_ResetZoom"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M3 8a5 5 0 1 1 1.46 3.54l1-1A3.5 3.5 0 1 0 4.5 8H6L4 10.5 2 8h1Z"/>
+                    </svg>
+                </button>
+                <button type="button" class="sg-chart-tool" title="@Localizer["Chart_ExportPng"]"
+                        @onclick="@(() => ExportImageAsync("png"))" aria-label="@Localizer["Chart_ExportPng"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M8 1v8.6L5.7 7.3 4.3 8.7 8 12.4l3.7-3.7-1.4-1.4L9 9.6V1H8Zm-6 12h12v2H2v-2Z"/>
+                    </svg>
+                </button>
+            </div>
+        }
+
         <canvas @ref="_canvasRef"
                 id="@_chartId"
                 role="img"
@@ -28,7 +46,16 @@
 
         @if (!_chartReady)
         {
-            <div class="sg-chart-loading">@Localizer["Chart_Loading"]</div>
+            <div class="sg-chart-loading" aria-live="polite">
+                <div class="sg-chart-skeleton">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <span class="sg-chart-loading-text">@Localizer["Chart_Loading"]</span>
+            </div>
+        }
+        else if (_isEmpty)
+        {
+            <div class="sg-chart-empty">@Localizer["Chart_NoData"]</div>
         }
     }
 </div>
@@ -42,6 +69,7 @@
     private SgChartXAxis? _xAxis;
     private SgChartYAxis? _yAxis;
     private bool _chartReady;
+    private bool _isEmpty;
     private string? _error;
     private bool _isDisposed;
 
@@ -51,6 +79,7 @@
     private object? _lastOptionsRef;
     private string? _lastTitle;
     private bool _refreshScheduled;
+    private bool _refreshPending;
 
     /// <summary>Gets or sets the chart type.</summary>
     [Parameter] public SgChartType ChartType { get; set; } = SgChartType.Line;
@@ -78,6 +107,12 @@
 
     /// <summary>Callback invoked when a data point is clicked.</summary>
     [Parameter] public EventCallback<SgChartClickEventArgs> OnDataPointClick { get; set; }
+
+    /// <summary>Optional resolver for series labels when TItem exposes multiple values.</summary>
+    [Parameter] public Func<TItem, IEnumerable<KeyValuePair<string, double>>>? SeriesSelector { get; set; }
+
+    /// <summary>Optional explicit list of series labels paired with value selectors.</summary>
+    [Parameter] public IReadOnlyList<SgChartSeries<TItem>>? Series { get; set; }
 
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -108,6 +143,12 @@
         finally
         {
             _refreshScheduled = false;
+            if (_refreshPending)
+            {
+                _refreshPending = false;
+                _refreshScheduled = true;
+                _ = ScheduleRefreshAsync();
+            }
         }
     }
 
@@ -166,6 +207,7 @@
         var options = Options ?? new SgChartOptions();
         var labels = ExtractLabels(data);
         var datasets = BuildDatasets(data, options);
+        _isEmpty = datasets.Count == 0 || labels.Count == 0;
 
         var chartType = ChartType switch
         {
@@ -176,6 +218,7 @@
         };
 
         var responsive = options.Responsive;
+        var isCategorical = ChartType is SgChartType.Pie or SgChartType.Doughnut;
 
         return new
         {
@@ -186,18 +229,47 @@
                 responsive,
                 maintainAspectRatio = false,
                 indexAxis = ChartType == SgChartType.BarHorizontal ? "y" : "x",
-                animation = new { duration = 400, easing = "easeOutQuart" },
+                animation = new { duration = options.AnimationDuration, easing = "easeOutQuart" },
+                interaction = new
+                {
+                    mode = isCategorical ? "nearest" : (options.SharedTooltip ? "index" : "nearest"),
+                    intersect = isCategorical
+                },
+                onHover = new { mode = "nearest" },
                 plugins = new
                 {
-                    legend = new { display = options.ShowLegend },
-                    title = new { display = !string.IsNullOrEmpty(Title), text = Title ?? string.Empty }
+                    legend = new
+                    {
+                        display = options.ShowLegend,
+                        position = "top",
+                        labels = new { usePointStyle = true, boxWidth = 8, padding = 14 }
+                    },
+                    title = new
+                    {
+                        display = !string.IsNullOrEmpty(Title),
+                        text = Title ?? string.Empty,
+                        padding = new { top = 6, bottom = 14 },
+                        font = new { size = 14, weight = "600" }
+                    },
+                    tooltip = new
+                    {
+                        enabled = true,
+                        usePointStyle = true,
+                        padding = 10,
+                        boxPadding = 4,
+                        cornerRadius = 6,
+                        displayColors = !isCategorical,
+                        suffix = options.ValueSuffix,
+                        decimals = options.ValueDecimals
+                    }
                 },
-                scales = BuildScales(options)
+                scales = BuildScales(options),
+                __sgClickable = OnDataPointClick.HasDelegate
             }
         };
     }
 
-    private static List<string> ExtractLabels(List<TItem> data)
+    private List<string> ExtractLabels(List<TItem> data)
     {
         if (data.Count == 0) return new List<string>();
         var labelProp = typeof(TItem).GetProperty("Label");
@@ -211,117 +283,192 @@
     private List<object> BuildDatasets(List<TItem> data, SgChartOptions options)
     {
         if (data.Count == 0) return new List<object>();
-        var valueProp = typeof(TItem).GetProperty("Value");
-        if (valueProp == null) return new List<object>();
 
-        var values = data.Select(item =>
-        {
-            var val = valueProp.GetValue(item);
-            return val switch
-            {
-                double d => d,
-                float f => f,
-                int i => i,
-                long l => l,
-                decimal m => (double)m,
-                _ => 0.0
-            };
-        }).ToList();
-
-        if (options.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, options.DecimationThreshold))
-        {
-            values = DataDecimation.DecimateValues(values, options.DecimationTargetPoints ?? 1000);
-        }
+        var palette = options.Colors?.Count > 0 ? options.Colors : DefaultPalette;
+        var seriesData = ResolveSeries(data);
 
         if (ChartType == SgChartType.Pie || ChartType == SgChartType.Doughnut)
         {
-            var colors = options.Colors?.Count > 0
-                ? options.Colors
-                : DefaultPalette;
-
+            var values = seriesData.Count > 0 ? seriesData[0].Values : new List<double>();
+            var name = seriesData.Count > 0 ? seriesData[0].Name : "Data";
             return new List<object>
             {
                 new
                 {
-                    label = "Data",
+                    label = name,
                     data = values,
-                    backgroundColor = colors.Take(Math.Max(values.Count, 1)).ToList(),
+                    backgroundColor = palette.Take(Math.Max(values.Count, 1)).ToList(),
                     borderColor = "#fff",
-                    borderWidth = 2
+                    borderWidth = 2,
+                    hoverOffset = 6
                 }
             };
         }
 
+        var datasets = new List<object>();
+        for (var i = 0; i < seriesData.Count; i++)
+        {
+            var series = seriesData[i];
+            var color = ResolveColor(series.Name, palette, i, options);
+            datasets.Add(BuildDataset(series, color, options));
+        }
+        return datasets;
+    }
+
+    private object BuildDataset(SeriesData series, string color, SgChartOptions options)
+    {
         if (ChartType == SgChartType.Scatter)
         {
-            var scatterData = values.Select((v, i) => new { x = i, y = v }).ToList();
-            return new List<object>
+            var scatter = series.Values.Select((v, i) => new { x = i, y = v }).ToList();
+            return new
             {
-                new
-                {
-                    label = "Data",
-                    data = scatterData,
-                    borderColor = options.BorderColor,
-                    backgroundColor = options.BackgroundColor,
-                    borderWidth = 2,
-                    pointRadius = 4,
-                    pointHoverRadius = 6
-                }
+                label = series.Name,
+                data = scatter,
+                borderColor = color,
+                backgroundColor = WithAlpha(color, 0.7),
+                borderWidth = 2,
+                pointRadius = 4,
+                pointHoverRadius = 6
             };
         }
 
         if (ChartType == SgChartType.Heatmap)
         {
-            return new List<object>
+            return new
             {
-                new
-                {
-                    label = "Data",
-                    data = values,
-                    borderColor = options.BorderColor,
-                    backgroundColor = options.BackgroundColor,
-                    borderWidth = 2
-                }
+                label = series.Name,
+                data = series.Values,
+                borderColor = color,
+                backgroundColor = WithAlpha(color, 0.5),
+                borderWidth = 2
             };
         }
 
         if (ChartType == SgChartType.Area)
         {
-            return new List<object>
+            return new
             {
-                new
-                {
-                    label = "Data",
-                    data = values,
-                    borderColor = options.BorderColor,
-                    backgroundColor = WithAlpha(options.BackgroundColor, 0.2),
-                    borderWidth = 2,
-                    fill = true,
-                    tension = 0.4
-                }
+                label = series.Name,
+                data = series.Values,
+                borderColor = color,
+                backgroundColor = WithAlpha(color, 0.22),
+                borderWidth = 2,
+                fill = true,
+                tension = options.LineTension,
+                pointRadius = options.ShowPoints ? 3 : 0,
+                pointHoverRadius = 5,
+                pointBackgroundColor = color
             };
         }
 
-        var bgColor = ChartType == SgChartType.Line ? "transparent" : options.BackgroundColor;
-        return new List<object>
+        if (ChartType == SgChartType.Line)
         {
-            new
+            return new
             {
-                label = "Data",
-                data = values,
-                borderColor = options.BorderColor,
-                backgroundColor = bgColor,
+                label = series.Name,
+                data = series.Values,
+                borderColor = color,
+                backgroundColor = WithAlpha(color, 0.15),
                 borderWidth = 2,
-                fill = ChartType != SgChartType.Line,
-                tension = 0.4
-            }
+                fill = false,
+                tension = options.LineTension,
+                pointRadius = options.ShowPoints ? 3 : 0,
+                pointHoverRadius = 5,
+                pointBackgroundColor = color
+            };
+        }
+
+        // Bar / BarHorizontal
+        return new
+        {
+            label = series.Name,
+            data = series.Values,
+            borderColor = color,
+            backgroundColor = WithAlpha(color, 0.75),
+            hoverBackgroundColor = color,
+            borderWidth = 0,
+            borderRadius = 4,
+            borderSkipped = false,
+            stack = options.Stacked ? "stack" : null
         };
     }
 
+    private List<SeriesData> ResolveSeries(List<TItem> data)
+    {
+        // 1) Explicit series via parameter.
+        if (Series is { Count: > 0 })
+        {
+            return Series
+                .Select(s => new SeriesData(s.Name, data.Select(s.Value).ToList()))
+                .ToList();
+        }
+
+        // 2) Selector function.
+        if (SeriesSelector is not null)
+        {
+            var byName = new Dictionary<string, List<double>>(StringComparer.Ordinal);
+            foreach (var item in data)
+            {
+                foreach (var kv in SeriesSelector(item))
+                {
+                    if (!byName.TryGetValue(kv.Key, out var list))
+                    {
+                        list = new List<double>(data.Count);
+                        byName[kv.Key] = list;
+                    }
+                    list.Add(kv.Value);
+                }
+            }
+            if (byName.Count > 0)
+            {
+                return byName.Select(kv => new SeriesData(kv.Key, kv.Value)).ToList();
+            }
+        }
+
+        // 3) Default: single Value property.
+        var valueProp = typeof(TItem).GetProperty("Value");
+        if (valueProp == null) return new List<SeriesData>();
+
+        var values = data.Select(item => ToDouble(valueProp.GetValue(item))).ToList();
+
+        var opts = Options ?? new SgChartOptions();
+        if (opts.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, opts.DecimationThreshold))
+        {
+            values = DataDecimation.DecimateValues(values, opts.DecimationTargetPoints ?? 1000);
+        }
+
+        return new List<SeriesData> { new("Data", values) };
+    }
+
+    private static double ToDouble(object? value) => value switch
+    {
+        double d => d,
+        float f => f,
+        int i => i,
+        long l => l,
+        decimal m => (double)m,
+        short s => s,
+        _ => 0.0
+    };
+
+    private static string ResolveColor(string seriesName, List<string> palette, int index, SgChartOptions options)
+    {
+        // First series uses BorderColor unless user provided a palette.
+        if (index == 0 && (options.Colors == null || options.Colors.Count == 0)
+            && !string.IsNullOrWhiteSpace(options.BorderColor))
+        {
+            return options.BorderColor;
+        }
+        if (palette.Count == 0) return options.BorderColor;
+        return palette[index % palette.Count];
+    }
+
+    private readonly record struct SeriesData(string Name, List<double> Values);
+
     private static readonly List<string> DefaultPalette = new()
     {
-        "#FF6384", "#36A2EB", "#FFCE56", "#4BC0C0", "#9966FF",
-        "#FF9F40", "#C9CBCF", "#8AD17E", "#F37D7D", "#7E84F3"
+        "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+        "#06b6d4", "#84cc16", "#ec4899", "#f97316", "#0ea5e9"
     };
 
     private static string WithAlpha(string color, double alpha)
@@ -372,11 +519,18 @@
             type = yType,
             display = _yAxis?.Display ?? true,
             beginAtZero = ChartType != SgChartType.BarHorizontal,
+            stacked = options.Stacked && ChartType != SgChartType.BarHorizontal,
             min = options.MinValue ?? _yAxis?.Min,
             max = options.MaxValue ?? _yAxis?.Max,
-            title = new { display = !string.IsNullOrEmpty(_yAxis?.Title), text = _yAxis?.Title ?? string.Empty },
+            title = new
+            {
+                display = !string.IsNullOrEmpty(_yAxis?.Title),
+                text = _yAxis?.Title ?? string.Empty,
+                font = new { weight = "500" }
+            },
             grid = new { display = options.ShowGrid && (_yAxis?.ShowGrid ?? true), color = _yAxis?.GridColor },
-            ticks = new { display = options.ShowLabels }
+            border = new { display = false },
+            ticks = new { display = options.ShowLabels, padding = 6 }
         };
 
         var xScale = new
@@ -384,11 +538,18 @@
             type = xType,
             display = _xAxis?.Display ?? true,
             beginAtZero = ChartType == SgChartType.BarHorizontal,
+            stacked = options.Stacked && ChartType == SgChartType.BarHorizontal,
             min = ChartType == SgChartType.BarHorizontal ? (options.MinValue ?? _xAxis?.Min) : _xAxis?.Min,
             max = ChartType == SgChartType.BarHorizontal ? (options.MaxValue ?? _xAxis?.Max) : _xAxis?.Max,
-            title = new { display = !string.IsNullOrEmpty(_xAxis?.Title), text = _xAxis?.Title ?? string.Empty },
+            title = new
+            {
+                display = !string.IsNullOrEmpty(_xAxis?.Title),
+                text = _xAxis?.Title ?? string.Empty,
+                font = new { weight = "500" }
+            },
             grid = new { display = options.ShowGrid && (_xAxis?.ShowGrid ?? true), color = _xAxis?.GridColor },
-            ticks = new { display = options.ShowLabels }
+            border = new { display = false },
+            ticks = new { display = options.ShowLabels, padding = 6, autoSkip = true, maxRotation = 0 }
         };
 
         return new { y = yScale, x = xScale };
@@ -397,13 +558,18 @@
     /// <summary>Refreshes the chart with current parameters.</summary>
     public async Task RefreshAsync()
     {
-        if (_module is null || !_chartReady) return;
+        if (_module is null || !_chartReady)
+        {
+            _refreshPending = true;
+            return;
+        }
 
         try
         {
             var config = BuildChartConfig();
             await _module.InvokeVoidAsync("updateChart", _chartId, config);
             CaptureSnapshot();
+            await InvokeAsync(StateHasChanged);
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
@@ -442,9 +608,9 @@
         try { await _module.InvokeVoidAsync("resetZoom", _chartId); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _error = $"Failed to reset zoom: {ex.Message}";
+            _error = Localizer["Chart_FailedToZoom"];
             await InvokeAsync(StateHasChanged);
         }
     }
@@ -471,6 +637,16 @@
         catch (JSDisconnectedException) { return null; }
         catch (TaskCanceledException) { return null; }
         catch { return null; }
+    }
+
+    /// <summary>Triggers a manual resize. Useful when the container changes outside of a parameter update.</summary>
+    public async Task ResizeAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("resizeChart", _chartId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
     }
 
     /// <summary>Retries loading the chart after an error.</summary>
@@ -502,7 +678,6 @@
         if (_isDisposed) return;
         _isDisposed = true;
 
-        // 1. Уведомить JS о dispose
         if (_module is not null)
         {
             try { await _module.InvokeVoidAsync("dispose", _chartId); }
@@ -511,12 +686,10 @@
             catch { }
         }
 
-        // 2. Очистить DotNetObjectReference
         var selfRef = _selfRef;
         _selfRef = null;
         selfRef?.Dispose();
 
-        // 3. Очистить JS модуль
         if (_module is not null)
         {
             try { await _module.DisposeAsync(); }
