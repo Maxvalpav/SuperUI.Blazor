@@ -1,44 +1,150 @@
 @namespace SuperUI.Components
 @implements IDisposable
 
-<div class="sgc-dropdown @CssClass" @onfocusout="HandleFocusOutAsync">
-    <div class="sgc-dropdown-trigger" @onclick="ToggleAsync">
-        @if (TriggerContent is not null)
+<CascadingValue Value="this" IsFixed="true">
+    <div class="sgc-dropdown @CssClass"
+         @onfocusout="HandleFocusOutAsync"
+         @onmouseleave="HandleMouseLeaveAsync"
+         @onkeydown="HandleKeyDownAsync"
+         @onkeydown:stopPropagation="true">
+        <div class="sgc-dropdown-trigger"
+             role="button"
+             aria-haspopup="menu"
+             aria-expanded="@(_open ? "true" : "false")"
+             tabindex="@(Disabled ? "-1" : "0")"
+             @onclick="HandleTriggerClickAsync"
+             @oncontextmenu="HandleContextMenuAsync"
+             @oncontextmenu:preventDefault="@(Trigger == SgDropdownTrigger.ContextMenu)"
+             @onmouseenter="HandleMouseEnterAsync">
+            @if (TriggerContent is not null)
+            {
+                @TriggerContent
+            }
+            else
+            {
+                <SgButton Text="@Text" Icon="@Icon" Variant="@Variant" Size="@Size" Disabled="@Disabled" />
+            }
+        </div>
+        @if (_open)
         {
-            @TriggerContent
-        }
-        else
-        {
-            <SgButton Text="@Text" Icon="@Icon" Variant="@Variant" Size="@Size" Disabled="@Disabled" />
+            <div class="sgc-dropdown-menu sgc-dropdown-menu-@PlacementClass @MenuCssClass"
+                 role="menu"
+                 style="@MenuStyle"
+                 @onclick:stopPropagation="true"
+                 @onmouseenter="HandleMenuMouseEnterAsync">
+                @if (HeaderContent is not null)
+                {
+                    <div class="sgc-dropdown-header">@HeaderContent</div>
+                }
+                <div class="sgc-dropdown-list">
+                    @ChildContent
+                </div>
+                @if (FooterContent is not null)
+                {
+                    <div class="sgc-dropdown-footer">@FooterContent</div>
+                }
+            </div>
         }
     </div>
-    @if (_open)
-    {
-        <div class="sgc-dropdown-menu" role="menu" @onclick:stopPropagation="true">
-            @ChildContent
-        </div>
-    }
-</div>
+</CascadingValue>
 
 @code {
     private bool _open;
+    private CancellationTokenSource? _hoverCts;
 
+    /// <summary>Text shown on the default button trigger when <see cref="TriggerContent"/> is null.</summary>
     [Parameter] public string? Text { get; set; }
+
+    /// <summary>Icon rendered inside the default button trigger.</summary>
     [Parameter] public RenderFragment? Icon { get; set; }
+
+    /// <summary>Variant of the default button trigger.</summary>
     [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Default;
+
+    /// <summary>Size of the default button trigger.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>When true, all interaction is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Custom trigger content; replaces the default button.</summary>
     [Parameter] public RenderFragment? TriggerContent { get; set; }
+
+    /// <summary>Menu items (typically <see cref="SgDropdownItem"/>s).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Optional header rendered above the items.</summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>Optional footer rendered below the items.</summary>
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    /// <summary>Additional class on the outer dropdown wrapper.</summary>
     [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Additional class on the menu panel.</summary>
+    [Parameter] public string? MenuCssClass { get; set; }
+
+    /// <summary>Maximum menu height; falls back to 320px if unset.</summary>
+    [Parameter] public int? MaxHeight { get; set; }
+
+    /// <summary>Minimum menu width in pixels.</summary>
+    [Parameter] public int? MinWidth { get; set; }
+
+    /// <summary>How the trigger opens the menu. Default is <see cref="SgDropdownTrigger.Click"/>.</summary>
+    [Parameter] public SgDropdownTrigger Trigger { get; set; } = SgDropdownTrigger.Click;
+
+    /// <summary>Menu placement relative to the trigger. Supports BottomStart/BottomEnd/TopStart/TopEnd.</summary>
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
+
+    /// <summary>When true, the menu closes after an item click. Default true.</summary>
+    [Parameter] public bool CloseOnSelect { get; set; } = true;
+
+    /// <summary>Hover open delay in milliseconds (used when <see cref="Trigger"/> is Hover).</summary>
+    [Parameter] public int OpenDelay { get; set; } = 80;
+
+    /// <summary>Hover close delay in milliseconds (used when <see cref="Trigger"/> is Hover).</summary>
+    [Parameter] public int CloseDelay { get; set; } = 120;
+
+    /// <summary>Raised whenever the open state changes.</summary>
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
 
-    public async Task ToggleAsync()
+    /// <summary>Raised when the menu opens.</summary>
+    [Parameter] public EventCallback OnOpen { get; set; }
+
+    /// <summary>Raised when the menu closes.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Whether the menu is currently open.</summary>
+    public bool IsOpen => _open;
+
+    private string PlacementClass => Placement switch
     {
-        if (Disabled) return;
-        _open = !_open;
-        if (OpenChanged.HasDelegate)
-            await OpenChanged.InvokeAsync(_open);
+        SgPlacement.BottomEnd  or SgPlacement.Bottom or SgPlacement.BottomStart => Placement == SgPlacement.BottomEnd ? "be" : "bs",
+        SgPlacement.TopStart   => "ts",
+        SgPlacement.TopEnd     => "te",
+        SgPlacement.Top        => "ts",
+        _ => "bs"
+    };
+
+    private string MenuStyle
+    {
+        get
+        {
+            var max = MaxHeight ?? 320;
+            var min = MinWidth.HasValue ? $"min-width: {MinWidth}px;" : "";
+            return $"max-height: {max}px; {min}";
+        }
+    }
+
+    public Task ToggleAsync() => _open ? CloseAsync() : OpenAsync();
+
+    public async Task OpenAsync()
+    {
+        if (Disabled || _open) return;
+        _open = true;
+        if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(true);
+        if (OnOpen.HasDelegate) await OnOpen.InvokeAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -46,19 +152,93 @@
     {
         if (!_open) return;
         _open = false;
-        if (OpenChanged.HasDelegate)
-            await OpenChanged.InvokeAsync(false);
+        if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
+        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Called by <see cref="SgDropdownItem"/> on activation.</summary>
+    internal async Task NotifyItemSelectedAsync()
+    {
+        if (CloseOnSelect) await CloseAsync();
+    }
+
+    private Task HandleTriggerClickAsync()
+    {
+        if (Trigger != SgDropdownTrigger.Click) return Task.CompletedTask;
+        return ToggleAsync();
+    }
+
+    private Task HandleContextMenuAsync(MouseEventArgs e)
+    {
+        if (Trigger != SgDropdownTrigger.ContextMenu) return Task.CompletedTask;
+        return OpenAsync();
+    }
+
+    private async Task HandleMouseEnterAsync()
+    {
+        if (Trigger != SgDropdownTrigger.Hover || Disabled) return;
+        _hoverCts?.Cancel();
+        _hoverCts = new CancellationTokenSource();
+        var token = _hoverCts.Token;
+        try
+        {
+            if (OpenDelay > 0) await Task.Delay(OpenDelay, token);
+            if (!token.IsCancellationRequested) await OpenAsync();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task HandleMouseLeaveAsync()
+    {
+        if (Trigger != SgDropdownTrigger.Hover) return;
+        _hoverCts?.Cancel();
+        _hoverCts = new CancellationTokenSource();
+        var token = _hoverCts.Token;
+        try
+        {
+            if (CloseDelay > 0) await Task.Delay(CloseDelay, token);
+            if (!token.IsCancellationRequested) await CloseAsync();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private Task HandleMenuMouseEnterAsync()
+    {
+        // Cancel any pending close while pointer is on the menu.
+        _hoverCts?.Cancel();
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        switch (e.Key)
+        {
+            case "Enter":
+            case " ":
+                if (!_open) await OpenAsync();
+                break;
+            case "Escape":
+                if (_open) await CloseAsync();
+                break;
+            case "ArrowDown":
+                if (!_open) await OpenAsync();
+                break;
+        }
     }
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        await Task.Delay(100);
+        // Wait briefly so item activation completes before we close on focus loss.
+        await Task.Delay(120);
         if (_open) await CloseAsync();
     }
 
     public void Dispose()
     {
+        _hoverCts?.Cancel();
+        _hoverCts?.Dispose();
         _open = false;
     }
 }
