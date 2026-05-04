@@ -63,11 +63,18 @@
                        @oninput="OnSearchInput" />
             </div>
         }
-        @if (CanCreateInlineItem)
+        @if (CanCreateInlineItem || UseModalForEdit)
         {
             <button type="button" class="sg-btn primary" @onclick="StartCreateModalAsync">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
                 @Localizer["DataGrid_Add"]
+            </button>
+        }
+        @if (AllowEdit && UseModalForEdit && SelectedItems.Count == 1)
+        {
+            <button type="button" class="sg-btn" @onclick="() => StartEditModalAsync(SelectedItems.First())">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                @Localizer["DataGrid_Edit"]
             </button>
         }
         @if (HasUndoDelete)
@@ -696,12 +703,122 @@
     <SgModal Visible="true"
              Title="@_editModalTitle"
              Width="@_editModalWidth"
-             CloseOnBackdrop="true"
+             CloseOnBackdrop="false"
              CloseOnEscape="true"
              OnClose="CloseEditModal">
         <ChildContent>
-            @RenderEditForm()
+            @if (_editFormColumns is not null)
+            {
+                <div class="sg-edit-form">
+                    <div class="sg-edit-form-grid">
+                        @foreach (var col in _editFormColumns)
+                        {
+                            var colKey = col.Key;
+                            var filterType = GetColumnFilterType(colKey);
+                            var hasError = _editFormErrors.TryGetValue(colKey, out var errMsg);
+                            var isFullWidth = filterType == "string";
+
+                            <div class="sgc-field sgc-block @(isFullWidth ? "sg-edit-full" : "")"
+                                 style="padding: 0; gap: 4px;">
+                                <label class="sgc-label">@col.Title</label>
+
+                                @if (filterType == "bool")
+                                {
+                                    var boolVal = _editFormValues.TryGetValue(colKey, out var bv)
+                                        && bv is "true" or "True" or "1" or "✓";
+                                    <div style="display:flex; align-items:center; gap:10px; height:26px;">
+                                        <SgSwitch Value="@boolVal"
+                                                  ValueChanged="@(v => { _editFormValues[colKey] = v ? "true" : "false"; ApplyEditValueToItem(colKey, v ? "true" : "false"); ValidateEditField(colKey); StateHasChanged(); })" />
+                                        <span style="font-size:12px; color:var(--sui-fg);">
+                                            @(boolVal ? Localizer["DataGrid_FilterTrue"] : Localizer["DataGrid_FilterFalse"])
+                                        </span>
+                                    </div>
+                                }
+                                else if (filterType == "enum")
+                                {
+                                    var enumVal = _editFormValues.TryGetValue(colKey, out var ev) ? ev : string.Empty;
+                                    <SgSelect TValue="string"
+                                              Value="@enumVal"
+                                              ValueChanged="@(v => { _editFormValues[colKey] = v; ApplyEditValueToItem(colKey, v); ValidateEditField(colKey); StateHasChanged(); })"
+                                              EnumType="@(col.ValueType ?? GetColumnByKey(colKey)?.ValueType)"
+                                              Placeholder="— выберите —"
+                                              ErrorText="@(hasError ? errMsg : null)"
+                                              Block="true" />
+                                }
+                                else if (filterType == "date")
+                                {
+                                    var rawDate = _editFormValues.TryGetValue(colKey, out var dv) ? dv : null;
+                                    DateTime? dateVal = null;
+                                    if (!string.IsNullOrEmpty(rawDate) &&
+                                        DateTime.TryParse(rawDate, System.Globalization.CultureInfo.InvariantCulture,
+                                            System.Globalization.DateTimeStyles.None, out var parsedDate))
+                                        dateVal = parsedDate;
+                                    <SgDatePicker Value="@dateVal"
+                                                  ValueChanged="@(v => { _editFormValues[colKey] = v?.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture); ApplyEditValueToItem(colKey, _editFormValues.GetValueOrDefault(colKey)); ValidateEditField(colKey); StateHasChanged(); })"
+                                                  ErrorText="@(hasError ? errMsg : null)"
+                                                  Block="true" />
+                                }
+                                else if (filterType == "datetime")
+                                {
+                                    var rawDt = _editFormValues.TryGetValue(colKey, out var dtv) ? dtv : null;
+                                    DateTime? dtVal = null;
+                                    if (!string.IsNullOrEmpty(rawDt) &&
+                                        DateTime.TryParse(rawDt, System.Globalization.CultureInfo.InvariantCulture,
+                                            System.Globalization.DateTimeStyles.None, out var parsedDt))
+                                        dtVal = parsedDt;
+                                    <SgDatePicker Value="@dtVal"
+                                                  ValueChanged="@(v => { _editFormValues[colKey] = v?.ToString("yyyy-MM-ddTHH:mm", System.Globalization.CultureInfo.InvariantCulture); ApplyEditValueToItem(colKey, _editFormValues.GetValueOrDefault(colKey)); ValidateEditField(colKey); StateHasChanged(); })"
+                                                  ErrorText="@(hasError ? errMsg : null)"
+                                                  Block="true" />
+                                }
+                                else if (filterType == "number")
+                                {
+                                    var numStr = _editFormValues.TryGetValue(colKey, out var nv) ? nv : null;
+                                    decimal? numVal = null;
+                                    if (!string.IsNullOrEmpty(numStr) &&
+                                        decimal.TryParse(numStr, System.Globalization.NumberStyles.Any,
+                                            System.Globalization.CultureInfo.InvariantCulture, out var parsedNum))
+                                        numVal = parsedNum;
+                                    <SgNumberEdit TValue="decimal"
+                                                  Value="@(numVal ?? 0m)"
+                                                  ValueChanged="@(v => { _editFormValues[colKey] = ((decimal)v).ToString(System.Globalization.CultureInfo.InvariantCulture); ApplyEditValueToItem(colKey, _editFormValues.GetValueOrDefault(colKey)); ValidateEditField(colKey); StateHasChanged(); })"
+                                                  ErrorText="@(hasError ? errMsg : null)"
+                                                  Block="true" />
+                                }
+                                else
+                                {
+                                    var strVal = _editFormValues.TryGetValue(colKey, out var sv) ? sv : string.Empty;
+                                    <SgTextBox TValue="string"
+                                               Value="@strVal"
+                                               ValueChanged="@(v => { _editFormValues[colKey] = v; ApplyEditValueToItem(colKey, v); ValidateEditField(colKey); StateHasChanged(); })"
+                                               ErrorText="@(hasError ? errMsg : null)"
+                                               Block="true"
+                                               Immediate="true" />
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
         </ChildContent>
+        <FooterContent>
+            <div class="sg-edit-form-footer">
+                <span class="sg-edit-form-footer-info">
+                    @if (_editFormErrors.Count > 0)
+                    {
+                        <span style="color:var(--sui-danger,#f43f5e); font-size:12px;">
+                            @_editFormErrors.Values.First()
+                        </span>
+                    }
+                </span>
+                <SgButton Text="@Localizer["Cancel"]"
+                          OnClick="@(async _ => await CloseEditModal())" />
+                <SgButton Text="@Localizer["Save"]"
+                          Variant="SgButtonVariant.Primary"
+                          Disabled="@(_editFormErrors.Count > 0)"
+                          OnClick="@(async _ => await TrySaveEditModalAsync())" />
+            </div>
+        </FooterContent>
     </SgModal>
 }
 

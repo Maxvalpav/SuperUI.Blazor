@@ -54,6 +54,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private bool _bulkEditModalOpen;
     private readonly HashSet<string> _bulkEditSelectedColumns = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string?> _bulkEditValues = new(StringComparer.Ordinal);
+
+    // ── Edit form validation ──────────────────────────────────────────────────
+    private readonly Dictionary<string, string> _editFormErrors = new(StringComparer.Ordinal);
     private bool _detailDrawerVisible;
     private bool _detailWindowVisible;
     private bool _editModalVisible;
@@ -3234,7 +3237,6 @@ private static object? ConvertFromString(string? text, Type type)
         var editableColumns = VisibleColumns.Where(c => c.Editable).ToList();
         if (editableColumns.Count == 0)
         {
-            // If no columns are explicitly marked as editable, show all columns except ID
             editableColumns = VisibleColumns
                 .Where(c => !c.Key.Equals("id", StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -3242,10 +3244,26 @@ private static object? ConvertFromString(string? text, Type type)
         
         _editFormColumns = editableColumns;
         _editFormValues.Clear();
+        _editFormErrors.Clear();
 
-        foreach (var col in VisibleColumns)
+        foreach (var col in _editFormColumns)
         {
-            _editFormValues[col.Key] = col.GetDisplay(item);
+            var raw = col.GetValue(item);
+            var filterType = GetColumnFilterType(col.Key);
+            _editFormValues[col.Key] = filterType switch
+            {
+                "date" => raw is DateTime dt ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : raw is DateTimeOffset dto ? dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : raw?.ToString() ?? string.Empty,
+                "datetime" => raw is DateTime dt2 ? dt2.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                            : raw is DateTimeOffset dto2 ? dto2.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                            : raw?.ToString() ?? string.Empty,
+                "bool" => raw is bool b ? (b ? "true" : "false") : raw?.ToString() ?? "false",
+                "enum" => raw?.ToString() ?? string.Empty,
+                "number" => raw is not null ? Convert.ToDecimal(raw, CultureInfo.InvariantCulture)
+                                .ToString(CultureInfo.InvariantCulture) : string.Empty,
+                _ => raw?.ToString() ?? string.Empty
+            };
         }
 
         _editModalVisible = true;
@@ -3258,11 +3276,9 @@ private static object? ConvertFromString(string? text, Type type)
         _isEditMode = false;
         _editModalTitle = !string.IsNullOrEmpty(EditModalAddTitle) ? EditModalAddTitle : Localizer["DataGrid_Add"];
         
-        // Get editable columns, or if none are marked editable, use all visible columns except ID
         var editableColumns = VisibleColumns.Where(c => c.Editable).ToList();
         if (editableColumns.Count == 0)
         {
-            // If no columns are explicitly marked as editable, show all columns except ID
             editableColumns = VisibleColumns
                 .Where(c => !c.Key.Equals("id", StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -3270,10 +3286,28 @@ private static object? ConvertFromString(string? text, Type type)
         
         _editFormColumns = editableColumns;
         _editFormValues.Clear();
+        _editFormErrors.Clear();
 
-        foreach (var col in VisibleColumns)
+        // Initialize values from the new item's defaults (same logic as edit mode)
+        foreach (var col in _editFormColumns)
         {
-            _editFormValues[col.Key] = string.Empty;
+            var raw = col.GetValue(_editModalItem!);
+            var filterType = GetColumnFilterType(col.Key);
+            _editFormValues[col.Key] = filterType switch
+            {
+                "date" => raw is DateTime dt ? dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : raw is DateTimeOffset dto ? dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                        : string.Empty,
+                "datetime" => raw is DateTime dt2 ? dt2.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                            : raw is DateTimeOffset dto2 ? dto2.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                            : string.Empty,
+                "bool" => raw is bool b ? (b ? "true" : "false") : "false",
+                "enum" => raw?.ToString() ?? string.Empty,
+                "number" => raw is not null && IsNumericValue(raw)
+                    ? Convert.ToDecimal(raw, CultureInfo.InvariantCulture).ToString(CultureInfo.InvariantCulture)
+                    : string.Empty,
+                _ => raw?.ToString() ?? string.Empty
+            };
         }
 
         _editModalVisible = true;
@@ -3345,47 +3379,313 @@ private static object? ConvertFromString(string? text, Type type)
         _editModalItem = default;
         _editFormColumns = null;
         _editFormValues.Clear();
+        _editFormErrors.Clear();
         return Task.CompletedTask;
     }
 
     private RenderFragment RenderEditForm() => builder =>
     {
-        if (_editModalItem is null)
+        if (_editModalItem is null || _editFormColumns is null)
             return;
 
-        // Use reflection to dynamically render SgDataForm<TItem>
-        var formType = typeof(SgDataForm<>).MakeGenericType(typeof(TItem));
-        
-        builder.OpenComponent(0, formType);
-        builder.AddAttribute(1, "Model", _editModalItem);
-        builder.AddAttribute(2, "Columns", 2);
-        builder.AddAttribute(3, "SubmitText", Localizer["Save"]);
-        builder.AddAttribute(4, "OnValidSubmit", EventCallback.Factory.Create<TItem>(this, SaveEditModal));
-        builder.AddAttribute(5, "Actions", CreateFormActions());
-        builder.CloseComponent();
+        var seq = 0;
+
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "sg-edit-form");
+
+        // Fields grid
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "sg-edit-form-grid");
+
+        foreach (var col in _editFormColumns)
+        {
+            var colKey = col.Key;
+            var filterType = GetColumnFilterType(colKey);
+            var currentVal = _editFormValues.TryGetValue(colKey, out var v) ? v : string.Empty;
+            var hasError = _editFormErrors.TryGetValue(colKey, out var errMsg);
+
+            // Full-width for textarea-like fields (long text)
+            var isFullWidth = filterType == "string" && col.ValueType == typeof(string);
+
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class",
+                "sg-edit-form-group" + (isFullWidth ? " sg-edit-full" : ""));
+
+            // Label
+            builder.OpenElement(seq++, "label");
+            builder.AddAttribute(seq++, "class", "sg-edit-form-label");
+            builder.AddContent(seq++, col.Title);
+            builder.CloseElement();
+
+            // Input by type
+            switch (filterType)
+            {
+                case "bool":
+                {
+                    var boolVal = currentVal is "true" or "True" or "1" or "✓";
+                    builder.OpenElement(seq++, "label");
+                    builder.AddAttribute(seq++, "class", "sg-checkbox-label");
+                    builder.OpenElement(seq++, "input");
+                    builder.AddAttribute(seq++, "type", "checkbox");
+                    builder.AddAttribute(seq++, "checked", boolVal);
+                    builder.AddAttribute(seq++, "onchange",
+                        EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        {
+                            var val = e.Value is true ? "true" : "false";
+                            _editFormValues[colKey] = val;
+                            ApplyEditValueToItem(colKey, val);
+                            ValidateEditField(colKey);
+                            StateHasChanged();
+                        }));
+                    builder.CloseElement(); // input
+                    builder.AddContent(seq++, boolVal
+                        ? Localizer["DataGrid_FilterTrue"]
+                        : Localizer["DataGrid_FilterFalse"]);
+                    builder.CloseElement(); // label
+                    break;
+                }
+
+                case "enum":
+                {
+                    var enumItems = GetColumnEnumItems(colKey);
+                    builder.OpenElement(seq++, "select");
+                    builder.AddAttribute(seq++, "class",
+                        "sg-edit-form-select" + (hasError ? " sg-edit-invalid" : ""));
+                    builder.AddAttribute(seq++, "value", currentVal ?? string.Empty);
+                    builder.AddAttribute(seq++, "onchange",
+                        EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        {
+                            var val = e.Value?.ToString();
+                            _editFormValues[colKey] = val;
+                            ApplyEditValueToItem(colKey, val);
+                            ValidateEditField(colKey);
+                            StateHasChanged();
+                        }));
+                    // Empty option
+                    builder.OpenElement(seq++, "option");
+                    builder.AddAttribute(seq++, "value", "");
+                    builder.AddContent(seq++, $"— {Localizer["DataGrid_FilterAll"]} —");
+                    builder.CloseElement();
+                    foreach (var ei in enumItems)
+                    {
+                        builder.OpenElement(seq++, "option");
+                        builder.AddAttribute(seq++, "value", ei.Name);
+                        if (currentVal == ei.Name)
+                            builder.AddAttribute(seq++, "selected", true);
+                        builder.AddContent(seq++, ei.Label);
+                        builder.CloseElement();
+                    }
+                    builder.CloseElement(); // select
+                    break;
+                }
+
+                case "date":
+                {
+                    // Normalize to yyyy-MM-dd for input[type=date]
+                    var dateVal = NormalizeDateForInput(currentVal, false);
+                    builder.OpenElement(seq++, "input");
+                    builder.AddAttribute(seq++, "type", "date");
+                    builder.AddAttribute(seq++, "class",
+                        "sg-edit-form-input" + (hasError ? " sg-edit-invalid" : ""));
+                    builder.AddAttribute(seq++, "value", dateVal);
+                    builder.AddAttribute(seq++, "oninput",
+                        EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        {
+                            var val = e.Value?.ToString();
+                            _editFormValues[colKey] = val;
+                            ApplyEditValueToItem(colKey, val);
+                            ValidateEditField(colKey);
+                            StateHasChanged();
+                        }));
+                    builder.CloseElement();
+                    break;
+                }
+
+                case "datetime":
+                {
+                    var dtVal = NormalizeDateForInput(currentVal, true);
+                    builder.OpenElement(seq++, "input");
+                    builder.AddAttribute(seq++, "type", "datetime-local");
+                    builder.AddAttribute(seq++, "class",
+                        "sg-edit-form-input" + (hasError ? " sg-edit-invalid" : ""));
+                    builder.AddAttribute(seq++, "value", dtVal);
+                    builder.AddAttribute(seq++, "oninput",
+                        EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        {
+                            var val = e.Value?.ToString();
+                            _editFormValues[colKey] = val;
+                            ApplyEditValueToItem(colKey, val);
+                            ValidateEditField(colKey);
+                            StateHasChanged();
+                        }));
+                    builder.CloseElement();
+                    break;
+                }
+
+                case "number":
+                {
+                    builder.OpenElement(seq++, "input");
+                    builder.AddAttribute(seq++, "type", "text");
+                    builder.AddAttribute(seq++, "inputmode", "decimal");
+                    builder.AddAttribute(seq++, "class",
+                        "sg-edit-form-input" + (hasError ? " sg-edit-invalid" : ""));
+                    builder.AddAttribute(seq++, "value", currentVal ?? string.Empty);
+                    builder.AddAttribute(seq++, "placeholder", "0");
+                    builder.AddAttribute(seq++, "oninput",
+                        EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        {
+                            var val = e.Value?.ToString();
+                            _editFormValues[colKey] = val;
+                            ApplyEditValueToItem(colKey, val);
+                            ValidateEditField(colKey);
+                            StateHasChanged();
+                        }));
+                    builder.CloseElement();
+                    break;
+                }
+
+                default: // string
+                {
+                    builder.OpenElement(seq++, "input");
+                    builder.AddAttribute(seq++, "type", "text");
+                    builder.AddAttribute(seq++, "class",
+                        "sg-edit-form-input" + (hasError ? " sg-edit-invalid" : ""));
+                    builder.AddAttribute(seq++, "value", currentVal ?? string.Empty);
+                    builder.AddAttribute(seq++, "oninput",
+                        EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        {
+                            var val = e.Value?.ToString();
+                            _editFormValues[colKey] = val;
+                            ApplyEditValueToItem(colKey, val);
+                            ValidateEditField(colKey);
+                            StateHasChanged();
+                        }));
+                    builder.CloseElement();
+                    break;
+                }
+            }
+
+            // Error message
+            if (hasError)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "sg-edit-form-error");
+                builder.AddContent(seq++, errMsg);
+                builder.CloseElement();
+            }
+
+            builder.CloseElement(); // sg-edit-form-group
+        }
+
+        builder.CloseElement(); // sg-edit-form-grid
+        builder.CloseElement(); // sg-edit-form
     };
 
-    private RenderFragment CreateFormActions() => builder =>
+    /// <summary>Normalizes a date string to ISO format for input[type=date/datetime-local].</summary>
+    private static string NormalizeDateForInput(string? value, bool includeTime)
     {
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "style", "display:flex;gap:8px;justify-content:flex-end;");
-        
-// Save button
-        builder.OpenComponent(2, typeof(SgButton));
-        builder.AddAttribute(3, "Type", SgButtonType.Submit);
-        builder.AddAttribute(4, "Text", Localizer["Save"]);
-        builder.AddAttribute(5, "Variant", SgButtonVariant.Primary);
-        builder.CloseComponent();
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        // Already ISO
+        if (!includeTime && value.Length == 10 && value[4] == '-') return value;
+        if (includeTime && value.Length >= 16 && value[4] == '-') return value[..16];
+        // Try parse
+        if (DateTime.TryParse(value, CultureInfo.CurrentCulture,
+                System.Globalization.DateTimeStyles.None, out var dt))
+        {
+            return includeTime
+                ? dt.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture)
+                : dt.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+        }
+        return value;
+    }
 
-        // Cancel button
-        builder.OpenComponent(6, typeof(SgButton));
-        builder.AddAttribute(7, "Type", SgButtonType.Button);
-        builder.AddAttribute(8, "Text", Localizer["Cancel"]);
-        builder.AddAttribute(9, "OnClick", EventCallback.Factory.Create<MouseEventArgs>(this, async _ => await CloseEditModal()));
-        builder.CloseComponent();
-        
-        builder.CloseElement();
-    };
+    /// <summary>Applies the string value from the edit form back to the item via reflection.</summary>
+    private void ApplyEditValueToItem(string colKey, string? value)
+    {
+        if (_editModalItem is null) return;
+        var col = GetColumnByKey(colKey);
+        if (col?.OnValueChanged is not null)
+        {
+            // Use the column's own handler if provided
+            var parsed = ParseEditValue(colKey, value);
+            col.OnValueChanged(_editModalItem, parsed);
+            return;
+        }
+        // Fallback: reflection on the item's property matching the column key
+        var prop = typeof(TItem).GetProperty(colKey,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance |
+            System.Reflection.BindingFlags.IgnoreCase);
+        if (prop is null || !prop.CanWrite) return;
+        try
+        {
+            var parsed = ParseEditValue(colKey, value);
+            if (parsed is null && Nullable.GetUnderlyingType(prop.PropertyType) is null &&
+                prop.PropertyType.IsValueType)
+                return; // can't set null on non-nullable value type
+            prop.SetValue(_editModalItem, parsed);
+        }
+        catch { /* ignore conversion errors */ }
+    }
+
+    /// <summary>Parses a string edit value to the column's target type.</summary>
+    private object? ParseEditValue(string colKey, string? value)
+    {
+        var col = GetColumnByKey(colKey);
+        var type = col?.ValueType;
+        if (type is null)
+        {
+            // Infer from current item value
+            var raw = col?.GetValue(_editModalItem!);
+            if (raw is not null)
+                type = Nullable.GetUnderlyingType(raw.GetType()) ?? raw.GetType();
+        }
+        if (type is null) return value;
+        return ConvertFromString(value, type);
+    }
+
+    /// <summary>Validates a single edit field and updates _editFormErrors.</summary>
+    private void ValidateEditField(string colKey)
+    {
+        var filterType = GetColumnFilterType(colKey);
+        var val = _editFormValues.TryGetValue(colKey, out var v) ? v : null;
+        _editFormErrors.Remove(colKey);
+
+        if (filterType == "number" && !string.IsNullOrWhiteSpace(val))
+        {
+            var cleaned = CleanNumericString(val);
+            if (!decimal.TryParse(cleaned, System.Globalization.NumberStyles.Any,
+                    CultureInfo.CurrentCulture, out _) &&
+                !decimal.TryParse(cleaned, System.Globalization.NumberStyles.Any,
+                    CultureInfo.InvariantCulture, out _))
+            {
+                _editFormErrors[colKey] = Localizer["DataGrid_EditInvalidNumber"];
+            }
+        }
+        else if (filterType == "date" && !string.IsNullOrWhiteSpace(val))
+        {
+            if (!DateTime.TryParse(val, CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out _))
+                _editFormErrors[colKey] = Localizer["DataGrid_EditInvalidDate"];
+        }
+    }
+
+    /// <summary>Validates all edit fields and saves if valid.</summary>
+    private async Task TrySaveEditModalAsync()
+    {
+        _editFormErrors.Clear();
+        if (_editFormColumns is not null)
+        {
+            foreach (var col in _editFormColumns)
+                ValidateEditField(col.Key);
+        }
+        if (_editFormErrors.Count > 0)
+        {
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+        if (_editModalItem is not null)
+            await SaveEditModal(_editModalItem);
+    }
 
     private EventCallback<bool> CreateBooleanHandler(string key)
     {
