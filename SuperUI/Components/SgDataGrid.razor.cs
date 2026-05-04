@@ -48,6 +48,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private TItem? _activeRow = default;
     private TItem? _lastSelectedItem = default;
     private TItem? _detailItem;
+
+    // ── Bulk edit state ───────────────────────────────────────────────────────
+    private bool _bulkEditPickerOpen;
+    private bool _bulkEditModalOpen;
+    private readonly HashSet<string> _bulkEditSelectedColumns = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string?> _bulkEditValues = new(StringComparer.Ordinal);
     private bool _detailDrawerVisible;
     private bool _detailWindowVisible;
     private bool _editModalVisible;
@@ -357,6 +363,18 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets the title for the edit modal when editing an existing item.
     /// </summary>
     [Parameter] public string? EditModalEditTitle { get; set; }
+
+    /// <summary>
+    /// When true, shows a "Bulk Edit" button in the toolbar when rows are selected.
+    /// Allows editing multiple rows at once via a modal dialog.
+    /// </summary>
+    [Parameter] public bool AllowBulkEdit { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user confirms a bulk edit.
+    /// Receives the list of affected items and a dictionary of column key → new value.
+    /// </summary>
+    [Parameter] public EventCallback<SgBulkEditEventArgs<TItem>> OnBulkSave { get; set; }
 
     public HashSet<TItem> SelectedItems { get; } = new();
 
@@ -2208,6 +2226,62 @@ private static object? ConvertFromString(string? text, Type type)
         await SaveStateAsync();
         await InvokeAsync(StateHasChanged);
     }
+
+    // ── Bulk edit ─────────────────────────────────────────────────────────────
+
+    private void OpenBulkEditPicker()
+    {
+        _bulkEditPickerOpen = !_bulkEditPickerOpen;
+    }
+
+    private void ToggleBulkEditColumn(string key, bool selected)
+    {
+        if (selected) _bulkEditSelectedColumns.Add(key);
+        else _bulkEditSelectedColumns.Remove(key);
+    }
+
+    private void OpenBulkEditModal()
+    {
+        if (_bulkEditSelectedColumns.Count == 0) return;
+        _bulkEditValues.Clear();
+        foreach (var key in _bulkEditSelectedColumns)
+            _bulkEditValues[key] = null;
+        _bulkEditPickerOpen = false;
+        _bulkEditModalOpen = true;
+        StateHasChanged();
+    }
+
+    private void CloseBulkEditModal()
+    {
+        _bulkEditModalOpen = false;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmBulkEditAsync()
+    {
+        if (!OnBulkSave.HasDelegate) return;
+
+        var items = SelectedItems.ToList();
+        var changes = new Dictionary<string, string?>(
+            _bulkEditValues, StringComparer.Ordinal);
+
+        await OnBulkSave.InvokeAsync(new SgBulkEditEventArgs<TItem>
+        {
+            Items = items,
+            Changes = changes
+        });
+
+        _bulkEditModalOpen = false;
+        _bulkEditSelectedColumns.Clear();
+        _bulkEditValues.Clear();
+        _itemsVersion++;
+        InvalidateComputedRowsCache();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Returns editable columns for bulk edit (Editable=true and has Value selector).</summary>
+    private List<SgDataGridColumn<TItem>> GetBulkEditableColumns()
+        => _columns.Where(c => c.Editable && c.Value is not null && !c.Hidden).ToList();
 
     private bool IsNumericColumn(string key)
     {
