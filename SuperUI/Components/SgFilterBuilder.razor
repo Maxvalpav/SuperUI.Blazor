@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @using SuperUI.Localization
+@implements IDisposable
 @inject ISuperUILocalizer Localizer
 
 <div class="sgc-filter-builder @CssClass">
@@ -29,7 +30,8 @@
         {
             var field = GetField(rule.FieldName);
             var operators = GetOperatorsForField(field).ToList();
-            <div class="sgc-filter-builder-row">
+            var inputKind = GetInputKind(field);
+            <div class="sgc-filter-builder-row" @key="rule">
                 <select class="sgc-fb-select"
                         value="@(rule.FieldName ?? string.Empty)"
                         @onchange="e => SetFieldAsync(rule, e.Value?.ToString())">
@@ -53,22 +55,67 @@
                 {
                     <div class="sgc-fb-value-placeholder">@Localizer["NoValue"]</div>
                 }
-                else if (IsBooleanField(field))
-                {
-                    <select class="sgc-fb-select"
-                            value="@(rule.Value?.ToString() ?? string.Empty)"
-                            @onchange="e => SetValueAsync(rule, e.Value?.ToString())">
-                        <option value="">@Localizer["SelectValue"]</option>
-                        <option value="true">@Localizer["Yes"]</option>
-                        <option value="false">@Localizer["No"]</option>
-                    </select>
-                }
                 else
                 {
-                    <input class="sgc-fb-input"
-                           value="@(rule.Value?.ToString() ?? string.Empty)"
-                           placeholder="@GetValuePlaceholder(field)"
-                           @onchange="e => SetValueAsync(rule, e.Value?.ToString())" />
+                    @switch (inputKind)
+                    {
+                        case InputKind.Bool:
+                            <select class="sgc-fb-select"
+                                    value="@(rule.Value?.ToString() ?? string.Empty)"
+                                    @onchange="e => CommitValueAsync(rule, e.Value?.ToString())">
+                                <option value="">@Localizer["SelectValue"]</option>
+                                <option value="true">@Localizer["Yes"]</option>
+                                <option value="false">@Localizer["No"]</option>
+                            </select>
+                            break;
+                        case InputKind.Enum:
+                            <select class="sgc-fb-select"
+                                    value="@(rule.Value?.ToString() ?? string.Empty)"
+                                    @onchange="e => CommitValueAsync(rule, e.Value?.ToString())">
+                                <option value="">@Localizer["SelectValue"]</option>
+                                @foreach (var opt in field?.EnumOptions ?? Array.Empty<QueryFieldEnumOption>())
+                                {
+                                    <option value="@opt.Name">@opt.Label</option>
+                                }
+                            </select>
+                            break;
+                        case InputKind.Date:
+                            <input class="sgc-fb-input" type="date"
+                                   value="@(rule.Value?.ToString() ?? string.Empty)"
+                                   @onchange="e => CommitValueAsync(rule, e.Value?.ToString())" />
+                            break;
+                        case InputKind.DateTime:
+                            <input class="sgc-fb-input" type="datetime-local"
+                                   value="@(rule.Value?.ToString() ?? string.Empty)"
+                                   @onchange="e => CommitValueAsync(rule, e.Value?.ToString())" />
+                            break;
+                        case InputKind.Time:
+                            <input class="sgc-fb-input" type="time"
+                                   value="@(rule.Value?.ToString() ?? string.Empty)"
+                                   @onchange="e => CommitValueAsync(rule, e.Value?.ToString())" />
+                            break;
+                        case InputKind.Integer:
+                            <input class="sgc-fb-input" type="number" step="1" inputmode="numeric"
+                                   value="@(rule.Value?.ToString() ?? string.Empty)"
+                                   placeholder="@GetValuePlaceholder(field)"
+                                   @oninput="e => OnValueInputAsync(rule, e.Value?.ToString())"
+                                   @onchange="e => CommitValueAsync(rule, e.Value?.ToString())" />
+                            break;
+                        case InputKind.Decimal:
+                            <input class="sgc-fb-input" type="number" step="any" inputmode="decimal"
+                                   value="@(rule.Value?.ToString() ?? string.Empty)"
+                                   placeholder="@GetValuePlaceholder(field)"
+                                   @oninput="e => OnValueInputAsync(rule, e.Value?.ToString())"
+                                   @onchange="e => CommitValueAsync(rule, e.Value?.ToString())" />
+                            break;
+                        default:
+                            <input class="sgc-fb-input"
+                                   value="@(rule.Value?.ToString() ?? string.Empty)"
+                                   placeholder="@GetValuePlaceholder(field)"
+                                   @oninput="e => OnValueInputAsync(rule, e.Value?.ToString())"
+                                   @onchange="e => CommitValueAsync(rule, e.Value?.ToString())" />
+                            break;
+                    }
                 }
 
                 <button type="button" class="sgc-fb-btn sgc-fb-btn-danger" @onclick="() => RemoveRuleAsync(rule)">@Localizer["Remove"]</button>
@@ -78,6 +125,10 @@
 </div>
 
 @code {
+    private const int ValueDebounceMs = 300;
+
+    private CancellationTokenSource? _valueDebounceCts;
+
     [Parameter] public string? Title { get; set; }
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public IList<QueryRule> Filters { get; set; } = new List<QueryRule>();
@@ -103,7 +154,7 @@
     private async Task AddRuleAsync()
     {
         Filters.Add(new QueryRule());
-        await NotifyChangedAsync();
+        await NotifyChangedAsync(immediate: true);
     }
 
     private async Task RemoveRuleAsync(QueryRule rule)
@@ -114,7 +165,7 @@
             Filters.Add(new QueryRule());
         }
 
-        await NotifyChangedAsync();
+        await NotifyChangedAsync(immediate: true);
     }
 
     private async Task SetFieldAsync(QueryRule rule, string? fieldName)
@@ -122,7 +173,7 @@
         rule.FieldName = fieldName;
         rule.Operator = GetOperatorsForField(GetField(fieldName)).First();
         rule.Value = null;
-        await NotifyChangedAsync();
+        await NotifyChangedAsync(immediate: true);
     }
 
     private async Task SetOperatorAsync(QueryRule rule, string? opValue)
@@ -135,21 +186,67 @@
                 rule.Value = null;
             }
 
-            await NotifyChangedAsync();
+            await NotifyChangedAsync(immediate: true);
         }
     }
 
-    private async Task SetValueAsync(QueryRule rule, string? value)
+    // Live typing — only update model + schedule a debounced parent notification.
+    // No StateHasChanged here, so the focused input is never re-rendered mid-typing.
+    private void OnValueInputAsync(QueryRule rule, string? value)
     {
         rule.Value = value;
-        await NotifyChangedAsync();
+        ScheduleDebouncedNotify();
+    }
+
+    // Fired on blur / Enter / native commit (for selects and date/time inputs).
+    private async Task CommitValueAsync(QueryRule rule, string? value)
+    {
+        rule.Value = value;
+        CancelDebounce();
+        if (FiltersChanged.HasDelegate)
+        {
+            await FiltersChanged.InvokeAsync(Filters.ToList());
+        }
+    }
+
+    private void ScheduleDebouncedNotify()
+    {
+        if (!FiltersChanged.HasDelegate)
+            return;
+
+        CancelDebounce();
+        var cts = new CancellationTokenSource();
+        _valueDebounceCts = cts;
+        _ = DebouncedNotifyAsync(cts.Token);
+    }
+
+    private async Task DebouncedNotifyAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(ValueDebounceMs, ct);
+            if (ct.IsCancellationRequested) return;
+            await FiltersChanged.InvokeAsync(Filters.ToList());
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private void CancelDebounce()
+    {
+        try
+        {
+            _valueDebounceCts?.Cancel();
+            _valueDebounceCts?.Dispose();
+        }
+        catch { }
+        _valueDebounceCts = null;
     }
 
     private async Task ResetAsync()
     {
         Filters.Clear();
         Filters.Add(new QueryRule());
-        await NotifyChangedAsync();
+        await NotifyChangedAsync(immediate: true);
 
         if (OnReset.HasDelegate)
         {
@@ -159,33 +256,68 @@
 
     private async Task ApplyAsync()
     {
+        CancelDebounce();
         if (OnApply.HasDelegate)
         {
             await OnApply.InvokeAsync(Filters.ToList());
         }
     }
 
-    private async Task NotifyChangedAsync()
+    private async Task NotifyChangedAsync(bool immediate)
     {
-        await InvokeAsync(StateHasChanged);
-        if (FiltersChanged.HasDelegate)
+        if (immediate)
         {
-            await FiltersChanged.InvokeAsync(Filters.ToList());
+            CancelDebounce();
+            await InvokeAsync(StateHasChanged);
+            if (FiltersChanged.HasDelegate)
+            {
+                await FiltersChanged.InvokeAsync(Filters.ToList());
+            }
         }
+        else
+        {
+            ScheduleDebouncedNotify();
+        }
+    }
+
+    public void Dispose()
+    {
+        CancelDebounce();
     }
 
     private static bool IsUnaryOperator(QueryFieldOperator op) =>
         op == QueryFieldOperator.IsNull || op == QueryFieldOperator.IsNotNull;
 
-    private static bool IsBooleanField(QueryField? field)
+    private enum InputKind
     {
-        if (field is null)
-        {
-            return false;
-        }
+        Text,
+        Integer,
+        Decimal,
+        Bool,
+        Enum,
+        Date,
+        DateTime,
+        Time
+    }
 
-        var fieldType = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
-        return fieldType == typeof(bool);
+    private static InputKind GetInputKind(QueryField? field)
+    {
+        if (field is null) return InputKind.Text;
+        var t = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+
+        if (t == typeof(bool)) return InputKind.Bool;
+        if (t.IsEnum) return InputKind.Enum;
+        if (t == typeof(DateOnly)) return InputKind.Date;
+        if (t == typeof(TimeOnly)) return InputKind.Time;
+        if (t == typeof(DateTime) || t == typeof(DateTimeOffset))
+            return field.ShowTime ? InputKind.DateTime : InputKind.Date;
+        if (t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort)
+            || t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong))
+            return InputKind.Integer;
+        if (t == typeof(float) || t == typeof(double) || t == typeof(decimal))
+            return InputKind.Decimal;
+
+        return InputKind.Text;
     }
 
     private static IEnumerable<QueryFieldOperator> GetOperatorsForField(QueryField? field)
@@ -203,6 +335,7 @@
         }
 
         var fieldType = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+
         if (fieldType == typeof(string))
         {
             return new[]
@@ -229,7 +362,18 @@
             };
         }
 
-        if (fieldType == typeof(DateTime) || IsNumericType(fieldType))
+        if (fieldType.IsEnum)
+        {
+            return new[]
+            {
+                QueryFieldOperator.Equals,
+                QueryFieldOperator.NotEquals,
+                QueryFieldOperator.IsNull,
+                QueryFieldOperator.IsNotNull
+            };
+        }
+
+        if (IsDateLikeType(fieldType) || IsNumericType(fieldType))
         {
             return new[]
             {
@@ -281,7 +425,7 @@
         }
 
         var fieldType = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
-        if (fieldType == typeof(DateTime))
+        if (IsDateLikeType(fieldType))
         {
             return Localizer["DateExample"];
         }
@@ -293,6 +437,10 @@
 
         return Localizer.GetString("ValueFor", field.Label.ToLowerInvariant());
     }
+
+    private static bool IsDateLikeType(Type type) =>
+        type == typeof(DateTime) || type == typeof(DateTimeOffset)
+        || type == typeof(DateOnly) || type == typeof(TimeOnly);
 
     private static bool IsNumericType(Type type) =>
         type == typeof(byte) ||
