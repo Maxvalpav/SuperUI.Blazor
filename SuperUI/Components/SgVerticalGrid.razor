@@ -1,0 +1,418 @@
+@namespace SuperUI.Components
+@using System.Globalization
+
+<div class="sgc-vgrid @CssClass" style="@Style">
+
+    @* ── Toolbar ── *@
+    @if (ShowSearch || ShowCopyAll || ToolbarContent is not null)
+    {
+        <div class="sgc-vgrid-toolbar">
+            @if (ShowSearch)
+            {
+                <div class="sgc-vgrid-search-wrap">
+                    <svg class="sgc-vgrid-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input class="sgc-vgrid-search"
+                           type="text"
+                           placeholder="@(SearchPlaceholder ?? "Поиск...")"
+                           value="@_search"
+                           @oninput="e => { _search = e.Value?.ToString() ?? string.Empty; }" />
+                    @if (!string.IsNullOrEmpty(_search))
+                    {
+                        <button type="button" class="sgc-vgrid-search-clear" @onclick="() => _search = string.Empty" title="Очистить">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    }
+                </div>
+            }
+            <div class="sgc-vgrid-toolbar-spacer"></div>
+            @if (ToolbarContent is not null)
+            {
+                @ToolbarContent
+            }
+            @if (ShowCopyAll)
+            {
+                <button type="button" class="sgc-vgrid-toolbar-btn" title="Копировать всё" @onclick="CopyAllAsync">
+                    @((MarkupString)SgIcons.Copy)
+                    <span>Копировать</span>
+                </button>
+            }
+        </div>
+    }
+
+    @* ── Body ── *@
+    <div class="sgc-vgrid-body">
+        @{
+            var visibleRows = GetVisibleRows();
+            var sectionGroups = visibleRows
+                .GroupBy(r => r.Section ?? string.Empty)
+                .ToList();
+        }
+
+        @if (!visibleRows.Any())
+        {
+            <div class="sgc-vgrid-empty">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--sui-muted);margin-bottom:8px;">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <span>@(EmptyText ?? "Нет данных")</span>
+            </div>
+        }
+        else
+        {
+            @foreach (var grp in sectionGroups)
+            {
+                @* Section header *@
+                @if (!string.IsNullOrEmpty(grp.Key) && ShowSections)
+                {
+                    var sKey = grp.Key;
+                    var collapsed = _collapsedSections.Contains(sKey);
+                    <div class="sgc-vgrid-section-header @(collapsed ? "sgc-vgrid-section-collapsed" : "")"
+                         @onclick="() => ToggleSection(sKey)">
+                        <span class="sgc-vgrid-section-arrow">
+                            @if (collapsed)
+                            {
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                            }
+                            else
+                            {
+                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            }
+                        </span>
+                        <span class="sgc-vgrid-section-title">@sKey</span>
+                        <span class="sgc-vgrid-section-count">@grp.Count()</span>
+                    </div>
+
+                    @if (!collapsed)
+                    {
+                        @RenderRows(grp)
+                    }
+                }
+                else
+                {
+                    @RenderRows(grp)
+                }
+            }
+        }
+    </div>
+
+    @* ── Status bar ── *@
+    @if (ShowStatusBar)
+    {
+        <div class="sgc-vgrid-statusbar">
+            <span>Строк: @GetVisibleRows().Count</span>
+            @if (!string.IsNullOrEmpty(_search))
+            {
+                <span style="color:var(--sui-accent);">Фильтр: «@_search»</span>
+            }
+            @if (_editingRow is not null)
+            {
+                <span style="color:var(--sui-warn);">Редактирование…</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string _search = string.Empty;
+    private readonly HashSet<string> _collapsedSections = new(StringComparer.Ordinal);
+    private SgVerticalGridRow? _editingRow;
+    private string _editingValue = string.Empty;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>The list of rows to display.</summary>
+    [Parameter] public List<SgVerticalGridRow> Rows { get; set; } = new();
+
+    /// <summary>Callback when the rows list changes (e.g. after inline edit).</summary>
+    [Parameter] public EventCallback<List<SgVerticalGridRow>> RowsChanged { get; set; }
+
+    /// <summary>Optional custom template for rendering a row value. Receives the row.</summary>
+    [Parameter] public RenderFragment<SgVerticalGridRow>? ValueTemplate { get; set; }
+
+    /// <summary>When true, shows a search box in the toolbar. Default true.</summary>
+    [Parameter] public bool ShowSearch { get; set; } = true;
+
+    /// <summary>Placeholder text for the search box.</summary>
+    [Parameter] public string? SearchPlaceholder { get; set; }
+
+    /// <summary>When true, shows section headers and allows collapsing sections. Default true.</summary>
+    [Parameter] public bool ShowSections { get; set; } = true;
+
+    /// <summary>When true, shows a status bar at the bottom.</summary>
+    [Parameter] public bool ShowStatusBar { get; set; } = true;
+
+    /// <summary>When true, shows a "Copy all" button in the toolbar.</summary>
+    [Parameter] public bool ShowCopyAll { get; set; }
+
+    /// <summary>When true, shows a copy icon on each row on hover.</summary>
+    [Parameter] public bool ShowRowCopy { get; set; } = true;
+
+    /// <summary>Width of the label column. Default "40%".</summary>
+    [Parameter] public string LabelWidth { get; set; } = "40%";
+
+    /// <summary>Text shown when no rows match the search.</summary>
+    [Parameter] public string? EmptyText { get; set; }
+
+    /// <summary>Additional CSS class for the root element.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline style for the root element.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Optional custom toolbar content rendered on the right side.</summary>
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>Callback invoked when a row value is copied.</summary>
+    [Parameter] public EventCallback<SgVerticalGridRow> OnRowCopied { get; set; }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private List<SgVerticalGridRow> GetVisibleRows()
+    {
+        if (string.IsNullOrWhiteSpace(_search))
+            return Rows;
+        var q = _search.Trim();
+        return Rows.Where(r =>
+            r.Label.Contains(q, StringComparison.CurrentCultureIgnoreCase) ||
+            GetDisplayValue(r).Contains(q, StringComparison.CurrentCultureIgnoreCase) ||
+            (r.Section?.Contains(q, StringComparison.CurrentCultureIgnoreCase) ?? false)
+        ).ToList();
+    }
+
+    private string GetDisplayValue(SgVerticalGridRow row)
+    {
+        if (row.Value is null) return string.Empty;
+        if (!string.IsNullOrEmpty(row.Format))
+        {
+            if (row.Format.Contains('{'))
+            {
+                try { return string.Format(CultureInfo.CurrentCulture, row.Format, row.Value); }
+                catch { }
+            }
+            if (row.Value is IFormattable f)
+            {
+                try { return f.ToString(row.Format, CultureInfo.CurrentCulture); }
+                catch { }
+            }
+        }
+        if (row.Value is bool b) return b ? "Да" : "Нет";
+        if (row.Value is DateTime dt) return dt.ToString("d", CultureInfo.CurrentCulture);
+        return row.Value.ToString() ?? string.Empty;
+    }
+
+    private void ToggleSection(string key)
+    {
+        if (!_collapsedSections.Add(key))
+            _collapsedSections.Remove(key);
+    }
+
+    private void StartEdit(SgVerticalGridRow row)
+    {
+        if (!row.Editable) return;
+        _editingRow = row;
+        _editingValue = GetDisplayValue(row);
+    }
+
+    private async Task CommitEditAsync()
+    {
+        if (_editingRow is null) return;
+        _editingRow.Value = _editingValue;
+        _editingRow.OnValueChanged?.Invoke(_editingValue);
+        _editingRow = null;
+        if (RowsChanged.HasDelegate)
+            await RowsChanged.InvokeAsync(Rows);
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingRow = null;
+        _editingValue = string.Empty;
+    }
+
+    private async Task CopyRowAsync(SgVerticalGridRow row)
+    {
+        var text = $"{row.Label}: {GetDisplayValue(row)}";
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); } catch { }
+        if (OnRowCopied.HasDelegate)
+            await OnRowCopied.InvokeAsync(row);
+    }
+
+    private async Task CopyAllAsync()
+    {
+        var lines = Rows.Select(r => $"{r.Label}: {GetDisplayValue(r)}");
+        var text = string.Join("\n", lines);
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", text); } catch { }
+    }
+
+    // ── Render helpers ────────────────────────────────────────────────────────
+
+    private RenderFragment RenderRows(IEnumerable<SgVerticalGridRow> rows) => __builder =>
+    {
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class", "sgc-vgrid-rows");
+
+        foreach (var row in rows)
+        {
+            var r = row;
+            var isEditing = ReferenceEquals(_editingRow, r);
+            var display = GetDisplayValue(r);
+
+            __builder.OpenElement(10, "div");
+            __builder.AddAttribute(11, "class",
+                "sgc-vgrid-row" +
+                (r.Highlighted ? " sgc-vgrid-row-highlighted" : "") +
+                (r.Muted ? " sgc-vgrid-row-muted" : "") +
+                (isEditing ? " sgc-vgrid-row-editing" : ""));
+
+            // ── Label cell ──
+            __builder.OpenElement(20, "div");
+            __builder.AddAttribute(21, "class", "sgc-vgrid-label");
+            __builder.AddAttribute(22, "style", $"width:{LabelWidth};min-width:{LabelWidth};max-width:{LabelWidth};");
+            if (!string.IsNullOrEmpty(r.Tooltip))
+                __builder.AddAttribute(23, "title", r.Tooltip);
+
+            if (!string.IsNullOrEmpty(r.Icon))
+            {
+                __builder.OpenElement(24, "span");
+                __builder.AddAttribute(25, "class", "sgc-vgrid-label-icon");
+                __builder.AddContent(26, (MarkupString)r.Icon);
+                __builder.CloseElement();
+            }
+
+            __builder.OpenElement(27, "span");
+            __builder.AddAttribute(28, "class", "sgc-vgrid-label-text");
+            __builder.AddContent(29, r.Label);
+            __builder.CloseElement();
+
+            __builder.CloseElement(); // label
+
+            // ── Value cell ──
+            __builder.OpenElement(30, "div");
+            __builder.AddAttribute(31, "class", "sgc-vgrid-value");
+
+            if (isEditing)
+            {
+                // Inline edit input
+                __builder.OpenElement(40, "input");
+                __builder.AddAttribute(41, "class", "sgc-vgrid-edit-input");
+                __builder.AddAttribute(42, "type", "text");
+                __builder.AddAttribute(43, "value", _editingValue);
+                __builder.AddAttribute(44, "oninput",
+                    EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                        _editingValue = e.Value?.ToString() ?? string.Empty));
+                __builder.AddAttribute(45, "onkeydown",
+                    EventCallback.Factory.Create<KeyboardEventArgs>(this, async e =>
+                    {
+                        if (e.Key == "Enter") await CommitEditAsync();
+                        else if (e.Key == "Escape") CancelEdit();
+                    }));
+                __builder.AddAttribute(46, "autofocus", true);
+                __builder.CloseElement();
+
+                // Confirm / Cancel buttons
+                __builder.OpenElement(50, "div");
+                __builder.AddAttribute(51, "class", "sgc-vgrid-edit-actions");
+
+                __builder.OpenElement(52, "button");
+                __builder.AddAttribute(53, "type", "button");
+                __builder.AddAttribute(54, "class", "sgc-vgrid-edit-btn sgc-vgrid-edit-ok");
+                __builder.AddAttribute(55, "title", "Сохранить (Enter)");
+                __builder.AddAttribute(56, "onclick",
+                    EventCallback.Factory.Create(this, CommitEditAsync));
+                __builder.AddContent(57, (MarkupString)SgIcons.Check);
+                __builder.CloseElement();
+
+                __builder.OpenElement(58, "button");
+                __builder.AddAttribute(59, "type", "button");
+                __builder.AddAttribute(60, "class", "sgc-vgrid-edit-btn sgc-vgrid-edit-cancel");
+                __builder.AddAttribute(61, "title", "Отмена (Esc)");
+                __builder.AddAttribute(62, "onclick",
+                    EventCallback.Factory.Create(this, () => CancelEdit()));
+                __builder.AddContent(63, (MarkupString)SgIcons.X);
+                __builder.CloseElement();
+
+                __builder.CloseElement(); // edit-actions
+            }
+            else
+            {
+                // Value display
+                __builder.OpenElement(70, "span");
+                __builder.AddAttribute(71, "class", "sgc-vgrid-value-text");
+
+                if (ValueTemplate is not null)
+                {
+                    __builder.AddContent(72, ValueTemplate(r));
+                }
+                else if (r.Value is bool bv)
+                {
+                    // Bool badge
+                    __builder.OpenElement(73, "span");
+                    __builder.AddAttribute(74, "class",
+                        "sgc-vgrid-bool " + (bv ? "sgc-vgrid-bool-true" : "sgc-vgrid-bool-false"));
+                    __builder.AddContent(75, bv ? "Да" : "Нет");
+                    __builder.CloseElement();
+                }
+                else
+                {
+                    __builder.AddContent(76, display);
+                }
+
+                __builder.CloseElement(); // value-text
+
+                // Badge
+                if (!string.IsNullOrEmpty(r.BadgeText))
+                {
+                    __builder.OpenComponent<SgBadge>(80);
+                    __builder.AddAttribute(81, "Variant", r.BadgeVariant);
+                    __builder.AddAttribute(82, "CssClass", "sgc-vgrid-badge");
+                    __builder.AddContent(83, (RenderFragment)(b => b.AddContent(0, r.BadgeText)));
+                    __builder.CloseComponent();
+                }
+
+                // Row actions (edit + copy) — shown on hover via CSS
+                __builder.OpenElement(90, "div");
+                __builder.AddAttribute(91, "class", "sgc-vgrid-row-actions");
+
+                if (r.Editable)
+                {
+                    __builder.OpenElement(92, "button");
+                    __builder.AddAttribute(93, "type", "button");
+                    __builder.AddAttribute(94, "class", "sgc-vgrid-action-btn");
+                    __builder.AddAttribute(95, "title", "Редактировать");
+                    __builder.AddAttribute(96, "onclick",
+                        EventCallback.Factory.Create(this, () => StartEdit(r)));
+                    __builder.AddEventStopPropagationAttribute(97, "onclick", true);
+                    __builder.AddContent(98, (MarkupString)SgIcons.Edit);
+                    __builder.CloseElement();
+                }
+
+                if (ShowRowCopy)
+                {
+                    __builder.OpenElement(99, "button");
+                    __builder.AddAttribute(100, "type", "button");
+                    __builder.AddAttribute(101, "class", "sgc-vgrid-action-btn");
+                    __builder.AddAttribute(102, "title", "Копировать");
+                    __builder.AddAttribute(103, "onclick",
+                        EventCallback.Factory.Create(this, () => CopyRowAsync(r)));
+                    __builder.AddEventStopPropagationAttribute(104, "onclick", true);
+                    __builder.AddContent(105, (MarkupString)SgIcons.Copy);
+                    __builder.CloseElement();
+                }
+
+                __builder.CloseElement(); // row-actions
+            }
+
+            __builder.CloseElement(); // value cell
+            __builder.CloseElement(); // row
+        }
+
+        __builder.CloseElement(); // rows
+    };
+}

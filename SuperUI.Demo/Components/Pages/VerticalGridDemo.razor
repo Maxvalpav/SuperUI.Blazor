@@ -1,0 +1,194 @@
+@page "/vertical-grid-demo"
+@using SuperUI.Components
+
+<PageTitle>Vertical Grid - SUI</PageTitle>
+
+<SgCard Title="SgVerticalGrid — Вертикальная таблица свойств"
+        Subtitle="Отображает данные одной записи в виде строк «Свойство — Значение». Поддерживает секции, поиск, инлайн-редактирование, копирование и кастомные шаблоны.">
+
+    <div style="margin-top: 24px;">
+        <h2>Базовый пример</h2>
+        <p>Секции, bool-значения, бейджи, иконки, поиск, копирование.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgVerticalGrid Rows="_employeeRows"
+                            ShowSearch="true"
+                            ShowSections="true"
+                            ShowStatusBar="true"
+                            ShowCopyAll="true"
+                            ShowRowCopy="true"
+                            LabelWidth="42%" />
+
+            <SgVerticalGrid Rows="_serverRows"
+                            ShowSearch="true"
+                            ShowSections="true"
+                            ShowStatusBar="true"
+                            LabelWidth="38%" />
+        </div>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Инлайн-редактирование</h2>
+        <p>Строки с <code>Editable=true</code> показывают кнопку редактирования при наведении. Нажмите Enter для сохранения, Esc — для отмены.</p>
+
+        <div style="max-width: 560px; margin-top: 16px;">
+            <SgVerticalGrid Rows="_editableRows"
+                            RowsChanged="rows => { _editableRows = rows; StateHasChanged(); }"
+                            ShowSearch="false"
+                            ShowStatusBar="true"
+                            LabelWidth="40%" />
+        </div>
+
+        @if (_lastEdited is not null)
+        {
+            <div style="margin-top: 10px; padding: 8px 12px; background: var(--sui-success-bg); border: 1px solid var(--sui-success-border); border-radius: var(--sui-radius-md); font-size: 12px; color: var(--sui-success);">
+                Изменено: <strong>@_lastEdited.Label</strong> = «@_lastEdited.Value»
+            </div>
+        }
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Кастомный шаблон значения</h2>
+        <p>Параметр <code>ValueTemplate</code> позволяет рендерить произвольный контент в ячейке значения.</p>
+
+        <div style="max-width: 560px; margin-top: 16px;">
+            <SgVerticalGrid Rows="_templateRows" ShowSearch="false" ShowStatusBar="false" LabelWidth="38%">
+                <ValueTemplate Context="row">
+                    @if (row.Tag is string color && row.Label.Contains("Цвет"))
+                    {
+                        <span style="display:inline-flex;align-items:center;gap:8px;">
+                            <span style="width:16px;height:16px;border-radius:3px;background:@color;border:1px solid var(--sui-border);flex-shrink:0;"></span>
+                            <span>@color</span>
+                        </span>
+                    }
+                    else if (row.Tag is int pct)
+                    {
+                        <span style="display:inline-flex;align-items:center;gap:8px;width:100%;">
+                            <span style="flex:1;height:6px;background:var(--sui-bg-tertiary);border-radius:3px;overflow:hidden;">
+                                <span style="display:block;height:100%;width:@(pct)%;background:var(--sui-accent);border-radius:3px;"></span>
+                            </span>
+                            <span style="font-size:11px;color:var(--sui-muted);min-width:28px;text-align:right;">@pct%</span>
+                        </span>
+                    }
+                    else
+                    {
+                        <span>@row.Value</span>
+                    }
+                </ValueTemplate>
+            </SgVerticalGrid>
+        </div>
+    </div>
+
+    <div style="margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+        <SgCard Title="Параметры SgVerticalGrid">
+            <PropertyTable Items="_props" />
+        </SgCard>
+        <SgCard Title="Параметры SgVerticalGridRow">
+            <PropertyTable Items="_rowProps" />
+        </SgCard>
+    </div>
+
+</SgCard>
+
+@code {
+    private SgVerticalGridRow? _lastEdited;
+
+    // ── Employee data ─────────────────────────────────────────────────────────
+    private List<SgVerticalGridRow> _employeeRows = new()
+    {
+        // Личные данные
+        new() { Section = "Личные данные", Label = "Имя",        Value = "Мария",          Icon = SgIcons.Edit },
+        new() { Section = "Личные данные", Label = "Фамилия",    Value = "Петрова",         Icon = SgIcons.Edit },
+        new() { Section = "Личные данные", Label = "Email",      Value = "m.petrova@corp.ru", Highlighted = true },
+        new() { Section = "Личные данные", Label = "Телефон",    Value = "+7 (495) 123-45-67" },
+        // Работа
+        new() { Section = "Работа", Label = "Отдел",      Value = "Разработка",  BadgeText = "IT",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Section = "Работа", Label = "Должность",  Value = "Senior Dev",  BadgeText = "Senior",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Section = "Работа", Label = "Зарплата",   Value = 185000m,       Format = "C0",          Highlighted = true },
+        new() { Section = "Работа", Label = "Дата найма", Value = new DateTime(2021, 3, 15) },
+        new() { Section = "Работа", Label = "Активен",    Value = true },
+        new() { Section = "Работа", Label = "Удалённо",   Value = false },
+        // Система
+        new() { Section = "Система", Label = "ID",         Value = "EMP-00142",   Muted = true },
+        new() { Section = "Система", Label = "Создан",     Value = new DateTime(2021, 3, 15), Muted = true },
+        new() { Section = "Система", Label = "Изменён",    Value = new DateTime(2025, 11, 2), Muted = true },
+    };
+
+    // ── Server data ───────────────────────────────────────────────────────────
+    private List<SgVerticalGridRow> _serverRows = new()
+    {
+        new() { Section = "Общее",    Label = "Имя хоста",   Value = "web-prod-01",  Highlighted = true },
+        new() { Section = "Общее",    Label = "IP-адрес",    Value = "10.0.1.42" },
+        new() { Section = "Общее",    Label = "ОС",          Value = "Ubuntu 24.04 LTS" },
+        new() { Section = "Общее",    Label = "Статус",      Value = true,           BadgeText = "Online", BadgeVariant = SgBadgeVariant.Success },
+        new() { Section = "Ресурсы",  Label = "CPU",         Value = "8 ядер / 3.2 GHz" },
+        new() { Section = "Ресурсы",  Label = "RAM",         Value = "32 GB",        BadgeText = "64% занято", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Section = "Ресурсы",  Label = "Диск",        Value = "2 TB SSD",     BadgeText = "78% занято", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Section = "Ресурсы",  Label = "Uptime",      Value = "142 дня" },
+        new() { Section = "Сеть",     Label = "Входящий",    Value = "1.2 Гбит/с" },
+        new() { Section = "Сеть",     Label = "Исходящий",   Value = "0.8 Гбит/с" },
+        new() { Section = "Сеть",     Label = "Пакеты/сек",  Value = "48 200" },
+    };
+
+    // ── Editable rows ─────────────────────────────────────────────────────────
+    private List<SgVerticalGridRow> _editableRows;
+
+    // ── Template rows ─────────────────────────────────────────────────────────
+    private List<SgVerticalGridRow> _templateRows = new()
+    {
+        new() { Label = "Основной цвет",    Value = "#006fee", Tag = "#006fee" },
+        new() { Label = "Акцентный цвет",   Value = "#10b981", Tag = "#10b981" },
+        new() { Label = "Цвет опасности",   Value = "#f43f5e", Tag = "#f43f5e" },
+        new() { Label = "Загрузка CPU",     Value = "72%",     Tag = 72 },
+        new() { Label = "Загрузка RAM",     Value = "45%",     Tag = 45 },
+        new() { Label = "Загрузка диска",   Value = "88%",     Tag = 88 },
+    };
+
+    protected override void OnInitialized()
+    {
+        _editableRows = new()
+        {
+            new() { Label = "Имя",       Value = "Иван",              Editable = true,  OnValueChanged = v => { _lastEdited = _editableRows.First(r => r.Label == "Имя"); _lastEdited.Value = v; StateHasChanged(); } },
+            new() { Label = "Фамилия",   Value = "Иванов",            Editable = true,  OnValueChanged = v => { _lastEdited = _editableRows.First(r => r.Label == "Фамилия"); _lastEdited.Value = v; StateHasChanged(); } },
+            new() { Label = "Email",     Value = "ivan@example.com",  Editable = true,  OnValueChanged = v => { _lastEdited = _editableRows.First(r => r.Label == "Email"); _lastEdited.Value = v; StateHasChanged(); } },
+            new() { Label = "Должность", Value = "Разработчик",       Editable = true,  OnValueChanged = v => { _lastEdited = _editableRows.First(r => r.Label == "Должность"); _lastEdited.Value = v; StateHasChanged(); } },
+            new() { Label = "Отдел",     Value = "Разработка",        Editable = true,  OnValueChanged = v => { _lastEdited = _editableRows.First(r => r.Label == "Отдел"); _lastEdited.Value = v; StateHasChanged(); } },
+            new() { Label = "ID",        Value = "EMP-00099",         Editable = false, Muted = true },
+        };
+    }
+
+    // ── Property tables ───────────────────────────────────────────────────────
+    private List<PropertyPanelItem> _props = new()
+    {
+        new() { Label = "Rows",            Value = "List<SgVerticalGridRow>",          BadgeText = "Данные",           BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "RowsChanged",     Value = "EventCallback<List>",              BadgeText = "Изменение",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ValueTemplate",   Value = "RenderFragment<SgVerticalGridRow>",BadgeText = "Кастомный рендер", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowSearch",      Value = "bool (default: true)",             BadgeText = "Поиск",            BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowSections",    Value = "bool (default: true)",             BadgeText = "Секции",           BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowStatusBar",   Value = "bool",                             BadgeText = "Статус-бар",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowCopyAll",     Value = "bool",                             BadgeText = "Кнопка копировать",BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowRowCopy",     Value = "bool (default: true)",             BadgeText = "Копировать строку",BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "LabelWidth",      Value = "string (default: \"40%\")",        BadgeText = "Ширина метки",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "SearchPlaceholder",Value = "string?",                         BadgeText = "Плейсхолдер",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EmptyText",       Value = "string?",                          BadgeText = "Пустое состояние", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ToolbarContent",  Value = "RenderFragment?",                  BadgeText = "Кастомный тулбар", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnRowCopied",     Value = "EventCallback<SgVerticalGridRow>", BadgeText = "Копирование строки",BadgeVariant = SgBadgeVariant.Success },
+    };
+
+    private List<PropertyPanelItem> _rowProps = new()
+    {
+        new() { Label = "Label",        Value = "string",           BadgeText = "Метка (левая колонка)",  BadgeVariant = SgBadgeVariant.Danger  },
+        new() { Label = "Value",        Value = "object?",          BadgeText = "Значение",               BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Format",       Value = "string?",          BadgeText = "Формат (C0, d, …)",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Section",      Value = "string?",          BadgeText = "Секция",                 BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",         Value = "string? (SVG)",    BadgeText = "Иконка перед меткой",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Tooltip",      Value = "string?",          BadgeText = "Подсказка на метке",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Highlighted",  Value = "bool",             BadgeText = "Выделить строку",        BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Muted",        Value = "bool",             BadgeText = "Приглушить строку",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Editable",     Value = "bool",             BadgeText = "Инлайн-редактирование",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "BadgeText",    Value = "string?",          BadgeText = "Бейдж",                  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant",   BadgeText = "Стиль бейджа",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnValueChanged",Value = "Action<object?>?",BadgeText = "Callback редактирования",BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Tag",          Value = "object?",          BadgeText = "Произвольные данные",    BadgeVariant = SgBadgeVariant.Info    },
+    };
+}

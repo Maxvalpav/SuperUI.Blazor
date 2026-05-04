@@ -1,0 +1,417 @@
+@namespace SuperUI.Components
+@typeparam TItem
+@using System.Globalization
+
+<div class="sgc-tgrid @CssClass" style="@Style">
+
+    @* ── Toolbar ── *@
+    @if (ShowSearch || ShowTitle || ToolbarContent is not null)
+    {
+        <div class="sgc-tgrid-toolbar">
+            @if (ShowTitle && !string.IsNullOrEmpty(Title))
+            {
+                <span class="sgc-tgrid-title">@Title</span>
+            }
+            @if (ShowSearch)
+            {
+                <div class="sgc-tgrid-search-wrap">
+                    <svg class="sgc-tgrid-search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                    </svg>
+                    <input class="sgc-tgrid-search"
+                           type="text"
+                           placeholder="@(SearchPlaceholder ?? "Поиск по полям...")"
+                           value="@_search"
+                           @oninput="e => { _search = e.Value?.ToString() ?? string.Empty; }" />
+                    @if (!string.IsNullOrEmpty(_search))
+                    {
+                        <button type="button" class="sgc-tgrid-search-clear" @onclick="() => _search = string.Empty" title="Очистить">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    }
+                </div>
+            }
+            <div class="sgc-tgrid-spacer"></div>
+            @if (ToolbarContent is not null) { @ToolbarContent }
+        </div>
+    }
+
+    @* ── Table ── *@
+    @{
+        var cols = GetVisibleColumns();
+        var rows = GetVisibleRows();
+        var items = Items?.ToList() ?? new List<TItem>();
+    }
+
+    @if (!rows.Any() || !items.Any())
+    {
+        <div class="sgc-tgrid-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--sui-muted);margin-bottom:8px;">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+            </svg>
+            <span>@(EmptyText ?? "Нет данных")</span>
+        </div>
+    }
+    else
+    {
+        <div class="sgc-tgrid-scroll">
+            <table class="sgc-tgrid-table @(ShowColumnBorders ? "sgc-tgrid-col-borders" : "")">
+
+                @* ── Header row: empty corner + one th per item ── *@
+                @if (ShowHeader)
+                {
+                    <thead>
+                        <tr>
+                            <th class="sgc-tgrid-corner" style="width:@FieldColumnWidth;">
+                                @if (!string.IsNullOrEmpty(FieldColumnTitle))
+                                {
+                                    <span>@FieldColumnTitle</span>
+                                }
+                            </th>
+                            @for (var ci = 0; ci < items.Count; ci++)
+                            {
+                                var item = items[ci];
+                                var idx = ci;
+                                var isSelected = _selectedIndex == idx;
+                                <th class="sgc-tgrid-col-header @(isSelected ? "sgc-tgrid-col-selected" : "")"
+                                    @onclick="() => SelectColumn(idx)">
+                                    @if (HeaderTemplate is not null)
+                                    {
+                                        @HeaderTemplate(item)
+                                    }
+                                    else if (HeaderSelector is not null)
+                                    {
+                                        <span class="sgc-tgrid-col-header-text">@HeaderSelector(item)</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-tgrid-col-header-text">@(idx + 1)</span>
+                                    }
+                                </th>
+                            }
+                        </tr>
+                    </thead>
+                }
+
+                @* ── Body: one tr per field/row ── *@
+                <tbody>
+                    @{
+                        string? lastSection = null;
+                    }
+                    @foreach (var col in rows)
+                    {
+                        @* Section separator *@
+                        @if (ShowSections && col.Section != lastSection)
+                        {
+                            lastSection = col.Section;
+                            if (!string.IsNullOrEmpty(col.Section))
+                            {
+                                var sec = col.Section;
+                                var secCollapsed = _collapsedSections.Contains(sec);
+                                <tr class="sgc-tgrid-section-row" @onclick="() => ToggleSection(sec)">
+                                    <td colspan="@(items.Count + 1)" class="sgc-tgrid-section-cell">
+                                        <span class="sgc-tgrid-section-arrow">
+                                            @if (secCollapsed)
+                                            {
+                                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                                            }
+                                            else
+                                            {
+                                                <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                                            }
+                                        </span>
+                                        <span class="sgc-tgrid-section-title">@col.Section</span>
+                                        <span class="sgc-tgrid-section-count">
+                                            @rows.Count(r => r.Section == col.Section)
+                                        </span>
+                                    </td>
+                                </tr>
+                            }
+                        }
+
+                        @* Skip rows in collapsed sections *@
+                        @if (!string.IsNullOrEmpty(col.Section) && _collapsedSections.Contains(col.Section))
+                        {
+                            continue;
+                        }
+
+                        <tr class="sgc-tgrid-row @(col.Highlighted ? "sgc-tgrid-row-highlighted" : "") @(col.Muted ? "sgc-tgrid-row-muted" : "")">
+
+                            @* Field label cell *@
+                            <td class="sgc-tgrid-field-cell" title="@col.Tooltip">
+                                @if (!string.IsNullOrEmpty(col.Icon))
+                                {
+                                    <span class="sgc-tgrid-field-icon">@((MarkupString)col.Icon)</span>
+                                }
+                                <span class="sgc-tgrid-field-label">@col.Title</span>
+                                @if (!string.IsNullOrEmpty(col.Hint))
+                                {
+                                    <span class="sgc-tgrid-field-hint" title="@col.Hint">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                    </span>
+                                }
+                            </td>
+
+                            @* Value cells — one per item ── *@
+                            @for (var ci = 0; ci < items.Count; ci++)
+                            {
+                                var item = items[ci];
+                                var idx = ci;
+                                var isSelected = _selectedIndex == idx;
+                                var isEditing = _editingCol == idx && ReferenceEquals(_editingRow, col);
+                                var rawVal = col.ValueSelector?.Invoke(item);
+                                var display = FormatValue(rawVal, col.Format);
+
+                                <td class="sgc-tgrid-value-cell @(isSelected ? "sgc-tgrid-col-selected" : "") @(isEditing ? "sgc-tgrid-cell-editing" : "")"
+                                    @ondblclick="() => StartEdit(col, idx, display)"
+                                    @onclick="() => SelectColumn(idx)">
+
+                                    @if (isEditing)
+                                    {
+                                        <input class="sgc-tgrid-edit-input"
+                                               type="text"
+                                               value="@_editingValue"
+                                               @oninput="e => _editingValue = e.Value?.ToString() ?? string.Empty"
+                                               @onkeydown="OnEditKeyDownAsync"
+                                               @onclick:stopPropagation="true"
+                                               autofocus />
+                                    }
+                                    else if (CellTemplate is not null)
+                                    {
+                                        @CellTemplate(new SgTransposeCellContext<TItem>(item, col, rawVal, display))
+                                    }
+                                    else if (rawVal is bool bv)
+                                    {
+                                        <span class="sgc-tgrid-bool @(bv ? "sgc-tgrid-bool-true" : "sgc-tgrid-bool-false")">
+                                            @(bv ? "Да" : "Нет")
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-tgrid-cell-text" title="@display">@display</span>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+
+                @* ── Aggregate footer ── *@
+                @if (ShowAggregates && rows.Any(r => r.Aggregate != SgTransposeAggregate.None))
+                {
+                    <tfoot>
+                        @foreach (var col in rows.Where(r => r.Aggregate != SgTransposeAggregate.None))
+                        {
+                            <tr class="sgc-tgrid-agg-row">
+                                <td class="sgc-tgrid-field-cell sgc-tgrid-agg-label">
+                                    @col.Title (@AggregateLabel(col.Aggregate))
+                                </td>
+                                @foreach (var item in items)
+                                {
+                                    var val = col.ValueSelector?.Invoke(item);
+                                    <td class="sgc-tgrid-value-cell sgc-tgrid-agg-value">
+                                        @FormatValue(val, col.Format)
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tfoot>
+                }
+            </table>
+        </div>
+    }
+
+    @* ── Status bar ── *@
+    @if (ShowStatusBar)
+    {
+        <div class="sgc-tgrid-statusbar">
+            <span>Полей: @GetVisibleRows().Count</span>
+            <span>Записей: @(Items?.Count() ?? 0)</span>
+            @if (!string.IsNullOrEmpty(_search))
+            {
+                <span style="color:var(--sui-accent);">Фильтр: «@_search»</span>
+            }
+            @if (_selectedIndex >= 0)
+            {
+                <span style="color:var(--sui-accent);">Выбрана колонка @(_selectedIndex + 1)</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private string _search = string.Empty;
+    private int _selectedIndex = -1;
+    private readonly HashSet<string> _collapsedSections = new(StringComparer.Ordinal);
+    private SgTransposeColumn<TItem>? _editingRow;
+    private int _editingCol = -1;
+    private string _editingValue = string.Empty;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>The data items — each becomes a column in the transposed grid.</summary>
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+
+    /// <summary>Column definitions — each becomes a row (field) in the transposed grid.</summary>
+    [Parameter] public List<SgTransposeColumn<TItem>> Columns { get; set; } = new();
+
+    /// <summary>Optional title shown in the toolbar.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>When true, shows the title in the toolbar.</summary>
+    [Parameter] public bool ShowTitle { get; set; } = true;
+
+    /// <summary>When true, shows a search box to filter rows by field name.</summary>
+    [Parameter] public bool ShowSearch { get; set; } = true;
+
+    /// <summary>Placeholder for the search input.</summary>
+    [Parameter] public string? SearchPlaceholder { get; set; }
+
+    /// <summary>When true, shows the header row with item labels.</summary>
+    [Parameter] public bool ShowHeader { get; set; } = true;
+
+    /// <summary>When true, shows section headers and allows collapsing.</summary>
+    [Parameter] public bool ShowSections { get; set; } = true;
+
+    /// <summary>When true, shows a status bar at the bottom.</summary>
+    [Parameter] public bool ShowStatusBar { get; set; } = true;
+
+    /// <summary>When true, shows vertical borders between value columns.</summary>
+    [Parameter] public bool ShowColumnBorders { get; set; } = true;
+
+    /// <summary>When true, shows aggregate rows in the footer.</summary>
+    [Parameter] public bool ShowAggregates { get; set; } = true;
+
+    /// <summary>Width of the field label column. Default "200px".</summary>
+    [Parameter] public string FieldColumnWidth { get; set; } = "200px";
+
+    /// <summary>Title for the field label column header cell.</summary>
+    [Parameter] public string? FieldColumnTitle { get; set; }
+
+    /// <summary>Function to extract the header label from each item.</summary>
+    [Parameter] public Func<TItem, string>? HeaderSelector { get; set; }
+
+    /// <summary>Custom template for the column header cell.</summary>
+    [Parameter] public RenderFragment<TItem>? HeaderTemplate { get; set; }
+
+    /// <summary>Custom template for value cells. Receives a <see cref="SgTransposeCellContext{TItem}"/>.</summary>
+    [Parameter] public RenderFragment<SgTransposeCellContext<TItem>>? CellTemplate { get; set; }
+
+    /// <summary>Text shown when there are no items or columns.</summary>
+    [Parameter] public string? EmptyText { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline style.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Optional custom toolbar content.</summary>
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>Callback when a cell value is edited.</summary>
+    [Parameter] public EventCallback<SgTransposeEditEventArgs<TItem>> OnCellEdited { get; set; }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private List<SgTransposeColumn<TItem>> GetVisibleColumns() =>
+        Columns.Where(c => !c.Hidden).ToList();
+
+    private List<SgTransposeColumn<TItem>> GetVisibleRows()
+    {
+        var cols = GetVisibleColumns();
+        if (string.IsNullOrWhiteSpace(_search)) return cols;
+        var q = _search.Trim();
+        return cols.Where(c =>
+            c.Title.Contains(q, StringComparison.CurrentCultureIgnoreCase) ||
+            (c.Section?.Contains(q, StringComparison.CurrentCultureIgnoreCase) ?? false)
+        ).ToList();
+    }
+
+    private static string FormatValue(object? value, string? format)
+    {
+        if (value is null) return string.Empty;
+        if (!string.IsNullOrEmpty(format))
+        {
+            if (format.Contains('{'))
+            {
+                try { return string.Format(CultureInfo.CurrentCulture, format, value); }
+                catch { }
+            }
+            if (value is IFormattable f)
+            {
+                try { return f.ToString(format, CultureInfo.CurrentCulture); }
+                catch { }
+            }
+        }
+        if (value is bool b) return b ? "Да" : "Нет";
+        if (value is DateTime dt) return dt.ToString("d", CultureInfo.CurrentCulture);
+        return value.ToString() ?? string.Empty;
+    }
+
+    private void SelectColumn(int idx)
+    {
+        _selectedIndex = _selectedIndex == idx ? -1 : idx;
+    }
+
+    private void ToggleSection(string key)
+    {
+        if (!_collapsedSections.Add(key))
+            _collapsedSections.Remove(key);
+    }
+
+    private void StartEdit(SgTransposeColumn<TItem> col, int colIdx, string currentValue)
+    {
+        if (!col.Editable) return;
+        _editingRow = col;
+        _editingCol = colIdx;
+        _editingValue = currentValue;
+    }
+
+    private async Task OnEditKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CommitEditAsync();
+        else if (e.Key == "Escape") CancelEdit();
+    }
+
+    private async Task CommitEditAsync()
+    {
+        if (_editingRow is null) return;
+        var items = Items?.ToList() ?? new();
+        if (_editingCol >= 0 && _editingCol < items.Count)
+        {
+            var item = items[_editingCol];
+            _editingRow.OnValueChanged?.Invoke(item, _editingValue);
+            if (OnCellEdited.HasDelegate)
+            {
+                await OnCellEdited.InvokeAsync(new SgTransposeEditEventArgs<TItem>
+                {
+                    Item = item,
+                    Column = _editingRow,
+                    NewValue = _editingValue
+                });
+            }
+        }
+        CancelEdit();
+        StateHasChanged();
+    }
+
+    private void CancelEdit()
+    {
+        _editingRow = null;
+        _editingCol = -1;
+        _editingValue = string.Empty;
+    }
+
+    private static string AggregateLabel(SgTransposeAggregate agg) => agg switch
+    {
+        SgTransposeAggregate.Sum     => "Сумма",
+        SgTransposeAggregate.Average => "Среднее",
+        SgTransposeAggregate.Min     => "Мин",
+        SgTransposeAggregate.Max     => "Макс",
+        SgTransposeAggregate.Count   => "Кол-во",
+        _ => ""
+    };
+}
