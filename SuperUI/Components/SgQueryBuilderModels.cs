@@ -30,7 +30,15 @@ public class QueryField
     public required string Label { get; set; }
     public Type Type { get; set; } = typeof(string);
     public string? Category { get; set; }
+
+    /// <summary>True for date columns that include a time component (DateTime/DateTimeOffset with ShowTime).</summary>
+    public bool ShowTime { get; set; }
+
+    /// <summary>Optional pre-resolved enum members (Name → Label) for select-based filter inputs.</summary>
+    public IReadOnlyList<QueryFieldEnumOption>? EnumOptions { get; set; }
 }
+
+public sealed record QueryFieldEnumOption(string Name, string Label);
 
 public class QueryRule
 {
