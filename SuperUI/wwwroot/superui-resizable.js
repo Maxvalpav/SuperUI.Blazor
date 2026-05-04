@@ -1,5 +1,6 @@
 // Resizable: pointer-driven width/height resize via 8 handles (or subset).
 // Reports final size to .NET via SetSize(width, height).
+// Optionally reports live size during drag via SetSizeLive(width, height).
 
 export function attach(root, dotnet, opts) {
     if (!root) return;
@@ -11,12 +12,14 @@ export function attach(root, dotnet, opts) {
         minHeight: opts?.minHeight ?? 60,
         maxWidth: opts?.maxWidth ?? 4000,
         maxHeight: opts?.maxHeight ?? 4000,
+        disabled: opts?.disabled ?? false,
+        liveFeedback: opts?.liveFeedback ?? false,
     };
 
     let active = null;
 
     function onPointerDown(e) {
-        if (isDisposed || !dotnet) return;
+        if (isDisposed || !dotnet || cfg.disabled) return;
         const handle = e.target.closest('.sgc-resizable-handle');
         if (!handle || !root.contains(handle)) return;
         if (e.button !== 0) return;
@@ -54,6 +57,18 @@ export function attach(root, dotnet, opts) {
         root.style.height = h + 'px';
         active._w = w;
         active._h = h;
+
+        // Live feedback — throttled to animation frames
+        if (cfg.liveFeedback && !active._rafPending) {
+            active._rafPending = true;
+            requestAnimationFrame(() => {
+                if (!active) return;
+                active._rafPending = false;
+                const lw = active._w ?? active.startW;
+                const lh = active._h ?? active.startH;
+                try { dotnet.invokeMethodAsync('SetSizeLive', lw, lh).catch(() => {}); } catch { /* noop */ }
+            });
+        }
     }
 
     function onPointerUp() {

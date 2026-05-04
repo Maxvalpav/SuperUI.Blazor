@@ -7,6 +7,9 @@
      data-columns="@Columns"
      data-min-col="@MinColumnSpan"
      data-max-col="@MaxColumnSpan"
+     data-min-row="@MinRowSpan"
+     data-max-row="@MaxRowSpan"
+     data-allow-drag="@(AllowDrag ? "1" : "0")"
      @ref="_root">
     @foreach (var item in Items)
     {
@@ -16,7 +19,10 @@
              style="grid-column: span @item.ColumnSpan; grid-row: span @item.RowSpan;">
 
             <div class="sgc-dashboard-widget-header">
-                <span class="sgc-dashboard-widget-drag" title="Drag to reorder">@((MarkupString)SgIcons.GripVertical)</span>
+                @if (AllowDrag)
+                {
+                    <span class="sgc-dashboard-widget-drag" title="Drag to reorder">@((MarkupString)SgIcons.GripVertical)</span>
+                }
                 @if (!string.IsNullOrEmpty(item.Icon))
                 {
                     <span class="sgc-dashboard-widget-icon">@((MarkupString)item.Icon)</span>
@@ -37,6 +43,19 @@
                                 title="Increase width"
                                 disabled="@(item.ColumnSpan >= MaxColumnSpan)"
                                 @onclick="() => IncreaseColumnSpanAsync(item)">+</button>
+                    </span>
+                    <span class="sgc-dashboard-widget-resize sgc-dashboard-widget-resize-row">
+                        <button type="button"
+                                class="sgc-dashboard-widget-resize-btn"
+                                title="Decrease height"
+                                disabled="@(item.RowSpan <= MinRowSpan)"
+                                @onclick="() => DecreaseRowSpanAsync(item)">-</button>
+                        <span class="sgc-dashboard-widget-resize-label" title="Row span">@item.RowSpan</span>
+                        <button type="button"
+                                class="sgc-dashboard-widget-resize-btn"
+                                title="Increase height"
+                                disabled="@(item.RowSpan >= MaxRowSpan)"
+                                @onclick="() => IncreaseRowSpanAsync(item)">+</button>
                     </span>
                 }
 
@@ -91,6 +110,11 @@
     [Parameter] public string? CssClass { get; set; }
 
     /// <summary>
+    /// When true, widgets can be dragged to reorder. Default is true.
+    /// </summary>
+    [Parameter] public bool AllowDrag { get; set; } = true;
+
+    /// <summary>
     /// When true, shows +/- buttons and a corner resize handle.
     /// </summary>
     [Parameter] public bool AllowResize { get; set; }
@@ -109,6 +133,34 @@
     /// Maximum column span for resize. Default is 6.
     /// </summary>
     [Parameter] public int MaxColumnSpan { get; set; } = 6;
+
+    /// <summary>
+    /// Minimum row span for resize. Default is 1.
+    /// </summary>
+    [Parameter] public int MinRowSpan { get; set; } = 1;
+
+    /// <summary>
+    /// Maximum row span for resize. Default is 6.
+    /// </summary>
+    [Parameter] public int MaxRowSpan { get; set; } = 6;
+
+    /// <summary>
+    /// Callback invoked when widgets are reordered via drag-and-drop.
+    /// Receives the source widget id and the target widget id.
+    /// </summary>
+    [Parameter] public EventCallback<(string SourceId, string TargetId)> OnReorder { get; set; }
+
+    /// <summary>
+    /// Callback invoked when a widget is resized (via corner handle or +/- buttons).
+    /// Receives the resized widget.
+    /// </summary>
+    [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetResized { get; set; }
+
+    /// <summary>
+    /// Callback invoked when a widget is deleted.
+    /// Receives the deleted widget.
+    /// </summary>
+    [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetDeleted { get; set; }
 
     private ElementReference _root;
     private IJSObjectReference? _module;
@@ -143,6 +195,8 @@
         Items.RemoveAt(srcIndex);
         Items.Insert(tgtIndex, item);
 
+        if (OnReorder.HasDelegate)
+            await OnReorder.InvokeAsync((sourceId, targetId));
         if (ItemsChanged.HasDelegate)
             await ItemsChanged.InvokeAsync(Items);
         await InvokeAsync(StateHasChanged);
@@ -156,12 +210,14 @@
         if (item is null) return;
 
         var clampedCol = Math.Clamp(colSpan, MinColumnSpan, Math.Min(MaxColumnSpan, Math.Max(1, Columns)));
-        var clampedRow = Math.Clamp(rowSpan, 1, 6);
+        var clampedRow = Math.Clamp(rowSpan, MinRowSpan, MaxRowSpan);
         if (item.ColumnSpan == clampedCol && item.RowSpan == clampedRow) return;
 
         item.ColumnSpan = clampedCol;
         item.RowSpan = clampedRow;
 
+        if (OnWidgetResized.HasDelegate)
+            await OnWidgetResized.InvokeAsync(item);
         if (ItemsChanged.HasDelegate)
             await ItemsChanged.InvokeAsync(Items);
         await InvokeAsync(StateHasChanged);
@@ -172,6 +228,8 @@
         if (item.ColumnSpan < MaxColumnSpan)
         {
             item.ColumnSpan++;
+            if (OnWidgetResized.HasDelegate)
+                await OnWidgetResized.InvokeAsync(item);
             if (ItemsChanged.HasDelegate)
                 await ItemsChanged.InvokeAsync(Items);
         }
@@ -182,6 +240,32 @@
         if (item.ColumnSpan > MinColumnSpan)
         {
             item.ColumnSpan--;
+            if (OnWidgetResized.HasDelegate)
+                await OnWidgetResized.InvokeAsync(item);
+            if (ItemsChanged.HasDelegate)
+                await ItemsChanged.InvokeAsync(Items);
+        }
+    }
+
+    private async Task IncreaseRowSpanAsync(SgDashboardWidgetItem item)
+    {
+        if (item.RowSpan < MaxRowSpan)
+        {
+            item.RowSpan++;
+            if (OnWidgetResized.HasDelegate)
+                await OnWidgetResized.InvokeAsync(item);
+            if (ItemsChanged.HasDelegate)
+                await ItemsChanged.InvokeAsync(Items);
+        }
+    }
+
+    private async Task DecreaseRowSpanAsync(SgDashboardWidgetItem item)
+    {
+        if (item.RowSpan > MinRowSpan)
+        {
+            item.RowSpan--;
+            if (OnWidgetResized.HasDelegate)
+                await OnWidgetResized.InvokeAsync(item);
             if (ItemsChanged.HasDelegate)
                 await ItemsChanged.InvokeAsync(Items);
         }
@@ -190,6 +274,8 @@
     private async Task DeleteWidgetAsync(SgDashboardWidgetItem item)
     {
         Items.Remove(item);
+        if (OnWidgetDeleted.HasDelegate)
+            await OnWidgetDeleted.InvokeAsync(item);
         if (ItemsChanged.HasDelegate)
             await ItemsChanged.InvokeAsync(Items);
     }
@@ -199,7 +285,6 @@
         if (_isDisposed) return;
         _isDisposed = true;
 
-        // 1. Уведомить JS о dispose
         if (_module is not null && _attached)
         {
             try { await _module.InvokeVoidAsync("detach", _root); }
@@ -208,12 +293,10 @@
             catch { }
         }
 
-        // 2. Очистить DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // 3. Очистить JS модуль
         if (_module is not null)
         {
             try

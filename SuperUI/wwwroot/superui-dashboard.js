@@ -30,6 +30,10 @@ export function attach(root, dotnet) {
         }
     };
 
+    function isDragAllowed() {
+        return root.getAttribute('data-allow-drag') !== '0';
+    }
+
     function getColumns() {
         const n = parseInt(root.getAttribute('data-columns') || '3', 10);
         return Number.isFinite(n) && n > 0 ? n : 3;
@@ -111,6 +115,9 @@ export function attach(root, dotnet) {
             return;
         }
 
+        // Only start drag if AllowDrag is enabled
+        if (!isDragAllowed()) return;
+
         const header = e.target.closest('.sgc-dashboard-widget-header');
         if (!header || !root.contains(header)) return;
         // Don't start drag if the press began on a button/control inside the header.
@@ -150,7 +157,6 @@ export function attach(root, dotnet) {
                 state.ghost.style.transform = `translate(${dx}px, ${dy}px)`;
             }
             // Hide ghost briefly to find the element underneath.
-            const prevPe = state.ghost ? state.ghost.style.pointerEvents : '';
             if (state.ghost) state.ghost.style.display = 'none';
             const overWidget = findWidgetUnder(e.clientX, e.clientY);
             if (state.ghost) state.ghost.style.display = '';
@@ -170,13 +176,15 @@ export function attach(root, dotnet) {
             const dy = e.clientY - state.startY;
             const minCol = parseInt(root.getAttribute('data-min-col') || '1', 10) || 1;
             const maxCol = parseInt(root.getAttribute('data-max-col') || '6', 10) || 6;
+            const minRow = parseInt(root.getAttribute('data-min-row') || '1', 10) || 1;
+            const maxRow = parseInt(root.getAttribute('data-max-row') || '6', 10) || 6;
             const columns = getColumns();
             const denomX = state.colWidth + state.gap;
             const denomY = state.rowHeight + state.gap;
             let col = state.startColSpan + Math.round(dx / Math.max(1, denomX));
             let row = state.startRowSpan + Math.round(dy / Math.max(1, denomY));
             col = Math.max(minCol, Math.min(maxCol, Math.min(columns, col)));
-            row = Math.max(1, Math.min(6, row));
+            row = Math.max(minRow, Math.min(maxRow, row));
             state.widgetEl.style.gridColumn = `span ${col}`;
             state.widgetEl.style.gridRow = `span ${row}`;
             state._pendingCol = col;
