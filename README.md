@@ -24,11 +24,7 @@
 - 🧩 **90+ components** — data grid, canvas grid, forms, dialogs, drawer, tabs, calendar, charts, kanban, gantt, pivot table, org chart, scheduler, diagram editor, tree view, timeline, and more
 - 🎨 **Theming** — light/dark mode, CSS variables, full design-token customization, built-in theme editor
 - 🌍 **Localization** — en-US, ru-RU out of the box, easily extendable via `ISuperUILocalizer`
-- ⚡ **High performance** — virtualization, canvas-based grid, low allocations on hot paths
-- 🛠 **IntelliSense** — full XML-doc for all parameters, embedded source symbols (`.snupkg`)
-- 🌐 **All hosting models** — Blazor WASM, Server, Web App (Auto/WASM/Server), Hybrid (MAUI/WPF/WinForms)
-- 🔒 **Permission system** — `SgPermissionGate` + `IPermissionService` for role-based UI
-- ♿ **Accessibility** — ARIA attributes, keyboard navigation, screen-reader support
+
 
 ---
 
