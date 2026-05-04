@@ -8,12 +8,22 @@
 
     <div style="margin-top: 32px;">
         <h2>Basic Usage</h2>
-        <p>Drag the widget header to reorder. Drag the bottom-right corner to resize.</p>
+        <p>Drag the widget header to reorder. Drag the bottom-right corner to resize. Use +/- buttons to adjust column and row span.</p>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
             <SgCard Title="Example">
                 <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <SgDashboard Items="_widgets" ItemsChanged="_ => StateHasChanged()" Columns="3" AllowResize="true" AllowDelete="true" MaxColumnSpan="3">
+                    <SgDashboard Items="_widgets"
+                                 ItemsChanged="_ => StateHasChanged()"
+                                 Columns="3"
+                                 AllowDrag="true"
+                                 AllowResize="true"
+                                 AllowDelete="true"
+                                 MaxColumnSpan="3"
+                                 MaxRowSpan="3"
+                                 OnReorder="OnReorder"
+                                 OnWidgetResized="OnWidgetResized"
+                                 OnWidgetDeleted="OnWidgetDeleted">
                         <WidgetTemplate>
                             @switch (context.Id)
                             {
@@ -74,6 +84,12 @@
                             }
                         </WidgetTemplate>
                     </SgDashboard>
+                    @if (!string.IsNullOrEmpty(_lastEvent))
+                    {
+                        <div style="font-size: 11px; color: var(--sui-muted); padding: 6px 8px; background: var(--sui-bg-secondary); border-radius: var(--sui-radius); border: 1px solid var(--sui-border);">
+                            Last event: @_lastEvent
+                        </div>
+                    }
                 </div>
             </SgCard>
 
@@ -84,31 +100,39 @@
     </div>
 
     <div style="margin-top: 32px;">
-        <h2>Column Spanning</h2>
-        <p>Widgets can span multiple columns and rows.</p>
+        <h2>Read-only (AllowDrag=false)</h2>
+        <p>Drag is disabled. Resize and delete are still available.</p>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <SgDashboard Items="_spanWidgets" Columns="3">
-                        <WidgetTemplate>
-                            <div style="text-align: center; padding: 16px; color: var(--sui-muted);">
-                                @context.Title
-                            </div>
-                        </WidgetTemplate>
-                    </SgDashboard>
-                </div>
-            </SgCard>
-
-            <SgCard Title="Properties">
-                <PropertyTable Items="_spanProperties" />
-            </SgCard>
-        </div>
+        <SgCard Title="Example">
+            <SgDashboard Items="_spanWidgets"
+                         Columns="3"
+                         AllowDrag="false"
+                         AllowResize="true"
+                         MaxColumnSpan="3"
+                         MaxRowSpan="2">
+                <WidgetTemplate>
+                    <div style="text-align: center; padding: 16px; color: var(--sui-muted);">
+                        @context.Title
+                    </div>
+                </WidgetTemplate>
+            </SgDashboard>
+        </SgCard>
     </div>
 
 </SgCard>
 
 @code {
+    private string? _lastEvent;
+
+    private void OnReorder((string SourceId, string TargetId) args)
+        => _lastEvent = $"Reordered: {args.SourceId} → {args.TargetId}";
+
+    private void OnWidgetResized(SgDashboardWidgetItem w)
+        => _lastEvent = $"Resized: {w.Title} ({w.ColumnSpan}×{w.RowSpan})";
+
+    private void OnWidgetDeleted(SgDashboardWidgetItem w)
+        => _lastEvent = $"Deleted: {w.Title}";
+
     private List<SgDashboardWidgetItem> _widgets = new()
     {
         new() { Id = "revenue", Title = "Revenue", Icon = SgIcons.TrendingUp, ColumnSpan = 1 },
@@ -130,18 +154,17 @@
         new() { Label = "Items", Value = "List<SgDashboardWidgetItem>", BadgeText = "Widget list", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "ItemsChanged", Value = "EventCallback<List>", BadgeText = "Reorder/resize/delete", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "Columns", Value = "int (default: 3)", BadgeText = "Grid columns", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AllowResize", Value = "bool", BadgeText = "Resize buttons", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowDrag", Value = "bool (default: true)", BadgeText = "Drag & Drop", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowResize", Value = "bool", BadgeText = "Resize buttons + handle", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "AllowDelete", Value = "bool", BadgeText = "Delete buttons", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "MaxColumnSpan", Value = "int (default: 6)", BadgeText = "Width limit", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MinColumnSpan", Value = "int (default: 1)", BadgeText = "Min width", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxColumnSpan", Value = "int (default: 6)", BadgeText = "Max width", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MinRowSpan", Value = "int (default: 1)", BadgeText = "Min height", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxRowSpan", Value = "int (default: 6)", BadgeText = "Max height", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnReorder", Value = "EventCallback<(string, string)>", BadgeText = "Drag reorder", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnWidgetResized", Value = "EventCallback<SgDashboardWidgetItem>", BadgeText = "Resize event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnWidgetDeleted", Value = "EventCallback<SgDashboardWidgetItem>", BadgeText = "Delete event", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "WidgetTemplate", Value = "RenderFragment", BadgeText = "Content", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "CssClass", Value = "string", BadgeText = "Custom CSS", BadgeVariant = SgBadgeVariant.Info }
-    };
-
-    private List<PropertyPanelItem> _spanProperties = new()
-    {
-        new() { Label = "ColumnSpan", Value = "int (default: 1)", BadgeText = "Grid span", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "RowSpan", Value = "int (default: 1)", BadgeText = "Row span", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Icon", Value = "string?", BadgeText = "SVG markup", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Tag", Value = "object?", BadgeText = "Custom data", BadgeVariant = SgBadgeVariant.Info }
     };
 }

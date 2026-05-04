@@ -37,6 +37,33 @@
     </div>
 
     <div style="margin-top: 32px;">
+        <h2>Live-обратная связь (SizeChanging)</h2>
+        <p>Размер обновляется в реальном времени во время перетаскивания: <strong>@($"{_liveW:F0} × {_liveH:F0}") px</strong></p>
+
+        <SgResizable Width="320" Height="180"
+                     MinWidth="160" MinHeight="100"
+                     MaxWidth="700" MaxHeight="400"
+                     Handles="se,e,s"
+                     SizeChanging="OnSizeLiveChanging"
+                     SizeChanged="@(s => { _liveW = s.Width; _liveH = s.Height; })">
+            <div style="padding: 16px; display:flex; align-items:center; justify-content:center; height:100%; color: var(--sui-muted); font-size: 12px;">
+                @($"{_liveW:F0} × {_liveH:F0} px")
+            </div>
+        </SgResizable>
+    </div>
+
+    <div style="margin-top: 32px;">
+        <h2>Disabled</h2>
+        <p>Изменение размера отключено — ручки скрыты.</p>
+
+        <SgResizable Width="320" Height="140" Disabled="true">
+            <div style="padding: 16px; display:flex; align-items:center; justify-content:center; height:100%; color: var(--sui-muted); font-size: 12px;">
+                Resize отключён
+            </div>
+        </SgResizable>
+    </div>
+
+    <div style="margin-top: 32px;">
         <h2>Карточка с изменяемым размером</h2>
         <SgResizable Width="420" Height="260" Handles="se,e,s">
             <SgCard Title="Resizable card" Style="height:100%;border:none;border-radius:0;">
@@ -54,7 +81,6 @@
         </SgCard>
     </div>
 
-    <!-- Code example -->
     <div style="margin-top: 32px;">
         <h2>Примеры кода</h2>
         <SgCode Language="SgCodeLanguage.Razor" Code="@_resizableCode" />
@@ -65,6 +91,8 @@
 @code {
     private double _w1 = 320;
     private double _h1 = 180;
+    private double _liveW = 320;
+    private double _liveH = 180;
 
     private void OnSize1Changed((double Width, double Height) s)
     {
@@ -72,18 +100,27 @@
         _h1 = s.Height;
     }
 
+    private void OnSizeLiveChanging((double Width, double Height) s)
+    {
+        _liveW = s.Width;
+        _liveH = s.Height;
+        StateHasChanged();
+    }
+
     private List<PropertyPanelItem> _props = new()
     {
-        new() { Label = "Width",                Value = "double (default 320)",              BadgeText = "Начальная ширина (px)",  BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Height",               Value = "double (default 200)",              BadgeText = "Начальная высота (px)",  BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MinWidth / MinHeight", Value = "double",                            BadgeText = "Минимум",                BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MaxWidth / MaxHeight", Value = "double",                            BadgeText = "Максимум",               BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Handles",              Value = "string (csv: n,s,e,w,ne,nw,se,sw)",BadgeText = "Активные ручки",         BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "SizeChanged",          Value = "EventCallback<(double,double)>",    BadgeText = "Событие",                BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "ChildContent",         Value = "RenderFragment",                    BadgeText = "Содержимое",             BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Width",                Value = "double (default 320)",               BadgeText = "Начальная ширина (px)",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Height",               Value = "double (default 200)",               BadgeText = "Начальная высота (px)",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MinWidth / MinHeight", Value = "double",                             BadgeText = "Минимум",                 BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxWidth / MaxHeight", Value = "double",                             BadgeText = "Максимум",                BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Handles",              Value = "string (csv: n,s,e,w,ne,nw,se,sw)", BadgeText = "Активные ручки",          BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Disabled",             Value = "bool",                               BadgeText = "Отключить resize",        BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Style",                Value = "string",                             BadgeText = "Inline стили",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SizeChanging",         Value = "EventCallback<(double,double)>",     BadgeText = "Live-событие",            BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SizeChanged",          Value = "EventCallback<(double,double)>",     BadgeText = "Событие (mouseup)",       BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ChildContent",         Value = "RenderFragment",                     BadgeText = "Содержимое",              BadgeVariant = SgBadgeVariant.Info }
     };
 
-    // ── Code snippet ──────────────────────────────────────────────────────────
     private string _resizableCode = """
         <!-- Угол + правый и нижний край -->
         <SgResizable Width="320" Height="180"
@@ -94,13 +131,27 @@
             <div style="padding:16px;">Изменяемый блок</div>
         </SgResizable>
 
+        <!-- Live-обратная связь во время перетаскивания -->
+        <SgResizable Width="320" Height="180"
+                     Handles="se,e,s"
+                     SizeChanging="s => { _w = s.Width; _h = s.Height; StateHasChanged(); }"
+                     SizeChanged="s => { _w = s.Width; _h = s.Height; }">
+            <div>@($"{_w:F0}×{_h:F0} px")</div>
+        </SgResizable>
+
         <!-- Все 8 направлений -->
         <SgResizable Width="360" Height="220"
                      Handles="n,s,e,w,ne,nw,se,sw">
             <div style="padding:16px;">Тяните за любую сторону</div>
         </SgResizable>
 
+        <!-- Отключённый resize -->
+        <SgResizable Width="320" Height="140" Disabled="true">
+            <div>Resize отключён</div>
+        </SgResizable>
+
         @code {
+            private double _w = 320, _h = 180;
             private void OnSize((double W, double H) s)
                 => Console.WriteLine($"{s.W:F0}×{s.H:F0}");
         }
