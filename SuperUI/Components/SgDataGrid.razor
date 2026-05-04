@@ -182,10 +182,12 @@
                     @if (SelectionEnabled)
                     {
 <th class="sg-col-check sg-pinned" style="left: 0;">
-                               <input type="checkbox"
-                                      aria-label="@Localizer["DataGrid_SelectAll"]"
-                                      checked="@AllFilteredSelected"
-                                      @onchange="OnToggleAllAsync" />
+                               <div style="display:flex;align-items:center;justify-content:center;height:100%;">
+                                   <input type="checkbox"
+                                          aria-label="@Localizer["DataGrid_SelectAll"]"
+                                          checked="@AllFilteredSelected"
+                                          @onchange="OnToggleAllAsync" />
+                               </div>
                            </th>
                     }
                     @for (var i = 0; i < visibleCols.Count; i++)
@@ -256,17 +258,23 @@
                                     {
                                         var rIdx = ri;
                                         var rule = PendingRules[rIdx];
+                                        var colFilterType = GetColumnFilterType(key);
                                         <div class="sg-filter-rule">
 <select class="sg-filter-cond-select"
                                                      value="@rule.Condition.ToString()"
                                                      @onchange="async e => await SetPendingRuleConditionAsync(rIdx, Enum.Parse<FilterCondition>(e.Value!.ToString()!))">
-                                                 <option value="Contains">@Localizer["DataGrid_FilterContains"]</option>
-                                                 <option value="NotContains">@Localizer["DataGrid_FilterNotContains"]</option>
+                                                 @* Text operators — shown for string/enum columns *@
+                                                 @if (colFilterType == "string" || colFilterType == "enum")
+                                                 {
+                                                     <option value="Contains">@Localizer["DataGrid_FilterContains"]</option>
+                                                     <option value="NotContains">@Localizer["DataGrid_FilterNotContains"]</option>
+                                                     <option value="StartsWith">@Localizer["DataGrid_FilterStartsWith"]</option>
+                                                     <option value="EndsWith">@Localizer["DataGrid_FilterEndsWith"]</option>
+                                                 }
                                                  <option value="Equals">@Localizer["DataGrid_FilterEquals"]</option>
                                                  <option value="NotEquals">@Localizer["DataGrid_FilterNotEquals"]</option>
-                                                 <option value="StartsWith">@Localizer["DataGrid_FilterStartsWith"]</option>
-                                                 <option value="EndsWith">@Localizer["DataGrid_FilterEndsWith"]</option>
-                                                 @if (IsNumericColumn(key))
+                                                 @* Comparison operators — numeric and date columns *@
+                                                 @if (colFilterType == "number" || colFilterType == "date" || colFilterType == "datetime")
                                                  {
                                                      <option value="GreaterThan">@Localizer["DataGrid_FilterGreaterThan"]</option>
                                                      <option value="LessThan">@Localizer["DataGrid_FilterLessThan"]</option>
@@ -278,10 +286,50 @@
                                              </select>
 @if (rule.Condition != FilterCondition.IsEmpty && rule.Condition != FilterCondition.IsNotEmpty)
                                              {
-                                                 <input class="sg-filter-rule-input"
-                                                        placeholder="@Localizer["DataGrid_FilterValue"]"
-                                                        value="@rule.Value"
-                                                        @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
+                                                 @if (colFilterType == "bool")
+                                                 {
+                                                     <select class="sg-filter-rule-input"
+                                                             value="@rule.Value"
+                                                             @onchange="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())">
+                                                         <option value="">@Localizer["DataGrid_FilterAll"]</option>
+                                                         <option value="true">@Localizer["DataGrid_FilterTrue"]</option>
+                                                         <option value="false">@Localizer["DataGrid_FilterFalse"]</option>
+                                                     </select>
+                                                 }
+                                                 else if (colFilterType == "enum")
+                                                 {
+                                                     <select class="sg-filter-rule-input"
+                                                             value="@rule.Value"
+                                                             @onchange="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())">
+                                                         <option value="">@Localizer["DataGrid_FilterAll"]</option>
+                                                         @foreach (var ei in GetColumnEnumItems(key))
+                                                         {
+                                                             <option value="@ei.Name">@ei.Label</option>
+                                                         }
+                                                     </select>
+                                                 }
+                                                 else if (colFilterType == "date")
+                                                 {
+                                                     <input class="sg-filter-rule-input"
+                                                            type="date"
+                                                            value="@rule.Value"
+                                                            @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
+                                                 }
+                                                 else if (colFilterType == "datetime")
+                                                 {
+                                                     <input class="sg-filter-rule-input"
+                                                            type="datetime-local"
+                                                            value="@rule.Value"
+                                                            @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
+                                                 }
+                                                 else
+                                                 {
+                                                     <input class="sg-filter-rule-input"
+                                                            type="text"
+                                                            placeholder="@Localizer["DataGrid_FilterValue"]"
+                                                            value="@rule.Value"
+                                                            @oninput="async e => await SetPendingRuleValueAsync(rIdx, e.Value?.ToString())" />
+                                                 }
                                              }
                                             @if (PendingRules.Count > 1)
                                             {
@@ -328,9 +376,9 @@
                                          </label>
                                     </div>
 <div class="sg-filter-list">
-                                         @foreach (var val in GetDistinctValuesForColumn(key).Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || (v?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false)))
+                                         @foreach (var val in GetDistinctValuesForColumn(key).Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false)))
                                          {
-                                             var display = val ?? Localizer["DataGrid_FilterEmpty"];
+                                             var display = GetDisplayLabelForFilterValue(key, val);
                                              var selected = IsPendingValueSelected(val);
                                              <label class="sg-filter-item" @key="val">
                                                  <input type="checkbox"
@@ -399,7 +447,7 @@
                                          {
                                              <input class="sg-quick-filter-input"
                                                     placeholder="@Localizer["DataGrid_QuickFilter"]"
-                                                    type="@(filterType == "number" ? "number" : filterType == "date" ? "date" : "text")"
+                                                    type="@(filterType == "date" ? "date" : filterType == "datetime" ? "datetime-local" : "text")"
                                                     value="@(_quickFilters.TryGetValue(col.Key, out var quickValue) ? quickValue : string.Empty)"
                                                     @oninput="@(e => OnQuickFilterInputAsync(col.Key, e))" />
                                          }

@@ -24,6 +24,13 @@ public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable
     [Parameter] public Aggregate Aggregate { get; set; } = Aggregate.None;
     [Parameter] public Type? ValueType { get; set; }
 
+    /// <summary>
+    /// When true, DateTime columns display both date and time (e.g. "27.08.2024 14:35").
+    /// When false (default), only the date part is shown ("27.08.2024").
+    /// Has no effect when <see cref="Format"/> is set explicitly.
+    /// </summary>
+    [Parameter] public bool ShowTime { get; set; }
+
     internal string Key { get; private set; } = Guid.NewGuid().ToString("N");
     internal bool IsSynthetic { get; private set; }
 
@@ -96,6 +103,25 @@ public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable
                     // Fallback to ToString
                 }
             }
+        }
+
+        // Auto-format dates: use short date or date+time based on ShowTime flag
+        // This avoids "27.08.2024 0:00:00" when no Format is specified
+        if (v is DateTime dt)
+        {
+            return ShowTime
+                ? dt.ToString("g", System.Globalization.CultureInfo.CurrentCulture)
+                : dt.ToString("d", System.Globalization.CultureInfo.CurrentCulture);
+        }
+        if (v is DateTimeOffset dto)
+        {
+            return ShowTime
+                ? dto.ToString("g", System.Globalization.CultureInfo.CurrentCulture)
+                : dto.ToString("d", System.Globalization.CultureInfo.CurrentCulture);
+        }
+        if (v is DateOnly d)
+        {
+            return d.ToString("d", System.Globalization.CultureInfo.CurrentCulture);
         }
         
         return v.ToString() ?? string.Empty;
