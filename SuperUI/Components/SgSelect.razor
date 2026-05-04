@@ -20,10 +20,22 @@
         {
             <option value="" disabled="@(!AllowClear)" hidden="@(!AllowClear && Value is not null)" selected="@(Value is null)">@Placeholder</option>
         }
-        @foreach (var it in Items)
+        @if (IsEnumMode)
         {
-            var key = KeyFrom(it);
-            <option value="@key" selected="@(IsSelected(it))">@LabelFrom(it)</option>
+            @foreach (var ei in EnumItems)
+            {
+                <option value="@ei.GetKey(EnumKeyMode)"
+                        selected="@IsEnumItemSelected(ei)"
+                        title="@ei.Description">@ei.Label</option>
+            }
+        }
+        else
+        {
+            @foreach (var it in Items)
+            {
+                var key = KeyFrom(it);
+                <option value="@key" selected="@(IsSelected(it))">@LabelFrom(it)</option>
+            }
         }
     </select>
     @if (IsInvalid)
@@ -41,20 +53,39 @@
     private readonly string _hintId = "sg-select-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-select-err-" + Guid.NewGuid().ToString("N")[..8];
 
+    // cached enum items when EnumType is set
+    private List<SgEnumItem>? _enumItems;
+    private Type? _lastEnumType;
+
     /// <summary>
     /// Gets or sets the collection of items to display in the dropdown.
+    /// Ignored when <see cref="EnumType"/> is set.
     /// </summary>
     [Parameter] public IEnumerable<TValue> Items { get; set; } = Array.Empty<TValue>();
+
+    /// <summary>
+    /// When set, populates the dropdown from the specified enum type instead of
+    /// <see cref="Items"/>. Supports <c>[Display]</c> and <c>[Description]</c> attributes.
+    /// </summary>
+    [Parameter] public Type? EnumType { get; set; }
+
+    /// <summary>
+    /// Determines whether the enum key is the member <see cref="SgEnumKeyMode.Name"/> (default)
+    /// or the underlying <see cref="SgEnumKeyMode.IntValue"/>.
+    /// Only relevant when <see cref="EnumType"/> is set.
+    /// </summary>
+    [Parameter] public SgEnumKeyMode EnumKeyMode { get; set; } = SgEnumKeyMode.Name;
     
     /// <summary>
     /// Gets or sets the function to extract display text from each item.
-    /// If not specified, uses ToString() on the item.
+    /// If not specified, uses ToString() on the item (or the enum label when EnumType is set).
     /// </summary>
     [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
     
     /// <summary>
     /// Gets or sets the function to extract the value from each item.
     /// If not specified, uses the item itself as the value.
+    /// Ignored when <see cref="EnumType"/> is set.
     /// </summary>
     [Parameter] public Func<TValue, object>? ValueSelector { get; set; }
     
@@ -117,29 +148,124 @@
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
         ? ErrorText 
         : ValidationMessages.FirstOrDefault();
-    private string LabelFrom(TValue v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
-    private string KeyFrom(TValue v) => (ValueSelector is not null ? ValueSelector(v) : v)?.ToString() ?? "";
-    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
-    private string ValueString => Value is null ? "" : KeyFrom(Value);
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    // ── Enum support ──────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (EnumType is not null && EnumType != _lastEnumType)
+        {
+            _lastEnumType = EnumType;
+            _enumItems = SgEnumHelper.GetItems(EnumType);
+        }
+        else if (EnumType is null)
+        {
+            _enumItems = null;
+            _lastEnumType = null;
+        }
+    }
+
+    private bool IsEnumMode => _enumItems is not null;
+
+    // Effective items when in enum mode — rendered directly in markup
+    private List<SgEnumItem> EnumItems => _enumItems ?? new();
+
+    // ── Label / key helpers ───────────────────────────────────────────────────
+
+    private string LabelFrom(TValue v)
+    {
+        if (LabelSelector is not null) return LabelSelector(v);
+        if (IsEnumMode)
+        {
+            var key = v?.ToString() ?? "";
+            var ei = _enumItems!.FirstOrDefault(e =>
+                e.Name == key || e.IntValue.ToString() == key);
+            return ei?.Label ?? key;
+        }
+        return v?.ToString() ?? "";
+    }
+
+    private string KeyFrom(TValue v)
+    {
+        if (IsEnumMode)
+        {
+            // Match by name or int value
+            var str = v?.ToString() ?? "";
+            var ei = _enumItems!.FirstOrDefault(e =>
+                e.Name == str || e.IntValue.ToString() == str);
+            return ei?.GetKey(EnumKeyMode) ?? str;
+        }
+        return (ValueSelector is not null ? ValueSelector(v) : v)?.ToString() ?? "";
+    }
+
+    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
+
+    private bool IsEnumItemSelected(SgEnumItem ei)
+    {
+        if (Value is null) return false;
+        var valStr = Value.ToString() ?? "";
+        return ei.Name == valStr || ei.IntValue.ToString() == valStr;
+    }
+
+    private string ValueString => Value is null ? "" : KeyFrom(Value);
+
+    // ── Change handler ────────────────────────────────────────────────────────
 
     private async Task OnChangeAsync(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
         TValue? newValue = default;
-        
+
         if (!string.IsNullOrEmpty(key))
         {
-            foreach (var it in Items)
+            if (IsEnumMode)
             {
-                if (KeyFrom(it) == key)
+                // Find enum item by key (name or int)
+                var ei = _enumItems!.FirstOrDefault(x => x.GetKey(EnumKeyMode) == key);
+                if (ei is not null)
                 {
-                    newValue = it;
-                    break;
+                    // Parse back to TValue (string or enum or int)
+                    newValue = ParseEnumValue(ei);
+                }
+            }
+            else
+            {
+                foreach (var it in Items)
+                {
+                    if (KeyFrom(it) == key)
+                    {
+                        newValue = it;
+                        break;
+                    }
                 }
             }
         }
-        
+
         await SetValueAsync(newValue);
+    }
+
+    private TValue? ParseEnumValue(SgEnumItem ei)
+    {
+        var targetType = typeof(TValue);
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+
+        try
+        {
+            if (underlying == typeof(string))
+                return (TValue)(object)(EnumKeyMode == SgEnumKeyMode.IntValue
+                    ? ei.IntValue.ToString()
+                    : ei.Name);
+
+            if (underlying == typeof(int))
+                return (TValue)(object)ei.IntValue;
+
+            if (underlying.IsEnum)
+                return (TValue)Enum.Parse(underlying, ei.Name);
+        }
+        catch { /* fallback to default */ }
+
+        return default;
     }
 }

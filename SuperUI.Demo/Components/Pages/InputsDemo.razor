@@ -300,6 +300,112 @@
         </div>
     </div>
 
+    <!-- Enum support -->
+    <div style="margin-top: 32px;">
+        <h2>Enum-поддержка в Select / ComboBox / MultiSelect</h2>
+        <p>
+            Параметр <code>EnumType</code> автоматически заполняет список из любого enum.
+            Атрибуты <code>[Display(Name=...)]</code> и <code>[Description(...)]</code> используются как метки.
+            <code>EnumKeyMode</code> определяет, что хранится как ключ — имя члена (<code>Name</code>) или целочисленное значение (<code>IntValue</code>).
+        </p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+
+            <SgCard Title="SgSelect — из enum">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgSelect TValue="string"
+                              @bind-Value="_enumSelectName"
+                              EnumType="typeof(OrderStatus)"
+                              Label="Статус заказа (ключ = Name)"
+                              Placeholder="Выберите статус..."
+                              AllowClear="true" />
+                    <div style="font-size: 11px; color: var(--sui-muted);">Выбрано: @(_enumSelectName ?? "—")</div>
+
+                    <SgSelect TValue="string"
+                              @bind-Value="_enumSelectInt"
+                              EnumType="typeof(OrderStatus)"
+                              EnumKeyMode="SgEnumKeyMode.IntValue"
+                              Label="Статус заказа (ключ = IntValue)"
+                              Placeholder="Выберите статус..."
+                              AllowClear="true" />
+                    <div style="font-size: 11px; color: var(--sui-muted);">Выбрано: @(_enumSelectInt ?? "—")</div>
+
+                    <SgSelect TValue="OrderStatus"
+                              @bind-Value="_enumSelectTyped"
+                              EnumType="typeof(OrderStatus)"
+                              Label="Привязка к типу enum (OrderStatus)"
+                              Placeholder="Выберите статус..."
+                              AllowClear="true" />
+                    <div style="font-size: 11px; color: var(--sui-muted);">Выбрано: @_enumSelectTyped</div>
+                </div>
+            </SgCard>
+
+            <SgCard Title="SgComboBox — из enum (с поиском)">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgComboBox TValue="string"
+                                @bind-Value="_enumComboName"
+                                EnumType="typeof(Priority)"
+                                Label="Приоритет (ключ = Name)"
+                                Placeholder="Выберите приоритет..."
+                                Editable="true" />
+                    <div style="font-size: 11px; color: var(--sui-muted);">Выбрано: @(_enumComboName ?? "—")</div>
+
+                    <SgComboBox TValue="string"
+                                @bind-Value="_enumComboInt"
+                                EnumType="typeof(Priority)"
+                                EnumKeyMode="SgEnumKeyMode.IntValue"
+                                Label="Приоритет (ключ = IntValue)"
+                                Placeholder="Выберите приоритет..."
+                                Editable="true" />
+                    <div style="font-size: 11px; color: var(--sui-muted);">Выбрано: @(_enumComboInt ?? "—")</div>
+
+                    <SgComboBox TValue="Priority"
+                                @bind-Value="_enumComboTyped"
+                                EnumType="typeof(Priority)"
+                                Label="Привязка к типу enum (Priority)"
+                                Placeholder="Выберите приоритет..."
+                                AllowClear="true" />
+                    <div style="font-size: 11px; color: var(--sui-muted);">Выбрано: @_enumComboTyped</div>
+                </div>
+            </SgCard>
+
+            <SgCard Title="SgMultiSelect — из enum">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgMultiSelect TItem="string" TKey="string"
+                                   @bind-Values="_enumMultiName"
+                                   EnumType="typeof(Permission)"
+                                   Label="Права доступа (ключ = Name)"
+                                   Placeholder="Выберите права..." />
+                    <div style="font-size: 11px; color: var(--sui-muted);">
+                        Выбрано: @(string.Join(", ", _enumMultiName.Any() ? _enumMultiName : new[] { "—" }))
+                    </div>
+
+                    <SgMultiSelect TItem="string" TKey="string"
+                                   @bind-Values="_enumMultiInt"
+                                   EnumType="typeof(Permission)"
+                                   EnumKeyMode="SgEnumKeyMode.IntValue"
+                                   Label="Права доступа (ключ = IntValue)"
+                                   Placeholder="Выберите права..." />
+                    <div style="font-size: 11px; color: var(--sui-muted);">
+                        Выбрано: @(string.Join(", ", _enumMultiInt.Any() ? _enumMultiInt : new[] { "—" }))
+                    </div>
+                </div>
+            </SgCard>
+
+            <SgCard Title="Параметры EnumType">
+                <PropertyTable Items="_enumProperties" />
+            </SgCard>
+
+        </div>
+
+        <div style="margin-top: 16px;">
+            <SgCode Language="SgCodeLanguage.CSharp" Code="@_enumDefinitionCode" />
+        </div>
+        <div style="margin-top: 12px;">
+            <SgCode Language="SgCodeLanguage.Razor" Code="@_enumUsageCode" />
+        </div>
+    </div>
+
     <!-- SgMultiSelectEx -->
     <div style="margin-top: 32px;">
         <h2>Расширенные компоненты выбора (Ex)</h2>
@@ -782,5 +888,121 @@
                 new() { Value = "c", Label = "Вариант C", Disabled = true }
             };
         }
+        """;
+
+    // ── Enum demo ─────────────────────────────────────────────────────────────
+
+    // Enum definitions used in demo
+    public enum OrderStatus
+    {
+        [System.ComponentModel.DataAnnotations.Display(Name = "Новый")]
+        New,
+        [System.ComponentModel.DataAnnotations.Display(Name = "В обработке")]
+        Processing,
+        [System.ComponentModel.DataAnnotations.Display(Name = "Отправлен")]
+        Shipped,
+        [System.ComponentModel.DataAnnotations.Display(Name = "Доставлен")]
+        Delivered,
+        [System.ComponentModel.DataAnnotations.Display(Name = "Отменён")]
+        Cancelled
+    }
+
+    public enum Priority
+    {
+        [System.ComponentModel.Description("Низкий приоритет")]
+        Low,
+        [System.ComponentModel.Description("Средний приоритет")]
+        Medium,
+        [System.ComponentModel.Description("Высокий приоритет")]
+        High,
+        [System.ComponentModel.Description("Критический")]
+        Critical
+    }
+
+    public enum Permission
+    {
+        [System.ComponentModel.DataAnnotations.Display(Name = "Чтение")]
+        Read,
+        [System.ComponentModel.DataAnnotations.Display(Name = "Запись")]
+        Write,
+        [System.ComponentModel.DataAnnotations.Display(Name = "Удаление")]
+        Delete,
+        [System.ComponentModel.DataAnnotations.Display(Name = "Администратор")]
+        Admin
+    }
+
+    // Enum-bound values
+    private string? _enumSelectName;
+    private string? _enumSelectInt;
+    private OrderStatus _enumSelectTyped;
+
+    private string? _enumComboName;
+    private string? _enumComboInt;
+    private Priority _enumComboTyped;
+
+    private IEnumerable<string> _enumMultiName = new List<string>();
+    private IEnumerable<string> _enumMultiInt  = new List<string>();
+
+    private List<PropertyPanelItem> _enumProperties = new()
+    {
+        new() { Label = "EnumType",    Value = "Type?",          BadgeText = "Тип enum",          BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "EnumKeyMode", Value = "Name | IntValue", BadgeText = "Ключ",              BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "[Display]",   Value = "Name, Description, GroupName, Order", BadgeText = "Атрибут", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "[Description]", Value = "string",       BadgeText = "Атрибут",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "TValue",      Value = "string | int | TEnum", BadgeText = "Тип значения", BadgeVariant = SgBadgeVariant.Info   },
+    };
+
+    private string _enumDefinitionCode = """
+        // Enum с атрибутами [Display] и [Description]
+        public enum OrderStatus
+        {
+            [Display(Name = "Новый")]         New,
+            [Display(Name = "В обработке")]   Processing,
+            [Display(Name = "Отправлен")]     Shipped,
+            [Display(Name = "Доставлен")]     Delivered,
+            [Display(Name = "Отменён")]       Cancelled
+        }
+
+        public enum Priority
+        {
+            [Description("Низкий")]    Low,
+            [Description("Средний")]   Medium,
+            [Description("Высокий")]   High,
+            [Description("Критический")] Critical
+        }
+        """;
+
+    private string _enumUsageCode = """
+        <!-- Ключ = имя члена enum (по умолчанию) -->
+        <SgSelect TValue="string"
+                  @bind-Value="_status"
+                  EnumType="typeof(OrderStatus)"
+                  Label="Статус" />
+
+        <!-- Ключ = целочисленное значение -->
+        <SgSelect TValue="string"
+                  @bind-Value="_statusInt"
+                  EnumType="typeof(OrderStatus)"
+                  EnumKeyMode="SgEnumKeyMode.IntValue"
+                  Label="Статус (int key)" />
+
+        <!-- Привязка напрямую к типу enum -->
+        <SgSelect TValue="OrderStatus"
+                  @bind-Value="_statusEnum"
+                  EnumType="typeof(OrderStatus)"
+                  Label="Статус (enum binding)" />
+
+        <!-- ComboBox с поиском -->
+        <SgComboBox TValue="string"
+                    @bind-Value="_priority"
+                    EnumType="typeof(Priority)"
+                    Label="Приоритет"
+                    Editable="true" />
+
+        <!-- MultiSelect -->
+        <SgMultiSelect TItem="string" TKey="string"
+                       @bind-Values="_permissions"
+                       EnumType="typeof(Permission)"
+                       Label="Права доступа" />
         """;
 }

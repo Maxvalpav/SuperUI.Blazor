@@ -24,38 +24,78 @@
          @onfocusout="HandleFocusOutAsync"
          @onclick:stopPropagation="true">
         <div class="sgc-combo-control" @onclick="ToggleAsync">
-            @{ var selItems = GetSelectedItems().ToList(); }
-            @if (selItems.Count == 0 && !_open)
+            @if (IsEnumMode)
             {
-                <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
+                var selEnumItems = GetSelectedEnumItems().ToList();
+                @if (selEnumItems.Count == 0 && !_open)
+                {
+                    <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
+                }
+                else
+                {
+                    foreach (var ei in selEnumItems)
+                    {
+                        var eiLocal = ei;
+                        <span class="sgc-combo-tag" role="listitem" title="@eiLocal.Description">
+                            @eiLocal.Label
+                            @if (!Disabled)
+                            {
+                                <button class="sgc-combo-tag-x"
+                                        type="button"
+                                        aria-label="@Localizer["Remove"] @eiLocal.Label"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => RemoveEnumItemAsync(eiLocal)">×</button>
+                            }
+                        </span>
+                    }
+                    @if (_open)
+                    {
+                        <input class="sgc-combo-input"
+                               value="@_search"
+                               placeholder="@(selEnumItems.Count == 0 ? EffectivePlaceholder : "")"
+                               aria-autocomplete="list"
+                               aria-controls="@_listboxId"
+                               @oninput="OnSearchInput"
+                               @onkeydown="OnKeyDownAsync"
+                               @onclick:stopPropagation="true" />
+                    }
+                }
             }
             else
             {
-                foreach (var v in selItems)
+                var selItems = GetSelectedItems().ToList();
+                @if (selItems.Count == 0 && !_open)
                 {
-                    var vLocal = v;
-                    <span class="sgc-combo-tag" role="listitem">
-                        @LabelFrom(vLocal)
-                        @if (!Disabled)
-                        {
-                            <button class="sgc-combo-tag-x" 
-                                    type="button"
-                                    aria-label="@Localizer["Remove"] @LabelFrom(vLocal)"
-                                    @onclick:stopPropagation="true"
-                                    @onclick="() => RemoveAsync(KeySelector(vLocal))">×</button>
-                        }
-                    </span>
+                    <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
                 }
-                @if (_open)
+                else
                 {
-                    <input class="sgc-combo-input"
-                           value="@_search"
-                           placeholder="@(selItems.Count == 0 ? EffectivePlaceholder : "")"
-                           aria-autocomplete="list"
-                           aria-controls="@_listboxId"
-                           @oninput="OnSearchInput"
-                           @onkeydown="OnKeyDownAsync"
-                           @onclick:stopPropagation="true" />
+                    foreach (var v in selItems)
+                    {
+                        var vLocal = v;
+                        <span class="sgc-combo-tag" role="listitem">
+                            @LabelFrom(vLocal)
+                            @if (!Disabled)
+                            {
+                                <button class="sgc-combo-tag-x"
+                                        type="button"
+                                        aria-label="@Localizer["Remove"] @LabelFrom(vLocal)"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => RemoveAsync(KeySelector(vLocal))">×</button>
+                            }
+                        </span>
+                    }
+                    @if (_open)
+                    {
+                        <input class="sgc-combo-input"
+                               value="@_search"
+                               placeholder="@(selItems.Count == 0 ? EffectivePlaceholder : "")"
+                               aria-autocomplete="list"
+                               aria-controls="@_listboxId"
+                               @oninput="OnSearchInput"
+                               @onkeydown="OnKeyDownAsync"
+                               @onclick:stopPropagation="true" />
+                    }
                 }
             }
             <span class="sgc-combo-caret" aria-hidden="true">@(_open ? "▲" : "▼")</span>
@@ -63,25 +103,53 @@
         @if (_open)
         {
             <div id="@_listboxId" class="sgc-combo-menu" role="listbox" aria-multiselectable="true">
-                @{ var filtered = GetFilteredItems().ToList(); }
-                @if (filtered.Count == 0)
+                @if (IsEnumMode)
                 {
-                    <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    var filteredEnum = GetFilteredEnumItems().ToList();
+                    @if (filteredEnum.Count == 0)
+                    {
+                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    }
+                    else
+                    {
+                        @foreach (var ei in filteredEnum)
+                        {
+                            var eiLocal = ei;
+                            var selected = IsEnumItemSelected(eiLocal);
+                            <div class="sgc-combo-option @(selected ? "sgc-selected" : "")"
+                                 role="option"
+                                 aria-selected="@(selected ? "true" : "false")"
+                                 title="@eiLocal.Description"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="() => ToggleEnumItemAsync(eiLocal)">
+                                <input type="checkbox" checked="@selected" readonly tabindex="-1" style="pointer-events:none;" aria-hidden="true" />
+                                <span>@eiLocal.Label</span>
+                            </div>
+                        }
+                    }
                 }
                 else
                 {
-                    @foreach (var it in filtered)
+                    var filtered = GetFilteredItems().ToList();
+                    @if (filtered.Count == 0)
                     {
-                        var itLocal = it;
-                        var selected = IsSelected(KeySelector(itLocal));
-                        <div class="sgc-combo-option @(selected ? "sgc-selected" : "")"
-                             role="option"
-                             aria-selected="@(selected ? "true" : "false")"
-                             @onclick:stopPropagation="true"
-                             @onclick="() => ToggleItemAsync(KeySelector(itLocal))">
-                            <input type="checkbox" checked="@selected" readonly tabindex="-1" style="pointer-events:none;" aria-hidden="true" />
-                            <span>@LabelFrom(itLocal)</span>
-                        </div>
+                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    }
+                    else
+                    {
+                        @foreach (var it in filtered)
+                        {
+                            var itLocal = it;
+                            var selected = IsSelected(KeySelector(itLocal));
+                            <div class="sgc-combo-option @(selected ? "sgc-selected" : "")"
+                                 role="option"
+                                 aria-selected="@(selected ? "true" : "false")"
+                                 @onclick:stopPropagation="true"
+                                 @onclick="() => ToggleItemAsync(KeySelector(itLocal))">
+                                <input type="checkbox" checked="@selected" readonly tabindex="-1" style="pointer-events:none;" aria-hidden="true" />
+                                <span>@LabelFrom(itLocal)</span>
+                            </div>
+                        }
                     }
                 }
             </div>
@@ -107,6 +175,10 @@
     private SgEditContextBinder<IEnumerable<TKey>?>? _binder;
     private CancellationTokenSource? _blurCts;
 
+    // enum support
+    private List<SgEnumItem>? _enumItems;
+    private Type? _lastEnumType;
+
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
     /// <summary>
@@ -126,29 +198,45 @@
     
     /// <summary>
     /// Gets or sets the collection of items to display in the dropdown.
+    /// Ignored when <see cref="EnumType"/> is set.
     /// </summary>
     [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
 
     /// <summary>
-    /// Gets or sets the function to extract the key from an item. Required.
+    /// When set, populates the dropdown from the specified enum type instead of
+    /// <see cref="Items"/>. Supports <c>[Display]</c> and <c>[Description]</c> attributes.
+    /// <para>
+    /// When using <c>EnumType</c>, <c>TKey</c> should be <c>string</c> (or <c>int</c>)
+    /// and <c>KeySelector</c> / <c>LabelSelector</c> are not required.
+    /// </para>
     /// </summary>
-    [Parameter, EditorRequired] public Func<TItem, TKey> KeySelector { get; set; } = default!;
+    [Parameter] public Type? EnumType { get; set; }
+
+    /// <summary>
+    /// Determines whether the enum key is the member <see cref="SgEnumKeyMode.Name"/> (default)
+    /// or the underlying <see cref="SgEnumKeyMode.IntValue"/>.
+    /// Only relevant when <see cref="EnumType"/> is set.
+    /// </summary>
+    [Parameter] public SgEnumKeyMode EnumKeyMode { get; set; } = SgEnumKeyMode.Name;
+
+    /// <summary>
+    /// Gets or sets the function to extract the key from an item. Required when not using EnumType.
+    /// </summary>
+    [Parameter] public Func<TItem, TKey> KeySelector { get; set; } = default!;
     
     /// <summary>
     /// Gets or sets the function to extract display text from each item.
-    /// If not specified, uses ToString() on the item.
+    /// If not specified, uses ToString() on the item (or the enum label when EnumType is set).
     /// </summary>
     [Parameter] public Func<TItem, string>? LabelSelector { get; set; }
     
     /// <summary>
     /// Gets or sets the placeholder text shown when no items are selected.
-    /// If not specified, uses the localized "Select" string.
     /// </summary>
     [Parameter] public string? Placeholder { get; set; }
     
     /// <summary>
     /// Gets or sets the text displayed when no items match the search filter.
-    /// If not specified, uses the localized "NoMatches" string.
     /// </summary>
     [Parameter] public string? EmptyText { get; set; }
     
@@ -202,12 +290,95 @@
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
     private string LabelFrom(TItem v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
 
+    // ── Enum support ──────────────────────────────────────────────────────────
+
+    private bool IsEnumMode => _enumItems is not null;
+
+    protected override void OnInitialized()
+    {
+        _binder = new SgEditContextBinder<IEnumerable<TKey>?>(StateHasChanged);
+    }
+
+    protected override void OnParametersSet()
+    {
+        _binder?.Update(CascadedEditContext, ValueExpression);
+
+        if (EnumType is not null && EnumType != _lastEnumType)
+        {
+            _lastEnumType = EnumType;
+            _enumItems = SgEnumHelper.GetItems(EnumType);
+        }
+        else if (EnumType is null)
+        {
+            _enumItems = null;
+            _lastEnumType = null;
+        }
+    }
+
+    // ── Enum key conversion ───────────────────────────────────────────────────
+
+    private TKey EnumItemToKey(SgEnumItem ei)
+    {
+        var targetType = typeof(TKey);
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        try
+        {
+            if (underlying == typeof(string))
+                return (TKey)(object)(EnumKeyMode == SgEnumKeyMode.IntValue
+                    ? ei.IntValue.ToString()
+                    : ei.Name);
+            if (underlying == typeof(int))
+                return (TKey)(object)ei.IntValue;
+            if (underlying.IsEnum)
+                return (TKey)Enum.Parse(underlying, ei.Name);
+        }
+        catch { }
+        return default!;
+    }
+
+    private string EnumKeyToString(TKey key)
+    {
+        if (key is null) return "";
+        var str = key.ToString() ?? "";
+        // Normalize: if key is an enum value, use its name
+        var keyType = typeof(TKey);
+        if (keyType.IsEnum) return str; // already the name
+        return str;
+    }
+
+    private bool IsEnumItemSelected(SgEnumItem ei)
+    {
+        if (Values is null) return false;
+        var eiKey = EnumKeyMode == SgEnumKeyMode.IntValue
+            ? ei.IntValue.ToString()
+            : ei.Name;
+        foreach (var k in Values)
+        {
+            var kStr = k?.ToString() ?? "";
+            if (kStr == eiKey) return true;
+            // also match by int value if key mode is Name but stored as int
+            if (EnumKeyMode == SgEnumKeyMode.Name && int.TryParse(kStr, out var kInt) && kInt == ei.IntValue) return true;
+        }
+        return false;
+    }
+
+    private string EnumItemDisplayLabel(SgEnumItem ei) => ei.Label;
+
+    // ── Filtered items ────────────────────────────────────────────────────────
+
     private IEnumerable<TItem> GetSelectedItems()
     {
         if (Values is null) yield break;
         var keys = Values.ToHashSet();
         foreach (var it in Items)
             if (keys.Contains(KeySelector(it))) yield return it;
+    }
+
+    private IEnumerable<SgEnumItem> GetSelectedEnumItems()
+    {
+        if (_enumItems is null || Values is null) yield break;
+        foreach (var ei in _enumItems)
+            if (IsEnumItemSelected(ei)) yield return ei;
     }
 
     private bool IsSelected(TKey key)
@@ -224,15 +395,16 @@
         return Items.Where(i => LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
     }
 
-    protected override void OnInitialized()
+    private IEnumerable<SgEnumItem> GetFilteredEnumItems()
     {
-        _binder = new SgEditContextBinder<IEnumerable<TKey>?>(StateHasChanged);
+        if (_enumItems is null) return Array.Empty<SgEnumItem>();
+        if (string.IsNullOrEmpty(_search)) return _enumItems;
+        return _enumItems.Where(ei =>
+            ei.Label.Contains(_search, StringComparison.CurrentCultureIgnoreCase) ||
+            ei.Name.Contains(_search, StringComparison.CurrentCultureIgnoreCase));
     }
 
-    protected override void OnParametersSet()
-    {
-        _binder?.Update(CascadedEditContext, ValueExpression);
-    }
+    // ── Toggle / focus ────────────────────────────────────────────────────────
 
     private async Task ToggleAsync()
     {
@@ -268,6 +440,8 @@
         if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
     }
 
+    // ── Toggle item ───────────────────────────────────────────────────────────
+
     private async Task ToggleItemAsync(TKey key)
     {
         var list = Values?.ToList() ?? new List<TKey>();
@@ -278,6 +452,12 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task ToggleEnumItemAsync(SgEnumItem ei)
+    {
+        var key = EnumItemToKey(ei);
+        await ToggleItemAsync(key);
+    }
+
     private async Task RemoveAsync(TKey key)
     {
         var list = Values?.ToList() ?? new List<TKey>();
@@ -285,6 +465,12 @@
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RemoveEnumItemAsync(SgEnumItem ei)
+    {
+        var key = EnumItemToKey(ei);
+        await RemoveAsync(key);
     }
 
     public void Dispose()
