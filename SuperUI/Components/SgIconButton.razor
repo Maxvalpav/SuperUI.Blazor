@@ -1,0 +1,152 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<button type="@Type.ToString().ToLowerInvariant()"
+        class="sgc-icon-btn @VariantClass @SizeClass @(Round ? "sgc-icon-btn-round" : "") @(Pressed ? "sgc-icon-btn-pressed" : "") @(Active ? "sgc-icon-btn-active" : "") @CssClass"
+        style="@Style"
+        disabled="@(Disabled || Loading)"
+        title="@Title"
+        aria-label="@(AriaLabel ?? Title)"
+        aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+        @onclick="OnClickAsync"
+        @attributes="AdditionalAttributes">
+    @if (Loading)
+    {
+        <span class="sgc-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+    }
+    else if (!string.IsNullOrEmpty(Icon))
+    {
+        @((MarkupString)Icon)
+    }
+    else if (ChildContent is not null)
+    {
+        @ChildContent
+    }
+    @if (BadgeCount > 0)
+    {
+        <span class="sgc-icon-btn-badge">@(BadgeCount > 99 ? "99+" : BadgeCount.ToString())</span>
+    }
+    else if (BadgeDot)
+    {
+        <span class="sgc-icon-btn-dot"></span>
+    }
+</button>
+
+@code {
+    private bool _disposed;
+    private CancellationTokenSource? _debounceCts;
+
+    /// <summary>SVG icon markup string.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Custom content (alternative to Icon).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Tooltip and aria-label text.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Explicit aria-label (overrides Title).</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Visual variant. Default is <see cref="SgButtonVariant.Default"/>.</summary>
+    [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Default;
+
+    /// <summary>Button size. Default is <see cref="SgSize.Md"/>.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>When true, renders as a circle. When false, renders as a rounded square. Default true.</summary>
+    [Parameter] public bool Round { get; set; } = true;
+
+    /// <summary>When true, the button acts as a toggle.</summary>
+    [Parameter] public bool IsToggle { get; set; }
+
+    /// <summary>Pressed state for toggle buttons.</summary>
+    [Parameter] public bool Pressed { get; set; }
+
+    /// <summary>Callback when Pressed changes.</summary>
+    [Parameter] public EventCallback<bool> PressedChanged { get; set; }
+
+    /// <summary>When true, shows an active/selected highlight (e.g. for toolbar state).</summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>When true, the button is disabled.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>When true, shows a loading spinner.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Badge count shown in the top-right corner. 0 = hidden.</summary>
+    [Parameter] public int BadgeCount { get; set; }
+
+    /// <summary>When true, shows a small dot indicator (e.g. for notifications).</summary>
+    [Parameter] public bool BadgeDot { get; set; }
+
+    /// <summary>HTML button type.</summary>
+    [Parameter] public SgButtonType Type { get; set; } = SgButtonType.Button;
+
+    /// <summary>Debounce interval in ms. Default 0 (no debounce).</summary>
+    [Parameter] public int DebounceInterval { get; set; }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline style.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Click callback.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string VariantClass => Variant switch
+    {
+        SgButtonVariant.Primary  => "sgc-icon-btn-primary",
+        SgButtonVariant.Danger   => "sgc-icon-btn-danger",
+        SgButtonVariant.Success  => "sgc-icon-btn-success",
+        SgButtonVariant.Ghost    => "sgc-icon-btn-ghost",
+        SgButtonVariant.Outlined => "sgc-icon-btn-outlined",
+        _                        => ""
+    };
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-icon-btn-sm",
+        SgSize.Lg => "sgc-icon-btn-lg",
+        SgSize.Xl => "sgc-icon-btn-xl",
+        _         => ""
+    };
+
+    private async Task OnClickAsync(MouseEventArgs e)
+    {
+        if (Disabled || Loading) return;
+
+        if (IsToggle)
+        {
+            Pressed = !Pressed;
+            if (PressedChanged.HasDelegate)
+                await PressedChanged.InvokeAsync(Pressed);
+        }
+
+        if (OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync(e);
+
+            if (DebounceInterval > 0)
+            {
+                _debounceCts?.Cancel();
+                _debounceCts?.Dispose();
+                _debounceCts = new CancellationTokenSource();
+                try { await Task.Delay(DebounceInterval, _debounceCts.Token); }
+                catch (TaskCanceledException) { return; }
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
+    }
+}
