@@ -11,13 +11,13 @@
     <!-- SgEntityPicker Single -->
     <div style="margin-top: 32px;">
         <h2>Выбор одной сущности</h2>
-        <p>Выбор одного элемента из списка с поддержкой поиска.</p>
+        <p>Одиночный выбор — в таблице отображается радиокнопка. Клик по строке сразу подтверждает выбор и закрывает диалог. Текущее значение подсвечивается при повторном открытии.</p>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <!-- Примеры -->
             <SgCard Title="Примеры использования">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; flex-direction: column; gap: 24px;">
                     <div>
+                        <div style="font-size: 12px; color: var(--sui-text-secondary); margin-bottom: 6px;">Модальное окно (по умолчанию)</div>
                         <SgEntityPicker TItem="CustomerGridRow"
                                         Items="_customerRows"
                                         @bind-Value="_selectedCustomer"
@@ -26,17 +26,72 @@
                                         DisplaySelector="x => x.Name"
                                         Title="Выберите основного контрагента">
                             <Columns>
-                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name" Title="Клиент" Value="x => x.Name" />
-                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age" Title="Возраст" Value="x => x.Age" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name"     Title="Клиент"  Value="x => x.Name" Sortable="true" Filterable="true" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age"      Title="Возраст" Value="x => x.Age"  Sortable="true" Width="90" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="IsActive" Title="Активен" Value="x => x.IsActive" Width="90">
+                                    <Template>
+                                        <SgBadge Variant="@(context.IsActive ? SgBadgeVariant.Success : SgBadgeVariant.Danger)">
+                                            @(context.IsActive ? "Да" : "Нет")
+                                        </SgBadge>
+                                    </Template>
+                                </SgDataGridColumn>
+                            </Columns>
+                        </SgEntityPicker>
+                    </div>
+
+                    <div>
+                        <div style="font-size: 12px; color: var(--sui-text-secondary); margin-bottom: 6px;">Inline (popover)</div>
+                        <SgEntityPicker TItem="CustomerGridRow"
+                                        Items="_customerRows"
+                                        @bind-Value="_selectedCustomerInline"
+                                        Label="Выбор клиента (inline)"
+                                        Placeholder="Выберите клиента..."
+                                        DisplaySelector="x => x.Name"
+                                        Inline="true">
+                            <Columns>
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name"     Title="Клиент"  Value="x => x.Name" Sortable="true" Filterable="true" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age"      Title="Возраст" Value="x => x.Age"  Sortable="true" Width="90" />
                             </Columns>
                         </SgEntityPicker>
                     </div>
                 </div>
             </SgCard>
 
-            <!-- Property Grid -->
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_entityPickerProperties" />
+            <SgCard Title="Выбранные значения">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    @if (_selectedCustomer is not null)
+                    {
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 4px;">Модальный выбор</div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <SgBadge Variant="SgBadgeVariant.Info">@_selectedCustomer.Name</SgBadge>
+                                <span style="font-size: 12px; color: var(--sui-text-secondary);">Возраст: @_selectedCustomer.Age</span>
+                                <SgBadge Variant="@(_selectedCustomer.IsActive ? SgBadgeVariant.Success : SgBadgeVariant.Danger)">
+                                    @(_selectedCustomer.IsActive ? "Активен" : "Неактивен")
+                                </SgBadge>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="color: var(--sui-text-secondary); font-size: 13px;">Модальный: не выбрано</div>
+                    }
+
+                    @if (_selectedCustomerInline is not null)
+                    {
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 4px;">Inline выбор</div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <SgBadge Variant="SgBadgeVariant.Info">@_selectedCustomerInline.Name</SgBadge>
+                                <span style="font-size: 12px; color: var(--sui-text-secondary);">Возраст: @_selectedCustomerInline.Age</span>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div style="color: var(--sui-text-secondary); font-size: 13px;">Inline: не выбрано</div>
+                    }
+                </div>
             </SgCard>
         </div>
     </div>
@@ -44,10 +99,9 @@
     <!-- SgEntityPicker Multi -->
     <div style="margin-top: 32px;">
         <h2>Выбор нескольких сущностей</h2>
-        <p>Выбор нескольких элементов из списка с поддержкой фильтрации.</p>
+        <p>Множественный выбор — в таблице отображаются чекбоксы. Подтверждение через кнопку «Выбрать».</p>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <!-- Примеры -->
             <SgCard Title="Примеры использования">
                 <div style="display: flex; flex-direction: column; gap: 16px;">
                     <div>
@@ -61,59 +115,85 @@
                                         StorageKey="enterprise-picker-views"
                                         Title="Массовый выбор контрагентов">
                             <Columns>
-                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name" Title="Клиент" Value="x => x.Name" />
-                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age" Title="Возраст" Value="x => x.Age" />
-                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="IsActive" Title="Активен" Value="x => x.IsActive" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Name"     Title="Клиент"  Value="x => x.Name" Sortable="true" Filterable="true" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="Age"      Title="Возраст" Value="x => x.Age"  Sortable="true" Width="90" />
+                                <SgDataGridColumn TItem="CustomerGridRow" ColumnKey="IsActive" Title="Активен" Value="x => x.IsActive" Width="90" />
                             </Columns>
                         </SgEntityPicker>
                     </div>
                 </div>
             </SgCard>
 
-            <!-- Property Grid -->
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_entityPickerProperties" />
+            <SgCard Title="Выбранные значения">
+                @if (_selectedCustomers?.Any() == true)
+                {
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+                        @foreach (var c in _selectedCustomers)
+                        {
+                            <SgBadge Variant="SgBadgeVariant.Info">@c.Name</SgBadge>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="color: var(--sui-text-secondary); font-size: 13px;">Ничего не выбрано</div>
+                }
             </SgCard>
         </div>
     </div>
 
-    <!-- Selected Result -->
-    @if (_selectedCustomer != null)
-    {
-        <div style="margin-top: 32px;">
-            <SgAlert Variant="SgAlertVariant.Info" Text="@($"Выбранный клиент: {_selectedCustomer.Name} (Возраст: {_selectedCustomer.Age})")" />
-        </div>
-    }
+    <!-- Параметры -->
+    <div style="margin-top: 32px;">
+        <h2>Параметры компонента</h2>
+        <SgCard Style="margin-top: 16px;">
+            <PropertyTable Items="_entityPickerProperties" />
+        </SgCard>
+    </div>
 </SgCard>
 
 @code {
     private CustomerGridRow? _selectedCustomer;
+    private CustomerGridRow? _selectedCustomerInline;
     private IEnumerable<CustomerGridRow>? _selectedCustomers;
     
     private List<PropertyPanelItem> _entityPickerProperties = new()
     {
-        new() { Label = "Items", Value = "IEnumerable<T>", BadgeText = "Данные", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Value", Value = "T", BadgeText = "Значение", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Values", Value = "IEnumerable<T>", BadgeText = "Значения", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MultiSelect", Value = "bool", BadgeText = "Множественный", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Placeholder", Value = "string", BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "DisplaySelector", Value = "Func<T, string>", BadgeText = "Отображение", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "StorageKey", Value = "string", BadgeText = "Ключ", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Readonly", Value = "bool", BadgeText = "Только чтение", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = SgBadgeVariant.Warn }
+        new() { Label = "Items",           Value = "IEnumerable<T>",        BadgeText = "Данные",             BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Value",           Value = "T?",                    BadgeText = "Одиночное значение", BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ValueChanged",    Value = "EventCallback<T?>",     BadgeText = "Изменение значения", BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "Values",          Value = "IEnumerable<T>?",       BadgeText = "Множественные",      BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ValuesChanged",   Value = "EventCallback<IEnumerable<T>?>", BadgeText = "Изменение множественных", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "MultiSelect",     Value = "bool",                  BadgeText = "Множественный выбор",BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "DisplaySelector", Value = "Func<T, string>",       BadgeText = "Отображение",        BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "Columns",         Value = "RenderFragment?",       BadgeText = "Колонки таблицы",    BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "Label",           Value = "string?",               BadgeText = "Метка поля",         BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "Placeholder",     Value = "string?",               BadgeText = "Подсказка",          BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "Title",           Value = "string",                BadgeText = "Заголовок диалога",  BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ModalWidth",      Value = "string (default: 800px)", BadgeText = "Ширина модала",    BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "Inline",          Value = "bool",                  BadgeText = "Popover вместо модала", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowClear",      Value = "bool (default: true)",  BadgeText = "Кнопка очистки",     BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "StorageKey",      Value = "string?",               BadgeText = "Ключ сохр. видов",   BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ShowFilterBar",   Value = "bool (default: true)",  BadgeText = "Панель фильтров",    BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "LoadItems",       Value = "Func<string, Task<IEnumerable<T>>>?", BadgeText = "Ленивая загрузка", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Readonly",        Value = "bool",                  BadgeText = "Только чтение",      BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "Disabled",        Value = "bool",                  BadgeText = "Отключён",           BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "Required",        Value = "bool",                  BadgeText = "Обязательное",       BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "Hint",            Value = "string?",               BadgeText = "Подсказка под полем",BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "OnOpen",          Value = "EventCallback",         BadgeText = "При открытии",       BadgeVariant = SgBadgeVariant.Success},
     };
     
     private readonly List<CustomerGridRow> _customerRows =
     [
-        new("Acme North", 34, new DateTime(1990, 3, 14), true),
-        new("Blue Ocean", 29, new DateTime(1995, 8, 21), true),
-        new("Contoso Retail", 42, new DateTime(1982, 11, 5), false),
-        new("Delta Systems", 31, new DateTime(1993, 1, 30), true),
-        new("Everest Group", 38, new DateTime(1986, 6, 17), false),
-        new("Future Labs", 27, new DateTime(1997, 9, 2), true),
-        new("Greenline", 45, new DateTime(1979, 12, 10), true)
+        new("Acme North",      34, new DateTime(1990, 3,  14), true),
+        new("Blue Ocean",      29, new DateTime(1995, 8,  21), true),
+        new("Contoso Retail",  42, new DateTime(1982, 11,  5), false),
+        new("Delta Systems",   31, new DateTime(1993, 1,  30), true),
+        new("Everest Group",   38, new DateTime(1986, 6,  17), false),
+        new("Future Labs",     27, new DateTime(1997, 9,   2), true),
+        new("Greenline",       45, new DateTime(1979, 12, 10), true),
+        new("Horizon Tech",    33, new DateTime(1991, 4,  25), true),
+        new("Infinity Corp",   50, new DateTime(1974, 7,   8), false),
+        new("Jupiter LLC",     26, new DateTime(1998, 2,  14), true),
     ];
 
     public sealed record CustomerGridRow(string Name, int Age, DateTime BirthDate, bool IsActive);

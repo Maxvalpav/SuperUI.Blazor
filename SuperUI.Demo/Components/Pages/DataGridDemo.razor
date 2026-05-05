@@ -297,9 +297,76 @@
         </SgCard>
     </div>
 
-    <!-- 9. Параметры компонента -->
+    <!-- 9. Одиночный выбор (AllowSingleSelect) -->
     <div style="margin-top: 32px;">
-        <h2>9. Параметры компонента</h2>
+        <h2>9. Одиночный выбор (AllowSingleSelect)</h2>
+        <p>Параметр <code>AllowSingleSelect="true"</code> включает режим одиночного выбора строки через радиокнопку. При выборе новой строки предыдущая автоматически снимается.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;">
+            <SgCard Title="Таблица с одиночным выбором">
+                <div style="height: 380px; border: 1px solid var(--sui-border); border-radius: var(--sui-radius-md); overflow: hidden;">
+                    <SgDataGrid TItem="Employee"
+                                Items="_employees.Take(50)"
+                                AllowSingleSelect="true"
+                                ShowStatusBar="true"
+                                PageSize="10"
+                                EnablePaging="true"
+                                SelectedItemsChanged="OnSingleSelectChanged">
+                        <ChildContent>
+                            <SgDataGridColumn TItem="Employee" ColumnKey="Id"         Title="ID"       Value="@(e => e.Id)"         Width="60"  Sortable="true" />
+                            <SgDataGridColumn TItem="Employee" ColumnKey="FirstName"  Title="Имя"      Value="@(e => e.FirstName)"  Width="120" Sortable="true" />
+                            <SgDataGridColumn TItem="Employee" ColumnKey="LastName"   Title="Фамилия"  Value="@(e => e.LastName)"   Width="120" Sortable="true" />
+                            <SgDataGridColumn TItem="Employee" ColumnKey="Department" Title="Отдел"    Value="@(e => e.Department)" Width="140" Sortable="true" />
+                        </ChildContent>
+                    </SgDataGrid>
+                </div>
+            </SgCard>
+
+            <SgCard Title="Выбранная строка">
+                @if (_singleSelectedEmployee is not null)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 2px;">ID</div>
+                            <div>@_singleSelectedEmployee.Id</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 2px;">ФИО</div>
+                            <div>@_singleSelectedEmployee.FirstName @_singleSelectedEmployee.LastName</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 2px;">Отдел</div>
+                            <div>@_singleSelectedEmployee.Department</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 2px;">Зарплата</div>
+                            <div>@_singleSelectedEmployee.Salary.ToString("C0")</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 2px;">Статус</div>
+                            <SgBadge Variant="@(_singleSelectedEmployee.IsActive ? SgBadgeVariant.Success : SgBadgeVariant.Danger)">
+                                @(_singleSelectedEmployee.IsActive ? "Активен" : "Неактивен")
+                            </SgBadge>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; font-weight: 600; color: var(--sui-text-secondary); text-transform: uppercase; margin-bottom: 2px;">Дата найма</div>
+                            <div>@_singleSelectedEmployee.HireDate.ToString("dd.MM.yyyy")</div>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div style="color: var(--sui-text-secondary); font-size: 13px; padding: 16px 0;">
+                        Выберите строку в таблице слева
+                    </div>
+                }
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- 10. Параметры компонента -->
+    <div style="margin-top: 32px;">
+        <h2>10. Параметры компонента</h2>
         <p>Полный список параметров SgDataGrid и SgDataGridColumn.</p>
 
         <SgCard Title="SgDataGrid — основные" Style="margin-top: 16px;">
@@ -332,6 +399,12 @@
     private List<Employee> _employees = new();
     private bool _isLoading = false;
     private List<string> _bulkLog = new();
+    private Employee? _singleSelectedEmployee;
+
+    private void OnSingleSelectChanged(IReadOnlyCollection<Employee> selected)
+    {
+        _singleSelectedEmployee = selected.FirstOrDefault();
+    }
 
     private void HandleBulkSave(SgBulkEditEventArgs<Employee> args)
     {
@@ -398,6 +471,7 @@
     {
         new() { Label = "AutoGenerateColumns",  Value = "bool",                BadgeText = "Автогенерация колонок",  BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "AllowMultiSelect",     Value = "bool",                BadgeText = "Множественный выбор",    BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowSingleSelect",    Value = "bool",                BadgeText = "Одиночный выбор",        BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "AllowEdit",            Value = "bool",                BadgeText = "Инлайн-редактирование",  BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "AllowDelete",          Value = "bool",                BadgeText = "Удаление строк",         BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "AllowAutoFit",         Value = "bool",                BadgeText = "Автоподгонка ширины",    BadgeVariant = SgBadgeVariant.Warn },

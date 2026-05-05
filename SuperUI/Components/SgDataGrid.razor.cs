@@ -247,6 +247,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [Parameter] public bool AllowMultiSelect { get; set; }
     
     /// <summary>
+    /// Gets or sets whether to allow selecting a single row with a radio button.
+    /// When enabled, selecting a new row automatically deselects the previously selected row.
+    /// </summary>
+    [Parameter] public bool AllowSingleSelect { get; set; }
+    
+    /// <summary>
     /// Gets or sets whether to allow inline editing of cells.
     /// </summary>
     [Parameter] public bool AllowEdit { get; set; }
@@ -397,7 +403,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     internal string EffectiveEmptyText => string.IsNullOrWhiteSpace(EmptyText) ? Localizer["DataGrid_EmptyText"] : EmptyText!;
     internal string EffectiveDetailDrawerTitle => string.IsNullOrWhiteSpace(DetailDrawerTitle) ? Localizer["DataGrid_DetailDrawerTitle"] : DetailDrawerTitle!;
     internal string EffectiveDetailWindowTitle => string.IsNullOrWhiteSpace(DetailWindowTitle) ? Localizer["DataGrid_DetailWindowTitle"] : DetailWindowTitle!;
-    internal bool SelectionEnabled => AllowMultiSelect || SelectedItemsChanged.HasDelegate;
+    internal bool SelectionEnabled => AllowMultiSelect || AllowSingleSelect || SelectedItemsChanged.HasDelegate;
     internal int ColumnSpan
     {
         get
@@ -2593,7 +2599,8 @@ private static object? ConvertFromString(string? text, Type type)
         }
         else if (e.Key == " " && _activeRow != null && SelectionEnabled)
         {
-            await ToggleRowAsync(_activeRow, !SelectedItems.Contains(_activeRow));
+            var shouldSelect = AllowSingleSelect ? true : !SelectedItems.Contains(_activeRow);
+            await ToggleRowAsync(_activeRow, shouldSelect);
             _anchorRow = _activeRow;
         }
     }
@@ -2940,27 +2947,49 @@ private static object? ConvertFromString(string? text, Type type)
 
     private async Task ToggleRowAsync(TItem item, bool selected)
     {
-        if (selected)
+        if (AllowSingleSelect)
         {
-            SelectedItems.Add(item);
-            _lastSelectedItem = item;
+            // Single-select: clear all previous selections, then select the clicked item
+            SelectedItems.Clear();
+            if (selected)
+            {
+                SelectedItems.Add(item);
+                _lastSelectedItem = item;
+            }
+            else
+            {
+                _lastSelectedItem = default;
+            }
         }
         else
         {
-            SelectedItems.Remove(item);
-            if (ReferenceEquals(_lastSelectedItem, item))
-                _lastSelectedItem = default;
+            if (selected)
+            {
+                SelectedItems.Add(item);
+                _lastSelectedItem = item;
+            }
+            else
+            {
+                SelectedItems.Remove(item);
+                if (ReferenceEquals(_lastSelectedItem, item))
+                    _lastSelectedItem = default;
+            }
         }
 
         _selectionVersion++;
         _selectionChangedPending = true;
         InvalidateComputedRowsCache();
         await FlushSelectedItemsChangedAsync();
+
+        // For single-select, clicking the radio button doesn't bubble to the <tr> onclick
+        // (the <td> has stopPropagation), so we fire RowClicked here directly.
+        if (AllowSingleSelect && selected)
+            await OnRowClickAsync(item);
     }
 
     private async Task HandleRowSelectionClickAsync(MouseEventArgs args, TItem item)
     {
-        if (args.ShiftKey && _lastSelectedItem != null && !ReferenceEquals(_lastSelectedItem, item))
+        if (!AllowSingleSelect && args.ShiftKey && _lastSelectedItem != null && !ReferenceEquals(_lastSelectedItem, item))
         {
             var rows = GetVisibleRows();
             var lastIdx = rows.IndexOf(_lastSelectedItem);

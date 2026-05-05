@@ -91,7 +91,20 @@
                         }
                     </div>
                     <div class="sgc-gantt-tasks" style="width: @(TimelineWidth)px; min-width: @(TimelineWidth)px;">
-                        <svg class="sgc-gantt-dependencies" viewBox="0 0 @TimelineWidth @(Math.Max(GetVisibleTasks().Count * 36, 36))" preserveAspectRatio="none">
+                        <svg class="sgc-gantt-dependencies" 
+                             width="@TimelineWidth" 
+                             height="@(Math.Max(GetVisibleTasks().Count * 36, 36))"
+                             style="position:absolute;top:0;left:0;pointer-events:none;overflow:visible;">
+                            <defs>
+                                <marker id="sgc-gantt-arrow" markerWidth="8" markerHeight="8"
+                                        refX="7" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 8 3.5, 0 7, 1.5 3.5" fill="var(--sui-accent)" opacity="0.7" />
+                                </marker>
+                                <marker id="sgc-gantt-arrow-critical" markerWidth="8" markerHeight="8"
+                                        refX="7" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 8 3.5, 0 7, 1.5 3.5" fill="#f5222d" />
+                                </marker>
+                            </defs>
                             @foreach (var task in Tasks.Where(t => IsVisible(t)))
                             {
                                 foreach (var depId in task.Dependencies)
@@ -101,13 +114,23 @@
                                     {
                                         var fromX = GetDependencyEndX(depTask);
                                         var fromY = GetVisibleTaskIndex(depTask) * 36 + 18;
-                                        var toX = GetTaskLeft(task);
-                                        var toY = GetVisibleTaskIndex(task) * 36 + 18;
+                                        var toX   = GetTaskLeft(task);
+                                        var toY   = GetVisibleTaskIndex(task) * 36 + 18;
+                                        var isCritical = depTask.IsCritical && task.IsCritical;
+                                        var color  = isCritical ? "#f5222d" : "var(--sui-accent)";
+                                        var marker = isCritical ? "url(#sgc-gantt-arrow-critical)" : "url(#sgc-gantt-arrow)";
 
-                                        <path d="M @fromX @fromY L @(fromX + 10) @fromY L @(fromX + 10) @toY L @toX @toY" 
-                                              fill="none" stroke="var(--sui-border-strong)" stroke-width="1.5" />
-                                        <path d="M @toX @toY L @(toX - 4) @(toY - 3) L @(toX - 4) @(toY + 3) Z" 
-                                              fill="var(--sui-border-strong)" />
+                                        // Ортогональный маршрут: выход вправо → вниз/вверх → вход слева
+                                        var midX = fromX + Math.Max(16, (toX - fromX) / 2.0);
+                                        var d = $"M {fromX} {fromY} H {midX} V {toY} H {toX}";
+
+                                        <path d="@d"
+                                              fill="none"
+                                              stroke="@color"
+                                              stroke-width="1.5"
+                                              stroke-dasharray="@(isCritical ? "none" : "4 2")"
+                                              opacity="0.75"
+                                              marker-end="@marker" />
                                     }
                                 }
                             }
@@ -294,28 +317,33 @@
     {
         if (!Tasks.Any())
         {
-            _startDate = DateTime.Today;
-            _endDate = DateTime.Today.AddDays(30);
+            _startDate = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
+            _endDate = _startDate.AddMonths(2).AddDays(-1);
         }
         else
         {
-            _startDate = Tasks.Min(t => t.Start).Date.AddDays(-5);
-            _endDate = Tasks.Max(t => t.End).Date.AddDays(10);
-            
+            var minDate = Tasks.Min(t => t.Start).Date;
+            var maxDate = Tasks.Max(t => t.End).Date;
+
             if (Tasks.Any(t => t.BaselineStart.HasValue))
             {
-                var minB = Tasks.Where(t => t.BaselineStart.HasValue).Min(t => t.BaselineStart!.Value).Date.AddDays(-5);
-                if (minB < _startDate) _startDate = minB;
+                var minB = Tasks.Where(t => t.BaselineStart.HasValue).Min(t => t.BaselineStart!.Value).Date;
+                if (minB < minDate) minDate = minB;
             }
             if (Tasks.Any(t => t.BaselineEnd.HasValue))
             {
-                var maxB = Tasks.Where(t => t.BaselineEnd.HasValue).Max(t => t.BaselineEnd!.Value).Date.AddDays(10);
-                if (maxB > _endDate) _endDate = maxB;
+                var maxB = Tasks.Where(t => t.BaselineEnd.HasValue).Max(t => t.BaselineEnd!.Value).Date;
+                if (maxB > maxDate) maxDate = maxB;
             }
+
+            // Start from beginning of the month that contains minDate - 1 month buffer
+            _startDate = new DateTime(minDate.Year, minDate.Month, 1).AddMonths(-1);
+
+            // End at end of the month that contains maxDate + 1 month buffer
+            var endMonth = new DateTime(maxDate.Year, maxDate.Month, 1).AddMonths(2);
+            _endDate = endMonth.AddDays(-1);
         }
 
-        _startDate = new DateTime(_startDate.Year, _startDate.Month, 1);
-        _endDate = _endDate.Date;
         _totalDays = Math.Max(1, (int)(_endDate - _startDate).TotalDays + 1);
         CalculateMonths();
     }
@@ -348,6 +376,7 @@
             _ => 24
         };
         _posCache.Clear();
+        CalculateTimeline();
         StateHasChanged();
     }
 

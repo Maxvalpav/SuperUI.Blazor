@@ -4,68 +4,51 @@
 @inject ISuperUILocalizer Localizer
 @typeparam TItem
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass" @ref="_pickerRef">
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-picker-control @(Block ? "sgc-block" : "") @(Disabled ? "sgc-disabled" : "") @(Readonly ? "sgc-readonly" : "")" @onclick="TogglePickerAsync">
-        <div class="sgc-picker-content">
-            @if (MultiSelect)
-            {
-                var list = Values?.ToList() ?? new List<TItem>();
-                if (list.Count == 0)
-                {
-                    <span class="sgc-picker-placeholder">@Placeholder</span>
-                }
-                else
-                {
-                    foreach (var item in list)
-                    {
-                        var it = item;
-                        <span class="sgc-combo-tag">
-                            @DisplaySelector(it)
-                            @if (!Disabled && !Readonly)
-                            {
-                                <button class="sgc-combo-tag-x" type="button" title="@EffectiveClearText" @onclick:stopPropagation="true" @onclick="() => RemoveItemAsync(it)">×</button>
-                            }
-                        </span>
-                    }
-                }
-            }
-            else
-            {
-                if (Value is null)
-                {
-                    <span class="sgc-picker-placeholder">@Placeholder</span>
-                }
-                else
-                {
-                    <span class="sgc-picker-text">@DisplaySelector(Value)</span>
-                    @if (AllowClear && !Disabled && !Readonly)
-                    {
-                        <button class="sgc-picker-clear-btn" type="button" title="@EffectiveClearText" @onclick:stopPropagation="true" @onclick="ClearSelectionAsync">×</button>
-                    }
-                }
-            }
+
+    @if (Inline)
+    {
+        <SgPopover @ref="_popover"
+                   Open="_pickerOpen"
+                   OpenChanged="OnPopoverOpenChanged"
+                   CloseOnOutsideClick="true"
+                   CloseOnEscape="true"
+                   Trigger="SgTrigger.Manual"
+                   CssClass="@("sgc-picker-pop-wrap" + (Block ? " sgc-block" : ""))">
+            <TriggerContent>
+                <div class="sgc-picker-control @(Block ? "sgc-block" : "") @(Disabled ? "sgc-disabled" : "") @(Readonly ? "sgc-readonly" : "")" @onclick="TogglePickerAsync">
+                    @RenderControlContent()
+                    <button class="sgc-picker-btn" type="button" disabled="@(Disabled || Readonly)">
+                        <span class="sgc-picker-icon">🔍</span>
+                    </button>
+                </div>
+            </TriggerContent>
+            <ChildContent>
+                @RenderDialogContent()
+            </ChildContent>
+        </SgPopover>
+    }
+    else
+    {
+        <div class="sgc-picker-control @(Block ? "sgc-block" : "") @(Disabled ? "sgc-disabled" : "") @(Readonly ? "sgc-readonly" : "")" @onclick="TogglePickerAsync">
+            @RenderControlContent()
+            <button class="sgc-picker-btn" type="button" disabled="@(Disabled || Readonly)">
+                <span class="sgc-picker-icon">🔍</span>
+            </button>
         </div>
-        <button class="sgc-picker-btn" type="button" disabled="@(Disabled || Readonly)">
-            <span class="sgc-picker-icon">🔍</span>
-        </button>
-    </div>
+    }
+
     @if (!string.IsNullOrEmpty(Hint))
     {
         <span class="sgc-hint">@Hint</span>
     }
 </div>
 
-@if (Inline)
-{
-    <SgPopover Target="_pickerRef" @bind-Open="_pickerOpen" Width="auto" CloseOnOutsideClick="true">
-        @RenderDialogContent()
-    </SgPopover>
-}
-else
+@if (!Inline)
 {
     <SgModal @bind-Visible="_modalVisible" Title="@Title" Width="@ModalWidth">
         <ChildContent>
@@ -82,6 +65,7 @@ else
     private bool _modalVisible;
     private bool _pickerOpen;
     private ElementReference _pickerRef;
+    private SgPopover? _popover;
     private SgDataGrid<TItem>? _grid;
     private HashSet<TItem> _pendingSelection = new();
     private IEnumerable<TItem>? _lazyItems;
@@ -133,7 +117,50 @@ else
     private string EffectiveCancelText => CancelText ?? Localizer["Cancel"];
     private string EffectiveClearText => ClearText ?? Localizer["Clear"];
 
-    private RenderFragment RenderDialogContent() => @<div class="sgc-picker-dialog" style="@(Inline ? "min-width: 400px; max-height: 500px; overflow: auto; padding: 12px;" : "")">
+    private RenderFragment RenderControlContent() => __builder =>
+    {
+        <div class="sgc-picker-content">
+            @if (MultiSelect)
+            {
+                var list = Values?.ToList() ?? new List<TItem>();
+                if (list.Count == 0)
+                {
+                    <span class="sgc-picker-placeholder">@Placeholder</span>
+                }
+                else
+                {
+                    foreach (var item in list)
+                    {
+                        var it = item;
+                        <span class="sgc-combo-tag">
+                            @DisplaySelector(it)
+                            @if (!Disabled && !Readonly)
+                            {
+                                <button class="sgc-combo-tag-x" type="button" title="@EffectiveClearText" @onclick:stopPropagation="true" @onclick="() => RemoveItemAsync(it)">×</button>
+                            }
+                        </span>
+                    }
+                }
+            }
+            else
+            {
+                if (Value is null)
+                {
+                    <span class="sgc-picker-placeholder">@Placeholder</span>
+                }
+                else
+                {
+                    <span class="sgc-picker-text">@DisplaySelector(Value)</span>
+                    @if (AllowClear && !Disabled && !Readonly)
+                    {
+                        <button class="sgc-picker-clear-btn" type="button" title="@EffectiveClearText" @onclick:stopPropagation="true" @onclick="ClearSelectionAsync">×</button>
+                    }
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderDialogContent() => @<div class="sgc-picker-dialog">
         @if (!string.IsNullOrEmpty(StorageKey))
         {
             <div class="sgc-sv-wrap">
@@ -156,6 +183,7 @@ else
                         TItem="TItem"
                         Items="@(_lazyItems ?? Items)"
                         AllowMultiSelect="@MultiSelect"
+                        AllowSingleSelect="@(!MultiSelect)"
                         SelectedItemsChanged="OnGridSelectionChanged"
                         RowClicked="OnRowClicked"
                         RowDoubleClicked="OnRowDoubleClicked"
@@ -169,10 +197,33 @@ else
         {
             <div class="sgc-picker-inline-footer" style="margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px;">
                 <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="ConfirmSelectionAsync">@EffectiveSelectText</SgButton>
-                <SgButton Size="SgSize.Sm" OnClick="() => _pickerOpen = false">@EffectiveCancelText</SgButton>
+                <SgButton Size="SgSize.Sm" OnClick="CloseInlineAsync">@EffectiveCancelText</SgButton>
+            </div>
+        }
+        @if (Inline && !MultiSelect && Value is not null)
+        {
+            <div class="sgc-picker-inline-footer" style="margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px;">
+                <SgButton Size="SgSize.Sm" OnClick="CloseInlineAsync">@EffectiveCancelText</SgButton>
             </div>
         }
     </div>;
+
+    private async Task OnPopoverOpenChanged(bool open)
+    {
+        _pickerOpen = open;
+        if (!open) return;
+        await PrepareOpenAsync();
+        await Task.Delay(1);
+        SyncGridSelection();
+        StateHasChanged();
+    }
+
+    private async Task CloseInlineAsync()
+    {
+        _pickerOpen = false;
+        if (_popover is not null)
+            await _popover.CloseAsync();
+    }
 
     private async Task TogglePickerAsync()
     {
@@ -180,8 +231,20 @@ else
 
         if (Inline)
         {
-            _pickerOpen = !_pickerOpen;
-            if (_pickerOpen) await PrepareOpenAsync();
+            if (_pickerOpen)
+            {
+                await CloseInlineAsync();
+            }
+            else
+            {
+                _pickerOpen = true;
+                if (_popover is not null)
+                    await _popover.OpenAsync();
+                await PrepareOpenAsync();
+                await Task.Delay(1);
+                SyncGridSelection();
+                StateHasChanged();
+            }
         }
         else
         {
@@ -220,17 +283,17 @@ else
         await PrepareOpenAsync();
         _modalVisible = true;
         
-        // Даем компонентам отрендериться, чтобы получить _grid
         await Task.Delay(1);
-        if (_grid != null)
-        {
-            _grid.SelectedItems.Clear();
-            foreach (var item in _pendingSelection)
-            {
-                _grid.SelectedItems.Add(item);
-            }
-        }
+        SyncGridSelection();
         StateHasChanged();
+    }
+
+    private void SyncGridSelection()
+    {
+        if (_grid is null) return;
+        _grid.SelectedItems.Clear();
+        foreach (var item in _pendingSelection)
+            _grid.SelectedItems.Add(item);
     }
 
     private void OnGridSelectionChanged(IReadOnlyCollection<TItem> selected)
@@ -246,7 +309,7 @@ else
             Value = item;
             if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
             _modalVisible = false;
-            _pickerOpen = false;
+            await CloseInlineAsync();
         }
     }
 
@@ -265,7 +328,7 @@ else
             Value = item;
             if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
             _modalVisible = false;
-            _pickerOpen = false;
+            await CloseInlineAsync();
         }
     }
 
@@ -282,7 +345,7 @@ else
             if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
         }
         _modalVisible = false;
-        _pickerOpen = false;
+        await CloseInlineAsync();
     }
 
     private async Task ClearSelectionAsync()
