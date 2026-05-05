@@ -34,10 +34,14 @@ export function attach(root, dotnet, opts) {
             startH: rect.height,
             handle,
         };
+
+        // Use pointer capture on the handle so move/up fire on it even outside the window
         try { handle.setPointerCapture(e.pointerId); } catch { /* noop */ }
-        window.addEventListener('pointermove', onPointerMove);
-        window.addEventListener('pointerup', onPointerUp, { once: true });
-        window.addEventListener('pointercancel', onPointerUp, { once: true });
+
+        handle.addEventListener('pointermove', onPointerMove);
+        handle.addEventListener('pointerup', onPointerUp, { once: true });
+        handle.addEventListener('pointercancel', onPointerUp, { once: true });
+
         root.classList.add('sgc-resizable-active');
     }
 
@@ -71,8 +75,13 @@ export function attach(root, dotnet, opts) {
         }
     }
 
-    function onPointerUp() {
-        window.removeEventListener('pointermove', onPointerMove);
+    function onPointerUp(e) {
+        const handle = active?.handle;
+        if (handle) {
+            handle.removeEventListener('pointermove', onPointerMove);
+            handle.removeEventListener('pointerup', onPointerUp);
+            handle.removeEventListener('pointercancel', onPointerUp);
+        }
         if (!active) return;
         root.classList.remove('sgc-resizable-active');
         const w = active._w ?? active.startW;
@@ -84,11 +93,8 @@ export function attach(root, dotnet, opts) {
     }
 
     root.addEventListener('pointerdown', onPointerDown);
-    root._sgResizable = { 
-        onPointerDown, 
-        onPointerMove, 
-        onPointerUp,
-        isDisposed: false,
+    root._sgResizable = {
+        onPointerDown,
         dispose: function() {
             isDisposed = true;
             dotnet = null;
@@ -98,15 +104,12 @@ export function attach(root, dotnet, opts) {
 
 export function detach(root) {
     if (!root || !root._sgResizable) return;
-    const { onPointerDown, onPointerMove, onPointerUp } = root._sgResizable;
-    
+    const { onPointerDown } = root._sgResizable;
+
     if (root._sgResizable.dispose) {
         root._sgResizable.dispose();
     }
-    
+
     root.removeEventListener('pointerdown', onPointerDown);
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
-    window.removeEventListener('pointercancel', onPointerUp);
     delete root._sgResizable;
 }
