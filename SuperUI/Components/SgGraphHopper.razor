@@ -1,0 +1,262 @@
+@namespace SuperUI.Components
+@implements IDisposable
+@inject ISuperUILocalizer Localizer
+
+@* ── Invisible service component — renders nothing by itself ── *@
+@* Use the public API: RouteAsync(), ClearAsync(), bind to OnRouteCalculated *@
+
+@code {
+    private HttpClient? _http;
+    private CancellationTokenSource? _cts;
+    private bool _disposed;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>GraphHopper API configuration (URL + key).</summary>
+    [Parameter] public SgGraphHopperSources Sources { get; set; } = new();
+
+    /// <summary>Default vehicle profile used when none is specified in the request.</summary>
+    [Parameter] public SgGhProfile DefaultProfile { get; set; } = SgGhProfile.Car;
+
+    /// <summary>Fired when a route is successfully calculated.</summary>
+    [Parameter] public EventCallback<SgGhRouteEventArgs> OnRouteCalculated { get; set; }
+
+    /// <summary>Fired when routing fails.</summary>
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    /// <summary>Fired when a routing request starts (loading = true) or ends (loading = false).</summary>
+    [Parameter] public EventCallback<bool> OnLoadingChanged { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    /// <summary>True while a routing request is in progress.</summary>
+    public bool IsLoading { get; private set; }
+
+    /// <summary>Last successful result.</summary>
+    public SgGhResult? LastResult { get; private set; }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        // Rebuild client if sources changed
+        _http = null;
+    }
+
+    private HttpClient GetClient()
+    {
+        if (_http is not null) return _http;
+        _http = new HttpClient { Timeout = Sources.Timeout };
+        return _http;
+    }
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Calculates a route for the given request.
+    /// Returns the result and fires <see cref="OnRouteCalculated"/>.
+    /// </summary>
+    public async Task<SgGhResult> RouteAsync(SgGhRouteRequest request)
+    {
+        if (_disposed) return new() { Success = false, Error = "Disposed" };
+
+        // Cancel any in-flight request
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+
+        await SetLoadingAsync(true);
+
+        try
+        {
+            var result = await FetchRouteAsync(request, token);
+            LastResult = result;
+
+            if (result.Success && OnRouteCalculated.HasDelegate)
+                await OnRouteCalculated.InvokeAsync(new SgGhRouteEventArgs { Result = result, Request = request });
+
+            if (!result.Success && OnError.HasDelegate)
+                await OnError.InvokeAsync(result.Error);
+
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            return new() { Success = false, Error = "Cancelled" };
+        }
+        catch (Exception ex)
+        {
+            var err = $"Routing error: {ex.Message}";
+            if (OnError.HasDelegate) await OnError.InvokeAsync(err);
+            return new() { Success = false, Error = err };
+        }
+        finally
+        {
+            await SetLoadingAsync(false);
+        }
+    }
+
+    /// <summary>Cancels any in-flight request and clears the last result.</summary>
+    public void Clear()
+    {
+        _cts?.Cancel();
+        LastResult = null;
+    }
+
+    // ── Internal ──────────────────────────────────────────────────────────────
+
+    private async Task SetLoadingAsync(bool loading)
+    {
+        IsLoading = loading;
+        if (OnLoadingChanged.HasDelegate)
+            await OnLoadingChanged.InvokeAsync(loading);
+    }
+
+    private async Task<SgGhResult> FetchRouteAsync(SgGhRouteRequest req, CancellationToken ct)
+    {
+        if (req.Waypoints.Count < 2)
+            return new() { Success = false, Error = "Нужно минимум 2 точки маршрута" };
+
+        if (req.Waypoints.Any(w => !w.Latitude.HasValue || !w.Longitude.HasValue))
+            return new() { Success = false, Error = "Все точки маршрута должны иметь координаты" };
+
+        var profile = req.Profile.ToString().ToLowerInvariant();
+
+        // Build request body
+        var pointsArr = req.Waypoints
+            .Select(w => new[] { w.Longitude ?? 0, w.Latitude ?? 0 })
+            .ToList();
+
+        var body = new
+        {
+            points              = pointsArr,
+            profile             = profile,
+            locale              = req.Locale,
+            instructions        = req.Instructions,
+            calc_points         = true,
+            points_encoded      = false,
+            alternative_route   = req.Alternatives ? new { max_paths = 3, max_weight_factor = 1.4, max_share_factor = 0.6 } : (object?)null,
+            optimize            = req.Optimize,
+        };
+
+        var url = $"{Sources.BaseUrl.TrimEnd('/')}/route";
+        if (!string.IsNullOrEmpty(Sources.ApiKey))
+            url += $"?key={Sources.ApiKey}";
+
+        var json = System.Text.Json.JsonSerializer.Serialize(body,
+            new System.Text.Json.JsonSerializerOptions { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+
+        using var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+        var http = GetClient();
+        var response = await http.PostAsync(url, content, ct);
+        var responseText = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Try to extract GraphHopper error message
+            try
+            {
+                using var errDoc = System.Text.Json.JsonDocument.Parse(responseText);
+                if (errDoc.RootElement.TryGetProperty("message", out var msg))
+                    return new() { Success = false, Error = msg.GetString() };
+            }
+            catch { }
+            return new() { Success = false, Error = $"HTTP {(int)response.StatusCode}: {response.ReasonPhrase}" };
+        }
+
+        return ParseResponse(responseText);
+    }
+
+    private static SgGhResult ParseResponse(string json)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            var routes = new List<SgGhRoute>();
+
+            if (!root.TryGetProperty("paths", out var paths))
+                return new() { Success = false, Error = "Нет данных маршрута в ответе" };
+
+            foreach (var path in paths.EnumerateArray())
+            {
+                var route = new SgGhRoute();
+
+                if (path.TryGetProperty("distance", out var dist))
+                    route.DistanceMeters = dist.GetDouble();
+
+                if (path.TryGetProperty("time", out var time))
+                    route.TimeMs = time.GetInt64();
+
+                // Decode points
+                if (path.TryGetProperty("points", out var pts))
+                {
+                    if (pts.ValueKind == System.Text.Json.JsonValueKind.Object &&
+                        pts.TryGetProperty("coordinates", out var coords))
+                    {
+                        foreach (var c in coords.EnumerateArray())
+                        {
+                            var arr = c.EnumerateArray().ToArray();
+                            if (arr.Length >= 2)
+                                route.Points.Add(new SgMapCoord
+                                {
+                                    Longitude = arr[0].GetDouble(),
+                                    Latitude  = arr[1].GetDouble(),
+                                });
+                        }
+                    }
+                }
+
+                // Bounding box
+                if (path.TryGetProperty("bbox", out var bbox))
+                {
+                    var bboxArr = bbox.EnumerateArray().Select(v => v.GetDouble()).ToArray();
+                    if (bboxArr.Length == 4) route.Bbox = bboxArr;
+                }
+
+                // Instructions
+                if (path.TryGetProperty("instructions", out var instArr))
+                {
+                    foreach (var inst in instArr.EnumerateArray())
+                    {
+                        var instruction = new SgGhInstruction();
+                        if (inst.TryGetProperty("text",     out var t))  instruction.Text     = t.GetString() ?? "";
+                        if (inst.TryGetProperty("distance", out var d))  instruction.Distance = d.GetDouble();
+                        if (inst.TryGetProperty("time",     out var tm)) instruction.Time     = tm.GetInt64();
+                        if (inst.TryGetProperty("sign",     out var s))  instruction.Sign     = s.GetInt32();
+                        if (inst.TryGetProperty("interval", out var iv))
+                        {
+                            var ivArr = iv.EnumerateArray().ToArray();
+                            if (ivArr.Length >= 2)
+                            {
+                                instruction.Interval0 = ivArr[0].GetInt32();
+                                instruction.Interval1 = ivArr[1].GetInt32();
+                            }
+                        }
+                        route.Instructions.Add(instruction);
+                    }
+                }
+
+                routes.Add(route);
+            }
+
+            return new() { Success = true, Routes = routes };
+        }
+        catch (Exception ex)
+        {
+            return new() { Success = false, Error = $"Parse error: {ex.Message}" };
+        }
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _http?.Dispose();
+    }
+}

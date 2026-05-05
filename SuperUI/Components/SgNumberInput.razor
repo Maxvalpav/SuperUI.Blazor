@@ -1,0 +1,232 @@
+@namespace SuperUI.Components
+@typeparam TValue
+@inherits SgInputBase<TValue>
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
+    }
+
+    <div class="sg-num-wrap @(IsInvalid ? "sg-num-invalid" : "") @(Disabled ? "sg-num-disabled" : "")">
+
+        <!-- Decrement -->
+        <button type="button"
+                class="sg-num-btn sg-num-dec"
+                disabled="@(Disabled || ReadOnly || IsAtMin)"
+                @onclick="DecrementAsync"
+                aria-label="@Localizer["NumberInput_Decrement"]"
+                tabindex="-1">
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                <rect x="2" y="7" width="12" height="2" rx="1"/>
+            </svg>
+        </button>
+
+        <!-- Input -->
+        <input id="@_id"
+               type="number"
+               class="sg-num-input"
+               step="@StepStr"
+               min="@MinStr"
+               max="@MaxStr"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               readonly="@ReadOnly"
+               required="@Required"
+               aria-required="@(Required ? "true" : null)"
+               aria-invalid="@(IsInvalid ? "true" : null)"
+               aria-describedby="@DescribedBy"
+               value="@DisplayValue"
+               @oninput="OnInputAsync"
+               @onchange="OnChangeAsync"
+               @onkeydown="OnKeyDownAsync"
+               @attributes="AdditionalAttributes" />
+
+        <!-- Unit suffix -->
+        @if (!string.IsNullOrEmpty(Suffix))
+        {
+            <span class="sg-num-suffix">@Suffix</span>
+        }
+
+        <!-- Increment -->
+        <button type="button"
+                class="sg-num-btn sg-num-inc"
+                disabled="@(Disabled || ReadOnly || IsAtMax)"
+                @onclick="IncrementAsync"
+                aria-label="@Localizer["NumberInput_Increment"]"
+                tabindex="-1">
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                <rect x="7" y="2" width="2" height="12" rx="1"/>
+                <rect x="2" y="7" width="12" height="2" rx="1"/>
+            </svg>
+        </button>
+    </div>
+
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private readonly string _id      = "sg-num-" + Guid.NewGuid().ToString("N")[..8];
+    private string _hintId  => _id + "-hint";
+    private string _errorId => _id + "-err";
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Field label.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Placeholder text.</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>Hint text shown below the input.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Validation error text.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Step for +/− buttons and keyboard arrows. Default 1.</summary>
+    [Parameter] public TValue? Step { get; set; }
+
+    /// <summary>Minimum allowed value.</summary>
+    [Parameter] public TValue? Min { get; set; }
+
+    /// <summary>Maximum allowed value.</summary>
+    [Parameter] public TValue? Max { get; set; }
+
+    /// <summary>Optional unit suffix displayed inside the input (e.g. "kg", "%", "px").</summary>
+    [Parameter] public string? Suffix { get; set; }
+
+    /// <summary>Number of decimal places for display. <c>null</c> = auto.</summary>
+    [Parameter] public int? Decimals { get; set; }
+
+    /// <summary>Disable the input.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Make the input read-only.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Mark as required.</summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Expand to full width. Default <c>true</c>.</summary>
+    [Parameter] public bool Block { get; set; } = true;
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fire ValueChanged on every keystroke. Default <c>true</c>.</summary>
+    [Parameter] public bool Immediate { get; set; } = true;
+
+    /// <summary>Callback fired when Enter is pressed.</summary>
+    [Parameter] public EventCallback OnEnterPressed { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Computed ──────────────────────────────────────────────────────────────
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string? DisplayValue
+    {
+        get
+        {
+            if (Value is null || EqualityComparer<TValue>.Default.Equals(Value, default)) return null;
+            if (Decimals.HasValue)
+                return Convert.ToDouble(Value).ToString($"F{Decimals.Value}", System.Globalization.CultureInfo.InvariantCulture);
+            return Convert.ToString(Value, System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
+
+    private string? StepStr => Step is null ? "1" : Convert.ToString(Step, System.Globalization.CultureInfo.InvariantCulture);
+    private string? MinStr  => Min  is null ? null : Convert.ToString(Min,  System.Globalization.CultureInfo.InvariantCulture);
+    private string? MaxStr  => Max  is null ? null : Convert.ToString(Max,  System.Globalization.CultureInfo.InvariantCulture);
+
+    private bool IsAtMin => Min is not null && Value is not null && ToDouble(Value) <= ToDouble(Min);
+    private bool IsAtMax => Max is not null && Value is not null && ToDouble(Value) >= ToDouble(Max);
+
+    private TValue? StepValue => Step ?? FromDouble(1);
+
+    // ── Handlers ──────────────────────────────────────────────────────────────
+
+    private Task OnInputAsync(ChangeEventArgs e)
+    {
+        if (Immediate) _ = CommitAsync(e.Value?.ToString());
+        return Task.CompletedTask;
+    }
+
+    private Task OnChangeAsync(ChangeEventArgs e)
+    {
+        if (!Immediate) _ = CommitAsync(e.Value?.ToString());
+        return Task.CompletedTask;
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "ArrowUp")   { await IncrementAsync(); return; }
+        if (e.Key == "ArrowDown") { await DecrementAsync(); return; }
+        if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
+            await OnEnterPressed.InvokeAsync();
+    }
+
+    private async Task IncrementAsync()
+    {
+        var cur  = ToDouble(Value);
+        var step = ToDouble(StepValue);
+        var next = cur + step;
+        if (Max is not null) next = Math.Min(next, ToDouble(Max));
+        await SetValueAsync(FromDouble(next));
+    }
+
+    private async Task DecrementAsync()
+    {
+        var cur  = ToDouble(Value);
+        var step = ToDouble(StepValue);
+        var next = cur - step;
+        if (Min is not null) next = Math.Max(next, ToDouble(Min));
+        await SetValueAsync(FromDouble(next));
+    }
+
+    private Task CommitAsync(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return SetValueAsync(default);
+        if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var d))
+        {
+            if (Min is not null) d = Math.Max(d, ToDouble(Min));
+            if (Max is not null) d = Math.Min(d, ToDouble(Max));
+            return SetValueAsync(FromDouble(d));
+        }
+        return Task.CompletedTask;
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static double ToDouble(TValue? v)
+    {
+        if (v is null) return 0;
+        try { return Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return 0; }
+    }
+
+    private static TValue? FromDouble(double d)
+    {
+        try
+        {
+            var t = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
+            return (TValue)Convert.ChangeType(d, t, System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch { return default; }
+    }
+}

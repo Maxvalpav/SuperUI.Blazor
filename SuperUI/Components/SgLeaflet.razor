@@ -1,0 +1,431 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-leaflet-container @CssClass"
+     style="height:@Height;width:@Width;"
+     @attributes="AdditionalAttributes">
+
+    @if (_error is not null)
+    {
+        <div class="sg-leaflet-error" role="alert">
+            <svg viewBox="0 0 20 20" width="20" height="20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16zm-.75-9.25a.75.75 0 0 1 1.5 0v3.5a.75.75 0 0 1-1.5 0v-3.5zm.75 6a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5z"/>
+            </svg>
+            <span>@_error</span>
+            <button type="button" class="sg-leaflet-retry-btn" @onclick="RetryAsync">@Localizer["Map_Retry"]</button>
+        </div>
+    }
+    else
+    {
+        <div @ref="_containerRef"
+             class="sg-leaflet-canvas"
+             style="@(_ready ? null : "visibility:hidden;") width:100%;height:100%;"></div>
+
+        @if (!_ready)
+        {
+            <div class="sg-leaflet-loading" aria-live="polite">
+                <div class="sg-leaflet-spinner" aria-hidden="true"></div>
+                <span>@Localizer["Map_Loading"]</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _containerRef;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgLeaflet>? _selfRef;
+    private readonly string _instanceId = $"sg-leaflet-{Guid.NewGuid():N}";
+    private bool _ready;
+    private string? _error;
+    private bool _isDisposed;
+
+    // Change-detection snapshots
+    private object? _lastMarkersRef;
+    private object? _lastPolylinesRef;
+    private object? _lastPolygonsRef;
+    private object? _lastCirclesRef;
+    private object? _lastOptsRef;
+    private bool _refreshScheduled;
+    private bool _refreshPending;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Map options (centre, zoom, tile layer, controls).</summary>
+    [Parameter] public SgLeafletOptions? Options { get; set; }
+
+    /// <summary>CDN source URLs for Leaflet.</summary>
+    [Parameter] public SgLeafletSources? Sources { get; set; }
+
+    /// <summary>Markers to display on the map.</summary>
+    [Parameter] public IEnumerable<SgLeafletMarker>? Markers { get; set; }
+
+    /// <summary>Polylines (routes / paths) to display.</summary>
+    [Parameter] public IEnumerable<SgLeafletPolyline>? Polylines { get; set; }
+
+    /// <summary>Polygons (areas) to display.</summary>
+    [Parameter] public IEnumerable<SgLeafletPolygon>? Polygons { get; set; }
+
+    /// <summary>Circles to display.</summary>
+    [Parameter] public IEnumerable<SgLeafletCircle>? Circles { get; set; }
+
+    /// <summary>Container height. Default "400px".</summary>
+    [Parameter] public string Height { get; set; } = "400px";
+
+    /// <summary>Container width. Default "100%".</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+
+    /// <summary>Additional CSS class for the container.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fired when a marker is clicked.</summary>
+    [Parameter] public EventCallback<SgLeafletMarkerClickEventArgs> OnMarkerClick { get; set; }
+
+    /// <summary>Fired when the map background is clicked (not on a marker).</summary>
+    [Parameter] public EventCallback<SgLeafletClickEventArgs> OnMapClick { get; set; }
+
+    /// <summary>Fired when the map view (centre / zoom) changes.</summary>
+    [Parameter] public EventCallback<SgLeafletViewChangedEventArgs> OnViewChanged { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    private string? _lastTileLayer;
+
+    protected override void OnParametersSet()
+    {
+        if (!_ready) return;
+
+        var o = Options ?? new SgLeafletOptions();
+        var newTileLayer = o.TileLayer.ToString();
+
+        // Tile layer changed — update immediately without full reinit
+        if (newTileLayer != _lastTileLayer)
+        {
+            _lastTileLayer = newTileLayer;
+            _ = SetTileLayerAsync(newTileLayer, o.CustomTileUrl);
+        }
+
+        var changed =
+            !ReferenceEquals(Markers,   _lastMarkersRef)   ||
+            !ReferenceEquals(Polylines, _lastPolylinesRef) ||
+            !ReferenceEquals(Polygons,  _lastPolygonsRef)  ||
+            !ReferenceEquals(Circles,   _lastCirclesRef)   ||
+            !ReferenceEquals(Options,   _lastOptsRef);
+        if (changed && !_refreshScheduled)
+        {
+            _refreshScheduled = true;
+            _ = ScheduleRefreshAsync();
+        }
+    }
+
+    private async Task SetTileLayerAsync(string tileLayer, string? customUrl)
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("setTileLayer", _instanceId, tileLayer, customUrl); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Changes the tile layer without reinitializing the map.</summary>
+    public async Task SetTileLayerAsync(SgLeafletTileLayer tileLayer, string? customUrl = null)
+    {
+        _lastTileLayer = tileLayer.ToString();
+        await SetTileLayerAsync(tileLayer.ToString(), customUrl);
+    }
+
+    private async Task ScheduleRefreshAsync()
+    {
+        try   { await RefreshMarkersAsync(); }
+        finally
+        {
+            _refreshScheduled = false;
+            if (_refreshPending)
+            {
+                _refreshPending   = false;
+                _refreshScheduled = true;
+                _ = ScheduleRefreshAsync();
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-leaflet.js");
+            if (_isDisposed) return;
+            _selfRef = DotNetObjectReference.Create(this);
+            await InitAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Map_FailedToLoad"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task InitAsync()
+    {
+        if (_module is null || _selfRef is null) return;
+        try
+        {
+            var opts      = BuildOpts();
+            var markers   = Markers?.ToList();
+            var polylines = Polylines?.ToList();
+            var polygons  = Polygons?.ToList();
+            var circles   = Circles?.ToList();
+            await _module.InvokeVoidAsync("initMap",
+                _selfRef, _containerRef, _instanceId,
+                opts, markers, polylines, polygons, circles,
+                Sources ?? new SgLeafletSources());
+            CaptureSnapshot();
+            _ready = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Map_FailedToInitialize"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void CaptureSnapshot()
+    {
+        _lastMarkersRef   = Markers;
+        _lastPolylinesRef = Polylines;
+        _lastPolygonsRef  = Polygons;
+        _lastCirclesRef   = Circles;
+        _lastOptsRef      = Options;
+        _lastTileLayer    = (Options ?? new SgLeafletOptions()).TileLayer.ToString();
+    }
+
+    private object BuildOpts()
+    {
+        var o = Options ?? new SgLeafletOptions();
+        return new
+        {
+            tileLayer        = o.TileLayer.ToString(),
+            customTileUrl    = o.CustomTileUrl,
+            centerLat        = o.CenterLat,
+            centerLon        = o.CenterLon,
+            zoom             = o.Zoom,
+            minZoom          = o.MinZoom,
+            maxZoom          = o.MaxZoom,
+            showZoomControl  = o.ShowZoomControl,
+            showScaleControl = o.ShowScaleControl,
+            showAttribution  = o.ShowAttribution,
+            mouseWheelZoom   = o.MouseWheelZoom,
+            showPopup        = o.ShowPopup,
+            fitToMarkers     = o.FitToMarkers,
+        };
+    }
+
+    // ── Public methods ────────────────────────────────────────────────────────
+
+    /// <summary>Updates only the markers layer without full map reinit.</summary>
+    public async Task RefreshMarkersAsync()
+    {
+        if (_module is null || !_ready) { _refreshPending = true; return; }
+        try
+        {
+            await _module.InvokeVoidAsync("updateMarkers", _instanceId, Markers?.ToList());
+            CaptureSnapshot();
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Animates the map to the specified coordinates and zoom.</summary>
+    public async Task SetCenterAsync(double lat, double lon, int? zoom = null)
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("setCenter", _instanceId, lat, lon, zoom ?? (Options?.Zoom ?? 10)); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Fits the view to all current markers.</summary>
+    public async Task FitToMarkersAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("fitToMarkers", _instanceId, 60); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Fits the view to a bounding box.</summary>
+    public async Task FitToBoundsAsync(double south, double west, double north, double east)
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("fitToBounds", _instanceId, south, west, north, east); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Draws a route polyline between coordinates with start/end markers.</summary>
+    public async Task DrawRouteAsync(string routeId, IEnumerable<SgLeafletCoord> coordinates,
+        string color = "#2563eb", double width = 4, bool dashed = false)
+    {
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("drawRoute", _instanceId, routeId,
+                coordinates.ToList(),
+                new { color, width, dashed });
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>
+    /// Builds a real route via GraphHopper API (free, real roads).
+    /// Falls back to straight line if API unavailable.
+    /// Returns route info: distance, duration, steps.
+    /// </summary>
+    public async Task<SgLeafletRouteResult> BuildRouteAsync(
+        string routeId,
+        double fromLat, double fromLon,
+        double toLat,   double toLon,
+        string color = "#2563eb", double width = 5, bool dashed = false,
+        bool alternatives = false)
+    {
+        if (_module is null) return new SgLeafletRouteResult { Ok = false, Error = "Map not ready" };
+        try
+        {
+            var raw = await _module.InvokeAsync<System.Text.Json.JsonElement>(
+                "buildRoute", _instanceId, routeId, fromLat, fromLon, toLat, toLon,
+                new { color, width, dashed }, alternatives);
+            return ParseRouteResult(raw);
+        }
+        catch (Exception ex) { return new SgLeafletRouteResult { Ok = false, Error = ex.Message }; }
+    }
+
+    private static SgLeafletRouteResult ParseRouteResult(System.Text.Json.JsonElement j)
+    {
+        var r = new SgLeafletRouteResult();
+        if (j.TryGetProperty("ok",           out var ok))  r.Ok           = ok.GetBoolean();
+        if (j.TryGetProperty("straight",      out var st))  r.Straight     = st.GetBoolean();
+        if (j.TryGetProperty("error",         out var err)) r.Error        = err.GetString();
+        if (j.TryGetProperty("selectedIndex", out var si))  r.SelectedIndex = si.GetInt32();
+
+        if (j.TryGetProperty("routes", out var routesEl) && routesEl.ValueKind == System.Text.Json.JsonValueKind.Array)
+        {
+            foreach (var rv in routesEl.EnumerateArray())
+            {
+                var v = new SgLeafletRouteVariant();
+                if (rv.TryGetProperty("distanceKm",   out var dk))  v.DistanceKm   = dk.GetDouble();
+                if (rv.TryGetProperty("distanceText",  out var dt))  v.DistanceText = dt.GetString();
+                if (rv.TryGetProperty("durationMin",   out var dm))  v.DurationMin  = dm.ValueKind == System.Text.Json.JsonValueKind.Null ? null : dm.GetDouble();
+                if (rv.TryGetProperty("durationText",  out var dtt)) v.DurationText = dtt.GetString();
+                if (rv.TryGetProperty("steps", out var steps) && steps.ValueKind == System.Text.Json.JsonValueKind.Array)
+                {
+                    foreach (var s in steps.EnumerateArray())
+                    {
+                        var step = new SgLeafletRouteStep();
+                        if (s.TryGetProperty("instruction", out var ins)) step.Instruction = ins.GetString() ?? "";
+                        if (s.TryGetProperty("distance",    out var sd))  step.Distance    = sd.GetString() ?? "";
+                        v.Steps.Add(step);
+                    }
+                }
+                r.Routes.Add(v);
+            }
+        }
+        return r;
+    }
+
+    /// <summary>Removes a previously drawn route.</summary>
+    public async Task ClearRouteAsync(string routeId)
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("clearRoute", _instanceId, routeId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Downloads the current map view as a PNG.</summary>
+    public async Task ExportPngAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("exportPng", _instanceId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Retries loading after an error.</summary>
+    public async Task RetryAsync()
+    {
+        _error = null; _ready = false;
+        await InvokeAsync(StateHasChanged);
+        await InitAsync();
+    }
+
+    // ── JS callbacks ──────────────────────────────────────────────────────────
+
+    [JSInvokable]
+    public async Task OnMarkerClickedAsync(SgLeafletMarkerClickEventArgs args)
+    {
+        if (OnMarkerClick.HasDelegate)
+            await OnMarkerClick.InvokeAsync(args);
+    }
+
+    [JSInvokable]
+    public async Task OnMapClickedAsync(SgLeafletClickEventArgs args)
+    {
+        if (OnMapClick.HasDelegate)
+            await OnMapClick.InvokeAsync(args);
+    }
+
+    [JSInvokable]
+    public async Task OnViewChangedAsync(SgLeafletViewChangedEventArgs args)
+    {
+        if (OnViewChanged.HasDelegate)
+            await OnViewChanged.InvokeAsync(args);
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("disposeMap", _instanceId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch { }
+        }
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch { }
+            _module = null;
+        }
+    }
+}

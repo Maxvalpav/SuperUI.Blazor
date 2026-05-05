@@ -1,9 +1,10 @@
 // superui-theme.js - Theme management (light/dark mode)
 
 const THEME_KEY = 'superui-theme';
+const DEFAULT_THEME = 'light';
 
 export function getTheme() {
-    return localStorage.getItem(THEME_KEY) || 'auto';
+    return localStorage.getItem(THEME_KEY) || DEFAULT_THEME;
 }
 
 export function setTheme(theme) {
@@ -21,23 +22,18 @@ export function getEffectiveTheme() {
 
 function applyTheme(theme) {
     const root = document.documentElement;
-    
+
     if (theme === 'auto') {
-        // Remove explicit theme attribute, let CSS media query handle it
         root.removeAttribute('data-theme');
     } else {
         root.setAttribute('data-theme', theme);
     }
 }
 
-// Initialize theme on load
+// Initialize theme on load — default is light
 applyTheme(getTheme());
 
 // Listen for system theme changes when in auto mode
-window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
-    const currentTheme = getTheme();
-    if (currentTheme === 'auto') {
-        // Re-apply auto theme to trigger CSS updates
-        applyTheme('auto');
-    }
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (getTheme() === 'auto') applyTheme('auto');
 });

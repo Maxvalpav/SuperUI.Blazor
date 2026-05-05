@@ -1,0 +1,496 @@
+@page "/konva-demo"
+@using SuperUI.Components
+
+<PageTitle>План этажа — SUI</PageTitle>
+
+<div class="fp-page">
+
+    <!-- ── Шапка ──────────────────────────────────────────────────────── -->
+    <div class="fp-header">
+        <div class="fp-header-left">
+            <h1 class="fp-title">🏢 План этажа</h1>
+            <p class="fp-subtitle">Интерактивная 2D-визуализация на Konva.js — клик по помещению, смена статуса, зум колесом мыши</p>
+        </div>
+        <div class="fp-header-right">
+            <div class="fp-legend">
+                <div class="fp-legend-item"><span class="fp-dot fp-dot-available"></span>Свободно</div>
+                <div class="fp-legend-item"><span class="fp-dot fp-dot-occupied"></span>Занято</div>
+                <div class="fp-legend-item"><span class="fp-dot fp-dot-reserved"></span>Зарезервировано</div>
+                <div class="fp-legend-item"><span class="fp-dot fp-dot-maintenance"></span>Обслуживание</div>
+                <div class="fp-legend-item"><span class="fp-dot fp-dot-closed"></span>Закрыто</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Тулбар ─────────────────────────────────────────────────────── -->
+    <div class="fp-toolbar">
+        <div class="fp-toolbar-group">
+            <span class="fp-toolbar-label">Этаж</span>
+            @foreach (var f in new[]{ 1, 2, 3 })
+            {
+                var ff = f;
+                <button class="fp-btn @(_activeFloor == ff ? "active" : "")"
+                        @onclick="@(() => SwitchFloor(ff))">@ff</button>
+            }
+        </div>
+        <div class="fp-toolbar-sep"></div>
+        <div class="fp-toolbar-group">
+            <button class="fp-btn fp-btn-accent" @onclick="RandomizeStatuses">↻ Случайно</button>
+            <label class="fp-toggle-label">
+                <input type="checkbox" @bind="_draggable" @bind:after="OnDraggableChanged" />
+                <span>Перетаскивание</span>
+            </label>
+        </div>
+        <div class="fp-toolbar-sep"></div>
+        <div class="fp-toolbar-group">
+            <button class="fp-btn" @onclick="@(() => _konva?.ZoomInAsync())">🔍+</button>
+            <button class="fp-btn" @onclick="@(() => _konva?.ZoomOutAsync())">🔍−</button>
+            <button class="fp-btn" @onclick="@(() => _konva?.FitViewAsync())">⛶ Вписать</button>
+            <button class="fp-btn" @onclick="@(() => _konva?.ExportPngAsync())">⬇ PNG</button>
+        </div>
+
+        <!-- Статистика -->
+        <div class="fp-toolbar-stats">
+            <span class="fp-stat-chip fp-stat-total">Помещений: <b>@_stats.Total</b></span>
+            <span class="fp-stat-chip fp-stat-available">Своб: <b>@_stats.Available</b></span>
+            <span class="fp-stat-chip fp-stat-occupied">Занято: <b>@_stats.Occupied</b></span>
+            <span class="fp-stat-chip fp-stat-reserved">Резерв: <b>@_stats.Reserved</b></span>
+            @if (_stats.Total > 0)
+            {
+                <span class="fp-stat-chip fp-stat-fill">
+                    <b>@((_stats.Occupied * 100 / _stats.Total))%</b> занято
+                </span>
+            }
+        </div>
+    </div>
+
+    <!-- ── Основная область ────────────────────────────────────────────── -->
+    <div class="fp-main">
+
+        <div class="fp-canvas-wrap">
+            <SgKonva @ref="_konva"
+                     FloorPlan="@_floorPlan"
+                     Options="@_konvaOpts"
+                     Height="100%"
+                     ShowToolbar="false"
+                     OnShapeClick="OnRoomClick"
+                     OnShapeDrag="OnRoomDrag" />
+        </div>
+
+        <!-- Панель помещения -->
+        <div class="fp-panel @(_selectedRoom is not null ? "fp-panel-open" : "")">
+            @if (_selectedRoom is not null)
+            {
+                <div class="fp-panel-header">
+                    <div>
+                        <div class="fp-panel-name">@_selectedRoom.Name</div>
+                        <div class="fp-panel-type">@RoomTypeLabel(_selectedRoom.Type)</div>
+                    </div>
+                    <button class="fp-panel-close" @onclick="() => { _selectedRoom = null; StateHasChanged(); }">✕</button>
+                </div>
+
+                <div class="fp-panel-body">
+
+                    <!-- Статус -->
+                    <div class="fp-panel-section">
+                        <div class="fp-section-title">Статус</div>
+                        <div class="fp-status-grid">
+                            @foreach (var s in Enum.GetValues<SgFloorRoomStatus>())
+                            {
+                                var ss = s;
+                                <button class="fp-status-btn fp-status-@ss.ToString().ToLower() @(_selectedRoom.Status == ss ? "active" : "")"
+                                        @onclick="@(() => SetRoomStatus(ss))">
+                                    <span class="fp-status-dot"></span>@StatusLabel(ss)
+                                </button>
+                            }
+                        </div>
+                    </div>
+
+                    <!-- Информация -->
+                    <div class="fp-panel-section">
+                        <div class="fp-section-title">Информация</div>
+                        <div class="fp-info-grid">
+                            <div class="fp-info-item">
+                                <span class="fp-info-label">ID</span>
+                                <code class="fp-info-code">@_selectedRoom.Id</code>
+                            </div>
+                            <div class="fp-info-item">
+                                <span class="fp-info-label">Этаж</span>
+                                <span class="fp-info-value">@_selectedRoom.Floor</span>
+                            </div>
+                            @if (_selectedRoom.Capacity.HasValue)
+                            {
+                                <div class="fp-info-item">
+                                    <span class="fp-info-label">Вместимость</span>
+                                    <span class="fp-info-value">@_selectedRoom.Capacity чел.</span>
+                                </div>
+                            }
+                            @if (_selectedRoom.CurrentOccupancy.HasValue)
+                            {
+                                <div class="fp-info-item">
+                                    <span class="fp-info-label">Сейчас</span>
+                                    <span class="fp-info-value fp-info-occ">@_selectedRoom.CurrentOccupancy чел.</span>
+                                </div>
+                            }
+                            <div class="fp-info-item">
+                                <span class="fp-info-label">Площадь</span>
+                                <span class="fp-info-value">@(Math.Round(_selectedRoom.Width * _selectedRoom.Height / 100)) м²</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Заполненность -->
+                    @if (_selectedRoom.Capacity.HasValue && _selectedRoom.CurrentOccupancy.HasValue)
+                    {
+                        var pct = (int)Math.Round((double)_selectedRoom.CurrentOccupancy.Value / _selectedRoom.Capacity.Value * 100);
+                        <div class="fp-panel-section">
+                            <div class="fp-section-title">Заполненность — @pct%</div>
+                            <div class="fp-occ-bar-bg">
+                                <div class="fp-occ-bar-fill @(pct > 85 ? "fp-occ-high" : pct > 60 ? "fp-occ-mid" : "fp-occ-low")"
+                                     style="width:@pct%"></div>
+                            </div>
+                        </div>
+                    }
+
+                    <!-- Изменить заполненность -->
+                    @if (_selectedRoom.Capacity.HasValue)
+                    {
+                        <div class="fp-panel-section">
+                            <div class="fp-section-title">Текущая заполненность</div>
+                            <div class="fp-occ-controls">
+                                <button class="fp-occ-btn" @onclick="() => ChangeOccupancy(-5)">−5</button>
+                                <button class="fp-occ-btn" @onclick="() => ChangeOccupancy(-1)">−1</button>
+                                <span class="fp-occ-value">@(_selectedRoom.CurrentOccupancy ?? 0)</span>
+                                <button class="fp-occ-btn" @onclick="() => ChangeOccupancy(+1)">+1</button>
+                                <button class="fp-occ-btn" @onclick="() => ChangeOccupancy(+5)">+5</button>
+                            </div>
+                        </div>
+                    }
+
+                </div>
+            }
+            else
+            {
+                <div class="fp-panel-empty">
+                    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.3">
+                        <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        <path d="M3 9h18M9 21V9"/>
+                    </svg>
+                    <p>Кликните на помещение</p>
+                </div>
+            }
+        </div>
+
+    </div>
+</div>
+
+@code {
+    private static readonly Random _rnd = new(Environment.TickCount);
+
+    private SgKonva?       _konva;
+    private SgFloorPlan?   _floorPlan;
+    private SgFloorRoom?   _selectedRoom;
+    private int            _activeFloor = 1;
+    private bool           _draggable   = false;
+    private SgKonvaOptions _konvaOpts   = new() { DraggableRooms = false };
+
+    private record FpStats(int Total, int Available, int Occupied, int Reserved);
+    private FpStats _stats = new(0, 0, 0, 0);
+
+    // ── Floor plan definitions ────────────────────────────────────────────────
+
+    private static readonly Dictionary<int, SgFloorPlan> _floors = new()
+    {
+        [1] = BuildFloor1(),
+        [2] = BuildFloor2(),
+        [3] = BuildFloor3(),
+    };
+
+    private static SgFloorPlan BuildFloor1() => new()
+    {
+        Name = "1-й этаж — Офисный блок A",
+        Width = 1000, Height = 680,
+        Rooms =
+        [
+            // Lobby / Reception
+            new() { Id="R-101", Name="Ресепшн",        Type=SgFloorRoomType.Reception,   X=0,   Y=0,   Width=200, Height=120, Floor=1 },
+            new() { Id="R-102", Name="Лобби",           Type=SgFloorRoomType.Lobby,       X=200, Y=0,   Width=300, Height=120, Floor=1 },
+            new() { Id="R-103", Name="Лифты",           Type=SgFloorRoomType.Elevator,    X=500, Y=0,   Width=80,  Height=120, Floor=1 },
+            new() { Id="R-104", Name="Лестница",        Type=SgFloorRoomType.Stairs,      X=580, Y=0,   Width=80,  Height=120, Floor=1 },
+            // Corridor
+            new() { Id="R-105", Name="Коридор",         Type=SgFloorRoomType.Corridor,    X=0,   Y=120, Width=1000,Height=60,  Floor=1 },
+            // Offices left wing
+            new() { Id="R-106", Name="Офис 1.1",        Type=SgFloorRoomType.Office,      X=0,   Y=180, Width=160, Height=140, Floor=1, Capacity=8,  CurrentOccupancy=5 },
+            new() { Id="R-107", Name="Офис 1.2",        Type=SgFloorRoomType.Office,      X=160, Y=180, Width=160, Height=140, Floor=1, Capacity=8,  CurrentOccupancy=8 },
+            new() { Id="R-108", Name="Офис 1.3",        Type=SgFloorRoomType.Office,      X=320, Y=180, Width=160, Height=140, Floor=1, Capacity=6,  CurrentOccupancy=2 },
+            new() { Id="R-109", Name="Переговорная A",  Type=SgFloorRoomType.MeetingRoom, X=480, Y=180, Width=200, Height=140, Floor=1, Capacity=12, CurrentOccupancy=0 },
+            new() { Id="R-110", Name="Переговорная B",  Type=SgFloorRoomType.MeetingRoom, X=680, Y=180, Width=160, Height=140, Floor=1, Capacity=8,  CurrentOccupancy=6 },
+            new() { Id="R-111", Name="Серверная",       Type=SgFloorRoomType.ServerRoom,  X=840, Y=180, Width=160, Height=140, Floor=1 },
+            // Open space
+            new() { Id="R-112", Name="Open Space",      Type=SgFloorRoomType.OpenSpace,   X=0,   Y=320, Width=500, Height=200, Floor=1, Capacity=40, CurrentOccupancy=22 },
+            new() { Id="R-113", Name="Кухня",           Type=SgFloorRoomType.Kitchen,     X=500, Y=320, Width=200, Height=200, Floor=1, Capacity=20, CurrentOccupancy=4 },
+            new() { Id="R-114", Name="Офис 1.4",        Type=SgFloorRoomType.Office,      X=700, Y=320, Width=160, Height=200, Floor=1, Capacity=10, CurrentOccupancy=7 },
+            new() { Id="R-115", Name="Офис 1.5",        Type=SgFloorRoomType.Office,      X=860, Y=320, Width=140, Height=200, Floor=1, Capacity=6,  CurrentOccupancy=0 },
+            // Bottom
+            new() { Id="R-116", Name="Коридор 2",       Type=SgFloorRoomType.Corridor,    X=0,   Y=520, Width=1000,Height=50,  Floor=1 },
+            new() { Id="R-117", Name="Туалет М",        Type=SgFloorRoomType.Restroom,    X=0,   Y=570, Width=120, Height=110, Floor=1 },
+            new() { Id="R-118", Name="Туалет Ж",        Type=SgFloorRoomType.Restroom,    X=120, Y=570, Width=120, Height=110, Floor=1 },
+            new() { Id="R-119", Name="Склад",           Type=SgFloorRoomType.Storage,     X=240, Y=570, Width=200, Height=110, Floor=1 },
+            new() { Id="R-120", Name="Переговорная C",  Type=SgFloorRoomType.MeetingRoom, X=440, Y=570, Width=240, Height=110, Floor=1, Capacity=16, CurrentOccupancy=0 },
+            new() { Id="R-121", Name="Офис 1.6",        Type=SgFloorRoomType.Office,      X=680, Y=570, Width=320, Height=110, Floor=1, Capacity=14, CurrentOccupancy=9 },
+        ],
+        Walls =
+        [
+            new() { X1=0,   Y1=0,   X2=1000, Y2=0   },
+            new() { X1=0,   Y1=680, X2=1000, Y2=680 },
+            new() { X1=0,   Y1=0,   X2=0,    Y2=680 },
+            new() { X1=1000,Y1=0,   X2=1000, Y2=680 },
+        ],
+    };
+
+    private static SgFloorPlan BuildFloor2() => new()
+    {
+        Name = "2-й этаж — Технический блок",
+        Width = 1000, Height = 680,
+        Rooms =
+        [
+            new() { Id="R-201", Name="Коридор",         Type=SgFloorRoomType.Corridor,    X=0,   Y=0,   Width=1000,Height=60,  Floor=2 },
+            new() { Id="R-202", Name="Лаборатория 1",   Type=SgFloorRoomType.OpenSpace,   X=0,   Y=60,  Width=300, Height=200, Floor=2, Capacity=15, CurrentOccupancy=10 },
+            new() { Id="R-203", Name="Лаборатория 2",   Type=SgFloorRoomType.OpenSpace,   X=300, Y=60,  Width=300, Height=200, Floor=2, Capacity=15, CurrentOccupancy=3 },
+            new() { Id="R-204", Name="Серверная 2",     Type=SgFloorRoomType.ServerRoom,  X=600, Y=60,  Width=200, Height=200, Floor=2 },
+            new() { Id="R-205", Name="Переговорная D",  Type=SgFloorRoomType.MeetingRoom, X=800, Y=60,  Width=200, Height=200, Floor=2, Capacity=10, CurrentOccupancy=0 },
+            new() { Id="R-206", Name="Коридор 2",       Type=SgFloorRoomType.Corridor,    X=0,   Y=260, Width=1000,Height=50,  Floor=2 },
+            new() { Id="R-207", Name="Офис 2.1",        Type=SgFloorRoomType.Office,      X=0,   Y=310, Width=200, Height=180, Floor=2, Capacity=10, CurrentOccupancy=6 },
+            new() { Id="R-208", Name="Офис 2.2",        Type=SgFloorRoomType.Office,      X=200, Y=310, Width=200, Height=180, Floor=2, Capacity=10, CurrentOccupancy=10 },
+            new() { Id="R-209", Name="Open Space 2",    Type=SgFloorRoomType.OpenSpace,   X=400, Y=310, Width=400, Height=180, Floor=2, Capacity=30, CurrentOccupancy=18 },
+            new() { Id="R-210", Name="Кухня 2",         Type=SgFloorRoomType.Kitchen,     X=800, Y=310, Width=200, Height=180, Floor=2, Capacity=15, CurrentOccupancy=2 },
+            new() { Id="R-211", Name="Коридор 3",       Type=SgFloorRoomType.Corridor,    X=0,   Y=490, Width=1000,Height=50,  Floor=2 },
+            new() { Id="R-212", Name="Туалет М",        Type=SgFloorRoomType.Restroom,    X=0,   Y=540, Width=130, Height=140, Floor=2 },
+            new() { Id="R-213", Name="Туалет Ж",        Type=SgFloorRoomType.Restroom,    X=130, Y=540, Width=130, Height=140, Floor=2 },
+            new() { Id="R-214", Name="Склад 2",         Type=SgFloorRoomType.Storage,     X=260, Y=540, Width=180, Height=140, Floor=2 },
+            new() { Id="R-215", Name="Офис 2.3",        Type=SgFloorRoomType.Office,      X=440, Y=540, Width=280, Height=140, Floor=2, Capacity=12, CurrentOccupancy=0 },
+            new() { Id="R-216", Name="Лифты",           Type=SgFloorRoomType.Elevator,    X=720, Y=540, Width=80,  Height=140, Floor=2 },
+            new() { Id="R-217", Name="Лестница",        Type=SgFloorRoomType.Stairs,      X=800, Y=540, Width=80,  Height=140, Floor=2 },
+            new() { Id="R-218", Name="Офис 2.4",        Type=SgFloorRoomType.Office,      X=880, Y=540, Width=120, Height=140, Floor=2, Capacity=6, CurrentOccupancy=4 },
+        ],
+        Walls =
+        [
+            new() { X1=0,   Y1=0,   X2=1000, Y2=0   },
+            new() { X1=0,   Y1=680, X2=1000, Y2=680 },
+            new() { X1=0,   Y1=0,   X2=0,    Y2=680 },
+            new() { X1=1000,Y1=0,   X2=1000, Y2=680 },
+        ],
+    };
+
+    private static SgFloorPlan BuildFloor3() => new()
+    {
+        Name = "3-й этаж — Руководство",
+        Width = 1000, Height = 680,
+        Rooms =
+        [
+            new() { Id="R-301", Name="Коридор",         Type=SgFloorRoomType.Corridor,    X=0,   Y=0,   Width=1000,Height=60,  Floor=3 },
+            new() { Id="R-302", Name="Приёмная",        Type=SgFloorRoomType.Reception,   X=0,   Y=60,  Width=200, Height=160, Floor=3, Capacity=4, CurrentOccupancy=2 },
+            new() { Id="R-303", Name="Кабинет CEO",     Type=SgFloorRoomType.Office,      X=200, Y=60,  Width=250, Height=160, Floor=3, Capacity=2, CurrentOccupancy=1 },
+            new() { Id="R-304", Name="Кабинет CTO",     Type=SgFloorRoomType.Office,      X=450, Y=60,  Width=200, Height=160, Floor=3, Capacity=2, CurrentOccupancy=0 },
+            new() { Id="R-305", Name="Кабинет CFO",     Type=SgFloorRoomType.Office,      X=650, Y=60,  Width=200, Height=160, Floor=3, Capacity=2, CurrentOccupancy=2 },
+            new() { Id="R-306", Name="Переговорная VIP",Type=SgFloorRoomType.MeetingRoom, X=850, Y=60,  Width=150, Height=160, Floor=3, Capacity=20, CurrentOccupancy=0 },
+            new() { Id="R-307", Name="Коридор 2",       Type=SgFloorRoomType.Corridor,    X=0,   Y=220, Width=1000,Height=50,  Floor=3 },
+            new() { Id="R-308", Name="Зал совещаний",   Type=SgFloorRoomType.MeetingRoom, X=0,   Y=270, Width=400, Height=250, Floor=3, Capacity=50, CurrentOccupancy=0 },
+            new() { Id="R-309", Name="Лаунж",           Type=SgFloorRoomType.Lobby,       X=400, Y=270, Width=300, Height=250, Floor=3, Capacity=30, CurrentOccupancy=5 },
+            new() { Id="R-310", Name="Кухня VIP",       Type=SgFloorRoomType.Kitchen,     X=700, Y=270, Width=150, Height=250, Floor=3, Capacity=10, CurrentOccupancy=0 },
+            new() { Id="R-311", Name="Офис 3.1",        Type=SgFloorRoomType.Office,      X=850, Y=270, Width=150, Height=250, Floor=3, Capacity=8, CurrentOccupancy=3 },
+            new() { Id="R-312", Name="Коридор 3",       Type=SgFloorRoomType.Corridor,    X=0,   Y=520, Width=1000,Height=50,  Floor=3 },
+            new() { Id="R-313", Name="Туалет М",        Type=SgFloorRoomType.Restroom,    X=0,   Y=570, Width=130, Height=110, Floor=3 },
+            new() { Id="R-314", Name="Туалет Ж",        Type=SgFloorRoomType.Restroom,    X=130, Y=570, Width=130, Height=110, Floor=3 },
+            new() { Id="R-315", Name="Архив",           Type=SgFloorRoomType.Storage,     X=260, Y=570, Width=200, Height=110, Floor=3 },
+            new() { Id="R-316", Name="Офис 3.2",        Type=SgFloorRoomType.Office,      X=460, Y=570, Width=260, Height=110, Floor=3, Capacity=10, CurrentOccupancy=7 },
+            new() { Id="R-317", Name="Лифты",           Type=SgFloorRoomType.Elevator,    X=720, Y=570, Width=80,  Height=110, Floor=3 },
+            new() { Id="R-318", Name="Лестница",        Type=SgFloorRoomType.Stairs,      X=800, Y=570, Width=80,  Height=110, Floor=3 },
+            new() { Id="R-319", Name="Офис 3.3",        Type=SgFloorRoomType.Office,      X=880, Y=570, Width=120, Height=110, Floor=3, Capacity=5, CurrentOccupancy=0 },
+        ],
+        Walls =
+        [
+            new() { X1=0,   Y1=0,   X2=1000, Y2=0   },
+            new() { X1=0,   Y1=680, X2=1000, Y2=680 },
+            new() { X1=0,   Y1=0,   X2=0,    Y2=680 },
+            new() { X1=1000,Y1=0,   X2=1000, Y2=680 },
+        ],
+    };
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static string RoomTypeLabel(SgFloorRoomType t) => t switch
+    {
+        SgFloorRoomType.Office      => "Офис",
+        SgFloorRoomType.MeetingRoom => "Переговорная",
+        SgFloorRoomType.OpenSpace   => "Open Space",
+        SgFloorRoomType.Kitchen     => "Кухня",
+        SgFloorRoomType.Restroom    => "Санузел",
+        SgFloorRoomType.Corridor    => "Коридор",
+        SgFloorRoomType.Storage     => "Склад",
+        SgFloorRoomType.ServerRoom  => "Серверная",
+        SgFloorRoomType.Reception   => "Ресепшн",
+        SgFloorRoomType.Lobby       => "Лобби",
+        SgFloorRoomType.Stairs      => "Лестница",
+        SgFloorRoomType.Elevator    => "Лифт",
+        _                           => t.ToString(),
+    };
+
+    private static string StatusLabel(SgFloorRoomStatus s) => s switch
+    {
+        SgFloorRoomStatus.Available   => "Свободно",
+        SgFloorRoomStatus.Occupied    => "Занято",
+        SgFloorRoomStatus.Reserved    => "Зарезервировано",
+        SgFloorRoomStatus.Maintenance => "Обслуживание",
+        SgFloorRoomStatus.Closed      => "Закрыто",
+        _                             => s.ToString(),
+    };
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    private void SwitchFloor(int floor)
+    {
+        _activeFloor  = floor;
+        _floorPlan    = DeepCopy(_floors[floor]);
+        _selectedRoom = null;
+        RecalcStats();
+        StateHasChanged();
+    }
+
+    private void RandomizeStatuses()
+    {
+        if (_floorPlan is null) return;
+        var statuses = new[] {
+            SgFloorRoomStatus.Available, SgFloorRoomStatus.Available, SgFloorRoomStatus.Available,
+            SgFloorRoomStatus.Occupied,  SgFloorRoomStatus.Occupied,
+            SgFloorRoomStatus.Reserved,
+            SgFloorRoomStatus.Maintenance,
+        };
+        foreach (var r in _floorPlan.Rooms)
+        {
+            if (r.Type is SgFloorRoomType.Corridor or SgFloorRoomType.Stairs or SgFloorRoomType.Elevator)
+                continue;
+            r.Status = statuses[_rnd.Next(statuses.Length)];
+            if (r.Capacity.HasValue)
+                r.CurrentOccupancy = r.Status == SgFloorRoomStatus.Occupied
+                    ? _rnd.Next(1, r.Capacity.Value + 1)
+                    : r.Status == SgFloorRoomStatus.Available
+                        ? _rnd.Next(0, (int)(r.Capacity.Value * 0.5) + 1)
+                        : 0;
+        }
+        RecalcStats();
+        StateHasChanged();
+    }
+
+    private async Task OnDraggableChanged()
+    {
+        _konvaOpts = new SgKonvaOptions { DraggableRooms = _draggable };
+        if (_konva is not null) await _konva.RefreshAsync();
+    }
+
+    private void OnRoomClick(SgKonvaClickEventArgs e)
+    {
+        if (string.IsNullOrEmpty(e.Id)) return;
+
+        // First try to find room directly from the floor plan (most reliable)
+        var room = _floorPlan?.Rooms.FirstOrDefault(r => r.Id == e.Id);
+        if (room is not null)
+        {
+            _selectedRoom = room;
+            StateHasChanged();
+            return;
+        }
+
+        // Fallback: deserialize from Data payload
+        if (!string.IsNullOrEmpty(e.Data))
+        {
+            try
+            {
+                _selectedRoom = System.Text.Json.JsonSerializer.Deserialize<SgFloorRoom>(
+                    e.Data,
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            }
+            catch
+            {
+                _selectedRoom = new() { Id = e.Id, Name = e.Id };
+            }
+        }
+        else
+        {
+            _selectedRoom = new() { Id = e.Id, Name = e.Id };
+        }
+
+        StateHasChanged();
+    }
+
+    private void OnRoomDrag(SgKonvaDragEventArgs e)
+    {
+        var room = _floorPlan?.Rooms.FirstOrDefault(r => r.Id == e.Id);
+        if (room is null) return;
+        room.X = e.X;
+        room.Y = e.Y;
+    }
+
+    private async Task SetRoomStatus(SgFloorRoomStatus status)
+    {
+        if (_selectedRoom is null || _floorPlan is null) return;
+        _selectedRoom.Status = status;
+        var r = _floorPlan.Rooms.FirstOrDefault(x => x.Id == _selectedRoom.Id);
+        if (r is not null) r.Status = status;
+        RecalcStats();
+        if (_konva is not null)
+            await _konva.UpdateRoomStatusAsync(_selectedRoom.Id, status);
+        StateHasChanged();
+    }
+
+    private async Task ChangeOccupancy(int delta)
+    {
+        if (_selectedRoom is null || !_selectedRoom.Capacity.HasValue) return;
+        var cur = _selectedRoom.CurrentOccupancy ?? 0;
+        _selectedRoom.CurrentOccupancy = Math.Clamp(cur + delta, 0, _selectedRoom.Capacity.Value);
+        var r = _floorPlan?.Rooms.FirstOrDefault(x => x.Id == _selectedRoom.Id);
+        if (r is not null) r.CurrentOccupancy = _selectedRoom.CurrentOccupancy;
+        if (_konva is not null) await _konva.RefreshAsync();
+        StateHasChanged();
+    }
+
+    private void RecalcStats()
+    {
+        if (_floorPlan is null) { _stats = new(0,0,0,0); return; }
+        var rooms = _floorPlan.Rooms.Where(r =>
+            r.Type is not SgFloorRoomType.Corridor and
+                      not SgFloorRoomType.Stairs and
+                      not SgFloorRoomType.Elevator).ToList();
+        _stats = new(
+            rooms.Count,
+            rooms.Count(r => r.Status == SgFloorRoomStatus.Available),
+            rooms.Count(r => r.Status == SgFloorRoomStatus.Occupied),
+            rooms.Count(r => r.Status == SgFloorRoomStatus.Reserved));
+    }
+
+    // Deep copy to avoid mutating the static template
+    private static SgFloorPlan DeepCopy(SgFloorPlan src) => new()
+    {
+        Name   = src.Name,
+        Width  = src.Width,
+        Height = src.Height,
+        Walls  = src.Walls.Select(w => new SgFloorWall { X1=w.X1, Y1=w.Y1, X2=w.X2, Y2=w.Y2, Thickness=w.Thickness }).ToList(),
+        Rooms  = src.Rooms.Select(r => new SgFloorRoom
+        {
+            Id               = r.Id,
+            Name             = r.Name,
+            Type             = r.Type,
+            Status           = r.Status,
+            X                = r.X,
+            Y                = r.Y,
+            Width            = r.Width,
+            Height           = r.Height,
+            Capacity         = r.Capacity,
+            CurrentOccupancy = r.CurrentOccupancy,
+            Floor            = r.Floor,
+            Meta             = r.Meta,
+        }).ToList(),
+    };
+
+    protected override void OnInitialized() => SwitchFloor(1);
+}
