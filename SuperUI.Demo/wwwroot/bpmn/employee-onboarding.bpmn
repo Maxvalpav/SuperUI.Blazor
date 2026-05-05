@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_onboard" targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:collaboration id="Collab_onboard">
+    <bpmn:participant id="Pool_HR"   name="HR-отдел"    processRef="Process_HR" />
+    <bpmn:participant id="Pool_IT"   name="IT-отдел"    processRef="Process_IT" />
+    <bpmn:participant id="Pool_Emp"  name="Сотрудник"   processRef="Process_Emp" />
+    <bpmn:messageFlow id="MF_1" sourceRef="Task_send_docs"   targetRef="Task_receive_docs" />
+    <bpmn:messageFlow id="MF_2" sourceRef="Task_create_acc"  targetRef="Task_get_access" />
+    <bpmn:messageFlow id="MF_3" sourceRef="Task_welcome"     targetRef="Catch_welcome" />
+  </bpmn:collaboration>
+
+  <!-- HR Pool -->
+  <bpmn:process id="Process_HR" isExecutable="false">
+    <bpmn:startEvent id="HR_Start" name="Оффер&#10;принят">
+      <bpmn:outgoing>HR_f1</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:userTask id="Task_prepare" name="Подготовка&#10;документов">
+      <bpmn:incoming>HR_f1</bpmn:incoming>
+      <bpmn:outgoing>HR_f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:sendTask id="Task_send_docs" name="Отправка&#10;документов">
+      <bpmn:incoming>HR_f2</bpmn:incoming>
+      <bpmn:outgoing>HR_f3</bpmn:outgoing>
+    </bpmn:sendTask>
+    <bpmn:userTask id="Task_welcome" name="Welcome-встреча">
+      <bpmn:incoming>HR_f3</bpmn:incoming>
+      <bpmn:outgoing>HR_f4</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:endEvent id="HR_End" name="Онбординг&#10;завершён">
+      <bpmn:incoming>HR_f4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="HR_f1" sourceRef="HR_Start"       targetRef="Task_prepare" />
+    <bpmn:sequenceFlow id="HR_f2" sourceRef="Task_prepare"   targetRef="Task_send_docs" />
+    <bpmn:sequenceFlow id="HR_f3" sourceRef="Task_send_docs" targetRef="Task_welcome" />
+    <bpmn:sequenceFlow id="HR_f4" sourceRef="Task_welcome"   targetRef="HR_End" />
+  </bpmn:process>
+
+  <!-- IT Pool -->
+  <bpmn:process id="Process_IT" isExecutable="false">
+    <bpmn:userTask id="Task_create_acc" name="Создание&#10;аккаунтов">
+      <bpmn:outgoing>IT_f1</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:serviceTask id="Task_setup_ws" name="Настройка&#10;рабочего места">
+      <bpmn:incoming>IT_f1</bpmn:incoming>
+      <bpmn:outgoing>IT_f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="IT_End" name="Готово">
+      <bpmn:incoming>IT_f2</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="IT_f1" sourceRef="Task_create_acc" targetRef="Task_setup_ws" />
+    <bpmn:sequenceFlow id="IT_f2" sourceRef="Task_setup_ws"   targetRef="IT_End" />
+  </bpmn:process>
+
+  <!-- Employee Pool -->
+  <bpmn:process id="Process_Emp" isExecutable="false">
+    <bpmn:receiveTask id="Task_receive_docs" name="Получение&#10;документов">
+      <bpmn:outgoing>Emp_f1</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:userTask id="Task_sign" name="Подписание&#10;документов">
+      <bpmn:incoming>Emp_f1</bpmn:incoming>
+      <bpmn:outgoing>Emp_f2</bpmn:outgoing>
+    </bpmn:userTask>
+    <bpmn:receiveTask id="Task_get_access" name="Получение&#10;доступов">
+      <bpmn:incoming>Emp_f2</bpmn:incoming>
+      <bpmn:outgoing>Emp_f3</bpmn:outgoing>
+    </bpmn:receiveTask>
+    <bpmn:intermediateCatchEvent id="Catch_welcome" name="Welcome-встреча">
+      <bpmn:incoming>Emp_f3</bpmn:incoming>
+      <bpmn:outgoing>Emp_f4</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MED_welcome" />
+    </bpmn:intermediateCatchEvent>
+    <bpmn:endEvent id="Emp_End" name="Приступил&#10;к работе">
+      <bpmn:incoming>Emp_f4</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Emp_f1" sourceRef="Task_receive_docs" targetRef="Task_sign" />
+    <bpmn:sequenceFlow id="Emp_f2" sourceRef="Task_sign"         targetRef="Task_get_access" />
+    <bpmn:sequenceFlow id="Emp_f3" sourceRef="Task_get_access"   targetRef="Catch_welcome" />
+    <bpmn:sequenceFlow id="Emp_f4" sourceRef="Catch_welcome"     targetRef="Emp_End" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_onboard">
+    <bpmndi:BPMNPlane id="BPMNPlane_onboard" bpmnElement="Collab_onboard">
+
+      <!-- HR Pool -->
+      <bpmndi:BPMNShape id="Pool_HR_di" bpmnElement="Pool_HR" isHorizontal="true">
+        <dc:Bounds x="130" y="80" width="760" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="HR_Start_di" bpmnElement="HR_Start">
+        <dc:Bounds x="182" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="166" y="185" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_prepare_di" bpmnElement="Task_prepare">
+        <dc:Bounds x="270" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_send_docs_di" bpmnElement="Task_send_docs">
+        <dc:Bounds x="420" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_welcome_di" bpmnElement="Task_welcome">
+        <dc:Bounds x="570" y="120" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="HR_End_di" bpmnElement="HR_End">
+        <dc:Bounds x="732" y="142" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="716" y="185" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="HR_f1_di" bpmnElement="HR_f1"><di:waypoint x="218" y="160"/><di:waypoint x="270" y="160"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="HR_f2_di" bpmnElement="HR_f2"><di:waypoint x="370" y="160"/><di:waypoint x="420" y="160"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="HR_f3_di" bpmnElement="HR_f3"><di:waypoint x="520" y="160"/><di:waypoint x="570" y="160"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="HR_f4_di" bpmnElement="HR_f4"><di:waypoint x="670" y="160"/><di:waypoint x="732" y="160"/></bpmndi:BPMNEdge>
+
+      <!-- IT Pool -->
+      <bpmndi:BPMNShape id="Pool_IT_di" bpmnElement="Pool_IT" isHorizontal="true">
+        <dc:Bounds x="130" y="260" width="760" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_create_acc_di" bpmnElement="Task_create_acc">
+        <dc:Bounds x="270" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_setup_ws_di" bpmnElement="Task_setup_ws">
+        <dc:Bounds x="420" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="IT_End_di" bpmnElement="IT_End">
+        <dc:Bounds x="582" y="322" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="575" y="365" width="50" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="IT_f1_di" bpmnElement="IT_f1"><di:waypoint x="370" y="340"/><di:waypoint x="420" y="340"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="IT_f2_di" bpmnElement="IT_f2"><di:waypoint x="520" y="340"/><di:waypoint x="582" y="340"/></bpmndi:BPMNEdge>
+
+      <!-- Employee Pool -->
+      <bpmndi:BPMNShape id="Pool_Emp_di" bpmnElement="Pool_Emp" isHorizontal="true">
+        <dc:Bounds x="130" y="440" width="760" height="160" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_receive_docs_di" bpmnElement="Task_receive_docs">
+        <dc:Bounds x="270" y="480" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_sign_di" bpmnElement="Task_sign">
+        <dc:Bounds x="420" y="480" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_get_access_di" bpmnElement="Task_get_access">
+        <dc:Bounds x="570" y="480" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Catch_welcome_di" bpmnElement="Catch_welcome">
+        <dc:Bounds x="722" y="502" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="698" y="545" width="84" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Emp_End_di" bpmnElement="Emp_End">
+        <dc:Bounds x="812" y="502" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="796" y="545" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Emp_f1_di" bpmnElement="Emp_f1"><di:waypoint x="370" y="520"/><di:waypoint x="420" y="520"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Emp_f2_di" bpmnElement="Emp_f2"><di:waypoint x="520" y="520"/><di:waypoint x="570" y="520"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Emp_f3_di" bpmnElement="Emp_f3"><di:waypoint x="670" y="520"/><di:waypoint x="722" y="520"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Emp_f4_di" bpmnElement="Emp_f4"><di:waypoint x="758" y="520"/><di:waypoint x="812" y="520"/></bpmndi:BPMNEdge>
+
+      <!-- Message Flows -->
+      <bpmndi:BPMNEdge id="MF_1_di" bpmnElement="MF_1"><di:waypoint x="470" y="200"/><di:waypoint x="470" y="480"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_2_di" bpmnElement="MF_2"><di:waypoint x="320" y="380"/><di:waypoint x="320" y="480"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="MF_3_di" bpmnElement="MF_3"><di:waypoint x="620" y="200"/><di:waypoint x="620" y="440"/><di:waypoint x="740" y="440"/><di:waypoint x="740" y="502"/></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

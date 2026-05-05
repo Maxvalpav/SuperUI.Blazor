@@ -3,11 +3,44 @@
 
 const chartInstances = new Map();
 
-async function waitForChart() {
+// ── Script / stylesheet loader ────────────────────────────────────────────────
+
+const _loadedScripts = new Set();
+
+function _loadScript(url) {
+    if (!url) return Promise.resolve();
+    if (_loadedScripts.has(url)) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+        if (document.querySelector(`script[src="${url}"]`)) {
+            _loadedScripts.add(url);
+            resolve();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = url;
+        script.onload = () => { _loadedScripts.add(url); resolve(); };
+        script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+        document.head.appendChild(script);
+    });
+}
+
+async function _ensureChart(sources) {
+    // Load Chart.js first (required), then optional plugins in parallel.
+    if (sources?.chartScript) {
+        await _loadScript(sources.chartScript);
+    }
+
+    // After Chart.js is available, load plugins (they register themselves on window.Chart).
+    const pluginLoads = [];
+    if (sources?.zoomScript)   pluginLoads.push(_loadScript(sources.zoomScript));
+    if (sources?.matrixScript) pluginLoads.push(_loadScript(sources.matrixScript));
+    if (pluginLoads.length) await Promise.all(pluginLoads);
+
+    // Fallback: wait up to 5 s for window.Chart if loaded externally (e.g. index.html).
     let Chart = window.Chart;
     let attempts = 0;
     while (!Chart && attempts < 50) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(r => setTimeout(r, 100));
         Chart = window.Chart;
         attempts++;
     }
@@ -102,8 +135,8 @@ function installFormatters(config) {
     }
 }
 
-export async function initChart(dotnetRef, canvasRef, config) {
-    const Chart = await waitForChart();
+export async function initChart(dotnetRef, canvasRef, config, sources) {
+    const Chart = await _ensureChart(sources);
     applyThemeDefaults(Chart);
     applyOptionalPlugins(Chart, config);
     installFormatters(config);
@@ -170,17 +203,51 @@ export async function initChart(dotnetRef, canvasRef, config) {
     });
 }
 
-export function updateChart(chartId, config) {
+export async function updateChart(chartId, config) {
     const chartData = chartInstances.get(chartId);
     if (!chartData) return;
-    const chart = chartData.instance;
 
     installFormatters(config);
     if (config.options) delete config.options.__sgClickable;
 
-    chart.data = config.data;
-    chart.options = config.options;
-    chart.update('none');
+    const { instance: chart, canvasRef, dotnetRef, onClick, onMove, resizeObserver } = chartData;
+
+    // Always destroy and recreate — safest approach across all data shape changes.
+    try { resizeObserver?.disconnect(); } catch {}
+    try { chart.destroy(); } catch {}
+
+    const Chart = window.Chart;
+    if (!Chart) throw new Error('Chart.js not available');
+
+    applyOptionalPlugins(Chart, config);
+
+    const ctx = canvasRef.getContext('2d');
+    if (!ctx) throw new Error('Failed to get canvas context');
+
+    const newChart = new Chart(ctx, config);
+
+    if (onClick) canvasRef.addEventListener('click', onClick);
+    if (onMove)  canvasRef.addEventListener('mousemove', onMove);
+
+    let newResizeObs = null;
+    const parent = canvasRef.parentElement;
+    if (parent && typeof ResizeObserver !== 'undefined') {
+        let raf = 0;
+        newResizeObs = new ResizeObserver(() => {
+            cancelAnimationFrame(raf);
+            raf = requestAnimationFrame(() => { try { newChart.resize(); } catch {} });
+        });
+        newResizeObs.observe(parent);
+    }
+
+    chartInstances.set(chartId, {
+        instance: newChart,
+        dotnetRef,
+        canvasRef,
+        onClick,
+        onMove,
+        resizeObserver: newResizeObs,
+    });
 }
 
 export function resizeChart(chartId) {

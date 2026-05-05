@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_incident" targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:process id="Process_incident" isExecutable="false" name="Управление инцидентами">
+
+    <bpmn:startEvent id="Inc_Start" name="Инцидент&#10;зафиксирован">
+      <bpmn:outgoing>Inc_f1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:serviceTask id="Task_classify" name="Классификация&#10;инцидента">
+      <bpmn:incoming>Inc_f1</bpmn:incoming>
+      <bpmn:outgoing>Inc_f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="GW_severity" name="Критичность?">
+      <bpmn:incoming>Inc_f2</bpmn:incoming>
+      <bpmn:outgoing>Inc_critical</bpmn:outgoing>
+      <bpmn:outgoing>Inc_normal</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <!-- Critical path -->
+    <bpmn:userTask id="Task_escalate" name="Эскалация&#10;на L3">
+      <bpmn:incoming>Inc_critical</bpmn:incoming>
+      <bpmn:outgoing>Inc_esc_done</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:boundaryEvent id="Timer_sla" attachedToRef="Task_escalate" cancelActivity="true" name="SLA 1ч">
+      <bpmn:outgoing>Inc_sla_breach</bpmn:outgoing>
+      <bpmn:timerEventDefinition id="TED_sla">
+        <bpmn:timeDuration>PT1H</bpmn:timeDuration>
+      </bpmn:timerEventDefinition>
+    </bpmn:boundaryEvent>
+
+    <bpmn:sendTask id="Task_alert_mgmt" name="Уведомление&#10;руководства">
+      <bpmn:incoming>Inc_sla_breach</bpmn:incoming>
+      <bpmn:outgoing>Inc_alert_done</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <!-- Normal path -->
+    <bpmn:userTask id="Task_l1" name="Обработка&#10;L1/L2">
+      <bpmn:incoming>Inc_normal</bpmn:incoming>
+      <bpmn:outgoing>Inc_l1_done</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="GW_merge" name="">
+      <bpmn:incoming>Inc_esc_done</bpmn:incoming>
+      <bpmn:incoming>Inc_alert_done</bpmn:incoming>
+      <bpmn:incoming>Inc_l1_done</bpmn:incoming>
+      <bpmn:outgoing>Inc_to_resolve</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:userTask id="Task_resolve" name="Устранение&#10;инцидента">
+      <bpmn:incoming>Inc_to_resolve</bpmn:incoming>
+      <bpmn:outgoing>Inc_resolved</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="GW_verify" name="Проблема&#10;решена?">
+      <bpmn:incoming>Inc_resolved</bpmn:incoming>
+      <bpmn:outgoing>Inc_yes_resolved</bpmn:outgoing>
+      <bpmn:outgoing>Inc_no_resolved</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:userTask id="Task_postmortem" name="Post-mortem&#10;анализ">
+      <bpmn:incoming>Inc_yes_resolved</bpmn:incoming>
+      <bpmn:outgoing>Inc_pm_done</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:endEvent id="Inc_End" name="Инцидент&#10;закрыт">
+      <bpmn:incoming>Inc_pm_done</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Inc_f1"          sourceRef="Inc_Start"       targetRef="Task_classify" />
+    <bpmn:sequenceFlow id="Inc_f2"          sourceRef="Task_classify"   targetRef="GW_severity" />
+    <bpmn:sequenceFlow id="Inc_critical"    name="Критический" sourceRef="GW_severity"   targetRef="Task_escalate" />
+    <bpmn:sequenceFlow id="Inc_normal"      name="Обычный"     sourceRef="GW_severity"   targetRef="Task_l1" />
+    <bpmn:sequenceFlow id="Inc_esc_done"    sourceRef="Task_escalate"   targetRef="GW_merge" />
+    <bpmn:sequenceFlow id="Inc_sla_breach"  sourceRef="Timer_sla"       targetRef="Task_alert_mgmt" />
+    <bpmn:sequenceFlow id="Inc_alert_done"  sourceRef="Task_alert_mgmt" targetRef="GW_merge" />
+    <bpmn:sequenceFlow id="Inc_l1_done"     sourceRef="Task_l1"         targetRef="GW_merge" />
+    <bpmn:sequenceFlow id="Inc_to_resolve"  sourceRef="GW_merge"        targetRef="Task_resolve" />
+    <bpmn:sequenceFlow id="Inc_resolved"    sourceRef="Task_resolve"    targetRef="GW_verify" />
+    <bpmn:sequenceFlow id="Inc_yes_resolved" name="Да" sourceRef="GW_verify" targetRef="Task_postmortem" />
+    <bpmn:sequenceFlow id="Inc_no_resolved"  name="Нет" sourceRef="GW_verify" targetRef="Task_resolve" />
+    <bpmn:sequenceFlow id="Inc_pm_done"     sourceRef="Task_postmortem" targetRef="Inc_End" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_incident">
+    <bpmndi:BPMNPlane id="BPMNPlane_incident" bpmnElement="Process_incident">
+
+      <bpmndi:BPMNShape id="Inc_Start_di" bpmnElement="Inc_Start">
+        <dc:Bounds x="152" y="252" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="130" y="295" width="80" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_classify_di" bpmnElement="Task_classify">
+        <dc:Bounds x="240" y="230" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_severity_di" bpmnElement="GW_severity" isMarkerVisible="true">
+        <dc:Bounds x="395" y="245" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="378" y="302" width="84" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_escalate_di" bpmnElement="Task_escalate">
+        <dc:Bounds x="500" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Timer_sla_di" bpmnElement="Timer_sla">
+        <dc:Bounds x="562" y="202" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="556" y="245" width="48" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_alert_mgmt_di" bpmnElement="Task_alert_mgmt">
+        <dc:Bounds x="650" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_l1_di" bpmnElement="Task_l1">
+        <dc:Bounds x="500" y="340" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_merge_di" bpmnElement="GW_merge" isMarkerVisible="true">
+        <dc:Bounds x="815" y="245" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_resolve_di" bpmnElement="Task_resolve">
+        <dc:Bounds x="920" y="230" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_verify_di" bpmnElement="GW_verify" isMarkerVisible="true">
+        <dc:Bounds x="1075" y="245" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1058" y="302" width="84" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_postmortem_di" bpmnElement="Task_postmortem">
+        <dc:Bounds x="1180" y="230" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Inc_End_di" bpmnElement="Inc_End">
+        <dc:Bounds x="1342" y="252" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1326" y="295" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Inc_f1_di"           bpmnElement="Inc_f1">          <di:waypoint x="188" y="270"/><di:waypoint x="240" y="270"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_f2_di"           bpmnElement="Inc_f2">          <di:waypoint x="340" y="270"/><di:waypoint x="395" y="270"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_critical_di"     bpmnElement="Inc_critical">    <di:waypoint x="420" y="245"/><di:waypoint x="420" y="180"/><di:waypoint x="500" y="180"/><bpmndi:BPMNLabel><dc:Bounds x="424" y="208" width="72" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_normal_di"       bpmnElement="Inc_normal">      <di:waypoint x="420" y="295"/><di:waypoint x="420" y="380"/><di:waypoint x="500" y="380"/><bpmndi:BPMNLabel><dc:Bounds x="424" y="334" width="50" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_esc_done_di"     bpmnElement="Inc_esc_done">    <di:waypoint x="600" y="180"/><di:waypoint x="840" y="180"/><di:waypoint x="840" y="245"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_sla_breach_di"   bpmnElement="Inc_sla_breach">  <di:waypoint x="580" y="238"/><di:waypoint x="580" y="220"/><di:waypoint x="650" y="180"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_alert_done_di"   bpmnElement="Inc_alert_done">  <di:waypoint x="750" y="180"/><di:waypoint x="840" y="180"/><di:waypoint x="840" y="245"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_l1_done_di"      bpmnElement="Inc_l1_done">     <di:waypoint x="600" y="380"/><di:waypoint x="840" y="380"/><di:waypoint x="840" y="295"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_to_resolve_di"   bpmnElement="Inc_to_resolve">  <di:waypoint x="865" y="270"/><di:waypoint x="920" y="270"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_resolved_di"     bpmnElement="Inc_resolved">    <di:waypoint x="1020" y="270"/><di:waypoint x="1075" y="270"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_yes_resolved_di" bpmnElement="Inc_yes_resolved"><di:waypoint x="1125" y="270"/><di:waypoint x="1180" y="270"/><bpmndi:BPMNLabel><dc:Bounds x="1144" y="252" width="14" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_no_resolved_di"  bpmnElement="Inc_no_resolved"> <di:waypoint x="1100" y="295"/><di:waypoint x="1100" y="430"/><di:waypoint x="970" y="430"/><di:waypoint x="970" y="310"/><bpmndi:BPMNLabel><dc:Bounds x="1030" y="412" width="22" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Inc_pm_done_di"      bpmnElement="Inc_pm_done">     <di:waypoint x="1280" y="270"/><di:waypoint x="1342" y="270"/></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

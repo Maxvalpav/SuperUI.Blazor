@@ -1,0 +1,298 @@
+@page "/ocr-demo"
+@using SuperUI.Components
+
+<PageTitle>OCR — Распознавание текста - SUI</PageTitle>
+
+<div class="ocr-demo-page">
+
+    <div class="ocr-demo-header">
+        <div>
+            <h1 class="ocr-demo-title">SgOcr</h1>
+            <p class="ocr-demo-subtitle">Распознавание текста на изображениях на базе Tesseract.js — 9 языков, drag-and-drop, оценка уверенности по словам</p>
+        </div>
+    </div>
+
+    <SgTabs>
+
+        <!-- ══════════════════════════════════════════════════════════
+             Распознавание
+        ══════════════════════════════════════════════════════════ -->
+        <SgTabPanel Title="🔍 Распознавание">
+            <div class="ocr-main-layout">
+
+                <!-- Компонент -->
+                <div class="ocr-component-col">
+                    <SgCard Title="Загрузите изображение">
+                        <SgOcr @ref="_ocr"
+                               Language="@_language"
+                               ShowWordDetails="@_showWords"
+                               OnTextExtracted="OnTextExtracted"
+                               OnProgress="OnProgress" />
+                    </SgCard>
+                </div>
+
+                <!-- Боковая панель -->
+                <div class="ocr-sidebar-col">
+
+                    <SgCard Title="Настройки" style="margin-bottom: 16px;">
+                        <div class="ocr-settings">
+                            <div class="ocr-setting-row">
+                                <label class="ocr-setting-label">Язык</label>
+                                <select class="ocr-select" @bind="_language">
+                                    <option value="@SgOcrLanguage.Eng">English</option>
+                                    <option value="@SgOcrLanguage.Rus">Русский</option>
+                                    <option value="@SgOcrLanguage.EngRus">English + Русский</option>
+                                    <option value="@SgOcrLanguage.Deu">Deutsch</option>
+                                    <option value="@SgOcrLanguage.Fra">Français</option>
+                                    <option value="@SgOcrLanguage.Spa">Español</option>
+                                    <option value="@SgOcrLanguage.Chi_Sim">中文 (简体)</option>
+                                    <option value="@SgOcrLanguage.Jpn">日本語</option>
+                                    <option value="@SgOcrLanguage.Ara">العربية</option>
+                                </select>
+                            </div>
+                            <div class="ocr-setting-row">
+                                <label class="ocr-setting-label">Детали слов</label>
+                                <label class="ocr-toggle">
+                                    <input type="checkbox" @bind="_showWords" />
+                                    <span>Показывать уверенность по словам</span>
+                                </label>
+                            </div>
+                        </div>
+                    </SgCard>
+
+                    @if (_lastResult is not null)
+                    {
+                        <SgCard Title="Статистика последнего распознавания">
+                            <div class="ocr-stats">
+                                <div class="ocr-stat">
+                                    <span class="ocr-stat-label">Уверенность</span>
+                                    <span class="ocr-stat-value @ConfidenceClass">@_lastResult.Confidence.ToString("F1")%</span>
+                                </div>
+                                <div class="ocr-stat">
+                                    <span class="ocr-stat-label">Слов</span>
+                                    <span class="ocr-stat-value">@_lastResult.Words.Count</span>
+                                </div>
+                                <div class="ocr-stat">
+                                    <span class="ocr-stat-label">Строк</span>
+                                    <span class="ocr-stat-value">@_lastResult.Lines.Count</span>
+                                </div>
+                                <div class="ocr-stat">
+                                    <span class="ocr-stat-label">Символов</span>
+                                    <span class="ocr-stat-value">@_lastResult.Text.Length</span>
+                                </div>
+                                <div class="ocr-stat">
+                                    <span class="ocr-stat-label">Время</span>
+                                    <span class="ocr-stat-value">@_lastResult.DurationMs мс</span>
+                                </div>
+                                <div class="ocr-stat">
+                                    <span class="ocr-stat-label">Язык</span>
+                                    <span class="ocr-stat-value">@_lastResult.Language</span>
+                                </div>
+                            </div>
+                        </SgCard>
+                    }
+
+                    @if (_progressLog.Count > 0)
+                    {
+                        <SgCard Title="Лог прогресса" style="margin-top: 16px;">
+                            <div class="ocr-log">
+                                @foreach (var entry in _progressLog)
+                                {
+                                    <div class="ocr-log-entry">
+                                        <span class="ocr-log-pct">@(entry.Progress >= 0 ? $"{entry.Progress}%" : "…")</span>
+                                        <span class="ocr-log-status">@entry.Status</span>
+                                    </div>
+                                }
+                            </div>
+                        </SgCard>
+                    }
+
+                </div>
+            </div>
+        </SgTabPanel>
+
+        <!-- ══════════════════════════════════════════════════════════
+             Примеры использования
+        ══════════════════════════════════════════════════════════ -->
+        <SgTabPanel Title="💡 Примеры">
+            <div class="ocr-examples-grid">
+
+                <SgCard Title="Минимальный пример">
+                    <div class="ocr-code-block">
+<pre>&lt;SgOcr /&gt;</pre>
+                    </div>
+                    <p class="ocr-example-desc">Компонент с настройками по умолчанию — английский язык, drag-and-drop, детали слов.</p>
+                </SgCard>
+
+                <SgCard Title="Русский язык + событие">
+                    <div class="ocr-code-block">
+<pre>&lt;SgOcr Language="SgOcrLanguage.Rus"
+       OnTextExtracted="OnResult" /&gt;
+
+&#64;code {
+    void OnResult(SgOcrResult r) {
+        Console.WriteLine(r.Text);
+        Console.WriteLine($"Confidence: {r.Confidence:F0}%");
+    }
+}</pre>
+                    </div>
+                </SgCard>
+
+                <SgCard Title="Программное распознавание">
+                    <div class="ocr-code-block">
+<pre>&lt;SgOcr @@ref="_ocr"
+       Language="SgOcrLanguage.EngRus"
+       ShowWordDetails="false" /&gt;
+
+&lt;SgButton OnClick="Run"&gt;Распознать&lt;/SgButton&gt;
+
+&#64;code {
+    SgOcr? _ocr;
+
+    async Task Run() {
+        await _ocr!.RecognizeAsync();
+    }
+}</pre>
+                    </div>
+                </SgCard>
+
+                <SgCard Title="Локальные файлы Tesseract.js">
+                    <div class="ocr-code-block">
+<pre>&lt;SgOcr Sources="@@_localSources" /&gt;
+
+&#64;code {
+    SgOcrSources _localSources = new() {
+        TesseractScript = "/lib/tesseract/tesseract.min.js",
+        WorkerPath      = "/lib/tesseract/worker.min.js",
+        CorePath        = "/lib/tesseract/tesseract-core.wasm.js",
+        LangPath        = "/lib/tesseract/lang-data/"
+    };
+}</pre>
+                    </div>
+                    <p class="ocr-example-desc">Используйте локальные файлы для работы без CDN или для фиксации версии.</p>
+                </SgCard>
+
+                <SgCard Title="Отслеживание прогресса">
+                    <div class="ocr-code-block">
+<pre>&lt;SgOcr OnProgress="OnProg"
+       OnTextExtracted="OnDone" /&gt;
+
+&#64;code {
+    string _status = "";
+    int    _pct    = 0;
+
+    void OnProg(SgOcrProgress p) {
+        _status = p.Status;
+        _pct    = p.Progress;
+        StateHasChanged();
+    }
+
+    void OnDone(SgOcrResult r) {
+        Console.WriteLine($"Done: {r.Text.Length} chars");
+    }
+}</pre>
+                    </div>
+                </SgCard>
+
+                <SgCard Title="Без деталей слов">
+                    <div class="ocr-code-block">
+<pre>&lt;SgOcr ShowWordDetails="false"
+       Language="SgOcrLanguage.Deu" /&gt;</pre>
+                    </div>
+                    <p class="ocr-example-desc">Скрывает цветовую разметку слов по уверенности — только итоговый текст.</p>
+                </SgCard>
+
+            </div>
+        </SgTabPanel>
+
+        <!-- ══════════════════════════════════════════════════════════
+             API
+        ══════════════════════════════════════════════════════════ -->
+        <SgTabPanel Title="📋 API">
+            <div class="ocr-api-page">
+
+                <SgCard Title="Параметры SgOcr" style="margin-bottom: 24px;">
+                    <table class="ocr-api-table">
+                        <thead><tr><th>Параметр</th><th>Тип</th><th>По умолчанию</th><th>Описание</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>Language</code></td><td>SgOcrLanguage</td><td>Eng</td><td>Язык распознавания</td></tr>
+                            <tr><td><code>ShowWordDetails</code></td><td>bool</td><td>true</td><td>Показывать уверенность по словам</td></tr>
+                            <tr><td><code>Width</code></td><td>string</td><td>100%</td><td>Ширина контейнера</td></tr>
+                            <tr><td><code>Sources</code></td><td>SgOcrSources?</td><td>CDN</td><td>URL для Tesseract.js и воркера</td></tr>
+                            <tr><td><code>OnTextExtracted</code></td><td>EventCallback&lt;SgOcrResult&gt;</td><td>—</td><td>Результат распознавания</td></tr>
+                            <tr><td><code>OnProgress</code></td><td>EventCallback&lt;SgOcrProgress&gt;</td><td>—</td><td>Прогресс обработки</td></tr>
+                        </tbody>
+                    </table>
+                </SgCard>
+
+                <SgCard Title="Методы компонента" style="margin-bottom: 24px;">
+                    <table class="ocr-api-table">
+                        <thead><tr><th>Метод</th><th>Возвращает</th><th>Описание</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>RecognizeAsync()</code></td><td>Task</td><td>Запустить распознавание текущего изображения</td></tr>
+                            <tr><td><code>RetryAsync()</code></td><td>Task</td><td>Переинициализировать после ошибки</td></tr>
+                        </tbody>
+                    </table>
+                </SgCard>
+
+                <SgCard Title="SgOcrResult" style="margin-bottom: 24px;">
+                    <table class="ocr-api-table">
+                        <thead><tr><th>Свойство</th><th>Тип</th><th>Описание</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>Text</code></td><td>string</td><td>Полный распознанный текст</td></tr>
+                            <tr><td><code>Confidence</code></td><td>double</td><td>Общая уверенность 0–100</td></tr>
+                            <tr><td><code>Words</code></td><td>List&lt;SgOcrWord&gt;</td><td>Слова с bbox и уверенностью</td></tr>
+                            <tr><td><code>Lines</code></td><td>List&lt;SgOcrLine&gt;</td><td>Строки с bbox и уверенностью</td></tr>
+                            <tr><td><code>Language</code></td><td>string</td><td>Использованный язык (код)</td></tr>
+                            <tr><td><code>DurationMs</code></td><td>long</td><td>Время обработки в мс</td></tr>
+                        </tbody>
+                    </table>
+                </SgCard>
+
+                <SgCard Title="SgOcrSources">
+                    <table class="ocr-api-table">
+                        <thead><tr><th>Свойство</th><th>По умолчанию</th><th>Описание</th></tr></thead>
+                        <tbody>
+                            <tr><td><code>TesseractScript</code></td><td>jsDelivr CDN v5.1.1</td><td>UMD бандл Tesseract.js</td></tr>
+                            <tr><td><code>WorkerPath</code></td><td>jsDelivr CDN</td><td>URL воркер-скрипта</td></tr>
+                            <tr><td><code>CorePath</code></td><td>jsDelivr CDN</td><td>URL WASM ядра</td></tr>
+                            <tr><td><code>LangPath</code></td><td>tessdata.projectnaptha.com</td><td>Базовый URL языковых данных</td></tr>
+                        </tbody>
+                    </table>
+                </SgCard>
+
+            </div>
+        </SgTabPanel>
+
+    </SgTabs>
+</div>
+
+@code {
+    private SgOcr?          _ocr;
+    private SgOcrLanguage   _language   = SgOcrLanguage.Eng;
+    private bool            _showWords  = true;
+    private SgOcrResult?    _lastResult;
+    private List<SgOcrProgress> _progressLog = new();
+
+    private void OnTextExtracted(SgOcrResult result)
+    {
+        _lastResult  = result;
+        _progressLog.Clear();
+        StateHasChanged();
+    }
+
+    private void OnProgress(SgOcrProgress prog)
+    {
+        // Keep last 8 entries
+        if (_progressLog.Count >= 8) _progressLog.RemoveAt(0);
+        _progressLog.Add(prog);
+        StateHasChanged();
+    }
+
+    private string ConfidenceClass => _lastResult?.Confidence switch
+    {
+        >= 80 => "ocr-stat-value-good",
+        >= 50 => "ocr-stat-value-warn",
+        _     => "ocr-stat-value-bad",
+    };
+}

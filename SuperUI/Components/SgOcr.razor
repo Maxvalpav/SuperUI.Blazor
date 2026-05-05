@@ -1,0 +1,427 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-ocr-container @CssClass"
+     style="@(Width != "100%" ? $"width:{Width};" : null)"
+     @attributes="AdditionalAttributes">
+
+    @if (_error is not null)
+    {
+        <div class="sg-ocr-error" role="alert">
+            <svg class="sg-ocr-error-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Zm0 4a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1Zm0 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/>
+            </svg>
+            <span>@_error</span>
+            <button type="button" class="sg-ocr-retry-btn" @onclick="RetryAsync">@Localizer["Ocr_Retry"]</button>
+        </div>
+    }
+
+    <!-- Drop zone / image preview -->
+    <div class="sg-ocr-dropzone @(_isDragging ? "sg-ocr-dropzone-drag" : "") @(_imageDataUrl is not null ? "sg-ocr-dropzone-has-image" : "")"
+         @ondragover:preventDefault
+         @ondragover="OnDragOver"
+         @ondragleave="OnDragLeave"
+         @ondrop:preventDefault
+         @ondrop="OnDrop">
+
+        @if (_imageDataUrl is not null)
+        {
+            <div class="sg-ocr-preview-wrap">
+                <img src="@_imageDataUrl" alt="@Localizer["Ocr_ImageAlt"]" class="sg-ocr-preview-img" />
+                <button type="button" class="sg-ocr-clear-btn" @onclick="ClearImage" title="@Localizer["Ocr_Clear"]" aria-label="@Localizer["Ocr_Clear"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+                    </svg>
+                </button>
+            </div>
+        }
+        else
+        {
+            <div class="sg-ocr-dropzone-hint">
+                <svg class="sg-ocr-upload-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
+                    <path fill="currentColor" d="M12 2a1 1 0 0 1 .707.293l4 4a1 1 0 0 1-1.414 1.414L13 5.414V15a1 1 0 1 1-2 0V5.414L8.707 7.707A1 1 0 0 1 7.293 6.293l4-4A1 1 0 0 1 12 2ZM4 17a1 1 0 0 1 1 1v1h14v-1a1 1 0 1 1 2 0v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a1 1 0 0 1 1-1Z"/>
+                </svg>
+                <p class="sg-ocr-dropzone-text">@Localizer["Ocr_DropHint"]</p>
+                <p class="sg-ocr-dropzone-sub">@Localizer["Ocr_DropSub"]</p>
+                <label class="sg-ocr-file-btn">
+                    @Localizer["Ocr_Browse"]
+                    <InputFile OnChange="OnFileSelected" accept="image/*" style="display:none" />
+                </label>
+            </div>
+        }
+    </div>
+
+    <!-- Controls -->
+    <div class="sg-ocr-controls">
+        <div class="sg-ocr-lang-wrap">
+            <label class="sg-ocr-label" for="@_langSelectId">@Localizer["Ocr_Language"]</label>
+            <select id="@_langSelectId" class="sg-ocr-select"
+                    value="@Language"
+                    @onchange="@(e => Language = Enum.Parse<SgOcrLanguage>(e.Value!.ToString()!))">
+                <option value="Eng">English</option>
+                <option value="Rus">Русский</option>
+                <option value="EngRus">English + Русский</option>
+                <option value="Deu">Deutsch</option>
+                <option value="Fra">Français</option>
+                <option value="Spa">Español</option>
+                <option value="Chi_Sim">中文 (简体)</option>
+                <option value="Jpn">日本語</option>
+                <option value="Ara">العربية</option>
+            </select>
+        </div>
+
+        <button type="button"
+                class="sg-ocr-recognize-btn"
+                disabled="@(_imageDataUrl is null || _processing)"
+                @onclick="RecognizeAsync">
+            @if (_processing)
+            {
+                <span class="sg-ocr-spinner" aria-hidden="true"></span>
+                <span>@Localizer["Ocr_Processing"]</span>
+            }
+            else
+            {
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path fill="currentColor" d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3Zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3Zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3Zm8 0A1.5 1.5 0 0 1 10.5 9h3A1.5 1.5 0 0 1 15 10.5v3A1.5 1.5 0 0 1 13.5 15h-3A1.5 1.5 0 0 1 9 13.5v-3Z"/>
+                </svg>
+                <span>@Localizer["Ocr_Recognize"]</span>
+            }
+        </button>
+    </div>
+
+    <!-- Progress bar -->
+    @if (_processing)
+    {
+        <div class="sg-ocr-progress-wrap" role="status" aria-live="polite">
+            <div class="sg-ocr-progress-bar">
+                <div class="sg-ocr-progress-fill @(_progress < 0 ? "sg-ocr-progress-indeterminate" : "")"
+                     style="@(_progress >= 0 ? $"width:{_progress}%" : null)"></div>
+            </div>
+            <span class="sg-ocr-progress-label">@_progressStatus</span>
+        </div>
+    }
+
+    <!-- Result -->
+    @if (_result is not null)
+    {
+        <div class="sg-ocr-result">
+            <div class="sg-ocr-result-header">
+                <span class="sg-ocr-result-title">@Localizer["Ocr_Result"]</span>
+                <div class="sg-ocr-result-meta">
+                    <span class="sg-ocr-badge @ConfidenceBadgeClass">
+                        @Localizer["Ocr_Confidence"]: @_result.Confidence.ToString("F0")%
+                    </span>
+                    <span class="sg-ocr-badge sg-ocr-badge-neutral">
+                        @_result.DurationMs ms
+                    </span>
+                    <button type="button" class="sg-ocr-copy-btn" @onclick="CopyTextAsync" title="@Localizer["Ocr_Copy"]">
+                        <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                            <path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/>
+                            <path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/>
+                        </svg>
+                        @(_copied ? Localizer["Ocr_Copied"] : Localizer["Ocr_Copy"])
+                    </button>
+                </div>
+            </div>
+            <textarea class="sg-ocr-text-output"
+                      readonly
+                      aria-label="@Localizer["Ocr_Result"]"
+                      value="@_result.Text"></textarea>
+
+            @if (ShowWordDetails && _result.Words.Count > 0)
+            {
+                <details class="sg-ocr-words-details">
+                    <summary class="sg-ocr-words-summary">
+                        @Localizer["Ocr_WordDetails"] (@_result.Words.Count @Localizer["Ocr_Words"])
+                    </summary>
+                    <div class="sg-ocr-words-grid">
+                        @foreach (var w in _result.Words.Take(200))
+                        {
+                            <span class="sg-ocr-word @(w.Confidence >= 80 ? "sg-ocr-word-hi" : w.Confidence >= 50 ? "sg-ocr-word-mid" : "sg-ocr-word-lo")"
+                                  title="@w.Confidence.ToString("F0")%">@w.Text</span>
+                        }
+                    </div>
+                </details>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgOcr>? _selfRef;
+    private readonly string _instanceId  = $"sg-ocr-{Guid.NewGuid():N}";
+    private readonly string _langSelectId = $"sg-ocr-lang-{Guid.NewGuid():N}";
+    private bool   _isDisposed;
+    private bool   _processing;
+    private bool   _isDragging;
+    private bool   _copied;
+    private string? _imageDataUrl;
+    private string? _error;
+    private string  _progressStatus = string.Empty;
+    private int     _progress = -1;
+    private SgOcrResult? _result;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Recognition language. Default <see cref="SgOcrLanguage.Eng"/>.</summary>
+    [Parameter] public SgOcrLanguage Language { get; set; } = SgOcrLanguage.Eng;
+
+    /// <summary>Show per-word confidence details below the result text.</summary>
+    [Parameter] public bool ShowWordDetails { get; set; } = true;
+
+    /// <summary>Container width. Default "100%".</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+
+    /// <summary>Tesseract.js source URL override.</summary>
+    [Parameter] public SgOcrSources? Sources { get; set; }
+
+    /// <summary>Additional CSS class for the container.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fired when recognition completes successfully.</summary>
+    [Parameter] public EventCallback<SgOcrResult> OnTextExtracted { get; set; }
+
+    /// <summary>Fired on each progress update during recognition.</summary>
+    [Parameter] public EventCallback<SgOcrProgress> OnProgress { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-ocr.js");
+            if (_isDisposed) return;
+            _selfRef = DotNetObjectReference.Create(this);
+            var sources = Sources ?? new SgOcrSources();
+            await _module.InvokeVoidAsync("initOcr", _selfRef, _instanceId, sources);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Ocr_FailedToLoad"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ── File input / drag-drop ────────────────────────────────────────────────
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file is null) return;
+        await LoadImageFileAsync(file);
+    }
+
+    private async Task LoadImageFileAsync(IBrowserFile file)
+    {
+        try
+        {
+            using var stream = file.OpenReadStream(maxAllowedSize: 20 * 1024 * 1024);
+            using var ms = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            var base64 = Convert.ToBase64String(ms.ToArray());
+            var mime   = file.ContentType.Contains('/') ? file.ContentType : "image/png";
+            _imageDataUrl = $"data:{mime};base64,{base64}";
+            _result = null;
+            _error  = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Ocr_FailedToLoad"]}: {ex.Message}";
+            StateHasChanged();
+        }
+    }
+
+    private void OnDragOver()  { _isDragging = true;  StateHasChanged(); }
+    private void OnDragLeave() { _isDragging = false; StateHasChanged(); }
+
+    private async Task OnDrop(DragEventArgs e)
+    {
+        _isDragging = false;
+        // Drag-drop file reading requires JS interop — handled via JS callback
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ClearImage()
+    {
+        _imageDataUrl = null;
+        _result       = null;
+        _error        = null;
+        _progress     = -1;
+        _progressStatus = string.Empty;
+        StateHasChanged();
+    }
+
+    // ── Recognition ───────────────────────────────────────────────────────────
+
+    /// <summary>Starts OCR recognition on the currently loaded image.</summary>
+    public async Task RecognizeAsync()
+    {
+        if (_module is null || _imageDataUrl is null || _processing) return;
+
+        _processing     = true;
+        _error          = null;
+        _result         = null;
+        _progress       = -1;
+        _progressStatus = Localizer["Ocr_Initializing"];
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var sources = Sources ?? new SgOcrSources();
+            var raw = await _module.InvokeAsync<System.Text.Json.JsonElement>(
+                "recognizeOcr", _instanceId, _imageDataUrl, Language.ToString(), sources);
+
+            _result = ParseResult(raw);
+
+            if (OnTextExtracted.HasDelegate)
+                await OnTextExtracted.InvokeAsync(_result);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Ocr_FailedToRecognize"]}: {ex.Message}";
+        }
+        finally
+        {
+            _processing     = false;
+            _progress       = -1;
+            _progressStatus = string.Empty;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private static SgOcrResult ParseResult(System.Text.Json.JsonElement j)
+    {
+        static SgOcrBbox ParseBbox(System.Text.Json.JsonElement b) => new()
+        {
+            X0 = b.TryGetProperty("x0", out var x0) ? x0.GetInt32() : 0,
+            Y0 = b.TryGetProperty("y0", out var y0) ? y0.GetInt32() : 0,
+            X1 = b.TryGetProperty("x1", out var x1) ? x1.GetInt32() : 0,
+            Y1 = b.TryGetProperty("y1", out var y1) ? y1.GetInt32() : 0,
+        };
+
+        var words = new List<SgOcrWord>();
+        if (j.TryGetProperty("words", out var wa))
+            foreach (var w in wa.EnumerateArray())
+                words.Add(new()
+                {
+                    Text       = w.TryGetProperty("text",       out var t)  ? t.GetString()  ?? "" : "",
+                    Confidence = w.TryGetProperty("confidence", out var c)  ? c.GetDouble()       : 0,
+                    Bbox       = w.TryGetProperty("bbox",       out var bb) ? ParseBbox(bb)        : new(),
+                });
+
+        var lines = new List<SgOcrLine>();
+        if (j.TryGetProperty("lines", out var la))
+            foreach (var l in la.EnumerateArray())
+                lines.Add(new()
+                {
+                    Text       = l.TryGetProperty("text",       out var t)  ? t.GetString()  ?? "" : "",
+                    Confidence = l.TryGetProperty("confidence", out var c)  ? c.GetDouble()       : 0,
+                    Bbox       = l.TryGetProperty("bbox",       out var bb) ? ParseBbox(bb)        : new(),
+                });
+
+        return new SgOcrResult
+        {
+            Text       = j.TryGetProperty("text",       out var tx) ? tx.GetString() ?? "" : "",
+            Confidence = j.TryGetProperty("confidence", out var cf) ? cf.GetDouble()       : 0,
+            Language   = j.TryGetProperty("language",   out var lg) ? lg.GetString() ?? "" : "",
+            DurationMs = j.TryGetProperty("durationMs", out var dm) ? dm.GetInt64()        : 0,
+            Words      = words,
+            Lines      = lines,
+        };
+    }
+
+    // ── Copy ──────────────────────────────────────────────────────────────────
+
+    private async Task CopyTextAsync()
+    {
+        if (_result is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _result.Text);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    // ── JS callbacks ──────────────────────────────────────────────────────────
+
+    [JSInvokable]
+    public async Task OnProgressAsync(SgOcrProgress prog)
+    {
+        _progress       = prog.Progress;
+        _progressStatus = prog.Status;
+        await InvokeAsync(StateHasChanged);
+        if (OnProgress.HasDelegate)
+            await OnProgress.InvokeAsync(prog);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private string ConfidenceBadgeClass => _result?.Confidence switch
+    {
+        >= 80 => "sg-ocr-badge-success",
+        >= 50 => "sg-ocr-badge-warn",
+        _     => "sg-ocr-badge-danger",
+    };
+
+    public async Task RetryAsync()
+    {
+        _error = null;
+        StateHasChanged();
+        if (_module is not null && _selfRef is not null)
+        {
+            try
+            {
+                var sources = Sources ?? new SgOcrSources();
+                await _module.InvokeVoidAsync("initOcr", _selfRef, _instanceId, sources);
+            }
+            catch { }
+        }
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("disposeOcr", _instanceId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch { }
+        }
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch { }
+            _module = null;
+        }
+    }
+}
