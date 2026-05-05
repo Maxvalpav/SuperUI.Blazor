@@ -1,0 +1,536 @@
+@page "/graphhopper-demo"
+@using SuperUI.Components
+
+<PageTitle>GraphHopper — SUI</PageTitle>
+
+<!-- Invisible routing service component -->
+<SgGraphHopper @ref="_router"
+               Sources="@_sources"
+               OnRouteCalculated="OnRouteCalculated"
+               OnError="OnRoutingError"
+               OnLoadingChanged="@(v => { _loading = v; StateHasChanged(); })" />
+
+<div class="gh-page">
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <div class="gh-header">
+        <div>
+            <h1 class="gh-title">SgGraphHopper</h1>
+            <p class="gh-subtitle">GraphHopper Routing API — реальные маршруты по дорогам</p>
+        </div>
+        <div class="gh-header-right">
+            @foreach (var p in _profiles)
+            {
+                var pp = p;
+                <button class="gh-profile-btn @(_profile == pp.Profile ? "active" : "")"
+                        @onclick="@(() => { _profile = pp.Profile; StateHasChanged(); })"
+                        title="@pp.Name">
+                    <span class="gh-profile-icon">@pp.Icon</span>
+                    <span class="gh-profile-name">@pp.Name</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- ── Main ────────────────────────────────────────────────────────── -->
+    <div class="gh-main">
+
+        <!-- ── Map ── -->
+        <div class="gh-canvas">
+            <SgMap @ref="_map"
+                   Options="@_mapOpts"
+                   Markers="@_markers"
+                   Height="100%"
+                   OnMapClick="OnMapClick"
+                   OnViewChanged="@(e => { _viewLat=e.CenterLat; _viewLon=e.CenterLon; _viewZoom=e.Zoom; })" />
+
+            <!-- Route result overlay on map -->
+            @if (_result?.Success == true && _result.Best is not null)
+            {
+                <div class="gh-map-overlay">
+                    @for (var i = 0; i < _result.Routes.Count; i++)
+                    {
+                        var ri = i;
+                        var r  = _result.Routes[ri];
+                        <button class="gh-overlay-route @(_selectedRoute == ri ? "active" : "")"
+                                @onclick="@(() => SelectRoute(ri))">
+                            <span class="gh-overlay-num">@(ri + 1)</span>
+                            <span class="gh-overlay-dist">@r.DistanceFormatted</span>
+                            <span class="gh-overlay-time">@r.DurationFormatted</span>
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (_loading)
+            {
+                <div class="gh-map-loading-overlay">
+                    <div class="gh-spinner"></div>
+                    <span>Строим маршрут…</span>
+                </div>
+            }
+        </div>
+
+        <!-- ── Sidebar ── -->
+        <div class="gh-sidebar">
+
+            <!-- API Key -->
+            <SgCard Title="⚙ API" style="margin-bottom:10px">
+                <SgTextBox TValue="string"
+                           @bind-Value="_apiKey"
+                           Label="API Key"
+                           Placeholder="Ключ GraphHopper Cloud (graphhopper.com)"
+                           Hint="Оставьте пустым для self-hosted" />
+                <SgTextBox TValue="string"
+                           @bind-Value="_baseUrl"
+                           Label="Base URL"
+                           style="margin-top:6px" />
+                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined"
+                          OnClick="ApplyApiSettings" style="margin-top:6px">
+                    ✓ Применить
+                </SgButton>
+            </SgCard>
+
+            <!-- Waypoints -->
+            <SgCard Title="📍 Точки маршрута" style="margin-bottom:10px">
+                <div class="gh-hint">💡 Кликните на карту или введите координаты</div>
+
+                @for (var i = 0; i < _waypoints.Count; i++)
+                {
+                    var idx = i;
+                    var wp  = _waypoints[idx];
+                    <div class="gh-wp-row">
+                        <div class="gh-wp-left">
+                            <span class="gh-wp-badge" style="background:@WpColor(idx)">@WpLabel(idx)</span>
+                            @if (idx < _waypoints.Count - 1)
+                            {
+                                <div class="gh-wp-line"></div>
+                            }
+                        </div>
+                        <div class="gh-wp-body">
+                            @if (!string.IsNullOrEmpty(wp.Label))
+                            {
+                                <div class="gh-wp-name">@wp.Label</div>
+                            }
+                            <SgCoordinateInput @bind-Latitude="wp.Latitude"
+                                               @bind-Longitude="wp.Longitude"
+                                               ShowCopyButton="false"
+                                               ShowClearButton="false"
+                                               CssClass="gh-coord" />
+                        </div>
+                        @if (_waypoints.Count > 2)
+                        {
+                            <button class="gh-wp-del" @onclick="@(() => RemoveWaypoint(idx))">✕</button>
+                        }
+                    </div>
+                }
+
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined"
+                              OnClick="AddWaypoint" Block="true">+ Точка</SgButton>
+                    @if (_waypoints.Count > 2)
+                    {
+                        <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                                  OnClick="ResetWaypoints" title="Сбросить">↺</SgButton>
+                    }
+                </div>
+
+                <!-- Presets -->
+                <div class="gh-presets">
+                    @foreach (var p in _presets)
+                    {
+                        var pp = p;
+                        <button class="gh-preset-btn" @onclick="@(() => ApplyPreset(pp))">@pp.Name</button>
+                    }
+                </div>
+
+                <!-- Options row -->
+                <div class="gh-options">
+                    <SgSwitch @bind-Value="_alternatives" Label="Альтернативы" />
+                    <SgSwitch @bind-Value="_showInstructions" Label="Инструкции" />
+                </div>
+
+                <!-- Build button -->
+                <SgButton Variant="SgButtonVariant.Primary"
+                          Disabled="@(!CanRoute || _loading)"
+                          Loading="@_loading"
+                          OnClick="BuildRoute"
+                          Block="true"
+                          style="margin-top:10px">
+                    🗺 Построить маршрут
+                </SgButton>
+
+                @if (_result is not null)
+                {
+                    <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
+                              OnClick="ClearRoute" Block="true" style="margin-top:4px">
+                        ✕ Очистить маршрут
+                    </SgButton>
+                }
+
+                @if (_error is not null)
+                {
+                    <SgAlert Variant="SgAlertVariant.Danger" Dense="true"
+                             style="margin-top:8px" Text="@_error" Dismissible="true" />
+                }
+            </SgCard>
+
+            <!-- ── Route results ── -->
+            @if (_result?.Success == true && _result.Best is not null)
+            {
+                var best = _result.Routes[_selectedRoute];
+
+                <!-- Summary cards -->
+                <SgCard Title="📊 Результат" style="margin-bottom:10px">
+
+                    <!-- Big stats -->
+                    <div class="gh-result-big">
+                        <div class="gh-result-stat gh-result-primary">
+                            <div class="gh-result-icon">📏</div>
+                            <div class="gh-result-val">@best.DistanceFormatted</div>
+                            <div class="gh-result-lbl">Расстояние</div>
+                        </div>
+                        <div class="gh-result-stat gh-result-primary">
+                            <div class="gh-result-icon">⏱</div>
+                            <div class="gh-result-val">@best.DurationFormatted</div>
+                            <div class="gh-result-lbl">Время в пути</div>
+                        </div>
+                    </div>
+
+                    <!-- Secondary stats -->
+                    <div class="gh-stat-grid" style="margin-top:8px">
+                        <div class="gh-stat"><span>Профиль</span><b>@ProfileLabel(_profile)</b></div>
+                        <div class="gh-stat"><span>Точек трека</span><b>@best.Points.Count</b></div>
+                        <div class="gh-stat"><span>Шагов</span><b>@best.Instructions.Count</b></div>
+                        <div class="gh-stat"><span>Вариантов</span><b>@_result.Routes.Count</b></div>
+                    </div>
+
+                    <!-- Alternatives selector -->
+                    @if (_result.Routes.Count > 1)
+                    {
+                        <div style="margin-top:10px">
+                            <div class="gh-section-label">Варианты маршрута:</div>
+                            <div class="gh-alt-list">
+                                @for (var i = 0; i < _result.Routes.Count; i++)
+                                {
+                                    var ri = i;
+                                    var r  = _result.Routes[ri];
+                                    <button class="gh-alt-btn @(_selectedRoute == ri ? "active" : "")"
+                                            @onclick="@(() => SelectRoute(ri))">
+                                        <span class="gh-alt-num" style="background:@RouteColor(ri)">@(ri+1)</span>
+                                        <div class="gh-alt-info">
+                                            <span class="gh-alt-dist">@r.DistanceFormatted</span>
+                                            <span class="gh-alt-time">@r.DurationFormatted</span>
+                                        </div>
+                                        @if (ri == 0) { <span class="gh-alt-tag">Лучший</span> }
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </SgCard>
+
+                <!-- Instructions -->
+                @if (_showInstructions && best.Instructions.Count > 0)
+                {
+                    <SgCard Title="@($"🧭 Маршрут ({best.Instructions.Count} шагов)")" style="margin-bottom:10px">
+                        <div class="gh-instructions">
+                            @{ var cumDist = 0.0; }
+                            @foreach (var inst in best.Instructions)
+                            {
+                                cumDist += inst.Distance;
+                                <div class="gh-inst-row">
+                                    <div class="gh-inst-sign">@inst.SignIcon</div>
+                                    <div class="gh-inst-body">
+                                        <div class="gh-inst-text">@inst.Text</div>
+                                        <div class="gh-inst-meta">
+                                            <span>@inst.DistanceFormatted</span>
+                                            <span class="gh-inst-cum">@FormatDist(cumDist) от старта</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </SgCard>
+                }
+            }
+
+            <!-- Map info -->
+            <SgCard Title="🗺 Карта">
+                <div class="gh-stat-grid">
+                    <div class="gh-stat"><span>Широта</span><b>@_viewLat.ToString("F4")</b></div>
+                    <div class="gh-stat"><span>Долгота</span><b>@_viewLon.ToString("F4")</b></div>
+                    <div class="gh-stat"><span>Зум</span><b>@_viewZoom.ToString("F1")</b></div>
+                    <div class="gh-stat"><span>Маркеров</span><b>@_markers.Count</b></div>
+                </div>
+            </SgCard>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    private SgGraphHopper? _router;
+    private SgMap?          _map;
+
+    // ── API ───────────────────────────────────────────────────────────────────
+    private string _apiKey  = "";
+    private string _baseUrl = "https://graphhopper.com/api/1";
+    private SgGraphHopperSources _sources = new();
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    private SgGhProfile _profile       = SgGhProfile.Car;
+    private bool        _alternatives  = true;
+    private bool        _showInstructions = true;
+    private bool        _loading       = false;
+    private string?     _error;
+    private SgGhResult? _result;
+    private int         _selectedRoute = 0;
+    private double      _viewLat = 55.751, _viewLon = 37.618, _viewZoom = 9;
+
+    // ── Waypoints ─────────────────────────────────────────────────────────────
+    private List<SgGhWaypoint> _waypoints = new()
+    {
+        new() { Latitude = 55.7520, Longitude = 37.6173, Label = "Кремль, Москва" },
+        new() { Latitude = 55.9726, Longitude = 37.4146, Label = "Аэропорт Шереметьево" },
+    };
+
+    // ── Markers ───────────────────────────────────────────────────────────────
+    private List<SgMapMarker> _markers = new();
+
+    // ── Map options ───────────────────────────────────────────────────────────
+    private SgMapOptions _mapOpts => new()
+    {
+        TileLayer       = SgMapTileLayer.OpenStreetMap,
+        CenterLon       = 37.618,
+        CenterLat       = 55.751,
+        Zoom            = 9,
+        ShowZoomControl = true,
+        ShowScaleLine   = true,
+        ShowAttribution = true,
+        ShowPopup       = true,
+    };
+
+    // ── Profiles ──────────────────────────────────────────────────────────────
+    private record ProfileInfo(SgGhProfile Profile, string Name, string Icon);
+    private readonly ProfileInfo[] _profiles =
+    [
+        new(SgGhProfile.Car,     "Авто",     "🚗"),
+        new(SgGhProfile.Bike,    "Велосипед","🚲"),
+        new(SgGhProfile.Foot,    "Пешком",   "🚶"),
+        new(SgGhProfile.Truck,   "Грузовик", "🚛"),
+        new(SgGhProfile.Scooter, "Скутер",   "🛵"),
+    ];
+
+    private string ProfileLabel(SgGhProfile p) =>
+        _profiles.FirstOrDefault(x => x.Profile == p)?.Name ?? p.ToString();
+
+    // ── Presets ───────────────────────────────────────────────────────────────
+    private record RoutePreset(string Name, SgGhWaypoint[] Points);
+    private readonly RoutePreset[] _presets =
+    [
+        new("Кремль→Арбат", [
+            new() { Latitude=55.7520, Longitude=37.6173, Label="Кремль" },
+            new() { Latitude=55.7490, Longitude=37.5960, Label="Арбат" },
+        ]),
+        new("Центр→Аэропорт", [
+            new() { Latitude=55.7520, Longitude=37.6173, Label="Центр Москвы" },
+            new() { Latitude=55.9726, Longitude=37.4146, Label="Шереметьево" },
+        ]),
+        new("Москва→СПб", [
+            new() { Latitude=55.7520, Longitude=37.6173, Label="Москва" },
+            new() { Latitude=59.9343, Longitude=30.3351, Label="Санкт-Петербург" },
+        ]),
+        new("3 точки", [
+            new() { Latitude=55.7520, Longitude=37.6173, Label="Кремль" },
+            new() { Latitude=55.7601, Longitude=37.6155, Label="Большой театр" },
+            new() { Latitude=55.7490, Longitude=37.5960, Label="Арбат" },
+        ]),
+    ];
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+    private static readonly string[] _wpColors    = ["#2563eb","#dc2626","#16a34a","#ea580c","#7c3aed","#0891b2"];
+    private static readonly string[] _routeColors = ["#2563eb","#f59e0b","#10b981","#8b5cf6"];
+
+    private string WpColor(int i)    => _wpColors[i % _wpColors.Length];
+    private string RouteColor(int i) => _routeColors[i % _routeColors.Length];
+    private string WpLabel(int i)    => i == 0 ? "A" : i == _waypoints.Count - 1 ? "B" : ((char)('A' + i)).ToString();
+
+    private bool CanRoute =>
+        _waypoints.Count >= 2 &&
+        _waypoints.All(w => w.Latitude.HasValue && w.Longitude.HasValue);
+
+    private static string FormatDist(double m) =>
+        m >= 1000 ? $"{m/1000:F1} км" : $"{(int)m} м";
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    private void ApplyApiSettings()
+    {
+        _sources = new SgGraphHopperSources
+        {
+            BaseUrl = string.IsNullOrWhiteSpace(_baseUrl) ? "https://graphhopper.com/api/1" : _baseUrl.Trim(),
+            ApiKey  = string.IsNullOrWhiteSpace(_apiKey)  ? null : _apiKey.Trim(),
+        };
+        StateHasChanged();
+    }
+
+    private void ApplyPreset(RoutePreset p)
+    {
+        _waypoints = p.Points.Select(w => new SgGhWaypoint
+        {
+            Latitude  = w.Latitude,
+            Longitude = w.Longitude,
+            Label     = w.Label,
+        }).ToList();
+        _error = null;
+        UpdateWaypointMarkers();
+    }
+
+    private void AddWaypoint()
+    {
+        _waypoints.Add(new SgGhWaypoint());
+        StateHasChanged();
+    }
+
+    private void RemoveWaypoint(int idx)
+    {
+        if (_waypoints.Count <= 2) return;
+        _waypoints.RemoveAt(idx);
+        UpdateWaypointMarkers();
+    }
+
+    private void ResetWaypoints()
+    {
+        _waypoints = new()
+        {
+            new() { Latitude = 55.7520, Longitude = 37.6173, Label = "Кремль, Москва" },
+            new() { Latitude = 55.9726, Longitude = 37.4146, Label = "Аэропорт Шереметьево" },
+        };
+        UpdateWaypointMarkers();
+    }
+
+    private async Task BuildRoute()
+    {
+        if (_router is null || !CanRoute) return;
+        _error = null;
+
+        // Clear previous routes from map
+        await ClearMapRoutes();
+
+        var req = new SgGhRouteRequest
+        {
+            Waypoints    = _waypoints.ToList(),
+            Profile      = _profile,
+            Alternatives = _alternatives,
+            Instructions = _showInstructions,
+            Locale       = "ru",
+        };
+
+        _result = await _router.RouteAsync(req);
+        _selectedRoute = 0;
+    }
+
+    private async Task ClearRoute()
+    {
+        _result = null; _error = null;
+        await ClearMapRoutes();
+        UpdateWaypointMarkers();
+    }
+
+    private async Task ClearMapRoutes()
+    {
+        for (var i = 0; i < 5; i++)
+            await (_map?.ClearRouteAsync($"gh-route-{i}") ?? Task.CompletedTask);
+    }
+
+    private async Task SelectRoute(int idx)
+    {
+        if (_result is null || idx >= _result.Routes.Count) return;
+        _selectedRoute = idx;
+        // Use highlightRoute for instant visual switch without redrawing all polylines
+        await (_map?.HighlightRouteAsync(idx, "gh-route-") ?? Task.CompletedTask);
+        StateHasChanged();
+    }
+
+    private async Task RedrawRoutes()
+    {
+        if (_result is null || _map is null) return;
+
+        for (var i = 0; i < _result.Routes.Count; i++)
+        {
+            var r      = _result.Routes[i];
+            var isMain = i == _selectedRoute;
+            var color  = isMain ? RouteColor(i) : "#cbd5e1";
+            var width  = isMain ? 6.0 : 3.0;
+            var dashed = !isMain;
+            await _map.DrawRouteAsync($"gh-route-{i}", r.Points, color, width, dashed,
+                noMarkers: !isMain, noFit: !isMain, routeIndex: i);
+        }
+    }
+
+    private void UpdateWaypointMarkers()
+    {
+        _markers = _waypoints
+            .Where(w => w.Latitude.HasValue && w.Longitude.HasValue)
+            .Select((w, i) => new SgMapMarker
+            {
+                Id        = $"wp-{i}",
+                Title     = w.Label ?? WpLabel(i),
+                Longitude = w.Longitude!.Value,
+                Latitude  = w.Latitude!.Value,
+                Color     = WpColor(i),
+                Icon      = WpLabel(i),
+                Size      = 34,
+            })
+            .ToList();
+        StateHasChanged();
+    }
+
+    // ── Events ────────────────────────────────────────────────────────────────
+
+    private async Task OnRouteCalculated(SgGhRouteEventArgs e)
+    {
+        _result        = e.Result;
+        _selectedRoute = 0;
+
+        if (!e.Result.Success || _map is null) return;
+
+        await RedrawRoutes();
+
+        // Fit to bbox of best route
+        var best = e.Result.Best;
+        if (best?.Bbox is { Length: 4 } bbox)
+            await _map.FitToBboxAsync(bbox[0], bbox[1], bbox[2], bbox[3]);
+
+        StateHasChanged();
+    }
+
+    private void OnRoutingError(string error)
+    {
+        _error = error;
+        StateHasChanged();
+    }
+
+    private void OnMapClick(SgMapClickEventArgs e)
+    {
+        // Fill first empty waypoint, or insert before last
+        var empty = _waypoints.FirstOrDefault(w => !w.Latitude.HasValue || !w.Longitude.HasValue);
+        if (empty is not null)
+        {
+            empty.Latitude  = e.Latitude;
+            empty.Longitude = e.Longitude;
+        }
+        else
+        {
+            _waypoints.Insert(_waypoints.Count - 1, new SgGhWaypoint
+            {
+                Latitude  = e.Latitude,
+                Longitude = e.Longitude,
+            });
+        }
+        UpdateWaypointMarkers();
+    }
+
+    protected override void OnInitialized() => UpdateWaypointMarkers();
+}

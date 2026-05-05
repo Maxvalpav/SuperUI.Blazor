@@ -19,7 +19,7 @@ public sealed class SgThemeService : IAsyncDisposable
     /// <summary>
     /// Gets the current theme: "light", "dark", or "auto".
     /// </summary>
-    public string CurrentTheme { get; private set; } = "auto";
+    public string CurrentTheme { get; private set; } = "light";
 
     /// <summary>
     /// Initializes a new instance of <see cref="SgThemeService"/>.

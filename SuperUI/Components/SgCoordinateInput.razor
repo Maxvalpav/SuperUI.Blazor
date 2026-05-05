@@ -1,0 +1,266 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-coord-wrap @(HasError ? "sg-coord-has-error" : "") @CssClass"
+     @attributes="AdditionalAttributes">
+
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sg-coord-label">@Label</label>
+    }
+
+    <div class="sg-coord-row">
+
+        <!-- ── Latitude ── -->
+        <div class="sg-coord-field">
+            <span class="sg-coord-badge sg-coord-badge-lat">@Localizer["Coord_Lat"]</span>
+
+            <button type="button" class="sg-coord-step" disabled="@(Disabled || !CanDecLat)"
+                    @onclick="@(() => StepLat(-_step))" title="-@_step°">−</button>
+
+            <input class="sg-coord-input"
+                   type="number"
+                   step="@_step.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                   min="-90" max="90"
+                   placeholder="@Localizer["Coord_LatPlaceholder"]"
+                   value="@_latText"
+                   disabled="@Disabled"
+                   @oninput="OnLatInput"
+                   @onfocus="@(() => _latFocused = true)"
+                   @onblur="OnLatBlur"
+                   aria-label="@Localizer["Coord_Lat"]" />
+
+            <button type="button" class="sg-coord-step" disabled="@(Disabled || !CanIncLat)"
+                    @onclick="@(() => StepLat(+_step))" title="+@_step°">+</button>
+        </div>
+
+        <span class="sg-coord-divider">,</span>
+
+        <!-- ── Longitude ── -->
+        <div class="sg-coord-field">
+            <span class="sg-coord-badge sg-coord-badge-lon">@Localizer["Coord_Lon"]</span>
+
+            <button type="button" class="sg-coord-step" disabled="@(Disabled || !CanDecLon)"
+                    @onclick="@(() => StepLon(-_step))" title="-@_step°">−</button>
+
+            <input class="sg-coord-input"
+                   type="number"
+                   step="@_step.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                   min="-180" max="180"
+                   placeholder="@Localizer["Coord_LonPlaceholder"]"
+                   value="@_lonText"
+                   disabled="@Disabled"
+                   @oninput="OnLonInput"
+                   @onfocus="@(() => _lonFocused = true)"
+                   @onblur="OnLonBlur"
+                   aria-label="@Localizer["Coord_Lon"]" />
+
+            <button type="button" class="sg-coord-step" disabled="@(Disabled || !CanIncLon)"
+                    @onclick="@(() => StepLon(+_step))" title="+@_step°">+</button>
+        </div>
+
+        <!-- ── Step selector ── -->
+        @if (!Disabled)
+        {
+            <div class="sg-coord-steps">
+                @foreach (var s in _steps)
+                {
+                    var ss = s;
+                    <button type="button"
+                            class="sg-coord-step-btn @(_step == ss ? "active" : "")"
+                            @onclick="@(() => _step = ss)"
+                            title="Шаг @ss°">@FormatStep(ss)</button>
+                }
+            </div>
+        }
+
+        <!-- ── Actions ── -->
+        @if (ShowCopyButton && Latitude.HasValue && Longitude.HasValue)
+        {
+            <button type="button" class="sg-coord-action" title="@Localizer["Coord_Copy"]"
+                    @onclick="CopyAsync">
+                @if (_copied)
+                {
+                    <svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path fill="currentColor" d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
+                }
+            </button>
+        }
+
+        @if (ShowClearButton && (Latitude.HasValue || Longitude.HasValue) && !Disabled)
+        {
+            <button type="button" class="sg-coord-action sg-coord-action-clear"
+                    title="@Localizer["Coord_Clear"]" @onclick="Clear">
+                <svg viewBox="0 0 16 16" width="11" height="11"><path fill="currentColor" d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/></svg>
+            </button>
+        }
+    </div>
+
+    @if (HasError && !string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="sg-coord-error-msg" role="alert">@ErrorMessage</div>
+    }
+
+    @if (ShowDms && Latitude.HasValue && Longitude.HasValue)
+    {
+        <div class="sg-coord-dms">
+            @ToDms(Latitude.Value, true) &nbsp;&nbsp; @ToDms(Longitude.Value, false)
+        </div>
+    }
+</div>
+
+@code {
+    // ── State ─────────────────────────────────────────────────────────────────
+    private string _latText = "";
+    private string _lonText = "";
+    private bool   _latFocused, _lonFocused;
+    private bool   _copied;
+    private double _step = 0.01;
+
+    private static readonly double[] _steps = [10, 1, 0.1, 0.01, 0.001];
+
+    private bool CanDecLat => Latitude.HasValue  && Latitude.Value  - _step >= -90;
+    private bool CanIncLat => Latitude.HasValue  && Latitude.Value  + _step <=  90;
+    private bool CanDecLon => Longitude.HasValue && Longitude.Value - _step >= -180;
+    private bool CanIncLon => Longitude.HasValue && Longitude.Value + _step <=  180;
+
+    private static string FormatStep(double s) => s >= 1 ? $"{(int)s}°" : s >= 0.1 ? ".1" : s >= 0.01 ? ".01" : ".001";
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public double? Latitude  { get; set; }
+    [Parameter] public double? Longitude { get; set; }
+    [Parameter] public EventCallback<double?> LatitudeChanged  { get; set; }
+    [Parameter] public EventCallback<double?> LongitudeChanged { get; set; }
+    [Parameter] public EventCallback<(double? Lat, double? Lon)> OnCoordinateChanged { get; set; }
+
+    [Parameter] public string? Label           { get; set; }
+    [Parameter] public bool    ShowCopyButton  { get; set; } = true;
+    [Parameter] public bool    ShowClearButton { get; set; } = true;
+    [Parameter] public bool    ShowDms         { get; set; } = false;
+    [Parameter] public bool    Disabled        { get; set; } = false;
+    [Parameter] public string? ErrorMessage    { get; set; }
+    [Parameter] public string? CssClass        { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (Latitude.HasValue)
+        {
+            var s = Latitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            if (!_latFocused && _latText != s) _latText = s;
+        }
+        else if (!_latFocused) _latText = "";
+
+        if (Longitude.HasValue)
+        {
+            var s = Longitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+            if (!_lonFocused && _lonText != s) _lonText = s;
+        }
+        else if (!_lonFocused) _lonText = "";
+    }
+
+    // ── Input handlers ────────────────────────────────────────────────────────
+
+    private async Task OnLatInput(ChangeEventArgs e)
+    {
+        _latFocused = true;
+        _latText = e.Value?.ToString() ?? "";
+        if (TryParseCoord(_latText, -90, 90, out var v))
+        {
+            await LatitudeChanged.InvokeAsync(v);
+            await OnCoordinateChanged.InvokeAsync((v, Longitude));
+        }
+        else if (string.IsNullOrWhiteSpace(_latText))
+        {
+            await LatitudeChanged.InvokeAsync(null);
+            await OnCoordinateChanged.InvokeAsync((null, Longitude));
+        }
+    }
+
+    private async Task OnLonInput(ChangeEventArgs e)
+    {
+        _lonFocused = true;
+        _lonText = e.Value?.ToString() ?? "";
+        if (TryParseCoord(_lonText, -180, 180, out var v))
+        {
+            await LongitudeChanged.InvokeAsync(v);
+            await OnCoordinateChanged.InvokeAsync((Latitude, v));
+        }
+        else if (string.IsNullOrWhiteSpace(_lonText))
+        {
+            await LongitudeChanged.InvokeAsync(null);
+            await OnCoordinateChanged.InvokeAsync((Latitude, null));
+        }
+    }
+
+    private void OnLatBlur() { _latFocused = false; }
+    private void OnLonBlur() { _lonFocused = false; }
+
+    // ── Step buttons ──────────────────────────────────────────────────────────
+
+    private async Task StepLat(double delta)
+    {
+        var cur = Latitude ?? 0;
+        var next = Math.Round(Math.Clamp(cur + delta, -90, 90), 6);
+        _latText = next.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        await LatitudeChanged.InvokeAsync(next);
+        await OnCoordinateChanged.InvokeAsync((next, Longitude));
+    }
+
+    private async Task StepLon(double delta)
+    {
+        var cur = Longitude ?? 0;
+        var next = Math.Round(Math.Clamp(cur + delta, -180, 180), 6);
+        _lonText = next.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
+        await LongitudeChanged.InvokeAsync(next);
+        await OnCoordinateChanged.InvokeAsync((Latitude, next));
+    }
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    private void Clear()
+    {
+        _latText = ""; _lonText = "";
+        _ = LatitudeChanged.InvokeAsync(null);
+        _ = LongitudeChanged.InvokeAsync(null);
+        _ = OnCoordinateChanged.InvokeAsync((null, null));
+    }
+
+    private async Task CopyAsync()
+    {
+        if (!Latitude.HasValue || !Longitude.HasValue) return;
+        _copied = true; StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false; StateHasChanged();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private static bool TryParseCoord(string s, double min, double max, out double value)
+    {
+        if (double.TryParse(s, System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out value))
+            return value >= min && value <= max;
+        return false;
+    }
+
+    private static string ToDms(double deg, bool isLat)
+    {
+        var dir = isLat ? (deg >= 0 ? "N" : "S") : (deg >= 0 ? "E" : "W");
+        deg = Math.Abs(deg);
+        var d = (int)deg;
+        var m = (int)((deg - d) * 60);
+        var s = ((deg - d) * 60 - m) * 60;
+        return $"{d}°{m}'{s:F1}\"{dir}";
+    }
+}

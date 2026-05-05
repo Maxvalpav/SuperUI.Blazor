@@ -1,0 +1,797 @@
+@namespace SuperUI.Components
+@using System.Linq.Expressions
+@using System.Text
+@implements IDisposable
+
+<div class="sgc-field sgc-cron @(Block ? "sgc-block" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+
+    <div class="sgc-cron-shell @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")">
+
+        <div class="sgc-cron-tabs" role="tablist">
+            @foreach (var tab in _tabs)
+            {
+                var t = tab;
+                <button type="button"
+                        class="sgc-cron-tab @(_activeTab == t.Key ? "sgc-active" : "")"
+                        role="tab"
+                        aria-selected="@(_activeTab == t.Key ? "true" : "false")"
+                        disabled="@Disabled"
+                        @onclick="() => SetTabAsync(t.Key)">
+                    <span class="sgc-cron-tab-icon" aria-hidden="true">@t.Icon</span>
+                    <span>@t.Label</span>
+                </button>
+            }
+        </div>
+
+        <div class="sgc-cron-body">
+            @switch (_activeTab)
+            {
+                case CronTab.Minutes:
+                    @RenderMode(_state.MinuteMode, m => UpdateMode(p => p.MinuteMode = m), MinuteOptions)
+                    @if (_state.MinuteMode == CronMode.Every)
+                    {
+                        @RenderEvery(_state.MinuteEvery, 1, 59, "минут", v => UpdateState(s => s.MinuteEvery = v))
+                    }
+                    else if (_state.MinuteMode == CronMode.Specific)
+                    {
+                        @RenderGrid(0, 59, _state.Minutes, ToggleMinute, columns: 10, label: "Минуты")
+                    }
+                    else if (_state.MinuteMode == CronMode.Range)
+                    {
+                        @RenderRange(_state.MinuteRangeFrom, _state.MinuteRangeTo, 0, 59,
+                            f => UpdateState(s => s.MinuteRangeFrom = f),
+                            t => UpdateState(s => s.MinuteRangeTo = t))
+                    }
+                    break;
+
+                case CronTab.Hours:
+                    @RenderMode(_state.HourMode, m => UpdateMode(p => p.HourMode = m), HourOptions)
+                    @if (_state.HourMode == CronMode.Every)
+                    {
+                        @RenderEvery(_state.HourEvery, 1, 23, "часов", v => UpdateState(s => s.HourEvery = v))
+                    }
+                    else if (_state.HourMode == CronMode.Specific)
+                    {
+                        @RenderGrid(0, 23, _state.Hours, ToggleHour, columns: 8, label: "Часы")
+                    }
+                    else if (_state.HourMode == CronMode.Range)
+                    {
+                        @RenderRange(_state.HourRangeFrom, _state.HourRangeTo, 0, 23,
+                            f => UpdateState(s => s.HourRangeFrom = f),
+                            t => UpdateState(s => s.HourRangeTo = t))
+                    }
+                    break;
+
+                case CronTab.Days:
+                    @RenderMode(_state.DayMode, m => UpdateMode(p => p.DayMode = m), DayOptions)
+                    @if (_state.DayMode == CronMode.Every)
+                    {
+                        @RenderEvery(_state.DayEvery, 1, 31, "дней", v => UpdateState(s => s.DayEvery = v))
+                    }
+                    else if (_state.DayMode == CronMode.Specific)
+                    {
+                        @RenderGrid(1, 31, _state.Days, ToggleDay, columns: 8, label: "Дни месяца")
+                    }
+                    else if (_state.DayMode == CronMode.LastDay)
+                    {
+                        <div class="sgc-cron-info">Запуск в последний день месяца.</div>
+                    }
+                    break;
+
+                case CronTab.Months:
+                    @RenderMode(_state.MonthMode, m => UpdateMode(p => p.MonthMode = m), MonthOptions)
+                    @if (_state.MonthMode == CronMode.Every)
+                    {
+                        @RenderEvery(_state.MonthEvery, 1, 12, "месяцев", v => UpdateState(s => s.MonthEvery = v))
+                    }
+                    else if (_state.MonthMode == CronMode.Specific)
+                    {
+                        <div class="sgc-cron-section">
+                            <div class="sgc-cron-section-title">Месяцы</div>
+                            <div class="sgc-cron-chips">
+                                @for (int i = 0; i < MonthNames.Length; i++)
+                                {
+                                    var idx = i + 1;
+                                    var name = MonthNames[i];
+                                    var on = _state.Months.Contains(idx);
+                                    <button type="button"
+                                            class="sgc-cron-chip @(on ? "sgc-on" : "")"
+                                            disabled="@Disabled"
+                                            @onclick="() => ToggleMonth(idx)">
+                                        @name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    break;
+
+                case CronTab.WeekDays:
+                    @RenderMode(_state.WeekMode, m => UpdateMode(p => p.WeekMode = m), WeekOptions)
+                    @if (_state.WeekMode == CronMode.Specific)
+                    {
+                        <div class="sgc-cron-section">
+                            <div class="sgc-cron-section-title">Дни недели</div>
+                            <div class="sgc-cron-week">
+                                @for (int i = 0; i < WeekDayNames.Length; i++)
+                                {
+                                    var idx = i;
+                                    var name = WeekDayNames[i];
+                                    var on = _state.WeekDays.Contains(idx);
+                                    <button type="button"
+                                            class="sgc-cron-day @(on ? "sgc-on" : "") @(idx == 0 || idx == 6 ? "sgc-weekend" : "")"
+                                            disabled="@Disabled"
+                                            @onclick="() => ToggleWeekDay(idx)">
+                                        @name
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    break;
+            }
+        </div>
+
+        <div class="sgc-cron-preview">
+            <div class="sgc-cron-fields">
+                <div class="sgc-cron-field-group">
+                    <span class="sgc-cron-field-label">Мин</span>
+                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[0]</code>
+                </div>
+                <div class="sgc-cron-field-group">
+                    <span class="sgc-cron-field-label">Час</span>
+                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[1]</code>
+                </div>
+                <div class="sgc-cron-field-group">
+                    <span class="sgc-cron-field-label">День</span>
+                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[2]</code>
+                </div>
+                <div class="sgc-cron-field-group">
+                    <span class="sgc-cron-field-label">Мес</span>
+                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[3]</code>
+                </div>
+                <div class="sgc-cron-field-group">
+                    <span class="sgc-cron-field-label">Нед</span>
+                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[4]</code>
+                </div>
+            </div>
+
+            <div class="sgc-cron-summary">
+                <div class="sgc-cron-summary-row">
+                    <span class="sgc-cron-summary-icon" aria-hidden="true">⏱</span>
+                    <code class="sgc-cron-expression">@_currentExpression</code>
+                    <button type="button"
+                            class="sgc-cron-copy"
+                            title="Скопировать"
+                            disabled="@Disabled"
+                            @onclick="CopyAsync">
+                        @if (_copied) { <span>✓</span> } else { <span>⧉</span> }
+                    </button>
+                </div>
+                <div class="sgc-cron-human">@_humanReadable</div>
+            </div>
+
+            @if (ShowPresets)
+            {
+                <div class="sgc-cron-presets">
+                    <span class="sgc-cron-presets-label">Шаблоны:</span>
+                    @foreach (var preset in Presets)
+                    {
+                        var p = preset;
+                        <button type="button"
+                                class="sgc-cron-preset @(_currentExpression == p.Expression ? "sgc-active" : "")"
+                                disabled="@Disabled"
+                                title="@p.Expression"
+                                @onclick="() => ApplyPreset(p.Expression)">
+                            @p.Label
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (IsInvalid)
+    {
+        <span class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private static readonly string[] MonthNames = { "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек" };
+    private static readonly string[] MonthFullNames = { "январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре" };
+    private static readonly string[] WeekDayNames = { "Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб" };
+    private static readonly string[] WeekDayFullNames = { "воскресенье", "понедельник", "вторник", "среду", "четверг", "пятницу", "субботу" };
+
+    private static readonly (CronTab Key, string Label, string Icon)[] _tabs = new[]
+    {
+        (CronTab.Minutes,  "Минуты",   "⏲"),
+        (CronTab.Hours,    "Часы",     "🕐"),
+        (CronTab.Days,     "День",     "📅"),
+        (CronTab.Months,   "Месяц",    "📆"),
+        (CronTab.WeekDays, "Неделя",   "🗓")
+    };
+
+    private static readonly (CronMode Mode, string Label)[] MinuteOptions = new[]
+    {
+        (CronMode.Any, "Каждую минуту"),
+        (CronMode.Every, "Каждые N минут"),
+        (CronMode.Specific, "Конкретные"),
+        (CronMode.Range, "Диапазон"),
+    };
+    private static readonly (CronMode Mode, string Label)[] HourOptions = MinuteOptions
+        .Select(o => (o.Mode, o.Label.Replace("минут", "час"))).ToArray();
+    private static readonly (CronMode Mode, string Label)[] DayOptions = new[]
+    {
+        (CronMode.Any, "Каждый день"),
+        (CronMode.Every, "Каждые N дней"),
+        (CronMode.Specific, "Конкретные"),
+        (CronMode.LastDay, "Последний день месяца"),
+    };
+    private static readonly (CronMode Mode, string Label)[] MonthOptions = new[]
+    {
+        (CronMode.Any, "Каждый месяц"),
+        (CronMode.Every, "Каждые N месяцев"),
+        (CronMode.Specific, "Конкретные"),
+    };
+    private static readonly (CronMode Mode, string Label)[] WeekOptions = new[]
+    {
+        (CronMode.Any, "Любой"),
+        (CronMode.Specific, "Конкретные дни"),
+    };
+
+    private CronTab _activeTab = CronTab.Minutes;
+    private CronState _state = new();
+    private string _currentExpression = "* * * * *";
+    private string _humanReadable = "Каждую минуту";
+    private bool _copied;
+    private bool _suppressBindBack;
+    private SgEditContextBinder<string?>? _binder;
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+
+    /// <summary>
+    /// Gets or sets the cron expression value (5-field standard: minute hour dayOfMonth month dayOfWeek).
+    /// </summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the cron expression changes.
+    /// </summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Expression used for EditContext validation.
+    /// </summary>
+    [Parameter] public Expression<Func<string?>>? ValueExpression { get; set; }
+
+    /// <summary>
+    /// Optional label rendered above the builder.
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>
+    /// Helper text rendered below the control.
+    /// </summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>
+    /// Error text. Takes precedence over EditContext validation messages.
+    /// </summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>
+    /// Marks the field as required.
+    /// </summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>
+    /// Disables all interaction.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Stretches the control to its container width. Default true.
+    /// </summary>
+    [Parameter] public bool Block { get; set; } = true;
+
+    /// <summary>
+    /// Shows the quick preset buttons row. Default true.
+    /// </summary>
+    [Parameter] public bool ShowPresets { get; set; } = true;
+
+    /// <summary>
+    /// Quick preset buttons. Provide your own list to replace defaults.
+    /// </summary>
+    [Parameter] public IReadOnlyList<SgCronPreset> Presets { get; set; } = SgCronPreset.Defaults;
+
+    /// <summary>
+    /// Additional CSS class names for the field container.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
+        ? ErrorText
+        : _binder?.ValidationMessages.FirstOrDefault();
+
+    protected override void OnInitialized()
+    {
+        _binder = new SgEditContextBinder<string?>(StateHasChanged);
+        if (string.IsNullOrWhiteSpace(Value))
+        {
+            Value = "* * * * *";
+        }
+        ParseExpression(Value!);
+    }
+
+    protected override void OnParametersSet()
+    {
+        _binder?.Update(CascadedEditContext, ValueExpression);
+        if (_suppressBindBack)
+        {
+            _suppressBindBack = false;
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(Value) && Value != _currentExpression)
+        {
+            ParseExpression(Value!);
+        }
+    }
+
+    private async Task SetTabAsync(CronTab tab)
+    {
+        if (Disabled) return;
+        _activeTab = tab;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private RenderFragment RenderMode(CronMode current, Action<CronMode> onChange, (CronMode Mode, string Label)[] options) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-cron-modes");
+        for (int i = 0; i < options.Length; i++)
+        {
+            var (mode, label) = options[i];
+            var isOn = mode == current;
+            builder.OpenElement(2, "button");
+            builder.AddAttribute(3, "type", "button");
+            builder.AddAttribute(4, "class", "sgc-cron-mode" + (isOn ? " sgc-active" : ""));
+            builder.AddAttribute(5, "disabled", Disabled);
+            builder.AddAttribute(6, "onclick", EventCallback.Factory.Create(this, () => onChange(mode)));
+            builder.AddContent(7, label);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderEvery(int value, int min, int max, string unit, Action<int> setter) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-cron-every");
+        builder.AddContent(2, "Каждые ");
+        builder.OpenElement(3, "input");
+        builder.AddAttribute(4, "type", "number");
+        builder.AddAttribute(5, "class", "sgc-cron-number");
+        builder.AddAttribute(6, "min", min);
+        builder.AddAttribute(7, "max", max);
+        builder.AddAttribute(8, "value", value);
+        builder.AddAttribute(9, "disabled", Disabled);
+        builder.AddAttribute(10, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+        {
+            if (int.TryParse(e.Value?.ToString(), out var v))
+            {
+                v = Math.Clamp(v, min, max);
+                setter(v);
+            }
+        }));
+        builder.CloseElement();
+        builder.AddContent(11, " " + unit);
+    };
+
+    private RenderFragment RenderRange(int from, int to, int min, int max, Action<int> setFrom, Action<int> setTo) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-cron-range");
+        builder.AddContent(2, "От ");
+        builder.OpenElement(3, "input");
+        builder.AddAttribute(4, "type", "number");
+        builder.AddAttribute(5, "class", "sgc-cron-number");
+        builder.AddAttribute(6, "min", min);
+        builder.AddAttribute(7, "max", max);
+        builder.AddAttribute(8, "value", from);
+        builder.AddAttribute(9, "disabled", Disabled);
+        builder.AddAttribute(10, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+        {
+            if (int.TryParse(e.Value?.ToString(), out var v)) setFrom(Math.Clamp(v, min, max));
+        }));
+        builder.CloseElement();
+        builder.AddContent(11, " до ");
+        builder.OpenElement(12, "input");
+        builder.AddAttribute(13, "type", "number");
+        builder.AddAttribute(14, "class", "sgc-cron-number");
+        builder.AddAttribute(15, "min", min);
+        builder.AddAttribute(16, "max", max);
+        builder.AddAttribute(17, "value", to);
+        builder.AddAttribute(18, "disabled", Disabled);
+        builder.AddAttribute(19, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+        {
+            if (int.TryParse(e.Value?.ToString(), out var v)) setTo(Math.Clamp(v, min, max));
+        }));
+        builder.CloseElement();
+    };
+
+    private RenderFragment RenderGrid(int min, int max, HashSet<int> selected, Func<int, Task> toggle, int columns, string label) => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-cron-section");
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "class", "sgc-cron-section-head");
+        builder.OpenElement(4, "span");
+        builder.AddAttribute(5, "class", "sgc-cron-section-title");
+        builder.AddContent(6, label);
+        builder.CloseElement();
+        builder.OpenElement(7, "div");
+        builder.AddAttribute(8, "class", "sgc-cron-section-actions");
+        builder.OpenElement(9, "button");
+        builder.AddAttribute(10, "type", "button");
+        builder.AddAttribute(11, "class", "sgc-cron-link");
+        builder.AddAttribute(12, "disabled", Disabled);
+        builder.AddAttribute(13, "onclick", EventCallback.Factory.Create(this, () => SelectAll(min, max, selected)));
+        builder.AddContent(14, "Все");
+        builder.CloseElement();
+        builder.OpenElement(15, "button");
+        builder.AddAttribute(16, "type", "button");
+        builder.AddAttribute(17, "class", "sgc-cron-link");
+        builder.AddAttribute(18, "disabled", Disabled);
+        builder.AddAttribute(19, "onclick", EventCallback.Factory.Create(this, () => ClearAll(selected)));
+        builder.AddContent(20, "Очистить");
+        builder.CloseElement();
+        builder.CloseElement();
+        builder.CloseElement();
+
+        builder.OpenElement(21, "div");
+        builder.AddAttribute(22, "class", "sgc-cron-grid");
+        builder.AddAttribute(23, "style", $"grid-template-columns: repeat({columns}, minmax(0, 1fr));");
+        for (int i = min; i <= max; i++)
+        {
+            var idx = i;
+            var on = selected.Contains(i);
+            builder.OpenElement(24, "button");
+            builder.AddAttribute(25, "type", "button");
+            builder.AddAttribute(26, "class", "sgc-cron-cell" + (on ? " sgc-on" : ""));
+            builder.AddAttribute(27, "disabled", Disabled);
+            builder.AddAttribute(28, "onclick", EventCallback.Factory.Create(this, async () => await toggle(idx)));
+            builder.AddContent(29, idx.ToString("D2"));
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private void SelectAll(int min, int max, HashSet<int> set)
+    {
+        set.Clear();
+        for (int i = min; i <= max; i++) set.Add(i);
+        Recompute();
+    }
+
+    private void ClearAll(HashSet<int> set)
+    {
+        set.Clear();
+        Recompute();
+    }
+
+    private Task ToggleMinute(int v) { Toggle(_state.Minutes, v); Recompute(); return Task.CompletedTask; }
+    private Task ToggleHour(int v) { Toggle(_state.Hours, v); Recompute(); return Task.CompletedTask; }
+    private Task ToggleDay(int v) { Toggle(_state.Days, v); Recompute(); return Task.CompletedTask; }
+    private void ToggleMonth(int v) { Toggle(_state.Months, v); Recompute(); }
+    private void ToggleWeekDay(int v) { Toggle(_state.WeekDays, v); Recompute(); }
+
+    private static void Toggle(HashSet<int> set, int v)
+    {
+        if (!set.Add(v)) set.Remove(v);
+    }
+
+    private void UpdateMode(Action<CronState> mutate)
+    {
+        mutate(_state);
+        Recompute();
+    }
+
+    private void UpdateState(Action<CronState> mutate)
+    {
+        mutate(_state);
+        Recompute();
+    }
+
+    private async Task ApplyPreset(string expr)
+    {
+        ParseExpression(expr);
+        await EmitAsync();
+    }
+
+    private async Task CopyAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _currentExpression);
+            _copied = true;
+            StateHasChanged();
+            _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _copied = false; StateHasChanged(); }));
+        }
+        catch { /* clipboard not available */ }
+    }
+
+    private void Recompute()
+    {
+        _currentExpression = BuildExpression();
+        _humanReadable = HumanReadable(_currentExpression);
+        _ = EmitAsync();
+    }
+
+    private async Task EmitAsync()
+    {
+        Value = _currentExpression;
+        _suppressBindBack = true;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(_currentExpression);
+        _binder?.NotifyFieldChanged();
+        StateHasChanged();
+    }
+
+    private string BuildExpression()
+    {
+        var minutes = BuildField(_state.MinuteMode, _state.MinuteEvery, _state.Minutes, _state.MinuteRangeFrom, _state.MinuteRangeTo, isWeek: false, isDay: false);
+        var hours = BuildField(_state.HourMode, _state.HourEvery, _state.Hours, _state.HourRangeFrom, _state.HourRangeTo, isWeek: false, isDay: false);
+        string days;
+        if (_state.DayMode == CronMode.LastDay) days = "L";
+        else days = BuildField(_state.DayMode, _state.DayEvery, _state.Days, 1, 28, isWeek: false, isDay: true);
+        var months = BuildField(_state.MonthMode, _state.MonthEvery, _state.Months, 1, 12, isWeek: false, isDay: false);
+        var week = BuildField(_state.WeekMode, 1, _state.WeekDays, 0, 6, isWeek: true, isDay: false);
+
+        if (_state.WeekMode == CronMode.Specific && _state.DayMode == CronMode.Any)
+        {
+            days = "?";
+        }
+        else if (_state.WeekMode == CronMode.Any && _state.DayMode != CronMode.Any)
+        {
+            week = "*";
+        }
+
+        return $"{minutes} {hours} {days} {months} {week}";
+    }
+
+    private static string BuildField(CronMode mode, int every, HashSet<int> set, int from, int to, bool isWeek, bool isDay)
+    {
+        switch (mode)
+        {
+            case CronMode.Any:
+                return isWeek ? "*" : "*";
+            case CronMode.Every:
+                return every <= 1 ? "*" : $"*/{every}";
+            case CronMode.Specific:
+                if (set.Count == 0) return "*";
+                return string.Join(",", set.OrderBy(i => i));
+            case CronMode.Range:
+                return $"{from}-{to}";
+            default:
+                return "*";
+        }
+    }
+
+    private void ParseExpression(string raw)
+    {
+        var parts = raw.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5) parts = new[] { "*", "*", "*", "*", "*" };
+
+        _state = new CronState();
+        ParseField(parts[0], 0, 59, ref _state.MinuteMode, ref _state.MinuteEvery, _state.Minutes, ref _state.MinuteRangeFrom, ref _state.MinuteRangeTo);
+        ParseField(parts[1], 0, 23, ref _state.HourMode, ref _state.HourEvery, _state.Hours, ref _state.HourRangeFrom, ref _state.HourRangeTo);
+        if (parts[2] == "L")
+        {
+            _state.DayMode = CronMode.LastDay;
+        }
+        else if (parts[2] == "?")
+        {
+            _state.DayMode = CronMode.Any;
+        }
+        else
+        {
+            int d1 = 1, d2 = 28;
+            ParseField(parts[2], 1, 31, ref _state.DayMode, ref _state.DayEvery, _state.Days, ref d1, ref d2);
+        }
+        int m1 = 1, m2 = 12;
+        ParseField(parts[3], 1, 12, ref _state.MonthMode, ref _state.MonthEvery, _state.Months, ref m1, ref m2);
+
+        ParseWeek(parts[4]);
+
+        _currentExpression = BuildExpression();
+        _humanReadable = HumanReadable(_currentExpression);
+    }
+
+    private void ParseWeek(string token)
+    {
+        if (token == "*" || token == "?")
+        {
+            _state.WeekMode = CronMode.Any;
+            _state.WeekDays.Clear();
+            return;
+        }
+        _state.WeekMode = CronMode.Specific;
+        _state.WeekDays.Clear();
+        foreach (var part in token.Split(','))
+        {
+            if (part.Contains('-'))
+            {
+                var rr = part.Split('-');
+                if (int.TryParse(rr[0], out var a) && int.TryParse(rr[1], out var b))
+                {
+                    for (int i = a; i <= b; i++) _state.WeekDays.Add(i % 7);
+                }
+            }
+            else if (int.TryParse(part, out var v))
+            {
+                _state.WeekDays.Add(v % 7);
+            }
+        }
+        if (_state.WeekDays.Count == 0) _state.WeekMode = CronMode.Any;
+    }
+
+    private static void ParseField(string token, int min, int max, ref CronMode mode, ref int every, HashSet<int> set, ref int rFrom, ref int rTo)
+    {
+        set.Clear();
+        if (token == "*")
+        {
+            mode = CronMode.Any;
+            return;
+        }
+        if (token.StartsWith("*/") && int.TryParse(token[2..], out var step))
+        {
+            mode = CronMode.Every;
+            every = step;
+            return;
+        }
+        if (token.Contains('-') && !token.Contains(','))
+        {
+            var rr = token.Split('-');
+            if (int.TryParse(rr[0], out var a) && int.TryParse(rr[1], out var b))
+            {
+                mode = CronMode.Range;
+                rFrom = Math.Clamp(a, min, max);
+                rTo = Math.Clamp(b, min, max);
+                return;
+            }
+        }
+        mode = CronMode.Specific;
+        foreach (var part in token.Split(','))
+        {
+            if (part.Contains('-'))
+            {
+                var rr = part.Split('-');
+                if (int.TryParse(rr[0], out var a) && int.TryParse(rr[1], out var b))
+                {
+                    for (int i = a; i <= b; i++) set.Add(i);
+                }
+            }
+            else if (int.TryParse(part, out var v))
+            {
+                set.Add(v);
+            }
+        }
+        if (set.Count == 0) mode = CronMode.Any;
+    }
+
+    private string HumanReadable(string expr)
+    {
+        var parts = expr.Split(' ');
+        if (parts.Length != 5) return expr;
+        var sb = new StringBuilder();
+
+        // time portion
+        if (parts[0] == "*" && parts[1] == "*") sb.Append("Каждую минуту");
+        else if (parts[0].StartsWith("*/")) sb.Append($"Каждые {parts[0][2..]} минут");
+        else if (parts[1].StartsWith("*/"))
+        {
+            sb.Append($"Каждые {parts[1][2..]} часов");
+            if (parts[0] != "*" && !parts[0].Contains(',') && !parts[0].Contains('-'))
+                sb.Append($" в :{parts[0].PadLeft(2, '0')}");
+        }
+        else if (!parts[1].Contains('*') && !parts[0].Contains('*'))
+        {
+            if (parts[1].Contains(',') || parts[0].Contains(','))
+                sb.Append($"В {parts[1]}:{parts[0]}");
+            else
+                sb.Append($"В {parts[1].PadLeft(2, '0')}:{parts[0].PadLeft(2, '0')}");
+        }
+        else if (parts[0] != "*" && parts[1] == "*")
+            sb.Append($"В :{parts[0].PadLeft(2, '0')} каждого часа");
+        else
+            sb.Append("По расписанию");
+
+        // day-of-month
+        if (parts[2] == "L") sb.Append(", в последний день месяца");
+        else if (parts[2] != "*" && parts[2] != "?")
+        {
+            if (parts[2].StartsWith("*/")) sb.Append($", каждые {parts[2][2..]} дней");
+            else sb.Append($", в дни месяца {parts[2]}");
+        }
+
+        // month
+        if (parts[3] != "*")
+        {
+            if (parts[3].StartsWith("*/")) sb.Append($", каждые {parts[3][2..]} месяцев");
+            else
+            {
+                var months = ParseList(parts[3], 1, 12);
+                if (months.Count > 0 && months.Count <= 12)
+                    sb.Append(", в " + string.Join(", ", months.Select(m => MonthFullNames[m - 1])));
+            }
+        }
+
+        // weekday
+        if (parts[4] != "*" && parts[4] != "?")
+        {
+            var days = ParseList(parts[4], 0, 6);
+            if (days.Count > 0)
+                sb.Append(", по " + string.Join(", ", days.Select(d => WeekDayFullNames[d % 7])));
+        }
+
+        return sb.ToString();
+    }
+
+    private static List<int> ParseList(string token, int min, int max)
+    {
+        var result = new List<int>();
+        foreach (var p in token.Split(','))
+        {
+            if (p.Contains('-'))
+            {
+                var rr = p.Split('-');
+                if (int.TryParse(rr[0], out var a) && int.TryParse(rr[1], out var b))
+                    for (int i = a; i <= b; i++) result.Add(i);
+            }
+            else if (int.TryParse(p, out var v)) result.Add(v);
+        }
+        return result.Distinct().OrderBy(x => x).ToList();
+    }
+
+    public void Dispose() => _binder?.Dispose();
+
+    private enum CronTab { Minutes, Hours, Days, Months, WeekDays }
+    private enum CronMode { Any, Every, Specific, Range, LastDay }
+
+    private class CronState
+    {
+        public CronMode MinuteMode = CronMode.Any;
+        public int MinuteEvery = 5;
+        public HashSet<int> Minutes = new();
+        public int MinuteRangeFrom = 0;
+        public int MinuteRangeTo = 30;
+
+        public CronMode HourMode = CronMode.Any;
+        public int HourEvery = 1;
+        public HashSet<int> Hours = new();
+        public int HourRangeFrom = 9;
+        public int HourRangeTo = 18;
+
+        public CronMode DayMode = CronMode.Any;
+        public int DayEvery = 1;
+        public HashSet<int> Days = new();
+
+        public CronMode MonthMode = CronMode.Any;
+        public int MonthEvery = 1;
+        public HashSet<int> Months = new();
+
+        public CronMode WeekMode = CronMode.Any;
+        public HashSet<int> WeekDays = new();
+    }
+}

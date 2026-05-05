@@ -1,0 +1,279 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-mermaid-container @CssClass"
+     style="@(Height != null ? $"min-height:{Height};" : null) width:@Width;"
+     @attributes="AdditionalAttributes">
+
+    @if (_error is not null)
+    {
+        <div class="sg-mermaid-error-wrap" role="alert">
+            <p>@_error</p>
+            <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Mermaid_Retry"]</button>
+        </div>
+    }
+    else
+    {
+        @if (ShowToolbar && _ready)
+        {
+            <div class="sg-mermaid-toolbar" role="toolbar">
+                <button type="button" class="sg-mermaid-tool" title="@Localizer["Mermaid_ExportSvg"]"
+                        @onclick="ExportSvgAsync" aria-label="@Localizer["Mermaid_ExportSvg"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M2 2h7l3 3v9H2V2Zm7 0v3h3M8 7v5M6 9l2 3 2-3"/>
+                    </svg>
+                </button>
+                <button type="button" class="sg-mermaid-tool" title="@Localizer["Mermaid_ExportPng"]"
+                        @onclick="ExportPngAsync" aria-label="@Localizer["Mermaid_ExportPng"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M8 1v8.6L5.7 7.3 4.3 8.7 8 12.4l3.7-3.7-1.4-1.4L9 9.6V1H8Zm-6 12h12v2H2v-2Z"/>
+                    </svg>
+                </button>
+            </div>
+        }
+
+        <div @ref="_containerRef"
+             class="sg-mermaid-canvas"
+             style="@(_ready ? null : "visibility:hidden;")"></div>
+
+        @if (!_ready)
+        {
+            <div class="sg-mermaid-loading" aria-live="polite">
+                <div class="sg-mermaid-skeleton">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <span class="sg-mermaid-loading-text">@Localizer["Mermaid_Loading"]</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _containerRef;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgMermaid>? _selfRef;
+    private readonly string _instanceId = $"sg-mm-{Guid.NewGuid():N}";
+    private bool _ready;
+    private string? _error;
+    private bool _isDisposed;
+
+    // Change-detection snapshots
+    private string? _lastDefinition;
+    private string? _lastOptsHash;
+    private bool _refreshScheduled;
+    private bool _refreshPending;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>Mermaid diagram definition string.</summary>
+    [Parameter] public string? Definition { get; set; }
+
+    /// <summary>Rendering options.</summary>
+    [Parameter] public SgMermaidOptions? Options { get; set; }
+
+    /// <summary>Minimum height of the container. Default <c>null</c> (auto).</summary>
+    [Parameter] public string? Height { get; set; }
+
+    /// <summary>Container width. Default "100%".</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+
+    /// <summary>Show built-in toolbar (export SVG / PNG).</summary>
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+
+    /// <summary>Mermaid.js source URL override.</summary>
+    [Parameter] public SgMermaidSources? Sources { get; set; }
+
+    /// <summary>Additional CSS class for the container.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fired when a node is clicked in the diagram.</summary>
+    [Parameter] public EventCallback<SgMermaidClickEventArgs> OnNodeClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        if (!_ready) return;
+        var optsHash = GetOptsHash();
+        var changed =
+            !string.Equals(Definition, _lastDefinition, StringComparison.Ordinal) ||
+            optsHash != _lastOptsHash;
+        if (changed && !_refreshScheduled)
+        {
+            _refreshScheduled = true;
+            _ = ScheduleRefreshAsync();
+        }
+    }
+
+    private string GetOptsHash()
+    {
+        var o = Options ?? new SgMermaidOptions();
+        return $"{o.Theme}|{o.FontSize}|{o.SecurityLevel}|{o.FlowchartCurve}|{o.SequenceMirrorActors}";
+    }
+
+    private async Task ScheduleRefreshAsync()
+    {
+        try   { await RefreshAsync(); }
+        finally
+        {
+            _refreshScheduled = false;
+            if (_refreshPending)
+            {
+                _refreshPending   = false;
+                _refreshScheduled = true;
+                _ = ScheduleRefreshAsync();
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-mermaid.js");
+            if (_isDisposed) return;
+            _selfRef = DotNetObjectReference.Create(this);
+            await InitAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Mermaid_FailedToLoad"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task InitAsync()
+    {
+        if (_module is null || _selfRef is null) return;
+        try
+        {
+            var opts = BuildOpts();
+            await _module.InvokeVoidAsync("initMermaid",
+                _selfRef, _containerRef, _instanceId,
+                Definition, opts, Sources ?? new SgMermaidSources());
+            _lastDefinition = Definition;
+            _lastOptsHash   = GetOptsHash();
+            _ready = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Mermaid_FailedToInitialize"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private object BuildOpts()
+    {
+        var o = Options ?? new SgMermaidOptions();
+        return new
+        {
+            theme                  = o.Theme.ToString(),
+            fontSize               = o.FontSize,
+            securityLevel          = o.SecurityLevel,
+            startOnLoad            = o.StartOnLoad,
+            flowchartCurve         = o.FlowchartCurve,
+            sequenceMirrorActors   = o.SequenceMirrorActors,
+            maxTextSize            = o.MaxTextSize,
+        };
+    }
+
+    // ── Public methods ────────────────────────────────────────────────────────
+
+    /// <summary>Re-renders the diagram with current definition and options.</summary>
+    public async Task RefreshAsync()
+    {
+        if (_module is null || !_ready) { _refreshPending = true; return; }
+        try
+        {
+            var opts = BuildOpts();
+            await _module.InvokeVoidAsync("updateMermaid", _instanceId, Definition, opts);
+            _lastDefinition = Definition;
+            _lastOptsHash   = GetOptsHash();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Mermaid_FailedToRefresh"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Downloads the diagram as an SVG file.</summary>
+    public async Task ExportSvgAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("exportSvg", _instanceId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Downloads the diagram as a PNG file.</summary>
+    public async Task ExportPngAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("exportPng", _instanceId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
+    }
+
+    /// <summary>Retries loading after an error.</summary>
+    public async Task RetryAsync()
+    {
+        _error = null; _ready = false;
+        await InvokeAsync(StateHasChanged);
+        await InitAsync();
+    }
+
+    // ── JS callbacks ──────────────────────────────────────────────────────────
+
+    [JSInvokable]
+    public async Task OnNodeClickedAsync(SgMermaidClickEventArgs args)
+    {
+        if (OnNodeClick.HasDelegate)
+            await OnNodeClick.InvokeAsync(args);
+    }
+
+    // ── Dispose ───────────────────────────────────────────────────────────────
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("disposeMermaid", _instanceId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch { }
+        }
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch { }
+            _module = null;
+        }
+    }
+}

@@ -1,0 +1,420 @@
+@page "/map-demo"
+@using SuperUI.Components
+
+<PageTitle>Карта — SUI</PageTitle>
+
+<div class="map-page">
+
+    <!-- ── Шапка ──────────────────────────────────────────────────────── -->
+    <div class="map-page-header">
+        <div>
+            <h1 class="map-page-title">SgMap</h1>
+            <p class="map-page-subtitle">OpenLayers — карты, маркеры, маршруты, полигоны</p>
+        </div>
+        <div class="map-page-header-right">
+            <span class="map-page-label">Слой:</span>
+            @foreach (var tl in _tileLayers)
+            {
+                var ttl = tl;
+                <SgButton Size="SgSize.Sm"
+                          Variant="@(_tileLayer == ttl.Key ? SgButtonVariant.Primary : SgButtonVariant.Default)"
+                          OnClick="@(() => { _tileLayer = ttl.Key; StateHasChanged(); })">
+                    @ttl.Value
+                </SgButton>
+            }
+            <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="FitMarkers">⛶ Вписать</SgButton>
+            <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="ExportPng">⬇ PNG</SgButton>
+        </div>
+    </div>
+
+    <!-- ── Основная область ────────────────────────────────────────────── -->
+    <div class="map-page-main">
+
+        <!-- Карта -->
+        <div class="map-page-canvas">
+            <SgMap @ref="_map"
+                   Options="@CurrentOpts"
+                   Markers="@_markers"
+                   Polylines="@_polylines"
+                   Polygons="@_polygons"
+                   Height="100%"
+                   OnMarkerClick="OnMarkerClick"
+                   OnMapClick="OnMapClick"
+                   OnViewChanged="OnViewChanged" />
+        </div>
+
+        <!-- Боковая панель -->
+        <div class="map-page-sidebar">
+
+            <!-- Вид карты -->
+            <SgCard Title="Вид карты" style="margin-bottom:12px">
+                <div class="map-stat-grid">
+                    <div class="map-stat"><span>Широта</span><b>@_viewLat.ToString("F4")</b></div>
+                    <div class="map-stat"><span>Долгота</span><b>@_viewLon.ToString("F4")</b></div>
+                    <div class="map-stat"><span>Зум</span><b>@_viewZoom.ToString("F1")</b></div>
+                    <div class="map-stat"><span>Маркеров</span><b>@_markers.Count</b></div>
+                </div>
+            </SgCard>
+
+            <!-- Маршрут A → B -->
+            <SgCard Title="Маршрут A → B" style="margin-bottom:12px">
+                <div class="map-route-row">
+                    <span class="map-route-badge map-route-a">A</span>
+                    <SgCoordinateInput @bind-Latitude="_routeFromLat"
+                                       @bind-Longitude="_routeFromLon"
+                                       ShowCopyButton="false"
+                                       CssClass="map-route-coord" />
+                </div>
+                <div class="map-route-row" style="margin-top:6px">
+                    <span class="map-route-badge map-route-b">B</span>
+                    <SgCoordinateInput @bind-Latitude="_routeToLat"
+                                       @bind-Longitude="_routeToLon"
+                                       ShowCopyButton="false"
+                                       CssClass="map-route-coord" />
+                </div>
+
+                <div class="map-route-presets">
+                    <span class="map-page-label">Пресеты:</span>
+                    @foreach (var p in _routePresets)
+                    {
+                        var pp = p;
+                        <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined"
+                                  OnClick="@(() => ApplyPreset(pp))">@pp.Name</SgButton>
+                    }
+                </div>
+
+                <div class="map-route-style">
+                    <span class="map-page-label">Цвет:</span>
+                    @foreach (var c in _routeColors)
+                    {
+                        var cc = c;
+                        <button class="map-color-dot @(_routeColor == cc.Hex ? "active" : "")"
+                                style="background:@cc.Hex" title="@cc.Name"
+                                @onclick="@(() => _routeColor = cc.Hex)"></button>
+                    }
+                    <SgSwitch @bind-Value="_routeDashed" Label="Пунктир" />
+                </div>
+
+                <div style="display:flex;gap:6px;margin-top:10px">
+                    <SgButton Variant="SgButtonVariant.Primary"
+                              Disabled="@(!CanDrawRoute)"
+                              OnClick="DrawRoute"
+                              Block="true">
+                        🗺️ Построить маршрут
+                    </SgButton>
+                    @if (_routeDrawn)
+                    {
+                        <SgButton Variant="SgButtonVariant.Danger" OnClick="ClearRoute">✕</SgButton>
+                    }
+                </div>
+
+                @if (_routeDrawn && _routeDistanceKm > 0)
+                {
+                    <SgAlert Variant="SgAlertVariant.Info" Dense="true" style="margin-top:8px">
+                        По прямой: <b>@_routeDistanceKm.ToString("F1") км</b>
+                    </SgAlert>
+                }
+            </SgCard>
+
+            <!-- Маркеры -->
+            <SgCard Title="Маркеры" style="margin-bottom:12px">
+                <div style="display:flex;gap:6px;margin-bottom:10px">
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
+                              OnClick="AddRandomMarker" Block="true">+ Случайный</SgButton>
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Danger"
+                              Disabled="@(_markers.Count == 0)"
+                              OnClick="ClearMarkers">✕ Все</SgButton>
+                </div>
+
+                <div class="map-marker-list">
+                    @foreach (var m in _markers.Take(8))
+                    {
+                        var mm = m;
+                        <div class="map-marker-row @(_selectedMarker?.MarkerId == mm.Id ? "selected" : "")"
+                             @onclick="@(() => SelectMarker(mm))">
+                            <span class="map-marker-icon" style="background:@(mm.Color ?? "#006fee")">@(mm.Icon ?? "📍")</span>
+                            <div class="map-marker-info">
+                                <span class="map-marker-name">@mm.Title</span>
+                                <span class="map-marker-coords">@mm.Latitude.ToString("F3"), @mm.Longitude.ToString("F3")</span>
+                            </div>
+                            <button class="map-marker-del" @onclick:stopPropagation="true"
+                                    @onclick="@(() => RemoveMarker(mm.Id))">✕</button>
+                        </div>
+                    }
+                    @if (_markers.Count > 8)
+                    {
+                        <div class="map-marker-more">+@(_markers.Count - 8) ещё</div>
+                    }
+                </div>
+            </SgCard>
+
+            <!-- Выбранный маркер -->
+            @if (_selectedMarker is not null)
+            {
+                <SgCard Title="Выбранный маркер" style="margin-bottom:12px">
+                    <SgCoordinateInput Latitude="@_selectedMarker.Latitude"
+                                       Longitude="@_selectedMarker.Longitude"
+                                       ShowClearButton="false"
+                                       ShowDms="true"
+                                       Disabled="true" />
+                    <div class="map-detail-rows" style="margin-top:8px">
+                        @if (!string.IsNullOrEmpty(_selectedMarker.Title))
+                        {
+                            <div class="map-detail-row"><span>Название</span><b>@_selectedMarker.Title</b></div>
+                        }
+                        @if (!string.IsNullOrEmpty(_selectedMarker.Description))
+                        {
+                            <div class="map-detail-row"><span>Описание</span><span>@_selectedMarker.Description</span></div>
+                        }
+                    </div>
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined"
+                              OnClick="@(() => _map?.SetCenterAsync(_selectedMarker.Longitude, _selectedMarker.Latitude, 14))"
+                              style="margin-top:8px">
+                        🎯 Центрировать
+                    </SgButton>
+                </SgCard>
+            }
+            else if (_lastMapClick is not null)
+            {
+                <SgCard Title="Клик на карте" style="margin-bottom:12px">
+                    <SgCoordinateInput Latitude="@_lastMapClick.Latitude"
+                                       Longitude="@_lastMapClick.Longitude"
+                                       ShowClearButton="false"
+                                       ShowDms="true"
+                                       Disabled="true" />
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
+                              OnClick="AddMarkerAtClick"
+                              style="margin-top:8px" Block="true">
+                        + Маркер здесь
+                    </SgButton>
+                </SgCard>
+            }
+
+            <!-- Слои -->
+            <SgCard Title="Слои">
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    <SgSwitch @bind-Value="_showRoute" Label="Маршрут (полилиния)"
+                              @bind-Value:after="UpdateLayers" />
+                    <SgSwitch @bind-Value="_showZone"  Label="Зона (полигон)"
+                              @bind-Value:after="UpdateLayers" />
+                </div>
+            </SgCard>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly Random _rnd = new(Environment.TickCount);
+
+    private SgMap? _map;
+    private SgMapTileLayer _tileLayer = SgMapTileLayer.OpenStreetMap;
+    private double _viewLat = 55.751, _viewLon = 37.618, _viewZoom = 10;
+    private SgMapMarkerClickEventArgs? _selectedMarker;
+    private SgMapClickEventArgs? _lastMapClick;
+    private bool _showRoute = true;
+    private bool _showZone  = true;
+
+    // ── Route ─────────────────────────────────────────────────────────────────
+    private double? _routeFromLat, _routeFromLon;
+    private double? _routeToLat,   _routeToLon;
+    private string  _routeColor  = "#2563eb";
+    private bool    _routeDashed = false;
+    private bool    _routeDrawn  = false;
+    private double  _routeDistanceKm = 0;
+
+    private bool CanDrawRoute =>
+        _routeFromLat.HasValue && _routeFromLon.HasValue &&
+        _routeToLat.HasValue   && _routeToLon.HasValue;
+
+    private record RoutePreset(string Name, double FromLat, double FromLon, double ToLat, double ToLon);
+    private readonly RoutePreset[] _routePresets =
+    [
+        new("Москва→СПб",     55.7520, 37.6173, 59.9343, 30.3351),
+        new("Кремль→Арбат",   55.7520, 37.6173, 55.7490, 37.5960),
+        new("Центр→Аэропорт", 55.7520, 37.6173, 55.9726, 37.4146),
+    ];
+
+    private record RouteColor(string Name, string Hex);
+    private readonly RouteColor[] _routeColors =
+    [
+        new("Синий",     "#2563eb"),
+        new("Красный",   "#dc2626"),
+        new("Зелёный",   "#16a34a"),
+        new("Оранжевый", "#ea580c"),
+        new("Фиолетовый","#7c3aed"),
+    ];
+
+    private readonly Dictionary<SgMapTileLayer, string> _tileLayers = new()
+    {
+        [SgMapTileLayer.OpenStreetMap]   = "OSM",
+        [SgMapTileLayer.CartoPositron]   = "Carto Light",
+        [SgMapTileLayer.CartoDarkMatter] = "Carto Dark",
+        [SgMapTileLayer.StamenToner]     = "Toner",
+    };
+
+    private SgMapOptions CurrentOpts => new()
+    {
+        TileLayer       = _tileLayer,
+        CenterLon       = 37.618,
+        CenterLat       = 55.751,
+        Zoom            = 10,
+        ShowZoomControl = true,
+        ShowScaleLine   = true,
+        ShowAttribution = true,
+        ShowPopup       = true,
+    };
+
+    // ── Markers ───────────────────────────────────────────────────────────────
+    private List<SgMapMarker> _markers = new()
+    {
+        new() { Id="m1", Title="Кремль",          Description="Исторический центр",  Longitude=37.6173, Latitude=55.7520, Color="#ef4444", Icon="🏛️", Size=36 },
+        new() { Id="m2", Title="Красная площадь", Description="Главная площадь",     Longitude=37.6208, Latitude=55.7539, Color="#f59e0b", Icon="⭐", Size=34 },
+        new() { Id="m3", Title="Большой театр",   Description="Театр оперы и балета", Longitude=37.6155, Latitude=55.7601, Color="#8b5cf6", Icon="🎭", Size=34 },
+        new() { Id="m4", Title="Парк Горького",   Description="Центральный парк",     Longitude=37.6010, Latitude=55.7298, Color="#10b981", Icon="🌳", Size=34 },
+        new() { Id="m5", Title="Арбат",           Description="Пешеходная улица",     Longitude=37.5960, Latitude=55.7490, Color="#2563eb", Icon="🚶", Size=32 },
+    };
+
+    private readonly List<SgMapPolyline> _routePolyline = new()
+    {
+        new() { Id="route1", Color="#2563eb", Width=4,
+            Coordinates = [
+                new() { Longitude=37.6173, Latitude=55.7520 },
+                new() { Longitude=37.6208, Latitude=55.7539 },
+                new() { Longitude=37.6155, Latitude=55.7601 },
+                new() { Longitude=37.6010, Latitude=55.7298 },
+                new() { Longitude=37.5960, Latitude=55.7490 },
+            ]},
+    };
+
+    private readonly List<SgMapPolygon> _zonePolygon = new()
+    {
+        new() { Id="zone1", Title="Центральный район",
+            FillColor="#dcfce7", StrokeColor="#16a34a", StrokeWidth=2,
+            Coordinates = [
+                new() { Longitude=37.580, Latitude=55.770 },
+                new() { Longitude=37.660, Latitude=55.770 },
+                new() { Longitude=37.660, Latitude=55.730 },
+                new() { Longitude=37.580, Latitude=55.730 },
+                new() { Longitude=37.580, Latitude=55.770 },
+            ]},
+    };
+
+    private List<SgMapPolyline> _polylines = new();
+    private List<SgMapPolygon>  _polygons  = new();
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+    private static readonly string[] _names  = ["Офис","Склад","Магазин","Ресторан","Отель","Парк","Музей","Театр","Стадион","Аэропорт","Вокзал","Больница"];
+    private static readonly string[] _icons  = ["🏢","📦","🏪","🍽️","🏨","🌳","🏛️","🎭","⚽","✈️","🚂","🏥"];
+    private static readonly string[] _colors = ["#ef4444","#f59e0b","#10b981","#2563eb","#8b5cf6","#06b6d4","#ec4899","#f97316"];
+
+    private void AddRandomMarker()
+    {
+        var i = _rnd.Next(_names.Length);
+        _markers = [.._markers, new()
+        {
+            Id          = $"m{DateTime.Now.Ticks}",
+            Title       = _names[i],
+            Description = $"Точка #{_markers.Count + 1}",
+            Longitude   = 37.4 + _rnd.NextDouble() * 0.5,
+            Latitude    = 55.6 + _rnd.NextDouble() * 0.3,
+            Color       = _colors[i % _colors.Length],
+            Icon        = _icons[i],
+            Size        = 32,
+        }];
+        StateHasChanged();
+    }
+
+    private void ClearMarkers()
+    {
+        _markers = new(); _selectedMarker = null; StateHasChanged();
+    }
+
+    private void RemoveMarker(string id)
+    {
+        _markers = _markers.Where(m => m.Id != id).ToList();
+        if (_selectedMarker?.MarkerId == id) _selectedMarker = null;
+        StateHasChanged();
+    }
+
+    private async Task SelectMarker(SgMapMarker m)
+    {
+        _selectedMarker = new() { MarkerId=m.Id, Title=m.Title, Description=m.Description, Longitude=m.Longitude, Latitude=m.Latitude };
+        _lastMapClick = null;
+        if (_map is not null) await _map.SetCenterAsync(m.Longitude, m.Latitude, 14);
+        StateHasChanged();
+    }
+
+    private void AddMarkerAtClick()
+    {
+        if (_lastMapClick is null) return;
+        _markers = [.._markers, new()
+        {
+            Id        = $"click-{DateTime.Now.Ticks}",
+            Title     = $"Точка {_markers.Count + 1}",
+            Longitude = _lastMapClick.Longitude,
+            Latitude  = _lastMapClick.Latitude,
+            Color     = "#2563eb", Icon = "📌", Size = 32,
+        }];
+        _lastMapClick = null;
+        StateHasChanged();
+    }
+
+    private void UpdateLayers()
+    {
+        _polylines = _showRoute ? _routePolyline : new();
+        _polygons  = _showZone  ? _zonePolygon  : new();
+        StateHasChanged();
+    }
+
+    private async Task FitMarkers()  { if (_map is not null) await _map.FitToMarkersAsync(); }
+    private async Task ExportPng()   { if (_map is not null) await _map.ExportPngAsync(); }
+
+    // ── Route ─────────────────────────────────────────────────────────────────
+    private void ApplyPreset(RoutePreset p)
+    {
+        _routeFromLat = p.FromLat; _routeFromLon = p.FromLon;
+        _routeToLat   = p.ToLat;   _routeToLon   = p.ToLon;
+        StateHasChanged();
+    }
+
+    private async Task DrawRoute()
+    {
+        if (!CanDrawRoute || _map is null) return;
+        var coords = new List<SgMapCoord>
+        {
+            new() { Latitude=_routeFromLat!.Value, Longitude=_routeFromLon!.Value },
+            new() { Latitude=_routeToLat!.Value,   Longitude=_routeToLon!.Value   },
+        };
+        await _map.DrawRouteAsync("main-route", coords, _routeColor, 4, _routeDashed);
+        _routeDrawn = true;
+        _routeDistanceKm = Haversine(_routeFromLat.Value, _routeFromLon.Value, _routeToLat.Value, _routeToLon.Value);
+        StateHasChanged();
+    }
+
+    private async Task ClearRoute()
+    {
+        if (_map is null) return;
+        await _map.ClearRouteAsync("main-route");
+        _routeDrawn = false; _routeDistanceKm = 0;
+        StateHasChanged();
+    }
+
+    private static double Haversine(double lat1, double lon1, double lat2, double lon2)
+    {
+        const double R = 6371;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.Sin(dLat/2)*Math.Sin(dLat/2) +
+                Math.Cos(lat1*Math.PI/180)*Math.Cos(lat2*Math.PI/180)*
+                Math.Sin(dLon/2)*Math.Sin(dLon/2);
+        return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1-a));
+    }
+
+    // ── Events ────────────────────────────────────────────────────────────────
+    private void OnMarkerClick(SgMapMarkerClickEventArgs e) { _selectedMarker=e; _lastMapClick=null; StateHasChanged(); }
+    private void OnMapClick(SgMapClickEventArgs e)          { _lastMapClick=e; _selectedMarker=null; StateHasChanged(); }
+    private void OnViewChanged(SgMapViewChangedEventArgs e) { _viewLat=e.CenterLat; _viewLon=e.CenterLon; _viewZoom=e.Zoom; StateHasChanged(); }
+
+    protected override void OnInitialized() { _polylines=_routePolyline; _polygons=_zonePolygon; }
+}

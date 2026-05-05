@@ -1,0 +1,681 @@
+@namespace SuperUI.Components
+@using System.Globalization
+
+<div class="sg-warehouse @CssClass"
+     style="height: @Height; width: @Width;"
+     @attributes="AdditionalAttributes">
+
+    @if (Layout is null)
+    {
+        <div class="sg-wh-empty">
+            <svg viewBox="0 0 24 24" width="42" height="42" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.35">
+                <path d="M3 7l9-4 9 4v10l-9 4-9-4z"/>
+                <path d="M3 7l9 4 9-4M12 11v10"/>
+            </svg>
+            <p>Нет данных склада</p>
+        </div>
+    }
+    else
+    {
+        @if (ShowToolbar)
+        {
+            <div class="sg-wh-toolbar" role="toolbar">
+                @if (_focusedRack is not null)
+                {
+                    <button type="button" class="sg-wh-tool sg-wh-tool-back" @onclick="ExitRack" title="Назад">
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M10.7 12.7 6 8l4.7-4.7 1.4 1.4L8.83 8l3.27 3.3z"/>
+                        </svg>
+                        <span>К плану</span>
+                    </button>
+                    <div class="sg-wh-rack-title">
+                        <span class="sg-wh-rack-code">@_focusedRack.Code</span>
+                        <span class="sg-wh-rack-meta">@(_focusedRack.Levels) ярусов · @(_focusedRack.CellsPerLevel) поз.</span>
+                    </div>
+                }
+                else
+                {
+                    <span class="sg-wh-title">@Layout.Name</span>
+                }
+
+                <div class="sg-wh-spacer"></div>
+
+                <button type="button" class="sg-wh-tool" @onclick="ZoomOut" title="Уменьшить">
+                    <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M4 7.25h8v1.5H4z"/></svg>
+                </button>
+                <span class="sg-wh-zoom-label">@((int)(_zoom * 100))%</span>
+                <button type="button" class="sg-wh-tool" @onclick="ZoomIn" title="Увеличить">
+                    <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M7.25 4h1.5v3.25H12v1.5H8.75V12h-1.5V8.75H4v-1.5h3.25z"/></svg>
+                </button>
+                <button type="button" class="sg-wh-tool" @onclick="FitView" title="Вписать">
+                    <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M1 1h4v1.5H2.5V5H1V1Zm10 0h4v4h-1.5V2.5H11V1ZM1 11h1.5v2.5H5V15H1v-4Zm14 0v4h-4v-1.5h2.5V11H15Z"/></svg>
+                </button>
+            </div>
+        }
+
+        <div class="sg-wh-canvas" @ref="_canvasRef"
+             @onwheel="OnWheel" @onwheel:preventDefault="true"
+             @onmousemove="OnMouseMove" @onmouseleave="OnMouseLeave"
+             @onmousedown="OnMouseDown" @onmouseup="OnMouseUp">
+            @if (_focusedRack is null)
+            {
+                @RenderFloor()
+            }
+            else
+            {
+                @RenderRackDetail(_focusedRack)
+            }
+
+            @if (_tip is not null)
+            {
+                <div class="sg-wh-tip" style="left:@(_tipX.ToString("F0", CultureInfo.InvariantCulture))px; top:@(_tipY.ToString("F0", CultureInfo.InvariantCulture))px;">
+                    @((MarkupString)_tip)
+                </div>
+            }
+        </div>
+
+        @if (Options?.ShowLegend ?? true)
+        {
+            <div class="sg-wh-legend">
+                @foreach (var item in BuildLegend())
+                {
+                    <div class="sg-wh-legend-item">
+                        <span class="sg-wh-legend-swatch" style="background:@item.Color"></span>
+                        <span>@item.Label</span>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+
+    [Parameter] public SgWhLayout? Layout { get; set; }
+    [Parameter] public SgWarehouseOptions? Options { get; set; }
+    [Parameter] public string Height { get; set; } = "560px";
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+    [Parameter] public string? CssClass { get; set; }
+
+    [Parameter] public EventCallback<SgWhCellEventArgs> OnCellClick { get; set; }
+    [Parameter] public EventCallback<SgWhRackEventArgs>  OnRackClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private double _zoom = 1.0;
+    private double _panX, _panY;
+    private bool _isPanning;
+    private double _panStartX, _panStartY;
+    private double _panOriginX, _panOriginY;
+
+    private SgWhRack? _focusedRack;
+    private string? _tip;
+    private double _tipX, _tipY;
+
+    private const double ViewW = 1200, ViewH = 760;
+
+    protected override void OnParametersSet()
+    {
+        if (Options?.FocusRackId is not null && _focusedRack?.Id != Options.FocusRackId)
+        {
+            _focusedRack = Layout?.Racks.FirstOrDefault(r => r.Id == Options.FocusRackId);
+            ResetView();
+        }
+    }
+
+    public void FocusRack(string rackId)
+    {
+        _focusedRack = Layout?.Racks.FirstOrDefault(r => r.Id == rackId);
+        ResetView();
+        StateHasChanged();
+    }
+
+    public void ExitRack()
+    {
+        _focusedRack = null;
+        ResetView();
+        StateHasChanged();
+    }
+
+    public void ZoomIn()  { _zoom = Math.Min(4.0, _zoom * 1.2); StateHasChanged(); }
+    public void ZoomOut() { _zoom = Math.Max(0.4, _zoom / 1.2); StateHasChanged(); }
+    public void FitView() { ResetView(); StateHasChanged(); }
+
+    private void ResetView() { _zoom = 1.0; _panX = 0; _panY = 0; }
+
+    private void OnWheel(WheelEventArgs e)
+    {
+        var dir = e.DeltaY > 0 ? -1 : 1;
+        var n = Math.Max(0.4, Math.Min(4.0, _zoom + dir * 0.1));
+        _zoom = n;
+    }
+
+    private void OnMouseDown(MouseEventArgs e)
+    {
+        if (e.Button != 0) return;
+        _isPanning = true;
+        _panStartX = e.ClientX; _panStartY = e.ClientY;
+        _panOriginX = _panX;    _panOriginY = _panY;
+    }
+    private void OnMouseUp(MouseEventArgs e)   => _isPanning = false;
+    private void OnMouseLeave(MouseEventArgs e) { _isPanning = false; _tip = null; }
+    private void OnMouseMove(MouseEventArgs e)
+    {
+        if (_isPanning)
+        {
+            _panX = _panOriginX + (e.ClientX - _panStartX);
+            _panY = _panOriginY + (e.ClientY - _panStartY);
+        }
+    }
+
+    private RenderFragment RenderFloor() => __builder =>
+    {
+        var l = Layout!;
+        var sx = ViewW / l.Width;
+        var sy = ViewH / l.Height;
+        var s  = Math.Min(sx, sy);
+        var ofX = (ViewW - l.Width  * s) / 2;
+        var ofY = (ViewH - l.Height * s) / 2;
+
+        var tx = ofX + _panX;
+        var ty = ofY + _panY;
+        var ts = s * _zoom;
+
+        <svg class="sg-wh-svg" viewBox="@($"0 0 {ViewW.ToString(CultureInfo.InvariantCulture)} {ViewH.ToString(CultureInfo.InvariantCulture)}")" preserveAspectRatio="xMidYMid meet">
+            @if (Options?.ShowGrid ?? true)
+            {
+                <defs>
+                    <pattern id="@($"sg-wh-grid-{_gridId}")" width="30" height="30" patternUnits="userSpaceOnUse">
+                        <path d="M 30 0 L 0 0 0 30" fill="none" stroke="rgba(15,23,42,0.05)" stroke-width="1"/>
+                    </pattern>
+                </defs>
+                <rect width="@F(ViewW)" height="@F(ViewH)" fill="@($"url(#sg-wh-grid-{_gridId})")" />
+            }
+
+            <g transform="@($"translate({F(tx)},{F(ty)}) scale({F(ts)})")">
+
+                <rect x="0" y="0" width="@F(l.Width)" height="@F(l.Height)"
+                      fill="#fbfdff" stroke="#c7d2e0" stroke-width="@F(2 / ts)" rx="6"/>
+
+                @foreach (var a in l.Aisles)
+                {
+                    <g>
+                        <rect x="@F(a.X)" y="@F(a.Y)" width="@F(a.Width)" height="@F(a.Height)"
+                              fill="#eef2f7" stroke="#cbd5e1" stroke-width="@F(0.5 / ts)" stroke-dasharray="@F(4/ts),@F(3/ts)"/>
+                        @if ((Options?.ShowAisleLabels ?? true) && !string.IsNullOrEmpty(a.Label) && a.Width > 60)
+                        {
+                            @((MarkupString)$"<text x=\"{F(a.X + a.Width / 2)}\" y=\"{F(a.Y + a.Height / 2 + 4)}\" text-anchor=\"middle\" font-size=\"{F(12 / Math.Max(0.7, ts))}\" fill=\"#94a3b8\" font-weight=\"600\" style=\"user-select:none;pointer-events:none\">{System.Net.WebUtility.HtmlEncode(a.Label!)}</text>")
+                        }
+                    </g>
+                }
+
+                @foreach (var z in l.Zones)
+                {
+                    var zc = ZoneFill(z.Type);
+                    <g>
+                        <rect x="@F(z.X)" y="@F(z.Y)" width="@F(z.Width)" height="@F(z.Height)"
+                              fill="@(z.Color ?? zc.Fill)" stroke="@zc.Stroke" stroke-width="@F(1.5 / ts)"
+                              opacity="0.55" rx="@F(4)"/>
+                        @((MarkupString)$"<text x=\"{F(z.X + 8)}\" y=\"{F(z.Y + 16)}\" font-size=\"{F(11 / Math.Max(0.7, ts))}\" font-weight=\"700\" fill=\"{zc.Text}\" style=\"user-select:none;pointer-events:none;letter-spacing:0.5px;text-transform:uppercase\">{System.Net.WebUtility.HtmlEncode(z.Name)}</text>")
+                    </g>
+                }
+
+                @foreach (var r in l.Racks)
+                {
+                    var stats = ComputeRackStats(r);
+                    var fill  = RackFill(r, stats);
+
+                    <g class="sg-wh-rack" @onclick="@(() => OnRackClicked(r))"
+                       @onmouseenter="@(e => ShowRackTip(e, r, stats))"
+                       @onmouseleave="@HideTip">
+                        <rect x="@F(r.X)" y="@F(r.Y)" width="@F(r.Width)" height="@F(r.Height)"
+                              fill="@fill" stroke="#1e293b" stroke-width="@F(1.2 / ts)" rx="@F(2)"/>
+
+                        @{
+                            var cw = r.Width / Math.Max(1, r.CellsPerLevel);
+                        }
+                        @for (var i = 1; i < r.CellsPerLevel; i++)
+                        {
+                            <line x1="@F(r.X + cw * i)" y1="@F(r.Y)" x2="@F(r.X + cw * i)" y2="@F(r.Y + r.Height)"
+                                  stroke="rgba(255,255,255,0.55)" stroke-width="@F(0.6 / ts)"/>
+                        }
+
+                        @if ((Options?.ShowOccupancyBar ?? true) && stats.Total > 0)
+                        {
+                            var pct = stats.OccupancyPct;
+                            var barColor = pct > 90 ? "#dc2626" : pct > 70 ? "#f59e0b" : "#16a34a";
+                            <rect x="@F(r.X)" y="@F(r.Y - 4 / ts)" width="@F(r.Width)" height="@F(3 / ts)" fill="rgba(15,23,42,0.18)" rx="@F(1.5/ts)"/>
+                            <rect x="@F(r.X)" y="@F(r.Y - 4 / ts)" width="@F(r.Width * pct / 100.0)" height="@F(3 / ts)" fill="@barColor" rx="@F(1.5/ts)"/>
+                        }
+
+                        @if ((Options?.ShowLabels ?? true) && r.Width > 36 && r.Height > 18)
+                        {
+                            @((MarkupString)$"<text x=\"{F(r.X + r.Width / 2)}\" y=\"{F(r.Y + r.Height / 2 + 4)}\" text-anchor=\"middle\" font-size=\"{F(Math.Max(8, Math.Min(14, r.Width / 4)) / Math.Max(0.7, ts))}\" font-weight=\"800\" fill=\"#0f172a\" style=\"user-select:none;pointer-events:none;text-shadow:0 1px 0 rgba(255,255,255,0.6)\">{System.Net.WebUtility.HtmlEncode(r.Code)}</text>")
+                        }
+
+                        @if (r.Temperature != SgWhTemperature.Ambient && r.Width > 30)
+                        {
+                            @((MarkupString)$"<text x=\"{F(r.X + 6)}\" y=\"{F(r.Y + 12)}\" font-size=\"{F(11 / Math.Max(0.7, ts))}\" style=\"user-select:none;pointer-events:none\">{System.Net.WebUtility.HtmlEncode(TempIcon(r.Temperature))}</text>")
+                        }
+                    </g>
+                }
+            </g>
+        </svg>
+    };
+
+    private RenderFragment RenderRackDetail(SgWhRack r) => __builder =>
+    {
+        const double pad   = 60;
+        const double topPad = 80;
+        var gridW = ViewW - pad * 2;
+        var gridH = ViewH - topPad - pad;
+
+        var cols = Math.Max(1, r.CellsPerLevel);
+        var rows = Math.Max(1, r.Levels);
+
+        var cellW = gridW / cols;
+        var cellH = gridH / rows;
+
+        var stats = ComputeRackStats(r);
+        var ts = _zoom;
+
+        <svg class="sg-wh-svg" viewBox="@($"0 0 {ViewW.ToString(CultureInfo.InvariantCulture)} {ViewH.ToString(CultureInfo.InvariantCulture)}")" preserveAspectRatio="xMidYMid meet">
+
+            <g transform="translate(@F(pad),20)">
+                @((MarkupString)$"<text x=\"0\" y=\"14\" font-size=\"14\" font-weight=\"800\" fill=\"#0f172a\">Стойка {System.Net.WebUtility.HtmlEncode(r.Code)}</text>")
+                @((MarkupString)$"<text x=\"0\" y=\"34\" font-size=\"11\" fill=\"#64748b\">{r.Levels} ярусов · {r.CellsPerLevel} позиций · {System.Net.WebUtility.HtmlEncode(TempLabel(r.Temperature))}</text>")
+
+                @{ var kpiX = ViewW - pad * 2 - 360; }
+                <g transform="@($"translate({F(kpiX)},0)")">
+                    @RenderKpiBox(0,   "Занято",   $"{stats.Occupied}/{stats.Total}", "#0369a1")
+                    @RenderKpiBox(120, "Заполн.",  $"{stats.OccupancyPct:F0}%",       OccupancyColor(stats.OccupancyPct))
+                    @RenderKpiBox(240, "Резерв",   stats.Reserved.ToString(),         "#a16207")
+                </g>
+            </g>
+
+            <g transform="@($"translate({F(pad)},{F(topPad)}) scale({F(ts)}) translate({F(_panX/ts)},{F(_panY/ts)})")">
+
+                <rect x="0" y="0" width="@F(gridW)" height="@F(gridH)" fill="#f8fafc" stroke="#cbd5e1" stroke-width="@F(1.5/ts)" rx="6"/>
+
+                @for (var L = 0; L < rows; L++)
+                {
+                    var topLevel = rows - 1 - L;
+                    var y = L * cellH;
+                    @((MarkupString)$"<text x=\"{F(-12)}\" y=\"{F(y + cellH / 2 + 4)}\" text-anchor=\"end\" font-size=\"{F(12 / Math.Max(0.7, ts))}\" font-weight=\"700\" fill=\"#475569\">Я{topLevel + 1}</text>")
+                }
+
+                @for (var P = 0; P < cols; P++)
+                {
+                    var x = P * cellW;
+                    @((MarkupString)$"<text x=\"{F(x + cellW / 2)}\" y=\"{F(-10)}\" text-anchor=\"middle\" font-size=\"{F(11 / Math.Max(0.7, ts))}\" font-weight=\"700\" fill=\"#475569\">{P + 1:00}</text>")
+                }
+
+                @for (var L = 0; L < rows; L++)
+                {
+                    var topLevel = rows - 1 - L;
+                    for (var P = 0; P < cols; P++)
+                    {
+                        var cell = r.Cells.FirstOrDefault(c => c.Level == topLevel && c.Position == P)
+                                   ?? new SgWhCell { Level = topLevel, Position = P, Status = SgWhCellStatus.Empty };
+
+                        var x = P * cellW;
+                        var y = L * cellH;
+                        var fill = CellFill(cell, r);
+                        var stroke = CellStroke(cell);
+                        var highlighted = IsHighlighted(cell);
+
+                        var cellLocal = cell;
+                        var rackLocal = r;
+
+                        <g class="sg-wh-cell" @onclick="@(() => OnCellClicked(rackLocal, cellLocal))"
+                           @onmouseenter="@(e => ShowCellTip(e, rackLocal, cellLocal))"
+                           @onmouseleave="@HideTip">
+                            <rect x="@F(x + 2)" y="@F(y + 2)" width="@F(cellW - 4)" height="@F(cellH - 4)"
+                                  fill="@fill" stroke="@stroke" stroke-width="@F((highlighted ? 2.5 : 1.2) / ts)"
+                                  rx="@F(4)"/>
+
+                            @if (cell.Capacity is > 0 && cell.Quantity is not null)
+                            {
+                                var pct = Math.Clamp((cell.Quantity ?? 0) / (double)cell.Capacity.Value, 0, 1);
+                                var bColor = pct > 0.85 ? "#dc2626" : pct > 0.6 ? "#f59e0b" : "#16a34a";
+                                <rect x="@F(x + 4)" y="@F(y + cellH - 8)" width="@F(cellW - 8)" height="@F(3)" fill="rgba(15,23,42,0.15)" rx="@F(1.5)"/>
+                                <rect x="@F(x + 4)" y="@F(y + cellH - 8)" width="@F((cellW - 8) * pct)" height="@F(3)" fill="@bColor" rx="@F(1.5)"/>
+                            }
+
+                            @if (!string.IsNullOrEmpty(cell.Sku) && cellW > 40 && cellH > 30)
+                            {
+                                @((MarkupString)$"<text x=\"{F(x + cellW / 2)}\" y=\"{F(y + cellH / 2 - 4)}\" text-anchor=\"middle\" font-size=\"{F(Math.Min(12, cellW / 6) / Math.Max(0.7, ts))}\" font-weight=\"800\" fill=\"#0f172a\" style=\"user-select:none;pointer-events:none\">{System.Net.WebUtility.HtmlEncode(cell.Sku!)}</text>")
+                                if (cell.Quantity is not null)
+                                {
+                                    var qtyText = $"{cell.Quantity}{(cell.Capacity is not null ? "/" + cell.Capacity : "")}";
+                                    @((MarkupString)$"<text x=\"{F(x + cellW / 2)}\" y=\"{F(y + cellH / 2 + 10)}\" text-anchor=\"middle\" font-size=\"{F(Math.Min(10, cellW / 7) / Math.Max(0.7, ts))}\" fill=\"#475569\" style=\"user-select:none;pointer-events:none\">{System.Net.WebUtility.HtmlEncode(qtyText)}</text>")
+                                }
+                            }
+                            else if (cell.Status == SgWhCellStatus.Empty)
+                            {
+                                @((MarkupString)$"<text x=\"{F(x + cellW / 2)}\" y=\"{F(y + cellH / 2 + 4)}\" text-anchor=\"middle\" font-size=\"{F(Math.Min(11, cellW / 8) / Math.Max(0.7, ts))}\" fill=\"#cbd5e1\" style=\"user-select:none;pointer-events:none\">пусто</text>")
+                            }
+
+                            @if (cell.Abc != SgWhAbcClass.None && cellW > 36)
+                            {
+                                var abcColor = AbcColor(cell.Abc);
+                                <circle cx="@F(x + cellW - 10)" cy="@F(y + 10)" r="@F(7)" fill="@abcColor"/>
+                                @((MarkupString)$"<text x=\"{F(x + cellW - 10)}\" y=\"{F(y + 13)}\" text-anchor=\"middle\" font-size=\"{F(9 / Math.Max(0.7, ts))}\" font-weight=\"900\" fill=\"#fff\" style=\"user-select:none;pointer-events:none\">{cell.Abc}</text>")
+                            }
+
+                            @if ((cell.Status is SgWhCellStatus.Damaged or SgWhCellStatus.Expired or SgWhCellStatus.Blocked or SgWhCellStatus.Reserved) && cellW > 36)
+                            {
+                                @((MarkupString)$"<text x=\"{F(x + 10)}\" y=\"{F(y + 13)}\" font-size=\"{F(11 / Math.Max(0.7, ts))}\" style=\"user-select:none;pointer-events:none\">{System.Net.WebUtility.HtmlEncode(StatusIcon(cell.Status))}</text>")
+                            }
+                        </g>
+                    }
+                }
+            </g>
+        </svg>
+    };
+
+    private RenderFragment RenderKpiBox(double dx, string label, string value, string color) => __builder =>
+    {
+        <g transform="@($"translate({F(dx)},0)")">
+            <rect x="0" y="0" width="110" height="40" rx="6" fill="rgba(15,23,42,0.04)" stroke="rgba(15,23,42,0.08)"/>
+            @((MarkupString)$"<text x=\"10\" y=\"16\" font-size=\"10\" fill=\"#64748b\" font-weight=\"600\" style=\"text-transform:uppercase;letter-spacing:0.5px\">{System.Net.WebUtility.HtmlEncode(label)}</text>")
+            @((MarkupString)$"<text x=\"10\" y=\"33\" font-size=\"15\" font-weight=\"800\" fill=\"{color}\">{System.Net.WebUtility.HtmlEncode(value)}</text>")
+        </g>
+    };
+
+    private record RackStats(int Total, int Occupied, int Reserved, int Empty, double OccupancyPct);
+
+    private RackStats ComputeRackStats(SgWhRack r)
+    {
+        var total = r.Levels * r.CellsPerLevel;
+        var occ   = r.Cells.Count(c => c.Status is SgWhCellStatus.Occupied or SgWhCellStatus.Picking);
+        var res   = r.Cells.Count(c => c.Status == SgWhCellStatus.Reserved);
+        var emp   = total - r.Cells.Count(c => c.Status != SgWhCellStatus.Empty);
+        var pct   = total == 0 ? 0 : (occ + res) * 100.0 / total;
+        return new(total, occ, res, emp, pct);
+    }
+
+    private string CellFill(SgWhCell c, SgWhRack r)
+    {
+        var mode = Options?.ColorMode ?? SgWhColorMode.Status;
+        return mode switch
+        {
+            SgWhColorMode.Status      => StatusFill(c.Status),
+            SgWhColorMode.Occupancy   => OccupancyFill(c),
+            SgWhColorMode.Abc         => c.Status == SgWhCellStatus.Empty ? "#f1f5f9" : AbcFill(c.Abc),
+            SgWhColorMode.Turnover    => TurnoverFill(c.Turnover30d),
+            SgWhColorMode.Temperature => TempFill(r.Temperature),
+            SgWhColorMode.Zone        => ZoneFill(r.ZoneId is not null ? Layout?.Zones.FirstOrDefault(z => z.Id == r.ZoneId)?.Type ?? SgWhZoneType.Storage : SgWhZoneType.Storage).Fill,
+            _ => StatusFill(c.Status),
+        };
+    }
+
+    private string CellStroke(SgWhCell c) => c.Status switch
+    {
+        SgWhCellStatus.Occupied => "#0369a1",
+        SgWhCellStatus.Reserved => "#a16207",
+        SgWhCellStatus.Picking  => "#7c3aed",
+        SgWhCellStatus.Blocked  => "#475569",
+        SgWhCellStatus.Damaged  => "#b91c1c",
+        SgWhCellStatus.Expired  => "#be185d",
+        _ => "#cbd5e1",
+    };
+
+    private string RackFill(SgWhRack r, RackStats stats)
+    {
+        var mode = Options?.ColorMode ?? SgWhColorMode.Status;
+        if (mode == SgWhColorMode.Temperature) return TempFill(r.Temperature);
+        if (mode == SgWhColorMode.Zone)
+        {
+            var z = Layout?.Zones.FirstOrDefault(z => z.Id == r.ZoneId);
+            return z is null ? "#cbd5e1" : ZoneFill(z.Type).Fill;
+        }
+        return OccupancyShade(stats.OccupancyPct);
+    }
+
+    private static string OccupancyShade(double pct) => pct switch
+    {
+        >= 90 => "#fecaca",
+        >= 70 => "#fed7aa",
+        >= 40 => "#bae6fd",
+        > 0   => "#dcfce7",
+        _     => "#f1f5f9",
+    };
+
+    private static string OccupancyColor(double pct) => pct switch
+    {
+        >= 90 => "#dc2626",
+        >= 70 => "#d97706",
+        >= 40 => "#0369a1",
+        > 0   => "#15803d",
+        _     => "#64748b",
+    };
+
+    private static string StatusFill(SgWhCellStatus s) => s switch
+    {
+        SgWhCellStatus.Empty    => "#f8fafc",
+        SgWhCellStatus.Occupied => "#dbeafe",
+        SgWhCellStatus.Reserved => "#fef3c7",
+        SgWhCellStatus.Picking  => "#ede9fe",
+        SgWhCellStatus.Blocked  => "#e2e8f0",
+        SgWhCellStatus.Damaged  => "#fecaca",
+        SgWhCellStatus.Expired  => "#fbcfe8",
+        _ => "#f8fafc",
+    };
+
+    private static string OccupancyFill(SgWhCell c)
+    {
+        if (c.Capacity is null or 0 || c.Quantity is null) return c.Status == SgWhCellStatus.Empty ? "#f1f5f9" : "#dbeafe";
+        var pct = Math.Clamp((c.Quantity ?? 0) / (double)c.Capacity.Value, 0, 1);
+        return pct switch
+        {
+            >= 0.9 => "#fecaca",
+            >= 0.7 => "#fed7aa",
+            >= 0.4 => "#bae6fd",
+            > 0    => "#dcfce7",
+            _      => "#f1f5f9",
+        };
+    }
+
+    private static string AbcFill(SgWhAbcClass a) => a switch
+    {
+        SgWhAbcClass.A => "#fee2e2",
+        SgWhAbcClass.B => "#fef3c7",
+        SgWhAbcClass.C => "#dcfce7",
+        _ => "#f1f5f9",
+    };
+
+    private static string AbcColor(SgWhAbcClass a) => a switch
+    {
+        SgWhAbcClass.A => "#dc2626",
+        SgWhAbcClass.B => "#ca8a04",
+        SgWhAbcClass.C => "#16a34a",
+        _ => "#64748b",
+    };
+
+    private static string TurnoverFill(int? t)
+    {
+        if (t is null) return "#f1f5f9";
+        return t.Value switch
+        {
+            >= 30 => "#fecaca",
+            >= 15 => "#fed7aa",
+            >= 5  => "#bae6fd",
+            > 0   => "#dcfce7",
+            _     => "#f1f5f9",
+        };
+    }
+
+    private static string TempFill(SgWhTemperature t) => t switch
+    {
+        SgWhTemperature.Ambient => "#f1f5f9",
+        SgWhTemperature.Cool    => "#bae6fd",
+        SgWhTemperature.Cold    => "#7dd3fc",
+        SgWhTemperature.Frozen  => "#a5b4fc",
+        _ => "#f1f5f9",
+    };
+
+    private static string TempIcon(SgWhTemperature t) => t switch
+    {
+        SgWhTemperature.Cool   => "❄",
+        SgWhTemperature.Cold   => "❄",
+        SgWhTemperature.Frozen => "❄❄",
+        _ => "",
+    };
+
+    private static string TempLabel(SgWhTemperature t) => t switch
+    {
+        SgWhTemperature.Ambient => "обычная t°",
+        SgWhTemperature.Cool    => "+2…+8°C",
+        SgWhTemperature.Cold    => "0…+2°C",
+        SgWhTemperature.Frozen  => "−18°C",
+        _ => "",
+    };
+
+    private static string StatusIcon(SgWhCellStatus s) => s switch
+    {
+        SgWhCellStatus.Reserved => "⏱",
+        SgWhCellStatus.Picking  => "⇡",
+        SgWhCellStatus.Blocked  => "⛔",
+        SgWhCellStatus.Damaged  => "⚠",
+        SgWhCellStatus.Expired  => "☠",
+        _ => "",
+    };
+
+    private (string Fill, string Stroke, string Text) ZoneFill(SgWhZoneType t) => t switch
+    {
+        SgWhZoneType.Storage    => ("#e0f2fe", "#7dd3fc", "#0369a1"),
+        SgWhZoneType.Receiving  => ("#dcfce7", "#86efac", "#15803d"),
+        SgWhZoneType.Shipping   => ("#fef3c7", "#fcd34d", "#a16207"),
+        SgWhZoneType.Picking    => ("#ede9fe", "#c4b5fd", "#6d28d9"),
+        SgWhZoneType.Staging    => ("#fae8ff", "#e9d5ff", "#a21caf"),
+        SgWhZoneType.Returns    => ("#ffe4e6", "#fda4af", "#be123c"),
+        SgWhZoneType.Quarantine => ("#fee2e2", "#fca5a5", "#b91c1c"),
+        SgWhZoneType.Cold       => ("#cffafe", "#67e8f9", "#0e7490"),
+        SgWhZoneType.Hazard     => ("#fef9c3", "#facc15", "#854d0e"),
+        SgWhZoneType.Office     => ("#f1f5f9", "#cbd5e1", "#475569"),
+        _ => ("#f1f5f9", "#cbd5e1", "#475569"),
+    };
+
+    private bool IsHighlighted(SgWhCell c)
+    {
+        var o = Options;
+        if (o is null) return false;
+        if (!string.IsNullOrEmpty(o.HighlightSku) && (c.Sku?.Contains(o.HighlightSku, StringComparison.OrdinalIgnoreCase) ?? false))
+            return true;
+        if (o.HighlightStatuses is { Count: > 0 } && o.HighlightStatuses.Contains(c.Status))
+            return true;
+        return false;
+    }
+
+    private void OnRackClicked(SgWhRack r)
+    {
+        OnRackClick.InvokeAsync(new SgWhRackEventArgs { RackId = r.Id, Rack = r });
+        if (Options?.ReadOnly ?? true) FocusRack(r.Id);
+    }
+
+    private void OnCellClicked(SgWhRack r, SgWhCell c)
+    {
+        OnCellClick.InvokeAsync(new SgWhCellEventArgs
+        {
+            RackId   = r.Id,
+            RackCode = r.Code,
+            CellId   = c.Id,
+            Level    = c.Level,
+            Position = c.Position,
+            Cell     = c,
+        });
+    }
+
+    private void ShowRackTip(MouseEventArgs e, SgWhRack r, RackStats s)
+    {
+        _tip  = $"<b>{r.Code}</b><br/>Заполнено: <b>{s.OccupancyPct:F0}%</b> ({s.Occupied}/{s.Total})<br/>{TempLabel(r.Temperature)}";
+        _tipX = e.OffsetX + 14; _tipY = e.OffsetY + 14;
+    }
+
+    private void ShowCellTip(MouseEventArgs e, SgWhRack r, SgWhCell c)
+    {
+        var lines = new List<string> { $"<b>{r.Code}-{c.Level + 1:00}-{c.Position + 1:00}</b>" };
+        if (!string.IsNullOrEmpty(c.Sku))         lines.Add($"SKU: <b>{c.Sku}</b>");
+        if (!string.IsNullOrEmpty(c.ProductName)) lines.Add(c.ProductName!);
+        if (c.Quantity is not null)               lines.Add($"Кол-во: {c.Quantity}{(c.Capacity is not null ? "/" + c.Capacity : "")}");
+        if (c.Lot is not null)                    lines.Add($"Партия: {c.Lot}");
+        if (c.ExpiresOn is not null)              lines.Add($"Годен до: {c.ExpiresOn:yyyy-MM-dd}");
+        if (c.Abc != SgWhAbcClass.None)           lines.Add($"ABC: {c.Abc}");
+        lines.Add($"Статус: {StatusLabel(c.Status)}");
+        _tip  = string.Join("<br/>", lines);
+        _tipX = e.OffsetX + 14; _tipY = e.OffsetY + 14;
+    }
+
+    private void HideTip() { _tip = null; }
+
+    private static string StatusLabel(SgWhCellStatus s) => s switch
+    {
+        SgWhCellStatus.Empty    => "Свободно",
+        SgWhCellStatus.Occupied => "Занято",
+        SgWhCellStatus.Reserved => "Резерв",
+        SgWhCellStatus.Picking  => "Отбор",
+        SgWhCellStatus.Blocked  => "Заблокировано",
+        SgWhCellStatus.Damaged  => "Брак",
+        SgWhCellStatus.Expired  => "Просрочка",
+        _ => s.ToString(),
+    };
+
+    private record LegendItem(string Color, string Label);
+
+    private IEnumerable<LegendItem> BuildLegend()
+    {
+        var mode = Options?.ColorMode ?? SgWhColorMode.Status;
+        return mode switch
+        {
+            SgWhColorMode.Status => new[]
+            {
+                new LegendItem(StatusFill(SgWhCellStatus.Empty),    "Свободно"),
+                new LegendItem(StatusFill(SgWhCellStatus.Occupied), "Занято"),
+                new LegendItem(StatusFill(SgWhCellStatus.Reserved), "Резерв"),
+                new LegendItem(StatusFill(SgWhCellStatus.Picking),  "Отбор"),
+                new LegendItem(StatusFill(SgWhCellStatus.Blocked),  "Блок"),
+                new LegendItem(StatusFill(SgWhCellStatus.Damaged),  "Брак"),
+                new LegendItem(StatusFill(SgWhCellStatus.Expired),  "Просрочка"),
+            },
+            SgWhColorMode.Occupancy => new[]
+            {
+                new LegendItem("#f1f5f9", "0%"),
+                new LegendItem("#dcfce7", "1–40%"),
+                new LegendItem("#bae6fd", "40–70%"),
+                new LegendItem("#fed7aa", "70–90%"),
+                new LegendItem("#fecaca", "90–100%"),
+            },
+            SgWhColorMode.Abc => new[]
+            {
+                new LegendItem(AbcFill(SgWhAbcClass.A), "A — высокая ценность"),
+                new LegendItem(AbcFill(SgWhAbcClass.B), "B — средняя"),
+                new LegendItem(AbcFill(SgWhAbcClass.C), "C — низкая"),
+            },
+            SgWhColorMode.Turnover => new[]
+            {
+                new LegendItem("#f1f5f9", "0 шт./30 дн"),
+                new LegendItem("#dcfce7", "1–4"),
+                new LegendItem("#bae6fd", "5–14"),
+                new LegendItem("#fed7aa", "15–29"),
+                new LegendItem("#fecaca", "≥ 30"),
+            },
+            SgWhColorMode.Temperature => new[]
+            {
+                new LegendItem(TempFill(SgWhTemperature.Ambient), "Обычная"),
+                new LegendItem(TempFill(SgWhTemperature.Cool),    "+2…+8°C"),
+                new LegendItem(TempFill(SgWhTemperature.Cold),    "0…+2°C"),
+                new LegendItem(TempFill(SgWhTemperature.Frozen),  "−18°C"),
+            },
+            SgWhColorMode.Zone => Layout?.Zones.Select(z => new LegendItem(z.Color ?? ZoneFill(z.Type).Fill, z.Name)).Distinct() ?? Array.Empty<LegendItem>(),
+            _ => Array.Empty<LegendItem>(),
+        };
+    }
+
+    private readonly string _gridId = Guid.NewGuid().ToString("N")[..8];
+
+    private static string F(double v) => v.ToString("F2", CultureInfo.InvariantCulture);
+}

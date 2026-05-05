@@ -296,6 +296,88 @@
         </div>
     </div>
 
+    <!-- SgNumberInput -->
+    <div style="margin-top: 32px;">
+        <h2>SgNumberInput — Числовой ввод с кнопками +/−</h2>
+        <p>Универсальный компонент числового ввода с встроенными кнопками инкремента/декремента, поддержкой шага, ограничений и суффикса единиц измерения.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Примеры использования">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgNumberInput TValue="int?" @bind-Value="@_numInt"
+                                   Label="Целое число"
+                                   Placeholder="0"
+                                   Step="1" />
+                    <SgNumberInput TValue="double?" @bind-Value="@_numDouble"
+                                   Label="Дробное число (шаг 0.1)"
+                                   Placeholder="0.00"
+                                   Step="0.1"
+                                   Decimals="2" />
+                    <SgNumberInput TValue="int?" @bind-Value="@_numClamped"
+                                   Label="С ограничениями (0–100)"
+                                   Min="0" Max="100"
+                                   Step="5" />
+                    <SgNumberInput TValue="double?" @bind-Value="@_numSuffix"
+                                   Label="С суффиксом единиц"
+                                   Suffix="кг"
+                                   Step="0.5"
+                                   Decimals="1" />
+                    <SgNumberInput TValue="int?" @bind-Value="@_numDisabled"
+                                   Label="Отключённый"
+                                   Disabled="true" />
+                    <SgNumberInput TValue="int?" @bind-Value="@_numError"
+                                   Label="С ошибкой валидации"
+                                   ErrorText="Значение вне допустимого диапазона" />
+                </div>
+            </SgCard>
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_numberInputProperties" />
+            </SgCard>
+        </div>
+        <div style="margin-top: 16px;">
+            <SgAlert Variant="SgAlertVariant.Info" Title="Отличие от SgNumberEdit">
+                <ChildContent>
+                    <b>SgNumberInput</b> — самостоятельный компонент с кнопками +/− встроенными в поле ввода.
+                    Поддерживает любой числовой тип (<code>int?</code>, <code>double?</code>, <code>decimal?</code> и т.д.) через generic параметр <code>TValue</code>.
+                    Кнопки автоматически блокируются при достижении Min/Max.
+                </ChildContent>
+            </SgAlert>
+        </div>
+    </div>
+
+    <!-- SgCoordinateInput -->
+    <div style="margin-top: 32px;">
+        <h2>SgCoordinateInput — Ввод координат</h2>
+        <p>Специализированный компонент для ввода географических координат (широта/долгота) с кнопками +/−, выбором шага и форматом DMS.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Примеры использования">
+                <div style="display: flex; flex-direction: column; gap: 20px;">
+                    <SgCoordinateInput Label="Координаты (Москва)"
+                                       @bind-Latitude="_coordLat"
+                                       @bind-Longitude="_coordLon"
+                                       OnCoordinateChanged="OnCoordChanged" />
+                    @if (_coordLat.HasValue && _coordLon.HasValue)
+                    {
+                        <div style="font-size: 12px; color: var(--sui-text-secondary); padding: 8px 12px; background: var(--sui-bg-secondary); border-radius: 6px;">
+                            📍 @_coordLat.Value.ToString("F6") , @_coordLon.Value.ToString("F6")
+                        </div>
+                    }
+                    <SgDivider />
+                    <SgCoordinateInput Label="С DMS форматом"
+                                       @bind-Latitude="_coordLat2"
+                                       @bind-Longitude="_coordLon2"
+                                       ShowDms="true" />
+                    <SgCoordinateInput Label="Отключённый"
+                                       Latitude="55.7558"
+                                       Longitude="37.6173"
+                                       Disabled="true" />
+                </div>
+            </SgCard>
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_coordInputProperties" />
+            </SgCard>
+        </div>
+    </div>
+
     <!-- SgDatePicker -->
     <div style="margin-top: 32px;">
         <h2>SgDatePicker - Выбор даты</h2>
@@ -690,6 +772,59 @@
     private double? _doubleValue;
     private int? _clampedValue = 50;
     private int? _suffixValue;
+
+    // NumberInput
+    private int? _numInt = 42;
+    private double? _numDouble = 3.14;
+    private int? _numClamped = 50;
+    private double? _numSuffix = 12.5;
+    private int? _numDisabled = 100;
+    private int? _numError;
+
+    // CoordinateInput
+    private double? _coordLat = 55.7558;
+    private double? _coordLon = 37.6173;
+    private double? _coordLat2;
+    private double? _coordLon2;
+
+    private void OnCoordChanged((double? Lat, double? Lon) coord)
+    {
+        _coordLat = coord.Lat;
+        _coordLon = coord.Lon;
+    }
+
+    private List<PropertyPanelItem> _numberInputProperties = new()
+    {
+        new() { Label = "TValue",       Value = "int?, double?, decimal?…", BadgeText = "Generic",   BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Value",        Value = "TValue?",                  BadgeText = "Bind",      BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Step",         Value = "TValue?",                  BadgeText = "Шаг",       BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Min",          Value = "TValue?",                  BadgeText = "Минимум",   BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Max",          Value = "TValue?",                  BadgeText = "Максимум",  BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Suffix",       Value = "string?",                  BadgeText = "Суффикс",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Decimals",     Value = "int?",                     BadgeText = "Знаки",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Label",        Value = "string?",                  BadgeText = "Метка",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Placeholder",  Value = "string?",                  BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",     Value = "bool",                     BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ReadOnly",     Value = "bool",                     BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ErrorText",    Value = "string?",                  BadgeText = "Ошибка",    BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Hint",         Value = "string?",                  BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Immediate",    Value = "bool (true)",              BadgeText = "Режим",     BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _coordInputProperties = new()
+    {
+        new() { Label = "Latitude",             Value = "double?",  BadgeText = "Широта",    BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Longitude",            Value = "double?",  BadgeText = "Долгота",   BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "LatitudeChanged",      Value = "EventCallback<double?>", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "LongitudeChanged",     Value = "EventCallback<double?>", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "OnCoordinateChanged",  Value = "EventCallback<(Lat, Lon)>", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Label",                Value = "string?",  BadgeText = "Метка",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowDms",              Value = "bool",     BadgeText = "DMS формат",BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowCopyButton",       Value = "bool (true)", BadgeText = "Кнопка", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowClearButton",      Value = "bool (true)", BadgeText = "Кнопка", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",             Value = "bool",     BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ErrorMessage",         Value = "string?",  BadgeText = "Ошибка",    BadgeVariant = SgBadgeVariant.Danger },
+    };
 
     // DatePicker
     private DateTime? _date1;
