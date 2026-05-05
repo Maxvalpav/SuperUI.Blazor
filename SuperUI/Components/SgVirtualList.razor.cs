@@ -177,7 +177,7 @@ namespace SuperUI.Components
             if (firstRender)
             {
                 _objRef = DotNetObjectReference.Create(this);
-                _module = await JS.InvokeAsync<IJSObjectReference>("import", "/_content/SuperUI/superui-virtuallist.js");
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-virtuallist.js");
                 await _module.InvokeVoidAsync("init", _container, _objRef, _topSentinel, _bottomSentinel, UseIntersectionObserver, EndThreshold);
             }
             else if (_module is not null)
