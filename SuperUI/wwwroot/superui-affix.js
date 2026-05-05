@@ -11,7 +11,7 @@ export function attach(host, fixedEl, dotnet, opts) {
         target: opts?.target || null,   // CSS selector for scroll container; null = window
     };
 
-    const scroller = options.target ? document.querySelector(options.target) : window;
+    const scroller = options.target ? (document.querySelector(options.target) || window) : window;
     let active = false;
     let placeholderHeight = 0;
     let rafId = 0;
@@ -46,6 +46,7 @@ export function attach(host, fixedEl, dotnet, opts) {
         } else if (options.offsetBottom !== null) {
             if (hostRect.bottom >= vp.bottom - options.offsetBottom) {
                 shouldFix = true;
+                // distance from bottom of viewport (window coords) to desired position
                 bottom = (window.innerHeight - vp.bottom) + options.offsetBottom;
                 left = hostRect.left;
             }
@@ -154,7 +155,7 @@ function findTarget(selector) {
 
 export function backtopAttach(dotnet, opts) {
     const targetSelector = opts?.target;
-    let target = targetSelector ? document.querySelector(targetSelector) : window;
+    let target = targetSelector ? (document.querySelector(targetSelector) || window) : window;
     const threshold = opts?.threshold ?? 200;
     let visible = false;
     let isDisposed = false;

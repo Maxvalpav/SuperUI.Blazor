@@ -10,11 +10,14 @@ export function attach(bar, first, vertical, min, max, dotnet) {
 
     const onDown = (e) => {
         if (isDisposed || !dotnet) return;
+        if (e.button !== 0) return;
         e.preventDefault();
         const rect = first.getBoundingClientRect();
         const startX = e.clientX, startY = e.clientY;
         const startSize = vertical ? rect.height : rect.width;
-        bar.setPointerCapture?.(e.pointerId);
+
+        // Use pointer capture so move/up fire on bar even outside the window
+        try { bar.setPointerCapture(e.pointerId); } catch { /* noop */ }
 
         const onMove = (ev) => {
             if (isDisposed || !dotnet) return;
@@ -30,12 +33,14 @@ export function attach(bar, first, vertical, min, max, dotnet) {
         };
 
         const onUp = () => {
-            window.removeEventListener('pointermove', onMove);
-            window.removeEventListener('pointerup', onUp);
+            bar.removeEventListener('pointermove', onMove);
+            bar.removeEventListener('pointerup', onUp);
+            bar.removeEventListener('pointercancel', onUp);
         };
 
-        window.addEventListener('pointermove', onMove);
-        window.addEventListener('pointerup', onUp, { once: true });
+        bar.addEventListener('pointermove', onMove);
+        bar.addEventListener('pointerup', onUp, { once: true });
+        bar.addEventListener('pointercancel', onUp, { once: true });
     };
 
     bar._sgOnDown = onDown;
