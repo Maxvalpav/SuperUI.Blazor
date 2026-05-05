@@ -8,11 +8,11 @@ export function attach(root, dotnet, opts) {
 
     let isDisposed = false;
     const cfg = {
-        minWidth: opts?.minWidth ?? 80,
-        minHeight: opts?.minHeight ?? 60,
-        maxWidth: opts?.maxWidth ?? 4000,
-        maxHeight: opts?.maxHeight ?? 4000,
-        disabled: opts?.disabled ?? false,
+        minWidth:     opts?.minWidth     ?? 80,
+        minHeight:    opts?.minHeight    ?? 60,
+        maxWidth:     opts?.maxWidth     ?? 4000,
+        maxHeight:    opts?.maxHeight    ?? 4000,
+        disabled:     opts?.disabled     ?? false,
         liveFeedback: opts?.liveFeedback ?? false,
     };
 
@@ -24,7 +24,8 @@ export function attach(root, dotnet, opts) {
         if (!handle || !root.contains(handle)) return;
         if (e.button !== 0) return;
         e.preventDefault();
-        const dir = handle.getAttribute('data-dir') || 'se';
+
+        const dir  = handle.getAttribute('data-dir') || 'se';
         const rect = root.getBoundingClientRect();
         active = {
             dir,
@@ -32,15 +33,12 @@ export function attach(root, dotnet, opts) {
             startY: e.clientY,
             startW: rect.width,
             startH: rect.height,
-            handle,
         };
 
-        // Use pointer capture on the handle so move/up fire on it even outside the window
-        try { handle.setPointerCapture(e.pointerId); } catch { /* noop */ }
-
-        handle.addEventListener('pointermove', onPointerMove);
-        handle.addEventListener('pointerup', onPointerUp, { once: true });
-        handle.addEventListener('pointercancel', onPointerUp, { once: true });
+        // Listen on document so events keep firing even when cursor leaves the handle
+        document.addEventListener('pointermove', onPointerMove);
+        document.addEventListener('pointerup',   onPointerUp,   { once: true });
+        document.addEventListener('pointercancel', onPointerUp, { once: true });
 
         root.classList.add('sgc-resizable-active');
     }
@@ -55,9 +53,9 @@ export function attach(root, dotnet, opts) {
         if (active.dir.includes('w')) w = active.startW - dx;
         if (active.dir.includes('s')) h = active.startH + dy;
         if (active.dir.includes('n')) h = active.startH - dy;
-        w = Math.max(cfg.minWidth, Math.min(cfg.maxWidth, w));
+        w = Math.max(cfg.minWidth,  Math.min(cfg.maxWidth,  w));
         h = Math.max(cfg.minHeight, Math.min(cfg.maxHeight, h));
-        root.style.width = w + 'px';
+        root.style.width  = w + 'px';
         root.style.height = h + 'px';
         active._w = w;
         active._h = h;
@@ -75,13 +73,10 @@ export function attach(root, dotnet, opts) {
         }
     }
 
-    function onPointerUp(e) {
-        const handle = active?.handle;
-        if (handle) {
-            handle.removeEventListener('pointermove', onPointerMove);
-            handle.removeEventListener('pointerup', onPointerUp);
-            handle.removeEventListener('pointercancel', onPointerUp);
-        }
+    function onPointerUp() {
+        document.removeEventListener('pointermove',   onPointerMove);
+        document.removeEventListener('pointerup',     onPointerUp);
+        document.removeEventListener('pointercancel', onPointerUp);
         if (!active) return;
         root.classList.remove('sgc-resizable-active');
         const w = active._w ?? active.startW;
@@ -95,21 +90,14 @@ export function attach(root, dotnet, opts) {
     root.addEventListener('pointerdown', onPointerDown);
     root._sgResizable = {
         onPointerDown,
-        dispose: function() {
-            isDisposed = true;
-            dotnet = null;
-        }
+        dispose() { isDisposed = true; dotnet = null; }
     };
 }
 
 export function detach(root) {
     if (!root || !root._sgResizable) return;
-    const { onPointerDown } = root._sgResizable;
-
-    if (root._sgResizable.dispose) {
-        root._sgResizable.dispose();
-    }
-
+    const { onPointerDown, dispose } = root._sgResizable;
+    if (dispose) dispose();
     root.removeEventListener('pointerdown', onPointerDown);
     delete root._sgResizable;
 }

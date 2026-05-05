@@ -12,12 +12,11 @@ export function attach(bar, first, vertical, min, max, dotnet) {
         if (isDisposed || !dotnet) return;
         if (e.button !== 0) return;
         e.preventDefault();
-        const rect = first.getBoundingClientRect();
-        const startX = e.clientX, startY = e.clientY;
-        const startSize = vertical ? rect.height : rect.width;
 
-        // Use pointer capture so move/up fire on bar even outside the window
-        try { bar.setPointerCapture(e.pointerId); } catch { /* noop */ }
+        const rect     = first.getBoundingClientRect();
+        const startX   = e.clientX;
+        const startY   = e.clientY;
+        const startSize = vertical ? rect.height : rect.width;
 
         const onMove = (ev) => {
             if (isDisposed || !dotnet) return;
@@ -26,39 +25,31 @@ export function attach(bar, first, vertical, min, max, dotnet) {
             if (next < min) next = min;
             if (next > max) next = max;
             if (vertical) first.style.height = next + 'px';
-            else first.style.width = next + 'px';
-            try {
-                dotnet.invokeMethodAsync('SetSize', next).catch(() => {});
-            } catch { }
+            else          first.style.width  = next + 'px';
+            try { dotnet.invokeMethodAsync('SetSize', next).catch(() => {}); } catch { /* noop */ }
         };
 
         const onUp = () => {
-            bar.removeEventListener('pointermove', onMove);
-            bar.removeEventListener('pointerup', onUp);
-            bar.removeEventListener('pointercancel', onUp);
+            document.removeEventListener('pointermove',   onMove);
+            document.removeEventListener('pointerup',     onUp);
+            document.removeEventListener('pointercancel', onUp);
         };
 
-        bar.addEventListener('pointermove', onMove);
-        bar.addEventListener('pointerup', onUp, { once: true });
-        bar.addEventListener('pointercancel', onUp, { once: true });
+        // Listen on document so events keep firing even when cursor leaves the bar
+        document.addEventListener('pointermove',   onMove);
+        document.addEventListener('pointerup',     onUp, { once: true });
+        document.addEventListener('pointercancel', onUp, { once: true });
     };
 
     bar._sgOnDown = onDown;
-    bar._dispose = function() {
-        isDisposed = true;
-        dotnet = null;
-    };
+    bar._dispose  = function () { isDisposed = true; dotnet = null; };
     bar.addEventListener('pointerdown', bar._sgOnDown);
 }
 
 export function detach(bar) {
-    if (bar) {
-        if (bar._dispose) {
-            bar._dispose();
-        }
-        if (bar._sgOnDown) {
-            bar.removeEventListener('pointerdown', bar._sgOnDown);
-            delete bar._sgOnDown;
-        }
-    }
+    if (!bar) return;
+    if (bar._dispose)   bar._dispose();
+    if (bar._sgOnDown)  bar.removeEventListener('pointerdown', bar._sgOnDown);
+    delete bar._sgOnDown;
+    delete bar._dispose;
 }
