@@ -114,6 +114,13 @@
     /// <summary>Optional explicit list of series labels paired with value selectors.</summary>
     [Parameter] public IReadOnlyList<SgChartSeries<TItem>>? Series { get; set; }
 
+    /// <summary>
+    /// Gets or sets the source URLs for Chart.js and its plugins.
+    /// Override to use local copies or pin specific versions.
+    /// If <c>null</c>, uses the default CDN URLs from <see cref="SgChartSources"/>.
+    /// </summary>
+    [Parameter] public SgChartSources? Sources { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -179,7 +186,7 @@
         try
         {
             var config = BuildChartConfig();
-            await _module.InvokeVoidAsync("initChart", _selfRef, _canvasRef, config);
+            await _module.InvokeVoidAsync("initChart", _selfRef, _canvasRef, config, Sources ?? new SgChartSources());
             CaptureSnapshot();
             _chartReady = true;
             await InvokeAsync(StateHasChanged);
@@ -566,6 +573,7 @@
 
         try
         {
+            _error = null; // clear any previous error before attempting refresh
             var config = BuildChartConfig();
             await _module.InvokeVoidAsync("updateChart", _chartId, config);
             CaptureSnapshot();

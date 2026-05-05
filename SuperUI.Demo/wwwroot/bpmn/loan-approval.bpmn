@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_loan" targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:process id="Process_loan" isExecutable="false" name="Одобрение кредита">
+
+    <bpmn:startEvent id="Loan_Start" name="Заявка&#10;подана">
+      <bpmn:outgoing>Loan_f1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:serviceTask id="Task_score" name="Скоринг&#10;заёмщика">
+      <bpmn:incoming>Loan_f1</bpmn:incoming>
+      <bpmn:outgoing>Loan_f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="GW_score" name="Скоринг&#10;пройден?">
+      <bpmn:incoming>Loan_f2</bpmn:incoming>
+      <bpmn:outgoing>Loan_score_ok</bpmn:outgoing>
+      <bpmn:outgoing>Loan_score_fail</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="End_rejected_score" name="Отказ по&#10;скорингу">
+      <bpmn:incoming>Loan_score_fail</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:parallelGateway id="GW_parallel_check" name="">
+      <bpmn:incoming>Loan_score_ok</bpmn:incoming>
+      <bpmn:outgoing>Loan_to_docs</bpmn:outgoing>
+      <bpmn:outgoing>Loan_to_risk</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:userTask id="Task_docs" name="Проверка&#10;документов">
+      <bpmn:incoming>Loan_to_docs</bpmn:incoming>
+      <bpmn:outgoing>Loan_docs_done</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:serviceTask id="Task_risk" name="Оценка&#10;рисков">
+      <bpmn:incoming>Loan_to_risk</bpmn:incoming>
+      <bpmn:outgoing>Loan_risk_done</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:parallelGateway id="GW_parallel_join" name="">
+      <bpmn:incoming>Loan_docs_done</bpmn:incoming>
+      <bpmn:incoming>Loan_risk_done</bpmn:incoming>
+      <bpmn:outgoing>Loan_to_decision</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:exclusiveGateway id="GW_amount" name="Сумма &gt; 1 млн?">
+      <bpmn:incoming>Loan_to_decision</bpmn:incoming>
+      <bpmn:outgoing>Loan_big</bpmn:outgoing>
+      <bpmn:outgoing>Loan_small</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:userTask id="Task_committee" name="Кредитный&#10;комитет">
+      <bpmn:incoming>Loan_big</bpmn:incoming>
+      <bpmn:outgoing>Loan_committee_done</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:userTask id="Task_manager" name="Решение&#10;менеджера">
+      <bpmn:incoming>Loan_small</bpmn:incoming>
+      <bpmn:outgoing>Loan_manager_done</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="GW_final_merge" name="">
+      <bpmn:incoming>Loan_committee_done</bpmn:incoming>
+      <bpmn:incoming>Loan_manager_done</bpmn:incoming>
+      <bpmn:outgoing>Loan_to_final</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:exclusiveGateway id="GW_approved" name="Одобрено?">
+      <bpmn:incoming>Loan_to_final</bpmn:incoming>
+      <bpmn:outgoing>Loan_approved</bpmn:outgoing>
+      <bpmn:outgoing>Loan_denied</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="Task_disburse" name="Выдача&#10;кредита">
+      <bpmn:incoming>Loan_approved</bpmn:incoming>
+      <bpmn:outgoing>Loan_disburse_done</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_approved" name="Кредит&#10;выдан">
+      <bpmn:incoming>Loan_disburse_done</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:endEvent id="End_denied" name="Кредит&#10;отклонён">
+      <bpmn:incoming>Loan_denied</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Loan_f1"             sourceRef="Loan_Start"          targetRef="Task_score" />
+    <bpmn:sequenceFlow id="Loan_f2"             sourceRef="Task_score"           targetRef="GW_score" />
+    <bpmn:sequenceFlow id="Loan_score_ok"       name="Да"  sourceRef="GW_score"  targetRef="GW_parallel_check" />
+    <bpmn:sequenceFlow id="Loan_score_fail"     name="Нет" sourceRef="GW_score"  targetRef="End_rejected_score" />
+    <bpmn:sequenceFlow id="Loan_to_docs"        sourceRef="GW_parallel_check"    targetRef="Task_docs" />
+    <bpmn:sequenceFlow id="Loan_to_risk"        sourceRef="GW_parallel_check"    targetRef="Task_risk" />
+    <bpmn:sequenceFlow id="Loan_docs_done"      sourceRef="Task_docs"            targetRef="GW_parallel_join" />
+    <bpmn:sequenceFlow id="Loan_risk_done"      sourceRef="Task_risk"            targetRef="GW_parallel_join" />
+    <bpmn:sequenceFlow id="Loan_to_decision"    sourceRef="GW_parallel_join"     targetRef="GW_amount" />
+    <bpmn:sequenceFlow id="Loan_big"            name="Да"  sourceRef="GW_amount" targetRef="Task_committee" />
+    <bpmn:sequenceFlow id="Loan_small"          name="Нет" sourceRef="GW_amount" targetRef="Task_manager" />
+    <bpmn:sequenceFlow id="Loan_committee_done" sourceRef="Task_committee"       targetRef="GW_final_merge" />
+    <bpmn:sequenceFlow id="Loan_manager_done"   sourceRef="Task_manager"         targetRef="GW_final_merge" />
+    <bpmn:sequenceFlow id="Loan_to_final"       sourceRef="GW_final_merge"       targetRef="GW_approved" />
+    <bpmn:sequenceFlow id="Loan_approved"       name="Да"  sourceRef="GW_approved" targetRef="Task_disburse" />
+    <bpmn:sequenceFlow id="Loan_denied"         name="Нет" sourceRef="GW_approved" targetRef="End_denied" />
+    <bpmn:sequenceFlow id="Loan_disburse_done"  sourceRef="Task_disburse"        targetRef="End_approved" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_loan">
+    <bpmndi:BPMNPlane id="BPMNPlane_loan" bpmnElement="Process_loan">
+
+      <bpmndi:BPMNShape id="Loan_Start_di" bpmnElement="Loan_Start">
+        <dc:Bounds x="152" y="272" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="140" y="315" width="60" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_score_di" bpmnElement="Task_score">
+        <dc:Bounds x="240" y="250" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_score_di" bpmnElement="GW_score" isMarkerVisible="true">
+        <dc:Bounds x="395" y="265" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="378" y="322" width="84" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_rejected_score_di" bpmnElement="End_rejected_score">
+        <dc:Bounds x="402" y="162" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="382" y="205" width="76" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_parallel_check_di" bpmnElement="GW_parallel_check">
+        <dc:Bounds x="505" y="265" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_docs_di" bpmnElement="Task_docs">
+        <dc:Bounds x="610" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_risk_di" bpmnElement="Task_risk">
+        <dc:Bounds x="610" y="360" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_parallel_join_di" bpmnElement="GW_parallel_join">
+        <dc:Bounds x="775" y="265" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_amount_di" bpmnElement="GW_amount" isMarkerVisible="true">
+        <dc:Bounds x="885" y="265" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="862" y="322" width="96" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_committee_di" bpmnElement="Task_committee">
+        <dc:Bounds x="990" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_manager_di" bpmnElement="Task_manager">
+        <dc:Bounds x="990" y="360" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_final_merge_di" bpmnElement="GW_final_merge" isMarkerVisible="true">
+        <dc:Bounds x="1155" y="265" width="50" height="50" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="GW_approved_di" bpmnElement="GW_approved" isMarkerVisible="true">
+        <dc:Bounds x="1265" y="265" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1252" y="322" width="76" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Task_disburse_di" bpmnElement="Task_disburse">
+        <dc:Bounds x="1370" y="170" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_approved_di" bpmnElement="End_approved">
+        <dc:Bounds x="1532" y="192" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1516" y="235" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="End_denied_di" bpmnElement="End_denied">
+        <dc:Bounds x="1372" y="362" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1352" y="405" width="76" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Loan_f1_di"             bpmnElement="Loan_f1">            <di:waypoint x="188" y="290"/><di:waypoint x="240" y="290"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_f2_di"             bpmnElement="Loan_f2">            <di:waypoint x="340" y="290"/><di:waypoint x="395" y="290"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_score_ok_di"       bpmnElement="Loan_score_ok">      <di:waypoint x="445" y="290"/><di:waypoint x="505" y="290"/><bpmndi:BPMNLabel><dc:Bounds x="466" y="272" width="14" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_score_fail_di"     bpmnElement="Loan_score_fail">    <di:waypoint x="420" y="265"/><di:waypoint x="420" y="198"/><bpmndi:BPMNLabel><dc:Bounds x="426" y="228" width="22" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_to_docs_di"        bpmnElement="Loan_to_docs">       <di:waypoint x="530" y="265"/><di:waypoint x="530" y="210"/><di:waypoint x="610" y="210"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_to_risk_di"        bpmnElement="Loan_to_risk">       <di:waypoint x="530" y="315"/><di:waypoint x="530" y="400"/><di:waypoint x="610" y="400"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_docs_done_di"      bpmnElement="Loan_docs_done">     <di:waypoint x="710" y="210"/><di:waypoint x="800" y="210"/><di:waypoint x="800" y="265"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_risk_done_di"      bpmnElement="Loan_risk_done">     <di:waypoint x="710" y="400"/><di:waypoint x="800" y="400"/><di:waypoint x="800" y="315"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_to_decision_di"    bpmnElement="Loan_to_decision">   <di:waypoint x="825" y="290"/><di:waypoint x="885" y="290"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_big_di"            bpmnElement="Loan_big">           <di:waypoint x="910" y="265"/><di:waypoint x="910" y="210"/><di:waypoint x="990" y="210"/><bpmndi:BPMNLabel><dc:Bounds x="940" y="234" width="14" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_small_di"          bpmnElement="Loan_small">         <di:waypoint x="910" y="315"/><di:waypoint x="910" y="400"/><di:waypoint x="990" y="400"/><bpmndi:BPMNLabel><dc:Bounds x="936" y="354" width="22" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_committee_done_di" bpmnElement="Loan_committee_done"><di:waypoint x="1090" y="210"/><di:waypoint x="1180" y="210"/><di:waypoint x="1180" y="265"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_manager_done_di"   bpmnElement="Loan_manager_done">  <di:waypoint x="1090" y="400"/><di:waypoint x="1180" y="400"/><di:waypoint x="1180" y="315"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_to_final_di"       bpmnElement="Loan_to_final">      <di:waypoint x="1205" y="290"/><di:waypoint x="1265" y="290"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_approved_di"       bpmnElement="Loan_approved">      <di:waypoint x="1290" y="265"/><di:waypoint x="1290" y="210"/><di:waypoint x="1370" y="210"/><bpmndi:BPMNLabel><dc:Bounds x="1320" y="234" width="14" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_denied_di"         bpmnElement="Loan_denied">        <di:waypoint x="1290" y="315"/><di:waypoint x="1290" y="380"/><di:waypoint x="1372" y="380"/><bpmndi:BPMNLabel><dc:Bounds x="1316" y="344" width="22" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Loan_disburse_done_di"  bpmnElement="Loan_disburse_done"> <di:waypoint x="1470" y="210"/><di:waypoint x="1532" y="210"/></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

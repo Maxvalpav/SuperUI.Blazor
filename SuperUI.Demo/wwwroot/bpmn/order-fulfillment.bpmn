@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  id="Definitions_order" targetNamespace="http://bpmn.io/schema/bpmn">
+
+  <bpmn:process id="Process_order" isExecutable="false" name="Обработка заказа">
+
+    <bpmn:startEvent id="Start_order" name="Заказ&#10;получен">
+      <bpmn:outgoing>Flow_s1</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:userTask id="Task_validate" name="Проверка&#10;заказа">
+      <bpmn:incoming>Flow_s1</bpmn:incoming>
+      <bpmn:outgoing>Flow_12</bpmn:outgoing>
+    </bpmn:userTask>
+
+    <bpmn:exclusiveGateway id="GW_valid" name="Заказ&#10;корректен?">
+      <bpmn:incoming>Flow_12</bpmn:incoming>
+      <bpmn:outgoing>Flow_yes_valid</bpmn:outgoing>
+      <bpmn:outgoing>Flow_no_valid</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="End_invalid" name="Заказ&#10;отклонён">
+      <bpmn:incoming>Flow_no_valid</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:serviceTask id="Task_payment" name="Обработка&#10;платежа">
+      <bpmn:incoming>Flow_yes_valid</bpmn:incoming>
+      <bpmn:outgoing>Flow_23</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="GW_payment" name="Платёж&#10;прошёл?">
+      <bpmn:incoming>Flow_23</bpmn:incoming>
+      <bpmn:outgoing>Flow_pay_ok</bpmn:outgoing>
+      <bpmn:outgoing>Flow_pay_fail</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:endEvent id="End_payment_fail" name="Ошибка&#10;платежа">
+      <bpmn:incoming>Flow_pay_fail</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:parallelGateway id="GW_split" name="">
+      <bpmn:incoming>Flow_pay_ok</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_warehouse</bpmn:outgoing>
+      <bpmn:outgoing>Flow_to_notify</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:serviceTask id="Task_warehouse" name="Сборка&#10;на складе">
+      <bpmn:incoming>Flow_to_warehouse</bpmn:incoming>
+      <bpmn:outgoing>Flow_wh_done</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:sendTask id="Task_notify" name="Уведомление&#10;клиента">
+      <bpmn:incoming>Flow_to_notify</bpmn:incoming>
+      <bpmn:outgoing>Flow_notify_done</bpmn:outgoing>
+    </bpmn:sendTask>
+
+    <bpmn:parallelGateway id="GW_join" name="">
+      <bpmn:incoming>Flow_wh_done</bpmn:incoming>
+      <bpmn:incoming>Flow_notify_done</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_ship</bpmn:outgoing>
+    </bpmn:parallelGateway>
+
+    <bpmn:serviceTask id="Task_ship" name="Отправка&#10;курьером">
+      <bpmn:incoming>Flow_to_ship</bpmn:incoming>
+      <bpmn:outgoing>Flow_to_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="End_shipped" name="Заказ&#10;отправлен">
+      <bpmn:incoming>Flow_to_end</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="Flow_s1"        sourceRef="Start_order"    targetRef="Task_validate" />
+    <bpmn:sequenceFlow id="Flow_12"        sourceRef="Task_validate"  targetRef="GW_valid" />
+    <bpmn:sequenceFlow id="Flow_yes_valid" name="Да" sourceRef="GW_valid" targetRef="Task_payment" />
+    <bpmn:sequenceFlow id="Flow_no_valid"  name="Нет" sourceRef="GW_valid" targetRef="End_invalid" />
+    <bpmn:sequenceFlow id="Flow_23"        sourceRef="Task_payment"   targetRef="GW_payment" />
+    <bpmn:sequenceFlow id="Flow_pay_ok"    name="Успех" sourceRef="GW_payment" targetRef="GW_split" />
+    <bpmn:sequenceFlow id="Flow_pay_fail"  name="Ошибка" sourceRef="GW_payment" targetRef="End_payment_fail" />
+    <bpmn:sequenceFlow id="Flow_to_warehouse" sourceRef="GW_split"    targetRef="Task_warehouse" />
+    <bpmn:sequenceFlow id="Flow_to_notify"    sourceRef="GW_split"    targetRef="Task_notify" />
+    <bpmn:sequenceFlow id="Flow_wh_done"      sourceRef="Task_warehouse" targetRef="GW_join" />
+    <bpmn:sequenceFlow id="Flow_notify_done"  sourceRef="Task_notify"    targetRef="GW_join" />
+    <bpmn:sequenceFlow id="Flow_to_ship"      sourceRef="GW_join"     targetRef="Task_ship" />
+    <bpmn:sequenceFlow id="Flow_to_end"       sourceRef="Task_ship"   targetRef="End_shipped" />
+  </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_order">
+    <bpmndi:BPMNPlane id="BPMNPlane_order" bpmnElement="Process_order">
+
+      <bpmndi:BPMNShape id="Start_order_di" bpmnElement="Start_order">
+        <dc:Bounds x="152" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="136" y="275" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_validate_di" bpmnElement="Task_validate">
+        <dc:Bounds x="240" y="210" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_valid_di" bpmnElement="GW_valid" isMarkerVisible="true">
+        <dc:Bounds x="395" y="225" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="378" y="282" width="84" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="End_invalid_di" bpmnElement="End_invalid">
+        <dc:Bounds x="402" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="386" y="175" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_payment_di" bpmnElement="Task_payment">
+        <dc:Bounds x="500" y="210" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_payment_di" bpmnElement="GW_payment" isMarkerVisible="true">
+        <dc:Bounds x="655" y="225" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="638" y="282" width="84" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="End_payment_fail_di" bpmnElement="End_payment_fail">
+        <dc:Bounds x="662" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="646" y="175" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_split_di" bpmnElement="GW_split">
+        <dc:Bounds x="765" y="225" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_warehouse_di" bpmnElement="Task_warehouse">
+        <dc:Bounds x="870" y="140" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_notify_di" bpmnElement="Task_notify">
+        <dc:Bounds x="870" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="GW_join_di" bpmnElement="GW_join">
+        <dc:Bounds x="1025" y="225" width="50" height="50" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="Task_ship_di" bpmnElement="Task_ship">
+        <dc:Bounds x="1130" y="210" width="100" height="80" />
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNShape id="End_shipped_di" bpmnElement="End_shipped">
+        <dc:Bounds x="1292" y="232" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="1276" y="275" width="68" height="27" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="Flow_s1_di"        bpmnElement="Flow_s1">        <di:waypoint x="188" y="250"/><di:waypoint x="240" y="250"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_12_di"        bpmnElement="Flow_12">        <di:waypoint x="340" y="250"/><di:waypoint x="395" y="250"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_yes_valid_di" bpmnElement="Flow_yes_valid"> <di:waypoint x="445" y="250"/><di:waypoint x="500" y="250"/><bpmndi:BPMNLabel><dc:Bounds x="464" y="232" width="14" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_no_valid_di"  bpmnElement="Flow_no_valid">  <di:waypoint x="420" y="225"/><di:waypoint x="420" y="168"/><bpmndi:BPMNLabel><dc:Bounds x="426" y="193" width="22" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_23_di"        bpmnElement="Flow_23">        <di:waypoint x="600" y="250"/><di:waypoint x="655" y="250"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_pay_ok_di"    bpmnElement="Flow_pay_ok">    <di:waypoint x="705" y="250"/><di:waypoint x="765" y="250"/><bpmndi:BPMNLabel><dc:Bounds x="720" y="232" width="30" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_pay_fail_di"  bpmnElement="Flow_pay_fail">  <di:waypoint x="680" y="225"/><di:waypoint x="680" y="168"/><bpmndi:BPMNLabel><dc:Bounds x="686" y="193" width="30" height="14"/></bpmndi:BPMNLabel></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_warehouse_di" bpmnElement="Flow_to_warehouse"><di:waypoint x="790" y="225"/><di:waypoint x="790" y="180"/><di:waypoint x="870" y="180"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_notify_di"    bpmnElement="Flow_to_notify">   <di:waypoint x="790" y="275"/><di:waypoint x="790" y="340"/><di:waypoint x="870" y="340"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_wh_done_di"      bpmnElement="Flow_wh_done">     <di:waypoint x="970" y="180"/><di:waypoint x="1050" y="180"/><di:waypoint x="1050" y="225"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_notify_done_di"  bpmnElement="Flow_notify_done"> <di:waypoint x="970" y="340"/><di:waypoint x="1050" y="340"/><di:waypoint x="1050" y="275"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_ship_di"      bpmnElement="Flow_to_ship">     <di:waypoint x="1075" y="250"/><di:waypoint x="1130" y="250"/></bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_to_end_di"       bpmnElement="Flow_to_end">      <di:waypoint x="1230" y="250"/><di:waypoint x="1292" y="250"/></bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

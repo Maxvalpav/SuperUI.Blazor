@@ -1,0 +1,365 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-bpmn-container @CssClass"
+     style="height: @Height; width: @Width;"
+     @attributes="AdditionalAttributes">
+    @if (_error is not null)
+    {
+        <div class="sg-bpmn-error" role="alert">
+            <p>@_error</p>
+            <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Bpmn_Retry"]</button>
+        </div>
+    }
+    else
+    {
+        @if (ShowToolbar && _bpmnReady)
+        {
+            <div class="sg-bpmn-toolbar" role="toolbar">
+                @if (Mode == SgBpmnMode.Modeler)
+                {
+                    <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_Undo"]"
+                            @onclick="UndoAsync" aria-label="@Localizer["Bpmn_Undo"]">
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M8 3a5 5 0 1 1-5 5H1a7 7 0 1 0 7-7v2Z"/>
+                        </svg>
+                    </button>
+                    <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_Redo"]"
+                            @onclick="RedoAsync" aria-label="@Localizer["Bpmn_Redo"]">
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M8 3a7 7 0 1 0 7 7h-2a5 5 0 1 1-5-5v2Z"/>
+                        </svg>
+                    </button>
+                }
+                <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_ZoomIn"]"
+                        @onclick="ZoomInAsync" aria-label="@Localizer["Bpmn_ZoomIn"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M6.5 3A3.5 3.5 0 1 0 10 6.5c0 .27-.03.54-.09.8l4.14 4.14-1.41 1.42-4.14-4.14a3.5 3.5 0 0 0-2 .58V6.5H8V5H6.5V3ZM6 4.5v2H4v1h2v2h1v-2h2v-1H7v-2H6Z"/>
+                    </svg>
+                </button>
+                <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_ZoomOut"]"
+                        @onclick="ZoomOutAsync" aria-label="@Localizer["Bpmn_ZoomOut"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M6.5 3A3.5 3.5 0 1 0 10 6.5c0 .27-.03.54-.09.8l4.14 4.14-1.41 1.42-4.14-4.14a3.5 3.5 0 0 0-2 .58V6.5H4V5.5h5.5V5h-3V3h-1ZM4 6.5h5v1H4v-1Z"/>
+                    </svg>
+                </button>
+                <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_ZoomReset"]"
+                        @onclick="ZoomResetAsync" aria-label="@Localizer["Bpmn_ZoomReset"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M8 3a5 5 0 1 1 1.46 3.54l1-1A3.5 3.5 0 1 0 9.5 3H8V1L6 3.5 8 6V3Z"/>
+                    </svg>
+                </button>
+                <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_FitViewport"]"
+                        @onclick="FitViewportAsync" aria-label="@Localizer["Bpmn_FitViewport"]">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M1 1h4v1H2v3H1V1Zm10 0h4v4h-1V2h-3V1ZM1 11h1v3h3v1H1v-4Zm14 0v4h-4v-1h3v-3h1Z"/>
+                    </svg>
+                </button>
+                @if (Mode == SgBpmnMode.Modeler)
+                {
+                    <button type="button" class="sg-bpmn-tool" title="@Localizer["Bpmn_DownloadSvg"]"
+                            @onclick="@(() => DownloadAsync("svg"))" aria-label="@Localizer["Bpmn_DownloadSvg"]">
+                        <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                            <path fill="currentColor" d="M8.5 1v8.6L10.8 7.3l1.4 1.4L8 12.4 3.8 8.7l1.4-1.4 2.3 2.3V1h1Z"/>
+                            <path fill="currentColor" d="M1 13h14v2H1v-2Z"/>
+                        </svg>
+                    </button>
+                }
+            </div>
+        }
+
+        <div id="@_bpmnId"
+             @ref="_canvasRef"
+             class="sg-bpmn-canvas"
+             style="@(_bpmnReady ? null : "visibility:hidden;")"></div>
+
+        @if (!_bpmnReady)
+        {
+            <div class="sg-bpmn-loading" aria-live="polite">
+                <div class="sg-bpmn-skeleton">
+                    <span></span><span></span><span></span><span></span><span></span>
+                </div>
+                <span class="sg-bpmn-loading-text">@Localizer["Bpmn_Loading"]</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgBpmn>? _selfRef;
+    private readonly string _bpmnId = $"sg-bpmn-{Guid.NewGuid():N}";
+    private bool _bpmnReady;
+    private string? _error;
+    private bool _isDisposed;
+    private string? _lastXml;
+    private SgBpmnMode _lastMode;
+    private bool _refreshScheduled;
+    private bool _refreshPending;
+
+    [Parameter] public SgBpmnMode Mode { get; set; } = SgBpmnMode.Modeler;
+    [Parameter] public string? Xml { get; set; }
+    [Parameter] public string Height { get; set; } = "600px";
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+    [Parameter] public SgBpmnSources? Sources { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    [Parameter] public EventCallback<string> OnXmlChanged { get; set; }
+    [Parameter] public EventCallback<SgBpmnElementInfo> OnElementClick { get; set; }
+    [Parameter] public EventCallback<SgBpmnElementInfo> OnElementDblClick { get; set; }
+    [Parameter] public EventCallback<SgBpmnElementInfo> OnSelectionChanged { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!_bpmnReady) return;
+
+        var changed =
+            Mode != _lastMode ||
+            !string.Equals(Xml, _lastXml, StringComparison.Ordinal);
+
+        if (changed && !_refreshScheduled)
+        {
+            _refreshScheduled = true;
+            _ = ScheduleRefreshAsync();
+        }
+    }
+
+    private async Task ScheduleRefreshAsync()
+    {
+        try
+        {
+            await RefreshAsync();
+        }
+        finally
+        {
+            _refreshScheduled = false;
+            if (_refreshPending)
+            {
+                _refreshPending = false;
+                _refreshScheduled = true;
+                _ = ScheduleRefreshAsync();
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-bpmn.js");
+            if (_isDisposed) return;
+            _selfRef = DotNetObjectReference.Create(this);
+            await InitializeBpmnAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception)
+        {
+            _error = Localizer["Bpmn_FailedToLoad"];
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task InitializeBpmnAsync()
+    {
+        if (_module is null || _selfRef is null) return;
+
+        try
+        {
+            var sources = Sources ?? new SgBpmnSources();
+            await _module.InvokeVoidAsync("initBpmn", _selfRef, _canvasRef, _bpmnId, Mode, Xml, sources);
+            CaptureSnapshot();
+            _bpmnReady = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception)
+        {
+            _error = Localizer["Bpmn_FailedToInitialize"];
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void CaptureSnapshot()
+    {
+        _lastXml = Xml;
+        _lastMode = Mode;
+    }
+
+    public async Task RefreshAsync()
+    {
+        if (_module is null || !_bpmnReady)
+        {
+            _refreshPending = true;
+            return;
+        }
+
+        try
+        {
+            var sources = Sources ?? new SgBpmnSources();
+            await _module.InvokeVoidAsync("updateBpmn", _bpmnId, Mode, Xml, sources);
+            CaptureSnapshot();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception)
+        {
+            _error = Localizer["Bpmn_FailedToRefresh"];
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task<string?> GetXmlAsync()
+    {
+        if (_module is null) return null;
+        try { return await _module.InvokeAsync<string?>("getXml", _bpmnId); }
+        catch (JSDisconnectedException) { return null; }
+        catch (TaskCanceledException) { return null; }
+        catch { return null; }
+    }
+
+    public async Task<string?> GetSvgAsync()
+    {
+        if (_module is null) return null;
+        try { return await _module.InvokeAsync<string?>("getSvg", _bpmnId); }
+        catch (JSDisconnectedException) { return null; }
+        catch (TaskCanceledException) { return null; }
+        catch { return null; }
+    }
+
+    public async Task UndoAsync()
+    {
+        if (_module is null || Mode != SgBpmnMode.Modeler) return;
+        try { await _module.InvokeVoidAsync("undo", _bpmnId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task RedoAsync()
+    {
+        if (_module is null || Mode != SgBpmnMode.Modeler) return;
+        try { await _module.InvokeVoidAsync("redo", _bpmnId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task ZoomInAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("zoomIn", _bpmnId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task ZoomOutAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("zoomOut", _bpmnId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task ZoomResetAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("zoomReset", _bpmnId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task FitViewportAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("fitViewport", _bpmnId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task DownloadAsync(string format = "svg")
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("download", _bpmnId, format); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnXmlChangedAsync(string xml)
+    {
+        _lastXml = xml;
+        if (OnXmlChanged.HasDelegate)
+            await OnXmlChanged.InvokeAsync(xml);
+    }
+
+    [JSInvokable]
+    public async Task OnElementClickedAsync(SgBpmnElementInfo element)
+    {
+        if (OnElementClick.HasDelegate)
+            await OnElementClick.InvokeAsync(element);
+    }
+
+    [JSInvokable]
+    public async Task OnElementDblClickedAsync(SgBpmnElementInfo element)
+    {
+        if (OnElementDblClick.HasDelegate)
+            await OnElementDblClick.InvokeAsync(element);
+    }
+
+    [JSInvokable]
+    public async Task OnSelectionChangedAsync(SgBpmnElementInfo? element)
+    {
+        if (OnSelectionChanged.HasDelegate && element is not null)
+            await OnSelectionChanged.InvokeAsync(element);
+    }
+
+    public async Task RetryAsync()
+    {
+        _error = null;
+        _bpmnReady = false;
+        await InvokeAsync(StateHasChanged);
+        await InitializeBpmnAsync();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("dispose", _bpmnId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+        }
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+            _module = null;
+        }
+    }
+}
