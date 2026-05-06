@@ -4,7 +4,7 @@
 <button type="@Type.ToString().ToLowerInvariant()"
         class="sgc-icon-btn @VariantClass @SizeClass @(Round ? "sgc-icon-btn-round" : "") @(Pressed ? "sgc-icon-btn-pressed" : "") @(Active ? "sgc-icon-btn-active" : "") @CssClass"
         style="@Style"
-        disabled="@(Disabled || Loading)"
+        disabled="@(Disabled || Loading || _isDebouncing)"
         title="@Title"
         aria-label="@(AriaLabel ?? Title)"
         aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
@@ -34,6 +34,7 @@
 
 @code {
     private bool _disposed;
+    private bool _isDebouncing;
     private CancellationTokenSource? _debounceCts;
 
     /// <summary>SVG icon markup string.</summary>
@@ -119,7 +120,7 @@
 
     private async Task OnClickAsync(MouseEventArgs e)
     {
-        if (Disabled || Loading) return;
+        if (Disabled || Loading || _isDebouncing) return;
 
         if (IsToggle)
         {
@@ -130,6 +131,12 @@
 
         if (OnClick.HasDelegate)
         {
+            if (DebounceInterval > 0)
+            {
+                _isDebouncing = true;
+                StateHasChanged();
+            }
+
             await OnClick.InvokeAsync(e);
 
             if (DebounceInterval > 0)
@@ -137,8 +144,18 @@
                 _debounceCts?.Cancel();
                 _debounceCts?.Dispose();
                 _debounceCts = new CancellationTokenSource();
-                try { await Task.Delay(DebounceInterval, _debounceCts.Token); }
-                catch (TaskCanceledException) { return; }
+                var token = _debounceCts.Token;
+                try
+                {
+                    await Task.Delay(DebounceInterval, token);
+                }
+                catch (TaskCanceledException)
+                {
+                    return;
+                }
+                if (_disposed || token.IsCancellationRequested) return;
+                _isDebouncing = false;
+                StateHasChanged();
             }
         }
     }
