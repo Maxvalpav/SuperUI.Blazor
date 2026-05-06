@@ -1,0 +1,1102 @@
+@page "/duckdb-demo"
+@using SuperUI.Components
+@using System.Text.Json
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<PageTitle>DuckDB-Wasm SQL — SUI</PageTitle>
+
+<div class="ddb-page">
+
+    @* ── Header ──────────────────────────────────────────────────────────── *@
+    <div class="ddb-header">
+        <div class="ddb-header-left">
+            <svg viewBox="0 0 40 40" width="28" height="28" fill="none" style="flex-shrink:0">
+                <circle cx="20" cy="20" r="19" fill="#FFF200" stroke="#d4bc00" stroke-width="1.5"/>
+                <ellipse cx="20" cy="14" rx="10" ry="4" fill="#1a1a1a"/>
+                <path d="M10 14 Q10 26 20 26 Q30 26 30 14" fill="#1a1a1a"/>
+                <ellipse cx="20" cy="14" rx="10" ry="4" fill="#333"/>
+                <ellipse cx="20" cy="14" rx="6" ry="2.2" fill="#FFF200"/>
+            </svg>
+            <div>
+                <h1 class="ddb-title">DuckDB-Wasm SQL Console</h1>
+                <p class="ddb-subtitle">Аналитический SQL браузере </p>
+            </div>
+        </div>
+        <div class="ddb-status-wrap">
+            <div class="ddb-status ddb-status--@_status">
+                <span class="ddb-status-dot"></span>
+                <span>@_statusText</span>
+            </div>
+            @if (_opfsSupported)
+            {
+                <button class="ddb-persist-btn @(_opfsActive ? "ddb-persist-btn--on" : "")"
+                        title="@(_opfsActive ? "OPFS активен — данные сохраняются между сессиями. Нажмите для отключения." : "Включить сохранение данных между сессиями (OPFS)")"
+                        disabled="@(_status == "loading")"
+                        @onclick="ToggleOpfsAsync">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                    <span>@(_opfsActive ? "OPFS вкл" : "OPFS выкл")</span>
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_initError is not null)
+    {
+        <div class="ddb-init-error">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <div>
+                <strong>Ошибка инициализации DuckDB</strong>
+                <div class="ddb-init-error-msg">@_initError</div>
+            </div>
+        </div>
+    }
+
+    <div class="ddb-body">
+
+        @* ── Sidebar ──────────────────────────────────────────────────────── *@
+        <div class="ddb-sidebar">
+
+            @* ── Generators ───────────────────────────────────────────────── *@
+            <div class="ddb-sidebar-section">
+                <div class="ddb-sidebar-label">Генераторы данных</div>
+                <div class="ddb-gen-count-row">
+                    <label class="ddb-gen-count-label">Записей:</label>
+                    <input class="ddb-gen-count-input"
+                           type="number"
+                           min="1" max="1000000"
+                           @bind="_genCount"
+                           @bind:event="oninput"
+                           disabled="@(_status != "ready" || _seeding != null)" />
+                    <div class="ddb-gen-presets">
+                        @foreach (var p in new[] { 100, 1000, 10000 })
+                        {
+                            var pv = p;
+                            <button class="ddb-gen-preset @(_genCount == pv ? "ddb-gen-preset--active" : "")"
+                                    disabled="@(_status != "ready" || _seeding != null)"
+                                    @onclick="() => _genCount = pv">
+                                @(pv >= 1000 ? $"{pv/1000}K" : pv.ToString())
+                            </button>
+                        }
+                    </div>
+                </div>
+                <div class="ddb-gen-list">
+                    @foreach (var gen in _generators)
+                    {
+                        var g = gen;
+                        <button class="ddb-gen-btn" disabled="@(_status != "ready" || _seeding != null || (g.Key == "drop" ? false : _genCount < 1))"
+                                @onclick="() => SeedAsync(g)">
+                            @if (_seeding == g.Key)
+                            {
+                                <span class="ddb-spinner"></span>
+                            }
+                            else
+                            {
+                                <span class="ddb-gen-icon">@g.Icon</span>
+                            }
+                            <div class="ddb-gen-info">
+                                <span class="ddb-gen-name">@g.Name</span>
+                                <span class="ddb-gen-desc">@(g.Key == "drop" ? g.Desc : $"{_genCount:N0} записей")</span>
+                            </div>
+                        </button>
+                    }
+                </div>
+            </div>
+
+            @* ── Export / Import ──────────────────────────────────────────── *@
+            <div class="ddb-sidebar-section">
+                <div class="ddb-sidebar-label">База данных</div>
+                <div class="ddb-io-row">
+                    <button class="ddb-io-btn" title="Скачать базу как JSON-снимок"
+                            disabled="@(_status != "ready" || _tables.Count == 0 || _exporting)"
+                            @onclick="ExportAsync">
+                        @if (_exporting)
+                        {
+                            <span class="ddb-spinner"></span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                        }
+                        <span>Экспорт .json</span>
+                    </button>
+                    <label class="ddb-io-btn ddb-io-btn--import" title="Загрузить JSON-снимок базы">
+                        @if (_importing)
+                        {
+                            <span class="ddb-spinner"></span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 5 17 10"/>
+                                <line x1="12" y1="5" x2="12" y2="17"/>
+                            </svg>
+                        }
+                        <span>Импорт .json</span>
+                        <InputFile OnChange="ImportAsync" accept=".json" style="display:none" disabled="@(_status != "ready" || _importing)" />
+                    </label>
+                </div>
+                @if (_ioMessage is not null)
+                {
+                    <div class="ddb-io-msg @(_ioError ? "ddb-io-msg--error" : "ddb-io-msg--ok")">@_ioMessage</div>
+                }
+                @if (_opfsActive)
+                {
+                    <button class="ddb-io-clear-btn" @onclick="ClearOpfsAsync"
+                            title="Удалить сохранённую базу из OPFS">
+                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                            <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                        </svg>
+                        Очистить OPFS
+                    </button>
+                }
+            </div>
+
+            @* ── Database / Tables tree ────────────────────────────────────── *@
+            <div class="ddb-sidebar-section ddb-sidebar-section--grow">
+                <div class="ddb-sidebar-label-row">
+                    <span class="ddb-sidebar-label">Схема</span>
+                    <div style="display:flex;gap:4px;align-items:center">
+                        <button class="ddb-icon-btn" title="Создать таблицу"
+                                disabled="@(_status != "ready")"
+                                @onclick="OpenConstructor">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                            </svg>
+                        </button>
+                        <button class="ddb-icon-btn" title="Обновить" @onclick="RefreshSchemaAsync">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+                                <path d="M21 3v5h-5"/>
+                                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+                                <path d="M8 16H3v5"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                @if (_databases.Count == 0 && _status == "ready")
+                {
+                    <div class="ddb-sidebar-empty">Нет баз данных.<br/>Используйте генераторы выше.</div>
+                }
+
+                @foreach (var db in _databases)
+                {
+                    var dbName = db;
+                    var dbOpen = _openDbs.Contains(dbName);
+                    <div class="ddb-db-node">
+                        <button class="ddb-db-header" @onclick="() => ToggleDb(dbName)">
+                            <svg class="ddb-tree-arrow @(dbOpen ? "ddb-tree-arrow--open" : "")"
+                                 viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--sui-accent)">
+                                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                                <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+                                <path d="M3 12A9 3 0 0 0 21 12"/>
+                            </svg>
+                            <span class="ddb-db-name">@dbName</span>
+                        </button>
+
+                        @if (dbOpen)
+                        {
+                            @foreach (var tbl in _tables)
+                            {
+                                var t = tbl;
+                                var isActive = _selectedTable == t;
+                                <button class="ddb-table-row @(isActive ? "ddb-table-row--active" : "")"
+                                        @onclick="() => SelectTableAsync(t)">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect width="18" height="18" x="3" y="3" rx="1"/>
+                                        <path d="M3 9h18M3 15h18M9 3v18"/>
+                                    </svg>
+                                    <span class="ddb-table-name">@t</span>
+                                    <button class="ddb-table-desc-btn" title="Структура таблицы"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="() => ShowStructureAsync(t)">
+                                        <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                                        </svg>
+                                    </button>
+                                </button>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+            @* ── Quick queries ─────────────────────────────────────────────── *@
+            @if (_tables.Count > 0)
+            {
+                <div class="ddb-sidebar-section">
+                    <div class="ddb-sidebar-label">Примеры запросов</div>
+                    @foreach (var q in _quickQueries)
+                    {
+                        var qq = q;
+                        <button class="ddb-quick-btn" @onclick="() => ApplyQuickQuery(qq.Sql)">
+                            @qq.Label
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+
+        @* ── Main area ────────────────────────────────────────────────────── *@
+        <div class="ddb-main">
+
+            @* ── Table constructor ────────────────────────────────────────── *@
+            @if (_showConstructor)
+            {
+                <div class="ddb-ctor-panel">
+                    <div class="ddb-ctor-head">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>
+                        </svg>
+                        <span>Конструктор таблицы</span>
+                        <button class="ddb-icon-btn" style="margin-left:auto" @onclick="() => _showConstructor = false">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div class="ddb-ctor-body">
+                        @* Table name *@
+                        <div class="ddb-ctor-row">
+                            <label class="ddb-ctor-label">Имя таблицы</label>
+                            <input class="ddb-ctor-input ddb-ctor-input--name"
+                                   @bind="_ctorTableName"
+                                   placeholder="my_table"
+                                   spellcheck="false" />
+                        </div>
+
+                        @* Columns *@
+                        <div class="ddb-ctor-cols-head">
+                            <span class="ddb-ctor-label">Колонки</span>
+                            <button class="ddb-ctor-add-col" @onclick="AddCtorColumn">
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                                </svg>
+                                Добавить колонку
+                            </button>
+                        </div>
+
+                        <div class="ddb-ctor-cols">
+                            @* Header *@
+                            <div class="ddb-ctor-col-hdr">
+                                <span style="flex:2">Имя</span>
+                                <span style="flex:2">Тип</span>
+                                <span style="flex:1;text-align:center">NULL</span>
+                                <span style="flex:1;text-align:center">PK</span>
+                                <span style="width:28px"></span>
+                            </div>
+                            @for (int ci = 0; ci < _ctorColumns.Count; ci++)
+                            {
+                                var idx = ci;
+                                var col = _ctorColumns[idx];
+                                <div class="ddb-ctor-col-row">
+                                    <input class="ddb-ctor-input" style="flex:2"
+                                           value="@col.Name"
+                                           @oninput="e => col.Name = e.Value?.ToString() ?? col.Name"
+                                           placeholder="column_name"
+                                           spellcheck="false" />
+                                    <select class="ddb-ctor-select" style="flex:2"
+                                            value="@col.Type"
+                                            @onchange="e => col.Type = e.Value?.ToString() ?? col.Type">
+                                        @foreach (var t in _sqlTypes)
+                                        {
+                                            <option value="@t" selected="@(col.Type == t)">@t</option>
+                                        }
+                                    </select>
+                                    <div style="flex:1;display:flex;justify-content:center;align-items:center">
+                                        <input type="checkbox" checked="@col.Nullable"
+                                               @onchange="e => col.Nullable = (bool)(e.Value ?? false)" />
+                                    </div>
+                                    <div style="flex:1;display:flex;justify-content:center;align-items:center">
+                                        <input type="checkbox" checked="@col.PrimaryKey"
+                                               @onchange="e => col.PrimaryKey = (bool)(e.Value ?? false)" />
+                                    </div>
+                                    <button class="ddb-ctor-del-col" @onclick="() => RemoveCtorColumn(idx)"
+                                            disabled="@(_ctorColumns.Count <= 1)">
+                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            }
+                        </div>
+
+                        @* Row count + actions *@
+                        <div class="ddb-ctor-foot">
+                            <div class="ddb-ctor-count-wrap">
+                                <label class="ddb-ctor-label">Строк для генерации:</label>
+                                <input class="ddb-ctor-input ddb-ctor-input--count"
+                                       type="number" min="0" max="1000000"
+                                       @bind="_ctorRowCount" />
+                                <div class="ddb-gen-presets">
+                                    @foreach (var p in new[] { 0, 100, 1000, 10000 })
+                                    {
+                                        var pv = p;
+                                        <button class="ddb-gen-preset @(_ctorRowCount == pv ? "ddb-gen-preset--active" : "")"
+                                                @onclick="() => _ctorRowCount = pv">
+                                            @(pv == 0 ? "Пусто" : pv >= 1000 ? $"{pv/1000}K" : pv.ToString())
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                            <div class="ddb-ctor-actions">
+                                @if (!string.IsNullOrEmpty(_ctorError))
+                                {
+                                    <span class="ddb-ctor-error">@_ctorError</span>
+                                }
+                                <button class="ddb-toolbar-btn" @onclick="() => _showConstructor = false">Отмена</button>
+                                <button class="ddb-run-btn" disabled="@(_ctorBuilding || _status != "ready")"
+                                        @onclick="BuildTableAsync">
+                                    @if (_ctorBuilding)
+                                    {
+                                        <span class="ddb-spinner ddb-spinner--white"></span>
+                                        <span>Создание...</span>
+                                    }
+                                    else
+                                    {
+                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                        <span>Создать@(_ctorRowCount > 0 ? " и заполнить" : "")</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @* ── Structure panel ──────────────────────────────────────────── *@
+            @if (_structureTable is not null)
+            {
+                <div class="ddb-structure-panel">
+                    <div class="ddb-structure-head">
+                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect width="18" height="18" x="3" y="3" rx="1"/>
+                            <path d="M3 9h18M3 15h18M9 3v18"/>
+                        </svg>
+                        <span>Структура: <strong>@_structureTable</strong></span>
+                        <button class="ddb-icon-btn" style="margin-left:auto" @onclick="() => _structureTable = null">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="ddb-structure-cols">
+                        @foreach (var col in _structureCols)
+                        {
+                            <div class="ddb-structure-col">
+                                <span class="ddb-col-name">@col.Name</span>
+                                <span class="ddb-col-type">@col.Type</span>
+                                @if (col.Nullable == "YES")
+                                {
+                                    <span class="ddb-col-null">NULL</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* ── SQL editor ───────────────────────────────────────────────── *@
+            <div class="ddb-editor-card">
+                <div class="ddb-editor-toolbar">
+                    <span class="ddb-editor-label">SQL</span>
+                    <div class="ddb-editor-actions">
+                        <button class="ddb-run-btn" disabled="@(_status != "ready" || _running)"
+                                @onclick="RunQueryAsync">
+                            @if (_running)
+                            {
+                                <span class="ddb-spinner ddb-spinner--white"></span>
+                                <span>Выполняется...</span>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span>Выполнить</span>
+                            }
+                        </button>
+                        <button class="ddb-toolbar-btn" title="Очистить редактор" @onclick="ClearEditor">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <textarea class="ddb-editor"
+                          @bind="_sql"
+                          @bind:event="oninput"
+                          @onkeydown="HandleKeyDown"
+                          placeholder="SELECT * FROM employees LIMIT 10;"
+                          spellcheck="false"
+                          rows="5"></textarea>
+                <div class="ddb-editor-foot">Ctrl+Enter — выполнить</div>
+            </div>
+
+            @* ── Error ────────────────────────────────────────────────────── *@
+            @if (_queryError is not null)
+            {
+                <div class="ddb-error-bar">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                        <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                    </svg>
+                    <span>@_queryError</span>
+                </div>
+            }
+
+            @* ── Results ──────────────────────────────────────────────────── *@
+            @if (_columns.Count > 0)
+            {
+                <div class="ddb-results-bar">
+                    <span class="ddb-results-info">
+                        Результат: <strong>@_rows.Count</strong> @RowWord(_rows.Count)
+                    </span>
+                    <span class="ddb-results-time">@_elapsed ms</span>
+                </div>
+                <div class="ddb-grid-wrap">
+                    <SgDataGrid TItem="Dictionary<string, object?>"
+                                Items="@_rows"
+                                PageSize="50"
+                                ShowSearch="true">
+                        @foreach (var col in _columns)
+                        {
+                            var c = col;
+                            <SgDataGridColumn TItem="Dictionary<string, object?>"
+                                             Title="@c.Name"
+                                             ColumnKey="@c.Name"
+                                             Value="@(row => row.TryGetValue(c.Name, out var v) ? v : null)"
+                                             Sortable="true" />
+                        }
+                    </SgDataGrid>
+                </div>
+            }
+            else if (_hasRun && _queryError is null)
+            {
+                <div class="ddb-empty-result">
+                    <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/>
+                    </svg>
+                    <span>Запрос выполнен, результатов нет</span>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private IJSObjectReference? _module;
+    private string _status = "loading";
+    private string _statusText = "Инициализация...";
+    private string? _initError;
+
+    private string _sql = "-- Нажмите «Загрузить тестовые данные» и выполните запрос\nSELECT dept, COUNT(*) AS cnt, ROUND(AVG(salary), 2) AS avg_salary\nFROM employees\nGROUP BY dept\nORDER BY avg_salary DESC;";
+    private bool _running;
+    private string? _seeding;
+    private string? _queryError;
+    private bool _hasRun;
+    private long _elapsed;
+    private int _genCount = 1000;
+
+    private List<ColInfo> _columns = new();
+    private List<Dictionary<string, object?>> _rows = new();
+    private List<string> _databases = new();
+    private List<string> _tables = new();
+    private HashSet<string> _openDbs = new();
+    private string? _selectedTable;
+
+    private string? _structureTable;
+    private List<StructCol> _structureCols = new();
+
+    private record ColInfo(string Name, string Type);
+    private record StructCol(string Name, string Type, string Nullable);
+
+    // ── OPFS / persistence ────────────────────────────────────────────────────
+
+    private bool _opfsSupported;
+    private bool _opfsActive;
+
+    // ── Export / Import ───────────────────────────────────────────────────────
+
+    private bool _exporting;
+    private bool _importing;
+    private string? _ioMessage;
+    private bool _ioError;
+
+    // ── Generators ────────────────────────────────────────────────────────────
+
+    private record Generator(string Key, string Icon, string Name, string Desc, Func<Task> Action);
+    private List<Generator> _generators = new();
+
+    // ── Quick queries ─────────────────────────────────────────────────────────
+
+    private readonly List<(string Label, string Sql)> _quickQueries = new()
+    {
+        ("Все сотрудники",           "SELECT * FROM employees LIMIT 50;"),
+        ("По отделам (агрегат)",     "SELECT dept, COUNT(*) AS cnt, ROUND(AVG(salary),2) AS avg_salary\nFROM employees GROUP BY dept ORDER BY cnt DESC;"),
+        ("Топ-10 зарплат",           "SELECT name, dept, salary FROM employees ORDER BY salary DESC LIMIT 10;"),
+        ("Сотрудники по городам",    "SELECT city, COUNT(*) AS cnt FROM employees GROUP BY city ORDER BY cnt DESC;"),
+        ("Все продукты",             "SELECT * FROM products ORDER BY price DESC LIMIT 50;"),
+        ("Продукты по категориям",   "SELECT category, COUNT(*) AS cnt, ROUND(AVG(price),2) AS avg_price\nFROM products GROUP BY category ORDER BY cnt DESC;"),
+        ("Заказы по статусу",        "SELECT status, COUNT(*) AS cnt, ROUND(SUM(total),2) AS total_sum\nFROM orders GROUP BY status ORDER BY cnt DESC;"),
+        ("JOIN: заказы + сотрудники","SELECT e.name, e.dept, COUNT(o.id) AS orders, ROUND(SUM(o.total),2) AS revenue\nFROM orders o JOIN employees e ON o.employee_id = e.id\nGROUP BY e.name, e.dept ORDER BY revenue DESC LIMIT 20;"),
+        ("Window: ранг по зарплате", "SELECT name, dept, salary,\n  RANK() OVER (PARTITION BY dept ORDER BY salary DESC) AS rank_in_dept\nFROM employees ORDER BY dept, rank_in_dept LIMIT 30;"),
+    };
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        _generators = new List<Generator>
+        {
+            new("hr",    "👥", "HR-данные",      "200 сотрудников, отделы, зарплаты",  () => SeedTableAsync("employees")),
+            new("shop",  "🛒", "Магазин",         "80 товаров + 600 заказов",           () => SeedTableAsync("shop")),
+            new("all",   "🗄️", "Все таблицы",     "employees + products + orders",      () => SeedAllAsync()),
+            new("drop",  "🗑️", "Очистить всё",    "Удалить все таблицы",               () => DropAllAsync()),
+        };
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/sg-duckdb.js");
+
+            // Check OPFS support before init
+            _opfsSupported = await _module.InvokeAsync<bool>("opfsSupported");
+
+            // Restore last OPFS preference from localStorage
+            var savedOpfs = false;
+            try { savedOpfs = await JS.InvokeAsync<bool>("eval", "localStorage.getItem('ddb-opfs') === '1'"); } catch {}
+
+            var result = await _module.InvokeAsync<JsonElement>("init", savedOpfs && _opfsSupported);
+
+            if (result.GetProperty("ok").GetBoolean())
+            {
+                _opfsActive = result.TryGetProperty("opfs", out var op) && op.GetBoolean();
+                _status = "ready";
+                _statusText = _opfsActive ? "DuckDB + OPFS" : "DuckDB готов";
+                await RefreshSchemaAsync();
+            }
+            else
+            {
+                _status = "error";
+                _statusText = "Ошибка";
+                _initError = result.TryGetProperty("error", out var e) ? e.GetString() : "Unknown error";
+            }
+        }
+        catch (Exception ex)
+        {
+            _status = "error";
+            _statusText = "Ошибка";
+            _initError = ex.Message;
+        }
+        StateHasChanged();
+    }
+
+    // ── Schema ────────────────────────────────────────────────────────────────
+
+    private async Task RefreshSchemaAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            // databases
+            var dbRes = await _module.InvokeAsync<JsonElement>("listDatabases");
+            if (dbRes.GetProperty("ok").GetBoolean())
+            {
+                _databases = dbRes.GetProperty("databases").EnumerateArray()
+                    .Select(d => d.GetString() ?? "").Where(d => d.Length > 0).ToList();
+                if (_databases.Count > 0 && _openDbs.Count == 0)
+                    _openDbs.Add(_databases[0]);
+            }
+
+            // tables
+            var tblRes = await _module.InvokeAsync<JsonElement>("listTables");
+            if (tblRes.GetProperty("ok").GetBoolean())
+            {
+                _tables = tblRes.GetProperty("tables").EnumerateArray()
+                    .Select(t => t.GetString() ?? "").Where(t => t.Length > 0).ToList();
+            }
+        }
+        catch { /* ignore */ }
+        StateHasChanged();
+    }
+
+    private async Task ShowStructureAsync(string table)
+    {
+        if (_module is null) return;
+        _structureTable = table;
+        _structureCols.Clear();
+        try
+        {
+            var res = await _module.InvokeAsync<JsonElement>("describeTable", table);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                _structureCols = res.GetProperty("columns").EnumerateArray()
+                    .Select(c => new StructCol(
+                        c.GetProperty("name").GetString() ?? "",
+                        c.GetProperty("type").GetString() ?? "",
+                        c.TryGetProperty("null", out var n) ? (n.GetString() ?? "") : ""))
+                    .ToList();
+            }
+        }
+        catch { /* ignore */ }
+        StateHasChanged();
+    }
+
+    private void ToggleDb(string db)
+    {
+        if (!_openDbs.Remove(db)) _openDbs.Add(db);
+        StateHasChanged();
+    }
+
+    // ── Query ─────────────────────────────────────────────────────────────────
+
+    private async Task RunQueryAsync()
+    {
+        if (_module is null || string.IsNullOrWhiteSpace(_sql)) return;
+        _running = true;
+        _queryError = null;
+        _hasRun = false;
+        _columns.Clear();
+        _rows.Clear();
+        StateHasChanged();
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            var result = await _module.InvokeAsync<JsonElement>("query", _sql.Trim());
+            sw.Stop();
+            _elapsed = sw.ElapsedMilliseconds;
+
+            if (result.GetProperty("ok").GetBoolean())
+            {
+                _columns = result.GetProperty("schema").EnumerateArray()
+                    .Select(f => new ColInfo(
+                        f.GetProperty("name").GetString()!,
+                        f.GetProperty("type").GetString()!))
+                    .ToList();
+
+                _rows = result.GetProperty("rows").EnumerateArray()
+                    .Select(row =>
+                    {
+                        var dict = new Dictionary<string, object?>();
+                        foreach (var col in _columns)
+                        {
+                            if (row.TryGetProperty(col.Name, out var val))
+                            {
+                                dict[col.Name] = val.ValueKind switch
+                                {
+                                    JsonValueKind.Null    => null,
+                                    JsonValueKind.True    => (object)true,
+                                    JsonValueKind.False   => false,
+                                    JsonValueKind.Number  => ParseNumber(val),
+                                    JsonValueKind.String  => ParseString(val.GetString(), col.Type),
+                                    _                     => val.GetString(),
+                                };
+                            }
+                            else dict[col.Name] = null;
+                        }
+                        return dict;
+                    })
+                    .ToList();
+
+                _hasRun = true;
+                await RefreshSchemaAsync();
+            }
+            else
+            {
+                _queryError = result.TryGetProperty("error", out var err) ? err.GetString() : "Unknown error";
+            }
+        }
+        catch (Exception ex)
+        {
+            sw.Stop();
+            _queryError = ex.Message;
+        }
+        finally
+        {
+            _running = false;
+            StateHasChanged();
+        }
+    }
+
+    // ── Generators ────────────────────────────────────────────────────────────
+
+    private async Task SeedAsync(Generator gen)
+    {
+        _seeding = gen.Key;
+        _queryError = null;
+        StateHasChanged();
+        try { await gen.Action(); }
+        finally
+        {
+            _seeding = null;
+            await RefreshSchemaAsync();
+        }
+    }
+
+    private async Task SeedTableAsync(string which)
+    {
+        if (_module is null) return;
+        var count = Math.Max(1, _genCount);
+        var res = which == "shop"
+            ? await _module.InvokeAsync<JsonElement>("seedShopData", count)
+            : await _module.InvokeAsync<JsonElement>("seedDemoData", count);
+
+        if (!res.GetProperty("ok").GetBoolean())
+            _queryError = res.TryGetProperty("error", out var e) ? e.GetString() : "Seed failed";
+        else
+        {
+            _sql = which == "shop"
+                ? "SELECT * FROM products LIMIT 50;"
+                : "SELECT * FROM employees LIMIT 50;";
+            await RunQueryAsync();
+        }
+    }
+
+    private async Task SeedAllAsync()
+    {
+        if (_module is null) return;
+        var count = Math.Max(1, _genCount);
+        var res = await _module.InvokeAsync<JsonElement>("seedAllData", count);
+        if (!res.GetProperty("ok").GetBoolean())
+            _queryError = res.TryGetProperty("error", out var e) ? e.GetString() : "Seed failed";
+        else
+        {
+            _sql = "SELECT dept, COUNT(*) AS cnt, ROUND(AVG(salary),2) AS avg_salary\nFROM employees GROUP BY dept ORDER BY avg_salary DESC;";
+            await RunQueryAsync();
+        }
+    }
+
+    // ── Table constructor ─────────────────────────────────────────────────────
+
+    private bool _showConstructor;
+    private bool _ctorBuilding;
+    private string _ctorTableName = "my_table";
+    private int _ctorRowCount = 1000;
+    private string? _ctorError;
+
+    private class CtorColumn
+    {
+        public string Name { get; set; } = "";
+        public string Type { get; set; } = "VARCHAR";
+        public bool Nullable { get; set; } = true;
+        public bool PrimaryKey { get; set; }
+    }
+
+    private List<CtorColumn> _ctorColumns = new();
+
+    private static readonly string[] _sqlTypes = new[]
+    {
+        "INTEGER", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT",
+        "DECIMAL(10,2)", "DECIMAL(18,4)", "FLOAT", "DOUBLE",
+        "VARCHAR", "TEXT", "CHAR(10)",
+        "BOOLEAN",
+        "DATE", "TIMESTAMP", "TIME",
+        "UUID",
+    };
+
+    private void OpenConstructor()
+    {
+        _ctorTableName = "my_table";
+        _ctorRowCount  = 1000;
+        _ctorError     = null;
+        _ctorColumns   = new List<CtorColumn>
+        {
+            new() { Name = "id",   Type = "INTEGER", Nullable = false, PrimaryKey = true },
+            new() { Name = "name", Type = "VARCHAR",  Nullable = true },
+        };
+        _showConstructor = true;
+        StateHasChanged();
+    }
+
+    private void AddCtorColumn()
+    {
+        _ctorColumns.Add(new CtorColumn { Name = $"col{_ctorColumns.Count + 1}", Type = "VARCHAR", Nullable = true });
+        StateHasChanged();
+    }
+
+    private void RemoveCtorColumn(int idx)
+    {
+        if (_ctorColumns.Count > 1) _ctorColumns.RemoveAt(idx);
+        StateHasChanged();
+    }
+
+    private async Task BuildTableAsync()
+    {
+        _ctorError = null;
+        var name = _ctorTableName.Trim();
+        if (string.IsNullOrEmpty(name)) { _ctorError = "Укажите имя таблицы"; return; }
+        if (_ctorColumns.Any(c => string.IsNullOrWhiteSpace(c.Name))) { _ctorError = "Все колонки должны иметь имя"; return; }
+
+        _ctorBuilding = true;
+        StateHasChanged();
+        try
+        {
+            // Build column definitions
+            var colDefs = _ctorColumns.Select(c =>
+            {
+                var def = $"\"{c.Name}\" {c.Type}";
+                if (!c.Nullable) def += " NOT NULL";
+                if (c.PrimaryKey) def += " PRIMARY KEY";
+                return def;
+            });
+
+            var createSql = $"DROP TABLE IF EXISTS \"{name}\";\nCREATE TABLE \"{name}\" ({string.Join(", ", colDefs)});";
+
+            var execRes = await _module!.InvokeAsync<JsonElement>("execute", createSql);
+            if (!execRes.GetProperty("ok").GetBoolean())
+            {
+                _ctorError = execRes.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка создания";
+                return;
+            }
+
+            // Generate data if requested
+            if (_ctorRowCount > 0)
+            {
+                var colSpecs = _ctorColumns.Select(c => new { name = c.Name, type = c.Type }).ToList();
+                var specsJson = System.Text.Json.JsonSerializer.Serialize(colSpecs);
+                var seedRes = await _module.InvokeAsync<JsonElement>("seedCustomTable", name, specsJson, _ctorRowCount);
+                if (!seedRes.GetProperty("ok").GetBoolean())
+                {
+                    _ctorError = seedRes.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка генерации";
+                    return;
+                }
+            }
+
+            _showConstructor = false;
+            _sql = $"SELECT * FROM \"{name}\" LIMIT 50;";
+            await RefreshSchemaAsync();
+            await RunQueryAsync();
+        }
+        finally
+        {
+            _ctorBuilding = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleOpfsAsync()
+    {
+        if (_module is null) return;
+        var want = !_opfsActive;
+        _status = "loading";
+        _statusText = want ? "Подключение OPFS..." : "Переключение...";
+        StateHasChanged();
+
+        var result = await _module.InvokeAsync<JsonElement>("init", want);
+        _opfsActive = result.TryGetProperty("opfs", out var op) && op.GetBoolean();
+        _status = "ready";
+        _statusText = _opfsActive ? "DuckDB + OPFS" : "DuckDB готов";
+
+        // Save preference
+        try { await JS.InvokeVoidAsync("eval", $"localStorage.setItem('ddb-opfs','{(_opfsActive ? 1 : 0)}')"); } catch {}
+
+        _columns.Clear(); _rows.Clear(); _hasRun = false;
+        await RefreshSchemaAsync();
+    }
+
+    private async Task ClearOpfsAsync()
+    {
+        if (_module is null) return;
+        await _module.InvokeAsync<JsonElement>("clearOpfs");
+        _ioMessage = "OPFS очищен. Перезагрузите страницу.";
+        _ioError = false;
+        StateHasChanged();
+    }
+
+    // ── Export ────────────────────────────────────────────────────────────────
+
+    private async Task ExportAsync()
+    {
+        if (_module is null) return;
+        _exporting = true;
+        _ioMessage = null;
+        StateHasChanged();
+        try
+        {
+            var res = await _module.InvokeAsync<JsonElement>("exportDatabase");
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var cnt = res.TryGetProperty("tableCount", out var tc) ? tc.GetInt32() : 0;
+                _ioMessage = $"Экспортировано {cnt} {TableWord(cnt)}";
+                _ioError = false;
+            }
+            else
+            {
+                _ioMessage = res.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка экспорта";
+                _ioError = true;
+            }
+        }
+        finally { _exporting = false; StateHasChanged(); }
+    }
+
+    // ── Import ────────────────────────────────────────────────────────────────
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        if (_module is null) return;
+        _importing = true;
+        _ioMessage = null;
+        StateHasChanged();
+        try
+        {
+            var file = e.File;
+            using var stream = file.OpenReadStream(maxAllowedSize: 512 * 1024 * 1024); // 512 MB
+            using var reader = new System.IO.StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+
+            var res = await _module.InvokeAsync<JsonElement>("importDatabase", json);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var cnt = res.TryGetProperty("tableCount", out var tc) ? tc.GetInt32() : 0;
+                _ioMessage = $"Импортировано {cnt} {TableWord(cnt)}";
+                _ioError = false;
+                await RefreshSchemaAsync();
+            }
+            else
+            {
+                _ioMessage = res.TryGetProperty("error", out var err) ? err.GetString() : "Ошибка импорта";
+                _ioError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _ioMessage = ex.Message;
+            _ioError = true;
+        }
+        finally { _importing = false; StateHasChanged(); }
+    }
+
+    private static string TableWord(int n)
+    {
+        var n1 = n % 10;
+        if (n % 100 is > 10 and < 20) return "таблиц";
+        if (n1 == 1) return "таблицу";
+        if (n1 is >= 2 and <= 4) return "таблицы";
+        return "таблиц";
+    }
+
+    // ── Drop all ──────────────────────────────────────────────────────────────
+
+    private async Task DropAllAsync()
+    {
+        if (_module is null) return;
+        await _module.InvokeAsync<JsonElement>("execute", "DROP TABLE IF EXISTS employees; DROP TABLE IF EXISTS products; DROP TABLE IF EXISTS orders;");
+        _columns.Clear();
+        _rows.Clear();
+        _hasRun = false;
+        _structureTable = null;
+        await RefreshSchemaAsync();
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private async Task SelectTableAsync(string table)
+    {
+        _selectedTable = table;
+        _sql = $"SELECT * FROM {table} LIMIT 50;";
+        await RunQueryAsync();
+    }
+
+    private void ApplyQuickQuery(string sql)
+    {
+        _sql = sql;
+        StateHasChanged();
+        _ = RunQueryAsync();
+    }
+
+    private void ClearEditor()
+    {
+        _sql = "";
+        _columns.Clear();
+        _rows.Clear();
+        _queryError = null;
+        _hasRun = false;
+        StateHasChanged();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.CtrlKey && e.Key == "Enter")
+            await RunQueryAsync();
+    }
+
+    private static string RowWord(int n)
+    {
+        var abs = Math.Abs(n) % 100;
+        var n1 = abs % 10;
+        if (abs > 10 && abs < 20) return "строк";
+        if (n1 == 1) return "строка";
+        if (n1 >= 2 && n1 <= 4) return "строки";
+        return "строк";
+    }
+
+    // ── Value parsing helpers ─────────────────────────────────────────────────
+
+    private static object? ParseNumber(JsonElement el)
+    {
+        // Prefer integer if it fits, otherwise double
+        if (el.TryGetInt64(out var l)) return l;
+        if (el.TryGetDouble(out var d)) return d;
+        return el.GetRawText();
+    }
+
+    private static object? ParseString(string? s, string arrowType)
+    {
+        if (s is null) return null;
+
+        // Decimal → parse as decimal for proper numeric sorting/display
+        if (arrowType.StartsWith("Decimal", StringComparison.OrdinalIgnoreCase))
+        {
+            if (decimal.TryParse(s, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out var dec))
+                return dec;
+        }
+
+        // Date "YYYY-MM-DD" → DateTime
+        if (arrowType.StartsWith("Date", StringComparison.OrdinalIgnoreCase))
+        {
+            if (DateTime.TryParseExact(s, "yyyy-MM-dd",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var dt))
+                return dt;
+        }
+
+        // Timestamp "YYYY-MM-DD HH:mm:ss" → DateTime
+        if (arrowType.StartsWith("Timestamp", StringComparison.OrdinalIgnoreCase))
+        {
+            if (DateTime.TryParseExact(s, "yyyy-MM-dd HH:mm:ss",
+                System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out var ts))
+                return ts;
+        }
+
+        return s;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is not null)
+            await _module.DisposeAsync();
+    }
+}
