@@ -1,0 +1,936 @@
+@namespace SuperUI.Components
+@using System.Text.Json
+@using System.Text.Json.Nodes
+
+<div class="sg-jsf-root @CssClass">
+
+    @* ── Toolbar ──────────────────────────────────────────────────────────── *@
+    <div class="sg-jsf-toolbar">
+        @if (!string.IsNullOrEmpty(Schema?.Title))
+        {
+            <span class="sg-jsf-schema-title">@Schema.Title</span>
+        }
+        <div class="sg-jsf-toolbar-actions">
+            <SgButton Text="Форматировать" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(_ => FormatJsonAsync())" Title="Форматировать JSON" />
+            <SgButton Text="Копировать" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(_ => CopyJsonAsync())" Title="Копировать JSON" />
+            <SgButton Text="Сбросить" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(_ => ResetAsync())" Title="Сбросить к значениям по умолчанию" />
+            <SgButton Text="Проверить" Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
+                      OnClick="@(_ => ValidateAsync())" Title="Проверить JSON" />
+        </div>
+    </div>
+
+    @* ── Validation errors ────────────────────────────────────────────────── *@
+    @if (_validationErrors.Count > 0)
+    {
+        <div class="sg-jsf-validation">
+            <SgAlert Variant="SgAlertVariant.Danger" Title="Ошибки валидации" Dismissible="true"
+                     OnClose="@(() => { _validationErrors.Clear(); StateHasChanged(); })">
+                <ul class="sg-jsf-error-list">
+                    @foreach (var err in _validationErrors)
+                    {
+                        <li>@err</li>
+                    }
+                </ul>
+            </SgAlert>
+        </div>
+    }
+    @if (_validationOk)
+    {
+        <div class="sg-jsf-validation">
+            <SgAlert Variant="SgAlertVariant.Success" Text="JSON валиден" Dismissible="true"
+                     OnClose="@(() => { _validationOk = false; StateHasChanged(); })" />
+        </div>
+    }
+
+    @* ── Main split layout ────────────────────────────────────────────────── *@
+    <div class="sg-jsf-body @(ShowRawEditor ? "sg-jsf-split" : "")">
+
+        @* ── Form panel ───────────────────────────────────────────────────── *@
+        <div class="sg-jsf-form-panel">
+            @if (Schema?.Properties is not null && Schema.Properties.Count > 0)
+            {
+                @RenderProperties(Schema.Properties, Schema.Required, _formValues, "")
+            }
+            else
+            {
+                <div class="sg-jsf-empty">Схема не задана или не содержит свойств</div>
+            }
+        </div>
+
+        @* ── Monaco editor panel ──────────────────────────────────────────── *@
+        @if (ShowRawEditor)
+        {
+            <div class="sg-jsf-editor-panel">
+                <div class="sg-jsf-editor-header">
+                    <span class="sg-jsf-editor-label">JSON</span>
+                    <span class="sg-jsf-editor-meta">
+                        <span class="sg-jsf-editor-stat" title="Символов">@(_jsonValue?.Length ?? 0) симв.</span>
+                        <span class="sg-jsf-editor-stat" title="Строк">@CountLines(_jsonValue) стр.</span>
+                    </span>
+                </div>
+                <SgMonaco @ref="_monaco"
+                          Value="@_jsonValue"
+                          ValueChanged="@OnMonacoChangedAsync"
+                          Height="100%"
+                          Width="100%"
+                          Options="@_monacoOptions"
+                          CssClass="sg-jsf-monaco" />
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Render helpers ───────────────────────────────────────────────────────── *@
+
+@code {
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>The JSON Schema to render a form for.</summary>
+    [Parameter] public SgJsonSchema? Schema { get; set; }
+
+    /// <summary>Current JSON value (serialized string).</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>Fires when the JSON value changes.</summary>
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>Show the Monaco raw JSON editor panel. Default true.</summary>
+    [Parameter] public bool ShowRawEditor { get; set; } = true;
+
+    /// <summary>Make all fields read-only.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Additional CSS class for the root element.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fires after validation is run.</summary>
+    [Parameter] public EventCallback<SgJsonSchemaValidationResult> OnValidate { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private SgMonaco? _monaco;
+    private string? _jsonValue;
+    private Dictionary<string, object?> _formValues = new();
+    private List<string> _validationErrors = new();
+    private bool _validationOk;
+    private bool _updatingFromMonaco;
+    private bool _updatingFromForm;
+    private System.Threading.CancellationTokenSource? _monacoDebounceCts;
+    // Tag input state: key → current input text
+    private Dictionary<string, string> _tagInputs = new();
+    // Inline-edit state for array list rows: "key#idx" being edited and current buffer
+    private string? _editingRow;
+    private string _editBuffer = "";
+
+    private readonly SgMonacoOptions _monacoOptions = new()
+    {
+        Language = "json",
+        Theme = "vs",
+        FontSize = 13,
+        AutoFormat = true,
+    };
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        // If Value changed externally (not from form itself), parse it into form values
+        if (!string.Equals(Value, _jsonValue, StringComparison.Ordinal) && !_updatingFromForm)
+        {
+            _jsonValue = Value;
+            if (!string.IsNullOrWhiteSpace(Value))
+                ParseJsonToForm(Value);
+            else
+            {
+                _formValues.Clear();
+                InitDefaults();
+                _jsonValue = SerializeFormToJson();
+            }
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        if (Schema is not null) InitDefaults();
+
+        // If Value provided externally — parse it; otherwise serialize defaults
+        if (!string.IsNullOrWhiteSpace(Value))
+        {
+            _jsonValue = Value;
+            ParseJsonToForm(Value);
+        }
+        else
+        {
+            _jsonValue = SerializeFormToJson();
+        }
+    }
+
+    private void InitDefaults()
+    {
+        if (Schema?.Properties is null) return;
+        foreach (var (key, prop) in Schema.Properties)
+        {
+            if (!_formValues.ContainsKey(key) && prop.Default is not null)
+            {
+                _formValues[key] = ConvertDefault(prop.Default, prop.Type);
+            }
+        }
+    }
+
+    private object? ConvertDefault(object? def, string type)
+    {
+        if (def is null) return null;
+        try
+        {
+            return type switch
+            {
+                "boolean" => Convert.ToBoolean(def),
+                "integer" => Convert.ToInt64(def),
+                "number"  => Convert.ToDouble(def),
+                _         => def?.ToString()
+            };
+        }
+        catch { return def?.ToString(); }
+    }
+
+    // ── Form → JSON sync ──────────────────────────────────────────────────────
+
+    private async Task OnFieldChangedAsync(string key, object? value)
+    {
+        _formValues[key] = value;
+        await SyncFormToEditorAsync();
+    }
+
+    private async Task SyncFormToEditorAsync()
+    {
+        if (_updatingFromMonaco) return;
+        _updatingFromForm = true;
+        try
+        {
+            _jsonValue = SerializeFormToJson();
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(_jsonValue);
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _updatingFromForm = false;
+        }
+    }
+
+    private static readonly JsonSerializerOptions _jsonWriteOpts = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private string SerializeFormToJson()
+    {
+        try
+        {
+            var node = BuildJsonNode(_formValues, Schema?.Properties);
+            return node.ToJsonString(_jsonWriteOpts);
+        }
+        catch
+        {
+            return "{}";
+        }
+    }
+
+    private JsonNode BuildJsonNode(Dictionary<string, object?> values, Dictionary<string, SgJsonSchemaProperty>? props)
+    {
+        var obj = new JsonObject();
+        if (props is null) return obj;
+
+        foreach (var (key, prop) in props)
+        {
+            if (!values.TryGetValue(key, out var val) || val is null) continue;
+
+            obj[key] = prop.Type switch
+            {
+                "boolean" => JsonValue.Create(val is bool b ? b : Convert.ToBoolean(val)),
+                "integer" => JsonValue.Create(val is long l ? l : Convert.ToInt64(val)),
+                "number"  => JsonValue.Create(val is double d ? d : Convert.ToDouble(val)),
+                "array"   => BuildArrayNode(val),
+                "object"  => BuildNestedObjectNode(val, prop.Properties),
+                _         => JsonValue.Create(val?.ToString())
+            };
+        }
+        return obj;
+    }
+
+    private JsonNode BuildArrayNode(object? val)
+    {
+        var arr = new JsonArray();
+        if (val is List<string> items)
+        {
+            foreach (var item in items)
+                arr.Add(JsonValue.Create(item));
+        }
+        return arr;
+    }
+
+    private JsonNode BuildNestedObjectNode(object? val, Dictionary<string, SgJsonSchemaProperty>? props)
+    {
+        if (val is Dictionary<string, object?> nested)
+            return BuildJsonNode(nested, props);
+        return new JsonObject();
+    }
+
+    // ── Monaco → Form sync ────────────────────────────────────────────────────
+
+    private async Task OnMonacoChangedAsync(string? json)
+    {
+        _monacoDebounceCts?.Cancel();
+        _monacoDebounceCts = new System.Threading.CancellationTokenSource();
+        var token = _monacoDebounceCts.Token;
+        try
+        {
+            await Task.Delay(500, token);
+        }
+        catch (TaskCanceledException) { return; }
+
+        if (_updatingFromForm) return;
+        _updatingFromMonaco = true;
+        try
+        {
+            _jsonValue = json;
+            ParseJsonToForm(json);
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(json);
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _updatingFromMonaco = false;
+        }
+    }
+
+    private void ParseJsonToForm(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            _formValues.Clear();
+            InitDefaults();
+            return;
+        }
+        try
+        {
+            var node = JsonNode.Parse(json);
+            if (node is JsonObject obj)
+            {
+                _formValues = ParseJsonObject(obj, Schema?.Properties);
+            }
+        }
+        catch
+        {
+            // Keep existing form values on parse error
+        }
+    }
+
+    private Dictionary<string, object?> ParseJsonObject(JsonObject obj, Dictionary<string, SgJsonSchemaProperty>? props)
+    {
+        var result = new Dictionary<string, object?>();
+        foreach (var (key, node) in obj)
+        {
+            var prop = props?.GetValueOrDefault(key);
+            result[key] = ParseJsonValue(node, prop);
+        }
+        return result;
+    }
+
+    private object? ParseJsonValue(JsonNode? node, SgJsonSchemaProperty? prop)
+    {
+        if (node is null) return null;
+        var type = prop?.Type ?? "string";
+        try
+        {
+            return type switch
+            {
+                "boolean" => node.GetValue<bool>(),
+                "integer" => (object)node.GetValue<long>(),
+                "number"  => (object)node.GetValue<double>(),
+                "array"   => ParseArrayValue(node),
+                "object"  => node is JsonObject nested
+                                 ? (object)ParseJsonObject(nested, prop?.Properties)
+                                 : null,
+                _         => node.ToString()
+            };
+        }
+        catch
+        {
+            return node.ToString();
+        }
+    }
+
+    private List<string> ParseArrayValue(JsonNode node)
+    {
+        var list = new List<string>();
+        if (node is JsonArray arr)
+        {
+            foreach (var item in arr)
+                list.Add(item?.ToString() ?? "");
+        }
+        return list;
+    }
+
+    // ── Toolbar actions ───────────────────────────────────────────────────────
+
+    private async Task FormatJsonAsync()
+    {
+        if (_monaco is not null)
+            await _monaco.FormatAsync();
+    }
+
+    private async Task CopyJsonAsync()
+    {
+        // Use JS interop to copy to clipboard
+        try
+        {
+            var json = _jsonValue ?? "{}";
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+        }
+        catch { }
+    }
+
+    private async Task ResetAsync()
+    {
+        _formValues.Clear();
+        InitDefaults();
+        _jsonValue = SerializeFormToJson();
+        if (_monaco is not null)
+        {
+            _updatingFromForm = true;
+            try { /* Monaco will update via Value binding */ }
+            finally { _updatingFromForm = false; }
+        }
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(_jsonValue);
+        StateHasChanged();
+    }
+
+    private async Task ValidateAsync()
+    {
+        _validationErrors.Clear();
+        _validationOk = false;
+
+        if (Schema is null)
+        {
+            _validationErrors.Add("Схема не задана");
+            StateHasChanged();
+            return;
+        }
+
+        // Parse current JSON
+        JsonObject? obj = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_jsonValue))
+                obj = JsonNode.Parse(_jsonValue) as JsonObject;
+        }
+        catch (Exception ex)
+        {
+            _validationErrors.Add($"Невалидный JSON: {ex.Message}");
+        }
+
+        if (obj is not null && Schema.Required is not null)
+        {
+            foreach (var req in Schema.Required)
+            {
+                if (!obj.ContainsKey(req) || obj[req] is null)
+                {
+                    var title = Schema.Properties?.GetValueOrDefault(req)?.Title ?? req;
+                    _validationErrors.Add($"Поле «{title}» обязательно");
+                }
+            }
+        }
+
+        var result = new SgJsonSchemaValidationResult
+        {
+            IsValid = _validationErrors.Count == 0,
+            Errors  = new List<string>(_validationErrors),
+        };
+
+        if (result.IsValid) _validationOk = true;
+
+        if (OnValidate.HasDelegate)
+            await OnValidate.InvokeAsync(result);
+
+        StateHasChanged();
+    }
+
+    // ── Render helpers ────────────────────────────────────────────────────────
+
+    private RenderFragment RenderProperties(
+        Dictionary<string, SgJsonSchemaProperty> props,
+        List<string>? required,
+        Dictionary<string, object?> values,
+        string prefix) => builder =>
+    {
+        // Group by uiGroup
+        var groups = props
+            .OrderBy(p => p.Value.UiOrder ?? int.MaxValue)
+            .ThenBy(p => p.Key)
+            .GroupBy(p => p.Value.UiGroup ?? "")
+            .ToList();
+
+        int seq = 0;
+        foreach (var group in groups)
+        {
+            if (!string.IsNullOrEmpty(group.Key))
+            {
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sg-jsf-group");
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sg-jsf-group-title");
+                builder.AddContent(seq++, group.Key);
+                builder.CloseElement();
+            }
+
+            foreach (var (key, prop) in group)
+            {
+                if (prop.UiWidget == "hidden") continue;
+
+                var fullKey = string.IsNullOrEmpty(prefix) ? key : $"{prefix}.{key}";
+                var isRequired = required?.Contains(key) ?? false;
+                values.TryGetValue(key, out var currentVal);
+
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sg-jsf-field-wrap");
+                builder.AddContent(seq++, RenderField(key, fullKey, prop, isRequired, currentVal, values));
+                builder.CloseElement();
+            }
+
+            if (!string.IsNullOrEmpty(group.Key))
+            {
+                builder.CloseElement(); // sg-jsf-group
+            }
+        }
+    };
+
+    private RenderFragment RenderField(
+        string key,
+        string fullKey,
+        SgJsonSchemaProperty prop,
+        bool isRequired,
+        object? currentVal,
+        Dictionary<string, object?> values) => builder =>
+    {
+        int seq = 0;
+        var label = prop.Title ?? key;
+        var isReadOnly = ReadOnly || prop.ReadOnly;
+
+        // Boolean → SgSwitch
+        if (prop.Type == "boolean")
+        {
+            var boolVal = currentVal is bool bv ? bv : false;
+            builder.OpenComponent<SgSwitch>(seq++);
+            builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+            builder.AddAttribute(seq++, "Value", boolVal);
+            builder.AddAttribute(seq++, "Disabled", isReadOnly);
+            builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<bool>(this,
+                v => OnFieldChangedAsync(key, v)));
+            builder.CloseComponent();
+            return;
+        }
+
+        // Number / Integer
+        if (prop.Type is "number" or "integer")
+        {
+            if (prop.UiWidget == "slider")
+            {
+                var dblVal = currentVal is not null ? Convert.ToDouble(currentVal) : (prop.Default is not null ? Convert.ToDouble(prop.Default) : 0.0);
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sgc-field sgc-block");
+                builder.OpenElement(seq++, "label");
+                builder.AddAttribute(seq++, "class", $"sgc-label{(isRequired ? " sgc-required" : "")}");
+                builder.AddContent(seq++, label);
+                builder.CloseElement();
+                builder.OpenComponent<SgSlider<double>>(seq++);
+                builder.AddAttribute(seq++, "Value", dblVal);
+                builder.AddAttribute(seq++, "Min", prop.Minimum ?? 0);
+                builder.AddAttribute(seq++, "Max", prop.Maximum ?? 100);
+                builder.AddAttribute(seq++, "Disabled", isReadOnly);
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<double>(this,
+                    v => OnFieldChangedAsync(key, prop.Type == "integer" ? (object)(long)v : v)));
+                builder.CloseComponent();
+                builder.CloseElement();
+            }
+            else
+            {
+                var dblVal2 = currentVal is not null ? (double?)Convert.ToDouble(currentVal) : null;
+                builder.OpenComponent<SgNumberEdit<double>>(seq++);
+                builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+                builder.AddAttribute(seq++, "Value", dblVal2);
+                builder.AddAttribute(seq++, "Min", prop.Minimum);
+                builder.AddAttribute(seq++, "Max", prop.Maximum);
+                builder.AddAttribute(seq++, "ReadOnly", isReadOnly);
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<double?>(this,
+                    v => OnFieldChangedAsync(key, v.HasValue
+                        ? (prop.Type == "integer" ? (object)(long)v.Value : v.Value)
+                        : null)));
+                builder.CloseComponent();
+            }
+            return;
+        }
+
+        // String
+        if (prop.Type == "string")
+        {
+            // Enum → SgSelect
+            if (prop.Enum is not null && prop.Enum.Count > 0)
+            {
+                var strVal = currentVal?.ToString() ?? "";
+                var enumStrings = prop.Enum.Select(e => e?.ToString() ?? "").ToList();
+                builder.OpenComponent<SgSelect<string>>(seq++);
+                builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+                builder.AddAttribute(seq++, "Value", strVal);
+                builder.AddAttribute(seq++, "Items", (IEnumerable<string>)enumStrings);
+                builder.AddAttribute(seq++, "Disabled", isReadOnly);
+                if (prop.EnumNames is not null && prop.EnumNames.Count == enumStrings.Count)
+                {
+                    var names = prop.EnumNames;
+                    var vals  = enumStrings;
+                    builder.AddAttribute(seq++, "LabelSelector",
+                        (Func<string, string>)(v =>
+                        {
+                            var idx = vals.IndexOf(v);
+                            return idx >= 0 && idx < names.Count ? names[idx] : v;
+                        }));
+                }
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
+                    v => OnFieldChangedAsync(key, v)));
+                builder.CloseComponent();
+                return;
+            }
+
+            // Date
+            if (prop.Format == "date" || prop.Format == "date-time")
+            {
+                DateTime? dtVal = null;
+                if (currentVal is string s && DateTime.TryParse(s, out var dt)) dtVal = dt;
+                builder.OpenComponent<SgDatePicker>(seq++);
+                builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+                builder.AddAttribute(seq++, "Value", dtVal);
+                builder.AddAttribute(seq++, "Disabled", isReadOnly);
+                builder.AddAttribute(seq++, "Required", isRequired);
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<DateTime?>(this,
+                    v => OnFieldChangedAsync(key, v?.ToString("yyyy-MM-dd"))));
+                builder.CloseComponent();
+                return;
+            }
+
+            // Color
+            if (prop.Format == "color" || prop.UiWidget == "color")
+            {
+                var colorVal = currentVal?.ToString() ?? "#000000";
+                builder.OpenComponent<SgColorPicker>(seq++);
+                builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+                builder.AddAttribute(seq++, "Value", colorVal);
+                builder.AddAttribute(seq++, "Disabled", isReadOnly);
+                builder.AddAttribute(seq++, "Required", isRequired);
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
+                    v => OnFieldChangedAsync(key, v)));
+                builder.CloseComponent();
+                return;
+            }
+
+            // Code widget → small Monaco
+            if (prop.UiWidget == "code")
+            {
+                var codeVal = currentVal?.ToString() ?? "";
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sgc-field sgc-block");
+                builder.OpenElement(seq++, "label");
+                builder.AddAttribute(seq++, "class", $"sgc-label{(isRequired ? " sgc-required" : "")}");
+                builder.AddContent(seq++, label);
+                builder.CloseElement();
+                builder.OpenComponent<SgMonaco>(seq++);
+                builder.AddAttribute(seq++, "Value", codeVal);
+                builder.AddAttribute(seq++, "Height", "150px");
+                builder.AddAttribute(seq++, "Options", new SgMonacoOptions { Language = "json", FontSize = 12, ReadOnly = isReadOnly });
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string?>(this,
+                    v => OnFieldChangedAsync(key, v)));
+                builder.CloseComponent();
+                builder.CloseElement();
+                return;
+            }
+
+            // Textarea
+            if (prop.UiWidget == "textarea")
+            {
+                var taVal = currentVal?.ToString() ?? "";
+                builder.OpenComponent<SgTextBox<string>>(seq++);
+                builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+                builder.AddAttribute(seq++, "Value", taVal);
+                builder.AddAttribute(seq++, "Multiline", true);
+                builder.AddAttribute(seq++, "Rows", prop.UiRows ?? 3);
+                builder.AddAttribute(seq++, "ReadOnly", isReadOnly);
+                builder.AddAttribute(seq++, "Required", isRequired);
+                if (prop.MaxLength.HasValue)
+                    builder.AddAttribute(seq++, "MaxLength", prop.MaxLength.Value);
+                builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
+                    v => OnFieldChangedAsync(key, v)));
+                builder.CloseComponent();
+                return;
+            }
+
+            // Default string input
+            var inputType = prop.Format switch
+            {
+                "password" => "password",
+                "email"    => "email",
+                "uri"      => "url",
+                _          => "text"
+            };
+            var strInputVal = currentVal?.ToString() ?? "";
+            builder.OpenComponent<SgTextBox<string>>(seq++);
+            builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
+            builder.AddAttribute(seq++, "Value", strInputVal);
+            builder.AddAttribute(seq++, "Type", inputType);
+            builder.AddAttribute(seq++, "ReadOnly", isReadOnly);
+            builder.AddAttribute(seq++, "Required", isRequired);
+            if (prop.MaxLength.HasValue)
+                builder.AddAttribute(seq++, "MaxLength", prop.MaxLength.Value);
+            builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
+                v => OnFieldChangedAsync(key, v)));
+            builder.CloseComponent();
+            return;
+        }
+
+        // Array of strings → tag input
+        if (prop.Type == "array")
+        {
+            var listVal = currentVal is List<string> lv ? lv : new List<string>();
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "sgc-field sgc-block");
+            builder.OpenElement(seq++, "label");
+            builder.AddAttribute(seq++, "class", $"sgc-label{(isRequired ? " sgc-required" : "")}");
+            builder.AddContent(seq++, label);
+            builder.CloseElement();
+            builder.AddContent(seq++, RenderTagInput(key, listVal, isReadOnly));
+            builder.CloseElement();
+            return;
+        }
+
+        // Object → nested card
+        if (prop.Type == "object" && prop.Properties is not null)
+        {
+            var nestedVals = currentVal is Dictionary<string, object?> nv ? nv : new Dictionary<string, object?>();
+            builder.OpenComponent<SgCard>(seq++);
+            builder.AddAttribute(seq++, "Title", label);
+            builder.AddAttribute(seq++, "Bordered", true);
+            builder.AddAttribute(seq++, "CssClass", "sg-jsf-nested-card");
+            builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b2 =>
+            {
+                b2.AddContent(0, RenderProperties(prop.Properties, prop.Required, nestedVals, fullKey));
+            }));
+            builder.CloseComponent();
+        }
+    };
+
+    private RenderFragment RenderTagInput(string key, List<string> items, bool readOnly) => builder =>
+    {
+        if (!_tagInputs.ContainsKey(key)) _tagInputs[key] = "";
+
+        int seq = 0;
+        builder.OpenElement(seq++, "div");
+        builder.AddAttribute(seq++, "class", "sg-jsf-list" + (readOnly ? " sg-jsf-list-ro" : "") + (items.Count == 0 ? " sg-jsf-list-empty" : ""));
+
+        // ── Rows ──
+        if (items.Count == 0 && readOnly)
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "sg-jsf-list-empty-msg");
+            builder.AddContent(seq++, "— список пуст —");
+            builder.CloseElement();
+        }
+        else
+        {
+            foreach (var (item, idx) in items.Select((v, i) => (v, i)))
+            {
+                var capturedIdx = idx;
+                var rowKey = $"{key}#{idx}";
+                var isEditing = _editingRow == rowKey;
+
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sg-jsf-list-row" + (isEditing ? " sg-jsf-list-row-edit" : ""));
+
+                // Index badge
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "sg-jsf-list-idx");
+                builder.AddContent(seq++, (idx + 1).ToString());
+                builder.CloseElement();
+
+                // Value (display or edit)
+                if (isEditing && !readOnly)
+                {
+                    builder.OpenElement(seq++, "input");
+                    builder.AddAttribute(seq++, "type", "text");
+                    builder.AddAttribute(seq++, "class", "sg-jsf-list-edit");
+                    builder.AddAttribute(seq++, "value", _editBuffer);
+                    builder.AddAttribute(seq++, "autofocus", true);
+                    builder.AddAttribute(seq++, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                    {
+                        _editBuffer = e.Value?.ToString() ?? "";
+                    }));
+                    builder.AddAttribute(seq++, "onblur", EventCallback.Factory.Create<FocusEventArgs>(this, async _ =>
+                    {
+                        await CommitListEditAsync(key, items, capturedIdx);
+                    }));
+                    builder.AddAttribute(seq++, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, async e =>
+                    {
+                        if (e.Key == "Enter") await CommitListEditAsync(key, items, capturedIdx);
+                        else if (e.Key == "Escape") { _editingRow = null; await InvokeAsync(StateHasChanged); }
+                    }));
+                    builder.CloseElement();
+                }
+                else
+                {
+                    builder.OpenElement(seq++, "span");
+                    builder.AddAttribute(seq++, "class", "sg-jsf-list-val");
+                    if (!readOnly)
+                    {
+                        builder.AddAttribute(seq++, "title", "Нажмите, чтобы изменить");
+                        builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
+                        {
+                            _editingRow = rowKey;
+                            _editBuffer = item;
+                            StateHasChanged();
+                        }));
+                    }
+                    if (string.IsNullOrEmpty(item))
+                    {
+                        builder.OpenElement(seq++, "em");
+                        builder.AddAttribute(seq++, "class", "sg-jsf-list-val-empty");
+                        builder.AddContent(seq++, "(пусто)");
+                        builder.CloseElement();
+                    }
+                    else
+                    {
+                        builder.AddContent(seq++, item);
+                    }
+                    builder.CloseElement();
+                }
+
+                // Actions
+                if (!readOnly)
+                {
+                    builder.OpenElement(seq++, "div");
+                    builder.AddAttribute(seq++, "class", "sg-jsf-list-actions");
+
+                    // Up
+                    builder.OpenElement(seq++, "button");
+                    builder.AddAttribute(seq++, "type", "button");
+                    builder.AddAttribute(seq++, "class", "sg-jsf-list-act");
+                    builder.AddAttribute(seq++, "title", "Выше");
+                    builder.AddAttribute(seq++, "disabled", capturedIdx == 0);
+                    builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
+                    {
+                        if (capturedIdx == 0) return;
+                        var newList = new List<string>(items);
+                        (newList[capturedIdx - 1], newList[capturedIdx]) = (newList[capturedIdx], newList[capturedIdx - 1]);
+                        _ = OnFieldChangedAsync(key, newList);
+                    }));
+                    builder.AddMarkupContent(seq++, "<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M3.22 9.78a.75.75 0 0 0 1.06 0L8 6.06l3.72 3.72a.75.75 0 1 0 1.06-1.06l-4.25-4.25a.75.75 0 0 0-1.06 0L3.22 8.72a.75.75 0 0 0 0 1.06Z\"/></svg>");
+                    builder.CloseElement();
+
+                    // Down
+                    builder.OpenElement(seq++, "button");
+                    builder.AddAttribute(seq++, "type", "button");
+                    builder.AddAttribute(seq++, "class", "sg-jsf-list-act");
+                    builder.AddAttribute(seq++, "title", "Ниже");
+                    builder.AddAttribute(seq++, "disabled", capturedIdx >= items.Count - 1);
+                    builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
+                    {
+                        if (capturedIdx >= items.Count - 1) return;
+                        var newList = new List<string>(items);
+                        (newList[capturedIdx + 1], newList[capturedIdx]) = (newList[capturedIdx], newList[capturedIdx + 1]);
+                        _ = OnFieldChangedAsync(key, newList);
+                    }));
+                    builder.AddMarkupContent(seq++, "<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 1 1 1.06-1.06L8 9.94l3.72-3.72a.75.75 0 0 1 1.06 0Z\"/></svg>");
+                    builder.CloseElement();
+
+                    // Delete
+                    builder.OpenElement(seq++, "button");
+                    builder.AddAttribute(seq++, "type", "button");
+                    builder.AddAttribute(seq++, "class", "sg-jsf-list-act sg-jsf-list-act-del");
+                    builder.AddAttribute(seq++, "title", "Удалить");
+                    builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
+                    {
+                        var newList = new List<string>(items);
+                        newList.RemoveAt(capturedIdx);
+                        _editingRow = null;
+                        _ = OnFieldChangedAsync(key, newList);
+                    }));
+                    builder.AddMarkupContent(seq++, "<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z\"/></svg>");
+                    builder.CloseElement();
+
+                    builder.CloseElement(); // actions
+                }
+
+                builder.CloseElement(); // row
+            }
+        }
+
+        // ── Footer (add input) ──
+        if (!readOnly)
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", "sg-jsf-list-add");
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jsf-list-add-icon");
+            builder.AddAttribute(seq++, "aria-hidden", "true");
+            builder.AddContent(seq++, "+");
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "text");
+            builder.AddAttribute(seq++, "class", "sg-jsf-list-add-input");
+            builder.AddAttribute(seq++, "placeholder", "Добавить элемент… (Enter)");
+            builder.AddAttribute(seq++, "value", _tagInputs[key]);
+            builder.AddAttribute(seq++, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+            {
+                _tagInputs[key] = e.Value?.ToString() ?? "";
+            }));
+            builder.AddAttribute(seq++, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, async e =>
+            {
+                if ((e.Key == "Enter" || e.Key == ",") && !string.IsNullOrWhiteSpace(_tagInputs[key]))
+                {
+                    var newList = new List<string>(items) { _tagInputs[key].Trim().TrimEnd(',') };
+                    _tagInputs[key] = "";
+                    await OnFieldChangedAsync(key, newList);
+                }
+            }));
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+
+        builder.CloseElement(); // sg-jsf-list
+    };
+
+    private async Task CommitListEditAsync(string key, List<string> items, int idx)
+    {
+        if (_editingRow is null) return;
+        var newList = new List<string>(items);
+        if (idx >= 0 && idx < newList.Count) newList[idx] = _editBuffer;
+        _editingRow = null;
+        await OnFieldChangedAsync(key, newList);
+    }
+
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
+    private static int CountLines(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return 0;
+        int n = 1;
+        foreach (var c in s) if (c == '\n') n++;
+        return n;
+    }
+}

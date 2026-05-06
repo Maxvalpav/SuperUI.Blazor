@@ -33,14 +33,12 @@ function _loadYandexMaps(apiKey, lang) {
         _apiLoadKey = key;
 
         const loc = lang || 'ru_RU';
+        
+        // UUID format key = v2.1 key, skip v3 attempt
+        const isUuidKey = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key);
 
-        // Try v3 first
-        _tryLoadV3(apiKey, loc).then(ymaps3 => {
-            _apiVersion = 'v3'; _apiReady = true;
-            const q = _apiQueue; _apiQueue = [];
-            q.forEach(p => p.resolve({ version: 'v3', api: ymaps3 }));
-        }).catch(() => {
-            // v3 failed — try v2.1
+        if (isUuidKey) {
+            // Go directly to v2.1
             _tryLoadV21(apiKey, loc).then(ymaps => {
                 _apiVersion = 'v21'; _apiReady = true;
                 const q = _apiQueue; _apiQueue = [];
@@ -50,7 +48,24 @@ function _loadYandexMaps(apiKey, lang) {
                 const q = _apiQueue; _apiQueue = [];
                 q.forEach(p => p.reject(e));
             });
-        });
+        } else {
+            // Try v3 first, fallback to v2.1
+            _tryLoadV3(apiKey, loc).then(ymaps3 => {
+                _apiVersion = 'v3'; _apiReady = true;
+                const q = _apiQueue; _apiQueue = [];
+                q.forEach(p => p.resolve({ version: 'v3', api: ymaps3 }));
+            }).catch(() => {
+                _tryLoadV21(apiKey, loc).then(ymaps => {
+                    _apiVersion = 'v21'; _apiReady = true;
+                    const q = _apiQueue; _apiQueue = [];
+                    q.forEach(p => p.resolve({ version: 'v21', api: ymaps }));
+                }).catch(e => {
+                    _apiLoading = false; _apiReady = false;
+                    const q = _apiQueue; _apiQueue = [];
+                    q.forEach(p => p.reject(e));
+                });
+            });
+        }
     });
 }
 
@@ -77,17 +92,25 @@ function _tryLoadV3(apiKey, lang) {
 
 function _tryLoadV21(apiKey, lang) {
     return new Promise((resolve, reject) => {
-        if (window.ymaps && window.ymaps.Map) { resolve(window.ymaps); return; }
+        if (window.ymaps && window.ymaps.Map) { console.log('[Yandex] Using cached ymaps v2.1'); resolve(window.ymaps); return; }
+        console.log('[Yandex] Loading v2.1 API, key:', apiKey ? '***' : 'none');
         const s = document.createElement('script');
         s.id = 'sg-ymaps21-loader';
         const key = apiKey ? `&apikey=${apiKey}` : '';
         s.src = `https://api-maps.yandex.ru/2.1/?lang=${lang}${key}`;
         s.type = 'text/javascript';
         s.onload = () => {
-            if (!window.ymaps) { reject(new Error('ymaps not found')); return; }
-            window.ymaps.ready(() => resolve(window.ymaps));
+            console.log('[Yandex] v2.1 script loaded, checking ymaps...');
+            if (!window.ymaps) { reject(new Error('ymaps not found after script load')); return; }
+            window.ymaps.ready(() => {
+                console.log('[Yandex] v2.1 ready, Map available:', !!window.ymaps.Map);
+                resolve(window.ymaps);
+            });
         };
-        s.onerror = () => reject(new Error('Не удалось загрузить Яндекс Карты. Проверьте API-ключ и ограничения домена.'));
+        s.onerror = (e) => {
+            console.error('[Yandex] v2.1 script load failed', e);
+            reject(new Error('Не удалось загрузить Яндекс Карты. Проверьте API-ключ и ограничения домена.'));
+        };
         document.head.appendChild(s);
     });
 }
@@ -246,15 +269,28 @@ function _initMapV3(dotnetRef, containerRef, instanceId, opts, markers, polyline
 // ── Init v2.1 ─────────────────────────────────────────────────────────────────
 
 function _initMapV21(dotnetRef, containerRef, instanceId, opts, markers, polylines, polygons, ymaps) {
+    console.log('[Yandex] initMapV21 starting, container:', containerRef?.id || 'no-id');
     const mapTypeMap = { satellite: 'yandex#satellite', hybrid: 'yandex#hybrid', map: 'yandex#map' };
     const mapType = mapTypeMap[opts.mapType] ?? 'yandex#map';
 
-    const map = new ymaps.Map(containerRef, {
-        center: [opts.centerLat ?? 55.751, opts.centerLon ?? 37.618],
-        zoom:   opts.zoom ?? 10,
-        type:   mapType,
-        controls: opts.showControls ? ['zoomControl', 'fullscreenControl', 'geolocationControl'] : [],
-    }, { suppressMapOpenBlock: true });
+    if (!containerRef) {
+        console.error('[Yandex] Container ref is null!');
+        throw new Error('Container element not found');
+    }
+
+    let map;
+    try {
+        map = new ymaps.Map(containerRef, {
+            center: [opts.centerLat ?? 55.751, opts.centerLon ?? 37.618],
+            zoom:   opts.zoom ?? 10,
+            type:   mapType,
+            controls: opts.showControls ? ['zoomControl', 'fullscreenControl', 'geolocationControl'] : [],
+        }, { suppressMapOpenBlock: true });
+        console.log('[Yandex] Map created successfully');
+    } catch (e) {
+        console.error('[Yandex] Map creation failed:', e);
+        throw e;
+    }
 
     const markerObjs = [];
     (markers ?? []).forEach(m => {
@@ -421,9 +457,9 @@ export function fitBounds(instanceId, south, west, north, east) {
 }
 
 // ── Real routing ─────────────────────────────────────────────────────────────
-// Strategy: 1) Yandex ymaps.route() for v2.1 (uses same key as map, real roads)
-//           2) Yandex Routing REST API for v3 (if apiKey provided)
-//           3) Straight line fallback
+// Strategy:
+//   v2.1 (UUID key): ymaps.route() built-in → REST API fallback → straight line
+//   v3 (new key):    REST API → straight line
 
 export async function buildRoute(instanceId, fromLat, fromLon, toLat, toLon, apiKey, alternatives) {
     const inst = _instances.get(instanceId);
@@ -436,17 +472,24 @@ export async function buildRoute(instanceId, fromLat, fromLon, toLat, toLon, api
         try {
             const result = await _callYmapsRoute(inst, fromLat, fromLon, toLat, toLon, alternatives);
             if (result.ok) return result;
+            console.warn('ymaps.route() failed:', result.error);
         } catch (e) {
-            console.warn('ymaps.route failed:', e);
+            console.warn('ymaps.route() exception:', e?.message ?? e);
         }
     }
 
-    // ── v3: use Yandex Routing REST API (if key provided) ──
-    if (inst.version === 'v3' && apiKey) {
+    // ── REST API (works for both v3 and v2.1 if key has Router API access) ──
+    if (apiKey) {
         try {
             const yr = await _callYandexRouter(fromLat, fromLon, toLat, toLon, apiKey);
             if (yr.ok) return _renderRoutes(inst, yr.routes, fromLat, fromLon, toLat, toLon);
-        } catch {}
+            console.warn('Yandex Router REST failed:', yr.error);
+            // Return error to user so they know what happened
+            return { ok: false, error: yr.error, straight: true, selectedIndex: 0,
+                routes: [{ distanceKm: _haversine(fromLat, fromLon, toLat, toLon), distanceText: null, durationMin: null, durationText: null, steps: [] }] };
+        } catch (e) {
+            console.warn('Yandex Router REST exception:', e?.message ?? e);
+        }
     }
 
     // ── Straight line fallback ──
@@ -464,10 +507,31 @@ export async function buildRoute(instanceId, fromLat, fromLon, toLat, toLon, api
 async function _callYmapsRoute(inst, fromLat, fromLon, toLat, toLon, alternatives) {
     const ymaps = inst.ymaps;
 
-    const routeResult = await ymaps.route(
-        [[fromLat, fromLon], [toLat, toLon]],
-        { routingMode: 'auto', results: alternatives ? 3 : 1 }
-    );
+    let routeResult;
+    try {
+        routeResult = await ymaps.route(
+            [[fromLat, fromLon], [toLat, toLon]],
+            { routingMode: 'auto', results: alternatives ? 3 : 1 }
+        );
+    } catch (e) {
+        return { ok: false, error: String(e?.message ?? e) };
+    }
+
+    // ymaps.route() can return an error object instead of throwing
+    if (!routeResult) return { ok: false, error: 'ymaps.route() returned null' };
+
+    // Check for error in result
+    if (routeResult.getStatus && routeResult.getStatus() !== 'success') {
+        return { ok: false, error: `ymaps.route status: ${routeResult.getStatus()}` };
+    }
+
+    // Check if route has paths
+    let paths;
+    try { paths = routeResult.getPaths(); } catch (e) { return { ok: false, error: String(e?.message ?? e) }; }
+
+    if (!paths || (paths.getLength && paths.getLength() === 0)) {
+        return { ok: false, error: 'Маршрут не найден' };
+    }
 
     // Add to map
     inst.map.geoObjects.add(routeResult);
@@ -475,16 +539,17 @@ async function _callYmapsRoute(inst, fromLat, fromLon, toLat, toLon, alternative
     inst._routeFeatures.push(routeResult);
 
     // Style all paths
-    const paths = routeResult.getPaths();
     paths.each((path, idx) => {
         const isMain = idx === 0;
-        path.getSegments().each(seg => {
-            seg.options.set({
-                strokeColor: isMain ? '#2563eb' : '#94a3b8',
-                strokeWidth: isMain ? 6 : 3,
-                opacity:     isMain ? 1 : 0.65,
+        try {
+            path.getSegments().each(seg => {
+                seg.options.set({
+                    strokeColor: isMain ? '#2563eb' : '#94a3b8',
+                    strokeWidth: isMain ? 6 : 3,
+                    opacity:     isMain ? 1 : 0.65,
+                });
             });
-        });
+        } catch {}
     });
 
     // Fit bounds
@@ -499,18 +564,18 @@ async function _callYmapsRoute(inst, fromLat, fromLon, toLat, toLon, alternative
 
     // Collect route info
     const routes = [];
-    const count = paths.getLength ? paths.getLength() : 1;
+    const count = paths.getLength();
     for (let i = 0; i < count; i++) {
         const path = paths.get(i);
-        const distM  = path.getLength ? path.getLength() : routeResult.getLength();
-        const durSec = path.getDuration ? path.getDuration() : (routeResult.getDuration ? routeResult.getDuration() : null);
+        let distM = 0, durSec = null;
+        try { distM = path.getLength() ?? 0; } catch {}
+        try { durSec = path.getDuration ? path.getDuration() : null; } catch {}
 
-        // Extract turn-by-turn instructions
+        // Extract turn-by-turn instructions from segments
         const steps = [];
         try {
             path.getSegments().each(seg => {
-                const action = seg.properties.get('action');
-                const text   = seg.properties.get('text') ?? '';
+                const text = seg.properties.get('text') ?? '';
                 if (text) steps.push({
                     instruction: text,
                     distance:    _formatDist(seg.getLength ? seg.getLength() : 0),
@@ -531,41 +596,69 @@ async function _callYmapsRoute(inst, fromLat, fromLon, toLat, toLon, alternative
     return { ok: true, straight: false, selectedIndex: 0, routes };
 }
 
-// ── Yandex Routing REST API ───────────────────────────────────────────────────
+// ── Yandex Router REST API v2 ─────────────────────────────────────────────────
+// Docs: https://yandex.com/maps-api/docs/router-api/request.html
+// waypoints format: lat,lon|lat,lon
+// polyline.points format: [[lat, lon], ...]
 
 async function _callYandexRouter(fromLat, fromLon, toLat, toLon, apiKey) {
-    const url = `https://api.routing.yandex.net/v2/route?apikey=${apiKey}` +
-                `&waypoints=${fromLat},${fromLon}|${toLat},${toLon}&lang=ru_RU`;
+    const url = `https://api.routing.yandex.net/v2/route` +
+                `?apikey=${encodeURIComponent(apiKey)}` +
+                `&waypoints=${fromLat},${fromLon}|${toLat},${toLon}` +
+                `&mode=driving` +
+                `&results=3`;
+
     const resp = await fetch(url);
-    if (!resp.ok) return { ok: false };
+
+    if (!resp.ok) {
+        let errMsg = `HTTP ${resp.status}`;
+        try { const e = await resp.json(); errMsg = e.errors?.[0] ?? errMsg; } catch {}
+        return { ok: false, error: errMsg };
+    }
+
     const data = await resp.json();
-    if (!data.route) return { ok: false };
 
-    const legs = data.route.legs ?? [];
-    let totalDist = 0, totalDur = 0;
-    const allCoords = [];
-    const steps = [];
+    // Handle both single route (data.route) and multiple routes (data.routes)
+    const routeList = data.routes ?? (data.route ? [data.route] : []);
+    if (!routeList.length) return { ok: false, error: 'Маршрут не найден' };
 
-    legs.forEach(leg => {
-        (leg.steps ?? []).forEach(step => {
-            totalDist += step.length ?? 0;
-            totalDur  += step.duration ?? 0;
-            (step.polyline?.points ?? []).forEach(pt => allCoords.push([pt[1], pt[0]]));
-            steps.push({ instruction: step.instruction?.text ?? '', distance: _formatDist(step.length ?? 0), duration: '' });
+    const routes = routeList.map(route => {
+        const legs = route.legs ?? [];
+        let totalDist = 0, totalDur = 0;
+        const allCoords = []; // [lon, lat] for rendering
+        const steps = [];
+
+        legs.forEach(leg => {
+            (leg.steps ?? []).forEach(step => {
+                totalDist += step.length ?? 0;
+                totalDur  += step.duration ?? 0;
+                // points are [lat, lon] — convert to [lon, lat] for our renderer
+                (step.polyline?.points ?? []).forEach(pt => allCoords.push([pt[1], pt[0]]));
+                if (step.length > 0) {
+                    steps.push({
+                        instruction: `${step.mode ?? 'driving'}`,
+                        distance:    _formatDist(step.length),
+                        duration:    _formatDur(step.duration ?? 0),
+                    });
+                }
+            });
         });
-    });
 
-    if (allCoords.length < 2) return { ok: false };
+        if (allCoords.length < 2) return null;
 
-    return { ok: true, routes: [{
-        coords:       allCoords,
-        bbox:         null,
-        distanceKm:   totalDist / 1000,
-        distanceText: _formatDist(totalDist),
-        durationMin:  Math.round(totalDur / 60),
-        durationText: _formatDur(totalDur),
-        steps,
-    }] };
+        return {
+            coords:       allCoords,
+            bbox:         null,
+            distanceKm:   totalDist / 1000,
+            distanceText: _formatDist(totalDist),
+            durationMin:  Math.round(totalDur / 60),
+            durationText: _formatDur(totalDur),
+            steps,
+        };
+    }).filter(Boolean);
+
+    if (!routes.length) return { ok: false, error: 'Не удалось разобрать маршрут' };
+    return { ok: true, routes };
 }
 
 // ── Render routes on map ──────────────────────────────────────────────────────
@@ -663,25 +756,6 @@ function _addWaypointMarker(inst, lon, lat, color, letter) {
     }
 }
 
-function _clearRouteFeatures(inst) {
-    if (inst._routeFeatures) {
-        inst._routeFeatures.forEach(f => {
-            if (inst.version === 'v3') { try { inst.map.removeChild(f); } catch {} }
-            else { try { inst.map.geoObjects.remove(f); } catch {} }
-        });
-        inst._routeFeatures = null;
-    }
-    if (inst._waypointMarkers) {
-        inst._waypointMarkers.forEach(m => {
-            if (m.v3) { try { inst.map.removeChild(m.v3); } catch {} }
-            if (m.v21) { try { inst.map.geoObjects.remove(m.v21); } catch {} }
-        });
-        inst._waypointMarkers = null;
-    }
-    ['__route__', '__route_0__'].forEach(id => {
-        if (inst.polylineObjs?.[id]) {
-            if (inst.version === 'v3') { try { inst.map.removeChild(inst.polylineObjs[id]); } catch {} }
-            else { try { inst.map.geoObjects.remove(inst.polylineObjs[id]); } catch {} }
 function _clearRouteFeatures(inst) {
     if (inst._routeFeatures) {
         inst._routeFeatures.forEach(f => {

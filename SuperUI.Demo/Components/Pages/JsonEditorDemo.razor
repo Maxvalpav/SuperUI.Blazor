@@ -1,0 +1,319 @@
+@page "/json-editor-demo"
+@using SuperUI.Components
+@inject HttpClient Http
+
+<PageTitle>JSON Schema Editor — SUI</PageTitle>
+
+<div class="je-page">
+
+    @* ── Header ──────────────────────────────────────────────────────────── *@
+    <div class="je-header">
+        <div class="je-header-left">
+            <h1 class="je-title">SgJsonSchemaForm + SgMonaco</h1>
+            <p class="je-subtitle">Генерация форм из JSON Schema с синхронизацией Monaco Editor</p>
+        </div>
+        <div class="je-header-right">
+            <span class="je-header-label">Схема:</span>
+            @foreach (var (name, idx) in _schemaNames.Select((n, i) => (n, i)))
+            {
+                var capturedIdx = idx;
+                <button class="je-schema-btn @(_selectedSchema == capturedIdx ? "active" : "")"
+                        @onclick="@(() => SelectSchema(capturedIdx))">
+                    @name
+                </button>
+            }
+        </div>
+    </div>
+
+    @* ── Main area ────────────────────────────────────────────────────────── *@
+    <div class="je-main">
+
+        @* ── Left: Form (60%) ─────────────────────────────────────────────── *@
+        <div class="je-form-col">
+            <SgJsonSchemaForm Schema="@CurrentSchema"
+                              Value="@_jsonValue"
+                              ValueChanged="@OnValueChangedAsync"
+                              ShowRawEditor="true"
+                              ReadOnly="@_readOnly"
+                              OnValidate="@OnValidated"
+                              CssClass="je-schema-form" />
+        </div>
+
+        @* ── Right: Sidebar (40%) ─────────────────────────────────────────── *@
+        <div class="je-sidebar">
+
+            @* Raw JSON preview — first so it's immediately visible *@
+            <SgCard Title="Текущий JSON" CssClass="je-sidebar-card je-json-card">
+                <ChildContent>
+                    <div class="je-json-status">
+                        <span class="je-json-status-pill @(_isValidJson ? "je-valid" : "je-invalid")">
+                            @(_isValidJson ? "✓ Валидный" : "✗ Ошибка")
+                        </span>
+                        <span class="je-json-status-meta">@(_jsonValue?.Length ?? 0) симв.</span>
+                    </div>
+                    <SgMonaco Value="@_jsonValue"
+                              Height="260px"
+                              Options="@_previewOpts"
+                              CssClass="je-preview-monaco" />
+                </ChildContent>
+            </SgCard>
+
+            @* Validation status *@
+            @if (_lastValidation is not null)
+            {
+                <SgCard Title="Результат валидации" CssClass="je-sidebar-card">
+                    <ChildContent>
+                        @if (_lastValidation.IsValid)
+                        {
+                            <SgAlert Variant="SgAlertVariant.Success" Text="JSON валиден ✓" Dense="true" />
+                        }
+                        else
+                        {
+                            <SgAlert Variant="SgAlertVariant.Danger" Title="Ошибки" Dense="true">
+                                <ul class="je-err-list">
+                                    @foreach (var err in _lastValidation.Errors)
+                                    {
+                                        <li>@err</li>
+                                    }
+                                </ul>
+                            </SgAlert>
+                        }
+                    </ChildContent>
+                </SgCard>
+            }
+
+            @* Schema selector + stats *@
+            <SgCard Title="Схема и статистика" CssClass="je-sidebar-card">
+                <ChildContent>
+                    <div class="je-schema-list">
+                        @foreach (var (name, idx) in _schemaNames.Select((n, i) => (n, i)))
+                        {
+                            var capturedIdx = idx;
+                            <button class="je-schema-item @(_selectedSchema == capturedIdx ? "active" : "")"
+                                    @onclick="@(() => SelectSchema(capturedIdx))">
+                                <span class="je-schema-icon">📋</span>
+                                <span>@name</span>
+                            </button>
+                        }
+                    </div>
+                    <div class="je-sidebar-opts">
+                        <label class="je-opt-row">
+                            <SgSwitch Value="@_readOnly" ValueChanged="@(v => { _readOnly = v; StateHasChanged(); })" />
+                            <span>Только чтение</span>
+                        </label>
+                    </div>
+                    <div class="je-stats je-stats-compact">
+                        <div class="je-stat">
+                            <span class="je-stat-label">Полей</span>
+                            <span class="je-stat-value">@(CurrentSchema?.Properties?.Count ?? 0)</span>
+                        </div>
+                        <div class="je-stat">
+                            <span class="je-stat-label">Обязат.</span>
+                            <span class="je-stat-value">@(CurrentSchema?.Required?.Count ?? 0)</span>
+                        </div>
+                    </div>
+                </ChildContent>
+            </SgCard>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    private int _selectedSchema = 0;
+    private string? _jsonValue;
+    private bool _readOnly;
+    private SgJsonSchemaValidationResult? _lastValidation;
+    private bool _isValidJson = true;
+
+    // Pre-loaded JSON examples from wwwroot/json/
+    private string? _accessJson;
+    private string? _systemJson;
+    private string? _profileJson;
+
+    private readonly SgMonacoOptions _previewOpts = new()
+    {
+        Language = "json",
+        Theme = "vs",
+        FontSize = 12,
+        ReadOnly = true,
+        Minimap = false,
+        LineNumbers = false,
+    };
+
+    private readonly string[] _schemaNames = ["Права доступа", "Параметры системы", "Профиль пользователя"];
+
+    private SgJsonSchema CurrentSchema => _selectedSchema switch
+    {
+        1 => _systemSchema,
+        2 => _profileSchema,
+        _ => _accessSchema,
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        // Load example JSON files from wwwroot/json/
+        try { _accessJson  = await Http.GetStringAsync("json/access-rights.json"); }    catch { _accessJson  = "{}"; }
+        try { _systemJson  = await Http.GetStringAsync("json/system-settings.json"); }  catch { _systemJson  = "{}"; }
+        try { _profileJson = await Http.GetStringAsync("json/user-profile.json"); }     catch { _profileJson = "{}"; }
+
+        // Set initial value from loaded file
+        _jsonValue = CurrentJsonForSchema(_selectedSchema);
+        _isValidJson = TryParseJson(_jsonValue);
+    }
+
+    private string? CurrentJsonForSchema(int idx) => idx switch
+    {
+        1 => _systemJson,
+        2 => _profileJson,
+        _ => _accessJson,
+    };
+
+    private void SelectSchema(int idx)
+    {
+        _selectedSchema = idx;
+        _jsonValue = CurrentJsonForSchema(idx);
+        _isValidJson = TryParseJson(_jsonValue);
+        _lastValidation = null;
+        StateHasChanged();
+    }
+
+    private async Task OnValueChangedAsync(string? json)
+    {
+        _jsonValue = json;
+        _isValidJson = TryParseJson(json);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnValidated(SgJsonSchemaValidationResult result)
+    {
+        _lastValidation = result;
+        StateHasChanged();
+    }
+
+    private bool TryParseJson(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return true;
+        try { System.Text.Json.JsonDocument.Parse(json); return true; }
+        catch { return false; }
+    }
+
+    // ── Schema 1: Права доступа ───────────────────────────────────────────────
+
+    private readonly SgJsonSchema _accessSchema = new()
+    {
+        Title = "Права доступа",
+        Type = "object",
+        Required = ["role"],
+        Properties = new()
+        {
+            ["role"] = new()
+            {
+                Title = "Роль",
+                Type = "string",
+                UiOrder = 1,
+                Enum = ["admin", "editor", "viewer", "guest"],
+                EnumNames = ["Администратор", "Редактор", "Просмотр", "Гость"],
+            },
+            ["canRead"] = new()
+            {
+                Title = "Чтение",
+                Type = "boolean",
+                UiOrder = 2,
+                Default = true,
+            },
+            ["canWrite"] = new()
+            {
+                Title = "Запись",
+                Type = "boolean",
+                UiOrder = 3,
+            },
+            ["canDelete"] = new()
+            {
+                Title = "Удаление",
+                Type = "boolean",
+                UiOrder = 4,
+            },
+            ["canExport"] = new()
+            {
+                Title = "Экспорт",
+                Type = "boolean",
+                UiOrder = 5,
+            },
+            ["maxItems"] = new()
+            {
+                Title = "Макс. записей",
+                Type = "integer",
+                UiOrder = 6,
+                Minimum = 0,
+                Maximum = 10000,
+                Default = 100,
+            },
+            ["allowedIPs"] = new()
+            {
+                Title = "Разрешённые IP",
+                Type = "array",
+                UiOrder = 7,
+                Items = new() { Type = "string" },
+            },
+            ["expiresAt"] = new()
+            {
+                Title = "Истекает",
+                Type = "string",
+                UiOrder = 8,
+                Format = "date",
+            },
+            ["notes"] = new()
+            {
+                Title = "Примечания",
+                Type = "string",
+                UiOrder = 9,
+                UiWidget = "textarea",
+                UiRows = 3,
+            },
+        },
+    };
+
+    // ── Schema 2: Параметры системы ───────────────────────────────────────────
+
+    private readonly SgJsonSchema _systemSchema = new()
+    {
+        Title = "Параметры системы",
+        Type = "object",
+        Required = ["appName", "apiUrl"],
+        Properties = new()
+        {
+            ["appName"]        = new() { Title = "Название приложения", Type = "string",  UiOrder = 1,  Default = "MyApp" },
+            ["version"]        = new() { Title = "Версия",              Type = "string",  UiOrder = 2,  ReadOnly = true, Default = "1.0.0" },
+            ["apiUrl"]         = new() { Title = "URL API",             Type = "string",  UiOrder = 3,  Format = "uri" },
+            ["adminEmail"]     = new() { Title = "Email администратора",Type = "string",  UiOrder = 4,  Format = "email" },
+            ["logLevel"]       = new() { Title = "Уровень логов",       Type = "string",  UiOrder = 5,  Enum = ["error","warn","info","debug","trace"] },
+            ["maxConnections"] = new() { Title = "Макс. соединений",    Type = "integer", UiOrder = 6,  Minimum = 1, Maximum = 1000, Default = 10 },
+            ["timeout"]        = new() { Title = "Таймаут (сек)",       Type = "number",  UiOrder = 7,  Minimum = 0.1, Maximum = 300, Default = 30, UiWidget = "slider" },
+            ["theme"]          = new() { Title = "Тема",                Type = "string",  UiOrder = 8,  Format = "color", Default = "#006fee" },
+            ["debug"]          = new() { Title = "Режим отладки",       Type = "boolean", UiOrder = 9  },
+            ["features"]       = new() { Title = "Функции",             Type = "array",   UiOrder = 10, Items = new() { Type = "string" } },
+        },
+    };
+
+    // ── Schema 3: Профиль пользователя ────────────────────────────────────────
+
+    private readonly SgJsonSchema _profileSchema = new()
+    {
+        Title = "Профиль пользователя",
+        Type = "object",
+        Required = ["firstName", "lastName", "email"],
+        Properties = new()
+        {
+            ["firstName"] = new() { Title = "Имя",             Type = "string",  UiOrder = 1 },
+            ["lastName"]  = new() { Title = "Фамилия",         Type = "string",  UiOrder = 2 },
+            ["email"]     = new() { Title = "Email",           Type = "string",  UiOrder = 3, Format = "email" },
+            ["password"]  = new() { Title = "Пароль",          Type = "string",  UiOrder = 4, Format = "password" },
+            ["birthDate"] = new() { Title = "Дата рождения",   Type = "string",  UiOrder = 5, Format = "date" },
+            ["website"]   = new() { Title = "Сайт",            Type = "string",  UiOrder = 6, Format = "uri" },
+            ["isActive"]  = new() { Title = "Активен",         Type = "boolean", UiOrder = 7, Default = true },
+            ["bio"]       = new() { Title = "О себе",          Type = "string",  UiOrder = 8, UiWidget = "textarea", UiRows = 4 },
+            ["tags"]      = new() { Title = "Теги",            Type = "array",   UiOrder = 9, Items = new() { Type = "string" } },
+        },
+    };
+}
