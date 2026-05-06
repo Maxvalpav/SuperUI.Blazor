@@ -322,6 +322,203 @@ export async function importDatabase(jsonText) {
     }
 }
 
+// ── List indexes ─────────────────────────────────────────────────────────────
+
+export async function listIndexes(tableName) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    try {
+        const result = await _conn.query(
+            `SELECT index_name, is_unique, sql
+             FROM duckdb_indexes()
+             WHERE table_name = '${tableName.replace(/'/g, "''")}'`
+        );
+        const indexes = result.toArray().map(r => ({
+            name:     r.index_name ?? '',
+            unique:   r.is_unique  ?? false,
+            sql:      r.sql        ?? '',
+        }));
+        return { ok: true, indexes };
+    } catch (e) {
+        // duckdb_indexes() may not exist in all builds — return empty
+        return { ok: true, indexes: [] };
+    }
+}
+
+// ── Generate CREATE INDEX script ──────────────────────────────────────────────
+
+export function generateIndexScript(tableName, indexName, columns, unique) {
+    const u    = unique ? 'UNIQUE ' : '';
+    const cols = columns.map(c => `"${c}"`).join(', ');
+    const sql  = `CREATE ${u}INDEX "${indexName}"\n    ON "${tableName}" (${cols});`;
+    return { ok: true, sql };
+}
+
+// ── Create index ──────────────────────────────────────────────────────────────
+
+export async function createIndex(tableName, indexName, columns, unique) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    const { sql } = generateIndexScript(tableName, indexName, columns, unique);
+    try {
+        await _conn.query(sql);
+        return { ok: true, sql };
+    } catch (e) {
+        return { ok: false, error: String(e), sql };
+    }
+}
+
+// ── Drop index ────────────────────────────────────────────────────────────────
+
+export async function dropIndex(indexName) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    try {
+        await _conn.query(`DROP INDEX IF EXISTS "${indexName.replace(/"/g, '""')}"`);
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
+// ── Load JSON array file into a table ─────────────────────────────────────────
+// jsonText: string content of a JSON file containing an array of objects
+// tableName: target table name (will be created / replaced)
+// mode: 'columns' (default) — infer columns from object keys
+//       'json'              — single JSON column, one row per element
+
+export async function loadJsonFile(jsonText, tableName, mode = 'columns') {
+    if (mode === 'json') return _loadJsonAsColumn(jsonText, tableName);
+    return _loadJsonAsColumns(jsonText, tableName);
+}
+
+// ── internal: flat columns mode ───────────────────────────────────────────────
+
+async function _loadJsonAsColumns(jsonText, tableName) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    try {
+        const data = JSON.parse(jsonText);
+        if (!Array.isArray(data)) return { ok: false, error: 'JSON должен быть массивом объектов' };
+        if (data.length === 0)    return { ok: false, error: 'Массив пуст' };
+
+        // Infer columns from first object
+        const sample = data[0];
+        const colNames = Object.keys(sample);
+
+        // Infer SQL types from values
+        function inferType(val) {
+            if (val === null || val === undefined) return 'VARCHAR';
+            if (typeof val === 'boolean') return 'BOOLEAN';
+            if (typeof val === 'number') {
+                return Number.isInteger(val) ? 'BIGINT' : 'DOUBLE';
+            }
+            if (typeof val === 'string') {
+                // Try date
+                if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return 'DATE';
+                if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(val)) return 'TIMESTAMP';
+            }
+            return 'VARCHAR';
+        }
+
+        // Use first non-null value per column for type inference
+        const colTypes = {};
+        for (const col of colNames) {
+            for (const row of data) {
+                if (row[col] !== null && row[col] !== undefined) {
+                    colTypes[col] = inferType(row[col]);
+                    break;
+                }
+            }
+            if (!colTypes[col]) colTypes[col] = 'VARCHAR';
+        }
+
+        // Create table
+        const colDefs = colNames.map(c => `"${c}" ${colTypes[c]}`).join(', ');
+        await _conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+        await _conn.query(`CREATE TABLE "${tableName}" (${colDefs})`);
+
+        // Insert in batches
+        const colList = colNames.map(c => `"${c}"`).join(', ');
+        const BATCH = 200;
+        for (let i = 0; i < data.length; i += BATCH) {
+            const batch = data.slice(i, i + BATCH);
+            const values = batch.map(row => {
+                const vals = colNames.map(c => {
+                    const v = row[c];
+                    if (v === null || v === undefined) return 'NULL';
+                    if (typeof v === 'boolean') return v ? 'true' : 'false';
+                    if (typeof v === 'number')  return String(v);
+                    return `'${String(v).replace(/'/g, "''")}'`;
+                });
+                return `(${vals.join(', ')})`;
+            }).join(', ');
+            await _conn.query(`INSERT INTO "${tableName}" (${colList}) VALUES ${values}`);
+        }
+
+        return { ok: true, rowCount: data.length, columns: colNames.length };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
+// ── internal: JSON column mode ────────────────────────────────────────────────
+// Stores each element of a JSON array as a separate row in a single JSON column.
+// If the root value is not an array, the whole document is stored as one row.
+
+async function _loadJsonAsColumn(jsonText, tableName) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    try {
+        const parsed = JSON.parse(jsonText);
+        const items  = Array.isArray(parsed) ? parsed : [parsed];
+        if (items.length === 0) return { ok: false, error: 'Массив пуст' };
+
+        await _conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+        await _conn.query(`CREATE TABLE "${tableName}" (id INTEGER, data JSON)`);
+
+        // Serialize each element back to a JSON string and insert
+        const BATCH = 200;
+        for (let i = 0; i < items.length; i += BATCH) {
+            const slice = items.slice(i, i + BATCH);
+            const values = slice.map((item, j) => {
+                const id      = i + j + 1;
+                const jsonStr = JSON.stringify(item).replace(/'/g, "''");
+                return `(${id}, '${jsonStr}'::JSON)`;
+            }).join(', ');
+            await _conn.query(`INSERT INTO "${tableName}" (id, data) VALUES ${values}`);
+        }
+
+        return { ok: true, rowCount: items.length, columns: 2, mode: 'json' };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
+// ── Load Parquet file ─────────────────────────────────────────────────────────
+// fileBytes: Uint8Array of the .parquet file content
+// tableName: target table name
+
+export async function loadParquetFile(fileBytes, tableName) {
+    if (!_conn || !_db) return { ok: false, error: 'Not initialized' };
+    try {
+        const fname = `${tableName}_upload.parquet`;
+
+        // Register the file in DuckDB's virtual filesystem
+        await _db.registerFileBuffer(fname, fileBytes);
+
+        // Create table from parquet
+        await _conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+        await _conn.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_parquet('${fname}')`);
+
+        // Get row count
+        const cnt = await _conn.query(`SELECT COUNT(*) AS n FROM "${tableName}"`);
+        const rowCount = Number(cnt.toArray()[0]?.n ?? 0);
+
+        // Cleanup virtual file
+        try { await _db.dropFile(fname); } catch {}
+
+        return { ok: true, rowCount };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
 // ── OPFS: check support ───────────────────────────────────────────────────────
 
 export function opfsSupported() {

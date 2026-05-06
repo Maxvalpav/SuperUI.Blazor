@@ -162,6 +162,67 @@
                 }
             </div>
 
+            @* ── Load JSON / Parquet ───────────────────────────────────────── *@
+            <div class="ddb-sidebar-section">
+                <div class="ddb-sidebar-label">Загрузить файл</div>
+                <div class="ddb-io-row">
+                    <label class="ddb-io-btn ddb-io-btn--import" title="Загрузить JSON-массив как новую таблицу (колонки из ключей объектов)">
+                        @if (_loadingJson)
+                        {
+                            <span class="ddb-spinner"></span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <line x1="12" y1="18" x2="12" y2="12"/>
+                                <line x1="9" y1="15" x2="15" y2="15"/>
+                            </svg>
+                        }
+                        <span>JSON → колонки</span>
+                        <InputFile OnChange="LoadJsonFileAsync" accept=".json" style="display:none" disabled="@(_status != "ready" || _loadingJson)" />
+                    </label>
+                    <label class="ddb-io-btn ddb-io-btn--import" title="Загрузить JSON-файл в таблицу с одной колонкой типа JSON (id + data)">
+                        @if (_loadingJsonCol)
+                        {
+                            <span class="ddb-spinner"></span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <polyline points="8 12 4 16 8 20"/><polyline points="16 12 20 16 16 20"/>
+                            </svg>
+                        }
+                        <span>JSON → json-колонка</span>
+                        <InputFile OnChange="LoadJsonAsColumnAsync" accept=".json" style="display:none" disabled="@(_status != "ready" || _loadingJsonCol)" />
+                    </label>
+                    <label class="ddb-io-btn ddb-io-btn--import" title="Загрузить Parquet-файл как новую таблицу">
+                        @if (_loadingParquet)
+                        {
+                            <span class="ddb-spinner"></span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                                <polyline points="8 13 12 17 16 13"/>
+                                <line x1="12" y1="17" x2="12" y2="11"/>
+                            </svg>
+                        }
+                        <span>Parquet → таблица</span>
+                        <InputFile OnChange="LoadParquetFileAsync" accept=".parquet" style="display:none" disabled="@(_status != "ready" || _loadingParquet)" />
+                    </label>
+                </div>
+                @if (_loadMessage is not null)
+                {
+                    <div class="ddb-io-msg @(_loadError ? "ddb-io-msg--error" : "ddb-io-msg--ok")">@_loadMessage</div>
+                }
+            </div>
+
             @* ── Database / Tables tree ────────────────────────────────────── *@
             <div class="ddb-sidebar-section ddb-sidebar-section--grow">
                 <div class="ddb-sidebar-label-row">
@@ -391,11 +452,21 @@
                             <path d="M3 9h18M3 15h18M9 3v18"/>
                         </svg>
                         <span>Структура: <strong>@_structureTable</strong></span>
-                        <button class="ddb-icon-btn" style="margin-left:auto" @onclick="() => _structureTable = null">
-                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                            </svg>
-                        </button>
+                        <div style="display:flex;gap:4px;margin-left:auto;align-items:center">
+                            <button class="ddb-toolbar-btn" style="font-size:11px;padding:2px 8px"
+                                    title="Создать индекс для этой таблицы"
+                                    @onclick="() => OpenIndexBuilder(_structureTable)">
+                                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px">
+                                    <path d="M3 3h18M3 9h18M3 15h9M3 21h9M16 17l2 2 4-4"/>
+                                </svg>
+                                Индекс
+                            </button>
+                            <button class="ddb-icon-btn" @onclick="() => _structureTable = null">
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                     <div class="ddb-structure-cols">
                         @foreach (var col in _structureCols)
@@ -409,6 +480,126 @@
                                 }
                             </div>
                         }
+                    </div>
+                    @* ── Existing indexes ──────────────────────────────────── *@
+                    @if (_structureIndexes.Count > 0)
+                    {
+                        <div class="ddb-structure-head" style="border-top:1px solid var(--sui-border);margin-top:4px;padding-top:6px">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 3h18M3 9h18M3 15h9M3 21h9M16 17l2 2 4-4"/>
+                            </svg>
+                            <span style="font-size:11px;font-weight:600">Индексы</span>
+                        </div>
+                        @foreach (var idx in _structureIndexes)
+                        {
+                            <div class="ddb-structure-col" style="justify-content:space-between">
+                                <span class="ddb-col-name">@idx.Name</span>
+                                @if (idx.Unique)
+                                {
+                                    <span class="ddb-col-type" style="color:var(--sui-accent)">UNIQUE</span>
+                                }
+                                <button class="ddb-icon-btn" style="margin-left:auto" title="Удалить индекс"
+                                        @onclick="() => DropIndexAsync(idx.Name)">
+                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                    </svg>
+                                </button>
+                            </div>
+                        }
+                    }
+                </div>
+            }
+
+            @* ── Index builder ────────────────────────────────────────────── *@
+            @if (_showIndexBuilder)
+            {
+                <div class="ddb-ctor-panel">
+                    <div class="ddb-ctor-head">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 3h18M3 9h18M3 15h9M3 21h9M16 17l2 2 4-4"/>
+                        </svg>
+                        <span>Создать индекс: <strong>@_idxTable</strong></span>
+                        <button class="ddb-icon-btn" style="margin-left:auto" @onclick="() => _showIndexBuilder = false">
+                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="ddb-ctor-body">
+                        <div class="ddb-ctor-row">
+                            <label class="ddb-ctor-label">Имя индекса</label>
+                            <input class="ddb-ctor-input ddb-ctor-input--name"
+                                   @bind="_idxName"
+                                   placeholder="idx_table_col"
+                                   spellcheck="false" />
+                        </div>
+                        <div class="ddb-ctor-row" style="align-items:center;gap:8px">
+                            <label class="ddb-ctor-label">Уникальный</label>
+                            <input type="checkbox" @bind="_idxUnique" />
+                        </div>
+                        <div class="ddb-ctor-cols-head">
+                            <span class="ddb-ctor-label">Колонки (выберите одну или несколько)</span>
+                        </div>
+                        <div class="ddb-ctor-cols" style="max-height:160px;overflow-y:auto">
+                            @foreach (var col in _structureCols)
+                            {
+                                var c = col;
+                                var checked_ = _idxColumns.Contains(c.Name);
+                                <div class="ddb-structure-col" style="cursor:pointer;gap:8px"
+                                     @onclick="() => ToggleIdxColumn(c.Name)">
+                                    <input type="checkbox" checked="@checked_" @onclick:stopPropagation="true"
+                                           @onchange="() => ToggleIdxColumn(c.Name)" />
+                                    <span class="ddb-col-name">@c.Name</span>
+                                    <span class="ddb-col-type">@c.Type</span>
+                                </div>
+                            }
+                        </div>
+
+                        @* Generated script preview *@
+                        @if (_idxColumns.Count > 0 && !string.IsNullOrWhiteSpace(_idxName))
+                        {
+                            <div class="ddb-ctor-row" style="flex-direction:column;gap:4px">
+                                <label class="ddb-ctor-label">Скрипт</label>
+                                <pre class="ddb-idx-script">@_idxScript</pre>
+                            </div>
+                        }
+
+                        <div class="ddb-ctor-foot">
+                            <div style="flex:1">
+                                @if (!string.IsNullOrEmpty(_idxError))
+                                {
+                                    <span class="ddb-ctor-error">@_idxError</span>
+                                }
+                                @if (!string.IsNullOrEmpty(_idxSuccess))
+                                {
+                                    <span style="color:var(--sui-success,#22c55e);font-size:12px">@_idxSuccess</span>
+                                }
+                            </div>
+                            <div class="ddb-ctor-actions">
+                                <button class="ddb-toolbar-btn" @onclick="GenerateIndexScript">
+                                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                                    </svg>
+                                    Генерировать скрипт
+                                </button>
+                                <button class="ddb-toolbar-btn" @onclick="() => _showIndexBuilder = false">Отмена</button>
+                                <button class="ddb-run-btn" disabled="@(_idxBuilding || _status != "ready" || _idxColumns.Count == 0 || string.IsNullOrWhiteSpace(_idxName))"
+                                        @onclick="CreateIndexAsync">
+                                    @if (_idxBuilding)
+                                    {
+                                        <span class="ddb-spinner ddb-spinner--white"></span>
+                                        <span>Создание...</span>
+                                    }
+                                    else
+                                    {
+                                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                            <polyline points="20 6 9 17 4 12"/>
+                                        </svg>
+                                        <span>Создать индекс</span>
+                                    }
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             }
@@ -526,6 +717,7 @@
 
     private record ColInfo(string Name, string Type);
     private record StructCol(string Name, string Type, string Nullable);
+    private record IndexInfo(string Name, bool Unique, string Sql);
 
     // ── OPFS / persistence ────────────────────────────────────────────────────
 
@@ -538,6 +730,27 @@
     private bool _importing;
     private string? _ioMessage;
     private bool _ioError;
+
+    // ── Load JSON / Parquet ───────────────────────────────────────────────────
+
+    private bool _loadingJson;
+    private bool _loadingJsonCol;
+    private bool _loadingParquet;
+    private string? _loadMessage;
+    private bool _loadError;
+
+    // ── Index builder ─────────────────────────────────────────────────────────
+
+    private bool _showIndexBuilder;
+    private bool _idxBuilding;
+    private string _idxTable = "";
+    private string _idxName = "";
+    private bool _idxUnique;
+    private readonly HashSet<string> _idxColumns = new(StringComparer.Ordinal);
+    private string _idxScript = "";
+    private string? _idxError;
+    private string? _idxSuccess;
+    private List<IndexInfo> _structureIndexes = new();
 
     // ── Generators ────────────────────────────────────────────────────────────
 
@@ -645,6 +858,7 @@
         if (_module is null) return;
         _structureTable = table;
         _structureCols.Clear();
+        _structureIndexes.Clear();
         try
         {
             var res = await _module.InvokeAsync<JsonElement>("describeTable", table);
@@ -655,6 +869,17 @@
                         c.GetProperty("name").GetString() ?? "",
                         c.GetProperty("type").GetString() ?? "",
                         c.TryGetProperty("null", out var n) ? (n.GetString() ?? "") : ""))
+                    .ToList();
+            }
+
+            var idxRes = await _module.InvokeAsync<JsonElement>("listIndexes", table);
+            if (idxRes.GetProperty("ok").GetBoolean() && idxRes.TryGetProperty("indexes", out var idxArr))
+            {
+                _structureIndexes = idxArr.EnumerateArray()
+                    .Select(i => new IndexInfo(
+                        i.TryGetProperty("name", out var nm) ? (nm.GetString() ?? "") : "",
+                        i.TryGetProperty("unique", out var u) && u.GetBoolean(),
+                        i.TryGetProperty("sql", out var s) ? (s.GetString() ?? "") : ""))
                     .ToList();
             }
         }
@@ -1092,6 +1317,219 @@
         }
 
         return s;
+    }
+
+    // ── Index builder ─────────────────────────────────────────────────────────
+
+    private void OpenIndexBuilder(string table)
+    {
+        _idxTable   = table;
+        _idxName    = $"idx_{table}_{DateTime.Now:mmss}";
+        _idxUnique  = false;
+        _idxColumns.Clear();
+        _idxScript  = "";
+        _idxError   = null;
+        _idxSuccess = null;
+        _showIndexBuilder = true;
+        StateHasChanged();
+    }
+
+    private void ToggleIdxColumn(string col)
+    {
+        if (!_idxColumns.Remove(col)) _idxColumns.Add(col);
+        GenerateIndexScript();
+    }
+
+    private void GenerateIndexScript()
+    {
+        if (string.IsNullOrWhiteSpace(_idxName) || _idxColumns.Count == 0)
+        {
+            _idxScript = "";
+            StateHasChanged();
+            return;
+        }
+        var u    = _idxUnique ? "UNIQUE " : "";
+        var cols = string.Join(", ", _idxColumns.Select(c => $"\"{c}\""));
+        _idxScript = $"CREATE {u}INDEX \"{_idxName}\"\n    ON \"{_idxTable}\" ({cols});";
+        StateHasChanged();
+    }
+
+    private async Task CreateIndexAsync()
+    {
+        if (_module is null) return;
+        _idxError   = null;
+        _idxSuccess = null;
+        _idxBuilding = true;
+        StateHasChanged();
+        try
+        {
+            var cols = _idxColumns.ToArray();
+            var res  = await _module.InvokeAsync<JsonElement>("createIndex", _idxTable, _idxName, cols, _idxUnique);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                _idxSuccess = $"Индекс «{_idxName}» создан";
+                _showIndexBuilder = false;
+                // Refresh structure to show new index
+                await ShowStructureAsync(_idxTable);
+            }
+            else
+            {
+                _idxError = res.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка создания индекса";
+            }
+        }
+        finally
+        {
+            _idxBuilding = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DropIndexAsync(string indexName)
+    {
+        if (_module is null || _structureTable is null) return;
+        try
+        {
+            await _module.InvokeAsync<JsonElement>("dropIndex", indexName);
+            await ShowStructureAsync(_structureTable);
+        }
+        catch { /* ignore */ }
+    }
+
+    // ── Load JSON file (flat columns) ─────────────────────────────────────────
+
+    private async Task LoadJsonFileAsync(InputFileChangeEventArgs e)
+    {
+        if (_module is null) return;
+        _loadingJson = true;
+        _loadMessage = null;
+        StateHasChanged();
+        try
+        {
+            var file = e.File;
+            // Derive table name from filename (strip extension, sanitize)
+            var tableName = System.IO.Path.GetFileNameWithoutExtension(file.Name)
+                .Replace(" ", "_").Replace("-", "_")
+                .ToLowerInvariant();
+            if (string.IsNullOrEmpty(tableName)) tableName = "json_data";
+
+            using var stream = file.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+
+            var res = await _module.InvokeAsync<JsonElement>("loadJsonFile", json, tableName);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var rows = res.TryGetProperty("rowCount", out var rc) ? rc.GetInt32() : 0;
+                var cols = res.TryGetProperty("columns", out var cc) ? cc.GetInt32() : 0;
+                _loadMessage = $"Загружено {rows:N0} строк, {cols} колонок → таблица «{tableName}»";
+                _loadError = false;
+                _sql = $"SELECT * FROM \"{tableName}\" LIMIT 50;";
+                await RefreshSchemaAsync();
+                await RunQueryAsync();
+            }
+            else
+            {
+                _loadMessage = res.TryGetProperty("error", out var err) ? err.GetString() : "Ошибка загрузки JSON";
+                _loadError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadMessage = ex.Message;
+            _loadError = true;
+        }
+        finally { _loadingJson = false; StateHasChanged(); }
+    }
+
+    // ── Load JSON file (single JSON column) ───────────────────────────────────
+
+    private async Task LoadJsonAsColumnAsync(InputFileChangeEventArgs e)
+    {
+        if (_module is null) return;
+        _loadingJsonCol = true;
+        _loadMessage = null;
+        StateHasChanged();
+        try
+        {
+            var file = e.File;
+            var tableName = System.IO.Path.GetFileNameWithoutExtension(file.Name)
+                .Replace(" ", "_").Replace("-", "_")
+                .ToLowerInvariant();
+            if (string.IsNullOrEmpty(tableName)) tableName = "json_data";
+
+            using var stream = file.OpenReadStream(maxAllowedSize: 256 * 1024 * 1024);
+            using var reader = new System.IO.StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+
+            // Pass mode = 'json' to use the JSON-column loader
+            var res = await _module.InvokeAsync<JsonElement>("loadJsonFile", json, tableName, "json");
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var rows = res.TryGetProperty("rowCount", out var rc) ? rc.GetInt32() : 0;
+                _loadMessage = $"Загружено {rows:N0} строк → таблица «{tableName}» (id INTEGER, data JSON)";
+                _loadError = false;
+                _sql = $"SELECT id, data FROM \"{tableName}\" LIMIT 50;";
+                await RefreshSchemaAsync();
+                await RunQueryAsync();
+            }
+            else
+            {
+                _loadMessage = res.TryGetProperty("error", out var err) ? err.GetString() : "Ошибка загрузки JSON";
+                _loadError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadMessage = ex.Message;
+            _loadError = true;
+        }
+        finally { _loadingJsonCol = false; StateHasChanged(); }
+    }
+
+    // ── Load Parquet file ─────────────────────────────────────────────────────
+
+    private async Task LoadParquetFileAsync(InputFileChangeEventArgs e)
+    {
+        if (_module is null) return;
+        _loadingParquet = true;
+        _loadMessage = null;
+        StateHasChanged();
+        try
+        {
+            var file = e.File;
+            var tableName = System.IO.Path.GetFileNameWithoutExtension(file.Name)
+                .Replace(" ", "_").Replace("-", "_")
+                .ToLowerInvariant();
+            if (string.IsNullOrEmpty(tableName)) tableName = "parquet_data";
+
+            // Read file as byte array and pass to JS
+            using var stream = file.OpenReadStream(maxAllowedSize: 512 * 1024 * 1024);
+            using var ms = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var res = await _module.InvokeAsync<JsonElement>("loadParquetFile", bytes, tableName);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var rows = res.TryGetProperty("rowCount", out var rc) ? rc.GetInt32() : 0;
+                _loadMessage = $"Загружено {rows:N0} строк из Parquet → таблица «{tableName}»";
+                _loadError = false;
+                _sql = $"SELECT * FROM \"{tableName}\" LIMIT 50;";
+                await RefreshSchemaAsync();
+                await RunQueryAsync();
+            }
+            else
+            {
+                _loadMessage = res.TryGetProperty("error", out var err) ? err.GetString() : "Ошибка загрузки Parquet";
+                _loadError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _loadMessage = ex.Message;
+            _loadError = true;
+        }
+        finally { _loadingParquet = false; StateHasChanged(); }
     }
 
     public async ValueTask DisposeAsync()
