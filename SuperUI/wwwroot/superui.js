@@ -217,7 +217,11 @@ export function init(dotnetRef, gridRoot) {
         menu.style.top = top + 'px';
         menu.style.right = 'auto';
         menu.style.maxHeight = maxH + 'px';
+        menu.style.height = maxH + 'px';
         menu.style.zIndex = '1000';
+        // Write body max-height as CSS custom property — Blazor won't reset it
+        // body max = total - footer (~37px) - body top+bottom padding (~12px)
+        menu.style.setProperty('--sg-filter-body-h', Math.max(80, maxH - 49) + 'px');
     };
 
     const repositionAll = () => {
