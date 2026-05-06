@@ -110,14 +110,90 @@
             @* ── Export / Import ──────────────────────────────────────────── *@
             <div class="ddb-sidebar-section">
                 <div class="ddb-sidebar-label">База данных</div>
-                <div class="ddb-io-row">
+
+                @* ── Имя файла БД ─────────────────────────────────────────── *@
+                <div class="ddb-db-name-row">
+                    <input class="ddb-ctor-input" style="flex:1;min-width:0;font-size:11px"
+                           @bind="_dbFilename"
+                           placeholder="my_database.db"
+                           spellcheck="false" />
+                </div>
+
+                @* ── Сохранить на диск ────────────────────────────────────── *@
+                <button class="ddb-db-action-btn @(_savingToDisk ? "ddb-db-action-btn--busy" : "")"
+                        title="ATTACH → COPY FROM DATABASE memory → DETACH → скачать файл"
+                        disabled="@(_status != "ready" || _tables.Count == 0 || _savingToDisk)"
+                        @onclick="SaveToDiskAsync">
+                    @if (_savingToDisk)
+                    {
+                        <span class="ddb-spinner"></span>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                            <polyline points="17 21 17 13 7 13 7 21"/>
+                            <polyline points="7 3 7 8 15 8"/>
+                        </svg>
+                    }
+                    <div class="ddb-db-action-info">
+                        <span class="ddb-db-action-name">Сохранить на диск</span>
+                        <span class="ddb-db-action-hint">ATTACH → COPY → DETACH</span>
+                    </div>
+                </button>
+
+                @* ── Показать SQL скрипт ──────────────────────────────────── *@
+                <button class="ddb-db-action-btn"
+                        title="Показать SQL скрипт сохранения"
+                        @onclick="() => _showSaveScript = !_showSaveScript">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                    </svg>
+                    <div class="ddb-db-action-info">
+                        <span class="ddb-db-action-name">SQL скрипт сохранения</span>
+                        <span class="ddb-db-action-hint">вставить в редактор</span>
+                    </div>
+                </button>
+                @if (_showSaveScript)
+                {
+                    <div class="ddb-save-script-wrap">
+                        <pre class="ddb-idx-script" style="font-size:10px;margin:0">@GetSaveScript()</pre>
+                        <button class="ddb-toolbar-btn" style="font-size:10px;margin-top:4px;width:100%"
+                                @onclick="InsertSaveScript">
+                            Вставить в редактор
+                        </button>
+                    </div>
+                }
+
+                @* ── Загрузить .duckdb с диска ────────────────────────────── *@
+                <label class="ddb-db-action-btn ddb-db-action-btn--import"
+                       title="Загрузить .duckdb файл и скопировать таблицы в память">
+                    @if (_loadingDuckDb)
+                    {
+                        <span class="ddb-spinner"></span>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 5 17 10"/>
+                            <line x1="12" y1="5" x2="12" y2="17"/>
+                        </svg>
+                    }
+                    <div class="ddb-db-action-info">
+                        <span class="ddb-db-action-name">Загрузить .duckdb</span>
+                        <span class="ddb-db-action-hint">ATTACH → COPY → DETACH</span>
+                    </div>
+                    <InputFile OnChange="LoadDuckDbFileAsync" accept=".db,.duckdb" style="display:none"
+                               disabled="@(_status != "ready" || _loadingDuckDb)" />
+                </label>
+
+                @* ── JSON экспорт/импорт ──────────────────────────────────── *@
+                <div class="ddb-io-row" style="margin-top:6px">
                     <button class="ddb-io-btn" title="Скачать базу как JSON-снимок"
                             disabled="@(_status != "ready" || _tables.Count == 0 || _exporting)"
                             @onclick="ExportAsync">
-                        @if (_exporting)
-                        {
-                            <span class="ddb-spinner"></span>
-                        }
+                        @if (_exporting) { <span class="ddb-spinner"></span> }
                         else
                         {
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -129,10 +205,7 @@
                         <span>Экспорт .json</span>
                     </button>
                     <label class="ddb-io-btn ddb-io-btn--import" title="Загрузить JSON-снимок базы">
-                        @if (_importing)
-                        {
-                            <span class="ddb-spinner"></span>
-                        }
+                        @if (_importing) { <span class="ddb-spinner"></span> }
                         else
                         {
                             <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -145,6 +218,7 @@
                         <InputFile OnChange="ImportAsync" accept=".json" style="display:none" disabled="@(_status != "ready" || _importing)" />
                     </label>
                 </div>
+
                 @if (_ioMessage is not null)
                 {
                     <div class="ddb-io-msg @(_ioError ? "ddb-io-msg--error" : "ddb-io-msg--ok")">@_ioMessage</div>
@@ -217,13 +291,75 @@
                         <InputFile OnChange="LoadParquetFileAsync" accept=".parquet" style="display:none" disabled="@(_status != "ready" || _loadingParquet)" />
                     </label>
                 </div>
+
+                @* ── Parquet from URL ──────────────────────────────────────── *@
+                <button class="ddb-snippet-cat-btn" style="margin-top:6px;border-radius:var(--sui-radius-sm)"
+                        @onclick="() => _showParquetUrl = !_showParquetUrl">
+                    <svg class="ddb-tree-arrow @(_showParquetUrl ? "ddb-tree-arrow--open" : "")"
+                         viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                    <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                        <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+                    </svg>
+                    Parquet по URL / S3
+                </button>
+
+                @if (_showParquetUrl)
+                {
+                    <div class="ddb-parquet-url-panel">
+                        <div class="ddb-parquet-url-row">
+                            <label class="ddb-ctor-label">URL</label>
+                            <input class="ddb-ctor-input" style="flex:1;min-width:0;font-size:10px"
+                                   @bind="_parquetUrl"
+                                   placeholder="https://... или s3://..."
+                                   spellcheck="false" />
+                        </div>
+                        <div class="ddb-parquet-url-row">
+                            <label class="ddb-ctor-label">Таблица</label>
+                            <input class="ddb-ctor-input" style="flex:1;min-width:0"
+                                   @bind="_parquetUrlTable"
+                                   placeholder="parquet_data"
+                                   spellcheck="false" />
+                        </div>
+                        <div class="ddb-parquet-url-row" style="gap:4px;justify-content:flex-end">
+                            @if (!string.IsNullOrEmpty(_parquetUrlError))
+                            {
+                                <span style="font-size:10px;color:var(--sui-danger);flex:1">@_parquetUrlError</span>
+                            }
+                            <button class="ddb-run-btn" style="font-size:11px;padding:3px 10px"
+                                    disabled="@(_status != "ready" || _loadingParquetUrl || string.IsNullOrWhiteSpace(_parquetUrl))"
+                                    @onclick="LoadParquetFromUrlAsync">
+                                @if (_loadingParquetUrl)
+                                {
+                                    <span class="ddb-spinner ddb-spinner--white"></span>
+                                    <span>Загрузка...</span>
+                                }
+                                else
+                                {
+                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                    <span>Загрузить</span>
+                                }
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_parquetUrlSuccess))
+                        {
+                            <div class="ddb-io-msg ddb-io-msg--ok">@_parquetUrlSuccess</div>
+                        }
+                        <div style="font-size:10px;color:var(--sui-text-muted);padding:4px 0 2px;line-height:1.4">
+                            Поддерживаются публичные HTTP/HTTPS URL и S3 presigned URL. CORS должен быть разрешён на сервере.
+                        </div>
+                    </div>
+                }
+
                 @if (_loadMessage is not null)
                 {
                     <div class="ddb-io-msg @(_loadError ? "ddb-io-msg--error" : "ddb-io-msg--ok")">@_loadMessage</div>
                 }
             </div>
 
-            @* ── Database / Tables tree ────────────────────────────────────── *@
+            @* ── Схема: выбор БД + таблицы ────────────────────────────────── *@
             <div class="ddb-sidebar-section ddb-sidebar-section--grow">
                 <div class="ddb-sidebar-label-row">
                     <span class="ddb-sidebar-label">Схема</span>
@@ -246,17 +382,39 @@
                     </div>
                 </div>
 
+                @* ── Выбор активной базы данных ───────────────────────────── *@
+                @if (_databases.Count > 1)
+                {
+                    <div class="ddb-db-select-row">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;color:var(--sui-accent)">
+                            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                            <path d="M3 5V19A9 3 0 0 0 21 19V5"/>
+                            <path d="M3 12A9 3 0 0 0 21 12"/>
+                        </svg>
+                        <select class="ddb-db-select"
+                                value="@_activeDatabase"
+                                @onchange="async e => await SwitchDatabaseAsync(e.Value?.ToString() ?? "")">
+                            @foreach (var db in _databases)
+                            {
+                                <option value="@db" selected="@(db == _activeDatabase)">@db</option>
+                            }
+                        </select>
+                    </div>
+                }
+
                 @if (_databases.Count == 0 && _status == "ready")
                 {
-                    <div class="ddb-sidebar-empty">Нет баз данных.<br/>Используйте генераторы выше.</div>
+                    <div class="ddb-sidebar-empty">Нет баз данных.<br/>Используйте генераторы.</div>
                 }
 
                 @foreach (var db in _databases)
                 {
                     var dbName = db;
                     var dbOpen = _openDbs.Contains(dbName);
+                    var isActiveDb = dbName == _activeDatabase;
                     <div class="ddb-db-node">
-                        <button class="ddb-db-header" @onclick="() => ToggleDb(dbName)">
+                        <button class="ddb-db-header @(isActiveDb ? "ddb-db-header--active" : "")"
+                                @onclick="() => ToggleDb(dbName)">
                             <svg class="ddb-tree-arrow @(dbOpen ? "ddb-tree-arrow--open" : "")"
                                  viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                                 <polyline points="9 18 15 12 9 6"/>
@@ -267,8 +425,11 @@
                                 <path d="M3 12A9 3 0 0 0 21 12"/>
                             </svg>
                             <span class="ddb-db-name">@dbName</span>
+                            @if (isActiveDb)
+                            {
+                                <span class="ddb-db-active-badge">active</span>
+                            }
                         </button>
-
                         @if (dbOpen)
                         {
                             @foreach (var tbl in _tables)
@@ -296,26 +457,10 @@
                 }
             </div>
 
-            @* ── Quick queries ─────────────────────────────────────────────── *@
-            @if (_tables.Count > 0)
-            {
-                <div class="ddb-sidebar-section">
-                    <div class="ddb-sidebar-label">Примеры запросов</div>
-                    @foreach (var q in _quickQueries)
-                    {
-                        var qq = q;
-                        <button class="ddb-quick-btn" @onclick="() => ApplyQuickQuery(qq.Sql)">
-                            @qq.Label
-                        </button>
-                    }
-                </div>
-            }
-        </div>
+        </div>@* end ddb-sidebar left *@
 
         @* ── Main area ────────────────────────────────────────────────────── *@
         <div class="ddb-main">
-
-            @* ── Table constructor ────────────────────────────────────────── *@
             @if (_showConstructor)
             {
                 <div class="ddb-ctor-panel">
@@ -453,6 +598,17 @@
                         </svg>
                         <span>Структура: <strong>@_structureTable</strong></span>
                         <div style="display:flex;gap:4px;margin-left:auto;align-items:center">
+                            <button class="ddb-toolbar-btn" style="font-size:11px;padding:2px 8px"
+                                    title="Экспортировать таблицу в Parquet"
+                                    @onclick="() => ExportTableToParquetAsync(_structureTable)">
+                                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:3px">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                    <polyline points="14 2 14 8 20 8"/>
+                                    <polyline points="8 13 12 17 16 13"/>
+                                    <line x1="12" y1="17" x2="12" y2="11"/>
+                                </svg>
+                                Parquet
+                            </button>
                             <button class="ddb-toolbar-btn" style="font-size:11px;padding:2px 8px"
                                     title="Создать индекс для этой таблицы"
                                     @onclick="() => OpenIndexBuilder(_structureTable)">
@@ -686,6 +842,68 @@
                 </div>
             }
         </div>
+
+        @* ── Right sidebar: Quick queries + Snippets ──────────────────────── *@
+        <div class="ddb-sidebar ddb-sidebar--right">
+
+            @* ── Quick queries ─────────────────────────────────────────────── *@
+            @if (_tables.Count > 0)
+            {
+                <div class="ddb-sidebar-section">
+                    <div class="ddb-sidebar-label">Примеры запросов</div>
+                    @foreach (var q in _quickQueries)
+                    {
+                        var qq = q;
+                        <button class="ddb-quick-btn" @onclick="() => ApplyQuickQuery(qq.Sql)">
+                            @qq.Label
+                        </button>
+                    }
+                </div>
+            }
+
+            @* ── SQL Snippets ──────────────────────────────────────────────── *@
+            <div class="ddb-sidebar-section ddb-sidebar-section--grow">
+                <div class="ddb-sidebar-label-row">
+                    <span class="ddb-sidebar-label">SQL Сниппеты</span>
+                </div>
+                <div class="ddb-snippet-table-row">
+                    <label class="ddb-ctor-label" style="white-space:nowrap;min-width:0">Таблица:</label>
+                    <input class="ddb-ctor-input" style="flex:1;min-width:0"
+                           @bind="_snippetTable"
+                           placeholder="my_table"
+                           spellcheck="false" />
+                </div>
+                @foreach (var cat in _snippetCategories)
+                {
+                    var c = cat;
+                    <div class="ddb-snippet-cat">
+                        <button class="ddb-snippet-cat-btn" @onclick="() => ToggleSnippetCat(c.Key)">
+                            <svg class="ddb-tree-arrow @(_openSnippetCats.Contains(c.Key) ? "ddb-tree-arrow--open" : "")"
+                                 viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"/>
+                            </svg>
+                            @c.Icon @c.Label
+                        </button>
+                        @if (_openSnippetCats.Contains(c.Key))
+                        {
+                            @foreach (var s in c.Snippets)
+                            {
+                                var sn = s;
+                                <button class="ddb-snippet-item" title="Вставить в редактор"
+                                        @onclick="() => InsertSnippet(sn)">
+                                    <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>
+                                        <rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>
+                                    </svg>
+                                    @sn.Label
+                                </button>
+                            }
+                        }
+                    </div>
+                }
+            </div>
+
+        </div>@* end ddb-sidebar--right *@
     </div>
 </div>
 
@@ -708,6 +926,7 @@
     private List<ColInfo> _columns = new();
     private List<Dictionary<string, object?>> _rows = new();
     private List<string> _databases = new();
+    private string _activeDatabase = "memory";
     private List<string> _tables = new();
     private HashSet<string> _openDbs = new();
     private string? _selectedTable;
@@ -731,6 +950,114 @@
     private string? _ioMessage;
     private bool _ioError;
 
+    // ── Save to disk ──────────────────────────────────────────────────────────
+
+    private bool _savingToDisk;
+    private string _dbFilename = "my_database.db";
+    private bool _showSaveScript;
+    private bool _loadingDuckDb;
+
+    private string GetSaveScript()
+    {
+        var name = string.IsNullOrWhiteSpace(_dbFilename) ? "my_database.db" : _dbFilename.Trim();
+        var alias = System.IO.Path.GetFileNameWithoutExtension(name).Replace("-", "_").Replace(" ", "_");
+        return $"ATTACH '{name}';\nCOPY FROM DATABASE memory TO {alias};\nDETACH {alias};";
+    }
+
+    private void InsertSaveScript()
+    {
+        _sql = GetSaveScript();
+        _showSaveScript = false;
+        StateHasChanged();
+    }
+
+    // ── SQL Snippets ──────────────────────────────────────────────────────────
+
+    private string _snippetTable = "my_table";
+    private readonly HashSet<string> _openSnippetCats = new(StringComparer.Ordinal);
+
+    private record SnippetItem(string Label, string Template);
+    private record SnippetCategory(string Key, string Icon, string Label, List<SnippetItem> Snippets);
+
+    private List<SnippetCategory> _snippetCategories = new();
+
+    private void InitSnippets()
+    {
+        _snippetCategories = new List<SnippetCategory>
+        {
+            new("select", "🔍", "SELECT", new()
+            {
+                new("SELECT *",           "SELECT * FROM \"{t}\" LIMIT 50;"),
+                new("SELECT с WHERE",     "SELECT *\nFROM \"{t}\"\nWHERE id = 1\nLIMIT 50;"),
+                new("COUNT / GROUP BY",   "SELECT col, COUNT(*) AS cnt\nFROM \"{t}\"\nGROUP BY col\nORDER BY cnt DESC;"),
+                new("Агрегаты",           "SELECT\n  COUNT(*)        AS total,\n  MIN(col)        AS min_val,\n  MAX(col)        AS max_val,\n  AVG(col)        AS avg_val\nFROM \"{t}\";"),
+                new("Window RANK",        "SELECT *,\n  RANK() OVER (PARTITION BY col ORDER BY val DESC) AS rnk\nFROM \"{t}\"\nLIMIT 50;"),
+                new("JOIN",               "SELECT a.*, b.col\nFROM \"{t}\" a\nJOIN other_table b ON a.id = b.{t}_id\nLIMIT 50;"),
+            }),
+            new("dml", "✏️", "INSERT / UPDATE / DELETE", new()
+            {
+                new("INSERT",             "INSERT INTO \"{t}\" (col1, col2)\nVALUES ('value1', 42);"),
+                new("UPDATE",             "UPDATE \"{t}\"\nSET col1 = 'new_value'\nWHERE id = 1;"),
+                new("DELETE",             "DELETE FROM \"{t}\"\nWHERE id = 1;"),
+                new("UPSERT (INSERT OR REPLACE)", "INSERT OR REPLACE INTO \"{t}\" (id, col1)\nVALUES (1, 'value');"),
+            }),
+            new("ddl", "🏗️", "CREATE / ALTER / DROP", new()
+            {
+                new("CREATE TABLE",       "CREATE TABLE \"{t}\" (\n  id      INTEGER PRIMARY KEY,\n  name    VARCHAR NOT NULL,\n  value   DECIMAL(10,2),\n  created DATE\n);"),
+                new("CREATE TABLE AS",    "CREATE TABLE \"{t}\" AS\nSELECT * FROM source_table;"),
+                new("ALTER — добавить колонку", "ALTER TABLE \"{t}\"\nADD COLUMN new_col VARCHAR;"),
+                new("ALTER — переименовать", "ALTER TABLE \"{t}\"\nRENAME COLUMN old_name TO new_name;"),
+                new("DROP TABLE",         "DROP TABLE IF EXISTS \"{t}\";"),
+                new("TRUNCATE",           "DELETE FROM \"{t}\";"),
+            }),
+            new("index", "⚡", "Индексы", new()
+            {
+                new("CREATE INDEX",       "CREATE INDEX idx_{t}_col\n    ON \"{t}\" (col);"),
+                new("CREATE UNIQUE INDEX","CREATE UNIQUE INDEX idx_{t}_col_u\n    ON \"{t}\" (col);"),
+                new("DROP INDEX",         "DROP INDEX IF EXISTS idx_{t}_col;"),
+                new("Список индексов",    "SELECT index_name, table_name, is_unique, sql\nFROM duckdb_indexes()\nWHERE table_name = '{t}';"),
+            }),
+            new("json", "{ }", "JSON", new()
+            {
+                new("Таблица с JSON-колонкой", "CREATE TABLE \"{t}\" (\n  id   INTEGER PRIMARY KEY,\n  data JSON\n);\n\nINSERT INTO \"{t}\" (id, data) VALUES\n  (1, '{{\"name\":\"Alice\",\"age\":30,\"tags\":[\"admin\",\"user\"]}}'::JSON),\n  (2, '{{\"name\":\"Bob\",  \"age\":25,\"tags\":[\"user\"]}}'::JSON);"),
+                new("Извлечь поле ->>'$'",     "SELECT id,\n  data->>'$.name' AS name,\n  data->>'$.age'  AS age\nFROM \"{t}\";"),
+                new("JSON_EXTRACT",            "SELECT id,\n  json_extract(data, '$.name') AS name\nFROM \"{t}\";"),
+                new("Unnest JSON array",       "SELECT id, unnest(json_extract(data,'$.tags')) AS tag\nFROM \"{t}\";"),
+                new("JSON агрегат",            "SELECT json_group_array(data) AS all_json\nFROM \"{t}\";"),
+            }),
+            new("parquet", "📦", "Parquet", new()
+            {
+                new("Читать Parquet",     "SELECT * FROM read_parquet('file.parquet') LIMIT 50;"),
+                new("Создать таблицу из Parquet", "CREATE TABLE \"{t}\" AS\nSELECT * FROM read_parquet('file.parquet');"),
+                new("Экспорт в Parquet",  "COPY \"{t}\" TO '{t}.parquet' (FORMAT PARQUET);"),
+                new("Parquet metadata",   "SELECT * FROM parquet_metadata('file.parquet');"),
+                new("Parquet schema",     "SELECT * FROM parquet_schema('file.parquet');"),
+            }),
+            new("save", "💾", "Сохранение БД", new()
+            {
+                new("Attach + Copy + Detach", "ATTACH 'my_database.db';\nCOPY FROM DATABASE memory TO my_database;\nDETACH my_database;"),
+                new("Attach OPFS",        "ATTACH 'opfs://my_database.db' AS mydb;\nUSE mydb;"),
+                new("Список баз",         "SELECT database_name, path\nFROM duckdb_databases();"),
+                new("Список таблиц",      "SHOW TABLES;"),
+                new("Describe таблицы",   "DESCRIBE \"{t}\";"),
+                new("Размер таблицы",     "SELECT estimated_size\nFROM duckdb_tables()\nWHERE table_name = '{t}';"),
+            }),
+        };
+    }
+
+    private void ToggleSnippetCat(string key)
+    {
+        if (!_openSnippetCats.Remove(key)) _openSnippetCats.Add(key);
+        StateHasChanged();
+    }
+
+    private void InsertSnippet(SnippetItem s)
+    {
+        var t = string.IsNullOrWhiteSpace(_snippetTable) ? "my_table" : _snippetTable.Trim();
+        _sql = s.Template.Replace("{t}", t);
+        StateHasChanged();
+    }
+
     // ── Load JSON / Parquet ───────────────────────────────────────────────────
 
     private bool _loadingJson;
@@ -738,6 +1065,15 @@
     private bool _loadingParquet;
     private string? _loadMessage;
     private bool _loadError;
+
+    // ── Parquet from URL ──────────────────────────────────────────────────────
+
+    private bool _showParquetUrl;
+    private string _parquetUrl = "";
+    private string _parquetUrlTable = "parquet_data";
+    private bool _loadingParquetUrl;
+    private string? _parquetUrlError;
+    private string? _parquetUrlSuccess;
 
     // ── Index builder ─────────────────────────────────────────────────────────
 
@@ -783,6 +1119,7 @@
             new("all",   "🗄️", "Все таблицы",     "employees + products + orders",      () => SeedAllAsync()),
             new("drop",  "🗑️", "Очистить всё",    "Удалить все таблицы",               () => DropAllAsync()),
         };
+        InitSnippets();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -831,14 +1168,22 @@
         if (_module is null) return;
         try
         {
-            // databases
+            // databases — now returns [{name, path, type}]
             var dbRes = await _module.InvokeAsync<JsonElement>("listDatabases");
             if (dbRes.GetProperty("ok").GetBoolean())
             {
                 _databases = dbRes.GetProperty("databases").EnumerateArray()
-                    .Select(d => d.GetString() ?? "").Where(d => d.Length > 0).ToList();
+                    .Select(d => d.ValueKind == JsonValueKind.String
+                        ? (d.GetString() ?? "")
+                        : (d.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : ""))
+                    .Where(d => d.Length > 0).ToList();
+
                 if (_databases.Count > 0 && _openDbs.Count == 0)
                     _openDbs.Add(_databases[0]);
+
+                // Keep activeDatabase valid
+                if (!_databases.Contains(_activeDatabase) && _databases.Count > 0)
+                    _activeDatabase = _databases[0];
             }
 
             // tables
@@ -847,6 +1192,30 @@
             {
                 _tables = tblRes.GetProperty("tables").EnumerateArray()
                     .Select(t => t.GetString() ?? "").Where(t => t.Length > 0).ToList();
+            }
+        }
+        catch { /* ignore */ }
+        StateHasChanged();
+    }
+
+    private async Task SwitchDatabaseAsync(string dbName)
+    {
+        if (_module is null || string.IsNullOrEmpty(dbName)) return;
+        try
+        {
+            var res = await _module.InvokeAsync<JsonElement>("switchDatabase", dbName);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                _activeDatabase = dbName;
+                _openDbs.Clear();
+                _openDbs.Add(dbName);
+                _tables = res.TryGetProperty("tables", out var t)
+                    ? t.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList()
+                    : new List<string>();
+                _selectedTable = null;
+                _columns.Clear();
+                _rows.Clear();
+                _hasRun = false;
             }
         }
         catch { /* ignore */ }
@@ -1486,6 +1855,43 @@
         finally { _loadingJsonCol = false; StateHasChanged(); }
     }
 
+    // ── Load Parquet from URL (S3 / HTTP) ─────────────────────────────────────
+
+    private async Task LoadParquetFromUrlAsync()
+    {
+        if (_module is null) return;
+        _parquetUrlError   = null;
+        _parquetUrlSuccess = null;
+        _loadingParquetUrl = true;
+        StateHasChanged();
+        try
+        {
+            var url   = _parquetUrl.Trim();
+            var table = string.IsNullOrWhiteSpace(_parquetUrlTable) ? "parquet_data" : _parquetUrlTable.Trim()
+                            .Replace(" ", "_").Replace("-", "_").ToLowerInvariant();
+
+            var res = await _module.InvokeAsync<JsonElement>("loadParquetFromUrl", url, table);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var rows  = res.TryGetProperty("rowCount", out var rc) ? rc.GetInt32() : 0;
+                var bytes = res.TryGetProperty("bytes",    out var b)  ? b.GetInt64()  : 0;
+                _parquetUrlSuccess = $"Загружено {rows:N0} строк ({bytes / 1024} KB) → «{table}»";
+                _sql = $"SELECT * FROM \"{table}\" LIMIT 50;";
+                await RefreshSchemaAsync();
+                await RunQueryAsync();
+            }
+            else
+            {
+                _parquetUrlError = res.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка загрузки";
+            }
+        }
+        catch (Exception ex)
+        {
+            _parquetUrlError = ex.Message;
+        }
+        finally { _loadingParquetUrl = false; StateHasChanged(); }
+    }
+
     // ── Load Parquet file ─────────────────────────────────────────────────────
 
     private async Task LoadParquetFileAsync(InputFileChangeEventArgs e)
@@ -1530,6 +1936,109 @@
             _loadError = true;
         }
         finally { _loadingParquet = false; StateHasChanged(); }
+    }
+
+    // ── Save to disk (.duckdb) ────────────────────────────────────────────────
+
+    private async Task SaveToDiskAsync()
+    {
+        if (_module is null) return;
+        _savingToDisk = true;
+        _ioMessage = null;
+        StateHasChanged();
+        try
+        {
+            var filename = string.IsNullOrWhiteSpace(_dbFilename) ? "my_database.db" : _dbFilename.Trim();
+            if (!filename.EndsWith(".db") && !filename.EndsWith(".duckdb")) filename += ".db";
+            var res = await _module.InvokeAsync<JsonElement>("saveDatabaseToDisk", filename);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var bytes = res.TryGetProperty("bytes", out var b) ? b.GetInt64() : 0;
+                _ioMessage = $"Сохранено: {filename} ({bytes / 1024} KB)";
+                _ioError = false;
+            }
+            else
+            {
+                _ioMessage = res.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка сохранения";
+                _ioError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _ioMessage = ex.Message;
+            _ioError = true;
+        }
+        finally { _savingToDisk = false; StateHasChanged(); }
+    }
+
+    // ── Load .duckdb file from disk ───────────────────────────────────────────
+
+    private async Task LoadDuckDbFileAsync(InputFileChangeEventArgs e)
+    {
+        if (_module is null) return;
+        _loadingDuckDb = true;
+        _ioMessage = null;
+        StateHasChanged();
+        try
+        {
+            var file = e.File;
+            using var stream = file.OpenReadStream(maxAllowedSize: 512 * 1024 * 1024);
+            using var ms = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+
+            var res = await _module.InvokeAsync<JsonElement>("loadDatabaseFromDisk", bytes, file.Name);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var tables = res.TryGetProperty("tables", out var t)
+                    ? t.EnumerateArray().Select(x => x.GetString() ?? "").Where(x => x.Length > 0).ToList()
+                    : new List<string>();
+                _ioMessage = $"Загружено из «{file.Name}»: {string.Join(", ", tables.Take(5))}{(tables.Count > 5 ? "..." : "")}";
+                _ioError = false;
+                await RefreshSchemaAsync();
+            }
+            else
+            {
+                _ioMessage = res.TryGetProperty("error", out var err) ? err.GetString() : "Ошибка загрузки";
+                _ioError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _ioMessage = ex.Message;
+            _ioError = true;
+        }
+        finally { _loadingDuckDb = false; StateHasChanged(); }
+    }
+
+    // ── Export table to Parquet ───────────────────────────────────────────────
+
+    private async Task ExportTableToParquetAsync(string? table)
+    {
+        if (_module is null || table is null) return;
+        _ioMessage = null;
+        StateHasChanged();
+        try
+        {
+            var res = await _module.InvokeAsync<JsonElement>("exportTableToParquet", table);
+            if (res.GetProperty("ok").GetBoolean())
+            {
+                var bytes = res.TryGetProperty("bytes", out var b) ? b.GetInt64() : 0;
+                _ioMessage = $"Экспортировано: {table}.parquet ({bytes / 1024} KB)";
+                _ioError = false;
+            }
+            else
+            {
+                _ioMessage = res.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка экспорта Parquet";
+                _ioError = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _ioMessage = ex.Message;
+            _ioError = true;
+        }
+        StateHasChanged();
     }
 
     public async ValueTask DisposeAsync()

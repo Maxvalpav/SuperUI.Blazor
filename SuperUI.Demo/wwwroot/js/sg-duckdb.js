@@ -187,11 +187,49 @@ export async function listTables() {
 export async function listDatabases() {
     if (!_conn) return { ok: false, error: 'Not initialized' };
     try {
-        const result = await _conn.query('SELECT database_name FROM duckdb_databases()');
-        const dbs = result.toArray().map(r => r.database_name ?? r[Object.keys(r)[0]]);
+        const result = await _conn.query('SELECT database_name, path, type FROM duckdb_databases()');
+        const dbs = result.toArray().map(r => ({
+            name: r.database_name ?? r[Object.keys(r)[0]],
+            path: r.path ?? '',
+            type: r.type ?? '',
+        }));
         return { ok: true, databases: dbs };
     } catch (e) {
-        return { ok: true, databases: ['memory'] };
+        return { ok: true, databases: [{ name: 'memory', path: '', type: 'memory' }] };
+    }
+}
+
+// ── Switch active database ────────────────────────────────────────────────────
+
+export async function switchDatabase(dbName) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    try {
+        await _conn.query(`USE "${dbName}"`);
+        // Return tables in the new active db
+        const result = await _conn.query('SHOW TABLES');
+        const tables = result.toArray().map(r => r.name ?? r[Object.keys(r)[0]]);
+        return { ok: true, tables };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
+// ── List tables for a specific database ──────────────────────────────────────
+
+export async function listTablesForDb(dbName) {
+    if (!_conn) return { ok: false, error: 'Not initialized' };
+    try {
+        const result = await _conn.query(
+            `SELECT table_name FROM information_schema.tables WHERE table_catalog = '${dbName.replace(/'/g,"''")}' ORDER BY table_name`
+        );
+        const tables = result.toArray().map(r => r.table_name ?? r[Object.keys(r)[0]]);
+        return { ok: true, tables };
+    } catch (e) {
+        // fallback: just show tables
+        try {
+            const r2 = await _conn.query('SHOW TABLES');
+            return { ok: true, tables: r2.toArray().map(r => r.name ?? r[Object.keys(r)[0]]) };
+        } catch { return { ok: true, tables: [] }; }
     }
 }
 
@@ -519,12 +557,138 @@ export async function loadParquetFile(fileBytes, tableName) {
     }
 }
 
-// ── OPFS: check support ───────────────────────────────────────────────────────
+// ── Load Parquet from URL (S3 / HTTP) ─────────────────────────────────────────
+// url: public HTTP/HTTPS URL to a .parquet file (S3 presigned, CDN, etc.)
+// tableName: target table name
+
+export async function loadParquetFromUrl(url, tableName) {
+    if (!_conn || !_db) return { ok: false, error: 'Not initialized' };
+    try {
+        // Fetch the file via browser (handles CORS, S3 presigned URLs, etc.)
+        const resp = await fetch(url);
+        if (!resp.ok) return { ok: false, error: `HTTP ${resp.status}: ${resp.statusText}` };
+
+        const buf   = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buf);
+        const fname = `${tableName}_url.parquet`;
+
+        await _db.registerFileBuffer(fname, bytes);
+
+        await _conn.query(`DROP TABLE IF EXISTS "${tableName}"`);
+        await _conn.query(`CREATE TABLE "${tableName}" AS SELECT * FROM read_parquet('${fname}')`);
+
+        const cnt = await _conn.query(`SELECT COUNT(*) AS n FROM "${tableName}"`);
+        const rowCount = Number(cnt.toArray()[0]?.n ?? 0);
+
+        try { await _db.dropFile(fname); } catch {}
+
+        return { ok: true, rowCount, bytes: buf.byteLength };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
 
 export function opfsSupported() {
     return !!(typeof navigator !== 'undefined' &&
               navigator.storage &&
               navigator.storage.getDirectory);
+}
+
+// ── Save in-memory DB to .duckdb file (download) ──────────────────────────────
+// Uses OPFS as intermediate: ATTACH → COPY FROM DATABASE → read bytes → download
+
+export async function saveDatabaseToDisk(filename = 'my_database.db') {
+    if (!_conn || !_db) return { ok: false, error: 'Not initialized' };
+    try {
+        const dbName = 'save_tmp_' + Date.now();
+        const opfsPath = `opfs://${dbName}.db`;
+
+        // Attach a new OPFS-backed database, copy everything, detach
+        await _conn.query(`ATTACH '${opfsPath}' AS "${dbName}"`);
+        await _conn.query(`COPY FROM DATABASE memory TO "${dbName}"`);
+        await _conn.query(`DETACH "${dbName}"`);
+
+        // Read the file bytes from OPFS
+        const root = await navigator.storage.getDirectory();
+        const fh   = await root.getFileHandle(`${dbName}.db`);
+        const file = await fh.getFile();
+        const buf  = await file.arrayBuffer();
+
+        // Trigger download
+        const blob = new Blob([buf], { type: 'application/octet-stream' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Cleanup OPFS temp file
+        await root.removeEntry(`${dbName}.db`, { recursive: true }).catch(() => {});
+        await root.removeEntry(`${dbName}.db.wal`, { recursive: true }).catch(() => {});
+
+        return { ok: true, bytes: buf.byteLength };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
+// ── Load .duckdb file from disk → copy tables to memory ───────────────────────
+
+export async function loadDatabaseFromDisk(fileBytes, filename) {
+    if (!_conn || !_db) return { ok: false, error: 'Not initialized' };
+    try {
+        const fname  = filename || 'loaded.db';
+        const dbName = 'loaded_' + Date.now();
+
+        // Register file in virtual FS
+        await _db.registerFileBuffer(fname, fileBytes);
+
+        // Attach, copy to memory, detach
+        await _conn.query(`ATTACH '${fname}' AS "${dbName}" (READ_ONLY)`);
+        await _conn.query(`COPY FROM DATABASE "${dbName}" TO memory`);
+        await _conn.query(`DETACH "${dbName}"`);
+
+        try { await _db.dropFile(fname); } catch {}
+
+        // Return list of tables now in memory
+        const tblRes = await _conn.query('SHOW TABLES');
+        const tables = tblRes.toArray().map(r => r.name ?? r[Object.keys(r)[0]]);
+        return { ok: true, tables };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
+}
+
+// ── Export table to Parquet (download) ────────────────────────────────────────
+
+export async function exportTableToParquet(tableName) {
+    if (!_conn || !_db) return { ok: false, error: 'Not initialized' };
+    try {
+        const fname = `${tableName}_export.parquet`;
+
+        // Write parquet to DuckDB virtual FS
+        await _conn.query(`COPY "${tableName}" TO '${fname}' (FORMAT PARQUET)`);
+
+        // Read bytes from virtual FS
+        const buf = await _db.copyFileToBuffer(fname);
+
+        // Trigger download
+        const blob = new Blob([buf], { type: 'application/octet-stream' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        a.href     = url;
+        a.download = fname;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        // Cleanup
+        try { await _db.dropFile(fname); } catch {}
+
+        return { ok: true, bytes: buf.byteLength };
+    } catch (e) {
+        return { ok: false, error: String(e) };
+    }
 }
 
 // ── OPFS: delete persisted file ───────────────────────────────────────────────
