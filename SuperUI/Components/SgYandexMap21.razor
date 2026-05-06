@@ -3,8 +3,8 @@
 @inject IJSRuntime JS
 @inject ISuperUILocalizer Localizer
 
-<div class="sg-ymap-container @CssClass"
-     style="height:@Height;width:@Width;"
+<div class="sg-ymap21-container @CssClass"
+     style="height:@Height;width:@Width;position:relative;overflow:hidden;"
      @attributes="AdditionalAttributes">
 
     @if (_error is not null)
@@ -20,7 +20,6 @@
     else
     {
         <div @ref="_containerRef"
-             id="@_mapId"
              class="sg-ymap-canvas"
              style="@(_ready ? null : "visibility:hidden;") width:100%;height:100%;"></div>
 
@@ -37,12 +36,15 @@
 @code {
     private ElementReference _containerRef;
     private IJSObjectReference? _module;
-    private DotNetObjectReference<SgYandexMap>? _selfRef;
-    private readonly string _mapId      = $"sg-ymap-{Guid.NewGuid():N}";
-    private readonly string _instanceId = $"sg-ymap-{Guid.NewGuid():N}";
+    private DotNetObjectReference<SgYandexMap21>? _selfRef;
+    private readonly string _instanceId = $"sg-ymap21-{Guid.NewGuid():N}";
     private bool _ready;
     private string? _error;
     private bool _isDisposed;
+
+    private string? _lastMapType;
+    private bool    _lastTraffic;
+    private string? _lastApiKey;
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -64,43 +66,30 @@
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    private string? _lastMapType;
-    private bool    _lastTraffic;
-    private string? _lastApiKey;
-
     protected override async Task OnParametersSetAsync()
     {
         if (!_ready || _module is null) return;
-
-        var src     = Sources ?? new SgYandexMapSources();
-        var o       = Options  ?? new SgYandexMapOptions();
+        var src = Sources ?? new SgYandexMapSources();
+        var o   = Options  ?? new SgYandexMapOptions();
         var mapType = o.MapType.ToString().ToLowerInvariant();
 
-        // API key changed → reinitialize map with new key
         if (src.ApiKey != _lastApiKey)
         {
-            _lastApiKey  = src.ApiKey;
-            _lastMapType = mapType;
+            _lastApiKey = src.ApiKey; _lastMapType = mapType;
             _ready = false;
-            // Reset loader to force API reload with new key
-            try { await _module!.InvokeVoidAsync("resetLoader"); } catch { }
-            try { await _module!.InvokeVoidAsync("disposeMap", _instanceId); } catch { }
             await InvokeAsync(StateHasChanged);
             await InitAsync();
             return;
         }
-
         if (mapType != _lastMapType)
         {
             _lastMapType = mapType;
-            try { await _module.InvokeVoidAsync("setMapType", _instanceId, mapType); }
-            catch { }
+            try { await _module.InvokeVoidAsync("setMapType", _instanceId, mapType); } catch { }
         }
         if (o.ShowTraffic != _lastTraffic)
         {
             _lastTraffic = o.ShowTraffic;
-            try { await _module.InvokeVoidAsync("setTraffic", _instanceId, o.ShowTraffic); }
-            catch { }
+            try { await _module.InvokeVoidAsync("setTraffic", _instanceId, o.ShowTraffic); } catch { }
         }
     }
 
@@ -109,7 +98,7 @@
         if (_isDisposed || !firstRender) return;
         try
         {
-            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-yandex-map.js");
+            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-yandex-map21.js");
             if (_isDisposed) return;
             _selfRef = DotNetObjectReference.Create(this);
             await InitAsync();
@@ -126,15 +115,19 @@
         {
             var src = Sources ?? new SgYandexMapSources();
             var o   = Options  ?? new SgYandexMapOptions();
+            _lastApiKey  = src.ApiKey;
+            _lastMapType = o.MapType.ToString().ToLowerInvariant();
+            _lastTraffic = o.ShowTraffic;
+
             await _module.InvokeVoidAsync("initMap",
                 _selfRef, _containerRef, _instanceId,
                 new {
-                    apiKey      = src.ApiKey,
-                    lang        = src.Lang,
-                    centerLat   = o.CenterLat,
-                    centerLon   = o.CenterLon,
-                    zoom        = o.Zoom,
-                    mapType     = o.MapType.ToString().ToLowerInvariant(),
+                    apiKey       = src.ApiKey,
+                    lang         = src.Lang,
+                    centerLat    = o.CenterLat,
+                    centerLon    = o.CenterLon,
+                    zoom         = o.Zoom,
+                    mapType      = o.MapType.ToString().ToLowerInvariant(),
                     showControls = o.ShowControls,
                     showTraffic  = o.ShowTraffic,
                     showRuler    = o.ShowRuler,
@@ -155,51 +148,32 @@
     public async Task SetCenterAsync(double lat, double lon, int? zoom = null)
     {
         if (_module is null) return;
-        try { await _module.InvokeVoidAsync("setCenter", _instanceId, lat, lon, zoom); }
-        catch { }
-    }
-
-    public async Task AddMarkerAsync(SgYandexMapMarker marker)
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("addMarker", _instanceId, marker); }
-        catch { }
-    }
-
-    public async Task ClearMarkersAsync()
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("clearMarkers", _instanceId); }
-        catch { }
+        try { await _module.InvokeVoidAsync("setCenter", _instanceId, lat, lon, zoom); } catch { }
     }
 
     public async Task DrawPolylineAsync(string id, IEnumerable<SgMapCoord> coords,
         string color = "#2563eb", double width = 4, bool dashed = false)
     {
         if (_module is null) return;
-        try { await _module.InvokeVoidAsync("drawPolyline", _instanceId, id, coords.ToList(), new { color, width, dashed }); }
-        catch { }
+        try { await _module.InvokeVoidAsync("drawPolyline", _instanceId, id, coords.ToList(), new { color, width, dashed }); } catch { }
     }
 
     public async Task ClearPolylineAsync(string id)
     {
         if (_module is null) return;
-        try { await _module.InvokeVoidAsync("clearPolyline", _instanceId, id); }
-        catch { }
+        try { await _module.InvokeVoidAsync("clearPolyline", _instanceId, id); } catch { }
     }
 
     public async Task FitBoundsAsync(double south, double west, double north, double east)
     {
         if (_module is null) return;
-        try { await _module.InvokeVoidAsync("fitBounds", _instanceId, south, west, north, east); }
-        catch { }
+        try { await _module.InvokeVoidAsync("fitBounds", _instanceId, south, west, north, east); } catch { }
     }
 
-    /// <summary>
-    /// Builds a real route using Yandex Router if possible,
-    /// otherwise draws a straight line. Returns route info.
-    /// </summary>
-    public async Task<SgMapRouteResult> BuildRouteAsync(double fromLat, double fromLon, double toLat, double toLon, string? apiKey = null, bool alternatives = false)
+    /// <summary>Builds a real route using ymaps.route() — works with the same JS API key.</summary>
+    public async Task<SgMapRouteResult> BuildRouteAsync(
+        double fromLat, double fromLon, double toLat, double toLon,
+        string? apiKey = null, bool alternatives = false)
     {
         if (_module is null) return new SgMapRouteResult { Ok = false, Error = "Map not ready" };
         try
@@ -214,27 +188,39 @@
     public async Task SelectRouteAsync(int index)
     {
         if (_module is null) return;
-        try { await _module.InvokeVoidAsync("selectRoute", _instanceId, index); }
-        catch { }
+        try { await _module.InvokeVoidAsync("selectRoute", _instanceId, index); } catch { }
+    }
+
+    /// <summary>Clears the current route drawn by BuildRouteAsync.</summary>
+    public async Task ClearRouteAsync()
+    {
+        if (_module is null) return;
+        try { await _module.InvokeVoidAsync("clearRoute", _instanceId); } catch { }
+    }
+
+    public async Task RetryAsync()
+    {
+        _error = null; _ready = false;
+        await InvokeAsync(StateHasChanged);
+        await InitAsync();
     }
 
     private static SgMapRouteResult ParseRouteResult(System.Text.Json.JsonElement j)
     {
         var r = new SgMapRouteResult();
-        if (j.TryGetProperty("ok",            out var ok))  r.Ok            = ok.GetBoolean();
-        if (j.TryGetProperty("straight",       out var st))  r.Straight      = st.GetBoolean();
-        if (j.TryGetProperty("error",          out var err)) r.Error         = err.GetString();
-        if (j.TryGetProperty("selectedIndex",  out var si))  r.SelectedIndex = si.GetInt32();
-
+        if (j.TryGetProperty("ok",           out var ok))  r.Ok           = ok.GetBoolean();
+        if (j.TryGetProperty("straight",      out var st))  r.Straight     = st.GetBoolean();
+        if (j.TryGetProperty("error",         out var err)) r.Error        = err.GetString();
+        if (j.TryGetProperty("selectedIndex", out var si))  r.SelectedIndex = si.GetInt32();
         if (j.TryGetProperty("routes", out var routesEl) && routesEl.ValueKind == System.Text.Json.JsonValueKind.Array)
         {
             foreach (var rv in routesEl.EnumerateArray())
             {
                 var v = new SgMapRouteVariant();
-                if (rv.TryGetProperty("distanceKm",   out var dk))  v.DistanceKm   = dk.GetDouble();
-                if (rv.TryGetProperty("distanceText",  out var dt))  v.DistanceText = dt.GetString();
-                if (rv.TryGetProperty("durationMin",   out var dm))  v.DurationMin  = dm.ValueKind == System.Text.Json.JsonValueKind.Null ? null : dm.GetDouble();
-                if (rv.TryGetProperty("durationText",  out var dtt)) v.DurationText = dtt.GetString();
+                if (rv.TryGetProperty("distanceKm",  out var dk))  v.DistanceKm   = dk.GetDouble();
+                if (rv.TryGetProperty("distanceText", out var dt))  v.DistanceText = dt.GetString();
+                if (rv.TryGetProperty("durationMin",  out var dm))  v.DurationMin  = dm.ValueKind == System.Text.Json.JsonValueKind.Null ? null : dm.GetDouble();
+                if (rv.TryGetProperty("durationText", out var dtt)) v.DurationText = dtt.GetString();
                 if (rv.TryGetProperty("steps", out var steps) && steps.ValueKind == System.Text.Json.JsonValueKind.Array)
                 {
                     foreach (var s in steps.EnumerateArray())
@@ -242,7 +228,6 @@
                         var step = new SgMapRouteStep();
                         if (s.TryGetProperty("instruction", out var ins)) step.Instruction = ins.GetString() ?? "";
                         if (s.TryGetProperty("distance",    out var sd))  step.Distance    = sd.GetString() ?? "";
-                        if (s.TryGetProperty("duration",    out var sdur)) step.Duration   = sdur.GetString() ?? "";
                         v.Steps.Add(step);
                     }
                 }
@@ -250,19 +235,6 @@
             }
         }
         return r;
-    }
-
-    public async Task RetryAsync()
-    {
-        _error = null; _ready = false;
-        _lastApiKey = null; _lastMapType = null;
-        await InvokeAsync(StateHasChanged);
-        if (_module is not null)
-        {
-            try { await _module.InvokeVoidAsync("resetLoader"); } catch { }
-            try { await _module.InvokeVoidAsync("disposeMap", _instanceId); } catch { }
-        }
-        await InitAsync();
     }
 
     // ── JS callbacks ──────────────────────────────────────────────────────────

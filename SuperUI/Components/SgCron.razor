@@ -3,7 +3,7 @@
 @using System.Text
 @implements IDisposable
 
-<div class="sgc-field sgc-cron @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field sgc-cron @(Block ? "sgc-block" : "") @(Compact ? "sgc-cron-compact" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
@@ -19,10 +19,11 @@
                         class="sgc-cron-tab @(_activeTab == t.Key ? "sgc-active" : "")"
                         role="tab"
                         aria-selected="@(_activeTab == t.Key ? "true" : "false")"
+                        title="@t.Label"
                         disabled="@Disabled"
                         @onclick="() => SetTabAsync(t.Key)">
                     <span class="sgc-cron-tab-icon" aria-hidden="true">@t.Icon</span>
-                    <span>@t.Label</span>
+                    <span class="sgc-cron-tab-label">@t.Label</span>
                 </button>
             }
         </div>
@@ -38,7 +39,7 @@
                     }
                     else if (_state.MinuteMode == CronMode.Specific)
                     {
-                        @RenderGrid(0, 59, _state.Minutes, ToggleMinute, columns: 10, label: "Минуты")
+                        @RenderGrid(0, 59, _state.Minutes, ToggleMinute, columns: Compact ? 12 : 10, label: "Минуты")
                     }
                     else if (_state.MinuteMode == CronMode.Range)
                     {
@@ -56,7 +57,7 @@
                     }
                     else if (_state.HourMode == CronMode.Specific)
                     {
-                        @RenderGrid(0, 23, _state.Hours, ToggleHour, columns: 8, label: "Часы")
+                        @RenderGrid(0, 23, _state.Hours, ToggleHour, columns: Compact ? 12 : 8, label: "Часы")
                     }
                     else if (_state.HourMode == CronMode.Range)
                     {
@@ -74,7 +75,7 @@
                     }
                     else if (_state.DayMode == CronMode.Specific)
                     {
-                        @RenderGrid(1, 31, _state.Days, ToggleDay, columns: 8, label: "Дни месяца")
+                        @RenderGrid(1, 31, _state.Days, ToggleDay, columns: Compact ? 10 : 8, label: "Дни месяца")
                     }
                     else if (_state.DayMode == CronMode.LastDay)
                     {
@@ -166,10 +167,19 @@
                     <code class="sgc-cron-expression">@_currentExpression</code>
                     <button type="button"
                             class="sgc-cron-copy"
-                            title="Скопировать"
+                            title="Скопировать выражение в буфер обмена"
                             disabled="@Disabled"
                             @onclick="CopyAsync">
-                        @if (_copied) { <span>✓</span> } else { <span>⧉</span> }
+                        @if (_copied)
+                        {
+                            <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>
+                            <span>Скопировано</span>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
+                            <span>Копировать</span>
+                        }
                     </button>
                 </div>
                 <div class="sgc-cron-human">@_humanReadable</div>
@@ -227,8 +237,13 @@
         (CronMode.Specific, "Конкретные"),
         (CronMode.Range, "Диапазон"),
     };
-    private static readonly (CronMode Mode, string Label)[] HourOptions = MinuteOptions
-        .Select(o => (o.Mode, o.Label.Replace("минут", "час"))).ToArray();
+    private static readonly (CronMode Mode, string Label)[] HourOptions = new[]
+    {
+        (CronMode.Any,      "Каждый час"),
+        (CronMode.Every,    "Каждые N часов"),
+        (CronMode.Specific, "Конкретные"),
+        (CronMode.Range,    "Диапазон"),
+    };
     private static readonly (CronMode Mode, string Label)[] DayOptions = new[]
     {
         (CronMode.Any, "Каждый день"),
@@ -308,6 +323,11 @@
     /// Shows the quick preset buttons row. Default true.
     /// </summary>
     [Parameter] public bool ShowPresets { get; set; } = true;
+
+    /// <summary>
+    /// Renders a denser, smaller layout with icon-only tabs and condensed preview. Default false.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
 
     /// <summary>
     /// Quick preset buttons. Provide your own list to replace defaults.
@@ -394,8 +414,9 @@
                 setter(v);
             }
         }));
-        builder.CloseElement();
+        builder.CloseElement(); // input
         builder.AddContent(11, " " + unit);
+        builder.CloseElement(); // div
     };
 
     private RenderFragment RenderRange(int from, int to, int min, int max, Action<int> setFrom, Action<int> setTo) => builder =>
@@ -698,10 +719,11 @@
 
         // time portion
         if (parts[0] == "*" && parts[1] == "*") sb.Append("Каждую минуту");
-        else if (parts[0].StartsWith("*/")) sb.Append($"Каждые {parts[0][2..]} минут");
-        else if (parts[1].StartsWith("*/"))
+        else if (parts[0].StartsWith("*/") && int.TryParse(parts[0][2..], out var mEvery))
+            sb.Append($"Каждые {Plural(mEvery, "минуту", "минуты", "минут")}");
+        else if (parts[1].StartsWith("*/") && int.TryParse(parts[1][2..], out var hEvery))
         {
-            sb.Append($"Каждые {parts[1][2..]} часов");
+            sb.Append($"Каждые {Plural(hEvery, "час", "часа", "часов")}");
             if (parts[0] != "*" && !parts[0].Contains(',') && !parts[0].Contains('-'))
                 sb.Append($" в :{parts[0].PadLeft(2, '0')}");
         }
@@ -721,14 +743,16 @@
         if (parts[2] == "L") sb.Append(", в последний день месяца");
         else if (parts[2] != "*" && parts[2] != "?")
         {
-            if (parts[2].StartsWith("*/")) sb.Append($", каждые {parts[2][2..]} дней");
+            if (parts[2].StartsWith("*/") && int.TryParse(parts[2][2..], out var dEvery))
+                sb.Append($", каждые {Plural(dEvery, "день", "дня", "дней")}");
             else sb.Append($", в дни месяца {parts[2]}");
         }
 
         // month
         if (parts[3] != "*")
         {
-            if (parts[3].StartsWith("*/")) sb.Append($", каждые {parts[3][2..]} месяцев");
+            if (parts[3].StartsWith("*/") && int.TryParse(parts[3][2..], out var moEvery))
+                sb.Append($", каждые {Plural(moEvery, "месяц", "месяца", "месяцев")}");
             else
             {
                 var months = ParseList(parts[3], 1, 12);
@@ -746,6 +770,16 @@
         }
 
         return sb.ToString();
+    }
+
+    private static string Plural(int n, string one, string few, string many)
+    {
+        var abs = Math.Abs(n) % 100;
+        var n1 = abs % 10;
+        if (abs > 10 && abs < 20) return $"{n} {many}";
+        if (n1 == 1) return $"{n} {one}";
+        if (n1 >= 2 && n1 <= 4) return $"{n} {few}";
+        return $"{n} {many}";
     }
 
     private static List<int> ParseList(string token, int min, int max)

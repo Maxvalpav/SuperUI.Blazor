@@ -1,0 +1,451 @@
+@page "/google-map-demo"
+@using SuperUI.Components
+
+<PageTitle>SgGoogleMap — SUI</PageTitle>
+
+<div class="gm-page">
+
+    <!-- ── Header ──────────────────────────────────────────────────────── -->
+    <div class="gm-header">
+        <div>
+            <h1 class="gm-title">SgGoogleMap</h1>
+            <p class="gm-subtitle">Google Maps JavaScript API — маркеры, маршруты, полигоны</p>
+        </div>
+    </div>
+
+    <!-- ── Main ────────────────────────────────────────────────────────── -->
+    <div class="gm-main">
+
+        <!-- ── Map canvas ── -->
+        <div class="gm-canvas">
+            <SgGoogleMap @ref="_gmap"
+                         Options="@_gmapOpts"
+                         Sources="@_gmapSources"
+                         Markers="@_gmarkers"
+                         Height="100%"
+                         OnMapClick="OnGMapClick"
+                         OnMarkerClick="OnGMarkerClick"
+                         OnViewChanged="@(e => { _viewLat=e.CenterLat; _viewLon=e.CenterLon; _viewZoom=e.Zoom; StateHasChanged(); })" />
+
+            <!-- Route variants overlay -->
+            @if (_routeResult?.Routes.Count > 1)
+            {
+                <div class="gm-route-overlay">
+                    @for (var i = 0; i < _routeResult.Routes.Count; i++)
+                    {
+                        var ri = i;
+                        var rv = _routeResult.Routes[ri];
+                        <button class="gm-overlay-btn @(_routeResult.SelectedIndex == ri ? "active" : "")"
+                                @onclick="@(() => SelectRoute(ri))">
+                            <span class="gm-overlay-num">@(ri + 1)</span>
+                            <span class="gm-overlay-dist">@rv.DistanceFormatted</span>
+                            @if (rv.DurationMin.HasValue)
+                            {
+                                <span class="gm-overlay-time">@rv.DurationFormatted</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+
+            @if (_routeLoading)
+            {
+                <div class="gm-loading-overlay">
+                    <div class="gm-spinner"></div>
+                    <span>Строим маршрут…</span>
+                </div>
+            }
+        </div>
+
+        <!-- ── Sidebar ── -->
+        <div class="gm-sidebar">
+
+            <!-- API Key -->
+            <SgCard Title="⚙ API ключ" style="margin-bottom:10px">
+                <SgTextBox TValue="string"
+                           @bind-Value="_googleApiKey"
+                           Label="Google Maps API Key"
+                           Placeholder="AIza..."
+                           Hint="console.cloud.google.com → Maps JavaScript API" />
+                <SgButton Size="SgSize.Sm" Variant="@(HasApiKey ? SgButtonVariant.Primary : SgButtonVariant.Outlined)"
+                          OnClick="ApplyGoogleKey" style="margin-top:6px" Block="true">
+                    ✓ Применить ключ и перезагрузить карту
+                </SgButton>
+                @if (!HasApiKey)
+                {
+                    <div style="font-size:10px;color:var(--sui-text-secondary);margin-top:4px">
+                        ⚠ Без ключа доступна только прямая линия
+                    </div>
+                }
+            </SgCard>
+
+            <!-- Map type -->
+            <SgCard Title="🗺 Тип карты" style="margin-bottom:10px">
+                <div class="gm-type-grid">
+                    @foreach (var t in _googleMapTypes)
+                    {
+                        var tt = t;
+                        <button class="gm-type-btn @(_googleMapType == tt.Key ? "active" : "")"
+                                @onclick="@(() => SetGoogleMapType(tt.Key))">
+                            <span>@tt.Value.Icon</span>
+                            <span>@tt.Value.Name</span>
+                        </button>
+                    }
+                </div>
+            </SgCard>
+
+            <!-- Markers -->
+            <SgCard Title="📍 Маркеры" style="margin-bottom:10px">
+                <div class="gm-hint">💡 Кликните на карту чтобы добавить маркер</div>
+
+                <div style="display:flex;gap:6px;margin-bottom:8px">
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
+                              OnClick="AddRandomMarker" Block="true">+ Случайный</SgButton>
+                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Danger"
+                              OnClick="ClearMarkers"
+                              Disabled="@(_gmarkers.Count == 0)">✕ Все</SgButton>
+                </div>
+
+                <div class="gm-marker-list">
+                    @foreach (var m in _gmarkers.Take(6))
+                    {
+                        var mm = m;
+                        <div class="gm-marker-row">
+                            <span class="gm-marker-dot" style="background:@(mm.Color ?? "#006fee")">@(mm.Icon ?? "📍")</span>
+                            <div class="gm-marker-info">
+                                <span class="gm-marker-name">@mm.Title</span>
+                                <span class="gm-marker-coords">@mm.Latitude.ToString("F3"), @mm.Longitude.ToString("F3")</span>
+                            </div>
+                            <button class="gm-marker-del" @onclick="@(() => RemoveMarker(mm.Id))">✕</button>
+                        </div>
+                    }
+                    @if (_gmarkers.Count > 6)
+                    {
+                        <div class="gm-marker-more">+@(_gmarkers.Count - 6) ещё</div>
+                    }
+                </div>
+            </SgCard>
+
+            <!-- Route -->
+            <SgCard Title="🛣 Маршрут A→B" style="margin-bottom:10px">
+                <div class="gm-route-row">
+                    <span class="gm-route-badge" style="background:#2563eb">A</span>
+                    <SgCoordinateInput @bind-Latitude="_routeFromLat"
+                                       @bind-Longitude="_routeFromLon"
+                                       ShowCopyButton="false"
+                                       ShowClearButton="false"
+                                       CssClass="gm-coord" />
+                </div>
+                <div class="gm-route-row" style="margin-top:6px">
+                    <span class="gm-route-badge" style="background:#dc2626">B</span>
+                    <SgCoordinateInput @bind-Latitude="_routeToLat"
+                                       @bind-Longitude="_routeToLon"
+                                       ShowCopyButton="false"
+                                       ShowClearButton="false"
+                                       CssClass="gm-coord" />
+                </div>
+
+                <div class="gm-presets">
+                    @foreach (var p in _routePresets)
+                    {
+                        var pp = p;
+                        <button class="gm-preset-btn" @onclick="@(() => ApplyPreset(pp))">@pp.Name</button>
+                    }
+                </div>
+
+                <div style="display:flex;gap:6px;margin-top:8px">
+                    <SgButton Variant="SgButtonVariant.Primary"
+                              Disabled="@_routeLoading"
+                              Loading="@_routeLoading"
+                              OnClick="DrawRoute" Block="true">
+                        🗺 @(HasApiKey ? "Реальный маршрут" : "Прямой маршрут")
+                    </SgButton>
+                    @if (_routeDrawn)
+                    {
+                        <SgButton Variant="SgButtonVariant.Danger" OnClick="ClearRoute">✕</SgButton>
+                    }
+                </div>
+
+                <div class="gm-route-options">
+                    <SgSwitch @bind-Value="_routeAlternatives" Label="Альтернативы" />
+                </div>
+
+                @if (!HasApiKey)
+                {
+                    <div class="gm-route-hint">
+                        💡 Введите API ключ выше для реального маршрута по дорогам
+                    </div>
+                }
+                else
+                {
+                    <div class="gm-route-hint" style="border-left-color:var(--sui-success,#16a34a);background:rgba(22,163,74,0.05)">
+                        ✅ Ключ введён. Убедитесь что в Google Cloud Console включены: <b>Maps JavaScript API</b> и <b>Directions API</b>
+                    </div>
+                }
+
+                @if (_routeResult is not null)
+                {
+                    <div class="gm-route-result">
+                        <div class="gm-route-result-row">
+                            <div class="gm-route-stat">
+                                <span>📏 Расстояние</span>
+                                <b>@_routeResult.DistanceFormatted</b>
+                            </div>
+                            @if (_routeResult.DurationMin.HasValue)
+                            {
+                                <div class="gm-route-stat">
+                                    <span>⏱ Время</span>
+                                    <b>@_routeResult.DurationFormatted</b>
+                                </div>
+                            }
+                        </div>
+
+                        @if (_routeResult.Routes.Count > 1)
+                        {
+                            <div class="gm-variants">
+                                <div class="gm-variants-label">Варианты:</div>
+                                @for (var i = 0; i < _routeResult.Routes.Count; i++)
+                                {
+                                    var ri = i;
+                                    var rv = _routeResult.Routes[ri];
+                                    <button class="gm-variant-btn @(_routeResult.SelectedIndex == ri ? "active" : "")"
+                                            @onclick="@(() => SelectRoute(ri))">
+                                        <span class="gm-variant-num">@(ri + 1)</span>
+                                        <div class="gm-variant-info">
+                                            <span>@rv.DistanceFormatted</span>
+                                            @if (rv.DurationMin.HasValue)
+                                            {
+                                                <span>@rv.DurationFormatted</span>
+                                            }
+                                        </div>
+                                        @if (ri == 0) { <span class="gm-variant-tag">Лучший</span> }
+                                    </button>
+                                }
+                            </div>
+                        }
+
+                        @if (_routeResult.Straight)
+                        {
+                            <SgAlert Variant="SgAlertVariant.Warn" Dense="true" style="margin-top:6px"
+                                     Text="Прямая линия (нет API ключа)" />
+                        }
+                        @if (!string.IsNullOrEmpty(_routeResult.Error) && !_routeResult.Ok)
+                        {
+                            string errText;
+                            if (_routeResult.Error?.Contains("REQUEST_DENIED") == true)
+                                errText = "Directions API не включён. В Google Cloud Console включите: Maps JavaScript API + Directions API для этого ключа.";
+                            else if (_routeResult.Error?.Contains("ZERO_RESULTS") == true)
+                                errText = "Маршрут не найден между этими точками.";
+                            else if (_routeResult.Error?.Contains("NOT_FOUND") == true)
+                                errText = "Одна из точек не найдена на карте.";
+                            else
+                                errText = $"Ошибка: {_routeResult.Error}";
+                            <SgAlert Variant="SgAlertVariant.Danger" Dense="true" style="margin-top:6px"
+                                     Text="@errText" />
+                        }
+                        @if (_routeResult.Steps.Count > 0)
+                        {
+                            <div class="gm-steps">
+                                @foreach (var s in _routeResult.Steps.Take(8))
+                                {
+                                    <div class="gm-step-row">
+                                        <span class="gm-step-text">@s.Instruction</span>
+                                        <span class="gm-step-dist">@s.Distance</span>
+                                    </div>
+                                }
+                                @if (_routeResult.Steps.Count > 8)
+                                {
+                                    <div class="gm-step-more">+@(_routeResult.Steps.Count - 8) шагов</div>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            </SgCard>
+
+            <!-- Stats -->
+            <SgCard Title="📊 Карта">
+                <div class="gm-stat-grid">
+                    <div class="gm-stat"><span>Широта</span><b>@_viewLat.ToString("F4")</b></div>
+                    <div class="gm-stat"><span>Долгота</span><b>@_viewLon.ToString("F4")</b></div>
+                    <div class="gm-stat"><span>Зум</span><b>@_viewZoom.ToString("F1")</b></div>
+                    <div class="gm-stat"><span>Маркеров</span><b>@_gmarkers.Count</b></div>
+                </div>
+
+                @if (_lastClick is not null)
+                {
+                    <div style="margin-top:8px;font-size:11px;color:var(--sui-text-secondary)">
+                        Последний клик: @_lastClick.Latitude.ToString("F5"), @_lastClick.Longitude.ToString("F5")
+                    </div>
+                }
+
+                @if (_selectedMarkerTitle is not null)
+                {
+                    <SgAlert Variant="SgAlertVariant.Success" Dense="true" style="margin-top:8px"
+                             Text="@($"Маркер: {_selectedMarkerTitle}")" />
+                }
+            </SgCard>
+
+        </div>
+    </div>
+</div>
+
+@code {
+    private SgGoogleMap? _gmap;
+
+    // ── API key ───────────────────────────────────────────────────────────────
+    private string _googleApiKey = "";
+    private SgGoogleMapSources _gmapSources = new();
+
+    // ── State ─────────────────────────────────────────────────────────────────
+    private double _viewLat  = 55.751, _viewLon = 37.618, _viewZoom = 10;
+    private SgMapClickEventArgs? _lastClick;
+    private string? _selectedMarkerTitle;
+
+    // ── Map types ─────────────────────────────────────────────────────────────
+    private string _googleMapType = "roadmap";
+
+    private record MapTypeInfo(string Name, string Icon);
+    private readonly Dictionary<string, MapTypeInfo> _googleMapTypes = new()
+    {
+        ["roadmap"]   = new("Схема",   "🗺"),
+        ["satellite"] = new("Спутник", "🛰"),
+        ["hybrid"]    = new("Гибрид",  "🌍"),
+        ["terrain"]   = new("Рельеф",  "⛰"),
+    };
+
+    // ── Map options ───────────────────────────────────────────────────────────
+    private SgGoogleMapOptions _gmapOpts => new()
+    {
+        CenterLat = 55.751, CenterLon = 37.618, Zoom = 10,
+        MapTypeId = _googleMapType switch {
+            "satellite" => SgGoogleMapType.Satellite,
+            "hybrid"    => SgGoogleMapType.Hybrid,
+            "terrain"   => SgGoogleMapType.Terrain,
+            _           => SgGoogleMapType.Roadmap,
+        },
+        ShowControls = true, ShowStreetView = false,
+    };
+
+    // ── Markers ───────────────────────────────────────────────────────────────
+    private static readonly Random _rnd = new(Environment.TickCount);
+
+    private List<SgGoogleMapMarker> _gmarkers = new()
+    {
+        new() { Id="g1", Title="Кремль",         Latitude=55.7520, Longitude=37.6173, Color="#ef4444", Icon="🏛️" },
+        new() { Id="g2", Title="Красная площадь", Latitude=55.7539, Longitude=37.6208, Color="#f59e0b", Icon="⭐" },
+        new() { Id="g3", Title="Большой театр",  Latitude=55.7601, Longitude=37.6155, Color="#8b5cf6", Icon="🎭" },
+    };
+
+    // ── Route ─────────────────────────────────────────────────────────────────
+    private double? _routeFromLat = 55.7520;
+    private double? _routeFromLon = 37.6173;
+    private double? _routeToLat   = 55.9726;
+    private double? _routeToLon   = 37.4146;
+    private bool    _routeDrawn        = false;
+    private bool    _routeLoading      = false;
+    private bool    _routeAlternatives = true;
+    private SgMapRouteResult? _routeResult;
+
+    private bool HasApiKey => !string.IsNullOrWhiteSpace(_googleApiKey);
+
+    private record RoutePreset(string Name, double FromLat, double FromLon, double ToLat, double ToLon);
+    private readonly RoutePreset[] _routePresets =
+    [
+        new("Кремль→Арбат",   55.7520, 37.6173, 55.7490, 37.5960),
+        new("Центр→Аэропорт", 55.7520, 37.6173, 55.9726, 37.4146),
+        new("Москва→СПб",     55.7520, 37.6173, 59.9343, 30.3351),
+    ];
+
+    private static readonly string[] _names  = ["Офис","Склад","Магазин","Ресторан","Отель","Парк","Музей","Театр"];
+    private static readonly string[] _icons  = ["🏢","📦","🏪","🍽️","🏨","🌳","🏛️","🎭"];
+    private static readonly string[] _colors = ["#ef4444","#f59e0b","#10b981","#2563eb","#8b5cf6","#06b6d4","#ec4899","#f97316"];
+
+    // ── Actions ───────────────────────────────────────────────────────────────
+
+    private void ApplyGoogleKey()
+    {
+        _gmapSources = new SgGoogleMapSources
+        {
+            ApiKey = string.IsNullOrWhiteSpace(_googleApiKey) ? null : _googleApiKey.Trim()
+        };
+        StateHasChanged();
+    }
+
+    private void SetGoogleMapType(string t) { _googleMapType = t; StateHasChanged(); }
+
+    private void ApplyPreset(RoutePreset p)
+    {
+        _routeFromLat = p.FromLat; _routeFromLon = p.FromLon;
+        _routeToLat   = p.ToLat;   _routeToLon   = p.ToLon;
+        StateHasChanged();
+    }
+
+    private void AddRandomMarker()
+    {
+        var i = _rnd.Next(_names.Length);
+        var id = $"m{DateTime.Now.Ticks}";
+        var lat = 55.6 + _rnd.NextDouble() * 0.3;
+        var lon = 37.4 + _rnd.NextDouble() * 0.5;
+        _gmarkers = [.._gmarkers, new() { Id=id, Title=_names[i], Latitude=lat, Longitude=lon, Color=_colors[i%_colors.Length], Icon=_icons[i] }];
+        StateHasChanged();
+    }
+
+    private void ClearMarkers()
+    {
+        _gmarkers = new();
+        StateHasChanged();
+    }
+
+    private void RemoveMarker(string id)
+    {
+        _gmarkers = _gmarkers.Where(m => m.Id != id).ToList();
+        StateHasChanged();
+    }
+
+    private async Task DrawRoute()
+    {
+        if (!_routeFromLat.HasValue || !_routeFromLon.HasValue ||
+            !_routeToLat.HasValue   || !_routeToLon.HasValue)
+        {
+            _routeResult = new SgMapRouteResult { Ok = false, Error = "Введите координаты точек A и B или выберите пресет" };
+            StateHasChanged();
+            return;
+        }
+
+        _routeLoading = true; StateHasChanged();
+
+        var apiKey = string.IsNullOrWhiteSpace(_googleApiKey) ? null : _googleApiKey.Trim();
+        var result = await (_gmap?.BuildRouteAsync(
+            _routeFromLat!.Value, _routeFromLon!.Value,
+            _routeToLat!.Value,   _routeToLon!.Value,
+            apiKey, _routeAlternatives) ?? Task.FromResult(new SgMapRouteResult()));
+
+        _routeResult  = result;
+        _routeDrawn   = true;
+        _routeLoading = false;
+        StateHasChanged();
+    }
+
+    private async Task SelectRoute(int idx)
+    {
+        if (_routeResult is null) return;
+        _routeResult.SelectedIndex = idx;
+        await (_gmap?.SelectRouteAsync(idx) ?? Task.CompletedTask);
+        StateHasChanged();
+    }
+
+    private async Task ClearRoute()
+    {
+        await (_gmap?.ClearPolylineAsync("route")       ?? Task.CompletedTask);
+        await (_gmap?.ClearPolylineAsync("__route__")   ?? Task.CompletedTask);
+        await (_gmap?.ClearPolylineAsync("__route_0__") ?? Task.CompletedTask);
+        _routeDrawn = false; _routeResult = null;
+        StateHasChanged();
+    }
+
+    // ── Events ────────────────────────────────────────────────────────────────
+
+    private void OnGMapClick(SgMapClickEventArgs e)    { _lastClick = e; _selectedMarkerTitle = null; StateHasChanged(); }
+    private void OnGMarkerClick(SgGoogleMapMarkerClickEventArgs e) { _selectedMarkerTitle = e.Title; StateHasChanged(); }
+}
