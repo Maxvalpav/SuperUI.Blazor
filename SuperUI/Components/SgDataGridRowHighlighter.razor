@@ -1,0 +1,519 @@
+@namespace SuperUI.Components
+@typeparam TItem
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<SgModal Visible="@Visible"
+         Title="@Localizer["DataGrid_RowHighlighter"]"
+         Width="760px"
+         CloseOnBackdrop="false"
+         CloseOnEscape="true"
+         OnClose="OnClose">
+    <ChildContent>
+        <div class="sgrh-wrap">
+
+            @* ── Toolbar ── *@
+            <div class="sgrh-toolbar">
+                <button type="button" class="sgc-btn sgc-btn-primary" @onclick="AddNewRule">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"
+                         stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon">
+                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    @Localizer["DataGrid_AddRule"]
+                </button>
+                @if (_rules.Count > 0)
+                {
+                    var allDisabled = _rules.All(r => !r.IsEnabled);
+                    <button type="button" class="sgc-btn @(allDisabled ? "" : "sgc-btn-danger-outline")"
+                            @onclick="ClearAllRules"
+                            title="@(allDisabled ? "Включить все правила" : "Отключить раскраску")">
+                        @if (allDisabled)
+                        {
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                 stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            <span>Включить все</span>
+                        }
+                        else
+                        {
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                 stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                                <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                                <line x1="1" y1="1" x2="23" y2="23"/>
+                            </svg>
+                            <span>Отключить все</span>
+                        }
+                    </button>
+                }
+            </div>
+
+            @* ── Rules list ── *@
+            <div class="sgrh-rules">
+                @if (_rules.Count == 0)
+                {
+                    <div class="sgrh-empty">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" class="sgrh-empty-icon">
+                            <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L3 14.67V21h6.33l10.06-10.06a5.5 5.5 0 0 0 1.45-6.33z" />
+                            <line x1="17.5" y1="7.5" x2="14.5" y2="10.5" />
+                        </svg>
+                        <span>@Localizer["DataGrid_NoHighlightRules"]</span>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var rule in _rules)
+                    {
+                        <div class="sgrh-rule @(rule.IsEnabled ? "" : "sgrh-rule-disabled")" @key="rule.Id">
+
+                            @* ── Rule header: name + toggle + delete ── *@
+                            <div class="sgrh-rule-head">
+                                @* Color preview swatch *@
+                                <div class="sgrh-swatch"
+                                     style="background:@(rule.BackgroundColor ?? "transparent"); color:@(rule.TextColor ?? "inherit"); border: 1px solid var(--sui-border);"
+                                     title="@Localizer["DataGrid_BackgroundColor"]">
+                                    <span>Aa</span>
+                                </div>
+
+                                <input type="text"
+                                       class="sg-search sgrh-name-input"
+                                       placeholder="@Localizer["DataGrid_RuleName"]"
+                                       value="@rule.Name"
+                                       @oninput="e => UpdateRuleName(rule, e.Value?.ToString())" />
+
+                                @* Toggle switch *@
+                                <label class="sgrh-switch" title="@(rule.IsEnabled ? Localizer["DataGrid_RuleEnabled"] : Localizer["DataGrid_RuleDisabled"])">
+                                    <input type="checkbox"
+                                           checked="@rule.IsEnabled"
+                                           @onchange="e => ToggleRuleEnabled(rule, e.Value is true)" />
+                                    <span class="sgrh-slider"></span>
+                                </label>
+
+                                @* Delete *@
+                                <button type="button" class="sgc-btn sgc-ghost sgrh-icon-btn" title="@Localizer["Delete"]"
+                                        @onclick="() => DeleteRule(rule)">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                         stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                </button>
+                            </div>
+
+                            @* ── Colors row ── *@
+                            <div class="sgrh-colors">
+                                <div class="sgrh-color-field">
+                                    <span class="sgrh-color-label">@Localizer["DataGrid_BackgroundColor"]</span>
+                                    <div class="sgrh-color-input">
+                                        <input type="color"
+                                               class="sgrh-color-picker"
+                                               value="@(rule.BackgroundColor ?? "#ffffff")"
+                                               @oninput="e => UpdateRuleBackgroundColor(rule, e.Value?.ToString())" />
+                                        <input type="text"
+                                               class="sg-search sgrh-color-text"
+                                               value="@(rule.BackgroundColor ?? "")"
+                                               placeholder="#ffffff"
+                                               @oninput="e => UpdateRuleBackgroundColor(rule, e.Value?.ToString())" />
+                                    </div>
+                                </div>
+                                <div class="sgrh-color-field">
+                                    <span class="sgrh-color-label">@Localizer["DataGrid_TextColor"]</span>
+                                    <div class="sgrh-color-input">
+                                        <input type="color"
+                                               class="sgrh-color-picker"
+                                               value="@(rule.TextColor ?? "#000000")"
+                                               @oninput="e => UpdateRuleTextColor(rule, e.Value?.ToString())" />
+                                        <input type="text"
+                                               class="sg-search sgrh-color-text"
+                                               value="@(rule.TextColor ?? "")"
+                                               placeholder="#000000"
+                                               @oninput="e => UpdateRuleTextColor(rule, e.Value?.ToString())" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            @* ── Target: whole row or specific column ── *@
+                            <div class="sgrh-target-row">
+                                <span class="sgrh-color-label">Применить к:</span>
+                                <div class="sgrh-target-btns">
+                                    <button type="button"
+                                            class="sgc-btn sgc-sm @(string.IsNullOrEmpty(rule.TargetColumnKey) ? "sgrh-logic-active" : "")"
+                                            @onclick="() => SetRuleTarget(rule, null)">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+                                        Вся строка
+                                    </button>
+                                    <button type="button"
+                                            class="sgc-btn sgc-sm @(!string.IsNullOrEmpty(rule.TargetColumnKey) ? "sgrh-logic-active" : "")"
+                                            @onclick="() => EnableCellTarget(rule)">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
+                                        Ячейка колонки
+                                    </button>
+                                </div>
+                                @if (!string.IsNullOrEmpty(rule.TargetColumnKey))
+                                {
+                                    <select class="sg-filter-cond-select sgrh-target-select"
+                                            value="@rule.TargetColumnKey"
+                                            @onchange="e => SetRuleTarget(rule, e.Value?.ToString())">
+                                        @foreach (var field in _fields)
+                                        {
+                                            <option value="@field.Name">@field.Label</option>
+                                        }
+                                    </select>
+                                }
+                            </div>
+
+                            @* ── Conditions ── *@
+                            <div class="sgrh-conditions">
+                                @* Logic + add condition *@
+                                <div class="sgrh-cond-toolbar">
+                                    <div class="sgrh-logic-group">
+                                        <button type="button"
+                                                class="sgc-btn sgc-sm @(rule.RulesAnd ? "sgrh-logic-active" : "")"
+                                                @onclick="() => SetRuleLogic(rule, true)">
+                                            AND
+                                        </button>
+                                        <button type="button"
+                                                class="sgc-btn sgc-sm @(!rule.RulesAnd ? "sgrh-logic-active" : "")"
+                                                @onclick="() => SetRuleLogic(rule, false)">
+                                            OR
+                                        </button>
+                                    </div>
+                                    <button type="button" class="sgc-btn sgc-sm" @onclick="() => AddCondition(rule)">
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                             stroke-width="3" stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon">
+                                            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                                        </svg>
+                                        @Localizer["DataGrid_AddCondition"]
+                                    </button>
+                                </div>
+
+                                @* Condition rows *@
+                                <div class="sgrh-cond-list">
+                                    @foreach (var (condition, idx) in rule.Rules.Select((c, i) => (c, i)))
+                                    {
+                                        <div class="sgrh-cond-row" @key="idx">
+                                            @* Field selector *@
+                                            <select class="sg-filter-cond-select sgrh-cond-field"
+                                                    value="@(condition.FieldName ?? "")"
+                                                    @onchange="e => SetConditionField(rule, idx, e.Value?.ToString())">
+                                                <option value="">@Localizer["SelectField"]</option>
+                                                @foreach (var field in _fields)
+                                                {
+                                                    <option value="@field.Name">@field.Label</option>
+                                                }
+                                            </select>
+
+                                            @* Operator selector *@
+                                            <select class="sg-filter-cond-select sgrh-cond-op"
+                                                    value="@condition.Operator.ToString()"
+                                                    @onchange="e => SetConditionOperator(rule, idx, e.Value?.ToString())">
+                                                @foreach (var op in GetOperatorsForField(GetField(condition.FieldName)))
+                                                {
+                                                    <option value="@op">@GetOperatorLabel(op)</option>
+                                                }
+                                            </select>
+
+                                            @* Value input *@
+                                            @if (!IsUnaryOperator(condition.Operator))
+                                            {
+                                                @switch (GetInputKind(GetField(condition.FieldName)))
+                                                {
+                                                    case InputKind.Bool:
+                                                        <select class="sg-filter-cond-select sgrh-cond-val"
+                                                                value="@(condition.Value?.ToString() ?? "")"
+                                                                @onchange="e => SetConditionValue(rule, idx, e.Value?.ToString())">
+                                                            <option value="">@Localizer["SelectValue"]</option>
+                                                            <option value="true">@Localizer["Yes"]</option>
+                                                            <option value="false">@Localizer["No"]</option>
+                                                        </select>
+                                                        break;
+                                                    case InputKind.Enum:
+                                                        <select class="sg-filter-cond-select sgrh-cond-val"
+                                                                value="@(condition.Value?.ToString() ?? "")"
+                                                                @onchange="e => SetConditionValue(rule, idx, e.Value?.ToString())">
+                                                            <option value="">@Localizer["SelectValue"]</option>
+                                                            @foreach (var opt in GetField(condition.FieldName)?.EnumOptions ?? Array.Empty<QueryFieldEnumOption>())
+                                                            {
+                                                                <option value="@opt.Name">@opt.Label</option>
+                                                            }
+                                                        </select>
+                                                        break;
+                                                    case InputKind.Date:
+                                                        <input class="sg-search sgrh-cond-val" type="date"
+                                                               value="@(condition.Value?.ToString() ?? "")"
+                                                               @onchange="e => SetConditionValue(rule, idx, e.Value?.ToString())" />
+                                                        break;
+                                                    case InputKind.DateTime:
+                                                        <input class="sg-search sgrh-cond-val" type="datetime-local"
+                                                               value="@(condition.Value?.ToString() ?? "")"
+                                                               @onchange="e => SetConditionValue(rule, idx, e.Value?.ToString())" />
+                                                        break;
+                                                    case InputKind.Decimal:
+                                                        <input class="sg-search sgrh-cond-val" type="number" step="any"
+                                                               value="@(condition.Value?.ToString() ?? "")"
+                                                               @oninput="e => SetConditionValue(rule, idx, e.Value?.ToString())" />
+                                                        break;
+                                                    case InputKind.Integer:
+                                                        <input class="sg-search sgrh-cond-val" type="number" step="1"
+                                                               value="@(condition.Value?.ToString() ?? "")"
+                                                               @oninput="e => SetConditionValue(rule, idx, e.Value?.ToString())" />
+                                                        break;
+                                                    default:
+                                                        <input class="sg-search sgrh-cond-val"
+                                                               value="@(condition.Value?.ToString() ?? "")"
+                                                               @oninput="e => SetConditionValue(rule, idx, e.Value?.ToString())" />
+                                                        break;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <div class="sgrh-cond-empty sgrh-cond-val">@Localizer["WithoutValue"]</div>
+                                            }
+
+                                            @* Remove condition *@
+                                            @if (rule.Rules.Count > 1)
+                                            {
+                                                <button type="button" class="sgc-btn sgc-ghost sgrh-icon-btn" title="@Localizer["DataGrid_FilterRemoveCondition"]"
+                                                        @onclick="() => RemoveCondition(rule, idx)">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                                         stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                                                    </svg>
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <div class="sgrh-cond-spacer"></div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    </ChildContent>
+    <FooterContent>
+        <button type="button" class="sgc-btn" @onclick="OnClose">
+            @Localizer["Cancel"]
+        </button>
+        <button type="button" class="sgc-btn sgc-btn-primary" @onclick="SaveRulesAsync">
+            @Localizer["Save"]
+        </button>
+    </FooterContent>
+</SgModal>
+
+@code {
+    private enum InputKind { Text, Integer, Decimal, Bool, Enum, Date, DateTime, Time }
+
+    [Parameter, EditorRequired] public SgDataGrid<TItem> Grid { get; set; } = default!;
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private List<RowHighlightRule> _rules = new();
+    private IReadOnlyList<QueryField> _fields = Array.Empty<QueryField>();
+
+    protected override void OnParametersSet()
+    {
+        if (Grid is not null && Visible)
+        {
+            _fields = Grid.GetQueryFields();
+            _rules = Grid.GetRowHighlightRules()
+                .Select(r => new RowHighlightRule
+                {
+                    Id = r.Id,
+                    Name = r.Name,
+                    Rules = r.Rules.Select(CloneQueryRule).ToList(),
+                    RulesAnd = r.RulesAnd,
+                    BackgroundColor = r.BackgroundColor,
+                    TextColor = r.TextColor,
+                    IsEnabled = r.IsEnabled
+                })
+                .ToList();
+        }
+    }
+
+    private static QueryRule CloneQueryRule(QueryRule rule) =>
+        new() { FieldName = rule.FieldName, Operator = rule.Operator, Value = rule.Value };
+
+    private void AddNewRule()
+    {
+        _rules.Add(new RowHighlightRule
+        {
+            Name = Localizer["DataGrid_NewRule"],
+            Rules = new List<QueryRule> { new() },
+            RulesAnd = true,
+            BackgroundColor = "#fff3cd",
+            TextColor = null,
+            IsEnabled = true
+        });
+    }
+
+    private void DeleteRule(RowHighlightRule rule) => _rules.Remove(rule);
+
+    private void ClearAllRules()
+    {
+        var allDisabled = _rules.All(r => !r.IsEnabled);
+        // Toggle: if all disabled — enable all; otherwise disable all
+        _rules.ForEach(r => r.IsEnabled = allDisabled);
+    }
+
+    private void UpdateRuleName(RowHighlightRule rule, string? name) =>
+        rule.Name = name ?? string.Empty;
+
+    private void ToggleRuleEnabled(RowHighlightRule rule, bool enabled) =>
+        rule.IsEnabled = enabled;
+
+    private void UpdateRuleBackgroundColor(RowHighlightRule rule, string? color) =>
+        rule.BackgroundColor = string.IsNullOrWhiteSpace(color) ? null : color;
+
+    private void UpdateRuleTextColor(RowHighlightRule rule, string? color) =>
+        rule.TextColor = string.IsNullOrWhiteSpace(color) ? null : color;
+
+    private void SetRuleTarget(RowHighlightRule rule, string? columnKey) =>
+        rule.TargetColumnKey = string.IsNullOrWhiteSpace(columnKey) ? null : columnKey;
+
+    private void EnableCellTarget(RowHighlightRule rule)
+    {
+        if (string.IsNullOrEmpty(rule.TargetColumnKey))
+            rule.TargetColumnKey = _fields.FirstOrDefault()?.Name ?? string.Empty;
+    }
+
+    private void SetRuleLogic(RowHighlightRule rule, bool and) =>
+        rule.RulesAnd = and;
+
+    private void AddCondition(RowHighlightRule rule) =>
+        rule.Rules.Add(new QueryRule());
+
+    private void RemoveCondition(RowHighlightRule rule, int index)
+    {
+        if (index >= 0 && index < rule.Rules.Count)
+        {
+            rule.Rules.RemoveAt(index);
+            if (rule.Rules.Count == 0)
+                rule.Rules.Add(new QueryRule());
+        }
+    }
+
+    private void SetConditionField(RowHighlightRule rule, int index, string? fieldName)
+    {
+        if (index >= 0 && index < rule.Rules.Count)
+        {
+            rule.Rules[index].FieldName = fieldName;
+            rule.Rules[index].Operator = GetOperatorsForField(GetField(fieldName)).First();
+            rule.Rules[index].Value = null;
+        }
+    }
+
+    private void SetConditionOperator(RowHighlightRule rule, int index, string? opStr)
+    {
+        if (index >= 0 && index < rule.Rules.Count && Enum.TryParse<QueryFieldOperator>(opStr, out var op))
+        {
+            rule.Rules[index].Operator = op;
+            if (IsUnaryOperator(op))
+                rule.Rules[index].Value = null;
+        }
+    }
+
+    private void SetConditionValue(RowHighlightRule rule, int index, string? value)
+    {
+        if (index >= 0 && index < rule.Rules.Count)
+            rule.Rules[index].Value = value;
+    }
+
+    private QueryField? GetField(string? fieldName) =>
+        string.IsNullOrWhiteSpace(fieldName) ? null : _fields.FirstOrDefault(f => f.Name == fieldName);
+
+    private static InputKind GetInputKind(QueryField? field)
+    {
+        if (field is null) return InputKind.Text;
+        var t = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+        if (t == typeof(bool)) return InputKind.Bool;
+        if (t.IsEnum) return InputKind.Enum;
+        if (t == typeof(DateOnly)) return InputKind.Date;
+        if (t == typeof(TimeOnly)) return InputKind.Time;
+        if (t == typeof(DateTime) || t == typeof(DateTimeOffset))
+            return field.ShowTime ? InputKind.DateTime : InputKind.Date;
+        if (t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort)
+            || t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong))
+            return InputKind.Integer;
+        if (t == typeof(float) || t == typeof(double) || t == typeof(decimal))
+            return InputKind.Decimal;
+        return InputKind.Text;
+    }
+
+    private IEnumerable<QueryFieldOperator> GetOperatorsForField(QueryField? field)
+    {
+        if (field is null)
+            return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
+                    QueryFieldOperator.Contains, QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
+
+        var t = Nullable.GetUnderlyingType(field.Type) ?? field.Type;
+
+        if (t == typeof(string))
+            return [QueryFieldOperator.Contains, QueryFieldOperator.NotContains,
+                    QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
+                    QueryFieldOperator.StartsWith, QueryFieldOperator.EndsWith,
+                    QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
+
+        if (t == typeof(bool))
+            return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
+                    QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
+
+        if (t.IsEnum)
+            return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
+                    QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
+
+        if (IsDateLikeType(t) || IsNumericType(t))
+            return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
+                    QueryFieldOperator.GreaterThan, QueryFieldOperator.GreaterThanOrEqual,
+                    QueryFieldOperator.LessThan, QueryFieldOperator.LessThanOrEqual,
+                    QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
+
+        return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
+                QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
+    }
+
+    private string GetOperatorLabel(QueryFieldOperator op) => op switch
+    {
+        QueryFieldOperator.Equals             => Localizer["Operator_Equals"],
+        QueryFieldOperator.NotEquals          => Localizer["Operator_NotEquals"],
+        QueryFieldOperator.Contains           => Localizer["Operator_Contains"],
+        QueryFieldOperator.NotContains        => Localizer["Operator_NotContains"],
+        QueryFieldOperator.StartsWith         => Localizer["Operator_StartsWith"],
+        QueryFieldOperator.EndsWith           => Localizer["Operator_EndsWith"],
+        QueryFieldOperator.GreaterThan        => Localizer["Operator_GreaterThan"],
+        QueryFieldOperator.LessThan           => Localizer["Operator_LessThan"],
+        QueryFieldOperator.GreaterThanOrEqual => Localizer["Operator_GreaterThanOrEqual"],
+        QueryFieldOperator.LessThanOrEqual    => Localizer["Operator_LessThanOrEqual"],
+        QueryFieldOperator.In                 => Localizer["Operator_In"],
+        QueryFieldOperator.NotIn              => Localizer["Operator_NotIn"],
+        QueryFieldOperator.IsNull             => Localizer["Operator_IsNull"],
+        QueryFieldOperator.IsNotNull          => Localizer["Operator_IsNotNull"],
+        _                                     => op.ToString()
+    };
+
+    private static bool IsUnaryOperator(QueryFieldOperator op) =>
+        op is QueryFieldOperator.IsNull or QueryFieldOperator.IsNotNull;
+
+    private static bool IsDateLikeType(Type t) =>
+        t == typeof(DateTime) || t == typeof(DateTimeOffset)
+        || t == typeof(DateOnly) || t == typeof(TimeOnly);
+
+    private static bool IsNumericType(Type t) =>
+        t == typeof(byte) || t == typeof(sbyte) || t == typeof(short) || t == typeof(ushort)
+        || t == typeof(int) || t == typeof(uint) || t == typeof(long) || t == typeof(ulong)
+        || t == typeof(float) || t == typeof(double) || t == typeof(decimal);
+
+    private async Task SaveRulesAsync()
+    {
+        await Grid.ApplyRowHighlightRulesAsync(_rules);
+        await OnClose.InvokeAsync();
+    }
+}
