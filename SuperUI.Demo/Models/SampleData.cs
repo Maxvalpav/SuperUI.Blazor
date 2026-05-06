@@ -23,6 +23,87 @@ public class Order
     public int ItemCount { get; set; }
 }
 
+// ── AutoDetail demo models ────────────────────────────────────────────────────
+
+public class Address
+{
+    [System.ComponentModel.DataAnnotations.Display(Name = "Страна", Order = 1)]
+    public string Country { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Город", Order = 2)]
+    public string City { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Улица", Order = 3)]
+    public string Street { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Индекс", Order = 4)]
+    public string PostalCode { get; set; } = string.Empty;
+}
+
+public class EmployeeProject
+{
+    [System.ComponentModel.DataAnnotations.Display(Name = "ID", Order = 1)]
+    public int Id { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Проект", Order = 2)]
+    public string Name { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Роль", Order = 3)]
+    public string Role { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Начало", Order = 4)]
+    public DateTime StartDate { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Часов/нед", Order = 5)]
+    public int HoursPerWeek { get; set; }
+}
+
+public class EmployeeSkill
+{
+    [System.ComponentModel.DataAnnotations.Display(Name = "Навык", Order = 1)]
+    public string Name { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Уровень", Order = 2)]
+    public string Level { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Лет опыта", Order = 3)]
+    public int YearsOfExperience { get; set; }
+}
+
+public class EmployeeDetailed
+{
+    [System.ComponentModel.DataAnnotations.Display(Name = "ID", Order = 0)]
+    public int Id { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Имя", Order = 1)]
+    public string FirstName { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Фамилия", Order = 2)]
+    public string LastName { get; set; } = string.Empty;
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Отдел", Order = 3)]
+    public DepartmentType Department { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Зарплата", Order = 4)]
+    [System.ComponentModel.DataAnnotations.DisplayFormat(DataFormatString = "N0")]
+    public decimal Salary { get; set; }
+
+    [System.ComponentModel.DataAnnotations.Display(Name = "Активен", Order = 5)]
+    public bool IsActive { get; set; }
+
+    // Object property → rendered as SgDataForm
+    [System.ComponentModel.DataAnnotations.Display(Name = "Адрес", Order = 6)]
+    public Address Address { get; set; } = new();
+
+    // Collection property → rendered as SgDataGrid
+    [System.ComponentModel.DataAnnotations.Display(Name = "Проекты", Order = 7)]
+    public List<EmployeeProject> Projects { get; set; } = new();
+
+    // Collection property → rendered as SgDataGrid
+    [System.ComponentModel.DataAnnotations.Display(Name = "Навыки", Order = 8)]
+    public List<EmployeeSkill> Skills { get; set; } = new();
+}
+
 public class SampleDataService
 {
     private static readonly string[] FirstNames = 
@@ -122,4 +203,73 @@ public class SampleDataService
 
         return orders;
     }
+
+    public static List<EmployeeDetailed> GenerateDetailedEmployees(int count = 100)
+    {
+        var employees = new List<EmployeeDetailed>();
+        var random = new Random(42);
+
+        var cities = new[] { "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань" };
+        var streets = new[] { "Ленина", "Пушкина", "Гагарина", "Мира", "Советская" };
+        var projects = new[] { "CRM System", "Mobile App", "Analytics Platform", "E-commerce", "AI Assistant" };
+        var roles = new[] { "Developer", "Lead", "Architect", "QA", "Designer" };
+        var skills = new[] { "C#", "JavaScript", "Python", "SQL", "React", "Azure", "Docker", "Git" };
+        var levels = new[] { "Junior", "Middle", "Senior", "Expert" };
+
+        for (int i = 1; i <= count; i++)
+        {
+            var emp = new EmployeeDetailed
+            {
+                Id = i,
+                FirstName = FirstNames[random.Next(FirstNames.Length)],
+                LastName = LastNames[random.Next(LastNames.Length)],
+                Department = Departments[random.Next(Departments.Length)],
+                Salary = random.Next(50000, 200000),
+                IsActive = random.Next(0, 100) > 15,
+                Address = new Address
+                {
+                    Country = "Россия",
+                    City = cities[random.Next(cities.Length)],
+                    Street = $"ул. {streets[random.Next(streets.Length)]}, д. {random.Next(1, 150)}",
+                    PostalCode = $"{random.Next(100000, 999999)}"
+                }
+            };
+
+            // Generate 1-4 projects
+            int projectCount = random.Next(1, 5);
+            for (int p = 0; p < projectCount; p++)
+            {
+                emp.Projects.Add(new EmployeeProject
+                {
+                    Id = p + 1,
+                    Name = projects[random.Next(projects.Length)],
+                    Role = roles[random.Next(roles.Length)],
+                    StartDate = DateTime.Now.AddMonths(-random.Next(1, 36)),
+                    HoursPerWeek = random.Next(10, 40)
+                });
+            }
+
+            // Generate 2-6 skills
+            int skillCount = random.Next(2, 7);
+            var usedSkills = new HashSet<string>();
+            for (int s = 0; s < skillCount; s++)
+            {
+                var skill = skills[random.Next(skills.Length)];
+                if (usedSkills.Add(skill))
+                {
+                    emp.Skills.Add(new EmployeeSkill
+                    {
+                        Name = skill,
+                        Level = levels[random.Next(levels.Length)],
+                        YearsOfExperience = random.Next(1, 10)
+                    });
+                }
+            }
+
+            employees.Add(emp);
+        }
+
+        return employees;
+    }
+
 }

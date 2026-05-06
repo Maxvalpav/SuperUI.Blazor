@@ -56,27 +56,52 @@
         <div class="sgc-sv-list">
             @foreach (var view in _views.OrderByDescending(x => x.UpdatedAt))
             {
-                <div class="sgc-sv-item @(view.Id == _selectedViewId ? "sgc-active" : string.Empty)" @key="view.Id">
-                    <button type="button"
-                            class="sgc-sv-item-main"
-                            @onclick="() => ApplyViewAsync(view)">
-                        <span class="sgc-sv-item-name">@view.Name</span>
-                        <span class="sgc-sv-item-meta">@FormatDate(view.UpdatedAt)</span>
-                    </button>
+                var isChecked = view.Id == _checkedViewId;
+                var isActive  = view.Id == _selectedViewId;
+                <div class="sgc-sv-item @(isActive ? "sgc-active" : string.Empty) @(isChecked ? "sgc-checked" : string.Empty)" @key="view.Id">
+                    <label class="sgc-sv-item-main sgc-sv-item-selectable">
+                        <input type="radio"
+                               name="sgc-sv-radio-@StorageKey"
+                               class="sgc-sv-radio"
+                               checked="@isChecked"
+                               @onchange="() => _checkedViewId = view.Id" />
+                        <span class="sgc-sv-item-info">
+                            <span class="sgc-sv-item-name">@view.Name</span>
+                            <span class="sgc-sv-item-meta">@FormatDate(view.UpdatedAt)</span>
+                        </span>
+                    </label>
                     <div class="sgc-sv-item-actions">
                         <button type="button"
                                 class="sgc-sv-btn"
                                 @onclick="() => UpdateViewAsync(view)"
-                                disabled="@(Grid is null)">
+                                disabled="@(Grid is null)"
+                                title="@Localizer["SavedViews_Update"]">
                             @Localizer["SavedViews_Update"]
                         </button>
                         <button type="button"
                                 class="sgc-sv-btn sgc-sv-btn-danger"
-                                @onclick="() => DeleteViewAsync(view)">
+                                @onclick="() => DeleteViewAsync(view)"
+                                title="@Localizer["SavedViews_Delete"]">
                             @Localizer["SavedViews_Delete"]
                         </button>
                     </div>
                 </div>
+            }
+        </div>
+        <div class="sgc-sv-apply-bar">
+            <button type="button"
+                    class="sgc-sv-btn sgc-sv-btn-primary"
+                    disabled="@(_checkedViewId is null || Grid is null)"
+                    @onclick="ApplyCheckedViewAsync">
+                Применить
+            </button>
+            @if (_checkedViewId is not null)
+            {
+                <button type="button"
+                        class="sgc-sv-btn"
+                        @onclick="() => _checkedViewId = null">
+                    Отмена
+                </button>
             }
         </div>
     }
@@ -87,6 +112,7 @@
     private IJSObjectReference? _module;
     private string _newViewName = string.Empty;
     private string? _selectedViewId;
+    private string? _checkedViewId;   // view selected via radio but not yet applied
     private string? _loadedStorageKey;
     private IJSObjectReference? _storageListener;
     private DotNetObjectReference<SgSavedViews<TItem>>? _self;
@@ -125,6 +151,14 @@
 
     private bool CanSaveCurrent =>
         Grid is not null && !string.IsNullOrWhiteSpace(_newViewName);
+
+    private async Task ApplyCheckedViewAsync()
+    {
+        if (_checkedViewId is null) return;
+        var view = _views.FirstOrDefault(v => v.Id == _checkedViewId);
+        if (view is null) return;
+        await ApplyViewAsync(view);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -245,6 +279,8 @@
         _views.Remove(view);
         if (_selectedViewId == view.Id)
             _selectedViewId = _views.Count > 0 ? _views[^1].Id : null;
+        if (_checkedViewId == view.Id)
+            _checkedViewId = null;
 
         await PersistViewsAsync();
     }

@@ -27,7 +27,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private readonly Dictionary<string, string> _quickFilters = new(StringComparer.Ordinal);
     private readonly List<QueryRule> _queryRules = new();
     private readonly List<PersistedSortRule> _sort = new();
+    private readonly List<RowHighlightRule> _rowHighlightRules = new();
     private readonly HashSet<string> _hiddenColumns = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _pinnedColumns = new(StringComparer.Ordinal); // runtime pin overrides
     private readonly Dictionary<string, int> _columnWidths = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _columnOrder = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SgDataGridColumn<TItem>> _columnLookup = new(StringComparer.Ordinal);
@@ -44,6 +46,14 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private string? _openFilterColumn;
     private bool _showChooser;
     private bool _showExportMenu;
+    private bool _showSortBuilder;
+    // Working copy of sort rules while sort builder is open
+    private List<PersistedSortRule> _sortBuilderRules = new();
+    private bool _showGroupBuilder;
+    // Working copies for group builder
+    private List<string> _groupBuilderKeys = new();
+    private Dictionary<string, Aggregate> _groupBuilderAggregates = new(StringComparer.Ordinal);
+    private bool _showSavedViewsPanel;
     private int _currentPage = 1;
     private TItem? _activeRow = default;
     private TItem? _lastSelectedItem = default;
@@ -60,6 +70,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private bool _detailDrawerVisible;
     private bool _detailWindowVisible;
     private bool _editModalVisible;
+    private bool _rowHighlighterModalOpen;
     private string? _editModalTitle;
     private List<SgDataGridColumn<TItem>>? _editFormColumns;
     private readonly Dictionary<string, string?> _editFormValues = new(StringComparer.Ordinal);
@@ -74,51 +85,56 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private IJSObjectReference? _module;
     private bool _disposing;
     private int _selectionVersion;
-    
+
     // Content-based version fields for cache invalidation
     // These track changes to actual data content, not render cycles
     /// <summary>Incremented when Items collection changes (reference or count)</summary>
     private int _itemsVersion = 0;
-    
+
     /// <summary>Incremented when search text or any filter changes</summary>
     private int _filterVersion = 0;
-    
+
     /// <summary>Incremented when sort rules change</summary>
     private int _sortVersion = 0;
-    
+
     /// <summary>Incremented when columns are added/removed/reordered/hidden</summary>
     private int _columnsVersion = 0;
-    
+
     /// <summary>Incremented when grouping changes</summary>
     private int _groupVersion = 0;
-    
+
     // Cache version tracking fields - track which content version each cache was built for
     // -1 means "never calculated", otherwise matches the content version it was built for
     private int _filteredRowsCacheItemsVersion = -1;
     private int _filteredRowsCacheFilterVersion = -1;
-    
+
     private int _filteredSortedRowsCacheFilterVersion = -1;
     private int _filteredSortedRowsCacheSortVersion = -1;
-    
+
     private int _visibleRowsCacheItemsVersion = -1;
     private int _visibleRowsCacheFilterVersion = -1;
     private int _visibleRowsCacheSortVersion = -1;
     private int _visibleRowsCacheColumnsVersion = -1;
-    
+
     private int _orderedColumnsCacheColumnsVersion = -1;
-    
+
     private int _distinctValuesCacheItemsVersion = -1;
-    
+
     private int _groupTreeCacheItemsVersion = -1;
     private int _groupTreeCacheGroupVersion = -1;
-    
+
     private int _aggregateCacheItemsVersion = -1;
     private int _aggregateCacheFilterVersion = -1;
+
+    private readonly Dictionary<string, string> _columnFilterTypeCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, bool> _numericColumnCache = new(StringComparer.Ordinal);
+    private int _columnFilterTypeCacheColumnsVersion = -1;
+    private int _columnFilterTypeCacheItemsVersion = -1;
 
     private int _preparedSortsCacheSortVersion = -1;
     private int _preparedSortsCacheColumnsVersion = -1;
     private List<(Func<TItem, object?> Selector, bool Descending)>? _preparedSortsCache;
-    
+
     private (int items, int filter, int selection, int count)? _allFilteredSelectedCacheKey;
     private bool _allFilteredSelectedCacheValue;
     private int _visibleColumnsCacheVersion = -1;
@@ -147,6 +163,14 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private const int VirtualizationThreshold = 1000;
     private const int MinColumnWidth = 40;
 
+    // Scroll debounce — skip re-renders that arrive faster than one animation frame
+    private CancellationTokenSource? _scrollDebounceCts;
+    private const int ScrollDebounceMs = 16; // ~1 frame at 60fps
+
+    // Group building progress
+    private bool _isGroupBuilding;
+    private CancellationTokenSource? _groupBuildCts;
+
     // Debounce state for text inputs (search + quick filters)
     private CancellationTokenSource? _searchDebounceCts;
     private readonly Dictionary<string, CancellationTokenSource> _quickFilterDebounceCts = new(StringComparer.Ordinal);
@@ -165,12 +189,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets the collection of items to display in the grid.
     /// </summary>
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the child content containing <see cref="SgDataGridColumn{TItem}"/> definitions.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the template for rendering row details.
     /// </summary>
@@ -185,169 +209,193 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets the template displayed when the grid has no data.
     /// </summary>
     [Parameter] public RenderFragment? EmptyDataTemplate { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the grid title displayed in the toolbar.
     /// </summary>
     [Parameter] public string? Title { get; set; }
-    
+
     /// <summary>
     /// Gets or sets additional CSS class names to apply to the grid container.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the text displayed when the grid has no data.
     /// </summary>
     [Parameter] public string? EmptyText { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show borders between columns.
     /// </summary>
     [Parameter] public bool ShowColumnBorders { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show the search box in the toolbar. Default is true.
     /// </summary>
     [Parameter] public bool ShowSearch { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets whether to show quick filter inputs below column headers.
     /// </summary>
     [Parameter] public bool ShowQuickFilters { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show the column chooser button in the toolbar. Default is true.
     /// </summary>
     [Parameter] public bool ShowColumnChooser { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets whether to show the CSV export button in the toolbar.
     /// </summary>
     [Parameter] public bool ShowExportCsv { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show the Excel export button in the toolbar.
     /// </summary>
     [Parameter] public bool ShowExportExcel { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show the status bar with row count and selection info.
     /// </summary>
     [Parameter] public bool ShowStatusBar { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to allow auto-fitting column widths to content.
     /// </summary>
     [Parameter] public bool AllowAutoFit { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to allow selecting multiple rows with checkboxes.
     /// </summary>
     [Parameter] public bool AllowMultiSelect { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to allow selecting a single row with a radio button.
     /// When enabled, selecting a new row automatically deselects the previously selected row.
     /// </summary>
     [Parameter] public bool AllowSingleSelect { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to allow inline editing of cells.
     /// </summary>
     [Parameter] public bool AllowEdit { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show delete buttons for rows.
     /// </summary>
     [Parameter] public bool AllowDelete { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the grid should take full width of its container.
     /// </summary>
     [Parameter] public bool FullWidth { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to automatically generate columns from TItem properties.
     /// </summary>
     [Parameter] public bool AutoGenerateColumns { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to enable pagination. Default is true.
     /// </summary>
     [Parameter] public bool EnablePaging { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets the number of rows per page. Default is 25.
     /// </summary>
     [Parameter] public int PageSize { get; set; } = 25;
-    
+
     /// <summary>
     /// Gets or sets the available page size options. Default is [10, 25, 50, 100].
     /// </summary>
     [Parameter] public IReadOnlyList<int> PageSizeOptions { get; set; } = new[] { 10, 25, 50, 100 };
-    
+
     /// <summary>
     /// Gets or sets where to display row details.
     /// Supported values: Inline, Drawer, Window. Default is Inline.
     /// </summary>
     [Parameter] public DetailPlacement DetailPlacement { get; set; } = DetailPlacement.Inline;
-    
+
+    /// <summary>
+    /// When true, automatically generates a detail panel from TItem properties:
+    /// object properties are shown as a read-only form, collection properties as nested grids.
+    /// Requires no DetailTemplate — the panel is built via reflection.
+    /// </summary>
+    [Parameter] public bool AutoDetail { get; set; }
+
+    /// <summary>
+    /// Explicit list of TItem property names to include in the auto-detail panel.
+    /// When null or empty, all eligible properties are shown.
+    /// </summary>
+    [Parameter] public IEnumerable<string>? AutoDetailFields { get; set; }
+
     /// <summary>
     /// Gets or sets the title for the detail drawer when <see cref="DetailPlacement"/> is Drawer.
     /// </summary>
     [Parameter] public string? DetailDrawerTitle { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the title for the detail window when <see cref="DetailPlacement"/> is Window.
     /// </summary>
     [Parameter] public string? DetailWindowTitle { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the width of the detail window in pixels. Default is 640.
     /// </summary>
     [Parameter] public int DetailWindowWidth { get; set; } = 640;
-    
+
     /// <summary>
     /// Gets or sets the height of the detail window in pixels. Default is 360.
     /// </summary>
     [Parameter] public int DetailWindowHeight { get; set; } = 360;
-    
+
     /// <summary>
     /// Gets or sets the factory function for creating new items when adding rows.
     /// </summary>
     [Parameter] public Func<TItem>? CreateItemFactory { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when a row is clicked.
     /// </summary>
     [Parameter] public EventCallback<TItem> RowClicked { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when a row is double-clicked.
     /// </summary>
     [Parameter] public EventCallback<TItem> RowDoubleClicked { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when the selected items collection changes.
     /// </summary>
     [Parameter] public EventCallback<IReadOnlyCollection<TItem>> SelectedItemsChanged { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when a row is deleted.
     /// </summary>
     [Parameter] public EventCallback<TItem> RowDeleted { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when a new row is created.
     /// </summary>
     [Parameter] public EventCallback<TItem> RowCreated { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when a row context menu is requested.
     /// </summary>
     [Parameter] public EventCallback<SgDataGridContextMenuEventArgs<TItem>> OnRowContextMenu { get; set; }
-    
+
+    /// <summary>
+    /// Gets or sets the callback invoked when a cell is clicked.
+    /// Provides item, column, raw value and formatted value.
+    /// </summary>
+    [Parameter] public EventCallback<SgDataGridCellClickEventArgs<TItem>> OnCellClick { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when a cell is double-clicked.
+    /// </summary>
+    [Parameter] public EventCallback<SgDataGridCellClickEventArgs<TItem>> OnCellDoubleClick { get; set; }
+
     /// <summary>
     /// Gets or sets whether the grid is in loading state (shows loading indicator).
     /// </summary>
@@ -385,6 +433,90 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// </summary>
     [Parameter] public EventCallback<SgBulkEditEventArgs<TItem>> OnBulkSave { get; set; }
 
+    /// <summary>
+    /// Gets or sets a function that returns additional CSS class(es) for a row.
+    /// Return null or empty string to apply no extra class.
+    /// </summary>
+    [Parameter] public Func<TItem, string?>? RowCssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets a function that returns programmatic row styling.
+    /// Takes precedence over rules defined in the visual row-highlighter constructor.
+    /// Return <c>null</c> to fall back to the visual highlighter rules.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// &lt;SgDataGrid Items="orders" RowStyle="@(o => o.IsOverdue ? new RowHighlightStyle { BackgroundColor = "#ffe0e0", TextColor = "#c00" } : null)" /&gt;
+    /// </code>
+    /// </example>
+    [Parameter] public Func<TItem, RowHighlightStyle?>? RowStyle { get; set; }
+
+    /// <summary>
+    /// Gets or sets a function that determines whether a row is disabled.
+    /// Disabled rows receive the <c>sg-row-disabled</c> CSS class and cannot be selected or edited.
+    /// </summary>
+    [Parameter] public Func<TItem, bool>? RowDisabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets a function that provides a tooltip (HTML <c>title</c> attribute) for a row.
+    /// </summary>
+    [Parameter] public Func<TItem, string?>? RowTooltip { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show a row-number column as the first column. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowRowNumbers { get; set; }
+
+    /// <summary>
+    /// Callback invoked after an item is successfully saved via the edit modal (for both add and edit operations).
+    /// </summary>
+    [Parameter] public EventCallback<TItem> RowSaved { get; set; }
+
+    /// <summary>
+    /// Callback invoked whenever filter, sort, or pagination state changes.
+    /// Useful for server-side data loading or saving grid state externally.
+    /// </summary>
+    [Parameter] public EventCallback OnStateChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the row highlighter button in the toolbar.
+    /// </summary>
+    [Parameter] public bool ShowRowHighlighter { get; set; } = true;
+
+    /// <summary>
+    /// When true, shows a "Виды" (Saved Views) button in the toolbar.
+    /// Requires <see cref="SavedViewsStorageKey"/> to be set for localStorage persistence.
+    /// </summary>
+    [Parameter] public bool ShowSavedViews { get; set; }
+
+    /// <summary>
+    /// localStorage key for saved views. Required when <see cref="ShowSavedViews"/> is true.
+    /// </summary>
+    [Parameter] public string? SavedViewsStorageKey { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user saves a view — use this to persist to a database.
+    /// Receives the view item with its name and serialized state JSON.
+    /// </summary>
+    [Parameter] public EventCallback<SgSavedViews<TItem>.SavedViewItem> OnSaveViewToDb { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the user deletes a view — use this to remove from a database.
+    /// Receives the view id.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnDeleteViewFromDb { get; set; }
+
+    /// <summary>
+    /// Optional list of saved views loaded from a database.
+    /// When set, these views are merged with localStorage views.
+    /// </summary>
+    [Parameter] public IEnumerable<SgSavedViews<TItem>.SavedViewItem>? DbViews { get; set; }
+
+    /// <summary>
+    /// Gets or sets the initial row highlight rules.
+    /// </summary>
+    [Parameter] public IEnumerable<RowHighlightRule>? RowHighlightRules { get; set; }
+
     public HashSet<TItem> SelectedItems { get; } = new();
 
     internal IReadOnlyList<string> GroupByKeys => _groupByKeys;
@@ -392,7 +524,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     internal List<FilterRule> PendingRules => _pendingRules;
     internal bool PendingRulesAnd => _pendingRulesAnd;
     internal bool HasUndoDelete => _deletedRows.Count > 0;
-    
+
     private string _editModalWidth => $"{EditModalWidth}px";
     internal bool HasActiveSort => _sort.Count > 0;
     internal bool HasActiveFilters => !string.IsNullOrWhiteSpace(_search) || _filters.Count > 0 || _conditionFilters.Count > 0 || _quickFilters.Count > 0;
@@ -410,8 +542,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         {
             if (_columnSpanCacheVersion == _columnsVersion)
                 return _columnSpanCacheValue;
-            
-            _columnSpanCacheValue = VisibleColumns.Count + (DetailTemplate is not null && DetailPlacement == DetailPlacement.Inline ? 1 : 0) + (SelectionEnabled ? 1 : 0) + (AllowEdit || AllowDelete ? 1 : 0);
+
+            _columnSpanCacheValue = VisibleColumns.Count
+                + ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline ? 1 : 0)
+                + (SelectionEnabled ? 1 : 0)
+                + (AllowEdit || AllowDelete ? 1 : 0)
+                + (ShowRowNumbers ? 1 : 0);
             _columnSpanCacheVersion = _columnsVersion;
             return _columnSpanCacheValue;
         }
@@ -457,11 +593,13 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets the key for persisting grid state (filters, sort, columns) to localStorage.
     /// </summary>
     [Parameter] public string? PersistStateKey { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to show the add new row button in the toolbar.
     /// </summary>
     [Parameter] public bool AllowAdd { get; set; }
+
+    private bool _rowHighlightRulesInitialized;
 
     protected override void OnParametersSet()
     {
@@ -474,6 +612,30 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             _prevItems = Items;
             _prevItemsCount = currentCount;
             _itemsVersion++;
+            // Re-detect numeric columns when Items changes
+            DetectNumericColumns();
+            // Re-schedule group build if grouping is active
+            if (_groupByKeys.Count > 0)
+                ScheduleGroupBuild();
+        }
+
+        if (!_rowHighlightRulesInitialized && RowHighlightRules is not null)
+        {
+            _rowHighlightRules.Clear();
+            foreach (var rule in RowHighlightRules)
+            {
+                _rowHighlightRules.Add(new RowHighlightRule
+                {
+                    Id = rule.Id,
+                    Name = rule.Name,
+                    Rules = rule.Rules.Where(IsValidQueryRule).Select(CloneQueryRule).ToList(),
+                    RulesAnd = rule.RulesAnd,
+                    BackgroundColor = rule.BackgroundColor,
+                    TextColor = rule.TextColor,
+                    IsEnabled = rule.IsEnabled
+                });
+            }
+            _rowHighlightRulesInitialized = true;
         }
 
         _currentPage = Math.Clamp(_currentPage, 1, TotalPages);
@@ -512,11 +674,6 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         {
             Logger.LogWarning(ex, "SgDataGrid: failed to persist state for key {Key}", PersistStateKey);
         }
-    }
-
-    protected override bool ShouldRender()
-    {
-        return true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -582,7 +739,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         if (column.Hidden)
             _hiddenColumns.Add(column.Key);
         _visibleColumnsCache = null;
-        _columnsVersion++;  // Increment columns version when column is registered
+        _columnsVersion++;
+        _numericColumnCache.Clear();
+
+        // Detect numeric type for this column as soon as it registers
+        DetectNumericColumn(column);
     }
 
     internal void UnregisterColumn(SgDataGridColumn<TItem> column)
@@ -608,7 +769,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         var sampleRows = rows.Take(100).ToList(); // Sample first 100 rows for performance
         var values = sampleRows.Select(r => col.GetDisplay(r)).ToList();
 
-        var widths = await JS.InvokeAsync<Dictionary<string, int>>("measureColumnWidths", 
+        var widths = await JS.InvokeAsync<Dictionary<string, int>>("measureColumnWidths",
             new[] { new { key = col.Key, title = col.Title, values } }, _gridId);
 
         if (widths.TryGetValue(key, out var width))
@@ -621,7 +782,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets whether to enable row virtualization for large datasets. Default is false.
     /// </summary>
     [Parameter] public bool EnableVirtualization { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the estimated height of each row in pixels. Default is 32.
     /// </summary>
@@ -636,12 +797,24 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
         _scrollTop = scrollTop;
         _viewportHeight = viewportHeight;
-        
+
         // Invalidate visible rows cache to trigger recalculation if virtualized
         if (ShouldUseVirtualization())
             _visibleRowsCacheItemsVersion = -1;
 
-        await InvokeAsync(StateHasChanged);
+        // Debounce scroll re-renders to ~1 frame (16ms) to avoid flooding Blazor
+        _scrollDebounceCts?.Cancel();
+        _scrollDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _scrollDebounceCts = cts;
+
+        try
+        {
+            await Task.Delay(ScrollDebounceMs, cts.Token);
+            if (!cts.IsCancellationRequested && !_disposing)
+                await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { }
     }
 
     [JSInvokable]
@@ -714,7 +887,21 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             ColumnWidths = new Dictionary<string, int>(_columnWidths, StringComparer.Ordinal),
             ColumnOrder = new Dictionary<string, int>(_columnOrder, StringComparer.Ordinal),
             GroupBy = _groupByKeys.ToList(),
-            PageSize = PageSize
+            PageSize = PageSize,
+            ColumnAggregates = _columns
+                .Where(c => c.Aggregate != Aggregate.None)
+                .ToDictionary(c => c.Key, c => c.Aggregate.ToString(), StringComparer.Ordinal),
+            RowHighlightRules = _rowHighlightRules.Select(r => new PersistedRowHighlightRule
+            {
+                Id = r.Id,
+                Name = r.Name,
+                Rules = r.Rules.Select(CloneQueryRule).ToList(),
+                RulesAnd = r.RulesAnd,
+                BackgroundColor = r.BackgroundColor,
+                TextColor = r.TextColor,
+                IsEnabled = r.IsEnabled,
+                TargetColumnKey = r.TargetColumnKey
+            }).ToList()
         };
     }
 
@@ -780,6 +967,47 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
         _collapsedGroups.Clear();
         PageSize = state.PageSize > 0 ? state.PageSize : PageSize;
+
+        // Restore column aggregates
+        if (state.ColumnAggregates is { Count: > 0 })
+        {
+            foreach (var col in _columns)
+            {
+                if (state.ColumnAggregates.TryGetValue(col.Key, out var aggStr)
+                    && Enum.TryParse<Aggregate>(aggStr, out var agg))
+                    col.SetAggregate(agg);
+                else
+                    col.SetAggregate(Aggregate.None);
+            }
+            _aggregateCache.Clear();
+            _aggregateCacheItemsVersion = -1;
+            _aggregateCacheFilterVersion = -1;
+        }
+        else
+        {
+            // Clear all aggregates if not in state
+            foreach (var col in _columns)
+                col.SetAggregate(Aggregate.None);
+        }
+
+        _rowHighlightRules.Clear();
+        foreach (var persistedRule in state.RowHighlightRules ?? new List<PersistedRowHighlightRule>())
+        {
+            _rowHighlightRules.Add(new RowHighlightRule
+            {
+                Id = persistedRule.Id,
+                Name = persistedRule.Name,
+                Rules = (persistedRule.Rules ?? new List<QueryRule>())
+                    .Where(IsValidQueryRule)
+                    .Select(CloneQueryRule)
+                    .ToList(),
+                RulesAnd = persistedRule.RulesAnd,
+                BackgroundColor = persistedRule.BackgroundColor,
+                TextColor = persistedRule.TextColor,
+                IsEnabled = persistedRule.IsEnabled,
+                TargetColumnKey = persistedRule.TargetColumnKey
+            });
+        }
         _currentPage = 1;
         _openFilterColumn = null;
 
@@ -834,6 +1062,66 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
         _currentPage = 1;
         await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Forces a full re-render of the grid. Useful after external data mutations.</summary>
+    public async Task RefreshAsync()
+    {
+        _itemsVersion++;
+        InvalidateComputedRowsCache();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Returns the current filtered (and sorted) items as a read-only list.</summary>
+    public IReadOnlyList<TItem> GetFilteredItems() => GetFilteredSortedRows();
+
+    /// <summary>Selects all currently filtered rows programmatically.</summary>
+    public async Task SelectAllAsync()
+    {
+        var rows = GetFilteredRows();
+        var changed = false;
+        foreach (var row in rows)
+        {
+            if (RowDisabled?.Invoke(row) == true) continue;
+            if (SelectedItems.Add(row)) changed = true;
+        }
+        if (changed)
+        {
+            _selectionVersion++;
+            if (SelectedItemsChanged.HasDelegate)
+                await SelectedItemsChanged.InvokeAsync(SelectedItems);
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    /// <summary>Deselects all selected rows programmatically.</summary>
+    public async Task DeselectAllAsync()
+    {
+        if (SelectedItems.Count == 0) return;
+        SelectedItems.Clear();
+        _selectionVersion++;
+        if (SelectedItemsChanged.HasDelegate)
+            await SelectedItemsChanged.InvokeAsync(SelectedItems);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Selects specific items programmatically.</summary>
+    public async Task SelectItemsAsync(IEnumerable<TItem> items, bool clearExisting = false)
+    {
+        if (clearExisting) SelectedItems.Clear();
+        var changed = false;
+        foreach (var item in items)
+        {
+            if (RowDisabled?.Invoke(item) == true) continue;
+            if (SelectedItems.Add(item)) changed = true;
+        }
+        if (changed)
+        {
+            _selectionVersion++;
+            if (SelectedItemsChanged.HasDelegate)
+                await SelectedItemsChanged.InvokeAsync(SelectedItems);
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     public IReadOnlyList<QueryField> GetQueryFields()
@@ -906,6 +1194,122 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             System.Threading.Tasks.TaskContinuationOptions.OnlyOnFaulted);
     }
 
+    internal bool MatchesRowHighlightRule(TItem item, RowHighlightRule rule)
+    {
+        if (!rule.IsEnabled || rule.Rules.Count == 0)
+            return false;
+
+        if (rule.RulesAnd)
+        {
+            foreach (var queryRule in rule.Rules)
+            {
+                if (!MatchesQueryRule(item, queryRule))
+                    return false;
+            }
+            return true;
+        }
+        else
+        {
+            foreach (var queryRule in rule.Rules)
+            {
+                if (MatchesQueryRule(item, queryRule))
+                    return true;
+            }
+            return false;
+        }
+    }
+
+    internal RowHighlightRule? GetMatchingRowHighlightRule(TItem item)
+    {
+        foreach (var rule in _rowHighlightRules)
+        {
+            // Skip cell-specific rules — they are applied per-cell, not per-row
+            if (!string.IsNullOrEmpty(rule.TargetColumnKey)) continue;
+            if (MatchesRowHighlightRule(item, rule))
+                return rule;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the first matching rule that targets a specific column cell (TargetColumnKey set).
+    /// </summary>
+    internal RowHighlightRule? GetMatchingCellHighlightRule(TItem item, string columnKey)
+    {
+        foreach (var rule in _rowHighlightRules)
+        {
+            if (rule.TargetColumnKey == columnKey && MatchesRowHighlightRule(item, rule))
+                return rule;
+        }
+        return null;
+    }
+
+    /// <summary>Returns true if any enabled rule targets specific columns (not whole rows).</summary>
+    internal bool HasCellHighlightRules =>
+        _rowHighlightRules.Any(r => r.IsEnabled && !string.IsNullOrEmpty(r.TargetColumnKey));
+
+    public IReadOnlyList<RowHighlightRule> GetRowHighlightRules() =>
+        _rowHighlightRules.Select(r => new RowHighlightRule
+        {
+            Id = r.Id,
+            Name = r.Name,
+            Rules = r.Rules.Select(CloneQueryRule).ToList(),
+            RulesAnd = r.RulesAnd,
+            BackgroundColor = r.BackgroundColor,
+            TextColor = r.TextColor,
+            IsEnabled = r.IsEnabled,
+            TargetColumnKey = r.TargetColumnKey
+        }).ToList();
+
+    public async Task ApplyRowHighlightRulesAsync(IReadOnlyList<RowHighlightRule>? rules)
+    {
+        EnsureAutoGeneratedColumns();
+
+        _rowHighlightRules.Clear();
+        if (rules is not null)
+        {
+            foreach (var rule in rules)
+            {
+                _rowHighlightRules.Add(new RowHighlightRule
+                {
+                    Id = rule.Id,
+                    Name = rule.Name,
+                    Rules = rule.Rules.Where(IsValidQueryRule).Select(CloneQueryRule).ToList(),
+                    RulesAnd = rule.RulesAnd,
+                    BackgroundColor = rule.BackgroundColor,
+                    TextColor = rule.TextColor,
+                    IsEnabled = rule.IsEnabled,
+                    TargetColumnKey = rule.TargetColumnKey
+                });
+            }
+        }
+
+        await SaveStateAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task ClearRowHighlightRulesAsync()
+    {
+        if (_rowHighlightRules.Count == 0)
+            return;
+
+        _rowHighlightRules.Clear();
+        await SaveStateAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OpenRowHighlighterAsync()
+    {
+        _rowHighlighterModalOpen = true;
+        StateHasChanged();
+    }
+
+    private void CloseRowHighlighterAsync()
+    {
+        _rowHighlighterModalOpen = false;
+        StateHasChanged();
+    }
+
     private void EnsureAutoGeneratedColumns()
     {
         if (!AutoGenerateColumns || _columns.Count > 0 || _isSyntheticColumnsInitialized)
@@ -953,6 +1357,57 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         return string.IsNullOrWhiteSpace(format) ? null : format;
     }
 
+    /// <summary>
+    /// Returns properties of TItem eligible for auto-detail rendering.
+    /// Splits into object properties (→ form) and collection properties (→ nested grid).
+    /// </summary>
+    internal IReadOnlyList<AutoDetailProperty> GetAutoDetailProperties()
+    {
+        var filter = AutoDetailFields?.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return typeof(TItem)
+            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+            .Where(p => p.CanRead)
+            .Where(p => filter is null || filter.Contains(p.Name))
+            .Where(p => p.GetCustomAttribute<BrowsableAttribute>()?.Browsable != false)
+            .Select(p =>
+            {
+                var t = p.PropertyType;
+                var display = p.GetCustomAttribute<DisplayAttribute>();
+                var label = display?.GetName() ?? p.Name;
+
+                // Collection: IEnumerable<T> where T is a class (not string)
+                var collectionItemType = GetCollectionItemType(t);
+                if (collectionItemType is not null)
+                    return new AutoDetailProperty(p, label, AutoDetailKind.Collection, collectionItemType);
+
+                // Object: class, not primitive/string/value-type
+                var underlying = Nullable.GetUnderlyingType(t) ?? t;
+                if (underlying.IsClass && underlying != typeof(string) && !underlying.IsPrimitive)
+                    return new AutoDetailProperty(p, label, AutoDetailKind.Object, underlying);
+
+                return null;
+            })
+            .Where(x => x is not null)
+            .Select(x => x!)
+            .ToList();
+    }
+
+    private static Type? GetCollectionItemType(Type t)
+    {
+        if (t == typeof(string)) return null;
+        // IEnumerable<T>
+        foreach (var iface in t.GetInterfaces().Prepend(t))
+        {
+            if (iface.IsGenericType && iface.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            {
+                var itemType = iface.GetGenericArguments()[0];
+                if (itemType.IsClass && itemType != typeof(string))
+                    return itemType;
+            }
+        }
+        return null;
+    }
+
     private IReadOnlyList<SgDataGridColumn<TItem>> GetOrderedColumns()
     {
         // Check if cache is valid for current columns version
@@ -981,7 +1436,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return _visibleRowsCache;
 
         var rows = GetFilteredSortedRows();
-        
+
         // Use virtualization for large datasets without pagination
         if (ShouldUseVirtualization())
         {
@@ -994,7 +1449,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             _visibleRowsCacheColumnsVersion = _columnsVersion;
             return _visibleRowsCache;
         }
-        
+
         // Original pagination logic
         if (!EnablePaging)
         {
@@ -1143,7 +1598,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return _filteredRowsCache;
 
         EnsureAutoGeneratedColumns();
-        
+
         // Direct iteration without ToList() to avoid unnecessary copy
         var result = new List<TItem>();
         var hasSearch = !string.IsNullOrWhiteSpace(_search);
@@ -1388,7 +1843,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         // This method is called when we need to invalidate caches due to content changes
         // Individual version increments happen at mutation points (OnSearchInput, ApplyFilterAsync, etc.)
         // This method is kept for backward compatibility but most invalidation happens at mutation points
-        
+
         // Invalidate caches that depend on filter/sort/columns/groups
         _filteredRowsCacheItemsVersion = -1;
         _filteredRowsCacheFilterVersion = -1;
@@ -1803,21 +2258,53 @@ private static object? ConvertFromString(string? text, Type type)
 
     private string GetColumnFilterType(string key)
     {
+        // Invalidate cache when columns structure or data changes
+        if (_columnFilterTypeCacheColumnsVersion != _columnsVersion ||
+            _columnFilterTypeCacheItemsVersion != _itemsVersion)
+        {
+            _columnFilterTypeCache.Clear();
+            _columnFilterTypeCacheColumnsVersion = _columnsVersion;
+            _columnFilterTypeCacheItemsVersion = _itemsVersion;
+        }
+
+        if (_columnFilterTypeCache.TryGetValue(key, out var cached))
+            return cached;
+
+        var result = ComputeColumnFilterType(key);
+        _columnFilterTypeCache[key] = result;
+        return result;
+    }
+
+    private string ComputeColumnFilterType(string key)
+    {
         var col = GetColumnByKey(key);
         if (col is null) return "string";
 
-        // Prefer explicit ValueType, then sample first non-null value
+        // Prefer explicit ValueType, then sample first non-null value from data
         var type = col.ValueType;
         if (type is null)
         {
-            // Try to infer from data
-            var items = Items?.Take(20) ?? Enumerable.Empty<TItem>();
-            foreach (var item in items)
+            // Use IList<T> fast-path to avoid LINQ allocation
+            if (Items is IList<TItem> list)
             {
-                var v = col.GetValue(item);
-                if (v is null) continue;
-                type = Nullable.GetUnderlyingType(v.GetType()) ?? v.GetType();
-                break;
+                var limit = Math.Min(20, list.Count);
+                for (var i = 0; i < limit; i++)
+                {
+                    var v = col.GetValue(list[i]);
+                    if (v is null) continue;
+                    type = Nullable.GetUnderlyingType(v.GetType()) ?? v.GetType();
+                    break;
+                }
+            }
+            else if (Items is not null)
+            {
+                foreach (var item in Items)
+                {
+                    var v = col.GetValue(item);
+                    if (v is null) continue;
+                    type = Nullable.GetUnderlyingType(v.GetType()) ?? v.GetType();
+                    break;
+                }
             }
         }
 
@@ -1838,7 +2325,6 @@ private static object? ConvertFromString(string? text, Type type)
         _search = args.Value?.ToString();
         _filterVersion++;
         _currentPage = 1;
-        InvalidateComputedRowsCache();
         StateHasChanged();
 
         _searchDebounceCts?.Cancel();
@@ -1932,6 +2418,7 @@ private static object? ConvertFromString(string? text, Type type)
         _sortVersion++;  // Increment sort version when sort changes
         _currentPage = 1;
         await SaveStateAsync();
+        await RaiseStateChangedAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2000,10 +2487,11 @@ private static object? ConvertFromString(string? text, Type type)
         return Task.CompletedTask;
     }
 
-    private async Task SetPendingRulesAndAsync(bool and)
+    private Task SetPendingRulesAndAsync(bool and)
     {
         _pendingRulesAnd = and;
         // No StateHasChanged - will be called when filter is applied
+        return Task.CompletedTask;
     }
 
     private Task SetPendingRuleConditionAsync(int index, FilterCondition condition)
@@ -2233,6 +2721,7 @@ private static object? ConvertFromString(string? text, Type type)
         _openFilterColumn = null;
         _currentPage = 1;
         await SaveStateAsync();
+        await RaiseStateChangedAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2246,6 +2735,7 @@ private static object? ConvertFromString(string? text, Type type)
         _openFilterColumn = null;
         _currentPage = 1;
         await SaveStateAsync();
+        await RaiseStateChangedAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2320,7 +2810,7 @@ private static object? ConvertFromString(string? text, Type type)
             .Where(v => v is not null)
             .Take(10)
             .Count(IsNumericValue);
-        
+
         return numericCount >= 3; // If 3+ of first 10 values are numeric, treat as numeric column
     }
 
@@ -2434,21 +2924,21 @@ private static object? ConvertFromString(string? text, Type type)
     {
         var nodes = GetGroupTree();
         var allPaths = new List<string>();
-        
+
         void Traverse(List<GroupNode> level)
         {
             foreach (var node in level)
             {
                 allPaths.Add(node.Path);
-                if (node.Children.Count > 0)
-                    Traverse(node.Children);
+                if (node._children is { Count: > 0 } children)
+                    Traverse(children);
             }
         }
-        
+
         Traverse(nodes);
         foreach (var path in allPaths)
             _collapsedGroups.Add(path);
-            
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2459,8 +2949,9 @@ private static object? ConvertFromString(string? text, Type type)
         else
             _groupByKeys.Add(key);
 
-        _groupVersion++;  // Increment group version when grouping changes
+        _groupVersion++;
         _collapsedGroups.Clear();
+        ScheduleGroupBuild();
         await SaveStateAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -2488,13 +2979,44 @@ private static object? ConvertFromString(string? text, Type type)
         return _groupTreeCache;
     }
 
+    private List<GroupNode> GetGroupTree() => BuildGroupTree();
+
     /// <summary>
-    /// Gets the group tree cache, using content-based version validation.
-    /// Cache is invalidated when items or grouping changes.
+    /// Starts async group tree build in background, showing progress indicator.
+    /// Called whenever grouping or data changes.
     /// </summary>
-    private List<GroupNode> GetGroupTree()
+    private void ScheduleGroupBuild()
     {
-        return BuildGroupTree();
+        if (_groupByKeys.Count == 0) return;
+
+        // Cancel any in-flight build
+        _groupBuildCts?.Cancel();
+        _groupBuildCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _groupBuildCts = cts;
+
+        _isGroupBuilding = true;
+        // Invalidate cache so next render triggers rebuild
+        _groupTreeCacheItemsVersion = -1;
+        _groupTreeCacheGroupVersion = -1;
+
+        _ = Task.Run(() =>
+        {
+            if (cts.IsCancellationRequested) return;
+            // Build on thread pool — CPU-bound work
+            var tree = BuildGroupLevel(GetFilteredSortedRows(), 0, string.Empty);
+            if (cts.IsCancellationRequested) return;
+
+            InvokeAsync(() =>
+            {
+                if (cts.IsCancellationRequested || _disposing) return;
+                _groupTreeCache = tree;
+                _groupTreeCacheItemsVersion = _itemsVersion;
+                _groupTreeCacheGroupVersion = _groupVersion;
+                _isGroupBuilding = false;
+                StateHasChanged();
+            });
+        });
     }
 
     private List<GroupNode> BuildGroupLevel(List<TItem> rows, int depth, string pathPrefix)
@@ -2507,11 +3029,12 @@ private static object? ConvertFromString(string? text, Type type)
         if (column is null)
             return new List<GroupNode>();
 
-        var groupedRows = new Dictionary<string, List<TItem>>(StringComparer.Ordinal);
+        // Group rows by key — use GetGroupKey (no formatting) for performance
+        var groupedRows = new Dictionary<string, List<TItem>>(rows.Count / 4 + 4, StringComparer.Ordinal);
         for (var i = 0; i < rows.Count; i++)
         {
             var item = rows[i];
-            var groupKey = NormalizeFilterValue(column.GetDisplay(item));
+            var groupKey = column.GetGroupKey(item);
             if (!groupedRows.TryGetValue(groupKey, out var bucket))
             {
                 bucket = new List<TItem>();
@@ -2520,31 +3043,34 @@ private static object? ConvertFromString(string? text, Type type)
             bucket.Add(item);
         }
 
-        var sortedKeys = groupedRows.Keys.OrderBy(static x => x, StringComparer.CurrentCulture).ToList();
+        // Sort group keys — Ordinal is ~3x faster than CurrentCulture for typical data
+        var sortedKeys = new List<string>(groupedRows.Count);
+        sortedKeys.AddRange(groupedRows.Keys);
+        sortedKeys.Sort(StringComparer.OrdinalIgnoreCase);
+
         var nodes = new List<GroupNode>(sortedKeys.Count);
         var leaf = depth == _groupByKeys.Count - 1;
+        var emptyLabel = Localizer["DataGrid_FilterEmpty"].ToString() ?? string.Empty;
+
         for (var i = 0; i < sortedKeys.Count; i++)
         {
             var groupKey = sortedKeys[i];
             var groupRows = groupedRows[groupKey];
-            var path = string.IsNullOrEmpty(pathPrefix) ? $"{key}:{groupKey}" : $"{pathPrefix}|{key}:{groupKey}";
-            var node = new GroupNode
-            {
-                Path = path,
-                Column = column,
-                Depth = depth,
-                Label = string.IsNullOrEmpty(groupKey) ? Localizer["DataGrid_FilterEmpty"] : groupKey,
-                TotalCount = groupRows.Count
-            };
+            var path = pathPrefix.Length == 0
+                ? string.Concat(key, ":", groupKey)
+                : string.Concat(pathPrefix, "|", key, ":", groupKey);
+
+            // Display label: for dates/numbers show formatted value of first item
+            var displayLabel = groupKey.Length == 0
+                ? emptyLabel
+                : column.GetDisplayFromValue(column.GetValue(groupRows[0])) is { Length: > 0 } dl ? dl : groupKey;
+
+            var node = new GroupNode(path, column, depth, displayLabel, groupRows.Count);
 
             if (leaf)
-            {
-                node.Items.AddRange(groupRows);
-            }
+                node.SetItems(groupRows);
             else
-            {
-                node.Children.AddRange(BuildGroupLevel(groupRows, depth + 1, path));
-            }
+                node.SetChildren(BuildGroupLevel(groupRows, depth + 1, path));
 
             nodes.Add(node);
         }
@@ -2565,7 +3091,7 @@ private static object? ConvertFromString(string? text, Type type)
         {
             var nextIndex = currentIndex < rows.Count - 1 ? currentIndex + 1 : 0;
             var nextRow = rows[nextIndex];
-            
+
             if (e.ShiftKey && SelectionEnabled)
             {
                 await HandleRangeSelectionAsync(nextRow, rows);
@@ -2603,6 +3129,39 @@ private static object? ConvertFromString(string? text, Type type)
             await ToggleRowAsync(_activeRow, shouldSelect);
             _anchorRow = _activeRow;
         }
+        else if (e.Key == "c" && e.CtrlKey)
+        {
+            await CopySelectionToClipboardAsync();
+        }
+    }
+
+    /// <summary>
+    /// Copies selected rows (or active row) to clipboard as TSV — pastes cleanly into Excel/Sheets.
+    /// </summary>
+    public async Task CopySelectionToClipboardAsync()
+    {
+        if (_module is null) return;
+
+        var cols = VisibleColumns;
+        var rows = SelectedItems.Count > 0
+            ? GetFilteredSortedRows().Where(r => SelectedItems.Contains(r)).ToList()
+            : _activeRow is not null ? new List<TItem> { _activeRow } : new List<TItem>();
+
+        if (rows.Count == 0) return;
+
+        var sb = new StringBuilder();
+        // Header row
+        sb.AppendLine(string.Join('\t', cols.Select(c => c.Title)));
+        // Data rows
+        foreach (var row in rows)
+            sb.AppendLine(string.Join('\t', cols.Select(c => c.GetDisplay(row))));
+
+        try
+        {
+            await _module.InvokeVoidAsync("copyToClipboard", sb.ToString().TrimEnd());
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
     }
 
     private async Task HandleRangeSelectionAsync(TItem targetRow, List<TItem> visibleRows)
@@ -2625,7 +3184,7 @@ private static object? ConvertFromString(string? text, Type type)
         _activeRow = targetRow;
 
         if (SelectedItemsChanged.HasDelegate)
-            await SelectedItemsChanged.InvokeAsync(SelectedItems.ToList());
+            await SelectedItemsChanged.InvokeAsync(SelectedItems);
 
         await InvokeAsync(StateHasChanged);
     }
@@ -2653,7 +3212,7 @@ private static object? ConvertFromString(string? text, Type type)
 
     private string GetColumnPinStyle(SgDataGridColumn<TItem> col)
     {
-        if (!col.Pinned)
+        if (!IsColumnPinned(col.Key))
             return string.Empty;
 
         EnsurePinnedLeftOffsets();
@@ -2665,7 +3224,6 @@ private static object? ConvertFromString(string? text, Type type)
 
     private void EnsurePinnedLeftOffsets()
     {
-        // Check if cache is valid for current columns version
         if (_pinnedLeftOffsetsCacheVersion == _columnsVersion && _pinnedLeftOffsetsCache is not null)
             return;
 
@@ -2673,11 +3231,15 @@ private static object? ConvertFromString(string? text, Type type)
         _pinnedLeftOffsetsCache.Clear();
 
         var left = SelectionEnabled ? 28 : 0;
+        // Also account for expand column
+        if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
+            left += 32;
+
         var visibleColumns = VisibleColumns;
         for (var i = 0; i < visibleColumns.Count; i++)
         {
             var column = visibleColumns[i];
-            if (!column.Pinned)
+            if (!IsColumnPinned(column.Key))
                 continue;
 
             _pinnedLeftOffsetsCache[column.Key] = left;
@@ -2694,25 +3256,162 @@ private static object? ConvertFromString(string? text, Type type)
 
         if (!string.IsNullOrWhiteSpace(col.Width))
         {
-            var digits = new string(col.Width.Where(char.IsDigit).ToArray());
-            if (int.TryParse(digits, out var parsed))
+            var s = col.Width.AsSpan();
+            var i = 0;
+            while (i < s.Length && !char.IsAsciiDigit(s[i])) i++;
+            var start = i;
+            while (i < s.Length && char.IsAsciiDigit(s[i])) i++;
+            if (i > start && int.TryParse(s[start..i], out var parsed))
                 return parsed;
         }
 
         return 140;
     }
 
-    private string GetColumnTdClass(SgDataGridColumn<TItem> col)
+    private string GetColumnTdClass(SgDataGridColumn<TItem> col, bool isNumeric = false)
     {
         var css = "sg-td";
-        if (col.Pinned)
+        if (IsColumnPinned(col.Key))
             css += " sg-pinned";
         if (col.Editable && col.OnValueChanged is not null)
             css += " sg-editable";
+
+        if (isNumeric)
+            css += " sg-td-numeric";
+
+        // Horizontal alignment — numeric columns default to right, others to left
+        var hAlign = col.HAlign;
+        if (hAlign == SgHAlign.Default && isNumeric)
+            hAlign = SgHAlign.Right;
+
+        css += hAlign switch
+        {
+            SgHAlign.Left   => " sg-align-left",
+            SgHAlign.Center => " sg-align-center",
+            SgHAlign.Right  => " sg-align-right",
+            _               => string.Empty
+        };
+
+        // Vertical alignment
+        css += col.VAlign switch
+        {
+            SgVAlign.Top    => " sg-valign-top",
+            SgVAlign.Middle => " sg-valign-middle",
+            SgVAlign.Bottom => " sg-valign-bottom",
+            _               => string.Empty
+        };
+
         return css;
     }
 
+    /// <summary>
+    /// Resolves whether a column should use numeric rendering.
+    /// Calls <see cref="SgDataGridColumn{TItem}.TryDetectNumericType"/> with the first
+    /// available value so auto-detection works even without <c>ValueType</c>.
+    /// </summary>
+    /// <summary>
+    /// Detects numeric type for a single column by sampling Items.
+    /// Falls back to TItem property reflection when col.Value is not set.
+    /// </summary>
+    private void DetectNumericColumn(SgDataGridColumn<TItem> col)
+    {
+        if (col.IsNumericResolved) return;
+
+        // Try via Value delegate first
+        if (col.Value is not null && Items is not null)
+        {
+            foreach (var row in Items)
+            {
+                var v = col.Value(row);
+                if (v is null) continue;
+                col.TryDetectNumericType(v);
+                return;
+            }
+        }
+
+        // Fallback: detect from TItem property type via reflection using the column key
+        if (!col.IsNumericResolved)
+        {
+            var prop = typeof(TItem).GetProperty(col.Key,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (prop is not null)
+            {
+                var underlying = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+                col.TryDetectNumericType(
+                    underlying == typeof(int)     ? (object)0 :
+                    underlying == typeof(long)    ? (object)0L :
+                    underlying == typeof(double)  ? (object)0.0 :
+                    underlying == typeof(float)   ? (object)0f :
+                    underlying == typeof(decimal) ? (object)0m :
+                    underlying == typeof(short)   ? (object)(short)0 :
+                    underlying == typeof(byte)    ? (object)(byte)0 :
+                    underlying == typeof(uint)    ? (object)0u :
+                    underlying == typeof(ulong)   ? (object)0ul :
+                    underlying == typeof(sbyte)   ? (object)(sbyte)0 :
+                    underlying == typeof(ushort)  ? (object)(ushort)0 : null);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Detects numeric type for all registered columns. Called when Items changes.
+    /// </summary>
+    private void DetectNumericColumns()
+    {
+        foreach (var col in _columns)
+            DetectNumericColumn(col);
+    }
+
+    private bool ResolveIsNumericColumn(SgDataGridColumn<TItem> col)
+    {
+        // Explicit override — never cache, always re-evaluate
+        if (col.NumericStyle.HasValue) return col.NumericStyle.Value;
+
+        if (_numericColumnCache.TryGetValue(col.Key, out var cached))
+            return cached;
+
+        bool result;
+
+        // ValueType parameter
+        if (col.ValueType is not null)
+        {
+            var t = Nullable.GetUnderlyingType(col.ValueType) ?? col.ValueType;
+            result = SgDataGridColumn<TItem>.IsNumericTypeStatic(t);
+        }
+        // Cached detection from sampled value
+        else if (col.IsNumericColumn)
+        {
+            result = true;
+        }
+        else
+        {
+            // Last resort: reflect TItem property by column key
+            var prop = typeof(TItem).GetProperty(col.Key,
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (prop is not null)
+            {
+                var underlying = Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
+                result = SgDataGridColumn<TItem>.IsNumericTypeStatic(underlying);
+            }
+            else
+            {
+                result = false;
+            }
+        }
+
+        _numericColumnCache[col.Key] = result;
+        return result;
+    }
+
     private bool IsColumnHidden(string key) => _hiddenColumns.Contains(key);
+
+    private bool IsColumnPinned(string key)
+    {
+        // Runtime override takes priority over column parameter
+        if (_pinnedColumns.Contains(key)) return true;
+        var col = GetColumnByKey(key);
+        return col?.Pinned == true;
+    }
 
     private async Task ToggleColumnHiddenAsync(string key, bool hidden)
     {
@@ -2720,7 +3419,20 @@ private static object? ConvertFromString(string? text, Type type)
             _hiddenColumns.Add(key);
         else
             _hiddenColumns.Remove(key);
-        _columnsVersion++;  // Increment columns version when column visibility changes
+        _columnsVersion++;
+        _pinnedLeftOffsetsCache = null;
+        await SaveStateAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleColumnPinnedAsync(string key, bool pin)
+    {
+        if (pin)
+            _pinnedColumns.Add(key);
+        else
+            _pinnedColumns.Remove(key);
+        _columnsVersion++;
+        _pinnedLeftOffsetsCache = null;
         await SaveStateAsync();
         await InvokeAsync(StateHasChanged);
     }
@@ -2729,6 +3441,9 @@ private static object? ConvertFromString(string? text, Type type)
     {
         _showChooser = !_showChooser;
         _showExportMenu = false;
+        _showSortBuilder = false;
+        _showGroupBuilder = false;
+        _showSavedViewsPanel = false;
         return Task.CompletedTask;
     }
 
@@ -2736,6 +3451,9 @@ private static object? ConvertFromString(string? text, Type type)
     {
         _showExportMenu = !_showExportMenu;
         _showChooser = false;
+        _showSortBuilder = false;
+        _showGroupBuilder = false;
+        _showSavedViewsPanel = false;
         return Task.CompletedTask;
     }
 
@@ -2751,6 +3469,195 @@ private static object? ConvertFromString(string? text, Type type)
         // Small delay to allow click events to process before closing
         await Task.Delay(150);
         _showExportMenu = false;
+    }
+
+    private Task OpenSortBuilderAsync()
+    {
+        if (_showSortBuilder)
+        {
+            _showSortBuilder = false;
+            return Task.CompletedTask;
+        }
+        // Clone current sort rules into working copy
+        _sortBuilderRules = _sort.Select(r => new PersistedSortRule { Key = r.Key, Dir = r.Dir }).ToList();
+        _showSortBuilder = true;
+        _showChooser = false;
+        _showExportMenu = false;
+        _showGroupBuilder = false;
+        _showSavedViewsPanel = false;
+        return Task.CompletedTask;
+    }
+
+    private async Task HandleSortBuilderFocusOutAsync(FocusEventArgs _)
+    {
+        await Task.Delay(150);
+        _showSortBuilder = false;
+    }
+
+    private void SortBuilderAddColumn(string key)
+    {
+        if (_sortBuilderRules.Any(r => r.Key == key)) return;
+        _sortBuilderRules.Add(new PersistedSortRule { Key = key, Dir = SortDirection.Ascending });
+    }
+
+    private void SortBuilderRemoveRule(string key)
+    {
+        _sortBuilderRules.RemoveAll(r => r.Key == key);
+    }
+
+    private void SortBuilderToggleDir(string key)
+    {
+        var rule = _sortBuilderRules.FirstOrDefault(r => r.Key == key);
+        if (rule is null) return;
+        rule.Dir = rule.Dir == SortDirection.Ascending ? SortDirection.Descending : SortDirection.Ascending;
+    }
+
+    private void SortBuilderMoveUp(string key)
+    {
+        var idx = _sortBuilderRules.FindIndex(r => r.Key == key);
+        if (idx <= 0) return;
+        (_sortBuilderRules[idx], _sortBuilderRules[idx - 1]) = (_sortBuilderRules[idx - 1], _sortBuilderRules[idx]);
+    }
+
+    private void SortBuilderMoveDown(string key)
+    {
+        var idx = _sortBuilderRules.FindIndex(r => r.Key == key);
+        if (idx < 0 || idx >= _sortBuilderRules.Count - 1) return;
+        (_sortBuilderRules[idx], _sortBuilderRules[idx + 1]) = (_sortBuilderRules[idx + 1], _sortBuilderRules[idx]);
+    }
+
+    private async Task ApplySortBuilderAsync()
+    {
+        _sort.Clear();
+        _sort.AddRange(_sortBuilderRules.Select(r => new PersistedSortRule { Key = r.Key, Dir = r.Dir }));
+        _sortVersion++;
+        _currentPage = 1;
+        _showSortBuilder = false;
+        await SaveStateAsync();
+        await RaiseStateChangedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ResetSortBuilderAsync()
+    {
+        _sortBuilderRules.Clear();
+        _sort.Clear();
+        _sortVersion++;
+        _currentPage = 1;
+        _showSortBuilder = false;
+        await SaveStateAsync();
+        await RaiseStateChangedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Group Builder ─────────────────────────────────────────────────────────
+
+    private Task OpenGroupBuilderAsync()
+    {
+        if (_showGroupBuilder)
+        {
+            _showGroupBuilder = false;
+            return Task.CompletedTask;
+        }
+        // Clone current state into working copies
+        _groupBuilderKeys = _groupByKeys.ToList();
+        _groupBuilderAggregates.Clear();
+        foreach (var col in _columns)
+            _groupBuilderAggregates[col.Key] = col.Aggregate;
+        _showGroupBuilder = true;
+        _showSortBuilder = false;
+        _showChooser = false;
+        _showExportMenu = false;
+        _showSavedViewsPanel = false;
+        return Task.CompletedTask;
+    }
+
+    private void GroupBuilderAddKey(string key)
+    {
+        if (!_groupBuilderKeys.Contains(key))
+            _groupBuilderKeys.Add(key);
+    }
+
+    private void GroupBuilderRemoveKey(string key)
+    {
+        _groupBuilderKeys.Remove(key);
+    }
+
+    private void GroupBuilderMoveUp(string key)
+    {
+        var idx = _groupBuilderKeys.IndexOf(key);
+        if (idx <= 0) return;
+        (_groupBuilderKeys[idx], _groupBuilderKeys[idx - 1]) = (_groupBuilderKeys[idx - 1], _groupBuilderKeys[idx]);
+    }
+
+    private void GroupBuilderMoveDown(string key)
+    {
+        var idx = _groupBuilderKeys.IndexOf(key);
+        if (idx < 0 || idx >= _groupBuilderKeys.Count - 1) return;
+        (_groupBuilderKeys[idx], _groupBuilderKeys[idx + 1]) = (_groupBuilderKeys[idx + 1], _groupBuilderKeys[idx]);
+    }
+
+    private void GroupBuilderSetAggregate(string key, Aggregate agg)
+    {
+        _groupBuilderAggregates[key] = agg;
+    }
+
+    private async Task ApplyGroupBuilderAsync()
+    {
+        // Apply grouping
+        _groupByKeys.Clear();
+        _groupByKeys.AddRange(_groupBuilderKeys);
+
+        // Apply aggregates to columns
+        foreach (var col in _columns)
+        {
+            if (_groupBuilderAggregates.TryGetValue(col.Key, out var agg))
+                col.SetAggregate(agg);
+        }
+
+        _groupVersion++;
+        _collapsedGroups.Clear();
+        _aggregateCache.Clear();
+        _aggregateCacheItemsVersion = -1;
+        _aggregateCacheFilterVersion = -1;
+        _showGroupBuilder = false;
+        ScheduleGroupBuild();
+        await SaveStateAsync();
+        await RaiseStateChangedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ResetGroupBuilderAsync()
+    {
+        _groupBuilderKeys.Clear();
+        _groupByKeys.Clear();
+        _groupBuilderAggregates.Clear();
+        foreach (var col in _columns)
+            col.SetAggregate(Aggregate.None);
+        _groupVersion++;
+        _collapsedGroups.Clear();
+        _aggregateCache.Clear();
+        _aggregateCacheItemsVersion = -1;
+        _aggregateCacheFilterVersion = -1;
+        _showGroupBuilder = false;
+        await SaveStateAsync();
+        await RaiseStateChangedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Saved Views Panel ─────────────────────────────────────────────────────
+
+    private Task ToggleSavedViewsPanelAsync()
+    {
+        _showSavedViewsPanel = !_showSavedViewsPanel;
+        if (_showSavedViewsPanel)
+        {
+            _showChooser = false;
+            _showExportMenu = false;
+            _showSortBuilder = false;
+            _showGroupBuilder = false;
+        }
+        return Task.CompletedTask;
     }
 
     private async Task ExportCsvAsync()
@@ -2947,6 +3854,7 @@ private static object? ConvertFromString(string? text, Type type)
 
     private async Task ToggleRowAsync(TItem item, bool selected)
     {
+        if (RowDisabled?.Invoke(item) == true) return;
         if (AllowSingleSelect)
         {
             // Single-select: clear all previous selections, then select the clicked item
@@ -2999,7 +3907,7 @@ private static object? ConvertFromString(string? text, Type type)
             {
                 var start = Math.Min(lastIdx, currIdx);
                 var end = Math.Max(lastIdx, currIdx);
-                
+
                 var shouldSelect = SelectedItems.Contains(_lastSelectedItem);
                 for (var i = start; i <= end; i++)
                 {
@@ -3016,7 +3924,7 @@ private static object? ConvertFromString(string? text, Type type)
                 return;
             }
         }
-        
+
         // Regular click (checkbox change will handle it)
     }
 
@@ -3040,7 +3948,7 @@ private static object? ConvertFromString(string? text, Type type)
         await FlushSelectedItemsChangedAsync();
     }
 
-    private async Task ClearSelectionAsync()
+    public async Task ClearSelectionAsync()
     {
         SelectedItems.Clear();
         _selectionVersion++;
@@ -3049,11 +3957,42 @@ private static object? ConvertFromString(string? text, Type type)
         await FlushSelectedItemsChangedAsync();
     }
 
+    /// <summary>
+    /// Programmatically selects a single item.
+    /// Does nothing if <see cref="RowDisabled"/> returns true for the item.
+    /// </summary>
+    public async Task SelectItemAsync(TItem item)
+    {
+        if (RowDisabled?.Invoke(item) == true) return;
+        await ToggleRowAsync(item, true);
+    }
+
+    /// <summary>
+    /// Programmatically selects multiple items.
+    /// Items for which <see cref="RowDisabled"/> returns true are skipped.
+    /// </summary>
+    public async Task SelectItemsAsync(IEnumerable<TItem> items)
+    {
+        var changed = false;
+        foreach (var item in items)
+        {
+            if (RowDisabled?.Invoke(item) == true) continue;
+            if (SelectedItems.Add(item)) changed = true;
+        }
+        if (!changed) return;
+        _selectionVersion++;
+        _selectionChangedPending = true;
+        InvalidateComputedRowsCache();
+        await FlushSelectedItemsChangedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task GoToPageAsync(int page)
     {
         _currentPage = Math.Clamp(page, 1, TotalPages);
         InvalidateComputedRowsCache();
         await SaveStateAsync();
+        await RaiseStateChangedAsync();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3274,7 +4213,7 @@ private static object? ConvertFromString(string? text, Type type)
         _editModalItem = item;
         _isEditMode = true;
         _editModalTitle = !string.IsNullOrEmpty(EditModalEditTitle) ? EditModalEditTitle : Localizer["DataGrid_Edit"];
-        
+
         // Get editable columns, or if none are marked editable, use all visible columns except ID
         var editableColumns = VisibleColumns.Where(c => c.Editable).ToList();
         if (editableColumns.Count == 0)
@@ -3283,7 +4222,7 @@ private static object? ConvertFromString(string? text, Type type)
                 .Where(c => !c.Key.Equals("id", StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
-        
+
         _editFormColumns = editableColumns;
         _editFormValues.Clear();
         _editFormErrors.Clear();
@@ -3317,7 +4256,7 @@ private static object? ConvertFromString(string? text, Type type)
         _editModalItem = CreateItemFactory is not null ? CreateItemFactory() : Activator.CreateInstance<TItem>();
         _isEditMode = false;
         _editModalTitle = !string.IsNullOrEmpty(EditModalAddTitle) ? EditModalAddTitle : Localizer["DataGrid_Add"];
-        
+
         var editableColumns = VisibleColumns.Where(c => c.Editable).ToList();
         if (editableColumns.Count == 0)
         {
@@ -3325,7 +4264,7 @@ private static object? ConvertFromString(string? text, Type type)
                 .Where(c => !c.Key.Equals("id", StringComparison.OrdinalIgnoreCase))
                 .ToList();
         }
-        
+
         _editFormColumns = editableColumns;
         _editFormValues.Clear();
         _editFormErrors.Clear();
@@ -3403,7 +4342,7 @@ private static object? ConvertFromString(string? text, Type type)
         {
             // Editing existing item - invalidate cache to refresh display
             InvalidateComputedRowsCache();
-            
+
             if (RowDoubleClicked.HasDelegate)
                 await RowDoubleClicked.InvokeAsync(item);
         }
@@ -3412,6 +4351,8 @@ private static object? ConvertFromString(string? text, Type type)
         _editModalItem = default;
         _editFormColumns = null;
         _editFormValues.Clear();
+        if (RowSaved.HasDelegate)
+            await RowSaved.InvokeAsync(item);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3847,7 +4788,7 @@ private static object? ConvertFromString(string? text, Type type)
         // Inline expand is handled by the dedicated chevron handler so a row click
         // doesn't toggle the detail panel. Drawer/Window placements still surface
         // their detail on row click.
-        if (DetailTemplate is not null && DetailPlacement != DetailPlacement.Inline)
+        if ((DetailTemplate is not null || AutoDetail) && DetailPlacement != DetailPlacement.Inline)
         {
             switch (DetailPlacement)
             {
@@ -3875,7 +4816,7 @@ private static object? ConvertFromString(string? text, Type type)
 
         var rows = GetVisibleRows();
         var index = _activeRow != null ? rows.IndexOf(_activeRow) : -1;
-        
+
         try
         {
             await _module.InvokeVoidAsync("setActiveRow", _gridRootRef, index);
@@ -3890,7 +4831,7 @@ private static object? ConvertFromString(string? text, Type type)
 
     private void OnRowExpandToggle(TItem item)
     {
-        if (DetailTemplate is null || DetailPlacement != DetailPlacement.Inline)
+        if (DetailTemplate is null && !AutoDetail || DetailPlacement != DetailPlacement.Inline)
             return;
 
         if (!_expandedRows.Add(item))
@@ -3936,6 +4877,39 @@ private static object? ConvertFromString(string? text, Type type)
 
         await OnRowContextMenu.InvokeAsync(payload);
     }
+
+    private async Task OnCellClickInternal(MouseEventArgs args, TItem item, SgDataGridColumn<TItem> column)
+    {
+        if (!OnCellClick.HasDelegate) return;
+        await OnCellClick.InvokeAsync(new SgDataGridCellClickEventArgs<TItem>
+        {
+            Item = item,
+            Column = column,
+            ColumnKey = column.Key,
+            ColumnTitle = column.Title,
+            CellValue = column.GetValue(item),
+            FormattedValue = column.GetDisplay(item),
+            MouseArgs = args
+        });
+    }
+
+    private async Task OnCellDoubleClickInternal(MouseEventArgs args, TItem item, SgDataGridColumn<TItem> column)
+    {
+        if (!OnCellDoubleClick.HasDelegate) return;
+        await OnCellDoubleClick.InvokeAsync(new SgDataGridCellClickEventArgs<TItem>
+        {
+            Item = item,
+            Column = column,
+            ColumnKey = column.Key,
+            ColumnTitle = column.Title,
+            CellValue = column.GetValue(item),
+            FormattedValue = column.GetDisplay(item),
+            MouseArgs = args
+        });
+    }
+
+    private Task RaiseStateChangedAsync() =>
+        OnStateChanged.HasDelegate ? OnStateChanged.InvokeAsync() : Task.CompletedTask;
 
     public async ValueTask DisposeAsync()
     {
@@ -4047,13 +5021,30 @@ private static object? ConvertFromString(string? text, Type type)
 
     private sealed class GroupNode
     {
-        public string Path { get; set; } = string.Empty;
-        public SgDataGridColumn<TItem> Column { get; set; } = default!;
-        public int Depth { get; set; }
-        public string Label { get; set; } = string.Empty;
-        public int TotalCount { get; set; }
-        public List<TItem> Items { get; } = new();
-        public List<GroupNode> Children { get; } = new();
+        public GroupNode(string path, SgDataGridColumn<TItem> column, int depth, string label, int totalCount)
+        {
+            Path = path;
+            Column = column;
+            Depth = depth;
+            Label = label;
+            TotalCount = totalCount;
+        }
+
+        public string Path { get; }
+        public SgDataGridColumn<TItem> Column { get; }
+        public int Depth { get; }
+        public string Label { get; }
+        public int TotalCount { get; }
+
+        // Lazy — only one of Items or Children is set, never both
+        internal List<TItem>? _items;
+        internal List<GroupNode>? _children;
+
+        public List<TItem> Items => _items ??= new List<TItem>(0);
+        public List<GroupNode> Children => _children ??= new List<GroupNode>(0);
+
+        public void SetItems(List<TItem> items) => _items = items;
+        public void SetChildren(List<GroupNode> children) => _children = children;
     }
 
 private sealed class GridObjectComparer : IComparer<object?>
@@ -4132,4 +5123,34 @@ public sealed class SgDataGridContextMenuEventArgs<TItem>
     public object? CellValue { get; init; }
     public string? FormattedValue { get; init; }
     public required MouseEventArgs MouseArgs { get; init; }
+}
+
+/// <summary>Event args for cell click and double-click events.</summary>
+public sealed class SgDataGridCellClickEventArgs<TItem>
+{
+    public required TItem Item { get; init; }
+    public required SgDataGridColumn<TItem> Column { get; init; }
+    public string? ColumnKey { get; init; }
+    public string? ColumnTitle { get; init; }
+    public object? CellValue { get; init; }
+    public string? FormattedValue { get; init; }
+    public required MouseEventArgs MouseArgs { get; init; }
+}
+
+public enum AutoDetailKind { Object, Collection }
+
+public sealed class AutoDetailProperty
+{
+    public AutoDetailProperty(System.Reflection.PropertyInfo prop, string label, AutoDetailKind kind, Type itemType)
+    {
+        Property = prop;
+        Label = label;
+        Kind = kind;
+        ItemType = itemType;
+    }
+    public System.Reflection.PropertyInfo Property { get; }
+    public string Label { get; }
+    public AutoDetailKind Kind { get; }
+    /// <summary>For Object: the object type. For Collection: the element type.</summary>
+    public Type ItemType { get; }
 }

@@ -16,6 +16,9 @@ public class SgGridState
     public Dictionary<string, int> ColumnOrder { get; set; } = new();
     public List<string> GroupBy { get; set; } = new();
     public int PageSize { get; set; }
+    public List<PersistedRowHighlightRule> RowHighlightRules { get; set; } = new();
+    /// <summary>Aggregate function per column key (None = not set).</summary>
+    public Dictionary<string, string> ColumnAggregates { get; set; } = new();
 }
 
 public class PersistedConditionFilter
