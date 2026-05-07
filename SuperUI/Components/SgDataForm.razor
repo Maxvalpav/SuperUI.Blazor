@@ -3,6 +3,7 @@
 @using System.ComponentModel
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
+@using System.Linq
 @using System.Reflection
 @using Microsoft.AspNetCore.Components.Forms
 
@@ -11,99 +12,108 @@
           OnInvalidSubmit="HandleInvalidSubmitAsync">
     <DataAnnotationsValidator />
 
-    @if (ShowValidationSummary)
-    {
-        <ValidationSummary />
-    }
+    <div class="sgc-data-form @(Compact ? "sgc-data-form-compact" : "") @(ReadOnly ? "sgc-data-form-readonly" : "") @(Loading ? "sgc-data-form-loading" : "") @CssClass"
+         @attributes="AdditionalAttributes">
 
-    <div class="sgc-form @CssClass">
-        <div class="sgc-data-form-grid" style="@GridStyle">
-            @foreach (var field in _fields)
-            {
-                <div class="sgc-field sgc-block">
-                    @if (FieldTemplate is not null)
-                    {
-                        @FieldTemplate(CreateFieldContext(field))
-                    }
-                    else
-                    {
-                        @if (field.Kind != FieldKind.Boolean)
-                        {
-                            <label class="sgc-label @(field.IsRequired ? "sgc-required" : "")">@field.Label</label>
-                        }
-
-                        @if (field.Kind == FieldKind.Boolean)
-                        {
-                            <label class="sgc-check" style="display:flex;align-items:center;gap:8px;">
-                                <input type="checkbox"
-                                       checked="@GetBoolValue(field)"
-                                       disabled="@IsFieldReadOnly(field)"
-                                       @onchange="e => OnCheckboxChangedAsync(field, e)" />
-                                <span>@field.Label</span>
-                            </label>
-                        }
-                        else if (field.Kind == FieldKind.Enum)
-                        {
-                            <select class="sgc-input"
-                                    disabled="@IsFieldReadOnly(field)"
-                                    value="@GetSelectValue(field)"
-                                    @onchange="e => OnTextChangedAsync(field, e)">
-                                @if (field.AllowEmpty)
-                                {
-                                    <option value=""></option>
-                                }
-                                @foreach (var option in field.EnumOptions)
-                                {
-                                    <option value="@option.Value">@option.Label</option>
-                                }
-                            </select>
-                        }
-                        else if (field.Kind == FieldKind.MultilineText)
-                        {
-                            <textarea class="sgc-textarea"
-                                      rows="@field.Rows"
-                                      placeholder="@field.Placeholder"
-                                      readonly="@IsFieldReadOnly(field)"
-                                      @onchange="e => OnTextChangedAsync(field, e)">@GetTextValue(field)</textarea>
-                        }
-                        else
-                        {
-                            <input class="sgc-input"
-                                   type="@field.InputType"
-                                   value="@GetTextValue(field)"
-                                   placeholder="@field.Placeholder"
-                                   readonly="@IsFieldReadOnly(field)"
-                                   min="@field.Min"
-                                   max="@field.Max"
-                                   maxlength="@field.MaxLength"
-                                   step="@field.Step"
-                                   @onchange="e => OnTextChangedAsync(field, e)" />
-                        }
-
-                        @if (!string.IsNullOrEmpty(field.Description))
-                        {
-                            <span class="sgc-hint">@field.Description</span>
-                        }
-
-                        @foreach (var message in GetValidationMessages(field))
-                        {
-                            <span class="sgc-error">@message</span>
-                        }
-                    }
-                </div>
-            }
-        </div>
-
-        @if (Actions is not null || !ReadOnly)
+        @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Description) || HeaderContent is not null)
         {
-            <div class="sgc-form-actions" style="margin-top:16px;display:flex;gap:8px;justify-content:flex-end;">
+            <div class="sgc-data-form-header">
+                @if (HeaderContent is not null)
+                {
+                    @HeaderContent
+                }
+                else
+                {
+                    @if (!string.IsNullOrEmpty(Title))
+                    {
+                        <div class="sgc-data-form-title">@Title</div>
+                    }
+                    @if (!string.IsNullOrEmpty(Description))
+                    {
+                        <div class="sgc-data-form-desc">@Description</div>
+                    }
+                }
+            </div>
+        }
+
+        @if (ShowValidationSummary && _editContext is not null && !_editContext.GetValidationMessages().Any() == false)
+        {
+            <div class="sgc-data-form-summary" role="alert" aria-live="polite">
+                <span class="sgc-data-form-summary-ico" aria-hidden="true">@((MarkupString)IconError)</span>
+                <ValidationSummary />
+            </div>
+        }
+
+        @if (Loading)
+        {
+            <div class="sgc-data-form-grid" style="@GridStyle" aria-busy="true">
+                @for (int i = 0; i < Math.Max(Columns, 2) * 2; i++)
+                {
+                    <div class="sgc-data-form-skeleton-field">
+                        <span class="sgc-data-form-skeleton-line sgc-w-30"></span>
+                        <span class="sgc-data-form-skeleton-line sgc-w-100"></span>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            @foreach (var group in _groupedFields)
+            {
+                if (group.HasName)
+                {
+                    <fieldset class="sgc-data-form-section">
+                        <legend class="sgc-data-form-section-title">@group.Name</legend>
+                        <div class="sgc-data-form-grid" style="@GridStyle">
+                            @foreach (var field in group.Fields)
+                            {
+                                @RenderField(field)
+                            }
+                        </div>
+                    </fieldset>
+                }
+                else
+                {
+                    <div class="sgc-data-form-grid" style="@GridStyle">
+                        @foreach (var field in group.Fields)
+                        {
+                            @RenderField(field)
+                        }
+                    </div>
+                }
+            }
+        }
+
+        @if (HasActions)
+        {
+            <div class="sgc-data-form-actions @(StickyActions ? "sgc-data-form-actions-sticky" : "")">
                 @if (Actions is not null)
                 {
                     @Actions
                 }
                 else if (!ReadOnly)
                 {
-                    <SgButton Type="SgButtonType.Submit" Text="@SubmitText" Variant="SgButtonVariant.Primary" />
+                    @if (ShowReset)
+                    {
+                        <SgButton Type="SgButtonType.Button"
+                                  Text="@ResetText"
+                                  Variant="SgButtonVariant.Ghost"
+                                  Disabled="@(_isSaving || !_isDirty)"
+                                  OnClick="ResetAsync" />
+                    }
+                    @if (ShowCancel)
+                    {
+                        <SgButton Type="SgButtonType.Button"
+                                  Text="@CancelText"
+                                  Variant="SgButtonVariant.Outlined"
+                                  Disabled="@_isSaving"
+                                  OnClick="CancelAsync" />
+                    }
+                    <SgButton Type="SgButtonType.Submit"
+                              Text="@SubmitText"
+                              Variant="SgButtonVariant.Primary"
+                              Loading="@_isSaving"
+                              Disabled="@(_isSaving || (RequireDirtyToSubmit && !_isDirty))" />
                 }
             </div>
         }
@@ -111,80 +121,259 @@
 </EditForm>
 
 @code {
+    private RenderFragment RenderField(FieldDefinition field) => __builder =>
+    {
+        var ctx = CreateFieldContext(field);
+        var messages = ctx.Messages;
+        var hasError = messages.Count > 0;
+        var fieldId = _formId + "-" + field.Property.Name;
+        var hintId = string.IsNullOrEmpty(field.Description) ? null : fieldId + "-hint";
+        var errorId = hasError ? fieldId + "-err" : null;
+        var describedBy = string.Join(' ', new[] { hintId, errorId }.Where(s => !string.IsNullOrEmpty(s)));
+
+        <div class="sgc-data-form-field @(hasError ? "sgc-data-form-field-invalid" : "") @(field.FullWidth ? "sgc-data-form-field-full" : "") @(field.Kind == FieldKind.Boolean ? "sgc-data-form-field-bool" : "")"
+             style="@(field.FullWidth ? "grid-column: 1 / -1;" : null)">
+            @if (FieldTemplate is not null)
+            {
+                @FieldTemplate(ctx)
+            }
+            else
+            {
+                @if (field.Kind != FieldKind.Boolean)
+                {
+                    <label class="sgc-label @(field.IsRequired ? "sgc-required" : "")" for="@fieldId">@field.Label</label>
+                }
+
+                <div class="sgc-data-form-control">
+                    @if (ReadOnly || field.IsReadOnly)
+                    {
+                        @RenderReadOnlyValue(field)
+                    }
+                    else if (field.Kind == FieldKind.Boolean)
+                    {
+                        <label class="sgc-data-form-bool">
+                            <input id="@fieldId"
+                                   type="checkbox"
+                                   checked="@GetBoolValue(field)"
+                                   disabled="@IsFieldReadOnly(field)"
+                                   aria-required="@(field.IsRequired ? "true" : null)"
+                                   aria-describedby="@(string.IsNullOrEmpty(describedBy) ? null : describedBy)"
+                                   @onchange="e => OnCheckboxChangedAsync(field, e)" />
+                            <span class="sgc-data-form-bool-label">
+                                <span class="sgc-data-form-bool-title @(field.IsRequired ? "sgc-required" : "")">@field.Label</span>
+                                @if (!string.IsNullOrEmpty(field.Description))
+                                {
+                                    <span class="sgc-hint" id="@hintId">@field.Description</span>
+                                }
+                            </span>
+                        </label>
+                    }
+                    else if (field.Kind == FieldKind.Enum)
+                    {
+                        <select id="@fieldId"
+                                class="sgc-input @(hasError ? "sgc-invalid" : "")"
+                                disabled="@IsFieldReadOnly(field)"
+                                aria-required="@(field.IsRequired ? "true" : null)"
+                                aria-invalid="@(hasError ? "true" : null)"
+                                aria-describedby="@(string.IsNullOrEmpty(describedBy) ? null : describedBy)"
+                                value="@GetSelectValue(field)"
+                                @onchange="e => OnTextChangedAsync(field, e)">
+                            @if (field.AllowEmpty)
+                            {
+                                <option value="">@(string.IsNullOrEmpty(field.Placeholder) ? "—" : field.Placeholder)</option>
+                            }
+                            @foreach (var option in field.EnumOptions)
+                            {
+                                <option value="@option.Value">@option.Label</option>
+                            }
+                        </select>
+                    }
+                    else if (field.Kind == FieldKind.MultilineText)
+                    {
+                        <textarea id="@fieldId"
+                                  class="sgc-textarea @(hasError ? "sgc-invalid" : "")"
+                                  rows="@field.Rows"
+                                  placeholder="@field.Placeholder"
+                                  readonly="@IsFieldReadOnly(field)"
+                                  maxlength="@field.MaxLength"
+                                  aria-required="@(field.IsRequired ? "true" : null)"
+                                  aria-invalid="@(hasError ? "true" : null)"
+                                  aria-describedby="@(string.IsNullOrEmpty(describedBy) ? null : describedBy)"
+                                  @onchange="e => OnTextChangedAsync(field, e)">@GetTextValue(field)</textarea>
+                        @if (!string.IsNullOrEmpty(field.MaxLength) && ShowCharacterCount)
+                        {
+                            <span class="sgc-data-form-counter">@GetTextValue(field).Length / @field.MaxLength</span>
+                        }
+                    }
+                    else
+                    {
+                        <input id="@fieldId"
+                               class="sgc-input @(hasError ? "sgc-invalid" : "")"
+                               type="@field.InputType"
+                               value="@GetTextValue(field)"
+                               placeholder="@field.Placeholder"
+                               readonly="@IsFieldReadOnly(field)"
+                               min="@field.Min"
+                               max="@field.Max"
+                               maxlength="@field.MaxLength"
+                               step="@field.Step"
+                               aria-required="@(field.IsRequired ? "true" : null)"
+                               aria-invalid="@(hasError ? "true" : null)"
+                               aria-describedby="@(string.IsNullOrEmpty(describedBy) ? null : describedBy)"
+                               @onchange="e => OnTextChangedAsync(field, e)" />
+                        @if (!string.IsNullOrEmpty(field.MaxLength) && ShowCharacterCount && (field.InputType == "text" || field.InputType == "email" || field.InputType == "tel" || field.InputType == "url"))
+                        {
+                            <span class="sgc-data-form-counter">@GetTextValue(field).Length / @field.MaxLength</span>
+                        }
+                    }
+                </div>
+
+                @if (!string.IsNullOrEmpty(field.Description) && field.Kind != FieldKind.Boolean)
+                {
+                    <span class="sgc-hint" id="@hintId">@field.Description</span>
+                }
+
+                @if (hasError)
+                {
+                    <span class="sgc-error" id="@errorId" role="alert">
+                        <span class="sgc-error-ico" aria-hidden="true">@((MarkupString)IconError)</span>
+                        <span>@string.Join("; ", messages)</span>
+                    </span>
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderReadOnlyValue(FieldDefinition field) => __builder =>
+    {
+        var raw = field.Property.GetValue(Model);
+        var display = FormatReadOnlyValue(field, raw);
+        var empty = string.IsNullOrWhiteSpace(display);
+
+        <div class="sgc-data-form-readonly-value @(empty ? "sgc-data-form-readonly-empty" : "")">
+            @if (field.Kind == FieldKind.Boolean)
+            {
+                <span class="sgc-data-form-bool-pill @(GetBoolValue(field) ? "sgc-on" : "sgc-off")">
+                    @(GetBoolValue(field) ? TrueLabel : FalseLabel)
+                </span>
+            }
+            else if (empty)
+            {
+                <span>—</span>
+            }
+            else
+            {
+                <span>@display</span>
+            }
+        </div>
+    };
+
     private EditContext? _editContext;
     private TModel? _lastModel;
     private List<FieldDefinition> _fields = new();
+    private List<FieldGroup> _groupedFields = new();
+    private bool _isSaving;
+    private bool _isDirty;
+    private string _formId = "sg-df-" + Guid.NewGuid().ToString("N")[..8];
+    private TModel? _snapshot;
 
-    /// <summary>
-    /// Gets or sets the model instance to bind to the form. Required.
-    /// </summary>
+    /// <summary>Gets or sets the model instance to bind to the form. Required.</summary>
     [Parameter, EditorRequired] public TModel Model { get; set; } = default!;
-    
-    /// <summary>
-    /// Gets or sets whether to automatically generate form fields from model properties.
-    /// Default is true.
-    /// </summary>
+
+    /// <summary>Optional title rendered above the form.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Optional description rendered below the title.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Optional custom header content. Replaces <see cref="Title"/>/<see cref="Description"/>.</summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>Whether to automatically generate form fields from model properties.</summary>
     [Parameter] public bool AutoGenerate { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets the number of grid columns for field layout.
-    /// Default is 2.
-    /// </summary>
+
+    /// <summary>Number of grid columns for field layout. Default 2.</summary>
     [Parameter] public int Columns { get; set; } = 2;
-    
-    /// <summary>
-    /// Gets or sets whether the form is read-only.
-    /// </summary>
+
+    /// <summary>Whether the form is read-only — fields render as static values.</summary>
     [Parameter] public bool ReadOnly { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether to display the validation summary.
-    /// </summary>
+
+    /// <summary>Renders a skeleton loading state.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Compact density: smaller paddings and font sizes.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Pin the actions row to the bottom on scroll.</summary>
+    [Parameter] public bool StickyActions { get; set; }
+
+    /// <summary>Display the validation summary above the form.</summary>
     [Parameter] public bool ShowValidationSummary { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the submit button text.
-    /// Default is "Save".
-    /// </summary>
+
+    /// <summary>Show the reset button when the form has unsaved changes. Default true.</summary>
+    [Parameter] public bool ShowReset { get; set; } = true;
+
+    /// <summary>Show the cancel button next to submit. Default false.</summary>
+    [Parameter] public bool ShowCancel { get; set; }
+
+    /// <summary>Disable the submit button until the form is dirty.</summary>
+    [Parameter] public bool RequireDirtyToSubmit { get; set; }
+
+    /// <summary>Show a character counter when MaxLength is set. Default true.</summary>
+    [Parameter] public bool ShowCharacterCount { get; set; } = true;
+
+    /// <summary>Submit button text. Default "Save".</summary>
     [Parameter] public string SubmitText { get; set; } = "Save";
-    
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+
+    /// <summary>Cancel button text. Default "Cancel".</summary>
+    [Parameter] public string CancelText { get; set; } = "Cancel";
+
+    /// <summary>Reset button text. Default "Reset".</summary>
+    [Parameter] public string ResetText { get; set; } = "Reset";
+
+    /// <summary>Label rendered for true booleans in read-only mode.</summary>
+    [Parameter] public string TrueLabel { get; set; } = "Yes";
+
+    /// <summary>Label rendered for false booleans in read-only mode.</summary>
+    [Parameter] public string FalseLabel { get; set; } = "No";
+
     [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the collection of property names to include in the form.
-    /// If null, all properties are included.
-    /// </summary>
+
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Fields to include (whitelist). When set, only listed fields are rendered.</summary>
     [Parameter] public IEnumerable<string>? IncludeFields { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the collection of property names to exclude from the form.
-    /// </summary>
+
+    /// <summary>Fields to exclude (blacklist).</summary>
     [Parameter] public IEnumerable<string>? ExcludeFields { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom actions content to replace the default submit button.
-    /// </summary>
+
+    /// <summary>Fields rendered full-width regardless of <see cref="Columns"/>.</summary>
+    [Parameter] public IEnumerable<string>? FullWidthFields { get; set; }
+
+    /// <summary>Custom actions content; replaces the default submit/cancel/reset row.</summary>
     [Parameter] public RenderFragment? Actions { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom template for rendering each field.
-    /// </summary>
+
+    /// <summary>Custom field render template.</summary>
     [Parameter] public RenderFragment<SgDataFormFieldContext>? FieldTemplate { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the form is submitted with valid data.
-    /// </summary>
+
+    /// <summary>Invoked after a successful submit.</summary>
     [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the form is submitted with invalid data.
-    /// </summary>
+
+    /// <summary>Invoked when the form is submitted but validation fails.</summary>
     [Parameter] public EventCallback<TModel> OnInvalidSubmit { get; set; }
 
-    private string GridStyle => $"display:grid;grid-template-columns:repeat({Math.Max(1, Columns)}, minmax(0, 1fr));gap:12px;";
+    /// <summary>Invoked when the user clicks the cancel button.</summary>
+    [Parameter] public EventCallback OnCancel { get; set; }
+
+    /// <summary>Invoked when the user clicks the reset button (after the model is restored).</summary>
+    [Parameter] public EventCallback OnReset { get; set; }
+
+    /// <summary>Invoked whenever a field changes; useful for live previews.</summary>
+    [Parameter] public EventCallback<TModel> OnModelChanged { get; set; }
+
+    private bool HasActions => Actions is not null || (!ReadOnly && !Loading);
+
+    private string GridStyle => $"--sgc-df-cols:{Math.Max(1, Columns)};";
 
     protected override void OnParametersSet()
     {
@@ -193,17 +382,32 @@
 
         if (!ReferenceEquals(_lastModel, Model) || _editContext is null)
         {
+            if (_editContext is not null)
+                _editContext.OnFieldChanged -= OnFieldChanged;
+
             _lastModel = Model;
             _editContext = new EditContext(Model);
+            _editContext.OnFieldChanged += OnFieldChanged;
+            _isDirty = false;
+            _snapshot = TryClone(Model);
         }
 
         _fields = AutoGenerate ? BuildFields() : new List<FieldDefinition>();
+        _groupedFields = GroupFields(_fields);
+    }
+
+    private void OnFieldChanged(object? sender, FieldChangedEventArgs e)
+    {
+        _isDirty = true;
+        if (OnModelChanged.HasDelegate)
+            _ = OnModelChanged.InvokeAsync(Model);
     }
 
     private List<FieldDefinition> BuildFields()
     {
         var include = IncludeFields is null ? null : new HashSet<string>(IncludeFields, StringComparer.OrdinalIgnoreCase);
         var exclude = ExcludeFields is null ? null : new HashSet<string>(ExcludeFields, StringComparer.OrdinalIgnoreCase);
+        var full = FullWidthFields is null ? null : new HashSet<string>(FullWidthFields, StringComparer.OrdinalIgnoreCase);
 
         return typeof(TModel)
             .GetProperties(BindingFlags.Instance | BindingFlags.Public)
@@ -214,11 +418,28 @@
             .Where(p => exclude is null || !exclude.Contains(p.Name))
             .OrderBy(p => p.GetCustomAttribute<DisplayAttribute>()?.GetOrder() ?? int.MaxValue)
             .ThenBy(p => p.Name)
-            .Select(CreateFieldDefinition)
+            .Select(p => CreateFieldDefinition(p, full))
             .ToList();
     }
 
-    private static FieldDefinition CreateFieldDefinition(PropertyInfo property)
+    private static List<FieldGroup> GroupFields(List<FieldDefinition> fields)
+    {
+        var groups = new List<FieldGroup>();
+        FieldGroup? current = null;
+        foreach (var f in fields)
+        {
+            var name = f.GroupName ?? string.Empty;
+            if (current is null || current.Name != name)
+            {
+                current = new FieldGroup(name, new List<FieldDefinition>());
+                groups.Add(current);
+            }
+            current.Fields.Add(f);
+        }
+        return groups;
+    }
+
+    private static FieldDefinition CreateFieldDefinition(PropertyInfo property, HashSet<string>? fullWidth)
     {
         var display = property.GetCustomAttribute<DisplayAttribute>();
         var dataType = property.GetCustomAttribute<DataTypeAttribute>();
@@ -232,6 +453,7 @@
 
         var kind = GetFieldKind(underlyingType, dataType);
         var inputType = GetInputType(underlyingType, dataType);
+        var explicitFull = fullWidth is not null && fullWidth.Contains(property.Name);
 
         return new FieldDefinition
         {
@@ -239,11 +461,13 @@
             Label = display?.GetName() ?? SplitPascalCase(property.Name),
             Description = display?.GetDescription(),
             Placeholder = display?.GetPrompt(),
+            GroupName = string.IsNullOrWhiteSpace(display?.GetGroupName()) ? null : display.GetGroupName(),
             IsRequired = required,
             IsReadOnly = editable?.AllowEdit == false || readOnly?.IsReadOnly == true,
             Kind = kind,
             InputType = inputType,
             AllowEmpty = allowEmpty,
+            FullWidth = explicitFull || kind == FieldKind.MultilineText,
             MaxLength = stringLength?.MaximumLength is > 0 ? stringLength.MaximumLength.ToString(CultureInfo.InvariantCulture) : null,
             Min = range?.Minimum?.ToString(),
             Max = range?.Maximum?.ToString(),
@@ -260,46 +484,37 @@
     private async Task OnTextChangedAsync(FieldDefinition field, ChangeEventArgs e)
     {
         if (_editContext is null) return;
-
-        if (!TryConvertValue(field, e.Value?.ToString(), out var value))
-            return;
+        if (!TryConvertValue(field, e.Value?.ToString(), out var value)) return;
 
         field.Property.SetValue(Model, value);
-
-        var identifier = new FieldIdentifier(Model, field.Property.Name);
-        _editContext.NotifyFieldChanged(identifier);
+        _editContext.NotifyFieldChanged(new FieldIdentifier(Model, field.Property.Name));
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnCheckboxChangedAsync(FieldDefinition field, ChangeEventArgs e)
     {
         if (_editContext is null) return;
-
         var next = e.Value switch
         {
             bool b => b,
             string s when bool.TryParse(s, out var parsed) => parsed,
             _ => false
         };
-
         field.Property.SetValue(Model, next);
-
-        var identifier = new FieldIdentifier(Model, field.Property.Name);
-        _editContext.NotifyFieldChanged(identifier);
+        _editContext.NotifyFieldChanged(new FieldIdentifier(Model, field.Property.Name));
         await InvokeAsync(StateHasChanged);
     }
 
-    private IEnumerable<string> GetValidationMessages(FieldDefinition field)
+    private IReadOnlyList<string> GetValidationMessages(FieldDefinition field)
     {
         if (_editContext is null) return Array.Empty<string>();
-        return _editContext.GetValidationMessages(new FieldIdentifier(Model, field.Property.Name));
+        return _editContext.GetValidationMessages(new FieldIdentifier(Model, field.Property.Name)).ToArray();
     }
 
     private string GetTextValue(FieldDefinition field)
     {
         var value = field.Property.GetValue(Model);
         if (value is null) return string.Empty;
-
         return field.Kind switch
         {
             FieldKind.Date => value is DateTime dateTime
@@ -312,19 +527,24 @@
         };
     }
 
-    private bool GetBoolValue(FieldDefinition field)
+    private string FormatReadOnlyValue(FieldDefinition field, object? value)
     {
-        var value = field.Property.GetValue(Model);
-        return value is bool b && b;
+        if (value is null) return string.Empty;
+        return field.Kind switch
+        {
+            FieldKind.Date => value is DateTime d ? d.ToString("d", CultureInfo.CurrentCulture) : value.ToString() ?? string.Empty,
+            FieldKind.DateTimeLocal => value is DateTime dt ? dt.ToString("g", CultureInfo.CurrentCulture) : value.ToString() ?? string.Empty,
+            FieldKind.Enum => field.EnumOptions.FirstOrDefault(o => string.Equals(o.Value, value.ToString(), StringComparison.Ordinal)).Label
+                              ?? value.ToString() ?? string.Empty,
+            _ => Convert.ToString(value, CultureInfo.CurrentCulture) ?? string.Empty
+        };
     }
 
-    private string GetSelectValue(FieldDefinition field)
-    {
-        var value = field.Property.GetValue(Model);
-        return value?.ToString() ?? string.Empty;
-    }
+    private bool GetBoolValue(FieldDefinition field) => field.Property.GetValue(Model) is bool b && b;
 
-    private bool IsFieldReadOnly(FieldDefinition field) => ReadOnly || field.IsReadOnly;
+    private string GetSelectValue(FieldDefinition field) => field.Property.GetValue(Model)?.ToString() ?? string.Empty;
+
+    private bool IsFieldReadOnly(FieldDefinition field) => ReadOnly || field.IsReadOnly || _isSaving;
 
     private SgDataFormFieldContext CreateFieldContext(FieldDefinition field) => new()
     {
@@ -332,7 +552,7 @@
         PropertyName = field.Property.Name,
         PropertyType = field.Property.PropertyType,
         Value = field.Property.GetValue(Model),
-        Messages = GetValidationMessages(field).ToArray(),
+        Messages = GetValidationMessages(field),
         Required = field.IsRequired,
         ReadOnly = IsFieldReadOnly(field),
         SetValueAsync = value => SetFieldValueAsync(field, value)
@@ -340,25 +560,72 @@
 
     private async Task SetFieldValueAsync(FieldDefinition field, object? value)
     {
-        if (_editContext is null || IsFieldReadOnly(field))
-            return;
-
+        if (_editContext is null || IsFieldReadOnly(field)) return;
         field.Property.SetValue(Model, value);
-        var identifier = new FieldIdentifier(Model, field.Property.Name);
-        _editContext.NotifyFieldChanged(identifier);
+        _editContext.NotifyFieldChanged(new FieldIdentifier(Model, field.Property.Name));
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleValidSubmitAsync()
     {
-        if (OnValidSubmit.HasDelegate)
-            await OnValidSubmit.InvokeAsync(Model);
+        if (_isSaving) return;
+        _isSaving = true;
+        try
+        {
+            if (OnValidSubmit.HasDelegate)
+                await OnValidSubmit.InvokeAsync(Model);
+            _isDirty = false;
+            _snapshot = TryClone(Model);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
     }
 
     private async Task HandleInvalidSubmitAsync()
     {
         if (OnInvalidSubmit.HasDelegate)
             await OnInvalidSubmit.InvokeAsync(Model);
+    }
+
+    private async Task ResetAsync()
+    {
+        if (_snapshot is not null)
+            CopyValues(_snapshot, Model);
+        _editContext = new EditContext(Model);
+        _editContext.OnFieldChanged += OnFieldChanged;
+        _isDirty = false;
+        if (OnReset.HasDelegate) await OnReset.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CancelAsync()
+    {
+        if (OnCancel.HasDelegate) await OnCancel.InvokeAsync();
+    }
+
+    private static TModel? TryClone(TModel source)
+    {
+        try
+        {
+            var clone = Activator.CreateInstance<TModel>();
+            CopyValues(source, clone);
+            return clone;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static void CopyValues(TModel from, TModel to)
+    {
+        foreach (var p in typeof(TModel).GetProperties(BindingFlags.Instance | BindingFlags.Public))
+        {
+            if (!p.CanRead || !p.CanWrite || p.GetIndexParameters().Length > 0) continue;
+            try { p.SetValue(to, p.GetValue(from)); } catch { /* skip */ }
+        }
     }
 
     private static bool TryConvertValue(FieldDefinition field, string? raw, out object? value)
@@ -375,11 +642,7 @@
 
         try
         {
-            if (targetType == typeof(string))
-            {
-                value = raw;
-                return true;
-            }
+            if (targetType == typeof(string)) { value = raw; return true; }
             if (targetType == typeof(DateTime))
             {
                 value = field.Kind == FieldKind.Date
@@ -387,56 +650,16 @@
                     : DateTime.Parse(raw, CultureInfo.InvariantCulture);
                 return true;
             }
-            if (targetType == typeof(Guid))
-            {
-                value = Guid.Parse(raw);
-                return true;
-            }
-            if (targetType.IsEnum)
-            {
-                value = Enum.Parse(targetType, raw, true);
-                return true;
-            }
-            if (targetType == typeof(bool) && bool.TryParse(raw, out var boolValue))
-            {
-                value = boolValue;
-                return true;
-            }
-            if (targetType == typeof(int))
-            {
-                value = int.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
-            if (targetType == typeof(long))
-            {
-                value = long.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
-            if (targetType == typeof(short))
-            {
-                value = short.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
-            if (targetType == typeof(byte))
-            {
-                value = byte.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
-            if (targetType == typeof(float))
-            {
-                value = float.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
-            if (targetType == typeof(double))
-            {
-                value = double.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
-            if (targetType == typeof(decimal))
-            {
-                value = decimal.Parse(raw, CultureInfo.InvariantCulture);
-                return true;
-            }
+            if (targetType == typeof(Guid)) { value = Guid.Parse(raw); return true; }
+            if (targetType.IsEnum) { value = Enum.Parse(targetType, raw, true); return true; }
+            if (targetType == typeof(bool) && bool.TryParse(raw, out var boolValue)) { value = boolValue; return true; }
+            if (targetType == typeof(int)) { value = int.Parse(raw, CultureInfo.InvariantCulture); return true; }
+            if (targetType == typeof(long)) { value = long.Parse(raw, CultureInfo.InvariantCulture); return true; }
+            if (targetType == typeof(short)) { value = short.Parse(raw, CultureInfo.InvariantCulture); return true; }
+            if (targetType == typeof(byte)) { value = byte.Parse(raw, CultureInfo.InvariantCulture); return true; }
+            if (targetType == typeof(float)) { value = float.Parse(raw, CultureInfo.InvariantCulture); return true; }
+            if (targetType == typeof(double)) { value = double.Parse(raw, CultureInfo.InvariantCulture); return true; }
+            if (targetType == typeof(decimal)) { value = decimal.Parse(raw, CultureInfo.InvariantCulture); return true; }
 
             value = Convert.ChangeType(raw, targetType, CultureInfo.CurrentCulture);
             return true;
@@ -453,11 +676,7 @@
         if (type == typeof(bool)) return FieldKind.Boolean;
         if (type.IsEnum) return FieldKind.Enum;
         if (type == typeof(DateTime))
-        {
-            return dataType?.DataType == DataType.Date
-                ? FieldKind.Date
-                : FieldKind.DateTimeLocal;
-        }
+            return dataType?.DataType == DataType.Date ? FieldKind.Date : FieldKind.DateTimeLocal;
         if (dataType?.DataType == DataType.MultilineText) return FieldKind.MultilineText;
         if (type == typeof(string)) return FieldKind.Text;
         if (IsNumericType(type)) return FieldKind.Number;
@@ -467,9 +686,7 @@
     private static string GetInputType(Type type, DataTypeAttribute? dataType)
     {
         if (type == typeof(DateTime))
-        {
             return dataType?.DataType == DataType.Date ? "date" : "datetime-local";
-        }
         if (IsNumericType(type)) return "number";
         if (dataType?.DataType == DataType.EmailAddress) return "email";
         if (dataType?.DataType == DataType.Password) return "password";
@@ -478,25 +695,15 @@
         return "text";
     }
 
-    private static bool IsNumericType(Type type)
-    {
-        return type == typeof(byte) ||
-               type == typeof(short) ||
-               type == typeof(int) ||
-               type == typeof(long) ||
-               type == typeof(float) ||
-               type == typeof(double) ||
-               type == typeof(decimal) ||
-               type == typeof(sbyte) ||
-               type == typeof(ushort) ||
-               type == typeof(uint) ||
-               type == typeof(ulong);
-    }
+    private static bool IsNumericType(Type type) =>
+        type == typeof(byte) || type == typeof(short) || type == typeof(int) ||
+        type == typeof(long) || type == typeof(float) || type == typeof(double) ||
+        type == typeof(decimal) || type == typeof(sbyte) || type == typeof(ushort) ||
+        type == typeof(uint) || type == typeof(ulong);
 
     private static string SplitPascalCase(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return value;
-
         var builder = new System.Text.StringBuilder(value.Length + 8);
         builder.Append(value[0]);
         for (var i = 1; i < value.Length; i++)
@@ -514,15 +721,20 @@
         return member?.GetCustomAttribute<DisplayAttribute>()?.GetName() ?? SplitPascalCase(name);
     }
 
+    private const string IconError =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"10\"></circle><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"12\"></line><line x1=\"12\" y1=\"16\" x2=\"12.01\" y2=\"16\"></line></svg>";
+
     private sealed class FieldDefinition
     {
         public required PropertyInfo Property { get; init; }
         public required string Label { get; init; }
         public string? Description { get; init; }
         public string? Placeholder { get; init; }
+        public string? GroupName { get; init; }
         public bool IsRequired { get; init; }
         public bool IsReadOnly { get; init; }
         public bool AllowEmpty { get; init; }
+        public bool FullWidth { get; init; }
         public FieldKind Kind { get; init; }
         public required string InputType { get; init; }
         public string? Min { get; init; }
@@ -531,6 +743,11 @@
         public string? MaxLength { get; init; }
         public int Rows { get; init; }
         public required IReadOnlyList<EnumOption> EnumOptions { get; init; }
+    }
+
+    private sealed record FieldGroup(string Name, List<FieldDefinition> Fields)
+    {
+        public bool HasName => !string.IsNullOrEmpty(Name);
     }
 
     private readonly record struct EnumOption(string Value, string Label);
