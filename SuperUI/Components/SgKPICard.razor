@@ -1,0 +1,236 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-kpi-card @CssClass @(IsLoading ? "sgc-kpi-loading" : "") @(Clickable ? "sgc-kpi-clickable" : "")"
+     style="@Style"
+     @onclick="HandleClick"
+     role="@(Clickable ? "button" : "presentation")"
+     tabindex="@(Clickable ? "0" : null)"
+     @onkeydown="HandleKeyDown">
+    
+    @if (IsLoading)
+    {
+        <div class="sgc-kpi-skeleton">
+            <span class="sgc-kpi-skel-icon"></span>
+            <span class="sgc-kpi-skel-value"></span>
+            <span class="sgc-kpi-skel-spark"></span>
+        </div>
+    }
+    else
+    {
+        <div class="sgc-kpi-header">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <span class="sgc-kpi-icon" style="color: @IconColor">@((MarkupString)Icon)</span>
+            }
+            @if (HeaderContent is not null)
+            {
+                <div class="sgc-kpi-header-content">@HeaderContent</div>
+            }
+        </div>
+
+        <div class="sgc-kpi-body">
+            <div class="sgc-kpi-value-container">
+                @if (!string.IsNullOrEmpty(Prefix))
+                {
+                    <span class="sgc-kpi-prefix">@Prefix</span>
+                }
+                <span class="sgc-kpi-value">@FormattedValue</span>
+                @if (!string.IsNullOrEmpty(Suffix))
+                {
+                    <span class="sgc-kpi-suffix">@Suffix</span>
+                }
+            </div>
+
+            @if (ShowDelta && Delta.HasValue)
+            {
+                <div class="sgc-kpi-delta @(IsPositive ? "sgc-kpi-delta-positive" : IsNegative ? "sgc-kpi-delta-negative" : "sgc-kpi-delta-neutral")"
+                     style="@(UseTrendColor && !IsNeutral ? $"color: {TrendColor};" : "")">
+                    @if (IsPositive)
+                    {
+                        <span class="sgc-kpi-delta-arrow">↑</span>
+                    }
+                    else if (IsNegative)
+                    {
+                        <span class="sgc-kpi-delta-arrow">↓</span>
+                    }
+                    <span class="sgc-kpi-delta-value">@FormattedDelta</span>
+                    @if (ShowDeltaPercent && DeltaPercent.HasValue)
+                    {
+                        <span class="sgc-kpi-delta-percent">(@FormattedDeltaPercent)</span>
+                    }
+                </div>
+            }
+
+            @if (SparklineData != null && SparklineData.Length > 0)
+            {
+                <div class="sgc-kpi-sparkline-container" style="height: @(SparklineHeight)px;">
+                    <canvas @ref="_sparklineRef"
+                            id="@_sparklineId"
+                            class="sgc-kpi-sparkline"
+                            style="height: @(SparklineHeight)px; width: 100%;">
+                    </canvas>
+                </div>
+            }
+        </div>
+
+        @if (FooterContent is not null)
+        {
+            <div class="sgc-kpi-footer">
+                @FooterContent
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _sparklineRef;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgKPICard>? _self;
+    private readonly string _sparklineId = $"sg-kpi-spark-{Guid.NewGuid():N}";
+    private bool _isDisposed;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public double? Value { get; set; }
+    [Parameter] public string? Formatter { get; set; }
+    [Parameter] public string? Prefix { get; set; }
+    [Parameter] public string? Suffix { get; set; }
+    
+    [Parameter] public double? Delta { get; set; }
+    [Parameter] public double? DeltaPercent { get; set; }
+    [Parameter] public bool ShowDelta { get; set; } = true;
+    [Parameter] public bool ShowDeltaPercent { get; set; } = true;
+    
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public string? IconColor { get; set; }
+    [Parameter] public string? TrendColor { get; set; }
+    [Parameter] public bool UseTrendColor { get; set; } = true;
+    
+    [Parameter] public double[]? SparklineData { get; set; }
+    [Parameter] public int SparklineHeight { get; set; } = 40;
+    [Parameter] public string? SparklineColor { get; set; }
+    [Parameter] public bool SparklineFill { get; set; } = true;
+    
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public bool Clickable { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
+    
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private string FormattedValue => Value.HasValue 
+        ? (string.IsNullOrEmpty(Formatter) ? Value.Value.ToString("N0") : Value.Value.ToString(Formatter)) 
+        : "—";
+
+    private string FormattedDelta => Delta.HasValue ? Math.Abs(Delta.Value).ToString("N0") : "";
+    private string FormattedDeltaPercent => DeltaPercent.HasValue ? $"{Math.Abs(DeltaPercent.Value):N1}%" : "";
+    
+    private bool IsPositive => Delta.HasValue && Delta.Value > 0;
+    private bool IsNegative => Delta.HasValue && Delta.Value < 0;
+    private bool IsNeutral => !IsPositive && !IsNegative;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed) return;
+        
+        if (firstRender && !IsLoading && SparklineData != null && SparklineData.Length > 0)
+        {
+            try
+            {
+                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-sparkline.js");
+                if (_isDisposed) return;
+                
+                _self ??= DotNetObjectReference.Create(this);
+                await InitializeSparklineAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+        }
+        else if (!firstRender && !IsLoading && SparklineData != null && _module != null)
+        {
+            await UpdateSparklineAsync();
+        }
+    }
+
+    private async Task InitializeSparklineAsync()
+    {
+        if (_module is null || _isDisposed) return;
+        
+        var color = SparklineColor ?? (IsPositive ? "#10b981" : IsNegative ? "#ef4444" : "#6b7280");
+        
+        var config = new
+        {
+            data = SparklineData,
+            color,
+            fill = SparklineFill,
+            height = SparklineHeight
+        };
+        
+        try
+        {
+            await _module.InvokeVoidAsync("initSparkline", _sparklineRef, config);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task UpdateSparklineAsync()
+    {
+        if (_module is null || _isDisposed || string.IsNullOrEmpty(_sparklineId)) return;
+        
+        try
+        {
+            var color = SparklineColor ?? (IsPositive ? "#10b981" : IsNegative ? "#ef4444" : "#6b7280");
+            await _module.InvokeVoidAsync("updateSparkline", _sparklineId, SparklineData, color);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+    }
+
+    private async Task HandleClick()
+    {
+        if (Clickable && OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" || e.Key == " ")
+        {
+            await HandleClick();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("disposeSparkline", _sparklineId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+        }
+
+        var self = _self;
+        _self = null;
+        self?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+            _module = null;
+        }
+    }
+}

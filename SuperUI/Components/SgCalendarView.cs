@@ -4,6 +4,7 @@ namespace SuperUI.Components
     {
         Month,
         Week,
-        Day
+        Day,
+        Agenda
     }
 }
