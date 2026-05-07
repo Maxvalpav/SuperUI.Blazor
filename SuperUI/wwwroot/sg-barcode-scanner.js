@@ -1,26 +1,73 @@
 const scanners = new Map();
 
 export async function initBarcodeScanner(dotNetRef, instanceId, sources) {
-    if (scanners.has(instanceId)) return;
+    if (scanners.has(instanceId)) {
+        // re-init: refresh dotNetRef but keep codeReader
+        const existing = scanners.get(instanceId);
+        existing.dotNetRef = dotNetRef;
+    } else {
+        try {
+            if (sources?.ZxingScript) {
+                await loadScript(sources.ZxingScript);
+            } else {
+                await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js');
+            }
 
-    try {
-        if (sources?.ZxingScript) {
-            await loadScript(sources.ZxingScript);
-        } else {
-            await loadScript('https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js');
+            scanners.set(instanceId, {
+                dotNetRef,
+                instanceId,
+                codeReader: null,
+                lastDeviceId: null,
+                devices: [],
+                capturePicture: false
+            });
+        } catch (error) {
+            console.error('Failed to initialize barcode scanner:', error);
+            await dotNetRef.invokeMethodAsync('OnErrorAsync', error.message || 'Initialization failed');
+            return;
         }
+    }
 
-        scanners.set(instanceId, {
-            dotNetRef,
-            instanceId,
-            codeReader: null,
-            lastDeviceId: null,
-            devices: [],
-            capturePicture: false
-        });
-    } catch (error) {
-        console.error('Failed to initialize barcode scanner:', error);
-        await dotNetRef.invokeMethodAsync('OnErrorAsync', error.message || 'Initialization failed');
+    // Try to enumerate without permission first; labels may be empty until granted.
+    try { await updateDeviceList(instanceId); } catch (e) { /* ignore */ }
+    // Signal that the JS module is ready so Blazor can enable Start.
+    try { await dotNetRef.invokeMethodAsync('OnReadyAsync'); } catch (e) { /* ignore */ }
+}
+
+/**
+ * Explicitly request camera permission. Surfaces the browser prompt and
+ * returns the up-to-date device list with labels populated.
+ */
+export async function requestCameraPermission(instanceId) {
+    const scanner = scanners.get(instanceId);
+    if (!scanner) return false;
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        await scanner.dotNetRef.invokeMethodAsync('OnErrorAsync', 'Camera API is not available in this browser.');
+        return false;
+    }
+
+    let stream = null;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        return true;
+    } catch (err) {
+        const name = err && err.name ? err.name : '';
+        let msg = err && err.message ? err.message : 'Camera permission denied';
+        if (name === 'NotAllowedError' || name === 'SecurityError') {
+            msg = 'Доступ к камере отклонён. Разрешите доступ в настройках браузера.';
+        } else if (name === 'NotFoundError' || name === 'OverconstrainedError') {
+            msg = 'Камера не найдена.';
+        } else if (name === 'NotReadableError') {
+            msg = 'Камера используется другим приложением.';
+        }
+        await scanner.dotNetRef.invokeMethodAsync('OnErrorAsync', msg);
+        return false;
+    } finally {
+        if (stream) {
+            try { stream.getTracks().forEach(t => t.stop()); } catch (e) { /* ignore */ }
+        }
+        try { await updateDeviceList(instanceId); } catch (e) { /* ignore */ }
     }
 }
 
