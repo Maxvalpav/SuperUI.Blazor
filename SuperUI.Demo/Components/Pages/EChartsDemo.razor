@@ -1,5 +1,6 @@
 @page "/echarts-demo"
 @using SuperUI.Components
+@implements IDisposable
 
 <PageTitle>ECharts — SUI</PageTitle>
 
@@ -70,6 +71,35 @@
 <!-- ══════════════════════════════════════════════════════════ Столбчатые -->
 <SgTabPanel Title="📊 Столбчатые">
     <div class="ec-grid-2">
+
+                <SgCard Title="Real-time Candlestick — биржа  + “Прибор” (синус + шум) — real-time стрим">
+            <div class="ec-gen-bar">
+                <button class="ec-btn" @onclick="StartRealTime" disabled="@_rtRunning">▶ Start</button>
+                <button class="ec-btn" @onclick="StopRealTime"  disabled="@(!_rtRunning)">⏸ Stop</button>
+                <label class="ec-toggle" title="Сколько свечей хранить в окне">
+                    <input type="checkbox" disabled checked />
+                    Окно: @(_rtDays) дней
+                </label>
+            </div>
+
+            <div class="ec-grid-2" style="gap:16px;align-items:start">
+                <div>
+                    <SgECharts @ref="_rtChartRef"
+                               ChartType="SgEChartsType.Candlestick"
+                               CandleData="@_rtCandleData"
+                               Options="@_rtCandleOpts"
+                               Height="300px" />
+                </div>
+
+                <div>                 
+                    <SgECharts @ref="_rtSensorChartRef"
+                               ChartType="SgEChartsType.Line"
+                               Data="@_rtSensorData"
+                               Options="@_rtSensorOpts"
+                               Height="300px" />
+                </div>
+            </div>
+        </SgCard>
 
         <SgCard Title="Вертикальный — продажи">
             <div class="ec-gen-bar">
@@ -228,6 +258,214 @@
 
 @code {
     private static readonly Random _rnd = new(Environment.TickCount);
+
+    // ── Real-time Candlestick (async) + Sensor stream ─────────────────────
+    private bool _rtRunning;
+    private int _rtDays = 60;
+
+    // sensor window (points)
+    private int _rtSensorPoints = 120;
+
+    private CancellationTokenSource? _rtCts;
+    private Task? _rtLoop;
+
+    private SgECharts? _rtChartRef;
+    private SgECharts? _rtSensorChartRef;
+
+    private List<SgEChartsCandlePoint> _rtCandleData = new();
+    private SgEChartsOptions _rtCandleOpts = new() { ShowLegend = false, EnableZoom = true };
+
+    private List<SgEChartsDataPoint> _rtSensorData = new();
+    private SgEChartsOptions _rtSensorOpts = new() { ShowLegend = false, Smooth = true, ValueDecimals = 2 };
+
+    private async Task StartRealTime()
+    {
+        if (_rtRunning) return;
+        _rtRunning = true;
+
+        // Init / reset windows
+        _rtCandleData = GenerateInitialCandleWindow(_rtDays);
+        _rtSensorData = GenerateInitialSensorWindow(_rtSensorPoints);
+
+        _rtCts?.Cancel();
+        _rtCts?.Dispose();
+        _rtCts = new CancellationTokenSource();
+
+        var token = _rtCts.Token;
+
+        // Small delay so UI has time to render
+        await Task.Yield();
+        try
+        {
+            if (_rtChartRef is not null)
+                await _rtChartRef.RefreshAsync();
+        }
+        catch { }
+
+        _rtLoop = Task.Run(async () =>
+        {
+            // "tick" simulation
+            // Candle updates
+            const int ticksPerCandle = 6;
+
+            // Sensor updates
+            double sensorT = 0;
+
+            int tickInCandle = 0;
+            double lastClose = _rtCandleData.Count > 0 ? _rtCandleData[^1].Close : 1000;
+
+            while (!token.IsCancellationRequested)
+            {
+                tickInCandle++;
+
+                // ── Candle ────────────────────────────────────────────────
+                double delta = (_rnd.NextDouble() - 0.5) * 8;
+                double nextClose = Math.Max(1, lastClose + delta);
+
+                var last = _rtCandleData[^1];
+                lastClose = nextClose;
+
+                last.Close = Math.Round(nextClose, 1);
+                last.High = Math.Round(Math.Max(last.High, last.Close), 1);
+                last.Low  = Math.Round(Math.Min(last.Low,  last.Close), 1);
+
+                _rtCandleData[^1] = last;
+
+                if (tickInCandle >= ticksPerCandle)
+                {
+                    tickInCandle = 0;
+                    var prevDate = _rtCandleData.Count > 0 ? _rtCandleData[^1].Date : DateTime.Today.ToString("dd.MM");
+                    var nextDate = NextTradingDate(prevDate);
+
+                    var open = lastClose;
+                    var close = Math.Max(1, open + (_rnd.NextDouble() - 0.5) * 8);
+
+                    double high = Math.Max(open, close) + _rnd.NextDouble() * 6;
+                    double low  = Math.Min(open, close) - _rnd.NextDouble() * 6;
+
+                    _rtCandleData.Add(new()
+                    {
+                        Date  = nextDate,
+                        Open  = Math.Round(open, 1),
+                        Close = Math.Round(close, 1),
+                        High  = Math.Round(high, 1),
+                        Low   = Math.Round(low,  1),
+                    });
+
+                    if (_rtCandleData.Count > _rtDays)
+                        _rtCandleData = _rtCandleData.Skip(_rtCandleData.Count - _rtDays).ToList();
+                }
+
+                // ── Sensor ────────────────────────────────────────────────
+                // sin wave + noise, with slow drift
+                sensorT += 0.12;
+                double amp = 1.2 + Math.Sin(sensorT / 5.5) * 0.35;
+                double noise = (_rnd.NextDouble() - 0.5) * 0.25;
+                double value = amp * Math.Sin(sensorT) + noise;
+
+                var sensorNext = new SgEChartsDataPoint
+                {
+                    Label = (sensorT % (2 * Math.PI)) < 0 ? "t" : sensorT.ToString("0.00"),
+                    Value = Math.Round(value, 2),
+                    Group = "Sensor",
+                };
+
+                _rtSensorData.Add(sensorNext);
+                if (_rtSensorData.Count > _rtSensorPoints)
+                    _rtSensorData = _rtSensorData.Skip(_rtSensorData.Count - _rtSensorPoints).ToList();
+
+                try
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        if (_rtChartRef is not null)
+                            await _rtChartRef.RefreshAsync();
+                        if (_rtSensorChartRef is not null)
+                            await _rtSensorChartRef.RefreshAsync();
+                        StateHasChanged();
+                    });
+                }
+                catch { }
+
+                try
+                {
+                    await Task.Delay(200, token);
+                }
+                catch (TaskCanceledException) { }
+            }
+        }, token);
+    }
+
+    private void StopRealTime()
+    {
+        if (!_rtRunning) return;
+        _rtRunning = false;
+
+        try { _rtCts?.Cancel(); } catch { }
+    }
+
+    private List<SgEChartsDataPoint> GenerateInitialSensorWindow(int points)
+    {
+        var list = new List<SgEChartsDataPoint>(points);
+        double t = 0;
+
+        // Match the streaming look: sin wave + noise
+        for (int i = 0; i < points; i++)
+        {
+            t += 0.12;
+            double amp = 1.2 + Math.Sin(t / 5.5) * 0.35;
+            double noise = (_rnd.NextDouble() - 0.5) * 0.25;
+            double value = amp * Math.Sin(t) + noise;
+
+            list.Add(new SgEChartsDataPoint
+            {
+                Label = t.ToString("0.00"),
+                Value = Math.Round(value, 2),
+                Group = "Sensor",
+            });
+        }
+
+        return list;
+    }
+
+    private List<SgEChartsCandlePoint> GenerateInitialCandleWindow(int days)
+    {
+        var list = new List<SgEChartsCandlePoint>(days);
+        double price = 1000 + _rnd.NextDouble() * 500;
+
+        for (int i = 0; i < days; i++)
+        {
+            var date = DateTime.Today.AddDays(i - days + 1).ToString("dd.MM");
+
+            var open = price;
+            var close = price + (_rnd.NextDouble() - 0.48) * 40;
+            var low = Math.Min(open, close) - _rnd.NextDouble() * 15;
+            var high = Math.Max(open, close) + _rnd.NextDouble() * 15;
+
+            list.Add(new()
+            {
+                Date = date,
+                Open = Math.Round(open, 1),
+                Close = Math.Round(close, 1),
+                Low = Math.Round(low, 1),
+                High = Math.Round(high, 1),
+            });
+
+            price = close;
+        }
+
+        return list;
+    }
+
+    private string NextTradingDate(string currentDdMm)
+    {
+        // Simple next date based on dd.MM; falls back to today if parse fails.
+        if (DateTime.TryParseExact(currentDdMm, "dd.MM", null, System.Globalization.DateTimeStyles.None, out var d))
+        {
+            return d.AddDays(1).ToString("dd.MM");
+        }
+        return DateTime.Today.AddDays(1).ToString("dd.MM");
+    }
 
     private SgEChartsClickEventArgs? _lastClick;
     private void OnClick(SgEChartsClickEventArgs e) { _lastClick = e; StateHasChanged(); }
@@ -477,5 +715,18 @@
         RegenLine(); RegenArea(); RegenScatter(); RegenRadar();
         RegenBar(); RegenHBar(); RegenHeatmap(); RegenCandle();
         RegenPie(); RegenGauge(); RegenFunnel();
+
+        // also init RT defaults (not running)
+        _rtCandleData = GenerateInitialCandleWindow(_rtDays);
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            StopRealTime();
+            _rtCts?.Dispose();
+        }
+        catch { }
     }
 }
