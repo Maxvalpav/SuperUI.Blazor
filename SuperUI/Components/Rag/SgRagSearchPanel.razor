@@ -1,0 +1,140 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-rag-search-panel @CssClass" @attributes="AdditionalAttributes">
+
+    <div class="sg-rag-search-bar">
+        <input type="search"
+               class="sg-rag-search-input"
+               placeholder="@Localizer["Rag_SearchPlaceholder"]"
+               @bind="_query"
+               @bind:event="oninput"
+               @onkeydown="OnKeyDown"
+               aria-label="@Localizer["Rag_SearchPlaceholder"]" />
+        <button type="button" class="sg-rag-btn sg-rag-btn-primary"
+                disabled="@(_searching || string.IsNullOrWhiteSpace(_query))"
+                @onclick="SearchAsync">
+            @if (_searching)
+            {
+                <span class="sg-rag-spinner" aria-hidden="true"></span>
+            }
+            else
+            {
+                <span>@Localizer["Rag_Search"]</span>
+            }
+        </button>
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="sg-rag-alert sg-rag-alert-error" role="alert">@_error</div>
+    }
+
+    @if (_results is not null)
+    {
+        @if (_results.Count == 0)
+        {
+            <div class="sg-rag-no-results">@Localizer["Rag_NoResults"]</div>
+        }
+        else
+        {
+            <div class="sg-rag-results" role="list">
+                @foreach (var hit in _results)
+                {
+                    <div class="sg-rag-result-item" role="listitem">
+                        <div class="sg-rag-result-header">
+                            <span class="sg-rag-result-title">@hit.Document.Title</span>
+                            <span class="sg-rag-badge sg-rag-badge-neutral">chunk #@hit.Chunk.Index</span>
+                            @if (hit.Chunk.Metadata.TryGetValue("language", out var lang))
+                            {
+                                <span class="sg-rag-badge sg-rag-badge-neutral" style="color:var(--sui-accent,#006fee)">@lang</span>
+                            }
+                            @if (hit.Chunk.Metadata.TryGetValue("startLine", out var sl) &&
+                                 hit.Chunk.Metadata.TryGetValue("endLine",   out var el))
+                            {
+                                <span class="sg-rag-badge sg-rag-badge-neutral" style="font-size:10px">L@sl–@el</span>
+                            }
+                            <span class="sg-rag-result-score">@hit.Score.ToString("P0")</span>
+                        </div>
+                        <div class="sg-rag-result-text">
+                            @if (hit.Chunk.Metadata.ContainsKey("language"))
+                            {
+                                @* Code chunk — render in pre/code block *@
+                                <pre class="sg-rag-result-code"><code>@hit.Chunk.Text</code></pre>
+                            }
+                            else if (HighlightMatches && hit.HighlightSpans.Count > 0)
+                            {
+                                @((MarkupString)BuildHighlightedHtml(hit.Chunk.Text, hit.HighlightSpans))
+                            }
+                            else
+                            {
+                                @hit.Chunk.Text
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "RagService")] private SgRagService? _ragService { get; set; }
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public string Collection      { get; set; } = "default";
+    [Parameter] public int    TopK            { get; set; } = 10;
+    [Parameter] public bool   HighlightMatches{ get; set; } = true;
+    [Parameter] public EventCallback<IReadOnlyList<SgRagSearchHit>> OnResults { get; set; }
+    [Parameter] public string? CssClass       { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private string  _query    = string.Empty;
+    private bool    _searching;
+    private string? _error;
+    private IReadOnlyList<SgRagSearchHit>? _results;
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await SearchAsync();
+    }
+
+    private async Task SearchAsync()
+    {
+        if (_ragService is null || string.IsNullOrWhiteSpace(_query)) return;
+        _searching = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            _results = await _ragService.SearchAsync(_query, Collection, TopK);
+            if (OnResults.HasDelegate) await OnResults.InvokeAsync(_results);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _searching = false; StateHasChanged(); }
+    }
+
+    private static string BuildHighlightedHtml(string text, IReadOnlyList<(int Start, int End)> spans)
+    {
+        if (spans.Count == 0) return System.Web.HttpUtility.HtmlEncode(text);
+        var sb = new System.Text.StringBuilder();
+        int pos = 0;
+        foreach (var (start, end) in spans.OrderBy(s => s.Start))
+        {
+            if (start > pos)
+                sb.Append(System.Web.HttpUtility.HtmlEncode(text.Substring(pos, start - pos)));
+            sb.Append("<mark class=\"sg-rag-highlight\">");
+            sb.Append(System.Web.HttpUtility.HtmlEncode(text.Substring(start, end - start)));
+            sb.Append("</mark>");
+            pos = end;
+        }
+        if (pos < text.Length)
+            sb.Append(System.Web.HttpUtility.HtmlEncode(text.Substring(pos)));
+        return sb.ToString();
+    }
+}

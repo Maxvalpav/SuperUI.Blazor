@@ -1,0 +1,209 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-rag-uploader @CssClass @(_isDragging ? "sg-rag-uploader-drag" : "")"
+     @ondragover:preventDefault
+     @ondragover="OnDragOver"
+     @ondragleave="OnDragLeave"
+     @ondrop:preventDefault
+     @ondrop="OnDrop"
+     @attributes="AdditionalAttributes">
+
+    @if (_error is not null)
+    {
+        <div class="sg-rag-alert sg-rag-alert-error" role="alert">@_error</div>
+    }
+
+    @* Drop zone *@
+    <div class="sg-rag-drop-hint">
+        <svg class="sg-rag-upload-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
+            <path fill="currentColor" d="M12 2a1 1 0 0 1 .707.293l4 4a1 1 0 0 1-1.414 1.414L13 5.414V15a1 1 0 1 1-2 0V5.414L8.707 7.707A1 1 0 0 1 7.293 6.293l4-4A1 1 0 0 1 12 2ZM4 17a1 1 0 0 1 1 1v1h14v-1a1 1 0 1 1 2 0v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a1 1 0 0 1 1-1Z"/>
+        </svg>
+        <p class="sg-rag-drop-text">@Localizer["Rag_Drop"]</p>
+        <p class="sg-rag-drop-sub">
+            <span>Docs: PDF, DOCX, MD, TXT, HTML, JSON</span><br/>
+            <span>Code: CS, JS, TS, PY, JAVA, GO, RS, CPP, SQL, YAML…</span><br/>
+            <span style="opacity:.7">@Localizer.GetString("Rag_MaxSize", MaxFileSizeMb)</span>
+        </p>
+        <label class="sg-rag-file-btn">
+            @Localizer["Rag_Browse"]
+            <InputFile OnChange="OnFilesSelected" accept="@Accept" multiple="@MultipleFiles" style="display:none" />
+        </label>
+    </div>
+
+    @* Ingest queue *@
+    @if (_queue.Count > 0)
+    {
+        <div class="sg-rag-queue">
+            @foreach (var item in _queue)
+            {
+                <div class="sg-rag-queue-item @(item.Done ? "done" : item.Error is not null ? "error" : "")">
+                    @* File type icon *@
+                    @if (item.IsCode)
+                    {
+                        <svg viewBox="0 0 16 16" width="13" height="13" style="flex-shrink:0;color:var(--sui-accent,#006fee)" aria-hidden="true">
+                            <path fill="currentColor" d="M10.478 1.647a.5.5 0 1 0-.956-.294l-4 13a.5.5 0 0 0 .956.294zM4.854 4.146a.5.5 0 0 1 0 .708L1.707 8l3.147 3.146a.5.5 0 0 1-.708.708l-3.5-3.5a.5.5 0 0 1 0-.708l3.5-3.5a.5.5 0 0 1 .708 0m6.292 0a.5.5 0 0 0 0 .708L14.293 8l-3.147 3.146a.5.5 0 0 0 .708.708l3.5-3.5a.5.5 0 0 0 0-.708l-3.5-3.5a.5.5 0 0 0-.708 0"/>
+                        </svg>
+                    }
+                    else
+                    {
+                        <svg viewBox="0 0 16 16" width="13" height="13" style="flex-shrink:0;color:var(--sui-text-secondary,#9ca3af)" aria-hidden="true">
+                            <path fill="currentColor" d="M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z"/>
+                        </svg>
+                    }
+
+                    <span class="sg-rag-queue-name" title="@item.FileName">@item.FileName</span>
+
+                    @if (item.Language is not null)
+                    {
+                        <span class="sg-rag-badge sg-rag-badge-neutral" style="font-size:10px;padding:1px 6px">@item.Language</span>
+                    }
+
+                    @if (item.Done)
+                    {
+                        <span class="sg-rag-badge sg-rag-badge-success">✓ @item.ChunkCount chunks</span>
+                    }
+                    else if (item.Error is not null)
+                    {
+                        <span class="sg-rag-badge sg-rag-badge-error" title="@item.Error">✗ error</span>
+                    }
+                    else
+                    {
+                        <div class="sg-rag-progress-bar" style="flex:1;max-width:120px">
+                            <div class="sg-rag-progress-fill sg-rag-progress-indeterminate"></div>
+                        </div>
+                        <span class="sg-rag-queue-phase">@item.Phase</span>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "RagService")] private SgRagService? _ragService { get; set; }
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public string   Collection   { get; set; } = "default";
+    [Parameter] public string   Accept       { get; set; } = ".pdf,.txt,.md,.docx,.html,.json," +
+        ".cs,.js,.ts,.tsx,.jsx,.py,.java,.go,.rs,.cpp,.c,.h,.hpp,.rb,.php,.swift,.kt,.vue,.svelte," +
+        ".sh,.ps1,.sql,.r,.lua,.dart,.scala,.ex,.exs,.hs,.fs,.fsx,.razor,.cshtml,.yaml,.yml,.toml,.xml,.xaml";
+    [Parameter] public int      MaxFileSizeMb{ get; set; } = 50;
+    [Parameter] public bool     MultipleFiles{ get; set; } = true;
+    [Parameter] public EventCallback<SgRagDocumentIngestResult> OnIngested { get; set; }
+    [Parameter] public SgRagChunkingOptions? ChunkingOptions { get; set; }
+    [Parameter] public string?  CssClass     { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private bool   _isDragging;
+    private string? _error;
+
+    private sealed class QueueItem
+    {
+        public string  FileName   { get; set; } = string.Empty;
+        public bool    Done       { get; set; }
+        public int     ChunkCount { get; set; }
+        public string? Error      { get; set; }
+        public string  Phase      { get; set; } = "queued";
+        public bool    IsCode     { get; set; }
+        public string? Language   { get; set; }
+    }
+
+    private readonly List<QueueItem> _queue = new();
+
+    // ── Drag & Drop ───────────────────────────────────────────────────────────
+
+    private void OnDragOver()  { _isDragging = true;  StateHasChanged(); }
+    private void OnDragLeave() { _isDragging = false; StateHasChanged(); }
+
+    private async Task OnDrop(DragEventArgs _)
+    {
+        _isDragging = false;
+        StateHasChanged();
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var files = e.GetMultipleFiles(maximumFileCount: 50);
+        foreach (var file in files)
+            await IngestFileAsync(file);
+    }
+
+    private async Task IngestFileAsync(IBrowserFile file)
+    {
+        if (_ragService is null) { _error = "RagService not available"; return; }
+
+        var lang   = DetectLanguage(file.Name);
+        var isCode = lang is not null;
+        var item   = new QueueItem { FileName = file.Name, Phase = "parsing", IsCode = isCode, Language = lang };
+        _queue.Add(item);
+        StateHasChanged();
+
+        void OnProgress(SgRagIndexProgress p)
+        {
+            item.Phase = p.Phase;
+            InvokeAsync(StateHasChanged);
+        }
+
+        _ragService.OnIndexProgress += OnProgress;
+        try
+        {
+            // For code files auto-select Code chunking strategy
+            var opts = ChunkingOptions;
+            if (isCode && (opts is null || opts.Strategy == SgRagChunkStrategy.Recursive))
+            {
+                opts = new SgRagChunkingOptions
+                {
+                    Strategy  = SgRagChunkStrategy.Code,
+                    ChunkSize = ChunkingOptions?.ChunkSize ?? 512,
+                    Overlap   = ChunkingOptions?.Overlap   ?? 64,
+                };
+            }
+
+            var result = await _ragService.IngestFileAsync(file, Collection, opts);
+
+            item.Done       = result.Success;
+            item.ChunkCount = result.ChunkCount;
+            item.Error      = result.Error;
+
+            if (OnIngested.HasDelegate)
+                await OnIngested.InvokeAsync(result);
+        }
+        catch (Exception ex)
+        {
+            item.Error = ex.Message;
+        }
+        finally
+        {
+            _ragService.OnIndexProgress -= OnProgress;
+            StateHasChanged();
+        }
+    }
+
+    private static readonly Dictionary<string, string> _codeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        {".cs","C#"},{".js","JS"},{".ts","TS"},{".tsx","TSX"},{".jsx","JSX"},
+        {".py","Python"},{".java","Java"},{".go","Go"},{".rs","Rust"},
+        {".cpp","C++"},{".c","C"},{".h","C"},{".hpp","C++"},
+        {".rb","Ruby"},{".php","PHP"},{".swift","Swift"},{".kt","Kotlin"},
+        {".vue","Vue"},{".svelte","Svelte"},{".sh","Bash"},{".ps1","PS"},
+        {".sql","SQL"},{".r","R"},{".lua","Lua"},{".dart","Dart"},
+        {".scala","Scala"},{".ex","Elixir"},{".exs","Elixir"},
+        {".hs","Haskell"},{".fs","F#"},{".fsx","F#"},
+        {".razor","Razor"},{".cshtml","Razor"},
+        {".yaml","YAML"},{".yml","YAML"},{".toml","TOML"},
+        {".xml","XML"},{".xaml","XAML"},
+    };
+
+    private static string? DetectLanguage(string fileName)
+    {
+        var ext = System.IO.Path.GetExtension(fileName);
+        return _codeExtensions.TryGetValue(ext, out var lang) ? lang : null;
+    }
+}

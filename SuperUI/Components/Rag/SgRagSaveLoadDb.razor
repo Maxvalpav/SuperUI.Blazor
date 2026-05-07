@@ -1,0 +1,181 @@
+@namespace SuperUI.Components
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-rag-saveload @CssClass" @attributes="AdditionalAttributes">
+
+    @if (_error is not null)
+    {
+        <div class="sg-rag-alert sg-rag-alert-error" role="alert">@_error</div>
+    }
+
+    <div class="sg-rag-saveload-toolbar">
+        <button type="button" class="sg-rag-btn sg-rag-btn-primary" @onclick="ExportAsync">
+            ⬇ @Localizer["Rag_Export"]
+        </button>
+
+        <label class="sg-rag-file-btn">
+            ⬆ @Localizer["Rag_Import"]
+            <InputFile OnChange="OnImportFileSelected" accept=".sgrag,.json" style="display:none" />
+        </label>
+
+        <button type="button" class="sg-rag-btn sg-rag-btn-ghost" @onclick="CreateSnapshotAsync">
+            📸 @Localizer["Rag_Snapshot"]
+        </button>
+
+        @if (_snapshots.Count > 0)
+        {
+            <button type="button" class="sg-rag-btn sg-rag-btn-ghost" @onclick="LoadSnapshotsAsync">
+                ↻ @Localizer["Rag_Refresh"]
+            </button>
+        }
+    </div>
+
+    @if (_snapshots.Count > 0)
+    {
+        <div class="sg-rag-section">
+            <div class="sg-rag-section-title">@Localizer["Rag_Snapshots"]</div>
+            <div class="sg-rag-snapshot-list">
+                @foreach (var snap in _snapshots)
+                {
+                    <div class="sg-rag-snapshot-item">
+                        <div class="sg-rag-snapshot-info">
+                            <div class="sg-rag-snapshot-note">@(snap.Note ?? snap.Id.Substring(0, 8))</div>
+                            <div class="sg-rag-snapshot-meta">
+                                <span class="sg-rag-badge sg-rag-badge-neutral">@snap.Kind</span>
+                                @FormatSize(snap.SizeBytes)
+                            </div>
+                        </div>
+                        <button type="button" class="sg-rag-btn sg-rag-btn-ghost"
+                                @onclick="@(() => RestoreSnapshotAsync(snap.Id))">
+                            @Localizer["Rag_Restore"]
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "RagService")] private SgRagService? _ragService { get; set; }
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public bool EnableAutoSnapshot       { get; set; } = true;
+    [Parameter] public int  AutoSnapshotIntervalMin  { get; set; } = 10;
+    [Parameter] public EventCallback<SgRagSnapshotInfo> OnExported { get; set; }
+    [Parameter] public EventCallback<SgRagSnapshotInfo> OnImported { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private List<SgRagSnapshotInfo> _snapshots = new();
+    private string? _error;
+    private System.Timers.Timer? _autoTimer;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        await LoadSnapshotsAsync();
+
+        if (EnableAutoSnapshot && AutoSnapshotIntervalMin > 0)
+        {
+            _autoTimer = new System.Timers.Timer(AutoSnapshotIntervalMin * 60_000);
+            _autoTimer.Elapsed += async (_, _) => await AutoSnapshotAsync();
+            _autoTimer.AutoReset = true;
+            _autoTimer.Start();
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        if (_ragService is null) return;
+        _error = null;
+        try
+        {
+            var data = await _ragService.ExportAsync();
+            var bytes = System.Text.Encoding.UTF8.GetBytes(data);
+            var b64 = Convert.ToBase64String(bytes);
+            await JS.InvokeVoidAsync("eval",
+                $"const a=document.createElement('a');a.href='data:application/json;base64,{b64}';a.download='sg-rag-export-{DateTime.Now:yyyyMMdd-HHmmss}.sgrag';document.body.appendChild(a);a.click();document.body.removeChild(a);");
+
+            var snap = new SgRagSnapshotInfo { Note = "export", SizeBytes = bytes.Length };
+            if (OnExported.HasDelegate) await OnExported.InvokeAsync(snap);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        StateHasChanged();
+    }
+
+    private async Task OnImportFileSelected(InputFileChangeEventArgs e)
+    {
+        if (_ragService is null) return;
+        _error = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 200 * 1024 * 1024);
+            using var ms = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            var data = System.Text.Encoding.UTF8.GetString(ms.ToArray());
+            await _ragService.ImportAsync(data, merge: false);
+
+            var snap = new SgRagSnapshotInfo { Note = "import", SizeBytes = ms.Length };
+            if (OnImported.HasDelegate) await OnImported.InvokeAsync(snap);
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        StateHasChanged();
+    }
+
+    private async Task CreateSnapshotAsync()
+    {
+        if (_ragService is null) return;
+        try
+        {
+            var snap = await _ragService.CreateSnapshotAsync(SgRagSnapshotKind.Manual, $"manual-{DateTime.Now:HH:mm}");
+            _snapshots.Insert(0, snap);
+            StateHasChanged();
+        }
+        catch (Exception ex) { _error = ex.Message; StateHasChanged(); }
+    }
+
+    private async Task AutoSnapshotAsync()
+    {
+        if (_ragService is null) return;
+        try { await _ragService.CreateSnapshotAsync(SgRagSnapshotKind.Auto); }
+        catch { }
+    }
+
+    private async Task LoadSnapshotsAsync()
+    {
+        if (_ragService is null) return;
+        try
+        {
+            _snapshots = (await _ragService.ListSnapshotsAsync()).ToList();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task RestoreSnapshotAsync(string id)
+    {
+        if (_ragService is null) return;
+        try { await _ragService.RestoreSnapshotAsync(id); }
+        catch (Exception ex) { _error = ex.Message; StateHasChanged(); }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024        => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _             => $"{bytes / (1024.0 * 1024):F1} MB",
+    };
+
+    public void Dispose()
+    {
+        _autoTimer?.Stop();
+        _autoTimer?.Dispose();
+    }
+}

@@ -1,0 +1,75 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject SgRagService RagService
+
+<CascadingValue Value="RagService" Name="RagService">
+    <CascadingValue Value="_readyState" Name="RagReadyState">
+        @ChildContent
+    </CascadingValue>
+</CascadingValue>
+
+@code {
+    private SgRagReadyState _readyState = new();
+    private bool _initialized;
+    private bool _isDisposed;
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>RAG configuration options.</summary>
+    [Parameter] public SgRagOptions Options { get; set; } = new();
+
+    /// <summary>Child components that can consume the RAG cascade.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Fired when the ready state changes (embedding loaded, LLM ready, etc.).</summary>
+    [Parameter] public EventCallback<SgRagReadyState> OnReadyChanged { get; set; }
+
+    /// <summary>
+    /// When <c>true</c> (default), automatically calls <see cref="SgRagService.InitAsync"/>
+    /// on first render. Set to <c>false</c> to initialise manually.
+    /// </summary>
+    [Parameter] public bool AutoInit { get; set; } = true;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        RagService.OnStateChanged += HandleStateChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _initialized || !AutoInit || _isDisposed) return;
+        _initialized = true;
+
+        try
+        {
+            await RagService.InitAsync(Options);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[SgRagProvider] Init failed: {ex.Message}");
+        }
+    }
+
+    private void HandleStateChanged(SgRagReadyState state)
+    {
+        _readyState = state;
+        InvokeAsync(async () =>
+        {
+            StateHasChanged();
+            if (OnReadyChanged.HasDelegate)
+                await OnReadyChanged.InvokeAsync(state);
+        });
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        RagService.OnStateChanged -= HandleStateChanged;
+        await RagService.DisposeAsync();
+    }
+}

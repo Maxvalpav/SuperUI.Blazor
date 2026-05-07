@@ -39,6 +39,7 @@ public static class ServiceCollectionExtensions
         services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
         services.TryAddScoped<SgZIndexService>();
         services.TryAddScoped<SgThemeService>();
+        services.TryAddScoped<SgRagService>();
 
         return services;
     }
