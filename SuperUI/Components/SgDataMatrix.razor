@@ -1,101 +1,198 @@
 @namespace SuperUI.Components
 @typeparam TItem
 
-<div class="sgc-matrix @CssClass">
-    @if (!string.IsNullOrEmpty(Title))
+<div class="sgc-matrix @(Compact ? "sgc-matrix-compact" : "") @(Heatmap ? "sgc-matrix-heatmap" : "") @CssClass">
+    @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Description) || ToolbarContent is not null || ShowSearch)
     {
-        <div class="sgc-matrix-title">@Title</div>
-    }
-    <div class="sgc-matrix-wrap" @onmouseleave="ClearHover">
-        <table class="sgc-matrix-table">
-            <thead>
-                <tr>
-                    <th class="sgc-matrix-corner">
-                        <span class="sgc-matrix-corner-col">@ColumnTitle</span>
-                        <span class="sgc-matrix-corner-row">@RowTitle</span>
-                    </th>
-                    @for (var ci = 0; ci < _columns.Count; ci++)
-                    {
-                        var colIndex = ci;
-                        var col = _columns[colIndex];
-                        <th class="sgc-matrix-col-header @(_hoverCol == colIndex ? "sgc-matrix-hover-col" : "")">@col</th>
-                    }
-                    @if (_showTotals)
-                    {
-                        <th class="sgc-matrix-total-header">Total</th>
-                    }
-                </tr>
-            </thead>
-            <tbody>
-                @for (var ri = 0; ri < _rows.Count; ri++)
+        <div class="sgc-matrix-header">
+            <div class="sgc-matrix-header-text">
+                @if (!string.IsNullOrEmpty(Title))
                 {
-                    var rowIndex = ri;
-                    var row = _rows[rowIndex];
+                    <div class="sgc-matrix-title">@Title</div>
+                }
+                @if (!string.IsNullOrEmpty(Description))
+                {
+                    <div class="sgc-matrix-desc">@Description</div>
+                }
+            </div>
+            <div class="sgc-matrix-toolbar">
+                @if (ShowSearch)
+                {
+                    <div class="sgc-matrix-search">
+                        <span class="sgc-matrix-search-ico" aria-hidden="true">@((MarkupString)IconSearch)</span>
+                        <input type="search"
+                               class="sgc-input"
+                               placeholder="@SearchPlaceholder"
+                               value="@_search"
+                               aria-label="@SearchPlaceholder"
+                               @oninput="OnSearchChanged" />
+                        @if (!string.IsNullOrEmpty(_search))
+                        {
+                            <button type="button"
+                                    class="sgc-matrix-search-clear"
+                                    title="Clear"
+                                    aria-label="Clear"
+                                    @onclick="ClearSearch">@((MarkupString)IconX)</button>
+                        }
+                    </div>
+                }
+                @if (ToolbarContent is not null)
+                {
+                    @ToolbarContent
+                }
+            </div>
+        </div>
+    }
+
+    @if (Loading)
+    {
+        <div class="sgc-matrix-wrap" aria-busy="true">
+            <div class="sgc-matrix-skeleton">
+                @for (int i = 0; i < 6; i++)
+                {
+                    <span class="sgc-matrix-skeleton-line"></span>
+                }
+            </div>
+        </div>
+    }
+    else if (_visibleRows.Count == 0 || _columns.Count == 0)
+    {
+        <div class="sgc-matrix-empty-state">
+            @if (EmptyContent is not null)
+            {
+                @EmptyContent
+            }
+            else
+            {
+                <div class="sgc-matrix-empty-ico" aria-hidden="true">@((MarkupString)IconTable)</div>
+                <div class="sgc-matrix-empty-title">@EmptyTitle</div>
+                @if (!string.IsNullOrEmpty(EmptyDescription))
+                {
+                    <div class="sgc-matrix-empty-desc">@EmptyDescription</div>
+                }
+            }
+        </div>
+    }
+    else
+    {
+        <div class="sgc-matrix-wrap" @onmouseleave="ClearHover">
+            <table class="sgc-matrix-table" role="grid" aria-label="@(Title ?? "Data matrix")">
+                <thead>
                     <tr>
-                        <td class="sgc-matrix-row-header @(_hoverRow == rowIndex ? "sgc-matrix-hover-row" : "")">@row</td>
+                        <th class="sgc-matrix-corner @(_sortBy == SortMode.Total ? "sgc-matrix-sorted" : "")"
+                            scope="col"
+                            role="columnheader"
+                            @onclick="SortByGrandTotal">
+                            <span class="sgc-matrix-corner-col">@ColumnTitle</span>
+                            <span class="sgc-matrix-corner-row">@RowTitle</span>
+                            @if (_showTotals && AllowSort)
+                            {
+                                <span class="sgc-matrix-sort-ico" aria-hidden="true">@((MarkupString)GetSortIcon(SortMode.Total, null))</span>
+                            }
+                        </th>
                         @for (var ci = 0; ci < _columns.Count; ci++)
                         {
                             var colIndex = ci;
                             var col = _columns[colIndex];
-                            var cellItems = GetCellItems(row, col);
-                            var isEditing = EditTemplate is not null && _editingRow == rowIndex && _editingCol == colIndex;
-                            var rowHover = _hoverRow == rowIndex;
-                            var colHover = _hoverCol == colIndex;
-                            var hoverClass = (rowHover || colHover) ? "sgc-matrix-hover" : "";
-                            var editClass = isEditing ? "sgc-matrix-cell-editing" : "";
-                            var clickable = EditTemplate is not null ? "sgc-matrix-cell-clickable" : "";
-                            <td class="sgc-matrix-cell @(cellItems.Count == 0 ? "sgc-matrix-empty" : "") @hoverClass @editClass @clickable"
-                                @onmouseover="() => SetHover(rowIndex, colIndex)"
-                                @ondblclick="() => BeginEditAsync(rowIndex, colIndex)">
-                                @{
-                                    var ctx = new SgDataMatrixCellContext<TItem>
-                                    {
-                                        RowKey = row,
-                                        ColumnKey = col,
-                                        Items = cellItems,
-                                        AggregateValue = GetAggregate(row, col),
-                                        IsEditing = isEditing,
-                                        BeginEdit = () => BeginEditAsync(rowIndex, colIndex),
-                                        Commit = () => CommitAsync(rowIndex, colIndex),
-                                        Cancel = () => CancelAsync()
-                                    };
-                                }
-                                @if (isEditing && EditTemplate is not null)
+                            <th class="sgc-matrix-col-header @(_hoverCol == colIndex ? "sgc-matrix-hover-col" : "") @(IsColumnSorted(col) ? "sgc-matrix-sorted" : "")"
+                                scope="col"
+                                role="columnheader"
+                                title="@col"
+                                @onclick="() => SortByColumn(col)">
+                                <span class="sgc-matrix-col-header-text">@col</span>
+                                @if (AllowSort && ValueField is not null)
                                 {
-                                    @EditTemplate(ctx)
+                                    <span class="sgc-matrix-sort-ico" aria-hidden="true">@((MarkupString)GetSortIcon(SortMode.Column, col))</span>
                                 }
-                                else if (CellTemplate is not null)
-                                {
-                                    @CellTemplate(ctx)
-                                }
-                                else
-                                {
-                                    @FormatValue(GetAggregate(row, col))
-                                }
-                            </td>
+                            </th>
                         }
                         @if (_showTotals)
                         {
-                            <td class="sgc-matrix-total-cell">@FormatValue(GetRowTotal(row))</td>
+                            <th class="sgc-matrix-total-header" scope="col">@TotalLabel</th>
                         }
                     </tr>
+                </thead>
+                <tbody>
+                    @for (var ri = 0; ri < _visibleRows.Count; ri++)
+                    {
+                        var rowIndex = ri;
+                        var row = _visibleRows[rowIndex];
+                        <tr>
+                            <th class="sgc-matrix-row-header @(_hoverRow == rowIndex ? "sgc-matrix-hover-row" : "")"
+                                scope="row"
+                                role="rowheader"
+                                title="@row">@row</th>
+                            @for (var ci = 0; ci < _columns.Count; ci++)
+                            {
+                                var colIndex = ci;
+                                var col = _columns[colIndex];
+                                var cellItems = GetCellItems(row, col);
+                                var aggregate = GetAggregate(row, col);
+                                var isEditing = EditTemplate is not null && _editingRow == rowIndex && _editingCol == colIndex;
+                                var rowHover = _hoverRow == rowIndex;
+                                var colHover = _hoverCol == colIndex;
+                                var hoverClass = (rowHover || colHover) ? "sgc-matrix-hover" : "";
+                                var editClass = isEditing ? "sgc-matrix-cell-editing" : "";
+                                var clickable = (EditTemplate is not null || OnCellClick.HasDelegate) ? "sgc-matrix-cell-clickable" : "";
+                                var negative = aggregate.HasValue && aggregate.Value < 0 && HighlightSign;
+                                var positive = aggregate.HasValue && aggregate.Value > 0 && HighlightSign;
+                                var heatStyle = Heatmap && aggregate.HasValue ? GetHeatStyle(aggregate.Value) : null;
+                                <td class="sgc-matrix-cell @(cellItems.Count == 0 ? "sgc-matrix-empty" : "") @hoverClass @editClass @clickable @(negative ? "sgc-matrix-cell-neg" : "") @(positive ? "sgc-matrix-cell-pos" : "")"
+                                    style="@heatStyle"
+                                    role="gridcell"
+                                    @onmouseover="() => SetHover(rowIndex, colIndex)"
+                                    @onclick="() => OnCellClickAsync(rowIndex, colIndex)"
+                                    @ondblclick="() => BeginEditAsync(rowIndex, colIndex)">
+                                    @{
+                                        var ctx = new SgDataMatrixCellContext<TItem>
+                                        {
+                                            RowKey = row,
+                                            ColumnKey = col,
+                                            Items = cellItems,
+                                            AggregateValue = aggregate,
+                                            IsEditing = isEditing,
+                                            BeginEdit = () => BeginEditAsync(rowIndex, colIndex),
+                                            Commit = () => CommitAsync(rowIndex, colIndex),
+                                            Cancel = () => CancelAsync()
+                                        };
+                                    }
+                                    @if (isEditing && EditTemplate is not null)
+                                    {
+                                        @EditTemplate(ctx)
+                                    }
+                                    else if (CellTemplate is not null)
+                                    {
+                                        @CellTemplate(ctx)
+                                    }
+                                    else
+                                    {
+                                        @FormatValue(aggregate)
+                                    }
+                                </td>
+                            }
+                            @if (_showTotals)
+                            {
+                                <td class="sgc-matrix-total-cell">@FormatValue(GetRowTotal(row))</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+                @if (_showTotals)
+                {
+                    <tfoot>
+                        <tr>
+                            <th class="sgc-matrix-total-header" scope="row">@TotalLabel</th>
+                            @foreach (var col in _columns)
+                            {
+                                <td class="sgc-matrix-total-cell">@FormatValue(GetColumnTotal(col))</td>
+                            }
+                            <td class="sgc-matrix-grand-total">@FormatValue(_grandTotal)</td>
+                        </tr>
+                    </tfoot>
                 }
-            </tbody>
-            @if (_showTotals)
-            {
-                <tfoot>
-                    <tr>
-                        <td class="sgc-matrix-total-header">Total</td>
-                        @foreach (var col in _columns)
-                        {
-                            <td class="sgc-matrix-total-cell">@FormatValue(GetColumnTotal(col))</td>
-                        }
-                        <td class="sgc-matrix-grand-total">@FormatValue(_grandTotal)</td>
-                    </tr>
-                </tfoot>
-            }
-        </table>
-    </div>
+            </table>
+        </div>
+    }
 </div>
 
 @code {
@@ -111,44 +208,97 @@
     /// <summary>Function that extracts the numeric value from an item. Optional — when null the matrix works in template mode.</summary>
     [Parameter] public Func<TItem, decimal?>? ValueField { get; set; }
 
-    /// <summary>Custom render fragment for each cell. Receives the items at the row/column intersection.</summary>
+    /// <summary>Custom render fragment for each cell.</summary>
     [Parameter] public RenderFragment<SgDataMatrixCellContext<TItem>>? CellTemplate { get; set; }
 
-    /// <summary>Optional edit fragment. When provided, double-clicking a cell switches it to edit mode and renders this template instead of <see cref="CellTemplate"/>. Use <c>context.Commit</c>/<c>context.Cancel</c> to exit.</summary>
+    /// <summary>Optional edit fragment. Double-click switches a cell to edit mode.</summary>
     [Parameter] public RenderFragment<SgDataMatrixCellContext<TItem>>? EditTemplate { get; set; }
 
-    /// <summary>Raised when an edit is committed via <c>context.Commit()</c>. Use this to persist changes.</summary>
+    /// <summary>Custom toolbar content rendered to the right of the title.</summary>
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+
+    /// <summary>Empty-state replacement.</summary>
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>Raised when an edit is committed.</summary>
     [Parameter] public EventCallback<SgDataMatrixCellContext<TItem>> OnCellCommit { get; set; }
 
-    /// <summary>Aggregation method. Default is Sum. Used only when <see cref="ValueField"/> is set.</summary>
+    /// <summary>Raised when a cell is single-clicked (independent from edit).</summary>
+    [Parameter] public EventCallback<SgDataMatrixCellContext<TItem>> OnCellClick { get; set; }
+
+    /// <summary>Aggregation method. Default is Sum.</summary>
     [Parameter] public SgPivotAggregateType Aggregate { get; set; } = SgPivotAggregateType.Sum;
 
-    /// <summary>Optional format string (e.g. "N2", "C2", "P1"). Default is "N0". Used only when <see cref="ValueField"/> is set.</summary>
+    /// <summary>Numeric format string. Default "N0".</summary>
     [Parameter] public string Format { get; set; } = "N0";
 
-    /// <summary>Text shown when a cell has no data. Default is "—". Used only when <see cref="ValueField"/> is set.</summary>
+    /// <summary>Text shown when a cell has no value. Default "—".</summary>
     [Parameter] public string EmptyValue { get; set; } = "—";
 
-    /// <summary>Whether to show total row and column. Default is true. Ignored when <see cref="CellTemplate"/> is used.</summary>
+    /// <summary>Show totals row/column. Default true.</summary>
     [Parameter] public bool ShowTotals { get; set; } = true;
 
     /// <summary>Title displayed above the matrix.</summary>
     [Parameter] public string? Title { get; set; }
 
-    /// <summary>Header text for rows (top-left corner). Default is empty.</summary>
+    /// <summary>Description rendered under the title.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Header text for rows (top-left corner).</summary>
     [Parameter] public string RowTitle { get; set; } = "";
 
-    /// <summary>Header text for columns (top-left corner). Default is empty.</summary>
+    /// <summary>Header text for columns (top-left corner).</summary>
     [Parameter] public string ColumnTitle { get; set; } = "";
+
+    /// <summary>Total label. Default "Total".</summary>
+    [Parameter] public string TotalLabel { get; set; } = "Total";
+
+    /// <summary>Show search box for filtering rows. Default false.</summary>
+    [Parameter] public bool ShowSearch { get; set; }
+
+    /// <summary>Search placeholder. Default "Search rows…".</summary>
+    [Parameter] public string SearchPlaceholder { get; set; } = "Search rows…";
+
+    /// <summary>Allow sorting rows by clicking column headers. Default true (when <see cref="ValueField"/> is set).</summary>
+    [Parameter] public bool AllowSort { get; set; } = true;
+
+    /// <summary>Color cells by value intensity. Default false.</summary>
+    [Parameter] public bool Heatmap { get; set; }
+
+    /// <summary>Color positive values green and negative red. Default false.</summary>
+    [Parameter] public bool HighlightSign { get; set; }
+
+    /// <summary>Compact density: smaller cell padding.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Render skeleton loading state.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Empty-state title.</summary>
+    [Parameter] public string EmptyTitle { get; set; } = "No data";
+
+    /// <summary>Empty-state description.</summary>
+    [Parameter] public string? EmptyDescription { get; set; } = "Adjust filters or add new records to populate the matrix.";
+
+    /// <summary>Explicit row order (filters out unknown keys, appends remaining rows alphabetically).</summary>
+    [Parameter] public IEnumerable<string>? RowOrder { get; set; }
+
+    /// <summary>Explicit column order.</summary>
+    [Parameter] public IEnumerable<string>? ColumnOrder { get; set; }
 
     /// <summary>Additional CSS class names.</summary>
     [Parameter] public string? CssClass { get; set; }
 
     private List<string> _rows = new();
+    private List<string> _visibleRows = new();
     private List<string> _columns = new();
     private Dictionary<(string, string), List<TItem>> _cellItems = new();
     private Dictionary<(string, string), List<decimal>> _groups = new();
     private decimal? _grandTotal;
+    private decimal _heatMin, _heatMax;
+    private bool _hasHeatRange;
+    private string? _search;
+
     private bool _showTotals => ShowTotals && ValueField is not null && CellTemplate is null && EditTemplate is null;
 
     private int _hoverRow = -1;
@@ -156,9 +306,14 @@
     private int _editingRow = -1;
     private int _editingCol = -1;
 
+    private SortMode _sortBy = SortMode.None;
+    private string? _sortColumn;
+    private bool _sortDescending = true;
+
     protected override void OnParametersSet()
     {
         BuildMatrix();
+        ApplyView();
     }
 
     private void BuildMatrix()
@@ -188,26 +343,79 @@
             }
         }
 
-        _rows = _cellItems.Keys.Select(k => k.Item1).Distinct().OrderBy(r => r).ToList();
-        _columns = _cellItems.Keys.Select(k => k.Item2).Distinct().OrderBy(c => c).ToList();
+        var distinctRows = _cellItems.Keys.Select(k => k.Item1).Distinct().ToList();
+        var distinctCols = _cellItems.Keys.Select(k => k.Item2).Distinct().ToList();
 
-        if (ValueField is not null)
-            _grandTotal = Compute(_groups.Values.SelectMany(v => v));
+        _rows = OrderKeys(distinctRows, RowOrder);
+        _columns = OrderKeys(distinctCols, ColumnOrder);
+
+        _grandTotal = ValueField is not null
+            ? Compute(_groups.Values.SelectMany(v => v))
+            : null;
+
+        if (Heatmap && ValueField is not null)
+        {
+            var vals = new List<decimal>();
+            foreach (var r in _rows)
+                foreach (var c in _columns)
+                {
+                    var a = GetAggregate(r, c);
+                    if (a.HasValue) vals.Add(a.Value);
+                }
+            if (vals.Count > 0)
+            {
+                _heatMin = vals.Min();
+                _heatMax = vals.Max();
+                _hasHeatRange = _heatMax > _heatMin;
+            }
+            else
+            {
+                _hasHeatRange = false;
+            }
+        }
     }
 
-    private List<TItem> GetCellItems(string row, string col)
+    private static List<string> OrderKeys(List<string> source, IEnumerable<string>? explicitOrder)
     {
-        if (_cellItems.TryGetValue((row, col), out var items))
-            return items;
-        return new List<TItem>();
+        if (explicitOrder is null) return source.OrderBy(s => s, StringComparer.CurrentCulture).ToList();
+        var orderList = explicitOrder.ToList();
+        var set = new HashSet<string>(source, StringComparer.Ordinal);
+        var ordered = orderList.Where(set.Contains).ToList();
+        var seen = new HashSet<string>(ordered, StringComparer.Ordinal);
+        ordered.AddRange(source.Where(s => !seen.Contains(s)).OrderBy(s => s, StringComparer.CurrentCulture));
+        return ordered;
     }
 
-    private decimal? GetAggregate(string row, string col)
+    private void ApplyView()
     {
-        if (_groups.TryGetValue((row, col), out var vals))
-            return Compute(vals);
-        return null;
+        IEnumerable<string> rows = _rows;
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var q = _search.Trim();
+            rows = rows.Where(r => r.Contains(q, StringComparison.CurrentCultureIgnoreCase));
+        }
+
+        if (_sortBy == SortMode.Column && !string.IsNullOrEmpty(_sortColumn) && ValueField is not null)
+        {
+            rows = _sortDescending
+                ? rows.OrderByDescending(r => GetAggregate(r, _sortColumn!) ?? decimal.MinValue)
+                : rows.OrderBy(r => GetAggregate(r, _sortColumn!) ?? decimal.MaxValue);
+        }
+        else if (_sortBy == SortMode.Total && ValueField is not null)
+        {
+            rows = _sortDescending
+                ? rows.OrderByDescending(r => GetRowTotal(r) ?? decimal.MinValue)
+                : rows.OrderBy(r => GetRowTotal(r) ?? decimal.MaxValue);
+        }
+
+        _visibleRows = rows.ToList();
     }
+
+    private List<TItem> GetCellItems(string row, string col) =>
+        _cellItems.TryGetValue((row, col), out var items) ? items : new List<TItem>();
+
+    private decimal? GetAggregate(string row, string col) =>
+        _groups.TryGetValue((row, col), out var vals) ? Compute(vals) : null;
 
     private decimal? GetRowTotal(string row)
     {
@@ -243,6 +451,16 @@
         catch { return val.Value.ToString(); }
     }
 
+    private string? GetHeatStyle(decimal value)
+    {
+        if (!_hasHeatRange) return null;
+        var t = (double)((value - _heatMin) / (_heatMax - _heatMin));
+        if (double.IsNaN(t) || double.IsInfinity(t)) t = 0;
+        t = Math.Clamp(t, 0.0, 1.0);
+        var pct = (int)Math.Round(t * 80) + 8; // 8% .. 88%
+        return $"background: color-mix(in srgb, var(--sui-accent) {pct}%, transparent);";
+    }
+
     private void SetHover(int rowIndex, int colIndex)
     {
         if (_hoverRow == rowIndex && _hoverCol == colIndex) return;
@@ -255,6 +473,72 @@
         if (_hoverRow == -1 && _hoverCol == -1) return;
         _hoverRow = -1;
         _hoverCol = -1;
+    }
+
+    private void OnSearchChanged(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString();
+        ApplyView();
+    }
+
+    private void ClearSearch()
+    {
+        _search = null;
+        ApplyView();
+    }
+
+    private void SortByColumn(string col)
+    {
+        if (!AllowSort || ValueField is null) return;
+        if (_sortBy == SortMode.Column && _sortColumn == col)
+            _sortDescending = !_sortDescending;
+        else
+        {
+            _sortBy = SortMode.Column;
+            _sortColumn = col;
+            _sortDescending = true;
+        }
+        ApplyView();
+    }
+
+    private void SortByGrandTotal()
+    {
+        if (!AllowSort || ValueField is null || !_showTotals) return;
+        if (_sortBy == SortMode.Total)
+            _sortDescending = !_sortDescending;
+        else
+        {
+            _sortBy = SortMode.Total;
+            _sortColumn = null;
+            _sortDescending = true;
+        }
+        ApplyView();
+    }
+
+    private bool IsColumnSorted(string col) => _sortBy == SortMode.Column && _sortColumn == col;
+
+    private string GetSortIcon(SortMode mode, string? col)
+    {
+        var active = mode == SortMode.Column ? IsColumnSorted(col!) : _sortBy == SortMode.Total;
+        if (!active) return IconSortNeutral;
+        return _sortDescending ? IconSortDesc : IconSortAsc;
+    }
+
+    private async Task OnCellClickAsync(int rowIndex, int colIndex)
+    {
+        if (!OnCellClick.HasDelegate) return;
+        if (rowIndex < 0 || rowIndex >= _visibleRows.Count) return;
+        if (colIndex < 0 || colIndex >= _columns.Count) return;
+        var row = _visibleRows[rowIndex];
+        var col = _columns[colIndex];
+        var ctx = new SgDataMatrixCellContext<TItem>
+        {
+            RowKey = row,
+            ColumnKey = col,
+            Items = GetCellItems(row, col),
+            AggregateValue = GetAggregate(row, col)
+        };
+        await OnCellClick.InvokeAsync(ctx);
     }
 
     private Task BeginEditAsync(int rowIndex, int colIndex)
@@ -271,8 +555,9 @@
     {
         if (EditTemplate is null) return;
         if (_editingRow != rowIndex || _editingCol != colIndex) return;
+        if (rowIndex < 0 || rowIndex >= _visibleRows.Count) return;
 
-        var row = _rows[rowIndex];
+        var row = _visibleRows[rowIndex];
         var col = _columns[colIndex];
         var ctx = new SgDataMatrixCellContext<TItem>
         {
@@ -290,6 +575,7 @@
             await OnCellCommit.InvokeAsync(ctx);
 
         BuildMatrix();
+        ApplyView();
         StateHasChanged();
     }
 
@@ -301,4 +587,20 @@
         StateHasChanged();
         return Task.CompletedTask;
     }
+
+    private enum SortMode { None, Column, Total }
+
+    // ── Inline icons ────────────────────────────────────────────────────────
+    private const string IconSearch =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"></line></svg>";
+    private const string IconX =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"></line><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"></line></svg>";
+    private const string IconSortAsc =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"18 15 12 9 6 15\"></polyline></svg>";
+    private const string IconSortDesc =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"6 9 12 15 18 9\"></polyline></svg>";
+    private const string IconSortNeutral =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" opacity=\"0.45\"><polyline points=\"7 10 12 5 17 10\"></polyline><polyline points=\"7 14 12 19 17 14\"></polyline></svg>";
+    private const string IconTable =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"16\" rx=\"2\"></rect><line x1=\"3\" y1=\"10\" x2=\"21\" y2=\"10\"></line><line x1=\"9\" y1=\"4\" x2=\"9\" y2=\"20\"></line></svg>";
 }
