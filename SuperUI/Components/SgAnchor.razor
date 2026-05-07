@@ -1,0 +1,154 @@
+@namespace SuperUI.Components
+@inject IJSRuntime JS
+@implements IDisposable
+@implements IAsyncDisposable
+
+<div class="sgc-anchor @CssClass @(Position.ToLowerInvariant()) @(Orientation.ToLowerInvariant())" 
+     style="@Style" @attributes="AdditionalAttributes">
+    
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <div class="sgc-anchor-title">@Title</div>
+    }
+    
+    <nav class="sgc-anchor-nav" aria-label="Page navigation">
+        @foreach (var item in ProcessedItems)
+        {
+            <a href="#@item.Id" 
+               class="sgc-anchor-link @(item.Level > 2 ? "sgc-anchor-sub" : "") @(item.IsActive ? "active" : "")"
+               style="padding-left: @(GetIndent(item.Level))rem"
+               @onclick="() => ScrollToAsync(item.Id)"
+               @onclick:preventDefault
+               title="@item.Title">
+                @if (!string.IsNullOrEmpty(item.Icon))
+                {
+                    <span class="sgc-anchor-icon">@item.Icon</span>
+                }
+                <span class="sgc-anchor-text">@item.Title</span>
+                @if (ShowBadge && item.Level == 2)
+                {
+                    <span class="sgc-anchor-badge">H@(item.Level)</span>
+                }
+            </a>
+        }
+    </nav>
+    
+    @if (ShowScrollProgress)
+    {
+        <div class="sgc-anchor-progress">
+            <div class="sgc-anchor-progress-bar" style="width: @(_scrollProgress)%"></div>
+        </div>
+    }
+</div>
+
+@code {
+    private DotNetObjectReference<SgAnchor>? _dotNetRef;
+    private IJSObjectReference? _module;
+    private string? _activeId;
+    private double _scrollProgress;
+    
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public List<AnchorItem> Items { get; set; } = new();
+    [Parameter] public bool AutoScan { get; set; } = true;
+    [Parameter] public string Selector { get; set; } = "h2, h3, h4";
+    [Parameter] public int Offset { get; set; } = 80;
+    [Parameter] public string Position { get; set; } = "Sticky";
+    [Parameter] public string Orientation { get; set; } = "Vertical";
+    [Parameter] public bool ShowBadge { get; set; } = false;
+    [Parameter] public bool ShowScrollProgress { get; set; } = false;
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public EventCallback<string> OnAnchorChanged { get; set; }
+    [Parameter] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    
+    public List<AnchorItem> ProcessedItems { get; private set; } = new();
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            
+            // Import JS module - correct path for co-located JS file
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/Components/SgAnchor.razor.js");
+            
+            if (AutoScan && Items.Count == 0)
+            {
+                await ScanHeadersAsync();
+            }
+            else
+            {
+                ProcessedItems = Items.Select(x => x.WithIsActive(false)).ToList();
+            }
+            
+            // Initialize anchor with DotNet reference
+            if (_module != null)
+            {
+                await _module.InvokeVoidAsync("init", _dotNetRef, Selector, Offset);
+            }
+        }
+    }
+    
+    private int GetIndent(int level)
+    {
+        return Math.Max(0, level - 2);
+    }
+    
+    public async Task ScrollToAsync(string id)
+    {
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("scrollTo", id, Offset);
+        }
+    }
+    
+    public async Task ScanHeadersAsync()
+    {
+        if (_module != null)
+        {
+            var headers = await _module.InvokeAsync<List<AnchorItem>>("scanHeaders", Selector);
+            if (headers != null)
+            {
+                ProcessedItems = headers.Select(x => x.WithIsActive(false)).ToList();
+                StateHasChanged();
+            }
+        }
+    }
+    
+    [JSInvokable]
+    public void UpdateActiveAnchor(string id, double progress)
+    {
+        _activeId = id;
+        _scrollProgress = progress;
+        
+        var newList = new List<AnchorItem>();
+        foreach (var item in ProcessedItems)
+        {
+            newList.Add(item.WithIsActive(item.Id == id));
+        }
+        ProcessedItems = newList;
+        
+        InvokeAsync(() => StateHasChanged());
+        
+        if (OnAnchorChanged.HasDelegate)
+        {
+            OnAnchorChanged.InvokeAsync(id);
+        }
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("dispose");
+            await _module.DisposeAsync();
+        }
+    }
+    
+    void IDisposable.Dispose()
+    {
+        DisposeAsync().AsTask().Wait();
+    }
+}
