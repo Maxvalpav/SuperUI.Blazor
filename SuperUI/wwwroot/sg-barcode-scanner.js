@@ -43,10 +43,17 @@ export async function startScanner(instanceId, videoElementId, deviceId, decodeF
     if (!scanner) return;
 
     scanner.capturePicture = capturePicture;
+    scanner.decodeFormats = decodeFormats;
 
     try {
         if (!scanner.codeReader) {
-            scanner.codeReader = new ZXing.BrowserMultiFormatReader();
+            const hints = new Map();
+            const possibleFormats = buildDecodeFormats(decodeFormats);
+            if (possibleFormats.length > 0) {
+                hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, possibleFormats);
+            }
+            hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+            scanner.codeReader = new ZXing.BrowserMultiFormatReader(hints);
         }
 
         const constraints = {
@@ -65,7 +72,7 @@ export async function startScanner(instanceId, videoElementId, deviceId, decodeF
             videoElementId,
             (result, error) => {
                 if (result) {
-                    handleDecodeResult(instanceId, result, capturePicture);
+                    handleDecodeResult(instanceId, result, capturePicture, null);
                 } else if (error && !(error instanceof ZXing.NotFoundException)) {
                     handleDecodeError(instanceId, error);
                 }
@@ -80,21 +87,30 @@ export async function startScanner(instanceId, videoElementId, deviceId, decodeF
     }
 }
 
-function handleDecodeResult(instanceId, result, capturePicture) {
+function handleDecodeResult(instanceId, result, capturePicture, imageElement) {
     const scanner = scanners.get(instanceId);
     if (!scanner) return;
 
     let picture = null;
     if (capturePicture) {
         try {
-            const video = document.getElementById(scanner.instanceId + '-video');
-            if (video) {
+            if (imageElement) {
                 const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth;
-                canvas.height = video.videoHeight;
+                canvas.width = imageElement.width;
+                canvas.height = imageElement.height;
                 const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0);
+                ctx.drawImage(imageElement, 0, 0);
                 picture = canvas.toDataURL('image/jpeg', 0.9);
+            } else {
+                const video = document.getElementById(scanner.instanceId + '-video');
+                if (video) {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0);
+                    picture = canvas.toDataURL('image/jpeg', 0.9);
+                }
             }
         } catch (e) {
             console.warn('Failed to capture picture:', e);
@@ -163,22 +179,69 @@ export async function toggleTorch(instanceId, enabled) {
     }
 }
 
-export async function decodeFromFile(instanceId, fileDataUrl) {
+function buildDecodeFormats(decodeFormats) {
+    const formats = [];
+    if (!decodeFormats || decodeFormats.length === 0 || decodeFormats.includes('All')) {
+        return []; // empty means all
+    }
+    
+    const formatMap = {
+        'QRCode': ZXing.BarcodeFormat.QR_CODE,
+        'Code128': ZXing.BarcodeFormat.CODE_128,
+        'Code39': ZXing.BarcodeFormat.CODE_39,
+        'EAN13': ZXing.BarcodeFormat.EAN_13,
+        'EAN8': ZXing.BarcodeFormat.EAN_8,
+        'UPCA': ZXing.BarcodeFormat.UPC_A,
+        'UPCE': ZXing.BarcodeFormat.UPC_E,
+        'ITF': ZXing.BarcodeFormat.ITF,
+        'PDF417': ZXing.BarcodeFormat.PDF_417,
+        'DataMatrix': ZXing.BarcodeFormat.DATA_MATRIX,
+        'Aztec': ZXing.BarcodeFormat.AZTEC,
+        'Codabar': ZXing.BarcodeFormat.CODABAR
+    };
+    
+    for (const format of decodeFormats) {
+        if (formatMap[format]) {
+            formats.push(formatMap[format]);
+        }
+    }
+    
+    return formats;
+}
+
+export async function decodeFromFile(instanceId, fileDataUrl, decodeFormats, capturePicture) {
     const scanner = scanners.get(instanceId);
     if (!scanner) return;
+    
+    console.log('[sg-barcode-scanner] decodeFromFile called', { instanceId, decodeFormats, capturePicture });
 
     try {
-        if (!scanner.codeReader) {
-            scanner.codeReader = new ZXing.BrowserMultiFormatReader();
+        // Create code reader with decode formats
+        const hints = new Map();
+        const possibleFormats = buildDecodeFormats(decodeFormats || scanner.decodeFormats);
+        console.log('[sg-barcode-scanner] possibleFormats', possibleFormats);
+        
+        if (possibleFormats.length > 0) {
+            hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, possibleFormats);
         }
-
-        const result = await scanner.codeReader.decodeFromImageElement(
-            await createImageElement(fileDataUrl)
-        );
-
-        handleDecodeResult(instanceId, result, false);
+        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+        const reader = new ZXing.BrowserMultiFormatReader(hints);
+        
+        // Create image element and wait for it to load
+        const img = await createImageElement(fileDataUrl);
+        console.log('[sg-barcode-scanner] Image loaded:', img.width, 'x', img.height);
+        
+        // Try decodeFromImage
+        console.log('[sg-barcode-scanner] Trying decodeFromImage');
+        const result = await reader.decodeFromImage(img);
+        console.log('[sg-barcode-scanner] decodeFromImage success:', result);
+        
+        if (result) {
+            console.log('[sg-barcode-scanner] Decode complete, calling handleDecodeResult');
+            handleDecodeResult(instanceId, result, capturePicture, img);
+        }
     } catch (error) {
-        console.error('Failed to decode from file:', error);
+        console.error('[sg-barcode-scanner] Failed to decode from file:', error);
         await scanner.dotNetRef.invokeMethodAsync('OnDecodeErrorAsync', error.message || 'Failed to decode from file');
     }
 }
@@ -186,6 +249,7 @@ export async function decodeFromFile(instanceId, fileDataUrl) {
 function createImageElement(dataUrl) {
     return new Promise((resolve, reject) => {
         const img = new Image();
+        img.crossOrigin = "anonymous";
         img.onload = () => resolve(img);
         img.onerror = reject;
         img.src = dataUrl;

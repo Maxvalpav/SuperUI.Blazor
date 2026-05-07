@@ -1,0 +1,30 @@
+@namespace SuperUI.Components
+@inject IJSRuntime Js
+
+<div class="sg-rag-embedding-visualizer @CssClass">
+    <canvas @ref="_canvas" class="sg-rag-embedding-canvas"></canvas>
+</div>
+
+@code {
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private ElementReference? _canvas;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _canvas.HasValue)
+        {
+            await Js.InvokeVoidAsync("sgRagEmbeddingVisualizer.init", _canvas.Value);
+        }
+    }
+
+    public async Task RenderEmbeddingsAsync(IEnumerable<SgRagChunk> chunks, IEnumerable<float[]> vectors)
+    {
+        if (_canvas.HasValue)
+        {
+            await Js.InvokeVoidAsync("sgRagEmbeddingVisualizer.render", _canvas.Value, chunks, vectors);
+        }
+    }
+}

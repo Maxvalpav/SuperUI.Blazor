@@ -159,6 +159,53 @@ public sealed class SgRagService : IAsyncDisposable
         NotifyStateChanged();
     }
 
+    /// <summary>Loads the cross-encoder reranker model.</summary>
+    public async Task LoadRerankerAsync(
+        string modelId = "Xenova/ms-marco-MiniLM-L-6-v2",
+        IProgress<SgRagModelProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        EnsureReady();
+        await _module!.InvokeVoidAsync("loadReranker", ct, _instanceId, modelId);
+    }
+
+    /// <summary>Unloads the reranker model to free memory.</summary>
+    public async Task UnloadRerankerAsync(CancellationToken ct = default)
+    {
+        if (_module is null) return;
+        await _module.InvokeVoidAsync("unloadReranker", ct, _instanceId);
+    }
+
+    /// <summary>Reranks search hits using the cross-encoder.</summary>
+    public async Task<IReadOnlyList<SgRagSearchHit>> RerankAsync(
+        string query,
+        IReadOnlyList<SgRagSearchHit> hits,
+        int topN = 5,
+        CancellationToken ct = default)
+    {
+        EnsureReady();
+        var raw = await _module!.InvokeAsync<System.Text.Json.JsonElement>(
+            "rerank", ct, _instanceId, query, hits, topN);
+        return ParseSearchHits(raw);
+    }
+
+    /// <summary>Exports chat history to the specified format.</summary>
+    public async Task<SgRagChatExportResult> ExportChatAsync(
+        string format,
+        IReadOnlyList<SgRagChatMessage> messages,
+        CancellationToken ct = default)
+    {
+        EnsureReady();
+        var raw = await _module!.InvokeAsync<System.Text.Json.JsonElement>(
+            "exportChat", ct, _instanceId, format, messages);
+        return new SgRagChatExportResult
+        {
+            Content = raw.TryGetProperty("content", out var c) ? c.GetString() ?? "" : "",
+            ContentType = raw.TryGetProperty("type", out var t) ? t.GetString() ?? "" : "",
+            Extension = raw.TryGetProperty("extension", out var e) ? e.GetString() ?? "" : ""
+        };
+    }
+
     // ── Documents / Chunking ──────────────────────────────────────────────────
 
     /// <summary>Ingests a browser file into the specified collection.</summary>

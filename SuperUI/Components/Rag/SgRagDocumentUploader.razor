@@ -14,6 +14,13 @@
         <div class="sg-rag-alert sg-rag-alert-error" role="alert">@_error</div>
     }
 
+    @if (!_readyState?.EmbeddingReady ?? true)
+    {
+        <div class="sg-rag-alert sg-rag-alert-warn" role="alert" style="margin-bottom: 16px;">
+            ⚠️ Embedding model not loaded! Please load it first in the Setup tab.
+        </div>
+    }
+
     @* Drop zone *@
     <div class="sg-rag-drop-hint">
         <svg class="sg-rag-upload-icon" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true">
@@ -25,9 +32,9 @@
             <span>Code: CS, JS, TS, PY, JAVA, GO, RS, CPP, SQL, YAML…</span><br/>
             <span style="opacity:.7">@Localizer.GetString("Rag_MaxSize", MaxFileSizeMb)</span>
         </p>
-        <label class="sg-rag-file-btn">
+        <label class="sg-rag-file-btn @((!_readyState?.EmbeddingReady ?? true) ? "disabled" : "")">
             @Localizer["Rag_Browse"]
-            <InputFile OnChange="OnFilesSelected" accept="@Accept" multiple="@MultipleFiles" style="display:none" />
+            <InputFile OnChange="OnFilesSelected" accept="@Accept" multiple="@MultipleFiles" style="display:none" disabled="@(!_readyState?.EmbeddingReady ?? true)" />
         </label>
     </div>
 
@@ -70,7 +77,14 @@
                     else
                     {
                         <div class="sg-rag-progress-bar" style="flex:1;max-width:120px">
-                            <div class="sg-rag-progress-fill sg-rag-progress-indeterminate"></div>
+                            @if (item.TotalChunks > 0)
+                            {
+                                <div class="sg-rag-progress-fill" style="width: @((item.ChunksDone * 100.0 / item.TotalChunks).ToString("0.00"))%"></div>
+                            }
+                            else
+                            {
+                                <div class="sg-rag-progress-fill sg-rag-progress-indeterminate"></div>
+                            }
                         </div>
                         <span class="sg-rag-queue-phase">@item.Phase</span>
                     }
@@ -82,6 +96,7 @@
 
 @code {
     [CascadingParameter(Name = "RagService")] private SgRagService? _ragService { get; set; }
+    [CascadingParameter(Name = "RagReadyState")] private SgRagReadyState? _readyState { get; set; }
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -112,6 +127,8 @@
         public string  Phase      { get; set; } = "queued";
         public bool    IsCode     { get; set; }
         public string? Language   { get; set; }
+        public int     ChunksDone { get; set; }
+        public int     TotalChunks { get; set; }
     }
 
     private readonly List<QueueItem> _queue = new();
@@ -148,6 +165,8 @@
         void OnProgress(SgRagIndexProgress p)
         {
             item.Phase = p.Phase;
+            item.ChunksDone = p.ChunksDone;
+            item.TotalChunks = p.Total;
             InvokeAsync(StateHasChanged);
         }
 

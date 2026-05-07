@@ -48,6 +48,87 @@ function _cosine(a, b) {
   return denom === 0 ? 0 : dot / denom;
 }
 
+// ── BM25 implementation ──────────────────────────────────────────────────────
+class BM25 {
+  constructor(k1 = 1.5, b = 0.75) {
+    this.k1 = k1;
+    this.b = b;
+    this.documents = [];
+    this.avgDocLen = 0;
+    this.docFreq = new Map(); // term -> number of docs containing term
+    this.termFreq = []; // doc index -> map of term -> freq
+  }
+
+  fit(documents) {
+    this.documents = documents.map(doc => doc.toLowerCase());
+    const tokenized = this.documents.map(doc => this._tokenize(doc));
+    this.termFreq = tokenized.map(tokens => {
+      const freq = new Map();
+      for (const token of tokens) {
+        freq.set(token, (freq.get(token) || 0) + 1);
+      }
+      return freq;
+    });
+
+    // Calculate docFreq
+    this.docFreq = new Map();
+    for (const freqMap of this.termFreq) {
+      for (const term of freqMap.keys()) {
+        this.docFreq.set(term, (this.docFreq.get(term) || 0) + 1);
+      }
+    }
+
+    // Calculate avgDocLen
+    const totalLen = tokenized.reduce((sum, tokens) => sum + tokens.length, 0);
+    this.avgDocLen = totalLen / this.documents.length;
+  }
+
+  _tokenize(text) {
+    return text.toLowerCase().match(/\w+/g) || [];
+  }
+
+  score(query) {
+    const queryTokens = this._tokenize(query);
+    const scores = [];
+    const numDocs = this.documents.length;
+
+    for (let i = 0; i < numDocs; i++) {
+      let score = 0;
+      const docLen = this.termFreq[i].size; // approximate
+      const freqMap = this.termFreq[i];
+
+      for (const term of queryTokens) {
+        const df = this.docFreq.get(term) || 0;
+        if (df === 0) continue;
+
+        const tf = freqMap.get(term) || 0;
+        const idf = Math.log((numDocs - df + 0.5) / (df + 0.5) + 1);
+        const numerator = tf * (this.k1 + 1);
+        const denominator = tf + this.k1 * (1 - this.b + this.b * (docLen / this.avgDocLen));
+        score += idf * (numerator / denominator);
+      }
+      scores.push(score);
+    }
+    return scores;
+  }
+}
+
+// ── Reciprocal Rank Fusion ────────────────────────────────────────────────────
+function _reciprocalRankFusion(rankings, k = 60) {
+  const scores = new Map();
+  for (const ranking of rankings) {
+    ranking.forEach((item, rank) => {
+      const id = item.id;
+      const current = scores.get(id) || 0;
+      scores.set(id, current + 1 / (k + rank + 1));
+    });
+  }
+  // Sort by score descending
+  return Array.from(scores.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, score]) => ({ id, score }));
+}
+
 function _base64ToArrayBuffer(b64) {
   const bin = atob(b64);
   const buf = new ArrayBuffer(bin.length);
@@ -112,27 +193,83 @@ async function _openDb(dbName) {
 }
 
 // ── In-memory vector index ────────────────────────────────────────────────────
-async function _buildIndex(inst, collection) {
+async function _buildIndex(inst, collection, useHnsw = false) {
   const db = inst.idb;
   if (!db) return;
+  
+  // Get all chunks and vectors
+  const allChunks = await db.getAllFromIndex('chunks', 'byCollection', collection);
   const allVecs = await db.getAllFromIndex('vectors', 'byCollection', collection);
+  
   if (!allVecs.length) {
-    inst.index[collection] = { matrix: new Float32Array(0), ids: [], dim: 0 };
+    inst.index[collection] = { matrix: new Float32Array(0), ids: [], dim: 0, bm25: null, chunkTexts: [], hnsw: null };
     return;
   }
+  
   const dim = allVecs[0].vector.length;
   const matrix = new Float32Array(allVecs.length * dim);
   const ids = [];
-  for (let i = 0; i < allVecs.length; i++) {
-    matrix.set(allVecs[i].vector, i * dim);
-    ids.push(allVecs[i].chunkId);
+  const chunkTexts = [];
+  
+  // Create a map for quick lookup
+  const vecMap = new Map(allVecs.map(v => [v.chunkId, v]));
+  
+  for (const chunk of allChunks) {
+    const vec = vecMap.get(chunk.id);
+    if (vec) {
+      const i = ids.length;
+      matrix.set(vec.vector, i * dim);
+      ids.push(chunk.id);
+      chunkTexts.push(chunk.text);
+    }
   }
-  inst.index[collection] = { matrix, ids, dim };
+  
+  // Build BM25 index
+  const bm25 = new BM25();
+  bm25.fit(chunkTexts);
+  
+  let hnsw = null;
+  if (useHnsw && ids.length > 100000) {
+    try {
+      // Load hnswlib-wasm if available
+      const HNSWLib = await _importModule('https://cdn.jsdelivr.net/npm/hnswlib-wasm@0.0.7/dist/hnswlib-wasm.js');
+      hnsw = new HNSWLib.HierarchicalNSW('l2', dim);
+      hnsw.initIndex(ids.length, 16, 200, 100);
+      for (let i = 0; i < ids.length; i++) {
+        hnsw.addPoint(matrix.subarray(i * dim, (i + 1) * dim), i);
+      }
+    } catch (err) {
+      console.warn('[sg-rag] Failed to load HNSW index, falling back to linear scan:', err);
+      hnsw = null;
+    }
+  }
+  
+  inst.index[collection] = { matrix, ids, dim, bm25, chunkTexts, hnsw };
+}
+
+// ── HNSW search ─────────────────────────────────────────────────────────────
+function _searchHnsw(inst, collection, queryVec, topK) {
+  const idx = inst.index[collection];
+  if (!idx || !idx.hnsw) return null;
+  
+  const result = idx.hnsw.searchKnn(queryVec, topK);
+  return result.neighbors.map((neighbor, i) => ({
+    id: idx.ids[neighbor],
+    score: 1 - result.distances[i] // convert distance to similarity score
+  }));
 }
 
 function _searchIndex(inst, collection, queryVec, topK, minScore) {
   const idx = inst.index[collection];
   if (!idx || idx.ids.length === 0) return [];
+  
+  // Try HNSW first if available
+  const hnswHits = _searchHnsw(inst, collection, queryVec, topK);
+  if (hnswHits) {
+    return hnswHits.filter(hit => hit.score >= minScore);
+  }
+  
+  // Fall back to linear scan
   const { matrix, ids, dim } = idx;
   const scores = [];
   for (let i = 0; i < ids.length; i++) {
@@ -599,6 +736,7 @@ export async function init(dotnetRef, instanceId, options) {
     dotnetRef,
     options: opts,
     embeddingPipeline: null,
+    rerankerPipeline: null,
     llmEngine: null,
     idb,
     index: {},       // collection -> { matrix, ids, dim }
@@ -760,6 +898,66 @@ export async function unloadLlm(instanceId) {
   inst.llmEngine = null;
 }
 
+// ── Exported: loadReranker ──────────────────────────────────────────────────────
+export async function loadReranker(instanceId, modelId = 'Xenova/ms-marco-MiniLM-L-6-v2') {
+  const inst = _instances.get(instanceId);
+  if (!inst) throw new Error(`Instance ${instanceId} not found`);
+
+  const src = inst.sources.transformersScript ||
+    'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
+
+  const { pipeline, env } = await _importModule(src);
+  env.allowLocalModels = false;
+
+  const progressCallback = (progress) => {
+    try {
+      inst.dotnetRef.invokeMethodAsync('OnEmbeddingProgressCallback', {
+        stage:      progress.status || '',
+        loaded:     progress.loaded || 0,
+        total:      progress.total  || 0,
+        percent:    progress.total  ? (progress.loaded / progress.total) * 100 : 0,
+        file:       progress.file   || null,
+        isComplete: progress.status === 'done',
+      });
+    } catch (_) {}
+  };
+
+  inst.rerankerPipeline = await pipeline('text-classification', modelId, {
+    progress_callback: progressCallback,
+  });
+
+  try {
+    inst.dotnetRef.invokeMethodAsync('OnEmbeddingReadyCallback', modelId);
+  } catch (_) {}
+}
+
+// ── Exported: unloadReranker ─────────────────────────────────────────────────
+export async function unloadReranker(instanceId) {
+  const inst = _instances.get(instanceId);
+  if (!inst) return;
+  inst.rerankerPipeline = null;
+}
+
+// ── Exported: rerank ─────────────────────────────────────────────────────────
+export async function rerank(instanceId, query, hits, topN = 5) {
+  const inst = _instances.get(instanceId);
+  if (!inst) return hits;
+  if (!inst.rerankerPipeline) return hits.slice(0, topN);
+
+  // Prepare query-chunk pairs
+  const pairs = hits.map(hit => [query, hit.chunk.text]);
+  const results = await inst.rerankerPipeline(pairs);
+
+  // Sort hits by reranker score (higher is better for ms-marco models)
+  const scoredHits = hits.map((hit, i) => ({ hit, score: results[i].score }));
+  scoredHits.sort((a, b) => b.score - a.score);
+
+  // Return top N
+  return scoredHits.slice(0, topN).map(item => ({
+    ...item.hit, score: item.score
+  }));
+}
+
 // ── Exported: ingestFile ──────────────────────────────────────────────────────
 export async function ingestFile(instanceId, base64Data, fileName, mimeType, collection, chunkOpts, docId) {
   const inst = _instances.get(instanceId);
@@ -812,6 +1010,15 @@ async function _ingestTextInternal(inst, instanceId, title, text, collection, ch
   const col = collection || inst.options.defaultCollection || 'default';
   const id  = docId || _uuid();
 
+  // Check embedding model is loaded
+  if (!inst.embeddingPipeline) {
+    return {
+      documentId: id, title, chunkCount: 0,
+      success: false,
+      error: 'Embedding model not loaded! Please load the embedding model first in the Setup tab.'
+    };
+  }
+
   try {
     inst.dotnetRef.invokeMethodAsync('OnIndexProgressCallback', {
       documentId: id, chunksDone: 0, total: 0, phase: 'chunking',
@@ -822,14 +1029,29 @@ async function _ingestTextInternal(inst, instanceId, title, text, collection, ch
   // Grab code metadata if code strategy was used
   const codeChunkMeta = chunkOpts?._codeChunkMeta || null;
 
+  const chunkTexts = rawChunks.map(c => c.trim()).filter(c => c.length > 0);
+  const totalChunks = chunkTexts.length;
+
   try {
     inst.dotnetRef.invokeMethodAsync('OnIndexProgressCallback', {
-      documentId: id, chunksDone: 0, total: rawChunks.length, phase: 'embedding',
+      documentId: id, chunksDone: 0, total: totalChunks, phase: 'embedding',
     });
   } catch (_) {}
 
-  const chunkTexts = rawChunks.map(c => c.trim()).filter(c => c.length > 0);
-  const embeddings = await _embed(inst, chunkTexts);
+  // Embed in small batches to report progress
+  const embeddings = [];
+  const batchSize = 1; // Process one chunk at a time for accurate progress
+  for (let i = 0; i < chunkTexts.length; i += batchSize) {
+    const batch = chunkTexts.slice(i, i + batchSize);
+    const batchEmbeddings = await _embed(inst, batch);
+    embeddings.push(...batchEmbeddings);
+    
+    try {
+      inst.dotnetRef.invokeMethodAsync('OnIndexProgressCallback', {
+        documentId: id, chunksDone: Math.min(i + batchSize, totalChunks), total: totalChunks, phase: 'embedding',
+      });
+    } catch (_) {}
+  }
 
   const chunkRecords = chunkTexts.map((chunkText, i) => {
     const meta = {};
@@ -881,8 +1103,17 @@ async function _ingestTextInternal(inst, instanceId, title, text, collection, ch
 
     const tx = inst.idb.transaction(['documents', 'chunks', 'vectors', 'collections'], 'readwrite');
     await tx.objectStore('documents').put(docRecord);
-    for (const c of chunkRecords) await tx.objectStore('chunks').put(c);
-    for (const v of vectorRecords) await tx.objectStore('vectors').put(v);
+    
+    for (let i = 0; i < chunkRecords.length; i++) {
+      await tx.objectStore('chunks').put(chunkRecords[i]);
+      await tx.objectStore('vectors').put(vectorRecords[i]);
+      
+      try {
+        inst.dotnetRef.invokeMethodAsync('OnIndexProgressCallback', {
+          documentId: id, chunksDone: i + 1, total: chunkRecords.length, phase: 'persisting',
+        });
+      } catch (_) {}
+    }
 
     // Update collection metadata
     const colStore = tx.objectStore('collections');
@@ -1123,20 +1354,89 @@ export async function createCollection(instanceId, name) {
   });
 }
 
+// ── BM25 search ───────────────────────────────────────────────────────────────
+function _searchBM25(inst, collection, query, topK) {
+  const idx = inst.index[collection];
+  if (!idx || !idx.bm25 || idx.ids.length === 0) return [];
+  const scores = idx.bm25.score(query);
+  const hits = [];
+  for (let i = 0; i < scores.length; i++) {
+    if (scores[i] > 0) {
+      hits.push({ id: idx.ids[i], score: scores[i] });
+    }
+  }
+  hits.sort((a, b) => b.score - a.score);
+  return hits.slice(0, topK);
+}
+
+// ── Hybrid search ──────────────────────────────────────────────────────────────
+async function _searchHybrid(inst, collection, query, topK, minScore) {
+  const idx = inst.index[collection];
+  if (!idx || idx.ids.length === 0) return [];
+
+  const [queryVec] = await _embed(inst, [query]);
+  
+  // Get cosine hits
+  const cosineHits = _searchIndex(inst, collection, queryVec, topK, minScore);
+  
+  // Get BM25 hits
+  const bm25Hits = _searchBM25(inst, collection, query, topK);
+  
+  // Use reciprocal rank fusion
+  const fusedHits = _reciprocalRankFusion([cosineHits, bm25Hits]);
+  
+  return fusedHits.slice(0, topK);
+}
+
+// ── Cross-collection search ───────────────────────────────────────────────────
+async function _searchCrossCollection(inst, collections, query, topK, minScore, useHybrid) {
+  const allHits = [];
+  for (const col of collections) {
+    if (!inst.index[col]) await _buildIndex(inst, col);
+    
+    let colHits;
+    if (useHybrid) {
+      colHits = await _searchHybrid(inst, col, query, topK, minScore);
+    } else {
+      const [queryVec] = await _embed(inst, [query]);
+      colHits = _searchIndex(inst, col, queryVec, topK, minScore);
+    }
+    allHits.push(...colHits);
+  }
+  // Sort all hits by score descending and take topK
+  allHits.sort((a, b) => b.score - a.score);
+  return allHits.slice(0, topK);
+}
+
 // ── Exported: search ──────────────────────────────────────────────────────────
-export async function search(instanceId, query, collection, topK, minScore) {
+export async function search(instanceId, query, collection, topK, minScore, useHybrid = true) {
   const inst = _instances.get(instanceId);
   if (!inst) return [];
 
-  const col      = collection || inst.options.defaultCollection || 'default';
-  const k        = topK    || 10;
-  const minS     = minScore != null ? minScore : (inst.options.similarityThreshold || 0);
+  let collections;
+  if (Array.isArray(collection)) {
+    collections = collection;
+  } else {
+    collections = [collection || inst.options.defaultCollection || 'default'];
+  }
+  
+  const k = topK || 10;
+  const minS = minScore != null ? minScore : (inst.options.similarityThreshold || 0);
 
-  // Ensure index is built
-  if (!inst.index[col]) await _buildIndex(inst, col);
-
-  const [queryVec] = await _embed(inst, [query]);
-  const hits = _searchIndex(inst, col, queryVec, k, minS);
+  let hits;
+  if (collections.length === 1) {
+    const col = collections[0];
+    if (!inst.index[col]) await _buildIndex(inst, col);
+    
+    if (useHybrid) {
+      hits = await _searchHybrid(inst, col, query, k, minS);
+    } else {
+      const [queryVec] = await _embed(inst, [query]);
+      hits = _searchIndex(inst, col, queryVec, k, minS);
+    }
+  } else {
+    hits = await _searchCrossCollection(inst, collections, query, k, minS, useHybrid);
+  }
 
   if (!inst.idb || hits.length === 0) return [];
 
@@ -1164,7 +1464,7 @@ export async function search(instanceId, query, collection, topK, minScore) {
         createdAt:  doc.createdAt  || '',
         metadata:   doc.metadata   || {},
         chunkCount: doc.chunkCount || 0,
-      } : { id: chunk.documentId, collection: col, title: '', source: '', format: 'Auto', sizeBytes: 0, createdAt: '', metadata: {}, chunkCount: 0 },
+      } : { id: chunk.documentId, collection: collections[0], title: '', source: '', format: 'Auto', sizeBytes: 0, createdAt: '', metadata: {}, chunkCount: 0 },
       score:          hit.score,
       highlightSpans: [],
     });
@@ -1795,4 +2095,82 @@ export async function restoreSnapshot(instanceId, snapId) {
   if (!snap) throw new Error(`Snapshot ${snapId} not found`);
 
   await importDb(instanceId, snap.data, false);
+}
+
+// ── Chat export functions ──────────────────────────────────────────────────────
+
+function _exportChatToMarkdown(messages) {
+  let md = '# Chat History\n\n';
+  for (const msg of messages) {
+    md += `## ${msg.isUser ? 'User' : 'Assistant'}\n\n${msg.content}\n\n`;
+    if (msg.sources && msg.sources.length > 0) {
+      md += '### Sources:\n';
+      for (const src of msg.sources) {
+        md += `- [${src.document?.title || 'Document'}]: ${src.chunk?.text?.slice(0, 100) || ''}...\n`;
+      }
+      md += '\n';
+    }
+  }
+  return md;
+}
+
+function _exportChatToHtml(messages) {
+  let html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Chat History</title></head><body>';
+  html += '<h1>Chat History</h1>';
+  for (const msg of messages) {
+    html += `<h2>${msg.isUser ? 'User' : 'Assistant'}</h2>`;
+    html += `<p>${(msg.content || '').replace(/\n/g, '<br>')}</p>`;
+    if (msg.sources && msg.sources.length > 0) {
+      html += '<h3>Sources:</h3><ul>';
+      for (const src of msg.sources) {
+        html += `<li><strong>${src.document?.title || 'Document'}</strong>: ${(src.chunk?.text || '').slice(0, 100)}...</li>`;
+      }
+      html += '</ul>';
+    }
+  }
+  html += '</body></html>';
+  return html;
+}
+
+async function _exportChatToPdf(messages, jsPdfScript) {
+  await _loadScript(jsPdfScript || 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
+  let y = 20;
+  doc.setFontSize(18);
+  doc.text('Chat History', 20, y);
+  y += 20;
+  
+  for (const msg of messages) {
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(msg.isUser ? 'User' : 'Assistant', 20, y);
+    y += 7;
+    doc.setFont('helvetica', 'normal');
+    const lines = doc.splitTextToSize(msg.content || '', 170);
+    doc.text(lines, 20, y);
+    y += (lines.length * 7) + 10;
+    
+    if (y > 280) {
+      doc.addPage();
+      y = 20;
+    }
+  }
+  return doc.output('datauristring');
+}
+
+// ── Exported: exportChat ───────────────────────────────────────────────────
+export async function exportChat(instanceId, format, messages) {
+  switch (format.toLowerCase()) {
+    case 'markdown':
+    case 'md':
+      return { content: _exportChatToMarkdown(messages), type: 'text/markdown', extension: 'md' };
+    case 'html':
+      return { content: _exportChatToHtml(messages), type: 'text/html', extension: 'html' };
+    case 'pdf':
+      const pdfData = await _exportChatToPdf(messages);
+      return { content: pdfData, type: 'application/pdf', extension: 'pdf' };
+    default:
+      throw new Error(`Unsupported export format: ${format}`);
+  }
 }
