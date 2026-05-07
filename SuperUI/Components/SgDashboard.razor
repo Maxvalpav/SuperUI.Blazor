@@ -2,84 +2,147 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="sgc-dashboard @CssClass"
-     style="--dashboard-columns: @Columns;"
+<div class="sgc-dashboard @(Compact ? "sgc-dashboard-compact" : "") @CssClass"
+     style="--dashboard-columns: @Columns; --sgc-dashboard-row-min: @(RowMinHeight)px;"
      data-columns="@Columns"
      data-min-col="@MinColumnSpan"
      data-max-col="@MaxColumnSpan"
      data-min-row="@MinRowSpan"
      data-max-row="@MaxRowSpan"
      data-allow-drag="@(AllowDrag ? "1" : "0")"
+     role="grid"
+     aria-label="@(AriaLabel ?? "Dashboard")"
      @ref="_root">
-    @foreach (var item in Items)
+
+    @if (Items.Count == 0)
     {
-        <div class="sgc-dashboard-widget"
-             data-widget-id="@item.Id"
-             data-row-span="@item.RowSpan"
-             style="grid-column: span @item.ColumnSpan; grid-row: span @item.RowSpan;">
-
-            <div class="sgc-dashboard-widget-header">
-                @if (AllowDrag)
-                {
-                    <span class="sgc-dashboard-widget-drag" title="Drag to reorder">@((MarkupString)SgIcons.GripVertical)</span>
-                }
-                @if (!string.IsNullOrEmpty(item.Icon))
-                {
-                    <span class="sgc-dashboard-widget-icon">@((MarkupString)item.Icon)</span>
-                }
-                <span class="sgc-dashboard-widget-title">@item.Title</span>
-
-                @if (AllowResize)
-                {
-                    <span class="sgc-dashboard-widget-resize">
-                        <button type="button"
-                                class="sgc-dashboard-widget-resize-btn"
-                                title="Decrease width"
-                                disabled="@(item.ColumnSpan <= MinColumnSpan)"
-                                @onclick="() => DecreaseColumnSpanAsync(item)">-</button>
-                        <span class="sgc-dashboard-widget-resize-label" title="Column span">@item.ColumnSpan</span>
-                        <button type="button"
-                                class="sgc-dashboard-widget-resize-btn"
-                                title="Increase width"
-                                disabled="@(item.ColumnSpan >= MaxColumnSpan)"
-                                @onclick="() => IncreaseColumnSpanAsync(item)">+</button>
-                    </span>
-                    <span class="sgc-dashboard-widget-resize sgc-dashboard-widget-resize-row">
-                        <button type="button"
-                                class="sgc-dashboard-widget-resize-btn"
-                                title="Decrease height"
-                                disabled="@(item.RowSpan <= MinRowSpan)"
-                                @onclick="() => DecreaseRowSpanAsync(item)">-</button>
-                        <span class="sgc-dashboard-widget-resize-label" title="Row span">@item.RowSpan</span>
-                        <button type="button"
-                                class="sgc-dashboard-widget-resize-btn"
-                                title="Increase height"
-                                disabled="@(item.RowSpan >= MaxRowSpan)"
-                                @onclick="() => IncreaseRowSpanAsync(item)">+</button>
-                    </span>
-                }
-
-                @if (AllowDelete)
-                {
-                    <button type="button"
-                            class="sgc-dashboard-widget-delete"
-                            title="Remove widget"
-                            @onclick="() => DeleteWidgetAsync(item)">@((MarkupString)SgIcons.X)</button>
-                }
-            </div>
-
-            <div class="sgc-dashboard-widget-body">
-                @if (WidgetTemplate != null)
-                {
-                    @WidgetTemplate(item)
-                }
-            </div>
-
-            @if (AllowResize)
+        <div class="sgc-dashboard-empty">
+            @if (EmptyContent is not null)
             {
-                <div class="sgc-dashboard-widget-resize-handle" title="Drag to resize"></div>
+                @EmptyContent
+            }
+            else
+            {
+                <div class="sgc-dashboard-empty-ico">@((MarkupString)IconGrid)</div>
+                <div class="sgc-dashboard-empty-title">@EmptyTitle</div>
+                @if (!string.IsNullOrEmpty(EmptyDescription))
+                {
+                    <div class="sgc-dashboard-empty-desc">@EmptyDescription</div>
+                }
             }
         </div>
+    }
+    else
+    {
+        @foreach (var item in Items)
+        {
+            var locked = item.Locked;
+            var dragEnabled = AllowDrag && !locked;
+            var resizeEnabled = AllowResize && !locked;
+            var deleteEnabled = AllowDelete && !locked;
+            var hasControls = resizeEnabled || deleteEnabled || locked;
+
+            <div class="sgc-dashboard-widget @(locked ? "sgc-locked" : "") @(item.Loading ? "sgc-loading" : "")"
+                 data-widget-id="@item.Id"
+                 data-row-span="@item.RowSpan"
+                 data-locked="@(locked ? "1" : "0")"
+                 style="grid-column: span @item.ColumnSpan; grid-row: span @item.RowSpan;@(item.Color is not null ? $"--sgc-widget-accent:{item.Color};" : "")"
+                 role="gridcell"
+                 aria-label="@item.Title">
+
+                <div class="sgc-dashboard-widget-header @(dragEnabled ? "sgc-draggable" : "")">
+                    @if (dragEnabled)
+                    {
+                        <span class="sgc-dashboard-widget-drag" title="Drag to reorder" aria-hidden="true">@((MarkupString)SgIcons.GripVertical)</span>
+                    }
+                    @if (!string.IsNullOrEmpty(item.Icon))
+                    {
+                        <span class="sgc-dashboard-widget-icon">@((MarkupString)item.Icon)</span>
+                    }
+
+                    <div class="sgc-dashboard-widget-titlewrap">
+                        <span class="sgc-dashboard-widget-title">@item.Title</span>
+                        @if (!string.IsNullOrEmpty(item.Subtitle))
+                        {
+                            <span class="sgc-dashboard-widget-subtitle">@item.Subtitle</span>
+                        }
+                    </div>
+
+                    @if (item.Action is not null)
+                    {
+                        <span class="sgc-dashboard-widget-action" @onclick:stopPropagation="true">@item.Action</span>
+                    }
+
+                    @if (hasControls)
+                    {
+                        <span class="sgc-dashboard-widget-controls" @onclick:stopPropagation="true">
+                            @if (locked)
+                            {
+                                <span class="sgc-dashboard-widget-lock" title="Locked" aria-label="Locked">@((MarkupString)IconLock)</span>
+                            }
+                            @if (resizeEnabled)
+                            {
+                                <span class="sgc-dashboard-widget-resize" role="group" aria-label="Width">
+                                    <button type="button"
+                                            class="sgc-dashboard-widget-resize-btn"
+                                            title="Decrease width"
+                                            disabled="@(item.ColumnSpan <= MinColumnSpan)"
+                                            @onclick="() => DecreaseColumnSpanAsync(item)">@((MarkupString)IconMinus)</button>
+                                    <span class="sgc-dashboard-widget-resize-label" title="Column span">@(item.ColumnSpan)w</span>
+                                    <button type="button"
+                                            class="sgc-dashboard-widget-resize-btn"
+                                            title="Increase width"
+                                            disabled="@(item.ColumnSpan >= EffectiveMaxColumnSpan)"
+                                            @onclick="() => IncreaseColumnSpanAsync(item)">@((MarkupString)IconPlus)</button>
+                                </span>
+                                <span class="sgc-dashboard-widget-resize sgc-dashboard-widget-resize-row" role="group" aria-label="Height">
+                                    <button type="button"
+                                            class="sgc-dashboard-widget-resize-btn"
+                                            title="Decrease height"
+                                            disabled="@(item.RowSpan <= MinRowSpan)"
+                                            @onclick="() => DecreaseRowSpanAsync(item)">@((MarkupString)IconMinus)</button>
+                                    <span class="sgc-dashboard-widget-resize-label" title="Row span">@(item.RowSpan)h</span>
+                                    <button type="button"
+                                            class="sgc-dashboard-widget-resize-btn"
+                                            title="Increase height"
+                                            disabled="@(item.RowSpan >= MaxRowSpan)"
+                                            @onclick="() => IncreaseRowSpanAsync(item)">@((MarkupString)IconPlus)</button>
+                                </span>
+                            }
+                            @if (deleteEnabled)
+                            {
+                                <button type="button"
+                                        class="sgc-dashboard-widget-delete"
+                                        title="Remove widget"
+                                        aria-label="Remove widget"
+                                        @onclick="() => DeleteWidgetAsync(item)">@((MarkupString)SgIcons.X)</button>
+                            }
+                        </span>
+                    }
+                </div>
+
+                <div class="sgc-dashboard-widget-body">
+                    @if (item.Loading)
+                    {
+                        <div class="sgc-dashboard-skeleton">
+                            <span class="sgc-dashboard-skeleton-line sgc-w-70"></span>
+                            <span class="sgc-dashboard-skeleton-line sgc-w-90"></span>
+                            <span class="sgc-dashboard-skeleton-line sgc-w-50"></span>
+                            <span class="sgc-dashboard-skeleton-line sgc-w-80"></span>
+                        </div>
+                    }
+                    else if (WidgetTemplate != null)
+                    {
+                        @WidgetTemplate(item)
+                    }
+                </div>
+
+                @if (resizeEnabled)
+                {
+                    <div class="sgc-dashboard-widget-resize-handle" title="Drag to resize" aria-hidden="true"></div>
+                }
+            </div>
+        }
     }
 </div>
 
@@ -95,9 +158,19 @@
     [Parameter] public EventCallback<List<SgDashboardWidgetItem>> ItemsChanged { get; set; }
 
     /// <summary>
-    /// Gets or sets the number of grid columns. Default is 3.
+    /// Number of grid columns. Default is 3.
     /// </summary>
     [Parameter] public int Columns { get; set; } = 3;
+
+    /// <summary>
+    /// Minimum height (px) reserved for a single grid row. Default is 120.
+    /// </summary>
+    [Parameter] public int RowMinHeight { get; set; } = 120;
+
+    /// <summary>
+    /// Compact density: smaller header and body padding.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
 
     /// <summary>
     /// Template used to render the body of each widget.
@@ -105,8 +178,19 @@
     [Parameter] public RenderFragment<SgDashboardWidgetItem>? WidgetTemplate { get; set; }
 
     /// <summary>
-    /// Gets or sets additional CSS class names.
+    /// Optional content rendered when <see cref="Items"/> is empty.
     /// </summary>
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>Title displayed in the default empty-state.</summary>
+    [Parameter] public string EmptyTitle { get; set; } = "No widgets";
+
+    /// <summary>Description displayed in the default empty-state.</summary>
+    [Parameter] public string? EmptyDescription { get; set; } = "Add widgets to start building your dashboard.";
+
+    /// <summary>Accessible name for the dashboard region.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
     [Parameter] public string? CssClass { get; set; }
 
     /// <summary>
@@ -124,42 +208,25 @@
     /// </summary>
     [Parameter] public bool AllowDelete { get; set; }
 
-    /// <summary>
-    /// Minimum column span for resize. Default is 1.
-    /// </summary>
+    /// <summary>Minimum column span for resize. Default is 1.</summary>
     [Parameter] public int MinColumnSpan { get; set; } = 1;
 
-    /// <summary>
-    /// Maximum column span for resize. Default is 6.
-    /// </summary>
+    /// <summary>Maximum column span for resize. Default is 6.</summary>
     [Parameter] public int MaxColumnSpan { get; set; } = 6;
 
-    /// <summary>
-    /// Minimum row span for resize. Default is 1.
-    /// </summary>
+    /// <summary>Minimum row span for resize. Default is 1.</summary>
     [Parameter] public int MinRowSpan { get; set; } = 1;
 
-    /// <summary>
-    /// Maximum row span for resize. Default is 6.
-    /// </summary>
+    /// <summary>Maximum row span for resize. Default is 6.</summary>
     [Parameter] public int MaxRowSpan { get; set; } = 6;
 
-    /// <summary>
-    /// Callback invoked when widgets are reordered via drag-and-drop.
-    /// Receives the source widget id and the target widget id.
-    /// </summary>
+    /// <summary>Reorder callback. Receives source and target ids.</summary>
     [Parameter] public EventCallback<(string SourceId, string TargetId)> OnReorder { get; set; }
 
-    /// <summary>
-    /// Callback invoked when a widget is resized (via corner handle or +/- buttons).
-    /// Receives the resized widget.
-    /// </summary>
+    /// <summary>Resize callback. Receives the resized widget.</summary>
     [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetResized { get; set; }
 
-    /// <summary>
-    /// Callback invoked when a widget is deleted.
-    /// Receives the deleted widget.
-    /// </summary>
+    /// <summary>Delete callback. Receives the deleted widget.</summary>
     [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetDeleted { get; set; }
 
     private ElementReference _root;
@@ -167,6 +234,18 @@
     private DotNetObjectReference<SgDashboard>? _self;
     private bool _attached;
     private bool _isDisposed;
+
+    private int EffectiveMaxColumnSpan => Math.Min(MaxColumnSpan, Math.Max(1, Columns));
+
+    // ── Inline icons (kept local to avoid library churn) ──────────────────
+    private const string IconPlus =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"></line></svg>";
+    private const string IconMinus =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"></line></svg>";
+    private const string IconLock =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"4\" y=\"11\" width=\"16\" height=\"10\" rx=\"2\"></rect><path d=\"M8 11V7a4 4 0 0 1 8 0v4\"></path></svg>";
+    private const string IconGrid =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect></svg>";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -191,6 +270,9 @@
         var tgtIndex = Items.FindIndex(i => i.Id == targetId);
         if (srcIndex < 0 || tgtIndex < 0 || srcIndex == tgtIndex) return;
 
+        // Refuse to reorder if source or target is locked.
+        if (Items[srcIndex].Locked || Items[tgtIndex].Locked) return;
+
         var item = Items[srcIndex];
         Items.RemoveAt(srcIndex);
         Items.Insert(tgtIndex, item);
@@ -207,9 +289,9 @@
     {
         if (_isDisposed || string.IsNullOrEmpty(id)) return;
         var item = Items.FirstOrDefault(i => i.Id == id);
-        if (item is null) return;
+        if (item is null || item.Locked) return;
 
-        var clampedCol = Math.Clamp(colSpan, MinColumnSpan, Math.Min(MaxColumnSpan, Math.Max(1, Columns)));
+        var clampedCol = Math.Clamp(colSpan, MinColumnSpan, EffectiveMaxColumnSpan);
         var clampedRow = Math.Clamp(rowSpan, MinRowSpan, MaxRowSpan);
         if (item.ColumnSpan == clampedCol && item.RowSpan == clampedRow) return;
 
@@ -225,54 +307,55 @@
 
     private async Task IncreaseColumnSpanAsync(SgDashboardWidgetItem item)
     {
-        if (item.ColumnSpan < MaxColumnSpan)
+        if (item.Locked) return;
+        if (item.ColumnSpan < EffectiveMaxColumnSpan)
         {
             item.ColumnSpan++;
-            if (OnWidgetResized.HasDelegate)
-                await OnWidgetResized.InvokeAsync(item);
-            if (ItemsChanged.HasDelegate)
-                await ItemsChanged.InvokeAsync(Items);
+            await NotifyResize(item);
         }
     }
 
     private async Task DecreaseColumnSpanAsync(SgDashboardWidgetItem item)
     {
+        if (item.Locked) return;
         if (item.ColumnSpan > MinColumnSpan)
         {
             item.ColumnSpan--;
-            if (OnWidgetResized.HasDelegate)
-                await OnWidgetResized.InvokeAsync(item);
-            if (ItemsChanged.HasDelegate)
-                await ItemsChanged.InvokeAsync(Items);
+            await NotifyResize(item);
         }
     }
 
     private async Task IncreaseRowSpanAsync(SgDashboardWidgetItem item)
     {
+        if (item.Locked) return;
         if (item.RowSpan < MaxRowSpan)
         {
             item.RowSpan++;
-            if (OnWidgetResized.HasDelegate)
-                await OnWidgetResized.InvokeAsync(item);
-            if (ItemsChanged.HasDelegate)
-                await ItemsChanged.InvokeAsync(Items);
+            await NotifyResize(item);
         }
     }
 
     private async Task DecreaseRowSpanAsync(SgDashboardWidgetItem item)
     {
+        if (item.Locked) return;
         if (item.RowSpan > MinRowSpan)
         {
             item.RowSpan--;
-            if (OnWidgetResized.HasDelegate)
-                await OnWidgetResized.InvokeAsync(item);
-            if (ItemsChanged.HasDelegate)
-                await ItemsChanged.InvokeAsync(Items);
+            await NotifyResize(item);
         }
+    }
+
+    private async Task NotifyResize(SgDashboardWidgetItem item)
+    {
+        if (OnWidgetResized.HasDelegate)
+            await OnWidgetResized.InvokeAsync(item);
+        if (ItemsChanged.HasDelegate)
+            await ItemsChanged.InvokeAsync(Items);
     }
 
     private async Task DeleteWidgetAsync(SgDashboardWidgetItem item)
     {
+        if (item.Locked) return;
         Items.Remove(item);
         if (OnWidgetDeleted.HasDelegate)
             await OnWidgetDeleted.InvokeAsync(item);
@@ -299,10 +382,7 @@
 
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try { await _module.DisposeAsync(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
