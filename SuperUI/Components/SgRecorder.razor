@@ -1,0 +1,620 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-recorder @CssClass" style="@(Width != "100%" ? $"width:{Width};" : null)" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <h3 class="sg-recorder-title">@Title</h3>
+    }
+
+    @if (_error is not null)
+    {
+        <div class="sg-recorder-error" role="alert">
+            <svg class="sg-recorder-error-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Zm0 4a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1Zm0 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/>
+            </svg>
+            <span>@_error</span>
+            <button type="button" class="sg-recorder-retry-btn" @onclick="RetryAsync">@Localizer["Recorder_Retry"]</button>
+        </div>
+    }
+
+    <div class="sg-recorder-video-container">
+        <video id="@_instanceId-preview" class="sg-recorder-preview" playsinline autoplay muted></video>
+    </div>
+
+    <div class="sg-recorder-status">
+        <span class="sg-recorder-state-indicator @_state.ToString().ToLowerInvariant()"></span>
+        <span>@GetStateText()</span>
+        @if (_state == SgRecorderState.Recording || _state == SgRecorderState.Paused)
+        {
+            <span class="sg-recorder-timer">@FormatDuration(_duration)</span>
+        }
+    </div>
+
+    <div class="sg-recorder-controls">
+        @if (ShowDeviceList)
+        {
+            <div class="sg-recorder-device-select-wrap">
+                <label class="sg-recorder-label" for="@_videoDeviceSelectId">@Localizer["Recorder_Camera"]</label>
+                <select id="@_videoDeviceSelectId"
+                        class="sg-recorder-select"
+                        value="@_selectedVideoDeviceId"
+                        @onchange="OnVideoDeviceChanged"
+                        disabled="@(_state != SgRecorderState.Idle && _state != SgRecorderState.Ready && _state != SgRecorderState.Error)">
+                    @foreach (var device in _videoDevices)
+                    {
+                        <option value="@device.DeviceId">@device.Label</option>
+                    }
+                </select>
+            </div>
+
+            @if (Audio)
+            {
+                <div class="sg-recorder-device-select-wrap">
+                    <label class="sg-recorder-label" for="@_audioDeviceSelectId">@Localizer["Recorder_Microphone"]</label>
+                    <select id="@_audioDeviceSelectId"
+                            class="sg-recorder-select"
+                            value="@_selectedAudioDeviceId"
+                            @onchange="OnAudioDeviceChanged"
+                            disabled="@(_state != SgRecorderState.Idle && _state != SgRecorderState.Ready && _state != SgRecorderState.Error)">
+                        @foreach (var device in _audioDevices)
+                        {
+                            <option value="@device.DeviceId">@device.Label</option>
+                        }
+                    </select>
+                </div>
+            }
+        }
+
+        <div class="sg-recorder-buttons">
+            @if (_state == SgRecorderState.Idle || _state == SgRecorderState.Error)
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-primary"
+                        @onclick="RequestPermissionsAsync"
+                        disabled="@(_state == SgRecorderState.RequestingPermission)">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M3 2.75A.75.75 0 0 1 3.75 2h8.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-8.5A.75.75 0 0 1 3 13.25Z"/>
+                    </svg>
+                    @Localizer["Recorder_RequestPermissions"]
+                </button>
+            }
+
+            @if (_state == SgRecorderState.Ready)
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-primary"
+                        @onclick="StartAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <circle fill="currentColor" cx="8" cy="8" r="5"/>
+                    </svg>
+                    @Localizer["Recorder_Start"]
+                </button>
+            }
+
+            @if (_state == SgRecorderState.Recording)
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-secondary"
+                        @onclick="PauseAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5c0 .966.784 1.75 1.75 1.75h1.5A1.75 1.75 0 0 0 7 12.25v-8.5A1.75 1.75 0 0 0 5.25 2h-1.5Zm7 0A1.75 1.75 0 0 0 9 3.75v8.5c0 .966.784 1.75 1.75 1.75h1.5A1.75 1.75 0 0 0 14 12.25v-8.5A1.75 1.75 0 0 0 12.25 2h-1.5Z"/>
+                    </svg>
+                    @Localizer["Recorder_Pause"]
+                </button>
+            }
+
+            @if (_state == SgRecorderState.Paused)
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-secondary"
+                        @onclick="ResumeAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M3 2.75A.75.75 0 0 1 3.75 2h8.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-8.5A.75.75 0 0 1 3 13.25Z"/>
+                    </svg>
+                    @Localizer["Recorder_Resume"]
+                </button>
+            }
+
+            @if (_state == SgRecorderState.Recording || _state == SgRecorderState.Paused)
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-danger"
+                        @onclick="StopAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <rect fill="currentColor" x="3" y="3" width="10" height="10" rx="1.5"/>
+                    </svg>
+                    @Localizer["Recorder_Stop"]
+                </button>
+            }
+
+            @if (ShowReset && (_state != SgRecorderState.Idle && _state != SgRecorderState.RequestingPermission))
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-tertiary"
+                        @onclick="ResetAsync"
+                        disabled="@(_state == SgRecorderState.Stopping)">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M2 5a4 4 0 0 1 6.928-2.308h.001l.001-.001A4 4 0 0 1 14 5v.5a.5.5 0 0 0 1 0V5a5 5 0 0 0-9.33-2.5l-.257-.258A.5.5 0 0 0 4.793 2L2.146 4.646a.5.5 0 0 0 .708.708L4.5 3.707V9.5a.5.5 0 0 0 1 0V5a3 3 0 0 1 5.196-2.121A3 3 0 0 1 13 5v5.803l1.146-1.147a.5.5 0 0 0-.708-.708L11.207 10l2.647 2.646a.5.5 0 0 0 .708-.708L13 10.793V5a4 4 0 0 0-4-4 4 4 0 0 0-2.665 1.024H6.33A4 4 0 0 0 2 5Z"/>
+                    </svg>
+                    @Localizer["Recorder_Reset"]
+                </button>
+            }
+
+            @if (ShowDownload && _lastResult is not null)
+            {
+                <button type="button"
+                        class="sg-recorder-btn sg-recorder-btn-secondary"
+                        @onclick="DownloadAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M8.53 10.78a.75.75 0 0 1-1.06 0l-3-3a.75.75 0 1 1 1.06-1.06L7.25 8.44V2.75a.75.75 0 0 1 1.5 0v5.69l1.72-1.72a.75.75 0 1 1 1.06 1.06l-3 3Z"/>
+                        <path fill="currentColor" d="M2 10a.75.75 0 0 1 .75.75v1.75c0 .69.56 1.25 1.25 1.25h8c.69 0 1.25-.56 1.25-1.25V10.75a.75.75 0 0 1 1.5 0v1.75A2.75 2.75 0 0 1 12 15.25h-8A2.75 2.75 0 0 1 1.25 12.5V10.75A.75.75 0 0 1 2 10Z"/>
+                    </svg>
+                    @Localizer["Recorder_Download"]
+                </button>
+            }
+        </div>
+    </div>
+
+    @if (_lastResult is not null)
+    {
+        <div class="sg-recorder-result">
+            <div class="sg-recorder-result-header">
+                <span class="sg-recorder-result-title">@Localizer["Recorder_Result"]</span>
+            </div>
+            <div class="sg-recorder-video-container">
+                @if (_lastResult.MimeType?.StartsWith("audio") == true)
+                {
+                    <audio class="sg-recorder-playback" controls src="@_lastResult.DataUrl" style="width: 100%;"></audio>
+                }
+                else
+                {
+                    <video class="sg-recorder-playback" controls src="@_lastResult.DataUrl"></video>
+                }
+            </div>
+            <div class="sg-recorder-result-info">
+                <span class="sg-recorder-result-info-item">@FormatDuration(_lastResult.Duration)</span>
+                <span class="sg-recorder-result-info-item">@FormatFileSize(_lastResult.Size)</span>
+                <span class="sg-recorder-result-info-item">@_lastResult.MimeType</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgRecorder>? _selfRef;
+    private readonly string _instanceId = $"sg-recorder-{Guid.NewGuid():N}";
+    private readonly string _videoDeviceSelectId = $"sg-recorder-video-{Guid.NewGuid():N}";
+    private readonly string _audioDeviceSelectId = $"sg-recorder-audio-{Guid.NewGuid():N}";
+    private bool _isDisposed;
+    private SgRecorderState _state = SgRecorderState.Idle;
+    private string? _error;
+    private List<SgVideoDevice> _videoDevices = new();
+    private List<SgAudioDevice> _audioDevices = new();
+    private string _selectedVideoDeviceId = string.Empty;
+    private string _selectedAudioDeviceId = string.Empty;
+    private double _duration;
+    private SgRecorderStoppedEventArgs? _lastResult;
+    private Timer? _timer;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public bool Video { get; set; } = true;
+    [Parameter] public bool Audio { get; set; } = true;
+    [Parameter] public SgRecorderMimeType MimeType { get; set; } = SgRecorderMimeType.VideoWebM;
+    [Parameter] public int? BitsPerSecond { get; set; }
+    [Parameter] public int? TimeSlice { get; set; }
+    [Parameter] public int? MaxDuration { get; set; }
+    [Parameter] public SgVideoConstraints? VideoConstraints { get; set; }
+    [Parameter] public SgAudioConstraints? AudioConstraints { get; set; }
+    [Parameter] public bool ShowDeviceList { get; set; } = true;
+    [Parameter] public bool ShowReset { get; set; } = true;
+    [Parameter] public bool ShowDownload { get; set; } = true;
+    [Parameter] public bool RequestPermissionsAutomatically { get; set; } = false;
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public SgRecorderSources? Sources { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public EventCallback<SgRecorderPermissionGrantedEventArgs> OnPermissionGranted { get; set; }
+    [Parameter] public EventCallback OnPermissionDenied { get; set; }
+    [Parameter] public EventCallback<SgRecorderStartedEventArgs> OnStart { get; set; }
+    [Parameter] public EventCallback OnPause { get; set; }
+    [Parameter] public EventCallback OnResume { get; set; }
+    [Parameter] public EventCallback<SgRecorderStoppedEventArgs> OnStop { get; set; }
+    [Parameter] public EventCallback<SgRecorderDataAvailableEventArgs> OnDataAvailable { get; set; }
+    [Parameter] public EventCallback<SgRecorderErrorEventArgs> OnError { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-recorder.js");
+            if (_isDisposed) return;
+            _selfRef = DotNetObjectReference.Create(this);
+            var sources = Sources ?? new SgRecorderSources();
+            await _module.InvokeVoidAsync("initRecorder", _selfRef, _instanceId, sources);
+
+            if (RequestPermissionsAutomatically)
+            {
+                await RequestPermissionsAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Recorder_FailedToLoad"]}: {ex.Message}";
+            _state = SgRecorderState.Error;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string GetMimeTypeString() => MimeType switch
+    {
+        SgRecorderMimeType.VideoWebM => "video/webm",
+        SgRecorderMimeType.VideoWebM_VP9 => "video/webm",
+        SgRecorderMimeType.VideoWebM_H264 => "video/webm",
+        SgRecorderMimeType.AudioWAV => "audio/wav",
+        SgRecorderMimeType.AudioOGG => "audio/ogg",
+        _ => "video/webm"
+    };
+
+    private string GetStateText() => _state switch
+    {
+        SgRecorderState.Idle => Localizer["Recorder_State_Idle"],
+        SgRecorderState.RequestingPermission => Localizer["Recorder_State_RequestingPermission"],
+        SgRecorderState.Ready => Localizer["Recorder_State_Ready"],
+        SgRecorderState.Recording => Localizer["Recorder_State_Recording"],
+        SgRecorderState.Paused => Localizer["Recorder_State_Paused"],
+        SgRecorderState.Stopping => Localizer["Recorder_State_Stopping"],
+        SgRecorderState.Error => Localizer["Recorder_State_Error"],
+        _ => ""
+    };
+
+    private string FormatDuration(double seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.Hours > 0 ? $"{ts:hh\\:mm\\:ss}" : $"{ts:mm\\:ss}";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    public async Task RequestPermissionsAsync()
+    {
+        if (_module is null) return;
+        _state = SgRecorderState.RequestingPermission;
+        _error = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await _module.InvokeVoidAsync("requestPermissions",
+                _instanceId,
+                Video,
+                Audio,
+                VideoConstraints,
+                AudioConstraints,
+                _selectedVideoDeviceId,
+                _selectedAudioDeviceId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Recorder_FailedToRequestPermissions"]}: {ex.Message}";
+            _state = SgRecorderState.Error;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task StartAsync()
+    {
+        if (_module is null || _state != SgRecorderState.Ready) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("startRecording",
+                _instanceId,
+                GetMimeTypeString(),
+                BitsPerSecond,
+                TimeSlice,
+                MaxDuration);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Recorder_FailedToStart"]}: {ex.Message}";
+            _state = SgRecorderState.Error;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task PauseAsync()
+    {
+        if (_module is null || _state != SgRecorderState.Recording) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("pauseRecording", _instanceId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task ResumeAsync()
+    {
+        if (_module is null || _state != SgRecorderState.Paused) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("resumeRecording", _instanceId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    public async Task StopAsync()
+    {
+        if (_module is null || (_state != SgRecorderState.Recording && _state != SgRecorderState.Paused)) return;
+
+        _state = SgRecorderState.Stopping;
+        StopTimer();
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await _module.InvokeVoidAsync("stopRecording", _instanceId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["Recorder_FailedToStop"]}: {ex.Message}";
+            _state = SgRecorderState.Error;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task ResetAsync()
+    {
+        if (_module is null) return;
+
+        _lastResult = null;
+        _duration = 0;
+        StopTimer();
+
+        try
+        {
+            await _module.InvokeVoidAsync("resetRecorder", _instanceId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+    }
+
+    private void StartTimer()
+    {
+        _timer = new Timer(_ =>
+        {
+            _duration++;
+            InvokeAsync(StateHasChanged);
+        }, null, 1000, 1000);
+    }
+
+    private void StopTimer()
+    {
+        _timer?.Dispose();
+        _timer = null;
+    }
+
+    public async Task DownloadAsync()
+    {
+        if (_lastResult?.DataUrl is null) return;
+
+        await JS.InvokeVoidAsync("eval", $@"
+            const a = document.createElement('a');
+            a.href = '{_lastResult.DataUrl}';
+            a.download = 'recording.{GetExtension()}';
+            a.click();
+        ");
+    }
+
+    private string GetExtension() => MimeType switch
+    {
+        SgRecorderMimeType.AudioWAV => "wav",
+        SgRecorderMimeType.AudioOGG => "ogg",
+        _ => "webm"
+    };
+
+    private async Task OnVideoDeviceChanged(ChangeEventArgs e)
+    {
+        _selectedVideoDeviceId = e.Value?.ToString() ?? string.Empty;
+        if (_state == SgRecorderState.Ready || _state == SgRecorderState.Idle)
+        {
+            await ResetAsync();
+        }
+    }
+
+    private async Task OnAudioDeviceChanged(ChangeEventArgs e)
+    {
+        _selectedAudioDeviceId = e.Value?.ToString() ?? string.Empty;
+        if (_state == SgRecorderState.Ready || _state == SgRecorderState.Idle)
+        {
+            await ResetAsync();
+        }
+    }
+
+    public async Task RetryAsync()
+    {
+        _error = null;
+        _state = SgRecorderState.Idle;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnPermissionGrantedAsync(List<SgVideoDevice> videoDevices, List<SgAudioDevice> audioDevices)
+    {
+        _videoDevices = videoDevices ?? new();
+        _audioDevices = audioDevices ?? new();
+
+        if (string.IsNullOrEmpty(_selectedVideoDeviceId) && _videoDevices.Count > 0)
+        {
+            _selectedVideoDeviceId = _videoDevices[0].DeviceId;
+        }
+        if (string.IsNullOrEmpty(_selectedAudioDeviceId) && _audioDevices.Count > 0)
+        {
+            _selectedAudioDeviceId = _audioDevices[0].DeviceId;
+        }
+
+        _state = SgRecorderState.Ready;
+        await InvokeAsync(StateHasChanged);
+
+        if (OnPermissionGranted.HasDelegate)
+            await OnPermissionGranted.InvokeAsync(new SgRecorderPermissionGrantedEventArgs
+            {
+                VideoDevices = _videoDevices,
+                AudioDevices = _audioDevices
+            });
+    }
+
+    [JSInvokable]
+    public async Task OnPermissionDeniedAsync()
+    {
+        _state = SgRecorderState.Error;
+        _error = Localizer["Recorder_PermissionDenied"];
+        await InvokeAsync(StateHasChanged);
+
+        if (OnPermissionDenied.HasDelegate)
+            await OnPermissionDenied.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnStartAsync(string startedAtString)
+    {
+        _state = SgRecorderState.Recording;
+        _duration = 0;
+        StartTimer();
+        await InvokeAsync(StateHasChanged);
+
+        if (OnStart.HasDelegate)
+        {
+            var startedAt = DateTime.TryParse(startedAtString, out var dt) ? dt : DateTime.Now;
+            await OnStart.InvokeAsync(new SgRecorderStartedEventArgs { StartedAt = startedAt });
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPauseAsync()
+    {
+        _state = SgRecorderState.Paused;
+        StopTimer();
+        await InvokeAsync(StateHasChanged);
+
+        if (OnPause.HasDelegate)
+            await OnPause.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnResumeAsync()
+    {
+        _state = SgRecorderState.Recording;
+        StartTimer();
+        await InvokeAsync(StateHasChanged);
+
+        if (OnResume.HasDelegate)
+            await OnResume.InvokeAsync();
+    }
+
+    [JSInvokable]
+    public async Task OnStopAsync(string? dataUrl, double duration, long size, string? mimeType)
+    {
+        _state = SgRecorderState.Ready;
+        StopTimer();
+
+        var args = new SgRecorderStoppedEventArgs
+        {
+            DataUrl = dataUrl,
+            Duration = duration,
+            Size = size,
+            MimeType = mimeType
+        };
+
+        _lastResult = args;
+        _duration = args.Duration;
+        await InvokeAsync(StateHasChanged);
+
+        if (OnStop.HasDelegate)
+            await OnStop.InvokeAsync(args);
+    }
+
+    [JSInvokable]
+    public async Task OnErrorAsync(string message, string? errorType)
+    {
+        _error = message ?? Localizer["Recorder_UnknownError"];
+        _state = SgRecorderState.Error;
+        await InvokeAsync(StateHasChanged);
+
+        if (OnError.HasDelegate)
+        {
+            await OnError.InvokeAsync(new SgRecorderErrorEventArgs
+            {
+                Message = _error,
+                ErrorType = errorType
+            });
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnResetAsync()
+    {
+        _state = SgRecorderState.Idle;
+        _duration = 0;
+        _lastResult = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        StopTimer();
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("disposeRecorder", _instanceId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+        }
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+            _module = null;
+        }
+    }
+}
