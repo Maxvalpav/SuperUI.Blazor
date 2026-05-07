@@ -103,6 +103,16 @@
         </div>
     </div>
 
+    @if (_decodeError is not null)
+    {
+        <div class="sg-barcode-scanner-error" role="alert">
+            <svg class="sg-barcode-scanner-error-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Zm0 4a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1Zm0 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/>
+            </svg>
+            <span>@(Localizer["BarcodeScanner_DecodeError"] ?? "Ошибка декодирования"): @_decodeError</span>
+        </div>
+    }
+
     @if (_lastScan is not null)
     {
         <div class="sg-barcode-scanner-result">
@@ -130,6 +140,7 @@
     private bool _isScanning;
     private bool _torchOn;
     private string? _error;
+    private string? _decodeError;
     private List<SgVideoDevice> _devices = new();
     private string _selectedDeviceId = string.Empty;
     private SgBarcodeReceivedEventArgs? _lastScan;
@@ -267,6 +278,8 @@
         };
 
         _lastScan = args;
+        _decodeError = null;
+        await InvokeAsync(StateHasChanged);
         
         if (OnBarcodeReceived.HasDelegate)
             await OnBarcodeReceived.InvokeAsync(args);
@@ -284,6 +297,9 @@
     [JSInvokable]
     public async Task OnDecodeErrorAsync(string error)
     {
+        _decodeError = error;
+        await InvokeAsync(StateHasChanged);
+        
         if (OnDecodeError.HasDelegate)
             await OnDecodeError.InvokeAsync(error);
     }
@@ -306,6 +322,9 @@
         var file = e.File;
         if (file == null) return;
         
+        _decodeError = null;
+        await InvokeAsync(StateHasChanged);
+        
         using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
         using var memoryStream = new MemoryStream();
         await stream.CopyToAsync(memoryStream);
@@ -319,7 +338,7 @@
         if (_module is null) return;
         try
         {
-            await _module.InvokeVoidAsync("decodeFromFile", _instanceId, dataUrl);
+            await _module.InvokeVoidAsync("decodeFromFile", _instanceId, dataUrl, DecodeFormats, DecodedPictureCapture);
         }
         catch (Exception ex)
         {

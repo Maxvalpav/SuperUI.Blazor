@@ -241,3 +241,35 @@ public class SgRagCollectionInfo
     public int DocCount { get; set; }
     public int ChunkCount { get; set; }
 }
+
+// ── Analytics models ───────────────────────────────────────────────────────────
+
+/// <summary>Query log entry for analytics.</summary>
+public class SgRagQueryLogEntry
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Query { get; set; } = string.Empty;
+    public string Collection { get; set; } = "default";
+    public long LatencyMs { get; set; }
+    public int HitCount { get; set; }
+    public bool HasAnswer { get; set; }
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
+
+/// <summary>Analytics summary for display.</summary>
+public class SgRagAnalyticsSummary
+{
+    public int TotalQueries { get; set; }
+    public double AverageLatencyMs { get; set; }
+    public double NoAnswerRate { get; set; }
+    public int TotalHits { get; set; }
+    public IReadOnlyList<SgRagQueryLogEntry> RecentQueries { get; set; } = [];
+}
+
+/// <summary>Result of exporting a chat history.</summary>
+public class SgRagChatExportResult
+{
+    public string Content { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public string Extension { get; set; } = "";
+}
