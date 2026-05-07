@@ -1,28 +1,36 @@
 @namespace SuperUI.Components
 @implements IDisposable
 
-<div class="sgc-accordion-item @(_open ? "sgc-open" : "") @CssClass">
+<div class="sgc-accordion-item @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @CssClass">
     <button type="button"
             class="sgc-accordion-header"
             @onclick="ToggleAsync"
             @onfocus="() => IsFocused = true"
             @onblur="() => IsFocused = false"
             @ref="_buttonRef"
+            disabled="@Disabled"
             aria-expanded="@(_open ? "true" : "false")"
+            aria-disabled="@(Disabled ? "true" : "false")"
             id="@_headerId"
             aria-controls="@_contentId">
         @if (!string.IsNullOrEmpty(Icon))
         {
             <span class="sgc-accordion-icon">@((MarkupString)Icon)</span>
         }
-        @if (HeaderContent is not null)
-        {
-            <span class="sgc-accordion-title">@HeaderContent</span>
-        }
-        else
-        {
-            <span class="sgc-accordion-title">@Title</span>
-        }
+        <span class="sgc-accordion-title-wrap">
+            @if (HeaderContent is not null)
+            {
+                <span class="sgc-accordion-title">@HeaderContent</span>
+            }
+            else
+            {
+                <span class="sgc-accordion-title">@Title</span>
+            }
+            @if (!string.IsNullOrEmpty(Subtitle))
+            {
+                <span class="sgc-accordion-subtitle">@Subtitle</span>
+            }
+        </span>
         @if (ExtraContent is not null)
         {
             <span class="sgc-accordion-extra" @onclick:stopPropagation="true">@ExtraContent</span>
@@ -73,9 +81,24 @@
     [Parameter] public string Title { get; set; } = "";
 
     /// <summary>
+    /// Gets or sets a secondary line shown under the title in the header.
+    /// </summary>
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>
     /// Gets or sets custom header content. Takes precedence over <see cref="Title"/>.
     /// </summary>
     [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the accordion item is disabled and cannot be toggled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Raised when the open state of the item changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> ExpandedChanged { get; set; }
 
     /// <summary>
     /// Gets or sets extra content rendered on the right side of the header (e.g. badges, actions).
@@ -108,17 +131,20 @@
         }
     }
 
-    public Task ToggleAsync()
+    public async Task ToggleAsync()
     {
+        if (Disabled) return;
         _open = !_open;
         if (_open) Owner?.NotifyExpanded(this);
-        return InvokeAsync(StateHasChanged);
+        if (ExpandedChanged.HasDelegate) await ExpandedChanged.InvokeAsync(_open);
+        await InvokeAsync(StateHasChanged);
     }
 
     public void Collapse()
     {
         if (!_open) return;
         _open = false;
+        if (ExpandedChanged.HasDelegate) _ = ExpandedChanged.InvokeAsync(false);
         _ = InvokeAsync(StateHasChanged);
     }
 
