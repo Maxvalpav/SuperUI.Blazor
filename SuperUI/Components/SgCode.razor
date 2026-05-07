@@ -1,50 +1,66 @@
 @namespace SuperUI.Components
 @inject IJSRuntime JS
 
-<div class="sgc-code @CssClass" style="@Style" @attributes="AdditionalAttributes">
-    @if (!string.IsNullOrEmpty(Title))
+<div class="sgc-code @(_expanded ? "sgc-code-fullscreen" : "") @(Wrap ? "sgc-code-wrap" : "") @CssClass"
+     style="@Style"
+     @attributes="AdditionalAttributes">
+
+    @{ var hasHeader = HasHeader(); }
+    @if (hasHeader)
     {
-        <div class="sgc-code-header">
-            <span class="sgc-code-title">@Title</span>
+        <div class="sgc-code-header @(string.IsNullOrEmpty(Title) && string.IsNullOrEmpty(Filename) ? "sgc-code-header-slim" : "")">
+            @if (!string.IsNullOrEmpty(Filename))
+            {
+                <span class="sgc-code-file" title="@Filename">
+                    <span class="sgc-code-file-ico" aria-hidden="true">@((MarkupString)IconFile)</span>
+                    <span class="sgc-code-file-name">@Filename</span>
+                </span>
+            }
+            else if (!string.IsNullOrEmpty(Title))
+            {
+                <span class="sgc-code-title">@Title</span>
+            }
+
             <div class="sgc-code-actions">
                 @if (ShowLanguage && Language != SgCodeLanguage.Text)
                 {
                     <span class="sgc-code-lang">@LanguageLabel</span>
                 }
-                @if (ShowCopy)
+                @if (ShowWrap)
                 {
-                    <button type="button" class="sgc-code-copy @(_copied ? "sgc-code-copy-done" : "")" @onclick="CopyAsync" title="Копировать">
-                        @if (_copied)
-                        {
-                            <span>✓ Скопировано</span>
-                        }
-                        else
-                        {
-                            <span>⎘ Копировать</span>
-                        }
+                    <button type="button"
+                            class="sgc-code-iconbtn @(Wrap ? "sgc-active" : "")"
+                            @onclick="ToggleWrap"
+                            title="@(Wrap ? "Unwrap" : "Wrap")"
+                            aria-pressed="@(Wrap ? "true" : "false")">
+                        @((MarkupString)IconWrap)
                     </button>
                 }
-            </div>
-        </div>
-    }
-    else if (ShowCopy || (ShowLanguage && Language != SgCodeLanguage.Text))
-    {
-        <div class="sgc-code-header sgc-code-header-slim">
-            <div class="sgc-code-actions">
-                @if (ShowLanguage && Language != SgCodeLanguage.Text)
+                @if (ShowExpand)
                 {
-                    <span class="sgc-code-lang">@LanguageLabel</span>
+                    <button type="button"
+                            class="sgc-code-iconbtn"
+                            @onclick="ToggleExpand"
+                            title="@(_expanded ? "Collapse" : "Expand")"
+                            aria-pressed="@(_expanded ? "true" : "false")">
+                        @((MarkupString)(_expanded ? IconCollapse : IconExpand))
+                    </button>
                 }
                 @if (ShowCopy)
                 {
-                    <button type="button" class="sgc-code-copy @(_copied ? "sgc-code-copy-done" : "")" @onclick="CopyAsync" title="Копировать">
+                    <button type="button"
+                            class="sgc-code-copy @(_copied ? "sgc-code-copy-done" : "")"
+                            @onclick="CopyAsync"
+                            title="Copy to clipboard">
                         @if (_copied)
                         {
-                            <span>✓ Скопировано</span>
+                            <span class="sgc-code-copy-ico">@((MarkupString)SgIcons.Check)</span>
+                            <span>Copied</span>
                         }
                         else
                         {
-                            <span>⎘ Копировать</span>
+                            <span class="sgc-code-copy-ico">@((MarkupString)SgIcons.Copy)</span>
+                            <span>Copy</span>
                         }
                     </button>
                 }
@@ -52,85 +68,97 @@
         </div>
     }
 
-    <div class="sgc-code-body @(MaxHeight.HasValue ? "sgc-code-scroll" : "")"
-         style="@(MaxHeight.HasValue ? $"max-height:{MaxHeight}px;overflow-y:auto;" : "")">
+    <div class="sgc-code-body @(_effectiveMaxHeight.HasValue ? "sgc-code-scroll" : "")"
+         style="@(_effectiveMaxHeight.HasValue ? $"max-height:{_effectiveMaxHeight}px;" : "")">
         @if (ShowLineNumbers)
         {
-            <div class="sgc-code-lines">
+            <div class="sgc-code-lines" aria-hidden="true">
                 @for (int i = 1; i <= _lineCount; i++)
                 {
                     <span class="sgc-code-line-num">@i</span>
                 }
             </div>
         }
-        <pre class="sgc-code-pre"><code class="sgc-code-content sgc-lang-@LanguageClass">@_displayCode</code></pre>
+        <pre class="sgc-code-pre"><code class="sgc-code-content sgc-lang-@LanguageClass">@((MarkupString)_renderedHtml)</code></pre>
     </div>
 </div>
 
 @code {
     private bool _copied;
+    private bool _expanded;
     private string _displayCode = "";
+    private string _renderedHtml = "";
     private int _lineCount;
     private CancellationTokenSource? _copyCts;
+    private int? _effectiveMaxHeight;
 
-    /// <summary>
-    /// Gets or sets the code string to display.
-    /// </summary>
+    /// <summary>Gets or sets the code string to display.</summary>
     [Parameter] public string? Code { get; set; }
 
-    /// <summary>
-    /// Gets or sets the programming language for syntax highlighting hint.
-    /// Default is <see cref="SgCodeLanguage.Razor"/>.
-    /// </summary>
+    /// <summary>Programming language for syntax highlighting hint.</summary>
     [Parameter] public SgCodeLanguage Language { get; set; } = SgCodeLanguage.Razor;
 
-    /// <summary>
-    /// Gets or sets an optional title shown in the code block header.
-    /// </summary>
+    /// <summary>Optional title shown in the code block header.</summary>
     [Parameter] public string? Title { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether to show the copy-to-clipboard button. Default is true.
-    /// </summary>
+    /// <summary>Optional file name; takes precedence over <see cref="Title"/> in the header.</summary>
+    [Parameter] public string? Filename { get; set; }
+
+    /// <summary>Show the copy-to-clipboard button. Default true.</summary>
     [Parameter] public bool ShowCopy { get; set; } = true;
 
-    /// <summary>
-    /// Gets or sets whether to show line numbers. Default is false.
-    /// </summary>
+    /// <summary>Show line numbers gutter. Default false.</summary>
     [Parameter] public bool ShowLineNumbers { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether to show the language label badge. Default is true.
-    /// </summary>
+    /// <summary>Show the language label badge. Default true.</summary>
     [Parameter] public bool ShowLanguage { get; set; } = true;
 
+    /// <summary>Show the wrap-toggle button. Default false.</summary>
+    [Parameter] public bool ShowWrap { get; set; }
+
+    /// <summary>Show the expand/fullscreen button. Default false.</summary>
+    [Parameter] public bool ShowExpand { get; set; }
+
+    /// <summary>Soft-wrap long lines. Default false.</summary>
+    [Parameter] public bool Wrap { get; set; }
+
     /// <summary>
-    /// Gets or sets the maximum height in pixels before the code block scrolls.
-    /// When null (default) the block expands to fit its content.
+    /// Maximum height in pixels before the code block scrolls.
+    /// Null (default) expands to fit content.
     /// </summary>
     [Parameter] public int? MaxHeight { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the root element.
-    /// </summary>
+    /// <summary>Apply lightweight syntax highlighting. Default true.</summary>
+    [Parameter] public bool HighlightSyntax { get; set; } = true;
+
     [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the root element.
-    /// </summary>
     [Parameter] public string? Style { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     protected override void OnParametersSet()
     {
-        _displayCode = (Code ?? "").TrimEnd('\r', '\n');
-        // Trim common leading indentation so embedded string literals look clean
-        _displayCode = TrimIndent(_displayCode);
-        _lineCount = _displayCode.Split('\n').Length;
+        _displayCode = TrimIndent((Code ?? "").TrimEnd('\r', '\n'));
+        _lineCount = _displayCode.Length == 0 ? 1 : _displayCode.Split('\n').Length;
+        _renderedHtml = HighlightSyntax
+            ? Highlighter.Highlight(_displayCode, Language)
+            : System.Net.WebUtility.HtmlEncode(_displayCode);
+        _effectiveMaxHeight = _expanded ? null : MaxHeight;
+    }
+
+    private bool HasHeader() =>
+        !string.IsNullOrEmpty(Title) ||
+        !string.IsNullOrEmpty(Filename) ||
+        ShowCopy ||
+        ShowWrap ||
+        ShowExpand ||
+        (ShowLanguage && Language != SgCodeLanguage.Text);
+
+    private void ToggleWrap() => Wrap = !Wrap;
+
+    private void ToggleExpand()
+    {
+        _expanded = !_expanded;
+        _effectiveMaxHeight = _expanded ? null : MaxHeight;
     }
 
     private async Task CopyAsync()
@@ -142,7 +170,7 @@
         }
         catch
         {
-            // Clipboard API may be unavailable in some environments — silently ignore
+            // Clipboard unavailable — silently ignore.
         }
         _copied = true;
         StateHasChanged();
@@ -151,10 +179,7 @@
         _copyCts?.Dispose();
         _copyCts = new CancellationTokenSource();
         var token = _copyCts.Token;
-        try
-        {
-            await Task.Delay(2000, token);
-        }
+        try { await Task.Delay(1800, token); }
         catch (TaskCanceledException) { return; }
         if (!token.IsCancellationRequested)
         {
@@ -192,6 +217,16 @@
         SgCodeLanguage.Sql        => "sql",
         _                         => "text"
     };
+
+    // ── Inline icons (kept local to avoid library churn) ────────────────────
+    private const string IconFile =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"></path><polyline points=\"14 2 14 8 20 8\"></polyline></svg>";
+    private const string IconWrap =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"3 6 21 6\"></polyline><path d=\"M3 12h15a3 3 0 0 1 0 6h-4\"></path><polyline points=\"16 16 14 18 16 20\"></polyline><line x1=\"3\" y1=\"18\" x2=\"10\" y2=\"18\"></line></svg>";
+    private const string IconExpand =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"15 3 21 3 21 9\"></polyline><polyline points=\"9 21 3 21 3 15\"></polyline><line x1=\"21\" y1=\"3\" x2=\"14\" y2=\"10\"></line><line x1=\"3\" y1=\"21\" x2=\"10\" y2=\"14\"></line></svg>";
+    private const string IconCollapse =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"4 14 10 14 10 20\"></polyline><polyline points=\"20 10 14 10 14 4\"></polyline><line x1=\"14\" y1=\"10\" x2=\"21\" y2=\"3\"></line><line x1=\"3\" y1=\"21\" x2=\"10\" y2=\"14\"></line></svg>";
 
     /// <summary>
     /// Removes the common leading whitespace from all non-empty lines so that
