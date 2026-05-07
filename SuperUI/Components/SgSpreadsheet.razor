@@ -1,0 +1,694 @@
+@namespace SuperUI.Components
+@using System.ComponentModel.DataAnnotations
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="sgc-spreadsheet @(Compact ? "sgc-spreadsheet-compact" : "") @(Loading ? "sgc-spreadsheet-loading" : "") @CssClass"
+     @ref="_root"
+     @attributes="AdditionalAttributes">
+    
+    @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Description) || ToolbarContent is not null || ShowToolbar)
+    {
+        <div class="sgc-spreadsheet-header">
+            <div class="sgc-spreadsheet-header-text">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <div class="sgc-spreadsheet-title">@Title</div>
+                }
+                @if (!string.IsNullOrEmpty(Description))
+                {
+                    <div class="sgc-spreadsheet-desc">@Description</div>
+                }
+            </div>
+            <div class="sgc-spreadsheet-toolbar">
+                @if (ShowToolbar && !ReadOnly)
+                {
+                    <button class="sgc-btn sgc-sm" @onclick="AddRowAsync" title="Добавить строку">@((MarkupString)IconPlus) Строка</button>
+                    <button class="sgc-btn sgc-sm" @onclick="AddColumnAsync" title="Добавить столбец">@((MarkupString)IconPlus) Столбец</button>
+                    <button class="sgc-btn sgc-sm" @onclick="DeleteSelectedRowsAsync" disabled="@(SelectedRows.Count == 0)" title="Удалить выбранные строки">@((MarkupString)IconTrash) Удалить строки</button>
+                    <button class="sgc-btn sgc-sm" @onclick="DeleteSelectedColumnsAsync" disabled="@(SelectedColumns.Count == 0)" title="Удалить выбранные столбцы">@((MarkupString)IconTrash) Удалить столбцы</button>
+                    <div class="sgc-spreadsheet-separator"></div>
+                    <button class="sgc-btn sgc-sm" @onclick="BoldSelectedAsync" title="Полужирный (Ctrl+B)">@((MarkupString)IconBold)</button>
+                    <button class="sgc-btn sgc-sm" @onclick="ItalicSelectedAsync" title="Курсив (Ctrl+I)">@((MarkupString)IconItalic)</button>
+                    <button class="sgc-btn sgc-sm" @onclick="UnderlineSelectedAsync" title="Подчеркнутый (Ctrl+U)">@((MarkupString)IconUnderline)</button>
+                    <div class="sgc-spreadsheet-separator"></div>
+                    <button class="sgc-btn sgc-sm" @onclick="ToggleFormulaBuilder" title="Конструктор формул">fx</button>
+                }
+                @if (ToolbarContent is not null)
+                {
+                    @ToolbarContent
+                }
+            </div>
+        </div>
+    }
+
+    @if (Loading)
+    {
+        <div class="sgc-spreadsheet-skeleton">
+            @for (int i = 0; i < 10; i++)
+            {
+                <div class="sgc-spreadsheet-skeleton-row">
+                    <span class="sgc-spreadsheet-skeleton-cell"></span>
+                    <span class="sgc-spreadsheet-skeleton-cell"></span>
+                    <span class="sgc-spreadsheet-skeleton-cell"></span>
+                    <span class="sgc-spreadsheet-skeleton-cell"></span>
+                    <span class="sgc-spreadsheet-skeleton-cell"></span>
+                </div>
+            }
+        </div>
+    }
+    else if (Columns.Count == 0 || Rows == 0)
+    {
+        <div class="sgc-spreadsheet-empty">
+            @if (EmptyContent is not null)
+            {
+                @EmptyContent
+            }
+            else
+            {
+                <div class="sgc-spreadsheet-empty-ico">@((MarkupString)IconTable)</div>
+                <div class="sgc-spreadsheet-empty-title">@EmptyTitle</div>
+                @if (!string.IsNullOrEmpty(EmptyDescription))
+                {
+                    <div class="sgc-spreadsheet-empty-desc">@EmptyDescription</div>
+                }
+                @if (!ReadOnly)
+                {
+                    <button class="sgc-btn sgc-primary sgc-sm" @onclick="InitializeDefaultAsync">Создать таблицу</button>
+                }
+            }
+        </div>
+    }
+    else
+    {
+        <div class="sgc-spreadsheet-wrapper" tabindex="0" @onkeydown="HandleKeyDownAsync">
+            <table class="sgc-spreadsheet-table" role="grid" aria-label="@(Title ?? "Spreadsheet")">
+                <thead>
+                    <tr>
+                        <th class="sgc-spreadsheet-corner"></th>
+                        @foreach (var col in Columns)
+                        {
+                            var isSelected = SelectedColumns.Contains(col.Key);
+                            <th class="sgc-spreadsheet-col-header @(isSelected ? "sgc-spreadsheet-selected" : "")"
+                                scope="col"
+                                @onclick="() => ToggleColumnSelection(col.Key)"
+                                @onclick:stopPropagation
+                                title="@col.Value">
+                                @col.Value
+                            </th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @for (int row = 0; row < Rows; row++)
+                    {
+                        var rowIndex = row;
+                        var isSelected = SelectedRows.Contains(rowIndex);
+                        <tr class="@(isSelected ? "sgc-spreadsheet-row-selected" : "")">
+                            <th class="sgc-spreadsheet-row-header" scope="row"
+                                @onclick="() => ToggleRowSelection(rowIndex)"
+                                @onclick:stopPropagation>
+                                @(rowIndex + 1)
+                            </th>
+                            @foreach (var col in Columns)
+                            {
+                                var colKey = col.Key;
+                                var cell = GetCell(rowIndex, colKey);
+                                var isEditing = _editingRow == rowIndex && _editingCol == colKey;
+                                var isCellSelected = _selectedRow == rowIndex && _selectedCol == colKey;
+                                
+                                <td class="sgc-spreadsheet-cell @(isEditing ? "sgc-spreadsheet-cell-editing" : "") @(isCellSelected ? "sgc-spreadsheet-cell-selected" : "") @(cell?.Bold == true ? "sgc-spreadsheet-bold" : "") @(cell?.Italic == true ? "sgc-spreadsheet-italic" : "") @(cell?.Underline == true ? "sgc-spreadsheet-underline" : "")"
+                                    style="@GetCellStyle(cell)"
+                                    role="gridcell"
+                                    @onclick="() => SelectCell(rowIndex, colKey)"
+                                    @ondblclick="() => StartEdit(rowIndex, colKey)">
+                                    @if (isEditing && !ReadOnly)
+                                    {
+                                        <input type="text"
+                                               class="sgc-spreadsheet-editor"
+                                               value="@(_editValue ?? cell?.Value ?? "")"
+                                               @ref="_editorRef"
+                                               @oninput="OnCellInput"
+                                               @onchange="CommitEdit"
+                                               @onblur="CancelEdit"
+                                               @onkeydown="HandleEditorKeyDown" />
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-spreadsheet-cell-content">@FormatCellValue(cell)</span>
+                                    }
+                                </td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+        
+        @if (ShowFormulaBar && !ReadOnly)
+        {
+            <div class="sgc-spreadsheet-formula-bar">
+                <span class="sgc-spreadsheet-formula-label">fx</span>
+                <input type="text"
+                       class="sgc-spreadsheet-formula-input"
+                       placeholder="Введите значение или формулу (например: =СУММ(A1:A5))"
+                       value="@GetSelectedCellFormula()"
+                       @onchange="OnFormulaChanged" />
+            </div>
+        }
+        
+        @if (_showFormulaBuilder && !ReadOnly)
+        {
+            <div class="sgc-spreadsheet-formula-builder">
+                <div class="sgc-spreadsheet-formula-builder-header">
+                    <span>Конструктор формул</span>
+                    <button class="sgc-btn sgc-sm sgc-ghost" @onclick="() => _showFormulaBuilder = false">✕</button>
+                </div>
+                    <div class="sgc-spreadsheet-formula-builder-body">
+                    <div class="sgc-spreadsheet-formula-functions">
+                        <button class="sgc-btn sgc-sm" @onclick="InsertSum">СУММ</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertAverage">СРЗНАЧ</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertMin">МИН</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertMax">МАКС</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertCount">СЧЁТ</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertIf">ЕСЛИ</button>
+                    </div>
+                    <div class="sgc-spreadsheet-formula-description">
+                        @_formulaDescription
+                    </div>
+                </div>
+            </div>
+        }
+        
+        @if (ShowStatusBar)
+        {
+            <div class="sgc-spreadsheet-status-bar">
+                <span class="sgc-spreadsheet-status">@GetSelectedCellReference()</span>
+                <span class="sgc-spreadsheet-status">@GetSelectionInfo()</span>
+                <span class="sgc-spreadsheet-status">@GetSummaryInfoRussian()</span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgSpreadsheet>? _dotNetRef;
+    private ElementReference _root;
+    private ElementReference _editorRef;
+    
+    private Dictionary<string, SpreadsheetCellData> _cells = new();
+    private HashSet<int> SelectedRows { get; set; } = new();
+    private HashSet<string> SelectedColumns { get; set; } = new();
+    private int _selectedRow = 0;
+    private string _selectedCol = "";
+    private int _editingRow = -1;
+    private string _editingCol = "";
+    private string? _editValue;
+    private bool _showFormulaBuilder = false;
+    private string _formulaDescription = "Выберите функцию для вставки";
+    
+    [Parameter] public Dictionary<string, string> Columns { get; set; } = new();
+    [Parameter] public int Rows { get; set; } = 0;
+    [Parameter] public Dictionary<string, SpreadsheetCellData>? CellData { get; set; }
+    [Parameter] public EventCallback<Dictionary<string, SpreadsheetCellData>> CellDataChanged { get; set; }
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool ShowToolbar { get; set; } = true;
+    [Parameter] public bool ShowFormulaBar { get; set; } = true;
+    [Parameter] public bool ShowStatusBar { get; set; } = true;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "Нет данных";
+    [Parameter] public string? EmptyDescription { get; set; } = "Создайте новую таблицу, чтобы начать работу.";
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _dotNetRef = DotNetObjectReference.Create(this);
+            try
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/Components/SgSpreadsheet.razor.js");
+                if (_module != null)
+                {
+                    await _module.InvokeVoidAsync("init", _dotNetRef, _root);
+                }
+            }
+            catch { }
+            
+            if (CellData is not null)
+            {
+                _cells = new Dictionary<string, SpreadsheetCellData>(CellData);
+            }
+        }
+    }
+    
+    protected override void OnParametersSet()
+    {
+        if (CellData is not null)
+        {
+            _cells = new Dictionary<string, SpreadsheetCellData>(CellData);
+        }
+        if (Columns.Count > 0 && string.IsNullOrEmpty(_selectedCol))
+        {
+            _selectedCol = Columns.Keys.First();
+        }
+    }
+    
+    private SpreadsheetCellData? GetCell(int row, string col)
+    {
+        var key = $"{row},{col}";
+        return _cells.TryGetValue(key, out var cell) ? cell : null;
+    }
+    
+    private string FormatCellValue(SpreadsheetCellData? cell)
+    {
+        if (cell is null || string.IsNullOrEmpty(cell.Value)) return "";
+        return cell.Value;
+    }
+    
+    private string GetCellStyle(SpreadsheetCellData? cell)
+    {
+        if (cell is null) return "";
+        var styles = new List<string>();
+        if (!string.IsNullOrEmpty(cell.BackgroundColor))
+            styles.Add($"background-color:{cell.BackgroundColor}");
+        if (!string.IsNullOrEmpty(cell.TextColor))
+            styles.Add($"color:{cell.TextColor}");
+        if (cell.FontSize > 0)
+            styles.Add($"font-size:{cell.FontSize}px");
+        return string.Join(";", styles);
+    }
+    
+    private string GetSelectedCellReference()
+    {
+        if (string.IsNullOrEmpty(_selectedCol) || _selectedRow < 0) return "";
+        return $"{_selectedCol}{_selectedRow + 1}";
+    }
+    
+    private string GetSelectionInfo()
+    {
+        var cellCount = SelectedRows.Count * SelectedColumns.Count;
+        if (cellCount > 1) return $"{cellCount} cells selected";
+        return "";
+    }
+    
+    private string GetSummaryInfo()
+    {
+        var values = new List<decimal>();
+        foreach (var cell in _cells.Values)
+        {
+            if (decimal.TryParse(cell.Value, out var val))
+                values.Add(val);
+        }
+        if (values.Count == 0) return "";
+        return $"Sum: {values.Sum():N0} | Avg: {values.Average():N1} | Count: {values.Count}";
+    }
+    
+    private string GetSummaryInfoRussian()
+    {
+        var values = new List<decimal>();
+        foreach (var cell in _cells.Values)
+        {
+            if (decimal.TryParse(cell.Value, out var val))
+                values.Add(val);
+        }
+        if (values.Count == 0) return "";
+        return $"Сумма: {values.Sum():N0} | Среднее: {values.Average():N1} | Кол-во: {values.Count}";
+    }
+    
+    private string GetSelectedCellFormula()
+    {
+        var cell = GetCell(_selectedRow, _selectedCol);
+        return cell?.Value ?? "";
+    }
+    
+    private void SelectCell(int row, string col)
+    {
+        _selectedRow = row;
+        _selectedCol = col;
+        SelectedRows.Clear();
+        SelectedColumns.Clear();
+        StateHasChanged();
+    }
+    
+    private void ToggleRowSelection(int row)
+    {
+        if (SelectedRows.Contains(row))
+            SelectedRows.Remove(row);
+        else
+            SelectedRows.Add(row);
+        StateHasChanged();
+    }
+    
+    private void ToggleColumnSelection(string col)
+    {
+        if (SelectedColumns.Contains(col))
+            SelectedColumns.Remove(col);
+        else
+            SelectedColumns.Add(col);
+        StateHasChanged();
+    }
+    
+    private void StartEdit(int row, string col)
+    {
+        if (ReadOnly) return;
+        _editingRow = row;
+        _editingCol = col;
+        var cell = GetCell(row, col);
+        _editValue = cell?.Value ?? "";
+        StateHasChanged();
+    }
+    
+    private void OnCellInput(ChangeEventArgs e)
+    {
+        _editValue = e.Value?.ToString();
+    }
+    
+    private void CommitEdit()
+    {
+        if (_editingRow < 0 || string.IsNullOrEmpty(_editingCol)) return;
+        
+        var key = $"{_editingRow},{_editingCol}";
+        if (_cells.TryGetValue(key, out var cell))
+        {
+            cell.Value = _editValue ?? "";
+        }
+        else
+        {
+            _cells[key] = new SpreadsheetCellData { Value = _editValue ?? "" };
+        }
+        
+        _editingRow = -1;
+        _editingCol = "";
+        _editValue = null;
+        
+        NotifyCellDataChanged();
+        StateHasChanged();
+    }
+    
+    private void CancelEdit()
+    {
+        _editingRow = -1;
+        _editingCol = "";
+        _editValue = null;
+        StateHasChanged();
+    }
+    
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (ReadOnly) return;
+        
+        switch (e.Key)
+        {
+            case "Enter":
+                if (_editingRow >= 0)
+                    CommitEdit();
+                else if (_selectedRow < Rows - 1)
+                    StartEdit(_selectedRow + 1, _selectedCol);
+                break;
+            case "Tab":
+                if (_editingRow >= 0)
+                    CommitEdit();
+                var cols = Columns.Keys.ToList();
+                var idx = cols.IndexOf(_selectedCol);
+                if (e.ShiftKey && idx > 0)
+                    SelectCell(_selectedRow, cols[idx - 1]);
+                else if (!e.ShiftKey && idx < cols.Count - 1)
+                    SelectCell(_selectedRow, cols[idx + 1]);
+                break;
+            case "ArrowUp":
+                if (_selectedRow > 0) SelectCell(_selectedRow - 1, _selectedCol);
+                break;
+            case "ArrowDown":
+                if (_selectedRow < Rows - 1) SelectCell(_selectedRow + 1, _selectedCol);
+                break;
+            case "ArrowLeft":
+                var colKeys = Columns.Keys.ToList();
+                var cIdx = colKeys.IndexOf(_selectedCol);
+                if (cIdx > 0) SelectCell(_selectedRow, colKeys[cIdx - 1]);
+                break;
+            case "ArrowRight":
+                colKeys = Columns.Keys.ToList();
+                cIdx = colKeys.IndexOf(_selectedCol);
+                if (cIdx < colKeys.Count - 1) SelectCell(_selectedRow, colKeys[cIdx + 1]);
+                break;
+        }
+        
+        await Task.CompletedTask;
+    }
+    
+    private void HandleEditorKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            CommitEdit();
+        }
+        else if (e.Key == "Escape")
+        {
+            CancelEdit();
+        }
+    }
+    
+    private void OnFormulaChanged(ChangeEventArgs e)
+    {
+        if (ReadOnly || _selectedRow < 0 || string.IsNullOrEmpty(_selectedCol)) return;
+        
+        var key = $"{_selectedRow},{_selectedCol}";
+        var value = e.Value?.ToString() ?? "";
+        
+        if (_cells.TryGetValue(key, out var cell))
+        {
+            cell.Value = value;
+        }
+        else
+        {
+            _cells[key] = new SpreadsheetCellData { Value = value };
+        }
+        
+        NotifyCellDataChanged();
+        StateHasChanged();
+    }
+    
+    private async Task AddRowAsync()
+    {
+        Rows++;
+        if (CellDataChanged.HasDelegate)
+            await CellDataChanged.InvokeAsync(_cells);
+        StateHasChanged();
+    }
+    
+    private async Task AddColumnAsync()
+    {
+        var newCol = $"Column{Columns.Count + 1}";
+        Columns[newCol] = $"Column {Columns.Count + 1}";
+        if (CellDataChanged.HasDelegate)
+            await CellDataChanged.InvokeAsync(_cells);
+        StateHasChanged();
+    }
+    
+    private async Task DeleteSelectedRowsAsync()
+    {
+        if (SelectedRows.Count == 0) return;
+        
+        var keysToRemove = _cells.Keys.Where(k =>
+        {
+            var parts = k.Split(',');
+            if (int.TryParse(parts[0], out var row))
+                return SelectedRows.Contains(row);
+            return false;
+        }).ToList();
+        
+        foreach (var key in keysToRemove)
+            _cells.Remove(key);
+        
+        SelectedRows.Clear();
+        if (CellDataChanged.HasDelegate)
+            await CellDataChanged.InvokeAsync(_cells);
+        StateHasChanged();
+    }
+    
+    private async Task DeleteSelectedColumnsAsync()
+    {
+        if (SelectedColumns.Count == 0) return;
+        
+        var keysToRemove = _cells.Keys.Where(k =>
+        {
+            var parts = k.Split(',');
+            if (parts.Length > 1)
+                return SelectedColumns.Contains(parts[1]);
+            return false;
+        }).ToList();
+        
+        foreach (var key in keysToRemove)
+            _cells.Remove(key);
+        
+        foreach (var col in SelectedColumns)
+            Columns.Remove(col);
+        
+        SelectedColumns.Clear();
+        if (CellDataChanged.HasDelegate)
+            await CellDataChanged.InvokeAsync(_cells);
+        StateHasChanged();
+    }
+    
+    private void BoldSelectedAsync()
+    {
+        ToggleStyleOnSelectedCells(c => c.Bold = !c.Bold);
+    }
+    
+    private void ItalicSelectedAsync()
+    {
+        ToggleStyleOnSelectedCells(c => c.Italic = !c.Italic);
+    }
+    
+    private void UnderlineSelectedAsync()
+    {
+        ToggleStyleOnSelectedCells(c => c.Underline = !c.Underline);
+    }
+    
+    private void ToggleStyleOnSelectedCells(Action<SpreadsheetCellData> action)
+    {
+        var rows = SelectedRows.Any() ? SelectedRows : Enumerable.Repeat(_selectedRow, 1);
+        var cols = SelectedColumns.Any() ? SelectedColumns : Enumerable.Repeat(_selectedCol, 1);
+        
+        foreach (var row in rows)
+        {
+            foreach (var col in cols)
+            {
+                var key = $"{row},{col}";
+                if (!_cells.TryGetValue(key, out var cell))
+                {
+                    cell = new SpreadsheetCellData();
+                    _cells[key] = cell;
+                }
+                action(cell);
+            }
+        }
+        NotifyCellDataChanged();
+        StateHasChanged();
+    }
+    
+    private void ToggleFormulaBuilder()
+    {
+        _showFormulaBuilder = !_showFormulaBuilder;
+        StateHasChanged();
+    }
+    
+    private void InsertFormula(string functionName)
+    {
+        var cellRef = GetSelectedCellReference();
+        var formula = $"={functionName}()";
+        _formulaDescription = $"Вставьте аргументы для функции {functionName}. Пример: ={functionName}(A1:A5)";
+        
+        if (_editingRow >= 0)
+        {
+            _editValue = formula;
+        }
+        else
+        {
+            var key = $"{_selectedRow},{_selectedCol}";
+            if (_cells.TryGetValue(key, out var cell))
+            {
+                cell.Value = formula;
+            }
+            else
+            {
+                _cells[key] = new SpreadsheetCellData { Value = formula };
+            }
+            NotifyCellDataChanged();
+        }
+        StateHasChanged();
+    }
+    
+    private async Task InitializeDefaultAsync()
+    {
+        Columns.Clear();
+        for (int i = 0; i < 5; i++)
+        {
+            var colLetter = GetColumnLetter(i);
+            Columns[colLetter] = colLetter;
+        }
+        Rows = 20;
+        _cells.Clear();
+        SelectedRows.Clear();
+        SelectedColumns.Clear();
+        _selectedRow = 0;
+        _selectedCol = Columns.Keys.First();
+        
+        if (CellDataChanged.HasDelegate)
+            await CellDataChanged.InvokeAsync(_cells);
+        StateHasChanged();
+    }
+    
+    private void NotifyCellDataChanged()
+    {
+        if (CellDataChanged.HasDelegate)
+            _ = CellDataChanged.InvokeAsync(new Dictionary<string, SpreadsheetCellData>(_cells));
+    }
+    
+    private static string GetColumnLetter(int index)
+    {
+        string result = "";
+        int num = index + 1;
+        while (num > 0)
+        {
+            num--;
+            result = (char)('A' + num % 26) + result;
+            num /= 26;
+        }
+        return result;
+    }
+    
+    [JSInvokable]
+    public void OnJsAction(string action)
+    {
+        // Handle JS callbacks if needed
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        _dotNetRef?.Dispose();
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); } catch { }
+        }
+    }
+    
+    private const string IconPlus =
+        "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><line x1='12' y1='5' x2='12' y2='19'></line><line x1='5' y1='12' x2='19' y2='12'></line></svg>";
+    private const string IconTrash =
+        "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><polyline points='3 6 5 6 21 6'></polyline><path d='M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2'></path></svg>";
+    private const string IconBold =
+        "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><path d='M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'></path><path d='M6 12h9a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6z'></path></svg>";
+    private const string IconItalic =
+        "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><line x1='19' y1='4' x2='10' y2='4'></line><line x1='14' y1='20' x2='5' y2='20'></line><line x1='15' y1='4' x2='9' y2='20'></line></svg>";
+    private const string IconUnderline =
+        "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><path d='M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3'></path><line x1='4' y1='21' x2='20' y2='21'></line></svg>";
+    private const string IconTable =
+        "<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round'><rect x='3' y='4' width='18' height='16' rx='2'></rect><line x1='3' y1='10' x2='21' y2='10'></line><line x1='9' y1='4' x2='9' y2='20'></line></svg>";
+
+    private void InsertSum() => InsertFormula("СУММ");
+    private void InsertAverage() => InsertFormula("СРЗНАЧ");
+    private void InsertMin() => InsertFormula("МИН");
+    private void InsertMax() => InsertFormula("МАКС");
+    private void InsertCount() => InsertFormula("СЧЁТ");
+    private void InsertIf() => InsertFormula("ЕСЛИ");
+
+    public class SpreadsheetCellData
+    {
+        public string Value { get; set; } = "";
+        public bool Bold { get; set; }
+        public bool Italic { get; set; }
+        public bool Underline { get; set; }
+        public string? BackgroundColor { get; set; }
+        public string? TextColor { get; set; }
+        public int FontSize { get; set; }
+    }
+}
