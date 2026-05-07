@@ -1,0 +1,192 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-rag-chunk-config @CssClass" @attributes="AdditionalAttributes">
+
+    <div class="sg-rag-section">
+        <div class="sg-rag-section-title">@Localizer["Rag_ChunkStrategy"]</div>
+
+        <div class="sg-rag-row">
+            <label class="sg-rag-label">@Localizer["Rag_Strategy"]</label>
+            <select class="sg-rag-select" value="@Value.Strategy"
+                    @onchange="OnStrategyChanged">
+                <option value="@SgRagChunkStrategy.Recursive">Recursive (recommended)</option>
+                <option value="@SgRagChunkStrategy.Characters">Characters (fast)</option>
+                <option value="@SgRagChunkStrategy.Sentences">Sentences</option>
+                <option value="@SgRagChunkStrategy.Code">Code (functions/classes)</option>
+                <option value="@SgRagChunkStrategy.Semantic">Semantic (requires embedding)</option>
+            </select>
+        </div>
+
+        <div class="sg-rag-row">
+            <label class="sg-rag-label">@Localizer["Rag_ChunkSize"]</label>
+            <div class="sg-rag-slider-wrap">
+                <input type="range" class="sg-rag-slider"
+                       min="128" max="2048" step="64"
+                       value="@Value.ChunkSize"
+                       @oninput="OnChunkSizeInput" />
+                <span class="sg-rag-slider-val">@Value.ChunkSize</span>
+            </div>
+        </div>
+
+        <div class="sg-rag-row">
+            <label class="sg-rag-label">@Localizer["Rag_Overlap"]</label>
+            <div class="sg-rag-slider-wrap">
+                <input type="range" class="sg-rag-slider"
+                       min="0" max="256" step="16"
+                       value="@Value.Overlap"
+                       @oninput="OnOverlapInput" />
+                <span class="sg-rag-slider-val">@Value.Overlap</span>
+            </div>
+        </div>
+    </div>
+
+    @if (ShowPreview && PreviewText is not null)
+    {
+        <div class="sg-rag-section">
+            <div class="sg-rag-section-title">
+                @Localizer["Rag_Preview"]
+                @if (_previewChunks is not null)
+                {
+                    <span class="sg-rag-badge sg-rag-badge-neutral" style="margin-left:8px">@_previewChunks.Count chunks</span>
+                }
+            </div>
+
+            @if (_previewLoading)
+            {
+                <div class="sg-rag-progress-bar">
+                    <div class="sg-rag-progress-fill sg-rag-progress-indeterminate"></div>
+                </div>
+            }
+            else if (_previewChunks is not null)
+            {
+                <div class="sg-rag-preview-list">
+                    @foreach (var (chunk, i) in _previewChunks.Take(5).Select((c, i) => (c, i)))
+                    {
+                        <div class="sg-rag-preview-chunk">
+                            <span class="sg-rag-preview-idx">#@(i + 1)</span>
+                            <span class="sg-rag-preview-text">@chunk.Text.Substring(0, Math.Min(chunk.Text.Length, 200))@(chunk.Text.Length > 200 ? "…" : "")</span>
+                            <span class="sg-rag-preview-meta">@chunk.TokenCount tok</span>
+                        </div>
+                    }
+                    @if (_previewChunks.Count > 5)
+                    {
+                        <div class="sg-rag-preview-more">+ @(_previewChunks.Count - 5) more chunks</div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "RagService")] private SgRagService? _ragService { get; set; }
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public SgRagChunkingOptions Value { get; set; } = new();
+    [Parameter] public EventCallback<SgRagChunkingOptions> ValueChanged { get; set; }
+    [Parameter] public string? PreviewText { get; set; }
+    [Parameter] public bool    ShowPreview { get; set; } = true;
+    [Parameter] public string? CssClass    { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private IReadOnlyList<SgRagChunk>? _previewChunks;
+    private bool _previewLoading;
+    private CancellationTokenSource? _previewCts;
+
+    // ── Handlers ──────────────────────────────────────────────────────────────
+
+    private async Task OnStrategyChanged(ChangeEventArgs e)
+    {
+        if (Enum.TryParse<SgRagChunkStrategy>(e.Value?.ToString(), out var s))
+        {
+            Value = new SgRagChunkingOptions
+            {
+                Strategy = s,
+                ChunkSize = Value.ChunkSize,
+                Overlap   = Value.Overlap,
+                Separators= Value.Separators,
+                SemanticSimilarityWindow = Value.SemanticSimilarityWindow,
+            };
+            await NotifyChanged();
+        }
+    }
+
+    private async Task OnChunkSizeInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+        {
+            Value = new SgRagChunkingOptions
+            {
+                Strategy  = Value.Strategy,
+                ChunkSize = v,
+                Overlap   = Math.Min(Value.Overlap, v / 2),
+                Separators= Value.Separators,
+                SemanticSimilarityWindow = Value.SemanticSimilarityWindow,
+            };
+            await NotifyChanged();
+        }
+    }
+
+    private async Task OnOverlapInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+        {
+            Value = new SgRagChunkingOptions
+            {
+                Strategy  = Value.Strategy,
+                ChunkSize = Value.ChunkSize,
+                Overlap   = v,
+                Separators= Value.Separators,
+                SemanticSimilarityWindow = Value.SemanticSimilarityWindow,
+            };
+            await NotifyChanged();
+        }
+    }
+
+    private async Task NotifyChanged()
+    {
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(Value);
+        await RefreshPreviewAsync();
+    }
+
+    private async Task RefreshPreviewAsync()
+    {
+        if (_ragService is null || PreviewText is null || !ShowPreview) return;
+
+        _previewCts?.Cancel();
+        _previewCts = new CancellationTokenSource();
+        var ct = _previewCts.Token;
+
+        _previewLoading = true;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Delay(300, ct); // debounce
+            _previewChunks = await _ragService.PreviewChunksAsync(
+                PreviewText.Substring(0, Math.Min(PreviewText.Length, 5000)),
+                Value, ct);
+        }
+        catch (OperationCanceledException) { }
+        catch { }
+        finally
+        {
+            _previewLoading = false;
+            if (!ct.IsCancellationRequested)
+                StateHasChanged();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (PreviewText is not null && ShowPreview && _previewChunks is null)
+            await RefreshPreviewAsync();
+    }
+}

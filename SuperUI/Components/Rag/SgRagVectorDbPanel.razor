@@ -1,0 +1,192 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-rag-db-panel @CssClass" @attributes="AdditionalAttributes">
+
+    @* Collections sidebar *@
+    <div class="sg-rag-db-sidebar">
+        <div class="sg-rag-section-title" style="padding:12px 12px 8px">@Localizer["Rag_Collections"]</div>
+
+        @if (_collections.Count == 0)
+        {
+            <div class="sg-rag-db-empty">@Localizer["Rag_NoCollections"]</div>
+        }
+        else
+        {
+            @foreach (var col in _collections)
+            {
+                <div class="sg-rag-col-item @(_selectedCollection == col.Name ? "active" : "")"
+                     @onclick="@(() => SelectCollection(col.Name))">
+                    <div class="sg-rag-col-name">@col.Name</div>
+                    <div class="sg-rag-col-meta">@col.DocCount docs · @col.ChunkCount chunks</div>
+                </div>
+            }
+        }
+
+        <div class="sg-rag-db-sidebar-footer">
+            <button type="button" class="sg-rag-btn sg-rag-btn-ghost" style="width:100%"
+                    @onclick="RefreshAsync">↻ @Localizer["Rag_Refresh"]</button>
+        </div>
+    </div>
+
+    @* Documents list *@
+    <div class="sg-rag-db-main">
+        @if (_selectedCollection is null)
+        {
+            <div class="sg-rag-db-empty-main">@Localizer["Rag_SelectCollection"]</div>
+        }
+        else
+        {
+            <div class="sg-rag-db-main-header">
+                <span class="sg-rag-section-title">@_selectedCollection</span>
+                @if (AllowDelete)
+                {
+                    <button type="button" class="sg-rag-btn sg-rag-btn-danger"
+                            @onclick="ClearCollectionAsync">
+                        @Localizer["Rag_ClearCollection"]
+                    </button>
+                }
+            </div>
+
+            @if (_documents.Count == 0)
+            {
+                <div class="sg-rag-db-empty">@Localizer["Rag_NoDocuments"]</div>
+            }
+            else
+            {
+                <div class="sg-rag-doc-list">
+                    @foreach (var doc in _documents)
+                    {
+                        <div class="sg-rag-doc-item @(_selectedDocId == doc.Id ? "active" : "")"
+                             @onclick="@(() => SelectDocument(doc))">
+                            <div class="sg-rag-doc-title">@doc.Title</div>
+                            <div class="sg-rag-doc-meta">
+                                <span class="sg-rag-badge sg-rag-badge-neutral">@doc.Format</span>
+                                @if (doc.Metadata.TryGetValue("language", out var docLang))
+                                {
+                                    <span class="sg-rag-badge sg-rag-badge-neutral" style="color:var(--sui-accent,#006fee)">@docLang</span>
+                                }
+                                <span>@doc.ChunkCount chunks</span>
+                                <span>@FormatSize(doc.SizeBytes)</span>
+                            </div>
+                            <div class="sg-rag-doc-actions">
+                                @if (AllowReindex)
+                                {
+                                    <button type="button" class="sg-rag-btn sg-rag-btn-ghost"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="@(() => ReindexAsync(doc.Id))">
+                                        ↻
+                                    </button>
+                                }
+                                @if (AllowDelete)
+                                {
+                                    <button type="button" class="sg-rag-btn sg-rag-btn-danger"
+                                            @onclick:stopPropagation="true"
+                                            @onclick="@(() => DeleteDocumentAsync(doc.Id))">
+                                        ✕
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter(Name = "RagService")] private SgRagService? _ragService { get; set; }
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public bool AllowDelete  { get; set; } = true;
+    [Parameter] public bool AllowReindex { get; set; } = true;
+    [Parameter] public EventCallback<string> OnDocumentSelected { get; set; }
+    [Parameter] public string? CssClass  { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private List<SgRagCollectionInfo> _collections = new();
+    private List<SgRagDocument>       _documents   = new();
+    private string? _selectedCollection;
+    private string? _selectedDocId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender) await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_ragService is null) return;
+        try
+        {
+            _collections = (await _ragService.ListCollectionsAsync()).ToList();
+            if (_selectedCollection is not null)
+                _documents = (await _ragService.ListDocumentsAsync(_selectedCollection)).ToList();
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task SelectCollection(string name)
+    {
+        _selectedCollection = name;
+        _selectedDocId = null;
+        if (_ragService is not null)
+            _documents = (await _ragService.ListDocumentsAsync(name)).ToList();
+        StateHasChanged();
+    }
+
+    private async Task SelectDocument(SgRagDocument doc)
+    {
+        _selectedDocId = doc.Id;
+        if (OnDocumentSelected.HasDelegate)
+            await OnDocumentSelected.InvokeAsync(doc.Id);
+        StateHasChanged();
+    }
+
+    private async Task DeleteDocumentAsync(string docId)
+    {
+        if (_ragService is null) return;
+        try
+        {
+            await _ragService.RemoveDocumentAsync(docId);
+            await RefreshAsync();
+        }
+        catch { }
+    }
+
+    private async Task ReindexAsync(string docId)
+    {
+        if (_ragService is null) return;
+        try
+        {
+            await _ragService.ReindexDocumentAsync(docId);
+            await RefreshAsync();
+        }
+        catch { }
+    }
+
+    private async Task ClearCollectionAsync()
+    {
+        if (_ragService is null || _selectedCollection is null) return;
+        try
+        {
+            await _ragService.ClearCollectionAsync(_selectedCollection);
+            await RefreshAsync();
+        }
+        catch { }
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        < 1024        => $"{bytes} B",
+        < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+        _             => $"{bytes / (1024.0 * 1024):F1} MB",
+    };
+}

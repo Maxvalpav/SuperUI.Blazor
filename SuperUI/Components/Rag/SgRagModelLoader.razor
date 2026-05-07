@@ -1,0 +1,391 @@
+@namespace SuperUI.Components
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-rag-model-loader @CssClass" @attributes="AdditionalAttributes">
+
+    @* Embedding section *@
+    <div class="sg-rag-section">
+        <div class="sg-rag-section-title">@Localizer["Rag_EmbeddingModel"]</div>
+
+        <div class="sg-rag-row">
+            <label class="sg-rag-label">@Localizer["Rag_Model"]</label>
+            <select class="sg-rag-select" @bind="Embedding" disabled="@(_embeddingLoading || _embeddingReady)">
+                <option value="@SgRagEmbeddingModelKind.MiniLmL6V2">all-MiniLM-L6-v2 (~23 MB)</option>
+                <option value="@SgRagEmbeddingModelKind.BgeSmallEn">bge-small-en-v1.5 (~33 MB)</option>
+                <option value="@SgRagEmbeddingModelKind.JinaBaseEn">jina-base-en (~130 MB)</option>
+            </select>
+        </div>
+
+        <div class="sg-rag-row">
+            <label class="sg-rag-label">@Localizer["Rag_Quantization"]</label>
+            <select class="sg-rag-select" @bind="Quantization" disabled="@(_embeddingLoading || _embeddingReady)">
+                <option value="@SgRagQuantization.Q8">Q8 — recommended</option>
+                <option value="@SgRagQuantization.Q4">Q4 — smallest</option>
+                <option value="@SgRagQuantization.Fp16">FP16 — high quality</option>
+                <option value="@SgRagQuantization.Fp32">FP32 — full precision</option>
+            </select>
+        </div>
+
+        @if (_embeddingLoading)
+        {
+            <div class="sg-rag-progress-wrap" role="status" aria-live="polite">
+                <div class="sg-rag-progress-bar">
+                    <div class="sg-rag-progress-fill @(_embeddingPercent < 0 ? "sg-rag-progress-indeterminate" : "")"
+                         style="@(_embeddingPercent >= 0 ? $"width:{_embeddingPercent}%" : null)"></div>
+                </div>
+                <span class="sg-rag-progress-label">@_embeddingStage — @(_embeddingPercent >= 0 ? $"{_embeddingPercent:F0}%" : "...")</span>
+            </div>
+        }
+
+        <div class="sg-rag-actions">
+            @if (!_embeddingReady)
+            {
+                <button type="button" class="sg-rag-btn sg-rag-btn-primary"
+                        disabled="@_embeddingLoading"
+                        @onclick="LoadEmbeddingAsync">
+                    @if (_embeddingLoading)
+                    {
+                        <span class="sg-rag-spinner" aria-hidden="true"></span>
+                        <span>@Localizer["Rag_Loading"]</span>
+                    }
+                    else
+                    {
+                        <span>@Localizer["Rag_LoadEmbedding"]</span>
+                    }
+                </button>
+            }
+            else
+            {
+                <span class="sg-rag-badge sg-rag-badge-success">✓ @Localizer["Rag_EmbeddingReady"]</span>
+                <button type="button" class="sg-rag-btn sg-rag-btn-ghost" @onclick="UnloadEmbeddingAsync">
+                    @Localizer["Rag_Unload"]
+                </button>
+            }
+        </div>
+    </div>
+
+    @* LLM section *@
+    <div class="sg-rag-section">
+        <div class="sg-rag-section-title">@Localizer["Rag_LlmProvider"]</div>
+
+        <div class="sg-rag-row">
+            <label class="sg-rag-label">@Localizer["Rag_Provider"]</label>
+            <div class="sg-rag-segmented">
+                <button type="button"
+                        class="sg-rag-seg-btn @(LlmProvider == SgRagLlmProviderKind.None ? "active" : "")"
+                        @onclick="@(() => { LlmProvider = SgRagLlmProviderKind.None; StateHasChanged(); })">
+                    @Localizer["Rag_None"]
+                </button>
+                <button type="button"
+                        class="sg-rag-seg-btn @(LlmProvider == SgRagLlmProviderKind.OpenAiCompatible ? "active" : "")"
+                        @onclick="@(() => { LlmProvider = SgRagLlmProviderKind.OpenAiCompatible; StateHasChanged(); })">
+                    OpenAI
+                </button>
+                <button type="button"
+                        class="sg-rag-seg-btn @(LlmProvider == SgRagLlmProviderKind.OpenRouter ? "active" : "")"
+                        @onclick="@(() => { LlmProvider = SgRagLlmProviderKind.OpenRouter; StateHasChanged(); })">
+                    OpenRouter
+                </button>
+                <button type="button"
+                        class="sg-rag-seg-btn @(LlmProvider == SgRagLlmProviderKind.WebLlm ? "active" : "")"
+                        @onclick="@(() => { LlmProvider = SgRagLlmProviderKind.WebLlm; StateHasChanged(); })">
+                    WebLLM
+                </button>
+            </div>
+        </div>
+
+        @if (LlmProvider == SgRagLlmProviderKind.OpenAiCompatible)
+        {
+            <div class="sg-rag-row">
+                <label class="sg-rag-label">@Localizer["Rag_OpenAIKey"]</label>
+                <input type="password" class="sg-rag-input" placeholder="sk-..."
+                       @bind="_openAiKey" @bind:event="oninput" />
+            </div>
+            <div class="sg-rag-row">
+                <label class="sg-rag-label">@Localizer["Rag_BaseUrl"]</label>
+                <input type="text" class="sg-rag-input" placeholder="https://api.openai.com/v1"
+                       @bind="_openAiBaseUrl" @bind:event="oninput" />
+            </div>
+            <div class="sg-rag-row">
+                <label class="sg-rag-label">@Localizer["Rag_Model"]</label>
+                <input type="text" class="sg-rag-input" placeholder="gpt-4o-mini"
+                       @bind="_openAiModel" @bind:event="oninput" />
+            </div>
+        }
+        else if (LlmProvider == SgRagLlmProviderKind.OpenRouter)
+        {
+            <div class="sg-rag-alert sg-rag-alert-info">
+                🌐 <a href="https://openrouter.ai/keys" target="_blank" rel="noopener">openrouter.ai/keys</a>
+                — @Localizer["Rag_OpenRouterHint"]
+            </div>
+            <div class="sg-rag-row">
+                <label class="sg-rag-label">@Localizer["Rag_OpenAIKey"]</label>
+                <input type="password" class="sg-rag-input" placeholder="sk-or-v1-..."
+                       @bind="_openAiKey" @bind:event="oninput" />
+            </div>
+            <div class="sg-rag-row">
+                <label class="sg-rag-label">@Localizer["Rag_Model"]</label>
+                <select class="sg-rag-select" @bind="_openRouterModel" disabled="@(_llmLoading || _llmReady)">
+                    <optgroup label="Auto router">
+                        <option value="openrouter/free">openrouter/free — auto-select best free model</option>
+                    </optgroup>
+                    <optgroup label="Free models (text)">
+                        <option value="meta-llama/llama-3.2-3b-instruct:free">Llama 3.2 3B Instruct (free)</option>
+                        <option value="meta-llama/llama-3.2-1b-instruct:free">Llama 3.2 1B Instruct (free)</option>
+                        <option value="meta-llama/llama-3.1-8b-instruct:free">Llama 3.1 8B Instruct (free)</option>
+                        <option value="qwen/qwen3-0.6b:free">Qwen3 0.6B (free)</option>
+                        <option value="qwen/qwen3-1.7b:free">Qwen3 1.7B (free)</option>
+                        <option value="qwen/qwen3-8b:free">Qwen3 8B (free)</option>
+                        <option value="deepseek/deepseek-r1-0528:free">DeepSeek R1 0528 (free)</option>
+                        <option value="deepseek/deepseek-v3-0324:free">DeepSeek V3 0324 (free)</option>
+                        <option value="mistralai/mistral-7b-instruct:free">Mistral 7B Instruct (free)</option>
+                    </optgroup>
+                    <optgroup label="Free models (vision 🖼️)">
+                        <option value="google/gemma-3-12b-it:free">Gemma 3 12B Vision (free) ✓ images</option>
+                        <option value="google/gemma-3-4b-it:free">Gemma 3 4B Vision (free) ✓ images</option>
+                        <option value="google/gemma-3n-e4b-it:free">Gemma 3n E4B Vision (free) ✓ images+audio</option>
+                        <option value="google/gemma-4-31b-it:free">Gemma 4 31B Vision (free) ✓ images</option>
+                        <option value="meta-llama/llama-3.2-11b-vision-instruct:free">Llama 3.2 11B Vision (free) ✓ images</option>
+                        <option value="nvidia/nemotron-3-nano-omni:free">Nvidia Nemotron Nano Omni (free) ✓ images+video+audio</option>
+                    </optgroup>
+                    <optgroup label="Paid models">
+                        <option value="openai/gpt-4o-mini">GPT-4o Mini</option>
+                        <option value="openai/gpt-4o">GPT-4o</option>
+                        <option value="anthropic/claude-3.5-haiku">Claude 3.5 Haiku</option>
+                        <option value="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                        <option value="google/gemini-2.0-flash-001">Gemini 2.0 Flash</option>
+                        <option value="meta-llama/llama-3.3-70b-instruct">Llama 3.3 70B</option>
+                        <option value="mistralai/mistral-small-3.1-24b-instruct">Mistral Small 3.1 24B</option>
+                    </optgroup>
+                </select>
+            </div>
+        }
+        else if (LlmProvider == SgRagLlmProviderKind.WebLlm)
+        {
+            <div class="sg-rag-row">
+                <label class="sg-rag-label">@Localizer["Rag_Model"]</label>
+                <select class="sg-rag-select" @bind="LlmModelId" disabled="@(_llmLoading || _llmReady)">
+                    <optgroup label="Llama 3.2 (recommended)">
+                        <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama-3.2-1B q4f16 (~879 MB VRAM)</option>
+                        <option value="Llama-3.2-1B-Instruct-q4f32_1-MLC">Llama-3.2-1B q4f32 (~1129 MB VRAM)</option>
+                        <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama-3.2-3B q4f16 (~2264 MB VRAM)</option>
+                        <option value="Llama-3.2-3B-Instruct-q4f32_1-MLC">Llama-3.2-3B q4f32 (~2952 MB VRAM)</option>
+                    </optgroup>
+                    <optgroup label="SmolLM2 (low resource)">
+                        <option value="SmolLM2-360M-Instruct-q4f16_1-MLC">SmolLM2-360M q4f16 (~376 MB VRAM)</option>
+                        <option value="SmolLM2-1.7B-Instruct-q4f16_1-MLC">SmolLM2-1.7B q4f16 (~1774 MB VRAM)</option>
+                    </optgroup>
+                    <optgroup label="Phi">
+                        <option value="Phi-4-mini-instruct-q4f16_1-MLC">Phi-4-mini q4f16 (~3438 MB VRAM)</option>
+                        <option value="Phi-3.5-mini-instruct-q4f16_1-MLC">Phi-3.5-mini q4f16 (~3672 MB VRAM)</option>
+                    </optgroup>
+                    <optgroup label="Gemma">
+                        <option value="gemma3-1b-it-q4f16_1-MLC">Gemma3-1B q4f16 (~711 MB VRAM)</option>
+                        <option value="gemma-2-2b-it-q4f16_1-MLC">Gemma2-2B q4f16 (~1895 MB VRAM)</option>
+                    </optgroup>
+                    <optgroup label="Qwen">
+                        <option value="Qwen3-0.6B-q4f16_1-MLC">Qwen3-0.6B q4f16 (~1403 MB VRAM)</option>
+                        <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">Qwen2.5-1.5B q4f16 (~1630 MB VRAM)</option>
+                    </optgroup>
+                </select>
+            </div>
+            @if (!_readyState?.WebGpuAvailable ?? false)
+            {
+                <div class="sg-rag-alert sg-rag-alert-warn">
+                    ⚠️ @Localizer["Rag_NoWebGPU"]
+                </div>
+            }
+        }
+
+        @if (LlmProvider != SgRagLlmProviderKind.None)
+        {
+            @if (_llmLoading)
+            {
+                <div class="sg-rag-progress-wrap" role="status" aria-live="polite">
+                    <div class="sg-rag-progress-bar">
+                        <div class="sg-rag-progress-fill @(_llmPercent < 0 ? "sg-rag-progress-indeterminate" : "")"
+                             style="@(_llmPercent >= 0 ? $"width:{_llmPercent}%" : null)"></div>
+                    </div>
+                    <span class="sg-rag-progress-label">@_llmStage — @(_llmPercent >= 0 ? $"{_llmPercent:F0}%" : "...")</span>
+                </div>
+            }
+
+            <div class="sg-rag-actions">
+                @if (!_llmReady)
+                {
+                    <button type="button" class="sg-rag-btn sg-rag-btn-primary"
+                            disabled="@_llmLoading"
+                            @onclick="LoadLlmAsync">
+                        @if (_llmLoading)
+                        {
+                            <span class="sg-rag-spinner" aria-hidden="true"></span>
+                            <span>@Localizer["Rag_Loading"]</span>
+                        }
+                        else
+                        {
+                            <span>@Localizer["Rag_ConnectLlm"]</span>
+                        }
+                    </button>
+                }
+                else
+                {
+                    <span class="sg-rag-badge sg-rag-badge-success">✓ @Localizer["Rag_LlmReady"]</span>
+                    <button type="button" class="sg-rag-btn sg-rag-btn-ghost" @onclick="UnloadLlmAsync">
+                        @Localizer["Rag_Disconnect"]
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="sg-rag-alert sg-rag-alert-error" role="alert">@_error</div>
+    }
+</div>
+
+@code {
+    [CascadingParameter(Name = "RagService")]  private SgRagService?    _ragService  { get; set; }
+    [CascadingParameter(Name = "RagReadyState")] private SgRagReadyState? _readyState { get; set; }
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    [Parameter] public SgRagEmbeddingModelKind Embedding   { get; set; } = SgRagEmbeddingModelKind.MiniLmL6V2;
+    [Parameter] public SgRagLlmProviderKind    LlmProvider { get; set; } = SgRagLlmProviderKind.None;
+    [Parameter] public string?                 LlmModelId  { get; set; } = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+    [Parameter] public SgRagQuantization       Quantization{ get; set; } = SgRagQuantization.Q8;
+    [Parameter] public bool                    ShowAdvanced{ get; set; } = false;
+    [Parameter] public EventCallback           OnLoaded    { get; set; }
+    [Parameter] public string?                 CssClass    { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── State ─────────────────────────────────────────────────────────────────
+
+    private bool   _embeddingLoading;
+    private bool   _embeddingReady;
+    private double _embeddingPercent = -1;
+    private string _embeddingStage   = string.Empty;
+
+    private bool   _llmLoading;
+    private bool   _llmReady;
+    private double _llmPercent = -1;
+    private string _llmStage   = string.Empty;
+
+    private string? _error;
+    private string  _openAiKey     = string.Empty;
+    private string  _openAiBaseUrl = "https://api.openai.com/v1";
+    private string  _openAiModel   = "gpt-4o-mini";
+    private string  _openRouterModel = "openrouter/free";
+
+    protected override void OnInitialized()
+    {
+        if (_ragService is null) return;
+        _ragService.OnEmbeddingProgress += HandleEmbeddingProgress;
+        _ragService.OnLlmProgress       += HandleLlmProgress;
+        _ragService.OnStateChanged      += HandleStateChanged;
+    }
+
+    private void HandleEmbeddingProgress(SgRagModelProgress p)
+    {
+        _embeddingStage   = p.Stage;
+        _embeddingPercent = p.Percent;
+        if (p.IsComplete) { _embeddingLoading = false; _embeddingReady = true; }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleLlmProgress(SgRagModelProgress p)
+    {
+        _llmStage   = p.Stage;
+        _llmPercent = p.Percent;
+        if (p.IsComplete) { _llmLoading = false; _llmReady = true; }
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleStateChanged(SgRagReadyState s)
+    {
+        _embeddingReady = s.EmbeddingReady;
+        _llmReady       = s.LlmReady;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task LoadEmbeddingAsync()
+    {
+        if (_ragService is null) return;
+        _embeddingLoading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            await _ragService.LoadEmbeddingModelAsync(Embedding, Quantization);
+            _embeddingReady   = true;
+            _embeddingLoading = false;
+            if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _embeddingLoading = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task UnloadEmbeddingAsync()
+    {
+        if (_ragService is null) return;
+        try { await _ragService.UnloadEmbeddingAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        _embeddingReady = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadLlmAsync()
+    {
+        if (_ragService is null) return;
+        _llmLoading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var modelId = LlmProvider switch
+            {
+                SgRagLlmProviderKind.OpenAiCompatible => _openAiModel,
+                SgRagLlmProviderKind.OpenRouter       => _openRouterModel,
+                _                                     => LlmModelId,
+            };
+            // Pass key and baseUrl directly — they live only in this component
+            var apiKey  = string.IsNullOrWhiteSpace(_openAiKey) ? null : _openAiKey.Trim();
+            var baseUrl = LlmProvider == SgRagLlmProviderKind.OpenAiCompatible
+                ? (string.IsNullOrWhiteSpace(_openAiBaseUrl) ? null : _openAiBaseUrl.Trim())
+                : null; // OpenRouter uses its own hardcoded URL in JS
+            await _ragService.LoadLlmAsync(LlmProvider, modelId, apiKey, baseUrl);
+            _llmReady   = true;
+            _llmLoading = false;
+            if (OnLoaded.HasDelegate) await OnLoaded.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _llmLoading = false;
+        }
+        StateHasChanged();
+    }
+
+    private async Task UnloadLlmAsync()
+    {
+        if (_ragService is null) return;
+        try { await _ragService.UnloadLlmAsync(); }
+        catch (Exception ex) { _error = ex.Message; }
+        _llmReady = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        if (_ragService is null) return;
+        _ragService.OnEmbeddingProgress -= HandleEmbeddingProgress;
+        _ragService.OnLlmProgress       -= HandleLlmProgress;
+        _ragService.OnStateChanged      -= HandleStateChanged;
+    }
+}

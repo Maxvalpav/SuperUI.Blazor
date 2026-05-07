@@ -1,0 +1,200 @@
+@page "/rag-demo"
+@using SuperUI.Components
+
+<PageTitle>RAG Demo — SUI</PageTitle>
+
+<div class="rag-page">
+
+    <div class="rag-header">
+        <h1 class="rag-title">🧠 RAG — Retrieval-Augmented Generation</h1>
+        <p class="rag-subtitle">Полностью клиентский RAG-стек: загрузка модели → ingest документов → семантический поиск → стриминговый чат</p>
+    </div>
+
+    <SgRagProvider Options="_ragOptions" OnReadyChanged="OnReadyChanged">
+
+        @* Status banner *@
+        <div class="rag-status-bar">
+            <span class="rag-status-chip @(_state.EmbeddingReady ? "ready" : "idle")">
+                🔢 Embedding: @(_state.EmbeddingReady ? _state.EmbeddingModel ?? "ready" : "not loaded")
+            </span>
+            <span class="rag-status-chip @(_state.LlmReady ? "ready" : "idle")">
+                🤖 LLM: @(_state.LlmReady ? _state.LlmModel ?? "ready" : "not loaded")
+            </span>
+            <span class="rag-status-chip @(_state.DbReady ? "ready" : "idle")">
+                💾 DB: @(_state.DbReady ? "IndexedDB" : "off")
+            </span>
+            @if (!_state.WebGpuAvailable)
+            {
+                <span class="rag-status-chip warn">⚠️ WebGPU недоступен — WebLLM не работает</span>
+            }
+            else
+            {
+                <span class="rag-status-chip ready">🎮 WebGPU доступен</span>
+            }
+        </div>
+
+        <SgTabs>
+
+            @* ── Tab 1: Setup ──────────────────────────────────────────────── *@
+            <SgTabPanel Title="⚙️ Setup">
+                <div class="rag-tab-content">
+                    <SgCard Title="Модели">
+                        <SgRagModelLoader
+                            Embedding="SgRagEmbeddingModelKind.MiniLmL6V2"
+                            Quantization="SgRagQuantization.Q8"
+                            LlmProvider="SgRagLlmProviderKind.None"
+                            OnLoaded="OnModelLoaded" />
+                    </SgCard>
+                </div>
+            </SgTabPanel>
+
+            @* ── Tab 2: Ingest ─────────────────────────────────────────────── *@
+            <SgTabPanel Title="📄 Ingest">
+                <div class="rag-tab-content rag-two-col">
+                    <SgCard Title="Загрузка документов">
+                        <SgRagDocumentUploader
+                            Collection="default"
+                            MaxFileSizeMb="50"
+                            OnIngested="OnDocumentIngested" />
+                    </SgCard>
+
+                    <SgCard Title="Настройка чанкинга">
+                        <SgRagChunkConfigurator
+                            @bind-Value="_chunkOptions"
+                            PreviewText="@_previewText"
+                            ShowPreview="true" />
+                    </SgCard>
+                </div>
+
+                @if (_lastIngestResult is not null)
+                {
+                    <div class="rag-ingest-result @(_lastIngestResult.Success ? "success" : "error")">
+                        @if (_lastIngestResult.Success)
+                        {
+                            <span>✓ Загружено: <b>@_lastIngestResult.Title</b> — @_lastIngestResult.ChunkCount чанков</span>
+                        }
+                        else
+                        {
+                            <span>✗ Ошибка: @_lastIngestResult.Error</span>
+                        }
+                    </div>
+                }
+            </SgTabPanel>
+
+            @* ── Tab 3: Database ───────────────────────────────────────────── *@
+            <SgTabPanel Title="🗄️ Database">
+                <div class="rag-tab-content">
+                    <div class="rag-db-toolbar">
+                        <SgRagSaveLoadDb EnableAutoSnapshot="true" AutoSnapshotIntervalMin="10" />
+                    </div>
+                    <SgCard Title="Коллекции и документы">
+                        <SgRagVectorDbPanel
+                            AllowDelete="true"
+                            AllowReindex="true"
+                            OnDocumentSelected="OnDocumentSelected" />
+                    </SgCard>
+                </div>
+            </SgTabPanel>
+
+            @* ── Tab 4: Search ─────────────────────────────────────────────── *@
+            <SgTabPanel Title="🔍 Search">
+                <div class="rag-tab-content">
+                    <SgCard Title="Семантический поиск">
+                        <SgRagSearchPanel
+                            Collection="default"
+                            TopK="10"
+                            HighlightMatches="true"
+                            OnResults="OnSearchResults" />
+                    </SgCard>
+
+                    @if (_searchResults is not null)
+                    {
+                        <div class="rag-search-meta">
+                            Найдено: <b>@_searchResults.Count</b> результатов
+                        </div>
+                    }
+                </div>
+            </SgTabPanel>
+
+            @* ── Tab 5: Chat ───────────────────────────────────────────────── *@
+            <SgTabPanel Title="💬 Chat">
+                <div class="rag-tab-content rag-chat-layout">
+                    <div class="rag-chat-settings">
+                        <SgCard Title="Настройки чата">
+                            <div class="rag-chat-opts">
+                                <label class="rag-opt-label">Режим</label>
+                                <select class="rag-opt-select" @bind="_chatMode">
+                                    <option value="@SgRagAnswerMode.Strict">Strict — только из контекста</option>
+                                    <option value="@SgRagAnswerMode.Hybrid">Hybrid — контекст + знания</option>
+                                    <option value="@SgRagAnswerMode.FreeForm">FreeForm — свободный</option>
+                                </select>
+
+                                <label class="rag-opt-label">Top-K</label>
+                                <input type="range" min="1" max="20" @bind="_topK" class="rag-opt-slider" />
+                                <span class="rag-opt-val">@_topK</span>
+
+                                <label class="rag-opt-label">System Prompt</label>
+                                <textarea class="rag-opt-textarea" rows="3"
+                                          @bind="_systemPrompt"
+                                          placeholder="Оставьте пустым для дефолтного..."></textarea>
+                            </div>
+                        </SgCard>
+                    </div>
+
+                    <div class="rag-chat-main">
+                        <SgRagChat
+                            Collection="default"
+                            TopK="@_topK"
+                            SystemPrompt="@_systemPrompt"
+                            Mode="@_chatMode"
+                            ShowSources="true"
+                            EnableStreaming="true"
+                            OnAnswer="OnChatAnswer" />
+                    </div>
+                </div>
+            </SgTabPanel>
+
+        </SgTabs>
+
+    </SgRagProvider>
+</div>
+
+@code {
+    private SgRagOptions _ragOptions = new()
+    {
+        PersistToIndexedDb = true,
+        IndexedDbName      = "sg-rag-demo",
+        DefaultCollection  = "default",
+        SimilarityThreshold= 0.0,
+        MaxContextTokens   = 3000,
+    };
+
+    private SgRagReadyState _state = new();
+    private SgRagChunkingOptions _chunkOptions = new();
+    private SgRagDocumentIngestResult? _lastIngestResult;
+    private IReadOnlyList<SgRagSearchHit>? _searchResults;
+    private SgRagAnswerMode _chatMode = SgRagAnswerMode.Strict;
+    private int    _topK = 5;
+    private string _systemPrompt = string.Empty;
+    private string? _previewText;
+
+    private void OnReadyChanged(SgRagReadyState state) => _state = state;
+
+    private void OnModelLoaded() => StateHasChanged();
+
+    private void OnDocumentIngested(SgRagDocumentIngestResult result)
+    {
+        _lastIngestResult = result;
+        StateHasChanged();
+    }
+
+    private void OnDocumentSelected(string docId) { }
+
+    private void OnSearchResults(IReadOnlyList<SgRagSearchHit> results)
+    {
+        _searchResults = results;
+        StateHasChanged();
+    }
+
+    private void OnChatAnswer(SgRagAnswer answer) { }
+}
