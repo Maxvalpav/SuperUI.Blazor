@@ -1,0 +1,304 @@
+@page "/barcode-scanner-demo"
+@using SuperUI.Components
+
+<PageTitle>Barcode Scanner — Сканер штрих-кодов - SUI</PageTitle>
+
+<SgCard Title="SgBarcodeScanner — Сканер штрих-кодов и QR-кодов"
+        Subtitle="Сканирование штрих-кодов и QR-кодов на базе zxing-js — поддержка всех популярных форматов, выбор камеры, фонарик, захват изображения и загрузка из файла.">
+
+    <!-- Основной сканер -->
+    <div style="margin-top: 32px;">
+        <h2>Основной сканер</h2>
+        <p>Сканируйте штрих-коды или QR-коды с помощью камеры или загрузите изображение из файла.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 320px; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Сканирование">
+                <SgBarcodeScanner @ref="_scanner"
+                                   Title="@_title"
+                                   VideoWidth="@_videoWidth"
+                                   VideoHeight="@_videoHeight"
+                                   StartCameraAutomatically="@_startAutomatically"
+                                   ShowStart="@_showStart"
+                                   ShowReset="@_showReset"
+                                   ShowVideoDeviceList="@_showDeviceList"
+                                   ShowToggleTorch="@_showTorch"
+                                   ShowFileInput="@_showFileInput"
+                                   DecodedPictureCapture="@_capturePicture"
+                                   DecodeFormats="@_selectedFormats"
+                                   OnBarcodeReceived="OnBarcodeReceived"
+                                   OnError="OnError"
+                                   OnDecodeError="OnDecodeError"
+                                   OnDeviceListChanged="OnDeviceListChanged"
+                                   OnSelectedDeviceChanged="OnSelectedDeviceChanged" />
+            </SgCard>
+
+            <SgCard Title="Настройки">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <SgTextBox TValue="string" @bind-Value="_title" Label="Заголовок" Placeholder="Введите заголовок" />
+                    </div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                        <SgNumberInput TValue="int" @bind-Value="_videoWidth" Label="Ширина" Min="320" Max="1920" />
+                        <SgNumberInput TValue="int" @bind-Value="_videoHeight" Label="Высота" Min="240" Max="1080" />
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <SgCheckBox @bind-Value="_startAutomatically" Label="Автозапуск камеры" />
+                        <SgCheckBox @bind-Value="_showStart" Label="Показать кнопку «Старт»" />
+                        <SgCheckBox @bind-Value="_showReset" Label="Показать кнопку «Сброс»" />
+                        <SgCheckBox @bind-Value="_showDeviceList" Label="Показать список камер" />
+                        <SgCheckBox @bind-Value="_showTorch" Label="Показать кнопку фонарика" />
+                        <SgCheckBox @bind-Value="_showFileInput" Label="Показать загрузку файла" />
+                        <SgCheckBox @bind-Value="_capturePicture" Label="Захват изображения" />
+                    </div>
+                    <div>
+                        <SgMultiSelect TItem="string" TKey="string"
+                                       @bind-Values="_selectedFormatNames"
+                                       EnumType="typeof(SgBarcodeFormat)"
+                                       Label="Форматы для сканирования"
+                                       Placeholder="Выберите форматы" />
+                    </div>
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Последнее сканирование и история -->
+    <div style="margin-top: 32px;">
+        <h2>Результаты сканирования</h2>
+        <p>Последнее сканирование и история предыдущих.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            @if (_lastScan is not null)
+            {
+                <SgCard Title="Последнее сканирование">
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                            <div style="font-size: 11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Текст</div>
+                            <div style="font-family: monospace; font-size: 14px; word-break: break-all;">@_lastScan.Text</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Формат</div>
+                            <SgBadge Text="@_lastScan.Format" Variant="SgBadgeVariant.Info" />
+                        </div>
+                        @if (_lastScan.Picture is not null)
+                        {
+                            <div>
+                                <div style="font-size: 11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">Изображение</div>
+                                <img src="@_lastScan.Picture" alt="Сканированное изображение" style="max-width: 100%; max-height: 200px; border-radius: 6px; border: 1px solid var(--sui-border);" />
+                            </div>
+                        }
+                    </div>
+                </SgCard>
+            }
+
+            <SgCard Title="История сканирований">
+                @if (_scanHistory.Count > 0)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+                        @foreach (var scan in _scanHistory)
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--sui-bg-muted); border-radius: 6px;">
+                                <SgBadge Text="@scan.Format" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" />
+                                <span style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@scan.Text</span>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="color: var(--sui-text-muted); text-align: center; padding: 24px;">
+                        История пуста — сканируйте штрих-код
+                    </div>
+                }
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Свойства компонента -->
+    <div style="margin-top: 32px;">
+        <h2>Свойства компонента</h2>
+        <p>Основные параметры SgBarcodeScanner.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Параметры">
+                <PropertyTable Items="_basicProperties" />
+            </SgCard>
+
+            <SgCard Title="События">
+                <PropertyTable Items="_eventProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Форматы штрих-кодов -->
+    <div style="margin-top: 32px;">
+        <h2>Форматы штрих-кодов</h2>
+        <p>Поддерживаемые форматы для сканирования.</p>
+
+        <SgCard Title="SgBarcodeFormat" Style="margin-top: 16px;">
+            <PropertyTable Items="_formatEnumValues" />
+        </SgCard>
+    </div>
+
+    <!-- Примеры кода -->
+    <div style="margin-top: 32px;">
+        <h2>Примеры кода</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Минимальный пример">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_minimalCode" />
+            </SgCard>
+
+            <SgCard Title="Автозапуск + событие">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_autoStartCode" />
+            </SgCard>
+
+            <SgCard Title="Захват изображения">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_captureCode" />
+            </SgCard>
+
+            <SgCard Title="Программное управление">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_programmaticCode" />
+            </SgCard>
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private SgBarcodeScanner? _scanner;
+    private string? _title = "";
+    private int _videoWidth = 640;
+    private int _videoHeight = 480;
+    private bool _startAutomatically = false;
+    private bool _showStart = true;
+    private bool _showReset = true;
+    private bool _showDeviceList = true;
+    private bool _showTorch = false;
+    private bool _showFileInput = true;
+    private bool _capturePicture = false;
+    private SgBarcodeReceivedEventArgs? _lastScan;
+    private List<SgBarcodeReceivedEventArgs> _scanHistory = new();
+    private IEnumerable<string> _selectedFormatNames = new List<string> { "All" };
+
+    private List<SgBarcodeFormat> _selectedFormats
+    {
+        get
+        {
+            return _selectedFormatNames.Select(name => Enum.Parse<SgBarcodeFormat>(name)).ToList();
+        }
+    }
+
+    private void OnBarcodeReceived(SgBarcodeReceivedEventArgs e)
+    {
+        _lastScan = e;
+        _scanHistory.Insert(0, e);
+        if (_scanHistory.Count > 10) _scanHistory.RemoveAt(10);
+        StateHasChanged();
+    }
+
+    private void OnError(string error)
+    {
+        Console.WriteLine($"Error: {error}");
+    }
+
+    private void OnDecodeError(string error)
+    {
+        Console.WriteLine($"Decode error: {error}");
+    }
+
+    private void OnDeviceListChanged(SgDeviceListChangedEventArgs e)
+    {
+        Console.WriteLine($"Devices: {e.Devices.Count}");
+    }
+
+    private void OnSelectedDeviceChanged(string deviceId)
+    {
+        Console.WriteLine($"Selected device: {deviceId}");
+    }
+
+    private List<PropertyPanelItem> _basicProperties = new()
+    {
+        new() { Label = "Title", Value = "string?", BadgeText = "Заголовок", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "VideoWidth", Value = "int (640)", BadgeText = "Ширина видео", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "VideoHeight", Value = "int (480)", BadgeText = "Высота видео", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "StartCameraAutomatically", Value = "bool (false)", BadgeText = "Автозапуск", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowStart", Value = "bool (true)", BadgeText = "Кнопка Старт", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowReset", Value = "bool (true)", BadgeText = "Кнопка Сброс", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowVideoDeviceList", Value = "bool (true)", BadgeText = "Список камер", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowToggleTorch", Value = "bool (false)", BadgeText = "Фонарик", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowFileInput", Value = "bool (true)", BadgeText = "Загрузка файла", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "DecodedPictureCapture", Value = "bool (false)", BadgeText = "Захват изображения", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "DecodeFormats", Value = "List<SgBarcodeFormat>", BadgeText = "Форматы", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Width", Value = "string (100%)", BadgeText = "Ширина контейнера", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Кастомный CSS", BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private List<PropertyPanelItem> _eventProperties = new()
+    {
+        new() { Label = "OnBarcodeReceived", Value = "EventCallback<SgBarcodeReceivedEventArgs>", BadgeText = "Сканирование", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnError", Value = "EventCallback<string>", BadgeText = "Ошибка", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "OnDecodeError", Value = "EventCallback<string>", BadgeText = "Ошибка декодирования", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "OnDeviceListChanged", Value = "EventCallback<SgDeviceListChangedEventArgs>", BadgeText = "Список устройств", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnSelectedDeviceChanged", Value = "EventCallback<string>", BadgeText = "Смена камеры", BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private List<PropertyPanelItem> _formatEnumValues = new()
+    {
+        new() { Label = "SgBarcodeFormat.QRCode", Value = "\"QRCode\"", BadgeText = "QR Code", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.Code128", Value = "\"Code128\"", BadgeText = "Code 128", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.Code39", Value = "\"Code39\"", BadgeText = "Code 39", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.EAN13", Value = "\"EAN13\"", BadgeText = "EAN-13", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.EAN8", Value = "\"EAN8\"", BadgeText = "EAN-8", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.UPCA", Value = "\"UPCA\"", BadgeText = "UPC-A", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.UPCE", Value = "\"UPCE\"", BadgeText = "UPC-E", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.ITF", Value = "\"ITF\"", BadgeText = "ITF", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.PDF417", Value = "\"PDF417\"", BadgeText = "PDF417", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.DataMatrix", Value = "\"DataMatrix\"", BadgeText = "Data Matrix", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.Aztec", Value = "\"Aztec\"", BadgeText = "Aztec", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.Codabar", Value = "\"Codabar\"", BadgeText = "Codabar", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBarcodeFormat.All", Value = "\"All\"", BadgeText = "Все форматы", BadgeVariant = SgBadgeVariant.Success },
+    };
+
+    private string _minimalCode = """
+        <SgBarcodeScanner />
+        """;
+
+    private string _autoStartCode = """
+        <SgBarcodeScanner StartCameraAutomatically="true"
+               OnBarcodeReceived="OnResult" />
+
+        @code {
+            void OnResult(SgBarcodeReceivedEventArgs e) {
+                Console.WriteLine($"Сканировано: {e.Text}");
+                Console.WriteLine($"Формат: {e.Format}");
+            }
+        }
+        """;
+
+    private string _captureCode = """
+        <SgBarcodeScanner DecodedPictureCapture="true"
+               OnBarcodeReceived="OnResult" />
+
+        @code {
+            void OnResult(SgBarcodeReceivedEventArgs e) {
+                Console.WriteLine($"Изображение: {e.Picture?.Length ?? 0} байт");
+            }
+        }
+        """;
+
+    private string _programmaticCode = """
+        <SgBarcodeScanner @ref="_scanner" />
+        <SgButton OnClick="Start">Старт</SgButton>
+        <SgButton OnClick="Stop">Стоп</SgButton>
+        <SgButton OnClick="Reset">Сброс</SgButton>
+
+        @code {
+            SgBarcodeScanner? _scanner;
+
+            async Task Start() => await _scanner!.StartAsync();
+            async Task Stop() => await _scanner!.StopAsync();
+            async Task Reset() => await _scanner!.ResetAsync();
+        }
+        """;
+}

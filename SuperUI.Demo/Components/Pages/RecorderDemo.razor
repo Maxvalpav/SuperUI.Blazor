@@ -1,0 +1,337 @@
+@page "/recorder-demo"
+@using SuperUI.Components
+
+<PageTitle>Recorder — Запись аудио и видео - SUI</PageTitle>
+
+<SgCard Title="SgRecorder — Запись аудио и видео"
+        Subtitle="Запись видео и аудио с вебкамеры и микрофона на базе RecordRTC — поддержка всех популярных форматов, выбор устройств, пауза/возобновление и скачивание.">
+
+    <!-- Основной рекордер -->
+    <div style="margin-top: 32px;">
+        <h2>Основной рекордер</h2>
+        <p>Запишите видео или аудио с вашей камеры и микрофона.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 320px; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Запись">
+                <SgRecorder @ref="_recorder"
+                           Title="@_title"
+                           Video="@_video"
+                           Audio="@_audio"
+                           MimeType="@_selectedMimeType"
+                           BitsPerSecond="@(_bitsPerSecond > 0 ? _bitsPerSecond : null)"
+                           TimeSlice="@(_timeSlice > 0 ? _timeSlice : null)"
+                           MaxDuration="@(_maxDuration > 0 ? _maxDuration : null)"
+                           ShowDeviceList="@_showDeviceList"
+                           ShowReset="@_showReset"
+                           ShowDownload="@_showDownload"
+                           RequestPermissionsAutomatically="@_requestPermissionsAutomatically"
+                           OnPermissionGranted="OnPermissionGranted"
+                           OnPermissionDenied="OnPermissionDenied"
+                           OnStart="OnStart"
+                           OnPause="OnPause"
+                           OnResume="OnResume"
+                           OnStop="OnStop"
+                           OnError="OnError" />
+            </SgCard>
+
+            <SgCard Title="Настройки">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <div>
+                        <SgTextBox TValue="string" @bind-Value="_title" Label="Заголовок" Placeholder="Введите заголовок" />
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <SgCheckBox @bind-Value="_video" Label="Включить видео" />
+                        <SgCheckBox @bind-Value="_audio" Label="Включить аудио" />
+                        <SgCheckBox @bind-Value="_requestPermissionsAutomatically" Label="Автозапрос разрешений" />
+                        <SgCheckBox @bind-Value="_showDeviceList" Label="Показать список устройств" />
+                        <SgCheckBox @bind-Value="_showReset" Label="Показать кнопку «Сброс»" />
+                        <SgCheckBox @bind-Value="_showDownload" Label="Показать кнопку «Скачать»" />
+                    </div>
+                    <div>
+                        <SgSelect TValue="SgRecorderMimeType"
+                                  @bind-Value="_selectedMimeType"
+                                  Items="@_allMimeTypes"
+                                  Label="Формат записи"
+                                  TextField="m => m.ToString()" />
+                    </div>
+                    <div>
+                        <SgNumberInput TValue="int?" @bind-Value="_bitsPerSecond" Label="Битрейт (bps)" Min="0" Placeholder="По умолчанию" />
+                    </div>
+                    <div>
+                        <SgNumberInput TValue="int?" @bind-Value="_timeSlice" Label="TimeSlice (мс)" Min="0" Placeholder="По умолчанию" />
+                    </div>
+                    <div>
+                        <SgNumberInput TValue="int?" @bind-Value="_maxDuration" Label="Макс. длительность (сек)" Min="0" Placeholder="Без ограничений" />
+                    </div>
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Последняя запись и история -->
+    <div style="margin-top: 32px;">
+        <h2>Результаты записи</h2>
+        <p>Последняя запись и история предыдущих.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            @if (_lastRecording is not null)
+            {
+                <SgCard Title="Последняя запись">
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div class="sg-recorder-video-container" style="border-radius: 6px; overflow: hidden;">
+                            @if (_lastRecording.MimeType?.StartsWith("audio") == true)
+                            {
+                                <audio style="display: block; width: 100%;" controls src="@_lastRecording.DataUrl"></audio>
+                            }
+                            else
+                            {
+                                <video style="display: block; width: 100%; height: auto;" controls src="@_lastRecording.DataUrl"></video>
+                            }
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                            <SgBadge Text="@FormatDuration(_lastRecording.Duration)" Variant="SgBadgeVariant.Info" />
+                            <SgBadge Text="@FormatFileSize(_lastRecording.Size)" Variant="SgBadgeVariant.Info" />
+                            <SgBadge Text="@_lastRecording.MimeType" Variant="SgBadgeVariant.Info" />
+                        </div>
+                    </div>
+                </SgCard>
+            }
+
+            <SgCard Title="История записей">
+                @if (_recordingHistory.Count > 0)
+                {
+                    <div style="display: flex; flex-direction: column; gap: 8px; max-height: 300px; overflow-y: auto;">
+                        @foreach (var recording in _recordingHistory)
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--sui-bg-muted); border-radius: 6px;">
+                                <SgBadge Text="@FormatDuration(recording.Duration)" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" />
+                                <SgBadge Text="@FormatFileSize(recording.Size)" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" />
+                                <span style="font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@recording.MimeType</span>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="color: var(--sui-text-muted); text-align: center; padding: 24px;">
+                        История пуста — сделайте запись
+                    </div>
+                }
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Свойства компонента -->
+    <div style="margin-top: 32px;">
+        <h2>Свойства компонента</h2>
+        <p>Основные параметры SgRecorder.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Параметры">
+                <PropertyTable Items="_basicProperties" />
+            </SgCard>
+
+            <SgCard Title="События">
+                <PropertyTable Items="_eventProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- Форматы записи -->
+    <div style="margin-top: 32px;">
+        <h2>Форматы записи</h2>
+        <p>Поддерживаемые форматы для записи.</p>
+
+        <SgCard Title="SgRecorderMimeType" Style="margin-top: 16px;">
+            <PropertyTable Items="_mimeTypeEnumValues" />
+        </SgCard>
+    </div>
+
+    <!-- Примеры кода -->
+    <div style="margin-top: 32px;">
+        <h2>Примеры кода</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Минимальный пример">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_minimalCode" />
+            </SgCard>
+
+            <SgCard Title="Только аудио">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_audioOnlyCode" />
+            </SgCard>
+
+            <SgCard Title="События">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_eventsCode" />
+            </SgCard>
+
+            <SgCard Title="Программное управление">
+                <SgCode Language="SgCodeLanguage.Razor" Code="@_programmaticCode" />
+            </SgCard>
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private SgRecorder? _recorder;
+    private string? _title = "";
+    private bool _video = true;
+    private bool _audio = true;
+    private bool _showDeviceList = true;
+    private bool _showReset = true;
+    private bool _showDownload = true;
+    private bool _requestPermissionsAutomatically = true;
+    private SgRecorderMimeType _selectedMimeType = SgRecorderMimeType.VideoWebM;
+    private int? _bitsPerSecond;
+    private int? _timeSlice;
+    private int? _maxDuration;
+    private SgRecorderStoppedEventArgs? _lastRecording;
+    private List<SgRecorderStoppedEventArgs> _recordingHistory = new();
+    private readonly List<SgRecorderMimeType> _allMimeTypes = Enum.GetValues<SgRecorderMimeType>().ToList();
+
+    private string FormatDuration(double seconds)
+    {
+        var ts = TimeSpan.FromSeconds(seconds);
+        return ts.Hours > 0 ? $"{ts:hh\\:mm\\:ss}" : $"{ts:mm\\:ss}";
+    }
+
+    private string FormatFileSize(long bytes)
+    {
+        string[] sizes = { "B", "KB", "MB", "GB" };
+        int order = 0;
+        double size = bytes;
+        while (size >= 1024 && order < sizes.Length - 1)
+        {
+            order++;
+            size /= 1024;
+        }
+        return $"{size:0.##} {sizes[order]}";
+    }
+
+    private void OnPermissionGranted(SgRecorderPermissionGrantedEventArgs e)
+    {
+        Console.WriteLine($"Devices: {e.VideoDevices.Count} video, {e.AudioDevices.Count} audio");
+    }
+
+    private void OnPermissionDenied()
+    {
+        Console.WriteLine("Permission denied");
+    }
+
+    private void OnStart(SgRecorderStartedEventArgs e)
+    {
+        Console.WriteLine($"Started at: {e.StartedAt}");
+    }
+
+    private void OnPause()
+    {
+        Console.WriteLine("Paused");
+    }
+
+    private void OnResume()
+    {
+        Console.WriteLine("Resumed");
+    }
+
+    private void OnStop(SgRecorderStoppedEventArgs e)
+    {
+        _lastRecording = e;
+        _recordingHistory.Insert(0, e);
+        if (_recordingHistory.Count > 10) _recordingHistory.RemoveAt(10);
+        StateHasChanged();
+        Console.WriteLine($"Stopped: {e.Duration}s, {e.Size} bytes");
+    }
+
+    private void OnError(SgRecorderErrorEventArgs e)
+    {
+        Console.WriteLine($"Error: {e.Message} ({e.ErrorType})");
+    }
+
+    private List<PropertyPanelItem> _basicProperties = new()
+    {
+        new() { Label = "Title", Value = "string?", BadgeText = "Заголовок", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Video", Value = "bool (true)", BadgeText = "Включить видео", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Audio", Value = "bool (true)", BadgeText = "Включить аудио", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "MimeType", Value = "SgRecorderMimeType", BadgeText = "Формат записи", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "BitsPerSecond", Value = "int?", BadgeText = "Битрейт", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "TimeSlice", Value = "int?", BadgeText = "TimeSlice (мс)", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxDuration", Value = "int?", BadgeText = "Макс. длительность", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowDeviceList", Value = "bool (true)", BadgeText = "Список устройств", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowReset", Value = "bool (true)", BadgeText = "Кнопка Сброс", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowDownload", Value = "bool (true)", BadgeText = "Кнопка Скачать", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Width", Value = "string (100%)", BadgeText = "Ширина контейнера", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Кастомный CSS", BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private List<PropertyPanelItem> _eventProperties = new()
+    {
+        new() { Label = "OnPermissionGranted", Value = "EventCallback<SgRecorderPermissionGrantedEventArgs>", BadgeText = "Разрешения получены", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnPermissionDenied", Value = "EventCallback", BadgeText = "Разрешения отклонены", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "OnStart", Value = "EventCallback<SgRecorderStartedEventArgs>", BadgeText = "Запись началась", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnPause", Value = "EventCallback", BadgeText = "Пауза", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnResume", Value = "EventCallback", BadgeText = "Возобновление", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnStop", Value = "EventCallback<SgRecorderStoppedEventArgs>", BadgeText = "Запись остановлена", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnDataAvailable", Value = "EventCallback<SgRecorderDataAvailableEventArgs>", BadgeText = "Данные доступны", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnError", Value = "EventCallback<SgRecorderErrorEventArgs>", BadgeText = "Ошибка", BadgeVariant = SgBadgeVariant.Danger },
+    };
+
+    private List<PropertyPanelItem> _mimeTypeEnumValues = new()
+    {
+        new() { Label = "SgRecorderMimeType.VideoWebM", Value = "\"VideoWebM\"", BadgeText = "WebM video", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRecorderMimeType.VideoWebM_VP9", Value = "\"VideoWebM_VP9\"", BadgeText = "WebM + VP9", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRecorderMimeType.VideoWebM_H264", Value = "\"VideoWebM_H264\"", BadgeText = "WebM + H.264", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRecorderMimeType.AudioWAV", Value = "\"AudioWAV\"", BadgeText = "WAV audio", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgRecorderMimeType.AudioOGG", Value = "\"AudioOGG\"", BadgeText = "OGG audio", BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private string _minimalCode = """
+        <SgRecorder />
+        """;
+
+    private string _audioOnlyCode = """
+        <SgRecorder Video="false" Audio="true"
+                   MimeType="SgRecorderMimeType.AudioWAV" />
+        """;
+
+    private string _eventsCode = """
+        <SgRecorder OnStart="OnStart"
+                   OnStop="OnStop"
+                   OnError="OnError" />
+
+        @code {
+            void OnStart(SgRecorderStartedEventArgs e) {
+                Console.WriteLine($"Начало: {e.StartedAt}");
+            }
+            
+            void OnStop(SgRecorderStoppedEventArgs e) {
+                Console.WriteLine($"Длительность: {e.Duration}с");
+                Console.WriteLine($"Размер: {e.Size} байт");
+            }
+            
+            void OnError(SgRecorderErrorEventArgs e) {
+                Console.WriteLine($"Ошибка: {e.Message}");
+            }
+        }
+        """;
+
+    private string _programmaticCode = """
+        <SgRecorder @ref="_recorder" />
+        <SgButton OnClick="RequestPermissions">Запросить разрешения</SgButton>
+        <SgButton OnClick="Start" Variant="SgButtonVariant.Primary">Старт</SgButton>
+        <SgButton OnClick="Pause">Пауза</SgButton>
+        <SgButton OnClick="Resume">Возобновить</SgButton>
+        <SgButton OnClick="Stop" Variant="SgButtonVariant.Danger">Стоп</SgButton>
+        <SgButton OnClick="Reset">Сброс</SgButton>
+
+        @code {
+            SgRecorder? _recorder;
+
+            async Task RequestPermissions() => await _recorder!.RequestPermissionsAsync();
+            async Task Start() => await _recorder!.StartAsync();
+            async Task Pause() => await _recorder!.PauseAsync();
+            async Task Resume() => await _recorder!.ResumeAsync();
+            async Task Stop() => await _recorder!.StopAsync();
+            async Task Reset() => await _recorder!.ResetAsync();
+        }
+        """;
+}

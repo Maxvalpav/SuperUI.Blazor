@@ -1,0 +1,371 @@
+@namespace SuperUI.Components
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-barcode-scanner @CssClass" style="@(Width != "100%" ? $"width:{Width};" : null)" @attributes="AdditionalAttributes">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <h3 class="sg-barcode-scanner-title">@Title</h3>
+    }
+
+    @if (_error is not null)
+    {
+        <div class="sg-barcode-scanner-error" role="alert">
+            <svg class="sg-barcode-scanner-error-icon" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+                <path fill="currentColor" d="M10 2a8 8 0 1 0 0 16A8 8 0 0 0 10 2Zm0 4a1 1 0 0 1 1 1v3a1 1 0 1 1-2 0V7a1 1 0 0 1 1-1Zm0 7a1 1 0 1 1 0 2 1 1 0 0 1 0-2Z"/>
+            </svg>
+            <span>@_error</span>
+            <button type="button" class="sg-barcode-scanner-retry-btn" @onclick="RetryAsync">@Localizer["BarcodeScanner_Retry"]</button>
+        </div>
+    }
+
+    <div class="sg-barcode-scanner-video-container">
+        <video id="@_instanceId-video" class="sg-barcode-scanner-video" playsinline></video>
+    </div>
+
+    <div class="sg-barcode-scanner-controls">
+        @if (ShowVideoDeviceList && _devices.Count > 1)
+        {
+            <div class="sg-barcode-scanner-device-select-wrap">
+                <label class="sg-barcode-scanner-label" for="@_deviceSelectId">@Localizer["BarcodeScanner_Camera"]</label>
+                <select id="@_deviceSelectId" 
+                        class="sg-barcode-scanner-select"
+                        value="@_selectedDeviceId"
+                        @onchange="OnDeviceChanged">
+                    @foreach (var device in _devices)
+                    {
+                        <option value="@device.DeviceId">@device.Label</option>
+                    }
+                </select>
+            </div>
+        }
+
+        <div class="sg-barcode-scanner-buttons">
+            @if (ShowStart)
+            {
+                <button type="button" 
+                        class="sg-barcode-scanner-btn sg-barcode-scanner-btn-primary"
+                        @onclick="StartAsync"
+                        disabled="@(_isScanning)">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M3 2.75A.75.75 0 0 1 3.75 2h8.5a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-8.5A.75.75 0 0 1 3 13.25Z"/>
+                    </svg>
+                    @Localizer["BarcodeScanner_Start"]
+                </button>
+            }
+
+            <button type="button" 
+                    class="sg-barcode-scanner-btn sg-barcode-scanner-btn-secondary"
+                    @onclick="StopAsync"
+                    disabled="@(!_isScanning)">
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path fill="currentColor" d="M3.75 2A1.75 1.75 0 0 0 2 3.75v8.5c0 .966.784 1.75 1.75 1.75h8.5A1.75 1.75 0 0 0 14 12.25v-8.5A1.75 1.75 0 0 0 12.25 2Z"/>
+                </svg>
+                @Localizer["BarcodeScanner_Stop"]
+            </button>
+
+            @if (ShowToggleTorch)
+            {
+                <button type="button" 
+                        class="sg-barcode-scanner-btn sg-barcode-scanner-btn-secondary"
+                        @onclick="ToggleTorchAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M8 2a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 2Zm4.657 2.515a.75.75 0 0 1 1.061 0l1.06 1.06a.75.75 0 1 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm-7.314 0a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 0 1-1.061-1.06l1.06-1.06a.75.75 0 0 1 1.061 0ZM2.75 8a.75.75 0 0 0 0 1.5h1.5a.75.75 0 0 0 0-1.5h-1.5Zm10.5 0a.75.75 0 0 0 0 1.5h1.5a.75.75 0 0 0 0-1.5h-1.5ZM4.586 10.364a.75.75 0 0 0 0 1.06l1.06 1.061a.75.75 0 1 0 1.061-1.06l-1.06-1.061a.75.75 0 0 0-1.061 0Zm5.303 0a.75.75 0 0 0 0 1.06l1.06 1.061a.75.75 0 0 0 1.061-1.06l-1.06-1.061a.75.75 0 0 0-1.061 0ZM8 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/>
+                    </svg>
+                    @Localizer["BarcodeScanner_Torch"]
+                </button>
+            }
+
+            @if (ShowReset)
+            {
+                <button type="button" 
+                        class="sg-barcode-scanner-btn sg-barcode-scanner-btn-tertiary"
+                        @onclick="ResetAsync">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M2 5a4 4 0 0 1 6.928-2.308h.001l.001-.001A4 4 0 0 1 14 5v.5a.5.5 0 0 0 1 0V5a5 5 0 0 0-9.33-2.5l-.257-.258A.5.5 0 0 0 4.793 2L2.146 4.646a.5.5 0 0 0 .708.708L4.5 3.707V9.5a.5.5 0 0 0 1 0V5a3 3 0 0 1 5.196-2.121A3 3 0 0 1 13 5v5.803l1.146-1.147a.5.5 0 0 0-.708-.708L11.207 10l2.647 2.646a.5.5 0 0 0 .708-.708L13 10.793V5a4 4 0 0 0-4-4 4 4 0 0 0-2.665 1.024H6.33A4 4 0 0 0 2 5Z"/>
+                    </svg>
+                    @Localizer["BarcodeScanner_Reset"]
+                </button>
+            }
+
+            @if (ShowFileInput)
+            {
+                <label class="sg-barcode-scanner-btn sg-barcode-scanner-btn-secondary">
+                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                        <path fill="currentColor" d="M14 4.5a2.5 2.5 0 0 1-4.78.938.75.75 0 0 0-1.06 1.06A4 4 0 0 0 15.5 4.5v4.75a.75.75 0 0 1-1.5 0z"/>
+                        <path fill="currentColor" d="M4 3.5a2.5 2.5 0 0 1 2.495 2.336L6.5 5.85v.4H6a3.5 3.5 0 0 0-.22 6.993L6 13.25h6a2 2 0 0 0 .15-3.995L12 9.25h-.25a.75.75 0 0 1-.102-1.493L11.75 7.75h.25a3.5 3.5 0 0 1 3.495 3.308L15.5 11.1v1.4a3.5 3.5 0 0 1-3.308 3.495L12 16H6a3.5 3.5 0 0 1-3.495-3.308L2.5 12.65V5.85a3.5 3.5 0 0 1 3.308-3.495L6 2.35h.25a.75.75 0 0 1 .102 1.493L6.25 3.85H6a2.5 2.5 0 0 0-2.495 2.336L3.5 6.25v.4h.5V6.25a2.5 2.5 0 0 1 2.336-2.495L6.5 3.75h.5v.4h-.5v-.4z"/>
+                    </svg>
+                    @Localizer["BarcodeScanner_UploadFile"]
+                    <InputFile OnChange="OnFileSelected" accept="image/*" style="display: none" />
+                </label>
+            }
+        </div>
+    </div>
+
+    @if (_lastScan is not null)
+    {
+        <div class="sg-barcode-scanner-result">
+            <div class="sg-barcode-scanner-result-header">
+                <span class="sg-barcode-scanner-result-title">@Localizer["BarcodeScanner_Result"]</span>
+                <span class="sg-barcode-scanner-result-format">@_lastScan.Format</span>
+            </div>
+            <div class="sg-barcode-scanner-result-text">@_lastScan.Text</div>
+            @if (_lastScan.Picture is not null)
+            {
+                <div class="sg-barcode-scanner-result-picture">
+                    <img src="@_lastScan.Picture" alt="Сканированное изображение" />
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgBarcodeScanner>? _selfRef;
+    private readonly string _instanceId = $"sg-barcode-scanner-{Guid.NewGuid():N}";
+    private readonly string _deviceSelectId = $"sg-barcode-scanner-device-{Guid.NewGuid():N}";
+    private bool _isDisposed;
+    private bool _isScanning;
+    private bool _torchOn;
+    private string? _error;
+    private List<SgVideoDevice> _devices = new();
+    private string _selectedDeviceId = string.Empty;
+    private SgBarcodeReceivedEventArgs? _lastScan;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public int VideoWidth { get; set; } = 640;
+    [Parameter] public int VideoHeight { get; set; } = 480;
+    [Parameter] public bool StartCameraAutomatically { get; set; }
+    [Parameter] public bool ShowStart { get; set; } = true;
+    [Parameter] public bool ShowReset { get; set; } = true;
+    [Parameter] public bool ShowVideoDeviceList { get; set; } = true;
+    [Parameter] public bool ShowToggleTorch { get; set; }
+    [Parameter] public bool ShowFileInput { get; set; } = true;
+    [Parameter] public List<SgBarcodeFormat> DecodeFormats { get; set; } = new() { SgBarcodeFormat.All };
+    [Parameter] public bool DecodedPictureCapture { get; set; }
+    [Parameter] public string? SelectedDeviceId { get; set; }
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public SgBarcodeScannerSources? Sources { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public EventCallback<SgBarcodeReceivedEventArgs> OnBarcodeReceived { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
+    [Parameter] public EventCallback<string> OnDecodeError { get; set; }
+    [Parameter] public EventCallback<SgDeviceListChangedEventArgs> OnDeviceListChanged { get; set; }
+    [Parameter] public EventCallback<string> OnSelectedDeviceChanged { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_isDisposed || !firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-barcode-scanner.js");
+            if (_isDisposed) return;
+            _selfRef = DotNetObjectReference.Create(this);
+            var sources = Sources ?? new SgBarcodeScannerSources();
+            await _module.InvokeVoidAsync("initBarcodeScanner", _selfRef, _instanceId, sources);
+            
+            if (StartCameraAutomatically)
+            {
+                await StartAsync();
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["BarcodeScanner_FailedToLoad"]}: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task StartAsync()
+    {
+        if (_module is null || _isScanning) return;
+
+        _isScanning = true;
+        _error = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await _module.InvokeVoidAsync("startScanner", 
+                _instanceId, 
+                _instanceId + "-video", 
+                _selectedDeviceId, 
+                DecodeFormats, 
+                DecodedPictureCapture, 
+                VideoWidth, 
+                VideoHeight);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (Exception ex)
+        {
+            _error = $"{Localizer["BarcodeScanner_FailedToStart"]}: {ex.Message}";
+            _isScanning = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        if (_module is null || !_isScanning) return;
+
+        try
+        {
+            await _module.InvokeVoidAsync("stopScanner", _instanceId);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
+
+        _isScanning = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task ResetAsync()
+    {
+        _lastScan = null;
+        await StopAsync();
+        await StartAsync();
+    }
+
+    private async Task OnDeviceChanged(ChangeEventArgs e)
+    {
+        _selectedDeviceId = e.Value?.ToString() ?? string.Empty;
+        if (OnSelectedDeviceChanged.HasDelegate)
+            await OnSelectedDeviceChanged.InvokeAsync(_selectedDeviceId);
+        
+        if (_isScanning)
+        {
+            await ResetAsync();
+        }
+    }
+
+    public async Task ToggleTorchAsync()
+    {
+        if (_module is null) return;
+        _torchOn = !_torchOn;
+        try
+        {
+            await _module.InvokeVoidAsync("toggleTorch", _instanceId, _torchOn);
+        }
+        catch { }
+    }
+
+    [JSInvokable]
+    public async Task OnBarcodeReceivedAsync(System.Text.Json.JsonElement result)
+    {
+        var args = new SgBarcodeReceivedEventArgs
+        {
+            Text = result.TryGetProperty("text", out var textProp) ? textProp.GetString() ?? string.Empty : string.Empty,
+            Format = result.TryGetProperty("format", out var formatProp) ? formatProp.GetString() ?? string.Empty : string.Empty,
+            Picture = result.TryGetProperty("picture", out var pictureProp) && pictureProp.ValueKind != System.Text.Json.JsonValueKind.Null ? pictureProp.GetString() : null
+        };
+
+        _lastScan = args;
+        
+        if (OnBarcodeReceived.HasDelegate)
+            await OnBarcodeReceived.InvokeAsync(args);
+    }
+
+    [JSInvokable]
+    public async Task OnErrorAsync(string error)
+    {
+        _error = error;
+        await InvokeAsync(StateHasChanged);
+        if (OnError.HasDelegate)
+            await OnError.InvokeAsync(error);
+    }
+
+    [JSInvokable]
+    public async Task OnDecodeErrorAsync(string error)
+    {
+        if (OnDecodeError.HasDelegate)
+            await OnDecodeError.InvokeAsync(error);
+    }
+
+    [JSInvokable]
+    public async Task OnDeviceListChangedAsync(List<SgVideoDevice> devices)
+    {
+        _devices = devices;
+        if (string.IsNullOrEmpty(_selectedDeviceId) && _devices.Count > 0)
+        {
+            _selectedDeviceId = _devices[0].DeviceId;
+        }
+        await InvokeAsync(StateHasChanged);
+        if (OnDeviceListChanged.HasDelegate)
+            await OnDeviceListChanged.InvokeAsync(new SgDeviceListChangedEventArgs { Devices = devices });
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null) return;
+        
+        using var stream = file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+        using var memoryStream = new MemoryStream();
+        await stream.CopyToAsync(memoryStream);
+        var dataUrl = $"data:{file.ContentType};base64,{Convert.ToBase64String(memoryStream.ToArray())}";
+        
+        await DecodeFromFileAsync(dataUrl);
+    }
+
+    public async Task DecodeFromFileAsync(string dataUrl)
+    {
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("decodeFromFile", _instanceId, dataUrl);
+        }
+        catch (Exception ex)
+        {
+            await OnDecodeErrorAsync(ex.Message);
+        }
+    }
+
+    public async Task RetryAsync()
+    {
+        _error = null;
+        StateHasChanged();
+        if (_module is not null && _selfRef is not null)
+        {
+            try
+            {
+                var sources = Sources ?? new SgBarcodeScannerSources();
+                await _module.InvokeVoidAsync("initBarcodeScanner", _selfRef, _instanceId, sources);
+            }
+            catch { }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("disposeBarcodeScanner", _instanceId); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+        }
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch { }
+            _module = null;
+        }
+    }
+}
