@@ -13,6 +13,10 @@ public enum SgResultStatus
     Info,
     /// <summary>Warning state (yellow warning icon).</summary>
     Warning,
+    /// <summary>403 Forbidden state.</summary>
+    Status403,
     /// <summary>404 Not Found state.</summary>
-    Status404
+    Status404,
+    /// <summary>500 Internal Server Error state.</summary>
+    Status500
 }

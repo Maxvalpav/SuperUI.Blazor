@@ -1,75 +1,276 @@
 @namespace SuperUI.Components
+@using System.Globalization
+@inject ISuperUILocalizer Localizer
+@implements IDisposable
 
-<div class="sgc-statistic @CssClass" style="@Style" @attributes="AdditionalAttributes">
-    @if (!string.IsNullOrEmpty(Title))
+<div class="sgc-statistic @SizeClass @(Compact ? "sgc-statistic-compact" : "") @(Bordered ? "sgc-statistic-bordered" : "") @(Loading ? "sgc-statistic-loading" : "") @CssClass"
+     style="@BuildStyle()"
+     @attributes="AdditionalAttributes">
+
+    @if (Loading)
     {
-        <div class="sgc-statistic-title">@Title</div>
-    }
-    <div class="sgc-statistic-content">
-        @if (PrefixContent != null)
-        {
-            <span class="sgc-statistic-prefix">@PrefixContent</span>
-        }
-        <span class="sgc-statistic-value">@Value</span>
-        @if (SuffixContent != null)
-        {
-            <span class="sgc-statistic-suffix">@SuffixContent</span>
-        }
-    </div>
-    @if (TrendValue != null)
-    {
-        <div class="sgc-statistic-trend @(TrendValue >= 0 ? "sgc-trend-up" : "sgc-trend-down")">
-            @(TrendValue >= 0 ? "▲" : "▼") @FormattedTrend
+        <div class="sgc-statistic-skel">
+            <div class="sgc-statistic-skel-label"></div>
+            <div class="sgc-statistic-skel-value"></div>
         </div>
+    }
+    else
+    {
+        @* Header row: icon + title + tooltip *@
+        @if (IconContent is not null || !string.IsNullOrEmpty(Title))
+        {
+            <div class="sgc-statistic-header">
+                @if (IconContent is not null)
+                {
+                    <span class="sgc-statistic-icon" aria-hidden="true">@IconContent</span>
+                }
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <span class="sgc-statistic-title">@Title</span>
+                }
+                @if (!string.IsNullOrEmpty(Tooltip))
+                {
+                    <span class="sgc-statistic-tooltip" title="@Tooltip" aria-label="@Tooltip">
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <circle cx="8" cy="8" r="6.5"/>
+                            <line x1="8" y1="7" x2="8" y2="11.5" stroke-linecap="round"/>
+                            <circle cx="8" cy="4.8" r="0.6" fill="currentColor"/>
+                        </svg>
+                    </span>
+                }
+            </div>
+        }
+
+        @* Main value *@
+        <div class="sgc-statistic-content" aria-live="polite">
+            @if (PrefixContent is not null)
+            {
+                <span class="sgc-statistic-prefix">@PrefixContent</span>
+            }
+            else if (!string.IsNullOrEmpty(Prefix))
+            {
+                <span class="sgc-statistic-prefix">@Prefix</span>
+            }
+            <span class="sgc-statistic-value" style="@ValueStyle">@DisplayValue</span>
+            @if (SuffixContent is not null)
+            {
+                <span class="sgc-statistic-suffix">@SuffixContent</span>
+            }
+            else if (!string.IsNullOrEmpty(Suffix))
+            {
+                <span class="sgc-statistic-suffix">@Suffix</span>
+            }
+        </div>
+
+        @* Sparkline slot *@
+        @if (SparklineContent is not null)
+        {
+            <div class="sgc-statistic-spark">@SparklineContent</div>
+        }
+
+        @* Trend *@
+        @if (TrendValue is not null)
+        {
+            var up = TrendValue >= 0;
+            var trendCls = AutoTrendColor
+                ? (TrendInverted ? (up ? "sgc-trend-down" : "sgc-trend-up") : (up ? "sgc-trend-up" : "sgc-trend-down"))
+                : "sgc-trend-neutral";
+            <div class="sgc-statistic-trend @trendCls"
+                 aria-label="@(up ? Localizer["TrendUp"] : Localizer["TrendDown"]): @FormattedTrend">
+                <span class="sgc-statistic-trend-arrow" aria-hidden="true">@(up ? "↑" : "↓")</span>
+                <span class="sgc-statistic-trend-value">@FormattedTrend</span>
+                @if (!string.IsNullOrEmpty(TrendLabel))
+                {
+                    <span class="sgc-statistic-trend-label">@TrendLabel</span>
+                }
+            </div>
+        }
+
+        @* Description *@
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <div class="sgc-statistic-desc">@Description</div>
+        }
+
+        @* Footer slot *@
+        @if (FooterContent is not null)
+        {
+            <div class="sgc-statistic-footer">@FooterContent</div>
+        }
     }
 </div>
 
 @code {
-    /// <summary>Title displayed above the value.</summary>
+    /// <summary>Label displayed above the value.</summary>
     [Parameter] public string? Title { get; set; }
 
-    /// <summary>Pre-formatted main value text.</summary>
+    /// <summary>Optional info-tooltip rendered next to the title.</summary>
+    [Parameter] public string? Tooltip { get; set; }
+
+    /// <summary>Pre-formatted main value text. Takes precedence over <see cref="NumericValue"/>.</summary>
     [Parameter] public string? Value { get; set; }
 
-    /// <summary>Optional content rendered before the value (e.g. icon, currency symbol).</summary>
+    /// <summary>Numeric main value. Formatted via <see cref="ValueFormat"/> and culture.</summary>
+    [Parameter] public double? NumericValue { get; set; }
+
+    /// <summary>
+    /// Format string applied to <see cref="NumericValue"/>. Defaults to <c>N0</c>
+    /// (e.g. "1,234"). Use "N2", "C", "P1", or any standard / custom numeric format.
+    /// </summary>
+    [Parameter] public string ValueFormat { get; set; } = "N0";
+
+    /// <summary>Culture used for formatting. Defaults to <see cref="CultureInfo.CurrentCulture"/>.</summary>
+    [Parameter] public CultureInfo? Culture { get; set; }
+
+    /// <summary>Animates from 0 to <see cref="NumericValue"/> on mount and on value change.</summary>
+    [Parameter] public bool Animate { get; set; }
+
+    /// <summary>Animation duration in milliseconds. Default 800.</summary>
+    [Parameter] public int AnimateDurationMs { get; set; } = 800;
+
+    /// <summary>Text prefix before the value (e.g. "$").</summary>
+    [Parameter] public string? Prefix { get; set; }
+
+    /// <summary>Text suffix after the value (e.g. "ms").</summary>
+    [Parameter] public string? Suffix { get; set; }
+
+    /// <summary>Custom content rendered before the value. Takes precedence over <see cref="Prefix"/>.</summary>
     [Parameter] public RenderFragment? PrefixContent { get; set; }
 
-    /// <summary>Optional content rendered after the value.</summary>
+    /// <summary>Custom content rendered after the value. Takes precedence over <see cref="Suffix"/>.</summary>
     [Parameter] public RenderFragment? SuffixContent { get; set; }
 
-    /// <summary>
-    /// Trend ratio expressed as a fraction (e.g. <c>0.15</c> renders as 15.0%).
-    /// Sign controls the up/down arrow.
-    /// </summary>
+    /// <summary>Icon rendered to the left of the title.</summary>
+    [Parameter] public RenderFragment? IconContent { get; set; }
+
+    /// <summary>Sparkline / mini-chart slot rendered between the value and the trend.</summary>
+    [Parameter] public RenderFragment? SparklineContent { get; set; }
+
+    /// <summary>Trend ratio as a fraction (e.g. 0.15 → +15.0%). Sign drives the up/down arrow.</summary>
     [Parameter] public double? TrendValue { get; set; }
 
-    /// <summary>
-    /// Numeric format string for the trend value. Default is <c>"P1"</c> (percent with 1 decimal).
-    /// </summary>
+    /// <summary>Format string for <see cref="TrendValue"/>. Default "P1".</summary>
     [Parameter] public string TrendFormat { get; set; } = "P1";
 
     /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
+    /// Inverts trend coloring (down = good, up = bad). Useful for metrics like response time
+    /// where lower is better.
     /// </summary>
+    [Parameter] public bool TrendInverted { get; set; }
+
+    /// <summary>Auto-colors trend (green/red) based on sign and <see cref="TrendInverted"/>. Default true.</summary>
+    [Parameter] public bool AutoTrendColor { get; set; } = true;
+
+    /// <summary>Optional label appended after the trend value (e.g. "vs last month").</summary>
+    [Parameter] public string? TrendLabel { get; set; }
+
+    /// <summary>Small description text shown below the trend.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Custom footer content rendered at the bottom.</summary>
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    /// <summary>Accent color applied to the value text (CSS color string).</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Wraps the statistic in a soft border card.</summary>
+    [Parameter] public bool Bordered { get; set; }
+
+    /// <summary>Component size. Default <see cref="SgSize.Md"/>.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Shows a skeleton loading state.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Reduces padding and font sizes.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets inline CSS styles to apply to the statistic container.
-    /// </summary>
+    /// <summary>Inline CSS styles for the root element.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Internals ────────────────────────────────────────────────────────────
+
+    private CultureInfo Cult => Culture ?? CultureInfo.CurrentCulture;
+
+    private double? _animatedValue;
+    private double? _animFrom;
+    private double? _animTo;
+    private DateTime _animStart;
+    private System.Threading.Timer? _animTimer;
+    private double? _lastNumeric;
+
+    protected override void OnParametersSet()
+    {
+        if (NumericValue == _lastNumeric) return;
+        _lastNumeric = NumericValue;
+
+        if (Animate && NumericValue is not null)
+        {
+            _animFrom = _animatedValue ?? 0;
+            _animTo   = NumericValue.Value;
+            _animStart = DateTime.UtcNow;
+            StartAnimation();
+        }
+        else
+        {
+            _animatedValue = NumericValue;
+        }
+    }
+
+    private void StartAnimation()
+    {
+        _animTimer?.Dispose();
+        _animTimer = new System.Threading.Timer(_ =>
+        {
+            var elapsed = (DateTime.UtcNow - _animStart).TotalMilliseconds;
+            var t = Math.Clamp(elapsed / Math.Max(1, AnimateDurationMs), 0, 1);
+            // ease-out cubic
+            var eased = 1 - Math.Pow(1 - t, 3);
+            _animatedValue = _animFrom!.Value + (_animTo!.Value - _animFrom.Value) * eased;
+            InvokeAsync(StateHasChanged);
+            if (t >= 1) { _animTimer?.Dispose(); _animTimer = null; }
+        }, null, 0, 16);
+    }
+
+    private string DisplayValue
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Value)) return Value!;
+            var src = Animate ? _animatedValue : NumericValue;
+            if (src is null) return string.Empty;
+            try { return src.Value.ToString(ValueFormat, Cult); }
+            catch { return src.Value.ToString(Cult); }
+        }
+    }
 
     private string FormattedTrend
     {
         get
         {
             if (TrendValue is null) return string.Empty;
-            var value = Math.Abs(TrendValue.Value);
-            return value.ToString(TrendFormat);
+            try { return Math.Abs(TrendValue.Value).ToString(TrendFormat, Cult); }
+            catch { return Math.Abs(TrendValue.Value).ToString(Cult); }
         }
     }
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-statistic-sm",
+        SgSize.Lg => "sgc-statistic-lg",
+        SgSize.Xl => "sgc-statistic-xl",
+        _         => ""
+    };
+
+    private string ValueStyle => string.IsNullOrEmpty(Color) ? "" : $"color:{Color};";
+
+    private string BuildStyle() => string.IsNullOrEmpty(Style) ? "" : Style;
+
+    public void Dispose() => _animTimer?.Dispose();
 }

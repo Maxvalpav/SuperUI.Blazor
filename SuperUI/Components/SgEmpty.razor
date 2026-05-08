@@ -2,45 +2,147 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-empty @CssClass" style="@Style" @attributes="AdditionalAttributes">
-    <div class="sgc-empty-icon">
-        @if (Icon is not null) { @Icon } else { <span>📭</span> }
+<div class="sgc-empty @SizeClass @(Compact ? "sgc-empty-compact" : "") @(Bordered ? "sgc-empty-bordered" : "") @CssClass"
+     style="@Style"
+     role="status"
+     aria-live="polite"
+     @attributes="AdditionalAttributes">
+
+    <div class="sgc-empty-icon" aria-hidden="true">
+        @if (Icon is not null)
+        {
+            @Icon
+        }
+        else if (!string.IsNullOrEmpty(ImageUrl))
+        {
+            <img class="sgc-empty-image" src="@ImageUrl" alt="" loading="lazy" decoding="async" />
+        }
+        else
+        {
+            @PresetIcon
+        }
     </div>
-    <div class="sgc-empty-text">@(string.IsNullOrEmpty(Text) ? Localizer["NoData"] : Text)</div>
+
+    <div class="sgc-empty-text">
+        @(string.IsNullOrEmpty(Text) ? DefaultText : Text)
+    </div>
+
+    @if (!string.IsNullOrEmpty(Description))
+    {
+        <div class="sgc-empty-description">@Description</div>
+    }
+
     @if (ChildContent is not null)
     {
         <div class="sgc-empty-extra">@ChildContent</div>
     }
+    else if (!string.IsNullOrEmpty(ActionText) && OnAction.HasDelegate)
+    {
+        <div class="sgc-empty-extra">
+            <SgButton Text="@ActionText"
+                      Variant="@ActionVariant"
+                      OnClick="HandleActionAsync" />
+        </div>
+    }
 </div>
 
 @code {
-    /// <summary>
-    /// Gets or sets the empty state message text.
-    /// </summary>
+    /// <summary>Primary empty-state message. Falls back to a localized default based on <see cref="Preset"/>.</summary>
     [Parameter] public string? Text { get; set; }
 
-    /// <summary>
-    /// Gets or sets the custom icon to display in the empty state.
-    /// </summary>
+    /// <summary>Secondary description below the main text.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Custom icon. Takes precedence over <see cref="ImageUrl"/> and <see cref="Preset"/>.</summary>
     [Parameter] public RenderFragment? Icon { get; set; }
 
-    /// <summary>
-    /// Gets or sets the additional content to display below the message.
-    /// </summary>
+    /// <summary>Custom image URL. Used when <see cref="Icon"/> is not set.</summary>
+    [Parameter] public string? ImageUrl { get; set; }
+
+    /// <summary>Built-in illustration preset. Used when neither <see cref="Icon"/> nor <see cref="ImageUrl"/> is set.</summary>
+    [Parameter] public SgEmptyPreset Preset { get; set; } = SgEmptyPreset.Default;
+
+    /// <summary>Additional content (e.g. action buttons) below the description.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+    /// <summary>Convenience action button label. Renders only when <see cref="ChildContent"/> is null and <see cref="OnAction"/> is set.</summary>
+    [Parameter] public string? ActionText { get; set; }
+
+    /// <summary>Action button variant. Default <see cref="SgButtonVariant.Outlined"/>.</summary>
+    [Parameter] public SgButtonVariant ActionVariant { get; set; } = SgButtonVariant.Outlined;
+
+    /// <summary>Click callback for the action button.</summary>
+    [Parameter] public EventCallback OnAction { get; set; }
+
+    /// <summary>Component size. Default <see cref="SgSize.Md"/>.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Reduces padding and icon size.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>Renders a soft dashed border around the empty state (useful inside cards).</summary>
+    [Parameter] public bool Bordered { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets inline CSS styles to apply to the component.
-    /// </summary>
+    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-empty-sm",
+        SgSize.Lg => "sgc-empty-lg",
+        SgSize.Xl => "sgc-empty-xl",
+        _         => ""
+    };
+
+    private string DefaultText => Preset switch
+    {
+        SgEmptyPreset.Search => Localizer["NoResults"],
+        SgEmptyPreset.Error  => Localizer["LoadFailed"],
+        SgEmptyPreset.Simple => Localizer["NoData"],
+        _                    => Localizer["NoData"]
+    };
+
+    private RenderFragment PresetIcon => __builder =>
+    {
+        @switch (Preset)
+        {
+            case SgEmptyPreset.Simple:
+                <svg class="sgc-empty-default-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="14" y1="32" x2="50" y2="32"/>
+                </svg>
+                break;
+            case SgEmptyPreset.Search:
+                <svg class="sgc-empty-default-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="28" cy="28" r="14"/>
+                    <line x1="40" y1="40" x2="52" y2="52"/>
+                </svg>
+                break;
+            case SgEmptyPreset.Error:
+                <svg class="sgc-empty-default-icon" viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="32" cy="32" r="22"/>
+                    <line x1="40" y1="24" x2="24" y2="40"/>
+                    <line x1="24" y1="24" x2="40" y2="40"/>
+                </svg>
+                break;
+            default:
+                <svg class="sgc-empty-default-icon" viewBox="0 0 64 64" fill="none">
+                    <rect x="8" y="16" width="48" height="36" rx="4" stroke="currentColor" stroke-width="2.5" fill="none"/>
+                    <path d="M8 28h48" stroke="currentColor" stroke-width="2.5"/>
+                    <path d="M24 40h16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+                    <circle cx="32" cy="10" r="4" stroke="currentColor" stroke-width="2.5" fill="none"/>
+                </svg>
+                break;
+        }
+    };
+
+    private async Task HandleActionAsync()
+    {
+        if (OnAction.HasDelegate) await OnAction.InvokeAsync();
+    }
 }

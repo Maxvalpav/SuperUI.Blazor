@@ -1,50 +1,138 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
 
-<span class="sgc-badge @VariantClass @CssClass"
-      style="@Style"
-      role="status"
-      aria-label="@(AriaLabel ?? Text ?? Localizer["Badge"])"
-      @attributes="AdditionalAttributes">
-    @ChildContent@Text
-</span>
+@if (ChildContent is not null && !Standalone)
+{
+    @* Wrapper mode: badge positioned over child content *@
+    <span class="sgc-badge-wrap @(Block ? "sgc-badge-block" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
+        @ChildContent
+        @if (!Hidden && !IsZero)
+        {
+            <span class="@WrapBadgeClasses"
+                  style="@OffsetStyle"
+                  role="status"
+                  aria-label="@BadgeAriaLabel">
+                @if (!Dot && !Processing)
+                {
+                    @BadgeText
+                }
+            </span>
+        }
+    </span>
+}
+else if (Ribbon)
+{
+    @* Ribbon mode (banner-style corner badge — used standalone over a card) *@
+    <span class="sgc-badge sgc-badge-ribbon @VariantClass @PlacementClass @CssClass"
+          style="@Style"
+          role="status"
+          aria-label="@BadgeAriaLabel"
+          @attributes="AdditionalAttributes">
+        @if (!Dot)
+        {
+            @if (Text is not null) { @Text }
+            else if (InnerContent is not null) { @InnerContent }
+            else { @BadgeText }
+        }
+    </span>
+}
+else
+{
+    @* Standalone inline badge *@
+    <span class="@StandaloneBadgeClasses"
+          style="@Style"
+          role="status"
+          aria-label="@(AriaLabel ?? Text ?? Localizer["Badge"])"
+          @attributes="AdditionalAttributes">
+        @if (Processing)
+        {
+            <span class="sgc-badge-processing-dot" aria-hidden="true"></span>
+        }
+        @if (!Dot && !Processing)
+        {
+            @if (Text is not null) { @Text }
+            else if (InnerContent is not null) { @InnerContent }
+            else if (Count.HasValue) { @BadgeText }
+        }
+    </span>
+}
 
 @code {
-    /// <summary>
-    /// Gets or sets the accessibility label for screen readers.
-    /// </summary>
-    [Parameter] public string? AriaLabel { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the badge text.
-    /// </summary>
-    [Parameter] public string? Text { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom content to render inside the badge.
-    /// Takes precedence over <see cref="Text"/>.
-    /// </summary>
+    /// <summary>Content to wrap. When set, the badge is positioned as an overlay over this content.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the visual variant of the badge. Default is <see cref="SgBadgeVariant.Default"/>.
-    /// </summary>
+
+    /// <summary>Inner content of a standalone badge. Takes precedence over <see cref="Text"/>.</summary>
+    [Parameter] public RenderFragment? InnerContent { get; set; }
+
+    /// <summary>Badge text for standalone mode.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>Numeric count (capped at <see cref="Max"/>).</summary>
+    [Parameter] public int? Count { get; set; }
+
+    /// <summary>Maximum count before showing "Max+". Default 99.</summary>
+    [Parameter] public int Max { get; set; } = 99;
+
+    /// <summary>When true and <see cref="Count"/> is 0, the badge stays visible. Default false (hidden when count is 0).</summary>
+    [Parameter] public bool ShowZero { get; set; }
+
+    /// <summary>Renders as a small dot without text.</summary>
+    [Parameter] public bool Dot { get; set; }
+
+    /// <summary>Hides the badge.</summary>
+    [Parameter] public bool Hidden { get; set; }
+
+    /// <summary>Adds a pulsing animation to draw attention.</summary>
+    [Parameter] public bool Pulse { get; set; }
+
+    /// <summary>Renders an animated processing dot (replaces text).</summary>
+    [Parameter] public bool Processing { get; set; }
+
+    /// <summary>Outlined visual style.</summary>
+    [Parameter] public bool Outlined { get; set; }
+
+    /// <summary>Renders as a corner ribbon (use standalone over a positioned container).</summary>
+    [Parameter] public bool Ribbon { get; set; }
+
+    /// <summary>Forces standalone rendering even when <see cref="ChildContent"/> is set.</summary>
+    [Parameter] public bool Standalone { get; set; }
+
+    /// <summary>Makes the wrapper element <c>display:block</c> (so the badge anchors to a block child like a card).</summary>
+    [Parameter] public bool Block { get; set; }
+
+    /// <summary>Visual variant. Default <see cref="SgBadgeVariant.Default"/>.</summary>
     [Parameter] public SgBadgeVariant Variant { get; set; } = SgBadgeVariant.Default;
-    
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+
+    /// <summary>Badge size. Default <see cref="SgSize.Md"/>.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Placement of the wrapped/ribbon badge. Default top-right.</summary>
+    [Parameter] public SgBadgePlacement Placement { get; set; } = SgBadgePlacement.TopRight;
+
+    /// <summary>Horizontal offset (px) applied to the wrapper badge.</summary>
+    [Parameter] public int? OffsetX { get; set; }
+
+    /// <summary>Vertical offset (px) applied to the wrapper badge.</summary>
+    [Parameter] public int? OffsetY { get; set; }
+
+    /// <summary>Custom badge background color.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Accessibility label for screen readers.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the component.
-    /// </summary>
+    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Internals ────────────────────────────────────────────────────────────
+
+    private bool IsZero => Count is 0 && !ShowZero && string.IsNullOrEmpty(Text) && InnerContent is null && !Dot && !Processing;
 
     private string VariantClass => Variant switch
     {
@@ -55,4 +143,88 @@
         SgBadgeVariant.Info    => "sgc-info",
         _                      => ""
     };
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-badge-sm",
+        SgSize.Lg => "sgc-badge-lg",
+        SgSize.Xl => "sgc-badge-xl",
+        _         => ""
+    };
+
+    private string PlacementClass => Placement switch
+    {
+        SgBadgePlacement.TopLeft     => "sgc-badge-tl",
+        SgBadgePlacement.BottomLeft  => "sgc-badge-bl",
+        SgBadgePlacement.BottomRight => "sgc-badge-br",
+        _                            => "sgc-badge-tr"
+    };
+
+    private string OffsetStyle
+    {
+        get
+        {
+            if (!OffsetX.HasValue && !OffsetY.HasValue && string.IsNullOrEmpty(Color)) return "";
+            var sb = new System.Text.StringBuilder();
+            if (OffsetX.HasValue) sb.Append("--sgc-badge-ox:").Append(OffsetX.Value).Append("px;");
+            if (OffsetY.HasValue) sb.Append("--sgc-badge-oy:").Append(OffsetY.Value).Append("px;");
+            if (!string.IsNullOrEmpty(Color))
+            {
+                sb.Append("background:").Append(Color).Append(";border-color:").Append(Color).Append(';');
+            }
+            return sb.ToString();
+        }
+    }
+
+    private string WrapBadgeClasses
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder("sgc-badge ");
+            sb.Append(VariantClass).Append(' ').Append(SizeClass).Append(' ').Append(PlacementClass);
+            if (Dot)        sb.Append(" sgc-badge-dot");
+            if (Pulse)      sb.Append(" sgc-badge-pulse");
+            if (Outlined)   sb.Append(" sgc-badge-outlined");
+            if (Processing) sb.Append(" sgc-badge-processing");
+            return sb.ToString();
+        }
+    }
+
+    private string StandaloneBadgeClasses
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder("sgc-badge sgc-badge-inline ");
+            sb.Append(VariantClass).Append(' ').Append(SizeClass);
+            if (Dot)        sb.Append(" sgc-badge-dot");
+            if (Pulse)      sb.Append(" sgc-badge-pulse");
+            if (Outlined)   sb.Append(" sgc-badge-outlined");
+            if (Processing) sb.Append(" sgc-badge-processing");
+            if (!string.IsNullOrEmpty(CssClass)) sb.Append(' ').Append(CssClass);
+            return sb.ToString();
+        }
+    }
+
+    private string BadgeText
+    {
+        get
+        {
+            if (Count.HasValue) return Count.Value > Max ? $"{Max}+" : Count.Value.ToString();
+            return Text ?? "";
+        }
+    }
+
+    private string BadgeAriaLabel
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(AriaLabel)) return AriaLabel;
+            if (Dot) return Localizer["Notification"];
+            if (Processing) return Localizer["Processing"];
+            if (Count.HasValue) return Count.Value > Max
+                ? $"{Max}+ {Localizer["Notifications"]}"
+                : $"{Count.Value} {Localizer["Notifications"]}";
+            return Text ?? Localizer["Badge"];
+        }
+    }
 }

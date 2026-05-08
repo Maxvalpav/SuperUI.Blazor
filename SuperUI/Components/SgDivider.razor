@@ -2,54 +2,117 @@
 
 @if (Vertical)
 {
-    <span class="sgc-divider sgc-v @CssClass" style="@Style" @attributes="AdditionalAttributes"></span>
+    <span class="sgc-divider sgc-v @SpacingClass @StateClasses @CssClass"
+          style="@BuildStyle()"
+          role="separator"
+          aria-orientation="vertical"
+          @attributes="AdditionalAttributes"></span>
 }
 else if (!string.IsNullOrEmpty(Text) || ChildContent is not null)
 {
-    <div class="sgc-divider sgc-h sgc-text @(Dashed ? "sgc-dashed" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
+    <div class="sgc-divider sgc-h sgc-text @SpacingClass @AlignClass @StateClasses @CssClass"
+         style="@BuildStyle()"
+         role="separator"
+         aria-orientation="horizontal"
+         @attributes="AdditionalAttributes">
         <span class="sgc-divider-text">@ChildContent@Text</span>
     </div>
 }
 else
 {
-    <hr class="sgc-divider sgc-h @(Dashed ? "sgc-dashed" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes" />
+    <hr class="sgc-divider sgc-h @SpacingClass @StateClasses @CssClass"
+        style="@BuildStyle()"
+        role="separator"
+        aria-orientation="horizontal"
+        @attributes="AdditionalAttributes" />
 }
 
 @code {
-    /// <summary>
-    /// Gets or sets the text to display on the divider line.
-    /// </summary>
+    /// <summary>Text label rendered on the divider line.</summary>
     [Parameter] public string? Text { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom content to display on the divider line.
-    /// Takes precedence over <see cref="Text"/>.
-    /// </summary>
+
+    /// <summary>Custom content on the divider line. Takes precedence over <see cref="Text"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the divider is rendered vertically.
-    /// Default is false (horizontal).
-    /// </summary>
+
+    /// <summary>Renders the divider vertically (between inline elements).</summary>
     [Parameter] public bool Vertical { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the divider line is dashed instead of solid.
-    /// </summary>
+    /// <summary>Dashed line style.</summary>
     [Parameter] public bool Dashed { get; set; }
-    
+
+    /// <summary>Dotted line style.</summary>
+    [Parameter] public bool Dotted { get; set; }
+
+    /// <summary>Thicker (2px) divider line.</summary>
+    [Parameter] public bool Bold { get; set; }
+
+    /// <summary>Renders the line as a soft horizontal gradient (fades to transparent at the ends).</summary>
+    [Parameter] public bool Gradient { get; set; }
+
+    /// <summary>Removes the default vertical/horizontal margin around the divider.</summary>
+    [Parameter] public bool NoMargin { get; set; }
+
     /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
+    /// Vertical spacing (px) for horizontal dividers, or horizontal spacing for vertical ones.
+    /// Overrides default margin.
     /// </summary>
+    [Parameter] public int? Spacing { get; set; }
+
+    /// <summary>Custom thickness in pixels.</summary>
+    [Parameter] public int? Thickness { get; set; }
+
+    /// <summary>Text alignment when label content is provided. Default <see cref="SgDividerAlign.Center"/>.</summary>
+    [Parameter] public SgDividerAlign Align { get; set; } = SgDividerAlign.Center;
+
+    /// <summary>Divider color (CSS color string).</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the component.
-    /// </summary>
+    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string AlignClass => Align switch
+    {
+        SgDividerAlign.Left  => "sgc-divider-left",
+        SgDividerAlign.Right => "sgc-divider-right",
+        _                    => ""
+    };
+
+    private string SpacingClass => NoMargin ? "sgc-divider-flush" : "";
+
+    private string StateClasses
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+            if (Dashed)   sb.Append(" sgc-dashed");
+            if (Dotted)   sb.Append(" sgc-dotted");
+            if (Bold)     sb.Append(" sgc-divider-bold");
+            if (Gradient) sb.Append(" sgc-divider-gradient");
+            return sb.ToString();
+        }
+    }
+
+    private string BuildStyle()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrEmpty(Color))   sb.Append("--sgc-divider-color:").Append(Color).Append(';');
+        if (Spacing.HasValue)
+        {
+            if (Vertical) sb.Append("margin-left:").Append(Spacing.Value).Append("px;margin-right:").Append(Spacing.Value).Append("px;");
+            else          sb.Append("margin-top:").Append(Spacing.Value).Append("px;margin-bottom:").Append(Spacing.Value).Append("px;");
+        }
+        if (Thickness.HasValue)
+        {
+            if (Vertical) sb.Append("width:").Append(Thickness.Value).Append("px;");
+            else          sb.Append("--sgc-divider-thickness:").Append(Thickness.Value).Append("px;");
+        }
+        if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
+        return sb.ToString();
+    }
 }
