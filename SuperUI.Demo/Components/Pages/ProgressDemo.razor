@@ -1,0 +1,298 @@
+@page "/progress-demo"
+@using SuperUI.Components
+
+<PageTitle>SgProgress - SUI</PageTitle>
+
+<SgCard Title="SgProgress — прогресс-индикатор"
+        Subtitle="Линейный/круговой режимы, indeterminate, striped/animated, буфер, vertical.">
+
+    <!-- HERO / Настройка -->
+    <div style="margin-top: 32px;">
+        <h2>SgProgress — Управление</h2>
+        <p>Живые настройки: значение, indeterminate, striped/animated, buffer, vertical и circular.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <!-- controls -->
+            <SgCard Title="Параметры">
+                <div style="display:flex; flex-direction: column; gap: 14px;">
+
+                    <div style="display:flex; flex-direction: column; gap: 8px;">
+                        <div style="font-size:12px; color: var(--sui-text-muted);">Value / Max</div>
+                        <SgSlider TValue="double"
+                                   Min="0"
+                                   Max="100"
+                                   Step="1"
+                                   ShowValue="true"
+                                   Label="Value"
+                                   @bind-Value="_value" />
+                    </div>
+
+                    <SgDivider />
+
+                    <div style="display:flex; flex-direction: column; gap: 8px;">
+                        <div style="font-size:12px; color: var(--sui-text-muted);">Состояния</div>
+
+                        <div style="display:flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                            <SgCheckBox @bind-Value="_indeterminate" Label="Indeterminate" />
+                            <SgCheckBox @bind-Value="_striped" Label="Striped" />
+                            <SgCheckBox @bind-Value="_animated" Label="Animated" />
+                        </div>
+
+                        <div style="display:flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                            <SgCheckBox @bind-Value="_vertical" Label="Vertical" />
+                            <SgCheckBox @bind-Value="_circular" Label="Circular" />
+                            <SgCheckBox @bind-Value="_showLabel" Label="ShowLabel" />
+                        </div>
+                    </div>
+
+                    <SgDivider />
+
+                    <div style="display:flex; flex-direction: column; gap: 8px;">
+                        <div style="font-size:12px; color: var(--sui-text-muted);">Buffer</div>
+                        <div style="display:flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+                            <SgCheckBox @bind-Value="_showBuffer" Label="Показывать buffer" />
+                        </div>
+
+                        <SgSlider TValue="double"
+                                   Min="0"
+                                   Max="100"
+                                   Step="1"
+                                   ShowValue="true"
+                                   Label="BufferValue"
+                                   @bind-Value="_bufferValue"
+                                   Disabled="@(!_showBuffer)" />
+                    </div>
+
+                    <SgDivider />
+
+                    <div style="display:flex; gap: 10px; flex-wrap: wrap;">
+                        <SgButton Text="Play" Variant="SgButtonVariant.Primary" OnClick="Start" Disabled="@_isPlaying" />
+                        <SgButton Text="Stop" OnClick="Stop" Disabled="@(!_isPlaying)" />
+                        <SgButton Text="Reset" OnClick="Reset" />
+                    </div>
+
+                    <div style="font-size: 12px; color: var(--sui-text-muted);">
+                        @(_isPlaying ? $"Идёт… {_value:0}%" : "Остановлено")
+                    </div>
+
+                    <SgAlert Variant="SgAlertVariant.Warn" Dense="true" Title="Особенности"
+                              Text="Buffer и label: когда Indeterminate включён — %/label для linear скрываются, но индикатор остаётся в loading-режиме." />
+                </div>
+            </SgCard>
+
+            <!-- live render -->
+            <SgCard Title="Рендер">
+                <div style="display:flex; flex-direction: column; gap: 16px;">
+
+                    <div style="display:flex; flex-direction: column; gap: 10px;">
+                        <div style="font-size:12px; color: var(--sui-text-muted);">Линейный/vertical</div>
+
+                        <SgProgress Value="@_value"
+                                    Max="100"
+                                    BufferValue="@(_showBuffer && !_indeterminate ? _bufferValue : null)"
+                                    Indeterminate="@_indeterminate"
+                                    Striped="@_striped"
+                                    Animated="@_animated"
+                                    Vertical="@_vertical"
+                                    Circular="@false"
+                                    ShowLabel="@_showLabel" />
+
+                        <div style="font-size:12px; color: var(--sui-text-muted);">
+                            Buffer: @(_showBuffer ? $"{_bufferValue:0}%" : "off") · Mode: @(_indeterminate ? "loading" : "progress")
+                        </div>
+                    </div>
+
+                    <div style="height: 1px; background: var(--sui-border); opacity: 0.8;" />
+
+                    <div style="display:flex; flex-direction: column; gap: 10px;">
+                        <div style="font-size:12px; color: var(--sui-text-muted);">Circular</div>
+
+                        <div style="display:flex; gap: 16px; align-items:center; flex-wrap: wrap;">
+                            <SgProgress Circular="true"
+                                        Value="@_value"
+                                        Max="100"
+                                        Indeterminate="@_indeterminate"
+                                        ShowLabel="@_showLabel"
+                                        CssClass="@(_circular ? null : null)"
+                                        Style="width:auto"
+                                        BufferValue="@null"
+                                        Striped="false"
+                                        Animated="false"
+                                        Vertical="false" />
+
+                            <div style="min-width: 200px;">
+                                <div style="font-size:12px; color: var(--sui-text-muted); margin-bottom: 6px;">
+                                    Подпись и доступность:
+                                </div>
+                                <div style="font-size:12px; color: var(--sui-text-muted); line-height: 1.4;">
+                                    • circular aria-valuenow = null при Indeterminate<br />
+                                    • ShowLabel управляет %/Loading текстом
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <SgAlert Variant="SgAlertVariant.Info" Dense="true" Title="Трюк для проверки"
+                              Text="Поставьте Vertical=true и Indeterminate=false — высота должна меняться (fill/buffer)."/>
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- GALERY -->
+    <div style="margin-top: 32px;">
+        <h2>Галерея состояний</h2>
+        <p>Быстрые пресеты, чтобы увидеть “всё сразу”.</p>
+
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px; align-items: start;">
+            <!-- Linear -->
+            <SgCard Title="Линейный">
+                <div style="display:flex; flex-direction: column; gap: 14px;">
+                    <SgProgress Value="10" ShowLabel="true" />
+                    <SgProgress Value="55" Striped="true" ShowLabel="true" />
+                    <SgProgress Value="80" Striped="true" Animated="true" ShowLabel="true" />
+                    <SgProgress Value="60" BufferValue="90" ShowLabel="true" />
+                    <SgProgress Indeterminate="true" ShowLabel="true" />
+                </div>
+            </SgCard>
+
+            <!-- Vertical -->
+            <SgCard Title="Vertical">
+                <div style="display:flex; flex-direction: row; gap: 18px; align-items:center; flex-wrap: wrap;">
+                    <div style="display:flex; flex-direction: column; gap: 14px;">
+                        <SgProgress Vertical="true" Value="20" ShowLabel="true" />
+                        <SgProgress Vertical="true" Value="60" Striped="true" Animated="true" ShowLabel="true" />
+                        <SgProgress Vertical="true" Value="75" BufferValue="95" ShowLabel="true" />
+                    </div>
+
+                    <div style="display:flex; flex-direction: column; gap: 14px;">
+                        <SgProgress Vertical="true" Indeterminate="true" ShowLabel="true" />
+                        <SgProgress Vertical="true" Value="40" ShowLabel="true" />
+                    </div>
+                </div>
+            </SgCard>
+        </div>
+
+        <div style="margin-top: 24px; display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <!-- Circular -->
+            <SgCard Title="Circular">
+                <div style="display:flex; gap: 16px; flex-wrap: wrap; align-items:center;">
+                    <SgProgress Circular="true" Value="37" ShowLabel="true" />
+                    <SgProgress Circular="true" Value="68" Striped="true" Animated="true" ShowLabel="true" />
+                    <SgProgress Circular="true" Indeterminate="true" ShowLabel="true" />
+                </div>
+            </SgCard>
+
+            <!-- Combined notes -->
+            <SgCard Title="Пояснение по параметрам">
+                <div style="display:flex; flex-direction: column; gap: 10px;">
+                    <SgAlert Variant="SgAlertVariant.Info" Dense="true" Title="Striped/Animated"
+                              Text="Эти классы применяются к линейному прогрессу (в текущей реализации)."/>
+                    <SgAlert Variant="SgAlertVariant.Success" Dense="true" Title="Buffer"
+                              Text="Отдельная полоска: BufferValue рисуется вторым слоем."/>
+                    <SgAlert Variant="SgAlertVariant.Warn" Dense="true" Title="Vertical"
+                              Text="Высота/заполнение пересчитаны через vertical-стили + inline height."/>
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- PROPERTIES -->
+    <div style="margin-top: 32px;">
+        <h2>Свойства компонента</h2>
+        <p>Список основных параметров.</p>
+
+        <div style="margin-top: 16px;">
+            <PropertyTable Items="_progressProperties" />
+        </div>
+    </div>
+</SgCard>
+
+@code {
+    private double _value = 25;
+    private double _bufferValue = 70;
+
+    private bool _showBuffer = true;
+    private bool _indeterminate = false;
+
+    private bool _striped = true;
+    private bool _animated = true;
+    private bool _vertical = false;
+
+    private bool _circular = true; // просто для UI подсказки
+    private bool _showLabel = true;
+
+    private bool _isPlaying;
+    private System.Timers.Timer? _timer;
+
+    private readonly List<PropertyPanelItem> _progressProperties = new()
+    {
+        new() { Label = "Value",         Value = "double",           BadgeText = "Текущее",        BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Max",           Value = "double (default 100)", BadgeText = "Макс",      BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "ShowLabel",     Value = "bool (default true)", BadgeText = "Label",     BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Indeterminate",  Value = "bool",             BadgeText = "Loading",       BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Striped",       Value = "bool",             BadgeText = "Полосы",        BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Animated",      Value = "bool",             BadgeText = "Анимация",      BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "BufferValue",   Value = "double?",          BadgeText = "Buffer",        BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Vertical",      Value = "bool",             BadgeText = "Вертикаль",     BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Circular",      Value = "bool",             BadgeText = "Круговой",       BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "CssClass",      Value = "string?",           BadgeText = "CSS",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Style",         Value = "string?",           BadgeText = "Inline",        BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private void Start()
+    {
+        if (_isPlaying) return;
+
+        _isPlaying = true;
+        _timer?.Dispose();
+
+        _timer = new System.Timers.Timer(120);
+        _timer.AutoReset = true;
+        _timer.Elapsed += (_, __) =>
+        {
+            if (!_isPlaying) return;
+
+            _value += 2;
+            if (_value >= 100) _value = 0;
+
+            if (_showBuffer && !_indeterminate)
+            {
+                _bufferValue = Math.Min(100, _value + 25);
+            }
+
+            InvokeAsync(StateHasChanged);
+        };
+
+        _timer.Start();
+    }
+
+    private void Stop()
+    {
+        _isPlaying = false;
+        _timer?.Stop();
+        _timer?.Dispose();
+        _timer = null;
+    }
+
+    private void Reset()
+    {
+        Stop();
+
+        _value = 25;
+        _bufferValue = 70;
+
+        _indeterminate = false;
+        _striped = true;
+        _animated = true;
+        _vertical = false;
+        _showLabel = true;
+
+        _showBuffer = true;
+    }
+
+    public void Dispose()
+    {
+        Stop();
+    }
+}
