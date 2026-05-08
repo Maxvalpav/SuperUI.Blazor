@@ -2,13 +2,151 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<span class="@RootClass"
-      style="@Style"
-      role="status"
-      aria-live="@(IsSpinning ? "polite" : "off")"
-      aria-busy="@(IsSpinning ? "true" : "false")"
-      aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
-      @attributes="AdditionalAttributes"></span>
+@if (Type == SgSpinnerType.Dots)
+{
+    <div class="@RootClass"
+         style="@Style"
+         role="status"
+         aria-live="@(IsSpinning ? "polite" : "off")"
+         aria-busy="@(IsSpinning ? "true" : "false")"
+         aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
+         @attributes="AdditionalAttributes">
+        <div class="sgc-spinner-dot" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        <div class="sgc-spinner-dot" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        <div class="sgc-spinner-dot" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        @if (!string.IsNullOrEmpty(DisplayLabel))
+        {
+            <span class="sgc-spinner-label">@DisplayLabel</span>
+        }
+    </div>
+}
+else if (Type == SgSpinnerType.Bars)
+{
+    <div class="@RootClass"
+         style="@Style"
+         role="status"
+         aria-live="@(IsSpinning ? "polite" : "off")"
+         aria-busy="@(IsSpinning ? "true" : "false")"
+         aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
+         @attributes="AdditionalAttributes">
+        <div class="sgc-spinner-bar" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        <div class="sgc-spinner-bar" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        <div class="sgc-spinner-bar" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        <div class="sgc-spinner-bar" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        <div class="sgc-spinner-bar" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        @if (!string.IsNullOrEmpty(DisplayLabel))
+        {
+            <span class="sgc-spinner-label">@DisplayLabel</span>
+        }
+    </div>
+}
+else if (Type == SgSpinnerType.Ring)
+{
+    var thickness = Thickness;
+    var perimeter = 2 * Math.PI * 12;
+    var svgSize = GetSvgSize(Size);
+    <svg class="@OverlayClass"
+         width="@svgSize"
+         height="@svgSize"
+         viewBox="0 0 28 28"
+         style="@(Overlay ? "position:absolute;inset:0;margin:auto;z-index:11;" : "") @Style"
+         role="status"
+         aria-live="@(IsSpinning ? "polite" : "off")"
+         aria-busy="@(IsSpinning ? "true" : "false")"
+         aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
+         @attributes="AdditionalAttributes">
+        <circle cx="14" cy="14" r="12"
+                fill="none"
+                stroke="var(--sui-border, #e5e7eb)"
+                stroke-width="@thickness" />
+        <circle class="sgc-spinner-ring-track"
+                cx="14" cy="14" r="12"
+                fill="none"
+                stroke="@GetVariantColor()"
+                stroke-width="@thickness"
+                stroke-dasharray="@($"{perimeter * 0.75:F1} {perimeter * 0.25:F1}")"
+                stroke-linecap="round"
+                style="transform-origin:50% 50%;animation:sgc-spin @GetSpeedDuration()s linear infinite;animation-play-state:@(IsSpinning ? "running" : "paused")" />
+    </svg>
+    if (!string.IsNullOrEmpty(DisplayLabel))
+    {
+        <span class="@($"sgc-spinner-label{(Size == SgSize.Sm ? " sgc-spinner-label-sm" : Size == SgSize.Lg || Size == SgSize.Xl ? " sgc-spinner-label-lg" : "")}")" style="@(Overlay ? "position:absolute;bottom:calc(50% - 32px);left:50%;transform:translateX(-50%);z-index:11;text-align:center;white-space:nowrap;" : "")">@DisplayLabel</span>
+    }
+    @if (Overlay)
+    {
+        <div class="sgc-spinner-backdrop"></div>
+    }
+}
+else if (Type == SgSpinnerType.SpinCircle)
+{
+    var thickness = Thickness;
+    var svgSize2 = GetSvgSize2(Size);
+    <svg class="@OverlayClass"
+         width="@svgSize2"
+         height="@svgSize2"
+         viewBox="0 0 24 24"
+         style="@(Overlay ? "position:absolute;inset:0;margin:auto;z-index:11;" : "") @Style"
+         role="status"
+         aria-live="@(IsSpinning ? "polite" : "off")"
+         aria-busy="@(IsSpinning ? "true" : "false")"
+         aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
+         @attributes="AdditionalAttributes">
+        <circle cx="12" cy="12" r="10"
+                fill="none"
+                stroke="var(--sui-border, #e5e7eb)"
+                stroke-width="@thickness" />
+        <circle class="sgc-spinner-spincircle-track"
+                cx="12" cy="12" r="10"
+                fill="none"
+                stroke="@GetVariantColor()"
+                stroke-width="@thickness"
+                stroke-dasharray="50 30"
+                stroke-linecap="round"
+                style="transform-origin:50% 50%;animation:sgc-spin @GetSpeedDuration()s linear infinite;animation-play-state:@(IsSpinning ? "running" : "paused")" />
+    </svg>
+    if (!string.IsNullOrEmpty(DisplayLabel))
+    {
+        <span class="@($"sgc-spinner-label{(Size == SgSize.Sm ? " sgc-spinner-label-sm" : Size == SgSize.Lg || Size == SgSize.Xl ? " sgc-spinner-label-lg" : "")}")" style="@(Overlay ? "position:absolute;bottom:calc(50% - 30px);left:50%;transform:translateX(-50%);z-index:11;text-align:center;white-space:nowrap;" : "")">@DisplayLabel</span>
+    }
+    @if (Overlay)
+    {
+        <div class="sgc-spinner-backdrop"></div>
+    }
+}
+else if (Type == SgSpinnerType.Pulse)
+{
+    <div class="@RootClass"
+         style="@Style"
+         role="status"
+         aria-live="@(IsSpinning ? "polite" : "off")"
+         aria-busy="@(IsSpinning ? "true" : "false")"
+         aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
+         @attributes="AdditionalAttributes">
+        <div class="sgc-spinner-pulse-circle" style="animation-play-state:@(IsSpinning ? "running" : "paused")"></div>
+        @if (!string.IsNullOrEmpty(DisplayLabel))
+        {
+            <span class="sgc-spinner-label">@DisplayLabel</span>
+        }
+    </div>
+}
+else
+{
+    <span class="@RootClass"
+          style="@(Overlay ? "position:absolute;inset:0;margin:auto;z-index:11;" : "") @Style"
+          role="status"
+          aria-live="@(IsSpinning ? "polite" : "off")"
+          aria-busy="@(IsSpinning ? "true" : "false")"
+          aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
+          @attributes="AdditionalAttributes"></span>
+    if (!string.IsNullOrEmpty(DisplayLabel))
+    {
+        <span class="@($"sgc-spinner-label{(Size == SgSize.Sm ? " sgc-spinner-label-sm" : Size == SgSize.Lg || Size == SgSize.Xl ? " sgc-spinner-label-lg" : "")}")">@DisplayLabel</span>
+    }
+    if (Overlay)
+    {
+        <div class="sgc-spinner-backdrop"></div>
+    }
+}
 
 @code {
     /// <summary>
@@ -34,9 +172,29 @@
     [Parameter] public SgSpinnerVariant Variant { get; set; } = SgSpinnerVariant.Default;
 
     /// <summary>
+    /// Gets or sets the visual spinner type (Border, Ring, Dots, Bars, Pulse, SpinCircle).
+    /// </summary>
+    [Parameter] public SgSpinnerType Type { get; set; } = SgSpinnerType.Border;
+
+    /// <summary>
+    /// Gets or sets the animation speed (Slow, Normal, Fast).
+    /// </summary>
+    [Parameter] public SgSpinnerSpeed Speed { get; set; } = SgSpinnerSpeed.Normal;
+
+    /// <summary>
+    /// Gets or sets the thickness of Ring or SpinCircle spinner strokes (1-8).
+    /// </summary>
+    [Parameter] public int Thickness { get; set; } = 3;
+
+    /// <summary>
     /// Gets or sets the accessibility label for screen readers.
     /// </summary>
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>
+    /// Gets or sets the visible text displayed alongside the spinner.
+    /// </summary>
+    [Parameter] public string? DisplayLabel { get; set; }
 
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
@@ -57,12 +215,23 @@
     private string RootClass
         => string.Join(" ",
             "sgc-spinner",
+            TypeCssClass,
             SizeClass,
             VariantClass,
-            Overlay ? "sgc-spinner-overlay" : null,
+            SpeedClass,
+            Overlay && Type is SgSpinnerType.Border ? "sgc-spinner-overlay" : null,
             IsSpinning ? "sgc-spinner-spinning" : "sgc-spinner-paused",
             !string.IsNullOrWhiteSpace(CssClass) ? CssClass : null
         );
+
+    private string TypeCssClass => Type switch
+    {
+        SgSpinnerType.Border => "sgc-spinner-border",
+        SgSpinnerType.Dots => "sgc-spinner-dots",
+        SgSpinnerType.Bars => "sgc-spinner-bars",
+        SgSpinnerType.Pulse => "sgc-spinner-pulse",
+        _ => null
+    };
 
     private string SizeClass => Size switch
     {
@@ -73,12 +242,63 @@
         _ => "sgc-spinner-md"
     };
 
-    private string VariantClass => Variant switch
+    private string VariantClass => Type switch
     {
-        SgSpinnerVariant.Info => "sgc-spinner-variant-info",
-        SgSpinnerVariant.Success => "sgc-spinner-variant-success",
-        SgSpinnerVariant.Warn => "sgc-spinner-variant-warn",
-        SgSpinnerVariant.Danger => "sgc-spinner-variant-danger",
-        _ => "sgc-spinner-variant-default"
+        SgSpinnerType.Ring or SgSpinnerType.SpinCircle => null,
+        _ => Variant switch
+        {
+            SgSpinnerVariant.Info => "sgc-spinner-variant-info",
+            SgSpinnerVariant.Success => "sgc-spinner-variant-success",
+            SgSpinnerVariant.Warn => "sgc-spinner-variant-warn",
+            SgSpinnerVariant.Danger => "sgc-spinner-variant-danger",
+            _ => "sgc-spinner-variant-default"
+        }
+    };
+
+    private string SpeedClass => Speed switch
+    {
+        SgSpinnerSpeed.Slow => "sgc-spinner-speed-slow",
+        SgSpinnerSpeed.Fast => "sgc-spinner-speed-fast",
+        _ => null
+    };
+
+    private string GetVariantColor() => Variant switch
+    {
+        SgSpinnerVariant.Info => "var(--sui-accent, #006fee)",
+        SgSpinnerVariant.Success => "var(--sui-success, #22c55e)",
+        SgSpinnerVariant.Warn => "var(--sui-warn, #f59e0b)",
+        SgSpinnerVariant.Danger => "var(--sui-danger, #ef4444)",
+        _ => "var(--sui-accent, #006fee)"
+    };
+
+    private float GetSpeedDuration() => Speed switch
+    {
+        SgSpinnerSpeed.Slow => 1.5f,
+        SgSpinnerSpeed.Fast => 0.5f,
+        _ => 1f
+    };
+
+    private int GetSvgSize(SgSize size) => size switch
+    {
+        SgSize.Sm => 28,
+        SgSize.Md => 40,
+        SgSize.Lg => 56,
+        SgSize.Xl => 72,
+        _ => 40
+    };
+
+    private string OverlayClass => Type switch
+    {
+        SgSpinnerType.Ring or SgSpinnerType.SpinCircle => Overlay ? $"{RootClass} sgc-spinner-overlay" : RootClass,
+        _ => RootClass
+    };
+
+    private int GetSvgSize2(SgSize size) => size switch
+    {
+        SgSize.Sm => 24,
+        SgSize.Md => 36,
+        SgSize.Lg => 50,
+        SgSize.Xl => 64,
+        _ => 36
     };
 }
