@@ -5814,32 +5814,84 @@ button.sg-filter-item:focus-visible {
     }
 }
 
-/* ---------- Progress ---------- */
-/* ---------- Progress ---------- */
+/* ═══════════════════════════════════════════════════════════════════════════
+   SgProgress — Полностью переработанный прогресс-индикатор
+   Поддержка: размеры SgSize, цветовые Variant, Title, LabelPosition,
+   Gradient, Segmented, PulseOnComplete, Buffer, Vertical, Circular
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Linear progress wrapper ───────────────────────────────────────────── */
 .sgc-progress-wrap {
     display: flex;
     align-items: center;
     gap: 8px;
     font-family: var(--sui-font);
+    --sgc-bar-height: 10px;
+    --sgc-progress-height: 180px;
 }
+
+/* Title above/beside the bar */
+.sgc-progress-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sui-text-primary);
+    white-space: nowrap;
+    flex-shrink: 0;
+    user-select: none;
+}
+.sgc-progress-title-right {
+    order: 1;
+}
+
+/* ── Bar track ─────────────────────────────────────────────────────────── */
 .sgc-progress {
     flex: 1;
-    height: 12px;
+    height: var(--sgc-bar-height);
     background: var(--sui-bg-secondary);
     border: 1px solid var(--sui-border);
     border-radius: var(--sui-radius-sm, 2px);
     overflow: hidden;
     position: relative;
+    transition: border-color 0.2s ease;
 }
+
+/* ── Bar fill & buffer (absolute positioned inside track) ─────────────── */
 .sgc-progress-bar {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 0;
     height: 100%;
-    background: var(--sui-accent);
     border-radius: var(--sui-radius-sm, 2px);
-    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    position: relative;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+                height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
-/* shimmer on the bar */
-.sgc-progress-bar::after {
+
+/* Fill (main progress) */
+.sgc-progress-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 100%;
+    border-radius: var(--sui-radius-sm, 2px);
+    z-index: 2;
+}
+
+/* Buffer layer (behind fill) */
+.sgc-progress-buffer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    height: 100%;
+    background: color-mix(in srgb, var(--sui-accent) 20%, var(--sui-border) 80%);
+    border-radius: var(--sui-radius-sm, 2px);
+    z-index: 1;
+}
+
+/* Shimmer overlay on fill bar (smooth sweeping highlight) */
+.sgc-progress-fill::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -5849,25 +5901,77 @@ button.sg-filter-item:focus-visible {
         rgba(255, 255, 255, 0.18) 50%,
         transparent 100%
     );
-    animation: sgc-progress-shimmer 1.8s ease-in-out infinite;
+    animation: sgc-prog-shimmer 1.8s ease-in-out infinite;
+    pointer-events: none;
 }
-@keyframes sgc-progress-shimmer {
-    0% {
-        translate: -100% 0;
-    }
-    100% {
-        translate: 200% 0;
-    }
+@keyframes sgc-prog-shimmer {
+    0%   { translate: -100% 0; }
+    100% { translate: 200% 0; }
 }
+
+/* ── Color variants for fill bar ───────────────────────────────────────── */
+/* Each variant uses a subtle left-to-right gradient for a richer look */
+
+/* Default (accent) */
+.sgc-progress-wrap.sgc-v-default .sgc-progress-fill {
+    background: linear-gradient(90deg, var(--sui-accent) 0%, color-mix(in srgb, var(--sui-accent) 85%, #fff) 100%);
+}
+.sgc-progress-wrap.sgc-v-default .sgc-progress-buffer {
+    background: color-mix(in srgb, var(--sui-accent) 20%, var(--sui-border) 80%);
+}
+
+/* Info — bright blue gradient */
+.sgc-progress-wrap.sgc-v-info .sgc-progress-fill {
+    background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+}
+.sgc-progress-wrap.sgc-v-info .sgc-progress-buffer {
+    background: color-mix(in srgb, #2563eb 20%, var(--sui-border) 80%);
+}
+
+/* Success — emerald gradient */
+.sgc-progress-wrap.sgc-v-success .sgc-progress-fill {
+    background: linear-gradient(90deg, #059669 0%, #34d399 100%);
+}
+.sgc-progress-wrap.sgc-v-success .sgc-progress-buffer {
+    background: color-mix(in srgb, #059669 20%, var(--sui-border) 80%);
+}
+
+/* Warning — amber gradient */
+.sgc-progress-wrap.sgc-v-warn .sgc-progress-fill {
+    background: linear-gradient(90deg, #d97706 0%, #fbbf24 100%);
+}
+.sgc-progress-wrap.sgc-v-warn .sgc-progress-buffer {
+    background: color-mix(in srgb, #d97706 20%, var(--sui-border) 80%);
+}
+
+/* Danger — rose gradient */
+.sgc-progress-wrap.sgc-v-danger .sgc-progress-fill {
+    background: linear-gradient(90deg, #dc2626 0%, #f87171 100%);
+}
+.sgc-progress-wrap.sgc-v-danger .sgc-progress-buffer {
+    background: color-mix(in srgb, #dc2626 20%, var(--sui-border) 80%);
+}
+
+/* ── Size variants (track height) ───────────────────────────────────────── */
+.sgc-progress-wrap.sgc-size-sm { --sgc-bar-height: 6px; }
+.sgc-progress-wrap.sgc-size-md { --sgc-bar-height: 10px; }
+.sgc-progress-wrap.sgc-size-lg { --sgc-bar-height: 14px; }
+.sgc-progress-wrap.sgc-size-xl { --sgc-bar-height: 20px; }
+
+/* ── Percentage label ──────────────────────────────────────────────────── */
 .sgc-progress-label {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 700;
     color: var(--sui-text-secondary);
     white-space: nowrap;
-    min-width: 32px;
+    min-width: 36px;
     text-align: right;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
 }
-.sgc-striped .sgc-progress-bar {
+
+/* ── Striped pattern ──────────────────────────────────────────────────── */
+.sgc-striped .sgc-progress-fill {
     background-image: linear-gradient(
         45deg,
         rgba(255, 255, 255, 0.15) 25%,
@@ -5877,72 +5981,74 @@ button.sg-filter-item:focus-visible {
         rgba(255, 255, 255, 0.15) 75%,
         transparent 75%,
         transparent
-    );
+    ) !important;
     background-size: 1rem 1rem;
 }
-.sgc-animated .sgc-progress-bar {
-    animation: sgc-progress-stripes 1s linear infinite;
+
+/* Stripes animation */
+.sgc-animated .sgc-progress-fill {
+    animation: sgc-prog-stripes 0.8s linear infinite !important;
 }
-@keyframes sgc-progress-stripes {
-    from {
-        background-position: 1rem 0;
-    }
-    to {
-        background-position: 0 0;
-    }
+@keyframes sgc-prog-stripes {
+    from { background-position: 1rem 0; }
+    to   { background-position: 0 0; }
 }
 
+/* ── Gradient fill ─────────────────────────────────────────────────────── */
+.sgc-gradient .sgc-progress-fill {
+    background: linear-gradient(
+        90deg,
+        var(--sg-progress-from, var(--sui-accent)) 0%,
+        var(--sg-progress-to, var(--sui-accent-hover)) 100%
+    ) !important;
+}
 
-/* ── Linear progress (enhanced) ───────────────────────────────────────── */
-.sgc-progress {
-    position: relative;
-    display: flex;
+/* ── Segmented style (gap between segments) ────────────────────────────── */
+.sgc-segmented .sgc-progress-fill {
+    background-repeat: repeat-x;
+    background-size: calc((100% - 4px * var(--sgc-seg-count, 10)) / var(--sgc-seg-count, 10) + 4px) 100%;
+    background-image: repeating-linear-gradient(
+        90deg,
+        currentColor 0px,
+        currentColor calc((100% - 4px * var(--sgc-seg-count, 10)) / var(--sgc-seg-count, 10)),
+        transparent calc((100% - 4px * var(--sgc-seg-count, 10)) / var(--sgc-seg-count, 10) + 4px),
+        transparent calc((100% - 4px * var(--sgc-seg-count, 10)) / var(--sgc-seg-count, 10) + 4px)
+    ) !important;
+}
+.sgc-segmented .sgc-progress-fill {
+    background-color: var(--sui-accent);
+}
+
+/* ── Complete (100%) pulse animation ───────────────────────────────────── */
+.sgc-complete .sgc-progress-fill {
+    animation: sgc-prog-complete 1.2s ease-in-out 2 !important;
+}
+@keyframes sgc-prog-complete {
+    0%, 100% { opacity: 1; filter: brightness(1); }
+    50%      { opacity: 0.85; filter: brightness(1.25); }
+}
+
+/* ── Vertical layout ────────────────────────────────────────────────────── */
+.sgc-progress-wrap.sgc-vertical {
+    flex-direction: column;
     align-items: stretch;
-    justify-content: flex-start;
+    width: auto;
+    height: var(--sgc-progress-height);
+    --sgc-bar-height: auto;
 }
 
-.sgc-progress-wrap.sgc-vertical,
 .sgc-progress-wrap.sgc-vertical .sgc-progress {
-    align-items: stretch;
-}
-
-/* main bar + buffer base */
-.sgc-progress-bar {
-    position: absolute;
-    inset: 0 auto 0 0;
-    width: 0;
+    flex: 1;
+    width: var(--sgc-bar-width, 10px);
     height: 100%;
-    border-radius: var(--sui-radius-sm, 2px);
-    transition: width 0.35s cubic-bezier(0.4, 0, 0.2, 1), height 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
+    border-radius: 999px;
+    align-self: center;
 }
 
-.sgc-progress-fill {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 100%;
-    background: var(--sui-accent);
-    border-radius: var(--sui-radius-sm, 2px);
-}
-
-.sgc-progress-buffer {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 0;
-    height: 100%;
-    background: color-mix(in srgb, var(--sui-accent) 22%, var(--sui-border) 78%);
-    border-radius: var(--sui-radius-sm, 2px);
-    opacity: 0.95;
-}
-
-/* vertical: ширина 100%, высота берётся из inline style (height: XX%) */
 .sgc-progress-wrap.sgc-vertical .sgc-progress-bar {
-    inset: auto 0 0 0; /* bottom:0; left/right:0; top:auto */
+    inset: auto auto 0 0;
     width: 100%;
-    height: auto;
+    height: 0;
 }
 
 .sgc-progress-wrap.sgc-vertical .sgc-progress-fill,
@@ -5952,53 +6058,50 @@ button.sg-filter-item:focus-visible {
     left: 0;
     right: 0;
     width: 100%;
-    height: auto;
+    height: 0;
 }
 
-/* background stays */
-.sgc-progress-wrap.sgc-vertical .sgc-progress-fill {
-    background: var(--sui-accent);
+/* Vertical sizes */
+.sgc-progress-wrap.sgc-vertical.sgc-size-sm { --sgc-bar-width: 6px; }
+.sgc-progress-wrap.sgc-vertical.sgc-size-md { --sgc-bar-width: 10px; }
+.sgc-progress-wrap.sgc-vertical.sgc-size-lg { --sgc-bar-width: 14px; }
+.sgc-progress-wrap.sgc-vertical.sgc-size-xl { --sgc-bar-width: 20px; }
+
+/* Vertical: hide label shimmer */
+.sgc-progress-wrap.sgc-vertical .sgc-progress-fill::after {
+    display: none;
 }
 
-.sgc-progress-wrap.sgc-vertical .sgc-progress-buffer {
-    background: color-mix(in srgb, var(--sui-accent) 22%, var(--sui-border) 78%);
-}
-
-/* Indeterminate (loading) */
-.sgc-progress.sgc-indeterminate .sgc-progress-bar {
+/* ── Indeterminate (loading) – linear ──────────────────────────────────── */
+.sgc-progress.sgc-indeterminate .sgc-progress-fill {
     width: 35% !important;
-    animation: sgc-prog 1.3s linear infinite;
+    animation: sgc-prog-indet 1.3s ease-in-out infinite !important;
 }
-@keyframes sgc-prog {
-    0% {
-        margin-left: -35%;
-    }
-    100% {
-        margin-left: 100%;
-    }
+@keyframes sgc-prog-indet {
+    0%   { margin-left: -35%; }
+    100% { margin-left: 100%; }
 }
 
-.sgc-progress-wrap.sgc-vertical .sgc-progress.sgc-indeterminate .sgc-progress-bar {
+/* Vertical indeterminate */
+.sgc-progress-wrap.sgc-vertical .sgc-progress.sgc-indeterminate .sgc-progress-fill {
     width: 100% !important;
     height: 35% !important;
-    animation: sgc-prog-v 1.3s linear infinite;
+    animation: sgc-prog-indet-v 1.3s ease-in-out infinite !important;
 }
-@keyframes sgc-prog-v {
-    0% { margin-top: 100%; }
+@keyframes sgc-prog-indet-v {
+    0%   { margin-top: 100%; }
     100% { margin-top: -35%; }
 }
 
-/* ── Circular progress ───────────────────────────────────────────────── */
+/* ── Circular progress ──────────────────────────────────────────────────── */
 .sgc-progress-circular {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     position: relative;
-    width: 48px;
-    height: 48px;
 }
 
-.sgc-progress-circular svg {
+.sgc-progress-circular .sgc-circular-svg {
     width: 100%;
     height: 100%;
     transform: rotate(-90deg);
@@ -6012,26 +6115,59 @@ button.sg-filter-item:focus-visible {
 
 .sgc-circular-bar {
     fill: none;
-    stroke: var(--sui-accent);
     stroke-width: 3.8;
     stroke-linecap: round;
-    transition: stroke-dasharray 0.3s ease, stroke-dashoffset 0.3s ease;
+    transition: stroke-dasharray 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                stroke-dashoffset 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Circular variants - colors */
+.sgc-progress-circular.sgc-v-default .sgc-circular-bar { stroke: var(--sui-accent); }
+.sgc-progress-circular.sgc-v-info    .sgc-circular-bar { stroke: var(--sui-info, #3b82f6); }
+.sgc-progress-circular.sgc-v-success .sgc-circular-bar { stroke: var(--sui-success); }
+.sgc-progress-circular.sgc-v-warn    .sgc-circular-bar { stroke: var(--sui-warn, #f59e0b); }
+.sgc-progress-circular.sgc-v-danger  .sgc-circular-bar { stroke: var(--sui-danger); }
+
+/* Circular custom color via CSS variable */
+.sgc-progress-circular[style*="--sgc-circular-color"] .sgc-circular-bar {
+    stroke: var(--sgc-circular-color);
+}
+
+/* Circular sizes */
+.sgc-progress-circular.sgc-size-sm { width: 32px; height: 32px; }
+.sgc-progress-circular.sgc-size-md { width: 48px; height: 48px; }
+.sgc-progress-circular.sgc-size-lg { width: 64px; height: 64px; }
+.sgc-progress-circular.sgc-size-xl { width: 96px; height: 96px; }
+
+.sgc-progress-circular.sgc-size-sm .sgc-circular-bg,
+.sgc-progress-circular.sgc-size-sm .sgc-circular-bar { stroke-width: 3; }
+.sgc-progress-circular.sgc-size-md .sgc-circular-bg,
+.sgc-progress-circular.sgc-size-md .sgc-circular-bar { stroke-width: 3.8; }
+.sgc-progress-circular.sgc-size-lg .sgc-circular-bg,
+.sgc-progress-circular.sgc-size-lg .sgc-circular-bar { stroke-width: 4.5; }
+.sgc-progress-circular.sgc-size-xl .sgc-circular-bg,
+.sgc-progress-circular.sgc-size-xl .sgc-circular-bar { stroke-width: 5.5; }
+
+/* Circular percentage label */
 .sgc-circular-label {
     position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
     font-weight: 700;
     color: var(--sui-text-primary);
     font-family: var(--sui-font);
     user-select: none;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
 }
+.sgc-progress-circular.sgc-size-sm .sgc-circular-label { font-size: 9px; }
+.sgc-progress-circular.sgc-size-md .sgc-circular-label { font-size: 11px; }
+.sgc-progress-circular.sgc-size-lg .sgc-circular-label { font-size: 13px; }
+.sgc-progress-circular.sgc-size-xl .sgc-circular-label { font-size: 16px; }
 
-/* Circular indeterminate shimmer (fallback) */
+/* Circular indeterminate animation */
 .sgc-progress-circular.sgc-indeterminate .sgc-circular-bar {
     stroke-dasharray: 10, 100;
     animation: sgc-circ-indet 1.1s ease-in-out infinite;
@@ -6040,6 +6176,29 @@ button.sg-filter-item:focus-visible {
     0%   { stroke-dasharray: 1, 100; opacity: 0.85; }
     50%  { stroke-dasharray: 55, 100; opacity: 1; }
     100% { stroke-dasharray: 1, 100; opacity: 0.85; }
+}
+
+/* Circular complete pulse */
+.sgc-progress-circular.sgc-complete .sgc-circular-bar {
+    animation: sgc-circ-complete 1.2s ease-in-out 2;
+}
+@keyframes sgc-circ-complete {
+    0%, 100% { opacity: 1; filter: brightness(1); }
+    50%      { opacity: 0.8; filter: brightness(1.3); }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+    .sgc-progress-fill::after,
+    .sgc-progress-fill,
+    .sgc-striped .sgc-progress-fill,
+    .sgc-animated .sgc-progress-fill,
+    .sgc-complete .sgc-progress-fill,
+    .sgc-progress.sgc-indeterminate .sgc-progress-fill,
+    .sgc-progress-circular.sgc-indeterminate .sgc-circular-bar,
+    .sgc-progress-circular.sgc-complete .sgc-circular-bar {
+        animation: none !important;
+    }
 }
 
 /* ---------- Skeleton ---------- */

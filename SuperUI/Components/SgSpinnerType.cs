@@ -21,5 +21,8 @@ public enum SgSpinnerType
     Pulse,
 
     /// <summary>Spinning circle with dash animation.</summary>
-    SpinCircle
+    SpinCircle,
+
+    /// <summary>Heartbeat pulse animation (like a heartbeat monitor).</summary>
+    Heartbeat
 }
