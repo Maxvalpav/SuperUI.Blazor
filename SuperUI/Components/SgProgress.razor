@@ -3,30 +3,30 @@
 
 @if (Circular)
 {
-    <div class="sgc-progress-circular @CssClass" style="@Style" role="progressbar" aria-valuemin="0" aria-valuemax="@Max" aria-valuenow="@(Indeterminate ? null : Value)" aria-label="@CircularLabel" @attributes="AdditionalAttributes">
+    <div class="sgc-progress-circular @CssClass" style="@Style" role="progressbar" aria-valuemin="0" aria-valuemax="@EffectiveMax" aria-valuenow="@(Indeterminate ? null : EffectiveValue)" aria-label="@CircularLabel" @attributes="AdditionalAttributes">
         <svg viewBox="0 0 36 36">
             <path class="sgc-circular-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
             <path class="sgc-circular-bar" stroke-dasharray="@CircularDashArray" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
         </svg>
         @if (ShowLabel)
         {
-            <span class="sgc-circular-label">@CircularText</span>
+            <span class="sgc-circular-label" aria-hidden="true">@CircularText</span>
         }
     </div>
 }
 else
 {
     <div class="sgc-progress-wrap @(Vertical ? "sgc-vertical" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
-        <div class="sgc-progress @(Indeterminate ? "sgc-indeterminate" : "") @(Animated ? "sgc-animated" : "") @(Striped ? "sgc-striped" : "") @(BufferValue.HasValue ? "sgc-buffer" : "")"
+        <div class="sgc-progress @(Indeterminate ? "sgc-indeterminate" : "") @(Animated ? "sgc-animated" : "") @(Striped ? "sgc-striped" : "") @(ShouldRenderBuffer ? "sgc-buffer" : "")"
              role="progressbar"
              aria-valuemin="0"
-             aria-valuemax="@Max"
-             aria-valuenow="@(Indeterminate ? null : Value)"
-             aria-label="@(Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {Pct:0}%")">
+             aria-valuemax="@EffectiveMax"
+             aria-valuenow="@(Indeterminate ? null : EffectiveValue)"
+             aria-label="@(Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {EffectivePct:0}%")">
             @if (!Indeterminate)
             {
                 <div class="sgc-progress-bar sgc-progress-fill" style="@ProgressBarStyle"></div>
-                @if (BufferValue.HasValue)
+                @if (ShouldRenderBuffer)
                 {
                     <div class="sgc-progress-bar sgc-progress-buffer" style="@BufferBarStyle"></div>
                 }
@@ -38,7 +38,7 @@ else
         </div>
         @if (ShowLabel && !Indeterminate)
         {
-            <span class="sgc-progress-label">@($"{Pct:0}%")</span>
+            <span class="sgc-progress-label">@($"{EffectivePct:0}%")</span>
         }
     </div>
 }
@@ -53,23 +53,23 @@ else
     /// Gets or sets whether the stripes are animated.
     /// </summary>
     [Parameter] public bool Animated { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the current progress value.
     /// </summary>
     [Parameter] public double Value { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the maximum progress value.
     /// Default is 100.
     /// </summary>
     [Parameter] public double Max { get; set; } = 100;
-    
+
     /// <summary>
     /// Gets or sets whether the progress bar shows indeterminate (loading) state.
     /// </summary>
     [Parameter] public bool Indeterminate { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to display the percentage label inside the progress bar.
     /// Default is true.
@@ -94,18 +94,29 @@ else
     /// </summary>
     [Parameter] public bool Circular { get; set; }
 
-    private string CircularDashArray => $"{Math.Min(100, Math.Max(0, Pct))}, 100";
-    private string CircularText => $"{Pct:0}%";
+    private double EffectiveMax => Math.Max(0, Max);
+    private double EffectiveValue => Indeterminate ? 0 : Clamp(Value, 0, EffectiveMax);
+    private double? EffectiveBufferValue => BufferValue.HasValue ? Clamp(BufferValue.Value, 0, EffectiveMax) : null;
+    private bool ShouldRenderBuffer => !Indeterminate && EffectiveBufferValue.HasValue && EffectiveBufferValue.Value > 0;
+
+    private double EffectivePct => EffectiveMax <= 0 ? 0 : (EffectiveValue * 100.0 / EffectiveMax);
+
+    private string CircularDashArray => $"{Math.Min(100, Math.Max(0, EffectivePct))}, 100";
+    private string CircularText => $"{EffectivePct:0}%";
     private string CircularLabel => Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {CircularText}";
-    private string ProgressBarStyle => Vertical ? $"height:{Pct}%;" : $"width:{Pct}%;";
+
+    private string ProgressBarStyle => Vertical ? $"height:{EffectivePct}%;" : $"width:{EffectivePct}%;";
+
     private string BufferBarStyle => Vertical ? $"height:{BufferPct}%;" : $"width:{BufferPct}%;";
-    private double BufferPct => Math.Max(0, Math.Min(100, Max <= 0 ? 0 : (BufferValue ?? 0) * 100.0 / Max));
-    
+    private double BufferPct => EffectiveBufferValue is null ? 0 : EffectiveMax <= 0 ? 0 : (EffectiveBufferValue.Value * 100.0 / EffectiveMax);
+
+    private static double Clamp(double value, double min, double max) => Math.Min(max, Math.Max(min, value));
+
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
+
     /// <summary>
     /// Gets or sets additional inline styles to apply to the component.
     /// </summary>
@@ -115,6 +126,4 @@ else
     /// Gets or sets additional HTML attributes to apply to the root element.
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private double Pct => Indeterminate ? 0 : Math.Max(0, Math.Min(100, Max <= 0 ? 0 : Value * 100.0 / Max));
 }
