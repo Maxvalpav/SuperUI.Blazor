@@ -1,3 +1,432 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   sg-shared-patterns.css
+   Общие переиспользуемые паттерны для компонентов SuperUI.
+   Подключается один раз — устраняет дублирование в .razor.css файлах.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Алиасы токенов для компонентов, использующих --sg-* ─────────────────── */
+:root {
+    --sg-bg-primary:      var(--sui-bg-primary);
+    --sg-bg-secondary:    var(--sui-bg-secondary);
+    --sg-bg-tertiary:     var(--sui-bg-secondary);
+    --sg-text-primary:    var(--sui-text-primary);
+    --sg-text-secondary:  var(--sui-text-secondary);
+    --sg-border-color:    var(--sui-border);
+    --sg-border-radius:   var(--sui-radius-md);
+    --sg-border-radius-sm: var(--sui-radius-sm);
+    --sg-font-family:     var(--sui-font-family);
+    --sg-primary:         var(--sui-accent);
+    --sg-primary-hover:   var(--sui-accent-hover);
+    --sg-danger:          var(--sui-danger);
+    --sg-success:         var(--sui-success);
+    --sg-warn:            var(--sui-warn, #f59e0b);
+    --sg-muted:           var(--sui-text-muted);
+    --sg-fg:              var(--sui-text-primary);
+    --sg-border:          var(--sui-border);
+}
+
+/* ── Контейнер с рамкой и тенью (карточка-обёртка) ──────────────────────── */
+.sg-panel-container {
+    position: relative;
+    border: 1px solid var(--sui-border);
+    border-radius: var(--sui-radius-lg, 6px);
+    overflow: hidden;
+    box-shadow: var(--sui-shadow-sm, 0 1px 2px rgba(0,0,0,.05));
+    transition: box-shadow 0.2s ease;
+    box-sizing: border-box;
+}
+
+.sg-panel-container:hover {
+    box-shadow: var(--sui-shadow-md, 0 4px 14px rgba(0,0,0,.08));
+}
+
+/* ── Абсолютный оверлей (loading / error поверх canvas) ──────────────────── */
+.sg-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+}
+
+/* ── Skeleton-анимация (5 баров) ─────────────────────────────────────────── */
+/*
+   Использование:
+   <div class="sg-skeleton-bars">
+     <span></span><span></span><span></span><span></span><span></span>
+   </div>
+*/
+.sg-skeleton-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    height: 48px;
+}
+
+.sg-skeleton-bars span {
+    width: 10px;
+    border-radius: 3px 3px 0 0;
+    background: var(--sui-border, #e5e7eb);
+    animation: sg-bar-pulse 1.2s ease-in-out infinite;
+}
+
+.sg-skeleton-bars span:nth-child(1) { height: 60%; animation-delay: 0s;   }
+.sg-skeleton-bars span:nth-child(2) { height: 90%; animation-delay: 0.1s; }
+.sg-skeleton-bars span:nth-child(3) { height: 45%; animation-delay: 0.2s; }
+.sg-skeleton-bars span:nth-child(4) { height: 75%; animation-delay: 0.3s; }
+.sg-skeleton-bars span:nth-child(5) { height: 55%; animation-delay: 0.4s; }
+
+@keyframes sg-bar-pulse {
+    0%, 100% { opacity: 0.3; }
+    50%       { opacity: 1;   }
+}
+
+/* ── Текст под skeleton ──────────────────────────────────────────────────── */
+.sg-loading-text {
+    color: var(--sui-text-secondary, #6b7280);
+    font-size: 13px;
+}
+
+/* ── Toolbar (fade-in при hover на контейнер) ────────────────────────────── */
+/*
+   Использование:
+   <div class="sg-panel-container">
+     <div class="sg-hover-toolbar">...</div>
+   </div>
+*/
+.sg-hover-toolbar {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    z-index: 2;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    pointer-events: none;
+}
+
+.sg-panel-container:hover .sg-hover-toolbar,
+.sg-panel-container:focus-within .sg-hover-toolbar {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+/* На мобильных — всегда видим */
+@media (max-width: 480px) {
+    .sg-hover-toolbar {
+        opacity: 1;
+        transform: none;
+        pointer-events: auto;
+    }
+}
+
+/* ── Кнопка-иконка в toolbar ─────────────────────────────────────────────── */
+.sg-tool-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--sui-border);
+    background: var(--sui-card-bg, var(--sui-bg-primary));
+    color: var(--sui-text-secondary);
+    border-radius: var(--sui-radius-md, 4px);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    padding: 0;
+}
+
+.sg-tool-btn:hover,
+.sg-tool-btn:focus-visible {
+    background: var(--sui-accent);
+    color: #fff;
+    border-color: var(--sui-accent);
+    outline: none;
+}
+
+/* ── CSS Spinner ─────────────────────────────────────────────────────────── */
+/*
+   Использование: <span class="sg-spinner"></span>
+   Размер задаётся через width/height на родителе или переменными.
+*/
+.sg-spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--sui-border, #e5e7eb);
+    border-top-color: var(--sui-accent, #006fee);
+    border-radius: 50%;
+    animation: sg-spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+.sg-spinner-sm {
+    width: 13px;
+    height: 13px;
+    border-width: 2px;
+    border-color: rgba(255,255,255,0.35);
+    border-top-color: #fff;
+}
+
+@keyframes sg-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Блок ошибки ─────────────────────────────────────────────────────────── */
+.sg-error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 24px;
+    height: 100%;
+    color: var(--sui-danger, #ef4444);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* ── Блок ошибки (строчный, с иконкой) ──────────────────────────────────── */
+.sg-error-alert {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(239, 68, 68, 0.08);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--sui-radius-md, 6px);
+    color: var(--sui-danger, #ef4444);
+    font-size: 13px;
+}
+
+.sg-error-alert-icon { flex-shrink: 0; }
+
+/* ── Кнопка "Retry" внутри ошибки ────────────────────────────────────────── */
+.sg-retry-btn {
+    margin-left: auto;
+    padding: 3px 10px;
+    font-size: 12px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.sg-retry-btn:hover { background: rgba(239, 68, 68, 0.12); }
+
+/* ── Пустое состояние ────────────────────────────────────────────────────── */
+.sg-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 40px 20px;
+    color: var(--sui-text-secondary, #6b7280);
+    font-size: 13px;
+    text-align: center;
+}
+
+/* ── Shimmer (горизонтальный) ────────────────────────────────────────────── */
+@keyframes sg-shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+.sg-shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--sui-bg-secondary, #f3f4f6) 25%,
+        var(--sui-bg-primary, #fff) 50%,
+        var(--sui-bg-secondary, #f3f4f6) 75%
+    );
+    background-size: 200% 100%;
+    animation: sg-shimmer 1.5s infinite;
+}
+
+/* ── Тонкий scrollbar (для overflow-контейнеров) ─────────────────────────── */
+.sg-thin-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sui-border-hover, #b0b0b0) transparent;
+}
+
+.sg-thin-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+.sg-thin-scroll::-webkit-scrollbar-track { background: transparent; }
+.sg-thin-scroll::-webkit-scrollbar-thumb {
+    background: var(--sui-border-hover, #b0b0b0);
+    border-radius: 3px;
+}
+.sg-thin-scroll::-webkit-scrollbar-thumb:hover {
+    background: var(--sui-text-muted, #7a7a7a);
+}
+.sg-thin-scroll::-webkit-scrollbar-corner { background: transparent; }
+
+/* ── Tooltip (тёмный) ────────────────────────────────────────────────────── */
+.sg-tooltip-dark {
+    position: absolute;
+    pointer-events: none;
+    background: var(--sui-tooltip-bg, rgba(17,24,39,.92));
+    color: #f3f4f6;
+    padding: 7px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,.18);
+}
+
+/* ── Левая акцентная полоса (декор карточки) ─────────────────────────────── */
+.sg-accent-bar {
+    position: relative;
+}
+
+.sg-accent-bar::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: transparent;
+    transition: background 0.15s;
+}
+
+.sg-accent-bar:hover::before {
+    background: var(--sui-accent, #1568c6);
+}
+
+/* ── Группа кнопок (segmented / button-group) ────────────────────────────── */
+.sg-btn-group-inline {
+    display: inline-flex;
+    border: 1px solid var(--sui-border-hover, #b0b0b0);
+    border-radius: var(--sui-radius, 4px);
+    overflow: hidden;
+}
+
+.sg-btn-group-inline > * {
+    border-radius: 0;
+    border: none;
+    border-right: 1px solid var(--sui-border-hover, #b0b0b0);
+}
+
+.sg-btn-group-inline > *:last-child {
+    border-right: none;
+}
+
+/* ── Бейдж (pill) ────────────────────────────────────────────────────────── */
+.sg-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 500;
+    border-radius: 10px;
+    border: 1px solid transparent;
+}
+
+.sg-badge-success { background: rgba(16,185,129,.1);  color: #059669; border-color: rgba(16,185,129,.25); }
+.sg-badge-warn    { background: rgba(245,158,11,.1);  color: #d97706; border-color: rgba(245,158,11,.25); }
+.sg-badge-danger  { background: rgba(239,68,68,.1);   color: #dc2626; border-color: rgba(239,68,68,.25);  }
+.sg-badge-info    { background: rgba(0,111,238,.08);  color: var(--sui-accent, #006fee); border-color: rgba(0,111,238,.2); }
+.sg-badge-neutral { background: var(--sui-bg-secondary, #f3f4f6); color: var(--sui-text-secondary, #6b7280); border-color: var(--sui-border, #e5e7eb); }
+
+/* ── Прогресс-бар ────────────────────────────────────────────────────────── */
+.sg-progress-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sg-progress-bar {
+    height: 4px;
+    background: var(--sui-border, #e5e7eb);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sg-progress-fill {
+    height: 100%;
+    background: var(--sui-accent, #006fee);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.sg-progress-indeterminate {
+    width: 40% !important;
+    animation: sg-indeterminate 1.4s ease-in-out infinite;
+}
+
+@keyframes sg-indeterminate {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+.sg-progress-label {
+    font-size: 11px;
+    color: var(--sui-text-secondary, #6b7280);
+}
+
+/* ── Drag-and-drop зона ──────────────────────────────────────────────────── */
+.sg-dropzone {
+    border: 2px dashed var(--sui-border, #e5e7eb);
+    border-radius: var(--sui-radius, 8px);
+    background: var(--sui-bg-secondary, #f9fafb);
+    transition: border-color 0.2s, background 0.2s;
+}
+
+.sg-dropzone-drag {
+    border-color: var(--sui-accent, #006fee);
+    background: rgba(0, 111, 238, 0.04);
+}
+
+/* ── Hint-текст внутри dropzone ──────────────────────────────────────────── */
+.sg-dropzone-hint {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 32px 24px;
+    text-align: center;
+}
+
+/* ── Кнопка "выбрать файл" ───────────────────────────────────────────────── */
+.sg-file-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    border: 1px solid var(--sui-accent, #006fee);
+    border-radius: var(--sui-radius-sm, 6px);
+    color: var(--sui-accent, #006fee);
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    user-select: none;
+    margin-top: 4px;
+}
+
+.sg-file-btn:hover {
+    background: var(--sui-accent, #006fee);
+    color: #fff;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Component styles
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 /* Shared design tokens for SUI components */
 /* Legacy variable aliases - map to new theme system */
 :root {
@@ -3366,6 +3795,19 @@ button.sg-filter-item:focus-visible {
 .sg-stack {
     display: flex;
     box-sizing: border-box;
+    min-width: 0;
+}
+.sg-stack-inline {
+    display: inline-flex;
+}
+.sg-stack-horizontal {
+    flex-direction: row;
+}
+.sg-stack-vertical {
+    flex-direction: column;
+}
+.sg-stack-wrap {
+    flex-wrap: wrap;
 }
 
 /* ---------- Theme Editor ---------- */
@@ -4685,391 +5127,6 @@ button.sg-filter-item:focus-visible {
     margin-left: -1px;
 }
 
-/* ---------- Timeline ---------- */
-.sg-timeline {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-family: var(--sui-font, sans-serif);
-    font-size: 13px;
-}
-
-.sg-timeline-item {
-    position: relative;
-    margin: 0;
-    padding: 0 0 20px;
-    list-style: none;
-}
-
-.sg-timeline-item-tail {
-    position: absolute;
-    top: 10px;
-    left: 4px;
-    height: calc(100% - 10px);
-    border-left: 2px solid var(--sui-border, #e8e8e8);
-}
-
-.sg-timeline-item:last-child .sg-timeline-item-tail {
-    display: none;
-}
-
-.sg-timeline-item-dot {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    background-color: var(--sui-bg-primary);
-    border: 2px solid var(--sui-primary, var(--sui-accent));
-    border-radius: 100px;
-    z-index: 1;
-}
-
-.sg-timeline-item-dot-custom {
-    background-color: var(--sui-bg-primary);
-}
-
-.sg-timeline-item-icon {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.sg-timeline-item-content {
-    position: relative;
-    top: -4px;
-    margin: 0 0 0 26px;
-    word-break: break-word;
-}
-
-.sg-timeline-item-time {
-    font-size: 12px;
-    color: var(--sui-muted, #999);
-    margin-bottom: 4px;
-}
-
-.sg-timeline-item-title {
-    font-weight: 600;
-    margin-bottom: 2px;
-}
-
-.sg-timeline-item-description {
-    color: var(--sui-text-secondary, #666);
-    font-size: 12px;
-}
-
-/* Alternate Mode */
-.sg-timeline-mode-alternate .sg-timeline-item {
-    display: flex;
-    width: 100%;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item:nth-child(even) {
-    flex-direction: row-reverse;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item-content {
-    width: calc(50% - 13px);
-    margin: 0;
-}
-
-.sg-timeline-mode-alternate
-    .sg-timeline-item:nth-child(odd)
-    .sg-timeline-item-content {
-    text-align: right;
-    margin-right: 26px;
-}
-
-.sg-timeline-mode-alternate
-    .sg-timeline-item:nth-child(even)
-    .sg-timeline-item-content {
-    text-align: left;
-    margin-left: 26px;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item-dot {
-    left: 50%;
-    margin-left: -5px;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item-tail {
-    left: 50%;
-    margin-left: -1px;
-}
-
-/* ---------- Timeline ---------- */
-.sg-timeline {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    font-family: var(--sui-font, sans-serif);
-    font-size: 13px;
-}
-
-.sg-timeline-item {
-    position: relative;
-    margin: 0;
-    padding: 0 0 20px;
-    list-style: none;
-}
-
-.sg-timeline-item-tail {
-    position: absolute;
-    top: 10px;
-    left: 4px;
-    height: calc(100% - 10px);
-    border-left: 2px solid var(--sui-border, #e8e8e8);
-}
-
-.sg-timeline-item:last-child .sg-timeline-item-tail {
-    display: none;
-}
-
-.sg-timeline-item-dot {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    background-color: var(--sui-bg-primary);
-    border: 2px solid var(--sui-primary, var(--sui-accent));
-    border-radius: 100px;
-    z-index: 1;
-}
-
-.sg-timeline-item-dot-custom {
-    background-color: var(--sui-bg-primary);
-}
-
-.sg-timeline-item-icon {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.sg-timeline-item-content {
-    position: relative;
-    top: -4px;
-    margin: 0 0 0 26px;
-    word-break: break-word;
-}
-
-.sg-timeline-item-time {
-    font-size: 12px;
-    color: var(--sui-muted, #999);
-    margin-bottom: 4px;
-}
-
-.sg-timeline-item-title {
-    font-weight: 600;
-    margin-bottom: 2px;
-}
-
-.sg-timeline-item-description {
-    color: var(--sui-text-secondary, #666);
-    font-size: 12px;
-}
-
-/* Alternate Mode */
-.sg-timeline-mode-alternate .sg-timeline-item {
-    display: flex;
-    width: 100%;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item:nth-child(even) {
-    flex-direction: row-reverse;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item-content {
-    width: calc(50% - 13px);
-    margin: 0;
-}
-
-.sg-timeline-mode-alternate
-    .sg-timeline-item:nth-child(odd)
-    .sg-timeline-item-content {
-    text-align: right;
-    margin-right: 26px;
-}
-
-.sg-timeline-mode-alternate
-    .sg-timeline-item:nth-child(even)
-    .sg-timeline-item-content {
-    text-align: left;
-    margin-left: 26px;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item-dot {
-    left: 50%;
-    margin-left: -5px;
-}
-
-.sg-timeline-mode-alternate .sg-timeline-item-tail {
-    left: 50%;
-    margin-left: -1px;
-}
-
-.sgc-gantt-expand-spacer {
-    width: 16px;
-    display: inline-block;
-}
-.sgc-gantt-task-title {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    flex: 1;
-}
-.sgc-gantt-task-actions {
-    display: none;
-    gap: 2px;
-}
-.sgc-gantt-task-name:hover .sgc-gantt-task-actions {
-    display: flex;
-}
-.sgc-gantt-timeline {
-    position: relative;
-    flex: 1;
-}
-.sgc-gantt-grid {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 100%;
-    display: flex;
-}
-.sgc-gantt-grid-col {
-    height: 100%;
-    border-right: 1px solid var(--sui-border-soft);
-}
-.sgc-gantt-grid-col.sgc-weekend {
-    background: rgba(0, 0, 0, 0.03);
-}
-
-.sgc-gantt-today-line {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--sui-danger);
-    z-index: 5;
-    pointer-events: none;
-}
-.sgc-gantt-today-label {
-    position: absolute;
-    top: 0;
-    left: 4px;
-    font-size: 9px;
-    font-weight: 700;
-    color: var(--sui-danger);
-    text-transform: uppercase;
-    background: var(--sui-bg-primary);
-    padding: 1px 3px;
-    border-radius: 2px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.sgc-gantt-tasks {
-    position: relative;
-    z-index: 1;
-}
-.sgc-gantt-dependencies {
-    position: absolute;
-    top: 0;
-    left: 0;
-    pointer-events: none;
-    z-index: 2;
-    overflow: visible;
-}
-.sgc-gantt-task-row {
-    height: 36px;
-    border-bottom: 1px solid var(--sui-border);
-    position: relative;
-    transition: background 0.2s;
-}
-.sgc-gantt-task-row.sgc-hovered {
-    background: rgba(0, 0, 0, 0.02);
-}
-.sgc-gantt-task-bar {
-    position: absolute;
-    top: 6px;
-    height: 24px;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-    padding: 0;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
-    cursor: grab;
-    transition: opacity 0.1s;
-}
-.sgc-gantt-task-bar.sgc-dragging {
-    opacity: 0.8;
-    cursor: grabbing;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    z-index: 10;
-}
-
-.sgc-gantt-milestone {
-    height: 16px;
-    width: 16px !important;
-    top: 10px;
-    border-radius: 2px;
-    transform: rotate(45deg);
-    justify-content: center;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
-}
-
-.sgc-gantt-milestone-label {
-    transform: rotate(-45deg);
-    color: var(--sui-bg-primary);
-    font-size: 9px;
-    font-weight: 700;
-    width: 100%;
-    text-align: center;
-}
-.sgc-gantt-task-progress {
-    position: absolute;
-    left: 0;
-    top: 0;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.25);
-    border-radius: 4px 0 0 4px;
-}
-.sgc-gantt-task-label {
-    position: relative;
-    z-index: 2;
-    font-size: 10px;
-    color: var(--sui-bg-primary);
-    font-weight: 800;
-    width: 100%;
-    text-align: center;
-    pointer-events: none;
-}
-.sgc-gantt-resize-handle {
-    position: absolute;
-    top: 0;
-    width: 6px;
-    height: 100%;
-    cursor: col-resize;
-    z-index: 3;
-}
-.sgc-gantt-resize-handle:hover {
-    background: rgba(255, 255, 255, 0.3);
-}
-.sgc-gantt-resize-handle.sgc-left {
-    left: 0;
-    border-radius: 4px 0 0 4px;
-}
-.sgc-gantt-resize-handle.sgc-right {
-    right: 0;
-    border-radius: 0 4px 4px 0;
-}
-
 /* ---------- Badge ---------- */
 .sgc-badge {
     display: inline-block;
@@ -5114,51 +5171,6 @@ button.sg-filter-item:focus-visible {
     background: var(--sui-info-bg);
     color: var(--sui-info);
     border-color: var(--sui-info-border);
-}
-
-/* ---------- Card / Panel ---------- */
-.sgc-card {
-    background: var(--sui-bg-primary);
-    border: 1px solid var(--sui-border-strong);
-    border-radius: var(--sui-radius);
-    display: flex;
-    flex-direction: column;
-    font-family: var(--sui-font);
-}
-.sgc-card-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--sui-border-soft);
-    background: var(--sui-toolbar-bg);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.sgc-card-header-group {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-.sgc-card-title {
-    font-weight: 600;
-    font-size: 14px;
-    color: var(--sui-fg);
-}
-.sgc-card-subtitle {
-    font-size: 11px;
-    font-weight: normal;
-    color: var(--sui-muted);
-}
-.sgc-card-body {
-    padding: 16px;
-    font-size: 13px;
-}
-.sgc-card-footer {
-    padding: 6px 10px;
-    border-top: 1px solid var(--sui-border);
-    background: var(--sui-toolbar-bg);
-    display: flex;
-    gap: 6px;
-    justify-content: flex-end;
 }
 
 /* ---------- Toast ---------- */
@@ -6399,74 +6411,6 @@ button.sg-filter-item:focus-visible {
     font-weight: 600;
 }
 
-/* ---------- Menu ---------- */
-.sgc-menu {
-    display: flex;
-    flex-direction: column;
-    padding: 4px 0;
-    background: var(--sui-bg-primary);
-    border: 1px solid var(--sui-border);
-    border-radius: var(--sui-radius);
-    min-width: 160px;
-    box-shadow: var(--sui-shadow);
-}
-
-.sgc-menu-item {
-    display: flex;
-    align-items: center;
-    padding: 6px 12px;
-    cursor: pointer;
-    position: relative;
-    user-select: none;
-    gap: 8px;
-    color: var(--sui-fg);
-    font-size: 13px;
-    outline: none;
-}
-
-.sgc-menu-item:hover,
-.sgc-menu-item:focus {
-    background: var(--sui-hover);
-}
-
-.sgc-menu-item.sgc-open > .sgc-menu-sub {
-    display: block;
-}
-
-.sgc-menu-sub {
-    display: none;
-    position: absolute;
-    inset-inline-start: 100%;
-    top: -1px;
-    z-index: 10;
-}
-
-.sgc-menu-text {
-    flex: 1;
-}
-.sgc-menu-arrow {
-    font-size: 10px;
-    color: var(--sui-muted);
-}
-.sgc-menu-shortcut {
-    font-size: 11px;
-    color: var(--sui-muted);
-    margin-inline-start: 16px;
-}
-
-.sgc-menu-item.sgc-danger {
-    color: var(--sui-danger);
-}
-.sgc-menu-item.sgc-danger:hover {
-    background: var(--sui-danger-soft);
-}
-
-.sgc-menu-item.sgc-disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    pointer-events: none;
-}
-
 /* ---------- Nav ---------- */
 .sgc-nav-group {
     display: flex;
@@ -6920,38 +6864,6 @@ button.sg-filter-item:focus-visible {
     opacity: 0.6;
 }
 
-/* ---------- Skeleton ---------- */
-.sgc-skeleton {
-    display: inline-block;
-    background: linear-gradient(90deg, #ececec 25%, #f6f6f6 37%, #ececec 63%);
-    background-size: 400% 100%;
-    animation: sgc-sk 1.4s ease infinite;
-    border-radius: var(--sui-radius);
-}
-.sgc-skeleton-line {
-    display: block;
-    height: 12px;
-    margin: 4px 0;
-}
-.sgc-skeleton-circle {
-    border-radius: 50%;
-}
-.sgc-skeleton-block {
-    display: block;
-}
-.sgc-skeleton-lines {
-    display: flex;
-    flex-direction: column;
-}
-@keyframes sgc-sk {
-    0% {
-        background-position: 100% 50%;
-    }
-    100% {
-        background-position: 0 50%;
-    }
-}
-
 /* ---------- Descriptions ---------- */
 .sgc-desc {
     font-family: var(--sui-font);
@@ -6989,75 +6901,6 @@ button.sg-filter-item:focus-visible {
 .sgc-desc-value {
     padding: 6px 10px;
     flex: 1;
-}
-
-/* ---------- Menu ---------- */
-.sgc-menu {
-    background: var(--sui-bg-primary);
-    border: 1px solid var(--sui-border-strong);
-    border-radius: var(--sui-radius);
-    padding: 4px;
-    min-width: 160px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-.sgc-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 10px;
-    border-radius: calc(var(--sui-radius) - 2px);
-    cursor: pointer;
-    font-size: 12px;
-    color: var(--sui-fg);
-    position: relative;
-    user-select: none;
-    outline: none;
-}
-.sgc-menu-item:hover,
-.sgc-menu-item:focus-visible {
-    background: var(--sui-hover);
-}
-.sgc-menu-item.sgc-disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-.sgc-menu-item.sgc-danger {
-    color: var(--sui-danger);
-}
-.sgc-menu-item.sgc-danger:hover {
-    background: var(--sui-danger-hover);
-    color: var(--sui-bg-primary);
-}
-
-.sgc-menu-text {
-    flex: 1;
-}
-.sgc-menu-icon {
-    font-size: 14px;
-    opacity: 0.8;
-}
-.sgc-menu-shortcut {
-    font-size: 10px;
-    color: var(--sui-muted);
-    margin-left: 12px;
-}
-.sgc-menu-arrow {
-    font-size: 8px;
-    color: var(--sui-muted);
-    margin-left: 8px;
-}
-
-.sgc-menu-sub {
-    position: absolute;
-    left: 100%;
-    top: -5px;
-    padding-left: 4px;
-    z-index: 100;
-}
-.sgc-menu-sep {
-    height: 1px;
-    background: var(--sui-border);
-    margin: 4px 0;
 }
 
 /* ---------- TreeView ---------- */
@@ -8088,274 +7931,6 @@ button.sg-filter-item:focus-visible {
     padding-left: 44px;
 }
 
-/* ---------- Grid System ---------- */
-.sg-row {
-    display: flex;
-    flex-wrap: wrap;
-    box-sizing: border-box;
-}
-
-.sg-col {
-    box-sizing: border-box;
-    flex: 0 0 auto;
-}
-
-/* Base columns (1-12) */
-.sg-col-1 {
-    width: 8.33333333%;
-}
-.sg-col-2 {
-    width: 16.66666667%;
-}
-.sg-col-3 {
-    width: 25%;
-}
-.sg-col-4 {
-    width: 33.33333333%;
-}
-.sg-col-5 {
-    width: 41.66666667%;
-}
-.sg-col-6 {
-    width: 50%;
-}
-.sg-col-7 {
-    width: 58.33333333%;
-}
-.sg-col-8 {
-    width: 66.66666667%;
-}
-.sg-col-9 {
-    width: 75%;
-}
-.sg-col-10 {
-    width: 83.33333333%;
-}
-.sg-col-11 {
-    width: 91.66666667%;
-}
-.sg-col-12 {
-    width: 100%;
-}
-
-/* XS Breakpoint (default) */
-.sg-col-xs-1 {
-    width: 8.33333333%;
-}
-.sg-col-xs-2 {
-    width: 16.66666667%;
-}
-.sg-col-xs-3 {
-    width: 25%;
-}
-.sg-col-xs-4 {
-    width: 33.33333333%;
-}
-.sg-col-xs-5 {
-    width: 41.66666667%;
-}
-.sg-col-xs-6 {
-    width: 50%;
-}
-.sg-col-xs-7 {
-    width: 58.33333333%;
-}
-.sg-col-xs-8 {
-    width: 66.66666667%;
-}
-.sg-col-xs-9 {
-    width: 75%;
-}
-.sg-col-xs-10 {
-    width: 83.33333333%;
-}
-.sg-col-xs-11 {
-    width: 91.66666667%;
-}
-.sg-col-xs-12 {
-    width: 100%;
-}
-
-/* SM Breakpoint (>= 576px) */
-@media (min-width: 576px) {
-    .sg-col-sm-1 {
-        width: 8.33333333%;
-    }
-    .sg-col-sm-2 {
-        width: 16.66666667%;
-    }
-    .sg-col-sm-3 {
-        width: 25%;
-    }
-    .sg-col-sm-4 {
-        width: 33.33333333%;
-    }
-    .sg-col-sm-5 {
-        width: 41.66666667%;
-    }
-    .sg-col-sm-6 {
-        width: 50%;
-    }
-    .sg-col-sm-7 {
-        width: 58.33333333%;
-    }
-    .sg-col-sm-8 {
-        width: 66.66666667%;
-    }
-    .sg-col-sm-9 {
-        width: 75%;
-    }
-    .sg-col-sm-10 {
-        width: 83.33333333%;
-    }
-    .sg-col-sm-11 {
-        width: 91.66666667%;
-    }
-    .sg-col-sm-12 {
-        width: 100%;
-    }
-}
-
-/* MD Breakpoint (>= 768px) */
-@media (min-width: 768px) {
-    .sg-col-md-1 {
-        width: 8.33333333%;
-    }
-    .sg-col-md-2 {
-        width: 16.66666667%;
-    }
-    .sg-col-md-3 {
-        width: 25%;
-    }
-    .sg-col-md-4 {
-        width: 33.33333333%;
-    }
-    .sg-col-md-5 {
-        width: 41.66666667%;
-    }
-    .sg-col-md-6 {
-        width: 50%;
-    }
-    .sg-col-md-7 {
-        width: 58.33333333%;
-    }
-    .sg-col-md-8 {
-        width: 66.66666667%;
-    }
-    .sg-col-md-9 {
-        width: 75%;
-    }
-    .sg-col-md-10 {
-        width: 83.33333333%;
-    }
-    .sg-col-md-11 {
-        width: 91.66666667%;
-    }
-    .sg-col-md-12 {
-        width: 100%;
-    }
-}
-
-/* LG Breakpoint (>= 992px) */
-@media (min-width: 992px) {
-    .sg-col-lg-1 {
-        width: 8.33333333%;
-    }
-    .sg-col-lg-2 {
-        width: 16.66666667%;
-    }
-    .sg-col-lg-3 {
-        width: 25%;
-    }
-    .sg-col-lg-4 {
-        width: 33.33333333%;
-    }
-    .sg-col-lg-5 {
-        width: 41.66666667%;
-    }
-    .sg-col-lg-6 {
-        width: 50%;
-    }
-    .sg-col-lg-7 {
-        width: 58.33333333%;
-    }
-    .sg-col-lg-8 {
-        width: 66.66666667%;
-    }
-    .sg-col-lg-9 {
-        width: 75%;
-    }
-    .sg-col-lg-10 {
-        width: 83.33333333%;
-    }
-    .sg-col-lg-11 {
-        width: 91.66666667%;
-    }
-    .sg-col-lg-12 {
-        width: 100%;
-    }
-}
-
-/* XL Breakpoint (>= 1200px) */
-@media (min-width: 1200px) {
-    .sg-col-xl-1 {
-        width: 8.33333333%;
-    }
-    .sg-col-xl-2 {
-        width: 16.66666667%;
-    }
-    .sg-col-xl-3 {
-        width: 25%;
-    }
-    .sg-col-xl-4 {
-        width: 33.33333333%;
-    }
-    .sg-col-xl-5 {
-        width: 41.66666667%;
-    }
-    .sg-col-xl-6 {
-        width: 50%;
-    }
-    .sg-col-xl-7 {
-        width: 58.33333333%;
-    }
-    .sg-col-xl-8 {
-        width: 66.66666667%;
-    }
-    .sg-col-xl-9 {
-        width: 75%;
-    }
-    .sg-col-xl-10 {
-        width: 83.33333333%;
-    }
-    .sg-col-xl-11 {
-        width: 91.66666667%;
-    }
-    .sg-col-xl-12 {
-        width: 100%;
-    }
-}
-
-/* ---------- Stack ---------- */
-.sg-stack {
-    display: flex;
-    box-sizing: border-box;
-    min-width: 0;
-}
-.sg-stack-inline {
-    display: inline-flex;
-}
-.sg-stack-horizontal {
-    flex-direction: row;
-}
-.sg-stack-vertical {
-    flex-direction: column;
-}
-.sg-stack-wrap {
-    flex-wrap: wrap;
-}
-
-/* ── CanvasGrid loading overlay ── */
 .sg-canvas-grid-loading {
     position: absolute;
     inset: 0;
