@@ -2,10 +2,11 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<span class="sgc-spinner @SizeClass @CssClass"
+<span class="@RootClass"
       style="@Style"
       role="status"
-      aria-live="polite"
+      aria-live="@(IsSpinning ? "polite" : "off")"
+      aria-busy="@(IsSpinning ? "true" : "false")"
       aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["Loading"] : Label)"
       @attributes="AdditionalAttributes"></span>
 
@@ -14,6 +15,23 @@
     /// Gets or sets the spinner size. Default is <see cref="SgSize.Md"/>.
     /// </summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Controls the animation. When set to <c>false</c>, spinner keeps layout
+    /// but animation is disabled for better UX.
+    /// </summary>
+    [Parameter] public bool IsSpinning { get; set; } = true;
+
+    /// <summary>
+    /// When enabled, spinner is intended to be used as a loader overlay.
+    /// CSS positions it as absolute fullscreen overlay (requires a positioned parent).
+    /// </summary>
+    [Parameter] public bool Overlay { get; set; }
+
+    /// <summary>
+    /// Spinner color variant.
+    /// </summary>
+    [Parameter] public SgSpinnerVariant Variant { get; set; } = SgSpinnerVariant.Default;
 
     /// <summary>
     /// Gets or sets the accessibility label for screen readers.
@@ -33,12 +51,34 @@
     /// <summary>
     /// Gets or sets additional HTML attributes to apply to the root element.
     /// </summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string RootClass
+        => string.Join(" ",
+            "sgc-spinner",
+            SizeClass,
+            VariantClass,
+            Overlay ? "sgc-spinner-overlay" : null,
+            IsSpinning ? "sgc-spinner-spinning" : "sgc-spinner-paused",
+            !string.IsNullOrWhiteSpace(CssClass) ? CssClass : null
+        );
 
     private string SizeClass => Size switch
     {
-        SgSize.Sm => "sgc-sm",
-        SgSize.Lg => "sgc-lg",
-        _         => ""
+        SgSize.Sm => "sgc-spinner-sm",
+        SgSize.Md => "sgc-spinner-md",
+        SgSize.Lg => "sgc-spinner-lg",
+        SgSize.Xl => "sgc-spinner-xl",
+        _ => "sgc-spinner-md"
+    };
+
+    private string VariantClass => Variant switch
+    {
+        SgSpinnerVariant.Info => "sgc-spinner-variant-info",
+        SgSpinnerVariant.Success => "sgc-spinner-variant-success",
+        SgSpinnerVariant.Warn => "sgc-spinner-variant-warn",
+        SgSpinnerVariant.Danger => "sgc-spinner-variant-danger",
+        _ => "sgc-spinner-variant-default"
     };
 }
