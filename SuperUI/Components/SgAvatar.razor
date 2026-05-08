@@ -1,139 +1,147 @@
 @namespace SuperUI.Components
 @using System.Globalization
 
-<span class="sgc-avatar sgc-@Size.ToString().ToLowerInvariant() @ShapeClass @(StatusDot != SgAvatarStatus.None ? $"sgc-status-{StatusDot.ToString().ToLowerInvariant()}" : "") @CssClass"
-      role="img"
-      aria-label="@(Title ?? "Avatar")"
-      style="@BuildStyle()"
+<span class="sgc-avatar @SizeClass @ShapeClass @StatusClass @StateClass @CssClass"
+      role="@(Clickable ? "button" : "img")"
+      tabindex="@(Clickable && !Disabled ? "0" : null)"
+      aria-label="@AriaLabelComputed"
+      aria-disabled="@(Disabled ? "true" : null)"
       title="@Title"
+      style="@BuildStyle()"
+      @onclick="HandleClickAsync"
+      @onkeydown="HandleKeyDownAsync"
       @attributes="AdditionalAttributes">
-    @if (!string.IsNullOrEmpty(ImageUrl) && !_imageFailed)
+
+    @if (Loading)
     {
-        <img src="@ImageUrl" alt="@(Title ?? "Avatar")" loading="lazy" srcset="@SrcSet" @onerror="OnImageError" />
+        <span class="sgc-avatar-spinner" aria-hidden="true"></span>
+    }
+    else if (!string.IsNullOrEmpty(ImageUrl) && !_imageFailed)
+    {
+        <img src="@ImageUrl"
+             alt="@(Title ?? "")"
+             loading="@(EagerLoad ? "eager" : "lazy")"
+             decoding="async"
+             srcset="@SrcSet"
+             draggable="false"
+             @onerror="OnImageError"
+             @onload="OnImageLoad"
+             class="@(_imageLoaded ? "sgc-avatar-img-ready" : "sgc-avatar-img")" />
     }
     else if (!string.IsNullOrEmpty(ComputedInitials))
     {
-        @ComputedInitials
+        <span class="sgc-avatar-initials" aria-hidden="true">@ComputedInitials</span>
+    }
+    else if (Icon is not null)
+    {
+        <span class="sgc-avatar-icon" aria-hidden="true">@Icon</span>
     }
     else if (ChildContent is not null)
     {
         @ChildContent
     }
-    @if (StatusDot != SgAvatarStatus.None)
+    else
     {
-        <span class="sgc-avatar-status" aria-hidden="true"></span>
+        @* Fallback person glyph *@
+        <svg class="sgc-avatar-fallback" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
+        </svg>
+    }
+
+    @if (StatusDot != SgAvatarStatus.None && !Loading)
+    {
+        <span class="sgc-avatar-status sgc-avatar-status-@StatusDot.ToString().ToLowerInvariant() @(StatusPulse ? "sgc-avatar-status-pulse" : "")"
+              aria-label="@StatusDot.ToString()"></span>
+    }
+
+    @if (BadgeContent is not null && !Loading)
+    {
+        <span class="sgc-avatar-badge" aria-hidden="true">@BadgeContent</span>
     }
 </span>
 
 @code {
-    /// <summary>
-    /// Gets or sets the URL of the avatar image.
-    /// Takes precedence over <see cref="Initials"/> and <see cref="ChildContent"/>.
-    /// </summary>
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+
+    /// <summary>URL of the avatar image. Falls back to initials, icon or person glyph if missing or fails to load.</summary>
     [Parameter] public string? ImageUrl { get; set; }
 
-    /// <summary>
-    /// Gets or sets the srcset attribute for the avatar image.
-    /// </summary>
+    /// <summary>Responsive image srcset attribute.</summary>
     [Parameter] public string? SrcSet { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the initials text to display when no image is provided.
-    /// If not provided, will be generated from <see cref="Title"/>.
-    /// </summary>
+
+    /// <summary>Loads the image eagerly (default is lazy).</summary>
+    [Parameter] public bool EagerLoad { get; set; }
+
+    /// <summary>Initials text. If not provided, generated from <see cref="Title"/>.</summary>
     [Parameter] public string? Initials { get; set; }
 
-    private string? ComputedInitials
-    {
-        get
-        {
-            if (!string.IsNullOrEmpty(Initials)) return Initials;
-            if (string.IsNullOrEmpty(Title)) return null;
-
-            var parts = Title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0) return null;
-            if (parts.Length == 1) return FirstGraphemes(parts[0], 2).ToUpperInvariant();
-
-            return (FirstGraphemes(parts[0], 1) + FirstGraphemes(parts[1], 1)).ToUpperInvariant();
-        }
-    }
-
-    private static string FirstGraphemes(string s, int count)
-    {
-        if (string.IsNullOrEmpty(s) || count <= 0) return string.Empty;
-        var enumerator = StringInfo.GetTextElementEnumerator(s);
-        var sb = new System.Text.StringBuilder();
-        var taken = 0;
-        while (enumerator.MoveNext() && taken < count)
-        {
-            sb.Append((string)enumerator.Current);
-            taken++;
-        }
-        return sb.ToString();
-    }
-    
-    /// <summary>
-    /// Gets or sets the title text for accessibility and tooltip.
-    /// </summary>
+    /// <summary>Title text used for accessibility, tooltip and initials.</summary>
     [Parameter] public string? Title { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom content to render inside the avatar.
-    /// Used when neither <see cref="ImageUrl"/> nor <see cref="Initials"/> are provided.
-    /// </summary>
+
+    /// <summary>Icon rendered when no image / initials are available.</summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+
+    /// <summary>Custom content rendered as a final fallback.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the avatar size. Default is <see cref="SgSize.Md"/>.
-    /// </summary>
+
+    /// <summary>Optional badge content (e.g. <see cref="SgBadge"/>) overlaid on top-right.</summary>
+    [Parameter] public RenderFragment? BadgeContent { get; set; }
+
+    /// <summary>Avatar size. Default <see cref="SgSize.Md"/>.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
-    /// <summary>
-    /// Gets or sets the shape of the avatar.
-    /// Default is Circle.
-    /// </summary>
+    /// <summary>Custom pixel size. When set, overrides <see cref="Size"/>.</summary>
+    [Parameter] public int? PixelSize { get; set; }
+
+    /// <summary>Avatar shape. Default <see cref="SgAvatarShape.Circle"/>.</summary>
     [Parameter] public SgAvatarShape Shape { get; set; } = SgAvatarShape.Circle;
 
-    /// <summary>
-    /// Gets or sets the status indicator dot.
-    /// Default is None (no status dot).
-    /// </summary>
+    /// <summary>Status indicator dot. Default <see cref="SgAvatarStatus.None"/>.</summary>
     [Parameter] public SgAvatarStatus StatusDot { get; set; } = SgAvatarStatus.None;
 
-    private string ShapeClass => Shape switch
-    {
-        SgAvatarShape.Square => "sgc-square",
-        SgAvatarShape.Rounded => "sgc-rounded",
-        _ => ""
-    };
-    
-    /// <summary>
-    /// Gets or sets the background color for the avatar.
-    /// </summary>
+    /// <summary>Pulses the status dot to draw attention.</summary>
+    [Parameter] public bool StatusPulse { get; set; }
+
+    /// <summary>Custom background color (CSS color string). Use with <see cref="Initials"/>.</summary>
     [Parameter] public string? Color { get; set; }
-    
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+
+    /// <summary>Foreground / text color.</summary>
+    [Parameter] public string? TextColor { get; set; }
+
+    /// <summary>Generates a deterministic background from <see cref="Title"/> when no <see cref="Color"/> is set.</summary>
+    [Parameter] public bool AutoColor { get; set; }
+
+    /// <summary>Adds a visible border ring around the avatar.</summary>
+    [Parameter] public bool Bordered { get; set; }
+
+    /// <summary>Makes the avatar interactive (button role, hover/focus styles).</summary>
+    [Parameter] public bool Clickable { get; set; }
+
+    /// <summary>Disables the avatar (lowered opacity, no clicks).</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Shows a spinner overlay (e.g. while uploading).</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Click callback (only fires when <see cref="Clickable"/> and not <see cref="Disabled"/>).</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Optional accessibility label override.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the component.
-    /// </summary>
+    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string BuildStyle()
-    {
-        var bg = string.IsNullOrEmpty(Color) ? "" : $"background:{Color};";
-        return string.IsNullOrEmpty(Style) ? bg : bg + Style;
-    }
+    // ── Internals ────────────────────────────────────────────────────────────
 
     private bool _imageFailed;
+    private bool _imageLoaded;
     private string? _lastImageUrl;
 
     protected override void OnParametersSet()
@@ -142,11 +150,110 @@
         {
             _lastImageUrl = ImageUrl;
             _imageFailed = false;
+            _imageLoaded = false;
         }
     }
 
-    private void OnImageError()
+    private void OnImageError() { _imageFailed = true; StateHasChanged(); }
+    private void OnImageLoad()  { _imageLoaded = true; StateHasChanged(); }
+
+    private string? ComputedInitials
     {
-        _imageFailed = true;
+        get
+        {
+            if (!string.IsNullOrEmpty(Initials)) return Initials;
+            if (string.IsNullOrEmpty(Title)) return null;
+            var parts = Title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0) return null;
+            if (parts.Length == 1) return FirstGraphemes(parts[0], 2).ToUpperInvariant();
+            return (FirstGraphemes(parts[0], 1) + FirstGraphemes(parts[^1], 1)).ToUpperInvariant();
+        }
+    }
+
+    private static string FirstGraphemes(string s, int count)
+    {
+        if (string.IsNullOrEmpty(s) || count <= 0) return string.Empty;
+        var e = StringInfo.GetTextElementEnumerator(s);
+        var sb = new System.Text.StringBuilder();
+        var taken = 0;
+        while (e.MoveNext() && taken < count) { sb.Append((string)e.Current); taken++; }
+        return sb.ToString();
+    }
+
+    private string SizeClass => PixelSize.HasValue ? "sgc-avatar-custom" : Size switch
+    {
+        SgSize.Sm => "sgc-sm",
+        SgSize.Lg => "sgc-lg",
+        SgSize.Xl => "sgc-xl",
+        _         => "sgc-md"
+    };
+
+    private string ShapeClass => Shape switch
+    {
+        SgAvatarShape.Square  => "sgc-square",
+        SgAvatarShape.Rounded => "sgc-rounded",
+        _                     => ""
+    };
+
+    private string StatusClass => StatusDot != SgAvatarStatus.None ? "sgc-has-status" : "";
+
+    private string StateClass
+    {
+        get
+        {
+            var b = new System.Text.StringBuilder();
+            if (Bordered)              b.Append(" sgc-avatar-bordered");
+            if (Clickable && !Disabled) b.Append(" sgc-avatar-clickable");
+            if (Disabled)              b.Append(" sgc-avatar-disabled");
+            if (Loading)               b.Append(" sgc-avatar-loading");
+            if (BadgeContent is not null) b.Append(" sgc-avatar-has-badge");
+            return b.ToString();
+        }
+    }
+
+    private string AriaLabelComputed =>
+        AriaLabel ?? Title ?? Localizer["Avatar"];
+
+    private string BuildStyle()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (PixelSize.HasValue)
+        {
+            sb.Append("--sgc-avatar-size:").Append(PixelSize.Value).Append("px;");
+            sb.Append("--sgc-avatar-font:").Append(Math.Max(10, (int)(PixelSize.Value * 0.42))).Append("px;");
+        }
+        if (!string.IsNullOrEmpty(Color)) sb.Append("background:").Append(Color).Append(';');
+        else if (AutoColor && !string.IsNullOrEmpty(Title))
+        {
+            sb.Append("background:").Append(HashColor(Title!)).Append(';');
+            if (string.IsNullOrEmpty(TextColor)) sb.Append("color:#fff;");
+        }
+        if (!string.IsNullOrEmpty(TextColor)) sb.Append("color:").Append(TextColor).Append(';');
+        if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
+        return sb.ToString();
+    }
+
+    private static string HashColor(string s)
+    {
+        // Stable HSL from string hash — cohesive saturation/lightness.
+        int hash = 0;
+        foreach (var ch in s) hash = unchecked(ch + ((hash << 5) - hash));
+        var h = ((hash % 360) + 360) % 360;
+        return $"hsl({h} 55% 48%)";
+    }
+
+    private async Task HandleClickAsync(MouseEventArgs e)
+    {
+        if (!Clickable || Disabled) return;
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync(e);
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (!Clickable || Disabled) return;
+        if (e.Key is "Enter" or " ")
+        {
+            if (OnClick.HasDelegate) await OnClick.InvokeAsync(new MouseEventArgs());
+        }
     }
 }

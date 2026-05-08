@@ -1,97 +1,211 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
 
-<span class="sgc-chip @VariantClass @(Outlined ? "sgc-outlined" : "") @(Closable ? "sgc-closable" : "") @CssClass"
-      style="@Style"
-      aria-label="@(AriaLabel ?? Text)"
-      @attributes="AdditionalAttributes">
-    @if (LeadingContent is not null)
-    {
-        <span class="sgc-chip-leading" aria-hidden="true">@LeadingContent</span>
-    }
-    else if (Icon is not null)
-    {
-        <span class="sgc-chip-icon" aria-hidden="true">@Icon</span>
-    }
-    <span class="sgc-chip-text">@ChildContent@Text</span>
-    @if (TrailingContent is not null)
-    {
-        <span class="sgc-chip-trailing" aria-hidden="true">@TrailingContent</span>
-    }
-    @if (Closable)
-    {
-        <button type="button" class="sgc-chip-x" aria-label="@Localizer.GetString("RemoveItem", Text ?? Localizer["Item"])" @onclick="OnCloseAsync">×</button>
-    }
-</span>
+@if (!string.IsNullOrEmpty(Href) && !Disabled)
+{
+    <a class="@RootClasses"
+       style="@BuildStyle()"
+       href="@Href"
+       target="@Target"
+       rel="@Rel"
+       aria-label="@(AriaLabel ?? Text)"
+       aria-busy="@(Loading ? "true" : null)"
+       @onclick="HandleClickAsync"
+       @attributes="AdditionalAttributes">
+        @ChipBody
+    </a>
+}
+else
+{
+    <span class="@RootClasses"
+          style="@BuildStyle()"
+          role="@Role"
+          tabindex="@(Interactive ? "0" : null)"
+          aria-pressed="@AriaPressed"
+          aria-disabled="@(Disabled ? "true" : null)"
+          aria-label="@(AriaLabel ?? Text)"
+          aria-busy="@(Loading ? "true" : null)"
+          @onclick="HandleClickAsync"
+          @onkeydown="HandleKeyDownAsync"
+          @attributes="AdditionalAttributes">
+        @ChipBody
+    </span>
+}
 
 @code {
-    /// <summary>
-    /// Gets or sets the accessibility label for screen readers.
-    /// </summary>
+    private RenderFragment ChipBody => __builder =>
+    {
+        @if (Loading)
+        {
+            <span class="sgc-chip-spinner" aria-hidden="true"></span>
+        }
+        else if (Selected && ShowCheck)
+        {
+            <span class="sgc-chip-check" aria-hidden="true">
+                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="2.5,6.5 5,9 9.5,3.5"/>
+                </svg>
+            </span>
+        }
+        else if (Avatar is not null)
+        {
+            <span class="sgc-chip-avatar" aria-hidden="true">@Avatar</span>
+        }
+        else if (Dot)
+        {
+            <span class="sgc-chip-dot" aria-hidden="true"></span>
+        }
+        else if (LeadingContent is not null)
+        {
+            <span class="sgc-chip-leading" aria-hidden="true">@LeadingContent</span>
+        }
+        else if (Icon is not null)
+        {
+            <span class="sgc-chip-icon" aria-hidden="true">@Icon</span>
+        }
+
+        <span class="sgc-chip-text">@ChildContent@Text</span>
+
+        @if (Count.HasValue && !Loading)
+        {
+            <span class="sgc-chip-count" aria-label="@Count">@(Count.Value > MaxCount ? $"{MaxCount}+" : Count.Value.ToString())</span>
+        }
+        else if (TrailingContent is not null && !Loading)
+        {
+            <span class="sgc-chip-trailing" aria-hidden="true">@TrailingContent</span>
+        }
+
+        @if (Closable && !Loading && !Disabled)
+        {
+            <button type="button"
+                    class="sgc-chip-x"
+                    tabindex="-1"
+                    aria-label="@Localizer.GetString("RemoveItem", Text ?? Localizer["Item"])"
+                    @onclick:stopPropagation="true"
+                    @onclick="OnCloseAsync">
+                <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <line x1="2" y1="2" x2="10" y2="10"/>
+                    <line x1="10" y1="2" x2="2" y2="10"/>
+                </svg>
+            </button>
+        }
+    };
+
+    /// <summary>Accessibility label for screen readers.</summary>
     [Parameter] public string? AriaLabel { get; set; }
 
-    /// <summary>
-    /// Gets or sets the chip text.
-    /// </summary>
+    /// <summary>Chip text content.</summary>
     [Parameter] public string? Text { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom content to render inside the chip.
-    /// Takes precedence over <see cref="Text"/>.
-    /// </summary>
+
+    /// <summary>Custom content inside the chip. Takes precedence over <see cref="Text"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the icon to display before the chip text.
-    /// </summary>
+
+    /// <summary>Icon rendered before the text.</summary>
     [Parameter] public RenderFragment? Icon { get; set; }
 
-    /// <summary>
-    /// Gets or sets the content to display before the chip text.
-    /// Takes precedence over <see cref="Icon"/>.
-    /// </summary>
+    /// <summary>Avatar rendered before the text (replaces <see cref="Icon"/>).</summary>
+    [Parameter] public RenderFragment? Avatar { get; set; }
+
+    /// <summary>Leading content. Takes precedence over <see cref="Icon"/>.</summary>
     [Parameter] public RenderFragment? LeadingContent { get; set; }
 
-    /// <summary>
-    /// Gets or sets the content to display after the chip text.
-    /// </summary>
+    /// <summary>Trailing content rendered after the text.</summary>
     [Parameter] public RenderFragment? TrailingContent { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the chip has an outlined style.
-    /// Default is false (filled style).
-    /// </summary>
+    /// <summary>Renders a small status dot before the text.</summary>
+    [Parameter] public bool Dot { get; set; }
+
+    /// <summary>Numeric count badge rendered after the text.</summary>
+    [Parameter] public int? Count { get; set; }
+
+    /// <summary>Maximum count before showing "Max+". Default 99.</summary>
+    [Parameter] public int MaxCount { get; set; } = 99;
+
+    /// <summary>Outlined visual style.</summary>
     [Parameter] public bool Outlined { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the visual variant of the chip. Default is <see cref="SgChipVariant.Default"/>.
-    /// </summary>
+
+    /// <summary>Visual variant. Default <see cref="SgChipVariant.Default"/>.</summary>
     [Parameter] public SgChipVariant Variant { get; set; } = SgChipVariant.Default;
-    
-    /// <summary>
-    /// Gets or sets whether the chip displays a close button.
-    /// </summary>
+
+    /// <summary>Chip size. Default <see cref="SgSize.Md"/>.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Renders a close button.</summary>
     [Parameter] public bool Closable { get; set; }
-    
+
+    /// <summary>Makes the chip activatable (button-like).</summary>
+    [Parameter] public bool Clickable { get; set; }
+
     /// <summary>
-    /// Gets or sets the callback invoked when the close button is clicked.
+    /// Two-way bindable selected state. When set, the chip behaves as a toggle (filter chip).
+    /// Setting this implicitly enables interaction.
     /// </summary>
+    [Parameter] public bool Selected { get; set; }
+
+    /// <summary>Selected state changed callback (for two-way binding).</summary>
+    [Parameter] public EventCallback<bool> SelectedChanged { get; set; }
+
+    /// <summary>Marks the chip as a toggle even without an initial selected state (renders selectable affordances).</summary>
+    [Parameter] public bool Selectable { get; set; }
+
+    /// <summary>When the chip is selected, shows a check icon in the leading slot. Default true for toggles.</summary>
+    [Parameter] public bool ShowCheck { get; set; } = true;
+
+    /// <summary>Disables interactions and lowers opacity.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Shows a spinner and disables interactions.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Renders the chip as an anchor with the given href.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>Anchor target attribute (used with <see cref="Href"/>).</summary>
+    [Parameter] public string? Target { get; set; }
+
+    /// <summary>Anchor rel attribute (used with <see cref="Href"/>).</summary>
+    [Parameter] public string? Rel { get; set; }
+
+    /// <summary>Custom background color.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Custom text color.</summary>
+    [Parameter] public string? TextColor { get; set; }
+
+    /// <summary>Callback invoked when the close button is clicked.</summary>
     [Parameter] public EventCallback OnClose { get; set; }
-    
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+
+    /// <summary>Callback invoked when the chip is clicked.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the component.
-    /// </summary>
+    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Internals ────────────────────────────────────────────────────────────
+
+    private bool Interactive => (Clickable || Selectable || SelectedChanged.HasDelegate) && !Disabled;
+
+    private string Role => !string.IsNullOrEmpty(Href) ? "" :
+        (SelectedChanged.HasDelegate || Selectable) ? "switch" :
+        Clickable ? "button" : "";
+
+    private string? AriaPressed => (Selectable || SelectedChanged.HasDelegate)
+        ? (Selected ? "true" : "false")
+        : null;
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-chip-sm",
+        SgSize.Lg => "sgc-chip-lg",
+        SgSize.Xl => "sgc-chip-xl",
+        _         => ""
+    };
 
     private string VariantClass => Variant switch
     {
@@ -102,8 +216,54 @@
         _                     => ""
     };
 
+    private string RootClasses
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder("sgc-chip ");
+            if (!string.IsNullOrEmpty(VariantClass)) sb.Append(VariantClass).Append(' ');
+            if (!string.IsNullOrEmpty(SizeClass))    sb.Append(SizeClass).Append(' ');
+            if (Outlined)               sb.Append("sgc-outlined ");
+            if (Closable)               sb.Append("sgc-closable ");
+            if (Loading)                sb.Append("sgc-chip-loading ");
+            if (Interactive)            sb.Append("sgc-chip-clickable ");
+            if (Selected)               sb.Append("sgc-chip-selected ");
+            if (Disabled)               sb.Append("sgc-chip-disabled ");
+            if (!string.IsNullOrEmpty(CssClass)) sb.Append(CssClass);
+            return sb.ToString();
+        }
+    }
+
+    private string BuildStyle()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrEmpty(Color))     sb.Append("background:").Append(Color).Append(';');
+        if (!string.IsNullOrEmpty(TextColor)) sb.Append("color:").Append(TextColor).Append(';');
+        if (!string.IsNullOrEmpty(Style))     sb.Append(Style);
+        return sb.ToString();
+    }
+
     private async Task OnCloseAsync()
     {
+        if (Disabled || Loading) return;
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleClickAsync(MouseEventArgs e)
+    {
+        if (Disabled || Loading) return;
+        if (Selectable || SelectedChanged.HasDelegate)
+        {
+            Selected = !Selected;
+            if (SelectedChanged.HasDelegate) await SelectedChanged.InvokeAsync(Selected);
+        }
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync(e);
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (!Interactive) return;
+        if (e.Key is "Enter" or " ") await HandleClickAsync(new MouseEventArgs());
+        else if ((e.Key is "Delete" or "Backspace") && Closable) await OnCloseAsync();
     }
 }

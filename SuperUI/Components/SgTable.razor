@@ -1,0 +1,193 @@
+@typeparam TItem
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+<div class="sg-root @CssClass">
+    @if (!string.IsNullOrEmpty(Title) || ShowSearch)
+    {
+        <div class="sg-toolbar">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <div class="sg-title">@Title</div>
+            }
+            <div class="sg-spacer"></div>
+            @if (ShowSearch)
+            {
+                <div class="sg-search-wrap">
+                    <svg class="sg-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input class="sg-search"
+                           placeholder="Поиск..."
+                           value="@_searchText"
+                           @oninput="OnSearchInput" />
+                </div>
+            }
+        </div>
+    }
+
+    <div class="sg-scroll">
+        <table class="sg-table @(FullWidth ? "sg-table-full" : "")">
+            <thead>
+                <tr>
+                    @if (AllowSelection)
+                    {
+                        <th class="sg-th" style="width: 50px;">
+                            @if (AllowMultiSelect)
+                            {
+                                <input type="checkbox" 
+                                       checked="@_selectAll" 
+                                       @onchange="async () => await ToggleSelectAll()" />
+                            }
+                        </th>
+                    }
+                    @if (ShowRowNumbers)
+                    {
+                        <th class="sg-th" style="width: 60px;">№</th>
+                    }
+                    @foreach (var col in Columns)
+                    {
+                        var isSorted = _sortColumnKey == col.Key;
+                        var thClass = "sg-th";
+                        thClass += col.HeaderAlign switch
+                        {
+                            SgHAlign.Left => " sg-align-left",
+                            SgHAlign.Center => " sg-align-center",
+                            SgHAlign.Right => " sg-align-right",
+                            _ => string.Empty
+                        };
+                        <th class="@thClass" style="@(string.IsNullOrEmpty(col.Width) ? "" : $"width: {col.Width}")">
+                            <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
+                                  @onclick="@(() => { if (col.Sortable) OnSortClick(col.Key); })">
+                                @col.Title
+                                @if (isSorted)
+                                {
+                                    <span class="sg-sort-ind">
+                                        @if (_sortDirection == SortDirection.Ascending)
+                                        {
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                        }
+                                        else if (_sortDirection == SortDirection.Descending)
+                                        {
+                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        }
+                                    </span>
+                                }
+                            </span>
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (PagedItems.Any())
+                {
+                    var rowIndex = (CurrentPage - 1) * PageSize + 1;
+                    @foreach (var item in PagedItems)
+                    {
+                        var rowClass = "sg-tr";
+                        if (IsSelected(item)) rowClass += " sg-selected";
+                        if (RowClass != null)
+                        {
+                            var rc = RowClass(item);
+                            if (!string.IsNullOrEmpty(rc))
+                                rowClass += " " + rc;
+                        }
+                        var rowStyle = RowStyle != null ? RowStyle(item) : null;
+                        <tr class="@rowClass" style="@rowStyle"
+                            @onclick="async () => await OnRowClick(item)"
+                            @ondblclick="async () => await OnRowDoubleClick(item)">
+                            @if (AllowSelection)
+                            {
+                                <td class="sg-td">
+                                    <input type="checkbox" 
+                                           checked="@IsSelected(item)" 
+                                           @onchange="async () => await ToggleSelection(item)"
+                                           @onclick:stopPropagation="true" />
+                                </td>
+                            }
+                            @if (ShowRowNumbers)
+                            {
+                                <td class="sg-td sg-align-right">@rowIndex</td>
+                            }
+                            @foreach (var col in Columns)
+                            {
+                                var isNumeric = col.IsNumericColumn;
+                                var effectiveHAlign = col.HAlign == SgHAlign.Default
+                                    ? (isNumeric ? SgHAlign.Right : SgHAlign.Left)
+                                    : col.HAlign;
+                                var tdClass = "sg-td";
+                                tdClass += effectiveHAlign switch
+                                {
+                                    SgHAlign.Left => " sg-align-left",
+                                    SgHAlign.Center => " sg-align-center",
+                                    SgHAlign.Right => " sg-align-right",
+                                    _ => string.Empty
+                                };
+                                tdClass += col.VAlign switch
+                                {
+                                    SgVAlign.Top => " sg-valign-top",
+                                    SgVAlign.Middle => " sg-valign-middle",
+                                    SgVAlign.Bottom => " sg-valign-bottom",
+                                    _ => string.Empty
+                                };
+                                if (col.CellClass != null)
+                                {
+                                    var cc = col.CellClass(item);
+                                    if (!string.IsNullOrEmpty(cc))
+                                        tdClass += " " + cc;
+                                }
+                                var tdStyle = col.CellStyle != null ? col.CellStyle(item) : null;
+                                <td class="@tdClass" style="@tdStyle">
+                                    @if (col.Template != null)
+                                    {
+                                        @col.Template(item)
+                                    }
+                                    else
+                                    {
+                                        @col.GetDisplay(item)
+                                    }
+                                </td>
+                            }
+                        </tr>
+                        rowIndex++;
+                    }
+                }
+                else
+                {
+                    var totalCols = Columns.Count + (ShowRowNumbers ? 1 : 0) + (AllowSelection ? 1 : 0);
+                    <tr>
+                        <td class="sg-td" colspan="@totalCols" style="text-align: center; padding: 32px; color: var(--sui-text-muted);">
+                            @EffectiveEmptyText
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (EnablePaging && TotalPages > 1)
+    {
+        <div class="sg-toolbar" style="border-top: 1px solid var(--sui-border);">
+            <div style="font-size: 13px; color: var(--sui-text-secondary);">
+                @if (TotalCount > 0)
+                {
+                    <span>Показано @((CurrentPage - 1) * PageSize + 1) - @Math.Min(CurrentPage * PageSize, TotalCount) из @TotalCount</span>
+                }
+            </div>
+            <div class="sg-spacer"></div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <button class="sg-button" 
+                        disabled="@(CurrentPage == 1)"
+                        @onclick="() => CurrentPage = Math.Max(1, CurrentPage - 1)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                </button>
+                <span style="font-size: 13px;">Страница @CurrentPage из @TotalPages</span>
+                <button class="sg-button" 
+                        disabled="@(CurrentPage == TotalPages)"
+                        @onclick="() => CurrentPage = Math.Min(TotalPages, CurrentPage + 1)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+            </div>
+        </div>
+    }
+</div>

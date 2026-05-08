@@ -14,5 +14,7 @@ public enum SgChipVariant
     /// <summary>Danger chip (red).</summary>
     Danger,
     /// <summary>Warning chip (yellow/orange).</summary>
-    Warn
+    Warn,
+    /// <summary>Informational chip (blue).</summary>
+    Info
 }

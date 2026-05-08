@@ -1,37 +1,118 @@
 @namespace SuperUI.Components
 
-<div class="sgc-avatar-group @OverlapClass @CssClass"
-     style="@Style"
+<div class="sgc-avatar-group @SizeClass @(Overlap ? "sgc-overlap" : "") @(Reverse ? "sgc-reverse" : "") @CssClass"
+     style="@BuildStyle()"
+     role="group"
+     aria-label="@(AriaLabel ?? Localizer["AvatarGroup"])"
      @attributes="AdditionalAttributes">
+
     @ChildContent
+
+    @if (HasOverflow)
+    {
+        <span class="sgc-avatar sgc-avatar-overflow @SizeClass @ShapeClass"
+              title="@OverflowTooltip"
+              aria-label="@OverflowTooltip"
+              role="@(OnOverflowClick.HasDelegate ? "button" : "img")"
+              tabindex="@(OnOverflowClick.HasDelegate ? "0" : null)"
+              @onclick="HandleOverflowClickAsync"
+              @onkeydown="HandleOverflowKeyAsync">
+            +@OverflowCount
+        </span>
+    }
 </div>
 
 @code {
-    /// <summary>
-    /// Gets or sets the content (typically SgAvatar components) to render in the group.
-    /// </summary>
+    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+
+    /// <summary>Avatar content (typically <see cref="SgAvatar"/> components).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// Gets or sets the overlap amount between avatars.
-    /// Default is true (avatars overlap slightly).
+    /// Maximum number of avatars displayed before collapsing into a "+N" pill.
+    /// Requires <see cref="TotalCount"/> to compute the overflow.
     /// </summary>
+    [Parameter] public int? Max { get; set; }
+
+    /// <summary>
+    /// Total number of items represented by this group.
+    /// When greater than the visible count, an overflow pill is rendered.
+    /// </summary>
+    [Parameter] public int? TotalCount { get; set; }
+
+    /// <summary>Whether avatars overlap. Default true.</summary>
     [Parameter] public bool Overlap { get; set; } = true;
 
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+    /// <summary>Reverses the stack order (last avatar appears on top).</summary>
+    [Parameter] public bool Reverse { get; set; }
+
+    /// <summary>Custom overlap distance in pixels (negative margin).</summary>
+    [Parameter] public int? OverlapPx { get; set; }
+
+    /// <summary>Size applied to all avatars in the group. Default <see cref="SgSize.Md"/>.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Shape of the overflow pill (matches the avatars).</summary>
+    [Parameter] public SgAvatarShape Shape { get; set; } = SgAvatarShape.Circle;
+
+    /// <summary>Tooltip / aria-label override for the overflow pill.</summary>
+    [Parameter] public string? OverflowLabel { get; set; }
+
+    /// <summary>Callback when the overflow pill is activated.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnOverflowClick { get; set; }
+
+    /// <summary>Accessibility label for the group.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the component.
-    /// </summary>
+    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
+    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string OverlapClass => Overlap ? "sgc-overlap" : "";
+    // ── Internals ────────────────────────────────────────────────────────────
+
+    private bool HasOverflow => Max.HasValue && TotalCount.HasValue && TotalCount.Value > Max.Value;
+
+    private int OverflowCount => HasOverflow ? TotalCount!.Value - Max!.Value : 0;
+
+    private string OverflowTooltip =>
+        OverflowLabel ?? $"+{OverflowCount} {Localizer["More"]}";
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-sm",
+        SgSize.Lg => "sgc-lg",
+        SgSize.Xl => "sgc-xl",
+        _         => "sgc-md"
+    };
+
+    private string ShapeClass => Shape switch
+    {
+        SgAvatarShape.Square  => "sgc-square",
+        SgAvatarShape.Rounded => "sgc-rounded",
+        _                     => ""
+    };
+
+    private string BuildStyle()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (OverlapPx.HasValue) sb.Append("--sgc-avatar-overlap:").Append(OverlapPx.Value).Append("px;");
+        if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
+        return sb.ToString();
+    }
+
+    private async Task HandleOverflowClickAsync(MouseEventArgs e)
+    {
+        if (OnOverflowClick.HasDelegate) await OnOverflowClick.InvokeAsync(e);
+    }
+
+    private async Task HandleOverflowKeyAsync(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " " && OnOverflowClick.HasDelegate)
+            await OnOverflowClick.InvokeAsync(new MouseEventArgs());
+    }
 }
