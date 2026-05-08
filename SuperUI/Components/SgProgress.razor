@@ -1,14 +1,34 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
 
-@if (Circular)
+@{
+    var pct = EffectivePct;
+    var indeterminate = Indeterminate;
+    var circular = Circular;
+    var vertical = Vertical;
+    var showLabel = ShowLabel;
+    var cssClass = CssClass;
+    var style = Style;
+    var size = Size;
+    var variant = Variant;
+    var color = Color;
+}
+
+@if (circular)
 {
-    <div class="sgc-progress-circular @CssClass" style="@Style" role="progressbar" aria-valuemin="0" aria-valuemax="@EffectiveMax" aria-valuenow="@(Indeterminate ? null : EffectiveValue)" aria-label="@CircularLabel" @attributes="AdditionalAttributes">
-        <svg viewBox="0 0 36 36">
+    <div class="@CircularWrapClass"
+         style="@CircularWrapStyle"
+         role="progressbar"
+         aria-valuemin="0"
+         aria-valuemax="@EffectiveMax"
+         aria-valuenow="@(indeterminate ? null : EffectiveValue)"
+         aria-label="@CircularLabel"
+         @attributes="AdditionalAttributes">
+        <svg viewBox="0 0 36 36" class="sgc-circular-svg">
             <path class="sgc-circular-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
             <path class="sgc-circular-bar" stroke-dasharray="@CircularDashArray" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
         </svg>
-        @if (ShowLabel)
+        @if (showLabel && !indeterminate)
         {
             <span class="sgc-circular-label" aria-hidden="true">@CircularText</span>
         }
@@ -16,14 +36,17 @@
 }
 else
 {
-    <div class="sgc-progress-wrap @(Vertical ? "sgc-vertical" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
-        <div class="sgc-progress @(Indeterminate ? "sgc-indeterminate" : "") @(Animated ? "sgc-animated" : "") @(Striped ? "sgc-striped" : "") @(ShouldRenderBuffer ? "sgc-buffer" : "")"
-             role="progressbar"
-             aria-valuemin="0"
-             aria-valuemax="@EffectiveMax"
-             aria-valuenow="@(Indeterminate ? null : EffectiveValue)"
-             aria-label="@(Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {EffectivePct:0}%")">
-            @if (!Indeterminate)
+    <div class="@WrapClass"
+         style="@WrapStyle"
+         @attributes="AdditionalAttributes">
+
+        @if (LabelPosition == SgLabelPosition.Top)
+        {
+            <span class="sgc-progress-title">@Title</span>
+        }
+
+        <div class="@BarTrackClass" style="@(LabelPosition == SgLabelPosition.Left ? "flex:1" : "")">
+            @if (!indeterminate)
             {
                 <div class="sgc-progress-bar sgc-progress-fill" style="@ProgressBarStyle"></div>
                 @if (ShouldRenderBuffer)
@@ -36,14 +59,30 @@ else
                 <div class="sgc-progress-bar sgc-progress-fill"></div>
             }
         </div>
-        @if (ShowLabel && !Indeterminate)
+
+        @if (showLabel && !indeterminate)
         {
-            <span class="sgc-progress-label">@($"{EffectivePct:0}%")</span>
+            <span class="sgc-progress-label" style="@LabelStyle">@($"{pct:0}%")</span>
+        }
+
+        @if (LabelPosition == SgLabelPosition.Right)
+        {
+            <span class="sgc-progress-title sgc-progress-title-right">@Title</span>
         }
     </div>
 }
 
 @code {
+    /// <summary>
+    /// Gets or sets the current progress value (0–Max).
+    /// </summary>
+    [Parameter] public double Value { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum progress value. Default is 100.
+    /// </summary>
+    [Parameter] public double Max { get; set; } = 100;
+
     /// <summary>
     /// Gets or sets whether the progress bar is striped.
     /// </summary>
@@ -55,23 +94,12 @@ else
     [Parameter] public bool Animated { get; set; }
 
     /// <summary>
-    /// Gets or sets the current progress value.
-    /// </summary>
-    [Parameter] public double Value { get; set; }
-
-    /// <summary>
-    /// Gets or sets the maximum progress value.
-    /// Default is 100.
-    /// </summary>
-    [Parameter] public double Max { get; set; } = 100;
-
-    /// <summary>
-    /// Gets or sets whether the progress bar shows indeterminate (loading) state.
+    /// Gets or sets whether to render as indeterminate (loading) state.
     /// </summary>
     [Parameter] public bool Indeterminate { get; set; }
 
     /// <summary>
-    /// Gets or sets whether to display the percentage label inside the progress bar.
+    /// Gets or sets whether to display the percentage label.
     /// Default is true.
     /// </summary>
     [Parameter] public bool ShowLabel { get; set; } = true;
@@ -84,15 +112,88 @@ else
 
     /// <summary>
     /// Gets or sets whether the progress bar is displayed vertically.
-    /// Default is false (horizontal).
     /// </summary>
     [Parameter] public bool Vertical { get; set; }
 
     /// <summary>
     /// Gets or sets whether to render as a circular progress indicator.
-    /// Default is false (linear).
     /// </summary>
     [Parameter] public bool Circular { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size of the progress indicator.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Gets or sets the color variant.
+    /// </summary>
+    [Parameter] public SgSpinnerVariant Variant { get; set; } = SgSpinnerVariant.Default;
+
+    /// <summary>
+    /// Gets or sets the title/label text displayed above or beside the progress bar.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets the label position.
+    /// </summary>
+    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
+
+    /// <summary>
+    /// Gets or sets a custom color override (overrides the Variant color).
+    /// Supports any valid CSS color value.
+    /// </summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to use gradient fill instead of solid color.
+    /// </summary>
+    [Parameter] public bool Gradient { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the progress bar uses a segmented/gap style.
+    /// </summary>
+    [Parameter] public bool Segmented { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of segments (only applies when Segmented is true).
+    /// </summary>
+    [Parameter] public int Segments { get; set; } = 10;
+
+    /// <summary>
+    /// Gets or sets whether to show a pulse animation when reaching 100%.
+    /// </summary>
+    [Parameter] public bool PulseOnComplete { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the height of the progress bar (linear) in pixels.
+    /// Only applies when Size is not set explicitly.
+    /// </summary>
+    [Parameter] public int? BarHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets the diameter of the circular progress in pixels.
+    /// Only applies when Size is not set explicitly.
+    /// </summary>
+    [Parameter] public int? CircularSize { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional inline styles.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional HTML attributes.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Computed ──────────────────────────────────────────────────────────────
 
     private double EffectiveMax => Math.Max(0, Max);
     private double EffectiveValue => Indeterminate ? 0 : Clamp(Value, 0, EffectiveMax);
@@ -100,30 +201,194 @@ else
     private bool ShouldRenderBuffer => !Indeterminate && EffectiveBufferValue.HasValue && EffectiveBufferValue.Value > 0;
 
     private double EffectivePct => EffectiveMax <= 0 ? 0 : (EffectiveValue * 100.0 / EffectiveMax);
+    private double BufferPct => EffectiveBufferValue is null ? 0 : EffectiveMax <= 0 ? 0 : (EffectiveBufferValue.Value * 100.0 / EffectiveMax);
 
     private string CircularDashArray => $"{Math.Min(100, Math.Max(0, EffectivePct))}, 100";
     private string CircularText => $"{EffectivePct:0}%";
     private string CircularLabel => Indeterminate ? Localizer["Loading"] : $"{Localizer["Progress"]}: {CircularText}";
 
-    private string ProgressBarStyle => Vertical ? $"height:{EffectivePct}%;" : $"width:{EffectivePct}%;";
+    private string VariantClass => Variant switch
+    {
+        SgSpinnerVariant.Info => "sgc-v-info",
+        SgSpinnerVariant.Success => "sgc-v-success",
+        SgSpinnerVariant.Warn => "sgc-v-warn",
+        SgSpinnerVariant.Danger => "sgc-v-danger",
+        _ => "sgc-v-default"
+    };
 
-    private string BufferBarStyle => Vertical ? $"height:{BufferPct}%;" : $"width:{BufferPct}%;";
-    private double BufferPct => EffectiveBufferValue is null ? 0 : EffectiveMax <= 0 ? 0 : (EffectiveBufferValue.Value * 100.0 / EffectiveMax);
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-size-sm",
+        SgSize.Md => "sgc-size-md",
+        SgSize.Lg => "sgc-size-lg",
+        SgSize.Xl => "sgc-size-xl",
+        _ => "sgc-size-md"
+    };
 
-    private static double Clamp(double value, double min, double max) => Math.Min(max, Math.Max(min, value));
+    private string SegmentedClass => Segmented ? "sgc-segmented" : "";
+    private string GradientClass => Gradient && !Vertical ? "sgc-gradient" : "";
+    private string CompleteClass => PulseOnComplete && !Indeterminate && EffectivePct >= 100 ? "sgc-complete" : "";
 
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
+    private string TrackVariantCss => Color != null ? "" : VariantClass;
+    private string TrackSizeCss => SizeClass;
 
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the component.
-    /// </summary>
-    [Parameter] public string? Style { get; set; }
+    // Linear bar height based on size
+    private int BarHeightPx => BarHeight ?? (Size switch
+    {
+        SgSize.Sm => 6,
+        SgSize.Md => 10,
+        SgSize.Lg => 14,
+        SgSize.Xl => 20,
+        _ => 10
+    });
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the root element.
-    /// </summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    // Circular diameter based on size
+    private int CircularDiameter => CircularSize ?? (Size switch
+    {
+        SgSize.Sm => 32,
+        SgSize.Md => 48,
+        SgSize.Lg => 64,
+        SgSize.Xl => 96,
+        _ => 48
+    });
+
+    private string ColorCss => Color != null ? Color : "";
+
+    private string ProgressWidthStyle => Vertical ? $"height:{EffectivePct}%;" : $"width:{EffectivePct}%;";
+    private string BufferWidthStyle => Vertical ? $"height:{BufferPct}%;" : $"width:{BufferPct}%;";
+
+    private string ProgressBarStyle
+    {
+        get
+        {
+            var parts = new List<string> { ProgressWidthStyle };
+            if (Color != null)
+            {
+                parts.Add($"background-color:{Color};");
+            }
+            if (Gradient && !Vertical)
+            {
+                parts.Add($"background-image:linear-gradient(90deg, {GradientFrom}, {GradientTo});");
+            }
+            return string.Join("", parts);
+        }
+    }
+
+    private string BufferBarStyle
+    {
+        get
+        {
+            var parts = new List<string> { BufferWidthStyle };
+            if (Color != null)
+            {
+                parts.Add($"background-color:{Color};opacity:0.2;");
+            }
+            return string.Join("", parts);
+        }
+    }
+
+    private string GradientFrom => Color ?? $"var(--sui-{Variant switch {
+        SgSpinnerVariant.Info => "accent",
+        SgSpinnerVariant.Success => "success",
+        SgSpinnerVariant.Warn => "warn",
+        SgSpinnerVariant.Danger => "danger",
+        _ => "accent"
+    }})";
+    
+    private string GradientTo => Color != null ? Color : $"var(--sui-{Variant switch {
+        SgSpinnerVariant.Info => "info",
+        SgSpinnerVariant.Success => "success-light",
+        SgSpinnerVariant.Warn => "warn-light",
+        SgSpinnerVariant.Danger => "danger-light",
+        _ => "accent-light"
+    }})";
+
+    private string WrapClass
+    {
+        get
+        {
+            var classes = new List<string> { "sgc-progress-wrap" };
+            if (Vertical) classes.Add("sgc-vertical");
+            classes.Add(TrackSizeCss);
+            classes.Add(TrackVariantCss);
+            if (!string.IsNullOrEmpty(CssClass)) classes.Add(CssClass);
+            return string.Join(" ", classes.Where(c => !string.IsNullOrEmpty(c)));
+        }
+    }
+
+    private string WrapStyle
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(Style)) parts.Add(Style);
+            if (Vertical)
+            {
+                parts.Add($"--sgc-progress-height:{BarHeightPx * 6}px;");
+            }
+            else
+            {
+                parts.Add($"--sgc-bar-height:{BarHeightPx}px;");
+            }
+            return string.Join(";", parts);
+        }
+    }
+
+    private string BarTrackClass
+    {
+        get
+        {
+            var classes = new List<string> { "sgc-progress" };
+            if (Indeterminate) classes.Add("sgc-indeterminate");
+            if (Animated && Striped) classes.Add("sgc-animated");
+            if (Striped) classes.Add("sgc-striped");
+            if (ShouldRenderBuffer) classes.Add("sgc-buffer");
+            classes.Add(SegmentedClass);
+            classes.Add(GradientClass);
+            classes.Add(CompleteClass);
+            return string.Join(" ", classes.Where(c => !string.IsNullOrEmpty(c)));
+        }
+    }
+
+    private string LabelStyle
+    {
+        get
+        {
+            if (Vertical) return "";
+            return $"font-size:{Math.Max(10, BarHeightPx + 2)}px;";
+        }
+    }
+
+    private string CircularWrapClass
+    {
+        get
+        {
+            var classes = new List<string> { "sgc-progress-circular" };
+            classes.Add(SizeClass);
+            classes.Add(VariantClass);
+            if (Indeterminate) classes.Add("sgc-indeterminate");
+            if (CompleteClass == "sgc-complete") classes.Add("sgc-complete");
+            if (!string.IsNullOrEmpty(CssClass)) classes.Add(CssClass);
+            return string.Join(" ", classes.Where(c => !string.IsNullOrEmpty(c)));
+        }
+    }
+
+    private string CircularWrapStyle
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(Style)) parts.Add(Style);
+            parts.Add($"width:{CircularDiameter}px;");
+            parts.Add($"height:{CircularDiameter}px;");
+            if (Color != null)
+            {
+                parts.Add($"--sgc-circular-color:{Color};");
+            }
+            return string.Join(";", parts);
+        }
+    }
+
+    private static double Clamp(double value, double min, double max) =>
+        Math.Min(max, Math.Max(min, value));
 }
