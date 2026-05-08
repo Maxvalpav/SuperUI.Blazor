@@ -27,14 +27,6 @@ export function autoResizeTextarea(el, minRows, maxRows) {
     el.style.height = newH + 'px';
 }
 
-/**
- * Copy text to the clipboard.
- * @param {string} text
- */
-export function copyToClipboard(text) {
-    return navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.resolve();
-}
-
 export function init(dotnetRef, gridRoot) {
     if (!gridRoot) return;
     
@@ -364,24 +356,6 @@ export function downloadCsv(fileName, content) {
     setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-export async function copyToClipboard(text) {
-    try {
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            await navigator.clipboard.writeText(text);
-        } else {
-            // Fallback for older browsers
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed';
-            ta.style.opacity = '0';
-            document.body.appendChild(ta);
-            ta.focus();
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-        }
-    } catch (e) { }
-}
 export function downloadExcel(fileName, htmlContent) {
     const template = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" 
@@ -423,15 +397,6 @@ export function downloadExcel(fileName, htmlContent) {
 export function scrollToBottom(element) {
     if (element) {
         element.scrollTop = element.scrollHeight;
-    }
-}
-
-export async function copyToClipboard(text) {
-    try {
-        await navigator.clipboard.writeText(text);
-        return true;
-    } catch (err) {
-        return false;
     }
 }
 
@@ -583,3 +548,4 @@ export function positionFilterMenu(gridRoot, colKey) {
     tryPosition();
     requestAnimationFrame(() => requestAnimationFrame(tryPosition));
 }
+
