@@ -4,42 +4,66 @@
 @inject IJSRuntime JS
 @inject SgConfirmService ConfirmService
 
-<div class="sgc-gantt-container @CssClass">
-    <div class="sgc-gantt-toolbar">
-        <div class="sgc-gantt-toolbar-group">
-            <SgButton Text="@Localizer["NewTask"]" Size="SgSize.Sm" OnClick="OnAddTask">
-                <Icon>+</Icon>
-            </SgButton>
-            <SgButton Text="Сохранить базовый план" Size="SgSize.Sm" OnClick="() => SaveBaseline()" Variant="SgButtonVariant.Ghost" />
-            <SgButton Text="Очистить базовый план" Size="SgSize.Sm" OnClick="() => ClearBaseline()" Variant="SgButtonVariant.Ghost" />
-            <SgButton Text="Рассчитать крит. путь" Size="SgSize.Sm" OnClick="CalculateCriticalPath" Variant="SgButtonVariant.Ghost" />
+<div class="sgc-gantt-container @CssClass @(Compact ? "sgc-compact" : "")">
+    @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Description))
+    {
+        <div class="sgc-gantt-header-section">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <h3 class="sgc-gantt-title">@Title</h3>
+            }
+            @if (!string.IsNullOrEmpty(Description))
+            {
+                <p class="sgc-gantt-description">@Description</p>
+            }
         </div>
-        <div class="sgc-gantt-toolbar-group">
-            <SgButton Size="SgSize.Sm" OnClick="() => SetView(GanttView.Day)" Variant="@(_currentView == GanttView.Day ? SgButtonVariant.Primary : SgButtonVariant.Ghost)">
-                День
-            </SgButton>
-            <SgButton Size="SgSize.Sm" OnClick="() => SetView(GanttView.Week)" Variant="@(_currentView == GanttView.Week ? SgButtonVariant.Primary : SgButtonVariant.Ghost)">
-                Неделя
-            </SgButton>
-            <SgButton Size="SgSize.Sm" OnClick="() => SetView(GanttView.Month)" Variant="@(_currentView == GanttView.Month ? SgButtonVariant.Primary : SgButtonVariant.Ghost)">
-                Месяц
-            </SgButton>
-            <div style="width: 1px; height: 24px; background: var(--sui-border); margin: 0 8px;"></div>
-            <SgButton Size="SgSize.Sm" OnClick="() => ZoomAsync(-4)" Disabled="@(DayWidth <= 12)">
-                <Icon>−</Icon>
-            </SgButton>
-            <span class="sgc-gantt-zoom-label">@Localizer["Scale"]</span>
-            <SgButton Size="SgSize.Sm" OnClick="() => ZoomAsync(4)" Disabled="@(DayWidth >= 64)">
-                <Icon>+</Icon>
-            </SgButton>
-            <div style="width: 1px; height: 24px; background: var(--sui-border); margin: 0 8px;"></div>
-            <SgButton Size="SgSize.Sm" OnClick="ExportToPng" Variant="SgButtonVariant.Ghost">
-                <Icon>📷</Icon>
-            </SgButton>
+    }
+    @if (Loading)
+    {
+        <div class="sgc-gantt-loading">
+            <div class="sgc-spinner"></div>
         </div>
-    </div>
+    }
+    else
+    {
+        <div class="sgc-gantt-toolbar">
+            @if (!ReadOnly)
+            {
+                <div class="sgc-gantt-toolbar-group">
+                    <SgButton Text="@Localizer["NewTask"]" Size="SgSize.Sm" OnClick="OnAddTask">
+                        <Icon>+</Icon>
+                    </SgButton>
+                    <SgButton Text="@Localizer["SaveBaseline"]" Size="SgSize.Sm" OnClick="() => SaveBaseline()" Variant="SgButtonVariant.Ghost" />
+                    <SgButton Text="@Localizer["ClearBaseline"]" Size="SgSize.Sm" OnClick="() => ClearBaseline()" Variant="SgButtonVariant.Ghost" />
+                    <SgButton Text="@Localizer["CalculateCriticalPath"]" Size="SgSize.Sm" OnClick="CalculateCriticalPath" Variant="SgButtonVariant.Ghost" />
+                </div>
+            }
+            <div class="sgc-gantt-toolbar-group">
+                <SgButton Size="SgSize.Sm" OnClick="() => SetView(GanttView.Day)" Variant="@(_currentView == GanttView.Day ? SgButtonVariant.Primary : SgButtonVariant.Ghost)">
+                    @Localizer["Day"]
+                </SgButton>
+                <SgButton Size="SgSize.Sm" OnClick="() => SetView(GanttView.Week)" Variant="@(_currentView == GanttView.Week ? SgButtonVariant.Primary : SgButtonVariant.Ghost)">
+                    @Localizer["Week"]
+                </SgButton>
+                <SgButton Size="SgSize.Sm" OnClick="() => SetView(GanttView.Month)" Variant="@(_currentView == GanttView.Month ? SgButtonVariant.Primary : SgButtonVariant.Ghost)">
+                    @Localizer["Month"]
+                </SgButton>
+                <div style="width: 1px; height: 24px; background: var(--sui-border); margin: 0 8px;"></div>
+                <SgButton Size="SgSize.Sm" OnClick="() => ZoomAsync(-4)" Disabled="@(DayWidth <= 12)">
+                    <Icon>−</Icon>
+                </SgButton>
+                <span class="sgc-gantt-zoom-label">@Localizer["Scale"]</span>
+                <SgButton Size="SgSize.Sm" OnClick="() => ZoomAsync(4)" Disabled="@(DayWidth >= 64)">
+                    <Icon>+</Icon>
+                </SgButton>
+                <div style="width: 1px; height: 24px; background: var(--sui-border); margin: 0 8px;"></div>
+                <SgButton Size="SgSize.Sm" OnClick="ExportToPng" Variant="SgButtonVariant.Ghost">
+                    <Icon>📷</Icon>
+                </SgButton>
+            </div>
+        </div>
 
-    <div class="sgc-gantt" @onpointermove="OnPointerMoveAsync" @onpointerup="OnPointerUpAsync" @onpointerleave="OnPointerUpAsync">
+        <div class="sgc-gantt" @onpointermove="OnPointerMoveAsync" @onpointerup="OnPointerUpAsync" @onpointerleave="OnPointerUpAsync">
         <div class="sgc-gantt-scroll-container">
             <div class="sgc-gantt-header">
                 <div class="sgc-gantt-sidebar-header">@Localizer["Tasks"]</div>
@@ -156,21 +180,27 @@
                                 }
 
                                 <SgTooltip Text="@GetTaskTooltipText(task)" Placement="SgPlacement.Top">
-                                    <div class="sgc-gantt-task-bar @(task.IsMilestone ? "sgc-gantt-milestone" : null) @(_draggingTask == task ? "sgc-dragging" : "")" 
+                                    <div class="sgc-gantt-task-bar @(task.IsMilestone ? "sgc-gantt-milestone" : null) @(_draggingTask == task ? "sgc-dragging" : "") @(ReadOnly ? "sgc-readonly" : "")" 
                                          style="left: @(left)px; width: @(width)px; background-color: @taskBarColor"
-                                         @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.Move))">
+                                         @onpointerdown="@(ReadOnly ? null : e => OnTaskPointerDown(e, task, GanttInteractType.Move))">
                                         @if (!task.IsMilestone)
                                         {
-                                            <div class="sgc-gantt-resize-handle sgc-left" 
-                                                 @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeStart))"
-                                                 @onpointerdown:stopPropagation="true"></div>
+                                            if (!ReadOnly)
+                                            {
+                                                <div class="sgc-gantt-resize-handle sgc-left" 
+                                                     @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeStart))"
+                                                     @onpointerdown:stopPropagation="true"></div>
+                                            }
 
                                             <div class="sgc-gantt-task-progress" style="width: @(task.Progress * 100)%"></div>
                                             <span class="sgc-gantt-task-label">@((task.Progress * 100).ToString("0"))%</span>
 
-                                            <div class="sgc-gantt-resize-handle sgc-right" 
-                                                 @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeEnd))"
-                                                 @onpointerdown:stopPropagation="true"></div>
+                                            if (!ReadOnly)
+                                            {
+                                                <div class="sgc-gantt-resize-handle sgc-right" 
+                                                     @onpointerdown="@(e => OnTaskPointerDown(e, task, GanttInteractType.ResizeEnd))"
+                                                     @onpointerdown:stopPropagation="true"></div>
+                                            }
                                         }
                                         else
                                         {
@@ -184,7 +214,8 @@
                 </div>
             </div>
         </div>
-    </div>
+        </div>
+    }
 </div>
 
 <SgModal @bind-Visible="_editModalVisible" Title="@(_isNewTask ? Localizer["AddTask"] : Localizer["EditTask"])" Width="400px">
@@ -230,7 +261,7 @@
                                   Items="@(_editingTask is null ? [] : Tasks.Where(t => t.Id != _editingTask.Id && !_editingTask.Dependencies.Contains(t.Id)).Select(t => t.Id).ToList())"
                                   LabelSelector="@(id => Tasks.FirstOrDefault(t => t.Id == id)?.Name ?? "")"
                                   ValueChanged="@(id => { if (!string.IsNullOrEmpty(id) && _editingTask != null) _editingTask.Dependencies.Add(id); })"
-                                  Placeholder="Добавить зависимость..." AllowClear="false" />
+                                  Placeholder="@Localizer["AddDependency"]" AllowClear="false" />
                     </div>
                 </div>
             </div>
@@ -247,6 +278,11 @@
     [Parameter] public int DayWidth { get; set; } = 24;
     [Parameter] public EventCallback<List<SgGanttTask>> TasksChanged { get; set; }
     [Parameter] public string? CssClass { get; set; }
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
 
     private DateTime _startDate;
     private DateTime _endDate;
@@ -404,12 +440,12 @@
     {
         try
         {
-            await JS.InvokeVoidAsync("eval", @"
+            await JS.InvokeVoidAsync("eval", $@"
                 const container = document.querySelector('.sgc-gantt-container');
                 if (!container) return;
                 
                 // Simple export using canvas (would need html2canvas for full export)
-                alert('Для полноценного экспорта в PNG рекомендуется подключить библиотеку html2canvas');
+                alert('{Localizer["ExportPngTip"]}');
             ");
         }
         catch { }
@@ -522,7 +558,9 @@
             ParentId = task.ParentId,
             Dependencies = new List<string>(task.Dependencies),
             BaselineStart = task.BaselineStart,
-            BaselineEnd = task.BaselineEnd
+            BaselineEnd = task.BaselineEnd,
+            Description = task.Description,
+            Tag = task.Tag
         };
         _editModalVisible = true;
     }
@@ -530,11 +568,11 @@
     private async Task OnDeleteTask(SgGanttTask task)
     {
         var confirmed = await ConfirmService.ConfirmAsync(
-            message: $"Вы уверены, что хотите удалить задачу \"{task.Name}\"? Это действие нельзя отменить.",
-            title: "Удалить задачу?",
+            message: string.Format(Localizer["DeleteTaskConfirm"], task.Name),
+            title: Localizer["DeleteTaskTitle"],
             variant: SgAlertVariant.Danger,
-            confirmText: "Удалить",
-            cancelText: "Отмена");
+            confirmText: Localizer["Delete"],
+            cancelText: Localizer["Cancel"]);
 
         if (confirmed)
         {
@@ -588,6 +626,8 @@
             _targetTask.Dependencies = new List<string>(_editingTask.Dependencies);
             _targetTask.BaselineStart = _editingTask.BaselineStart;
             _targetTask.BaselineEnd = _editingTask.BaselineEnd;
+            _targetTask.Description = _editingTask.Description;
+            _targetTask.Tag = _editingTask.Tag;
             _posCache.Remove(_targetTask.Id);
         }
 
@@ -604,20 +644,19 @@
     {
         var duration = (task.End - task.Start).Days + 1;
         var tooltip = $"{task.Name}\n";
-        tooltip += $"Начало: {task.Start:dd.MM.yyyy}\n";
-        tooltip += $"Окончание: {task.End:dd.MM.yyyy}\n";
-        tooltip += $"Длительность: {duration} дн.\n";
-        tooltip += $"Прогресс: {(task.Progress * 100):0}%";
+        tooltip += $"{Localizer["Start"]}: {task.Start:dd.MM.yyyy}\n";
+        tooltip += $"{Localizer["End"]}: {task.End:dd.MM.yyyy}\n";
+        tooltip += $"{Localizer["Duration"]}: {duration} {Localizer["Days"]}\n";
+        tooltip += $"{Localizer["Progress"]}: {(task.Progress * 100):0}%";
         
         if (task.BaselineStart.HasValue && task.BaselineEnd.HasValue)
         {
-            var baselineDuration = (task.BaselineEnd.Value - task.BaselineStart.Value).Days + 1;
-            tooltip += $"\nБазовый план: {task.BaselineStart.Value:dd.MM.yyyy} - {task.BaselineEnd.Value:dd.MM.yyyy}";
+            tooltip += $"\n{Localizer["Baseline"]}: {task.BaselineStart.Value:dd.MM.yyyy} - {task.BaselineEnd.Value:dd.MM.yyyy}";
         }
         
         if (task.IsCritical)
         {
-            tooltip += "\n⚠️ Критический путь";
+            tooltip += $"\n⚠️ {Localizer["CriticalPath"]}";
         }
         
         return tooltip;
@@ -697,14 +736,17 @@
             {
                 <span class="sgc-gantt-task-badge">Milestone</span>
             }
-            <div class="sgc-gantt-task-actions">
-                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnEditTask(task)">
-                    <Icon>✎</Icon>
-                </SgButton>
-                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnDeleteTask(task)">
-                    <Icon>✕</Icon>
-                </SgButton>
-            </div>
+            @if (!ReadOnly)
+            {
+                <div class="sgc-gantt-task-actions">
+                    <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnEditTask(task)">
+                        <Icon>✎</Icon>
+                    </SgButton>
+                    <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnDeleteTask(task)">
+                        <Icon>✕</Icon>
+                    </SgButton>
+                </div>
+            }
         </div>
 
         if (hasChildren && task.Expanded)

@@ -27,4 +27,14 @@ public class SgGanttTask
     /// Indicates if the task is on the critical path.
     /// </summary>
     public bool IsCritical { get; set; }
+
+    /// <summary>
+    /// Task description.
+    /// </summary>
+    public string? Description { get; set; }
+
+    /// <summary>
+    /// Custom tag object.
+    /// </summary>
+    public object? Tag { get; set; }
 }
