@@ -1,14 +1,15 @@
 @namespace SuperUI.Components
 @inherits SgInputBase<string>
+@inject IJSRuntime JS
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
-    <div class="sgc-input-wrap">
+    <div class="sgc-input-wrap sgc-textarea-wrap">
         <textarea id="@_id"
-                  class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "") @(AutoResize ? "sgc-auto-resize" : "")"
+                  class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "") @(AutoResize ? "sgc-auto-resize" : "") sgc-resize-@ResizeClass"
                   rows="@Rows"
                   placeholder="@Placeholder"
                   disabled="@Disabled"
@@ -21,16 +22,21 @@
                   value="@Value"
                   @oninput="OnInputAsync"
                   @onchange="OnChangeAsync"
+                  @ref="_textareaRef"
                   @attributes="AdditionalAttributes"></textarea>
         @if (ShowClearButton && !string.IsNullOrEmpty(Value))
         {
-            <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="Clear">×</button>
+            <button type="button" class="sgc-textarea-clear" @onclick="ClearAsync" aria-label="Clear" tabindex="-1">
+                <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
+                    <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+                </svg>
+            </button>
+        }
+        @if (ShowCounter && MaxLength.HasValue)
+        {
+            <span class="sgc-textarea-counter">@(Value?.Length ?? 0)<span class="sgc-textarea-counter-max"> / @MaxLength</span></span>
         }
     </div>
-    @if (ShowCounter && MaxLength.HasValue)
-    {
-        <span class="sgc-input-counter">@(Value?.Length ?? 0) / @MaxLength</span>
-    }
     @if (IsInvalid)
     {
         <span id="@_errorId" class="sgc-error">@DisplayedError</span>
@@ -45,6 +51,9 @@
     private readonly string _id = "sg-ta-" + Guid.NewGuid().ToString("N")[..8];
     private string _hintId => _id + "-hint";
     private string _errorId => _id + "-err";
+    private ElementReference _textareaRef;
+    private IJSObjectReference? _module;
+    private bool _isDisposed;
 
     [Parameter] public string? Label { get; set; }
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
@@ -62,7 +71,16 @@
     [Parameter] public bool ShowClearButton { get; set; }
     [Parameter] public bool ShowCounter { get; set; }
     [Parameter] public int Rows { get; set; } = 3;
+
+    /// <summary>Maximum number of visible rows when <see cref="AutoResize"/> is true. 0 = unlimited.</summary>
+    [Parameter] public int MaxRows { get; set; }
+
+    /// <summary>Automatically grow the textarea to fit content.</summary>
     [Parameter] public bool AutoResize { get; set; }
+
+    /// <summary>Controls the resize handle direction. Default is Vertical.</summary>
+    [Parameter] public SgTextResize Resize { get; set; } = SgTextResize.Vertical;
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private CancellationTokenSource? _debounceCts;
@@ -70,6 +88,33 @@
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string ResizeClass => AutoResize ? "none" : Resize switch
+    {
+        SgTextResize.None       => "none",
+        SgTextResize.Horizontal => "horizontal",
+        SgTextResize.Both       => "both",
+        _                       => "vertical"
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoResize)
+            await CallAutoResizeAsync();
+    }
+
+    private async Task CallAutoResizeAsync()
+    {
+        if (_isDisposed) return;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+            if (_isDisposed) return;
+            await _module.InvokeVoidAsync("autoResizeTextarea", _textareaRef, Rows, MaxRows);
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+    }
 
     private void OnInputAsync(ChangeEventArgs e)
     {
@@ -85,7 +130,11 @@
                 try
                 {
                     await Task.Delay(Debounce, token);
-                    await InvokeAsync(() => CommitAsync(raw));
+                    await InvokeAsync(async () =>
+                    {
+                        await CommitAsync(raw);
+                        if (AutoResize) await CallAutoResizeAsync();
+                    });
                 }
                 catch (TaskCanceledException) { }
             });
@@ -93,6 +142,7 @@
         else if (Immediate)
         {
             _ = SafeCommitAsync(e.Value?.ToString());
+            if (AutoResize) _ = CallAutoResizeAsync();
         }
     }
 
@@ -109,6 +159,7 @@
 
     public override void Dispose()
     {
+        _isDisposed = true;
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
         base.Dispose();

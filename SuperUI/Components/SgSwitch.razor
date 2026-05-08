@@ -1,49 +1,91 @@
 @namespace SuperUI.Components
 @inherits SgInputBase<bool>
 
-<label class="sgc-check @(Disabled ? "sgc-disabled" : "") @CssClass">
-    <span class="sgc-switch">
-        <input type="checkbox"
-               role="switch"
-               checked="@Value"
-               disabled="@Disabled"
-               aria-checked="@Value.ToString().ToLowerInvariant()"
-               aria-invalid="@(HasValidationErrors ? "true" : null)"
-               @onchange="OnChangeAsync"
-               @attributes="AdditionalAttributes" />
-        <span class="sgc-switch-slider"></span>
-    </span>
-    @if (ChildContent is not null) { @ChildContent }
-    else if (!string.IsNullOrEmpty(Label)) { <span>@Label</span> }
-</label>
+<div class="sgc-check-field @(Block ? "sgc-block" : "") @CssClass">
+    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-check-invalid" : "")">
+        <span class="sgc-switch @SwitchSizeClass">
+            <input type="checkbox"
+                   role="switch"
+                   checked="@Value"
+                   disabled="@Disabled"
+                   aria-checked="@Value.ToString().ToLowerInvariant()"
+                   aria-invalid="@(IsInvalid ? "true" : null)"
+                   aria-describedby="@DescribedBy"
+                   @onchange="OnChangeAsync"
+                   @attributes="AdditionalAttributes" />
+            <span class="sgc-switch-slider"></span>
+        </span>
+        @if (!string.IsNullOrEmpty(OnLabel) || !string.IsNullOrEmpty(OffLabel))
+        {
+            <span class="sgc-switch-label sgc-switch-label-on">@OnLabel</span>
+            <span class="sgc-switch-label sgc-switch-label-off">@OffLabel</span>
+        }
+        else if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else if (!string.IsNullOrEmpty(Label))
+        {
+            <span>@Label</span>
+        }
+    </label>
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@(!string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault())</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
+    }
+</div>
 
 @code {
-    /// <summary>
-    /// Gets or sets the label text displayed next to the switch.
-    /// Ignored if <see cref="ChildContent"/> is provided.
-    /// </summary>
+    private readonly string _id = "sg-sw-" + Guid.NewGuid().ToString("N")[..8];
+    private string _hintId => _id + "-hint";
+    private string _errorId => _id + "-err";
+
+    /// <summary>Label text displayed next to the switch. Ignored if <see cref="ChildContent"/> or On/OffLabel are set.</summary>
     [Parameter] public string? Label { get; set; }
-    
-    /// <summary>
-    /// Gets or sets custom content to render next to the switch.
-    /// Takes precedence over <see cref="Label"/>.
-    /// </summary>
+
+    /// <summary>Label shown when switch is ON. When set, takes precedence over <see cref="Label"/>.</summary>
+    [Parameter] public string? OnLabel { get; set; }
+
+    /// <summary>Label shown when switch is OFF. When set, takes precedence over <see cref="Label"/>.</summary>
+    [Parameter] public string? OffLabel { get; set; }
+
+    /// <summary>Hint text displayed below the switch.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Override error text displayed below the switch. Takes precedence over EditContext validation messages.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Custom content to render next to the switch. Takes precedence over <see cref="Label"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the switch is disabled.
-    /// </summary>
+
+    /// <summary>Whether the switch is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the switch label.
-    /// </summary>
+
+    /// <summary>Expand to full width of the container.</summary>
+    [Parameter] public bool Block { get; set; }
+
+    /// <summary>Size of the switch: Sm, Md (default), Lg.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Additional CSS class names applied to the outer field element.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the input element.
-    /// </summary>
+    /// <summary>Additional HTML attributes applied to the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool IsInvalid => HasValidationErrors || !string.IsNullOrEmpty(ErrorText);
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string SwitchSizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-switch-sm",
+        SgSize.Lg => "sgc-switch-lg",
+        _         => ""
+    };
 
     private Task OnChangeAsync(ChangeEventArgs e) => SetValueAsync(e.Value is true);
 }

@@ -2,6 +2,39 @@ export function setIndeterminate(el, value) {
     if (el) el.indeterminate = value;
 }
 
+/**
+ * Auto-resize a textarea to fit its content.
+ * @param {HTMLTextAreaElement} el - The textarea element
+ * @param {number} minRows - Minimum number of rows
+ * @param {number} maxRows - Maximum number of rows (0 = unlimited)
+ */
+export function autoResizeTextarea(el, minRows, maxRows) {
+    if (!el) return;
+    const style = getComputedStyle(el);
+    const lineHeight = parseFloat(style.lineHeight) || 18;
+    const paddingTop = parseFloat(style.paddingTop) || 6;
+    const paddingBottom = parseFloat(style.paddingBottom) || 6;
+    const minH = (minRows || 1) * lineHeight + paddingTop + paddingBottom;
+    el.style.height = 'auto';
+    let newH = Math.max(el.scrollHeight, minH);
+    if (maxRows > 0) {
+        const maxH = maxRows * lineHeight + paddingTop + paddingBottom;
+        newH = Math.min(newH, maxH);
+        el.style.overflowY = el.scrollHeight > maxH ? 'auto' : 'hidden';
+    } else {
+        el.style.overflowY = 'hidden';
+    }
+    el.style.height = newH + 'px';
+}
+
+/**
+ * Copy text to the clipboard.
+ * @param {string} text
+ */
+export function copyToClipboard(text) {
+    return navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.resolve();
+}
+
 export function init(dotnetRef, gridRoot) {
     if (!gridRoot) return;
     

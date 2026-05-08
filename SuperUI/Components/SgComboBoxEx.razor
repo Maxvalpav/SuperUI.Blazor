@@ -10,7 +10,7 @@
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "")"
+    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
@@ -125,13 +125,19 @@
             </div>
         }
     </div>
-    @if (!string.IsNullOrEmpty(Hint))
+    @if (IsInvalid)
     {
-        <span class="sgc-hint">@Hint</span>
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
+    private readonly string _hintId = "sg-cbex-hint-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-cbex-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private string _search = string.Empty;
     private int _activeIndex = -1;
@@ -150,6 +156,7 @@
     [Parameter] public string? Label { get; set; }
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
     [Parameter] public string? Hint { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
     [Parameter] public bool AllowClear { get; set; } = true;
     [Parameter] public bool Editable { get; set; } = true;
     [Parameter] public bool Required { get; set; }
@@ -161,6 +168,9 @@
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
     private string ClearLabel => Localizer["Clear"];
     private string LabelFrom(TItem item) => LabelSelector(item);
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText);
+    private string? DisplayedError => ErrorText;
 
     private TItem? GetSelectedItem()
     {

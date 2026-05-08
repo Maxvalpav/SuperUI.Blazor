@@ -5,134 +5,134 @@
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label id="@_labelId" class="sgc-label">@Label</label>
+        <div class="sgc-slider-header">
+            <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+            @if (ShowValue)
+            {
+                <span class="sgc-slider-value-badge">@ValueAsDouble@Suffix</span>
+            }
+        </div>
     }
     <div class="sgc-slider-wrap">
         <input id="@_sliderId"
                type="range"
-               class="sgc-slider @(HasValidationErrors ? "sgc-invalid" : "")"
+               class="sgc-slider @(IsInvalid ? "sgc-invalid" : "")"
                role="slider"
                min="@Min"
                max="@Max"
                step="@Step"
                value="@ValueAsDouble"
                disabled="@Disabled"
+               style="--sgc-slider-pct: @FillPercent%"
                aria-labelledby="@_labelId"
                aria-valuemin="@Min"
                aria-valuemax="@Max"
                aria-valuenow="@ValueAsDouble"
                aria-orientation="horizontal"
-               aria-invalid="@(HasValidationErrors ? "true" : null)"
+               aria-required="@(Required ? "true" : null)"
+               aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy"
                @oninput="OnInputAsync"
                @onkeydown="OnKeyDownAsync"
                @attributes="AdditionalAttributes" />
-        @if (ShowValue)
+        @if (ShowValue && string.IsNullOrEmpty(Label))
         {
             <span class="sgc-slider-value">@ValueAsDouble@Suffix</span>
         }
     </div>
-    @if (HasValidationErrors)
+    @if (IsInvalid)
     {
-        <span id="@_errorId" class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
+        <span id="@_errorId" class="sgc-error">@(string.IsNullOrEmpty(ErrorText) ? ValidationMessages.FirstOrDefault() : ErrorText)</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
     private readonly string _labelId = "sg-slider-label-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _sliderId = "sg-slider-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _hintId = "sg-slider-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-slider-err-" + Guid.NewGuid().ToString("N")[..8];
 
-    /// <summary>
-    /// Gets or sets the minimum value of the slider. Default is 0.
-    /// </summary>
+    /// <summary>Gets or sets the minimum value of the slider. Default is 0.</summary>
     [Parameter] public double Min { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the maximum value of the slider. Default is 100.
-    /// </summary>
+
+    /// <summary>Gets or sets the maximum value of the slider. Default is 100.</summary>
     [Parameter] public double Max { get; set; } = 100;
-    
-    /// <summary>
-    /// Gets or sets the step increment. Default is 1.
-    /// </summary>
+
+    /// <summary>Gets or sets the step increment. Default is 1.</summary>
     [Parameter] public double Step { get; set; } = 1;
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the slider.
-    /// </summary>
+
+    /// <summary>Gets or sets the label text displayed above the slider.</summary>
     [Parameter] public string? Label { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the suffix text displayed after the value (e.g., "%", "px").
-    /// </summary>
+
+    /// <summary>Gets or sets the suffix text displayed after the value (e.g., "%", "px").</summary>
     [Parameter] public string? Suffix { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether to display the current value next to the slider. Default is true.
-    /// </summary>
+
+    /// <summary>Gets or sets the hint text displayed below the slider.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Override error text. Takes precedence over EditContext validation messages.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Gets or sets whether to display the current value. Default is true.</summary>
     [Parameter] public bool ShowValue { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether the slider is disabled.
-    /// </summary>
+
+    /// <summary>Mark the slider as required.</summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Gets or sets whether the slider is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the slider should take full width of its container. Default is true.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the slider should take full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
+
+    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the input element.
-    /// </summary>
+    /// <summary>Gets or sets additional HTML attributes to apply to the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private double ValueAsDouble => Value is not null ? Convert.ToDouble(Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
-    private string? DescribedBy => HasValidationErrors ? _errorId : null;
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+    private double ValueAsDouble => Value is not null ? Convert.ToDouble(Value, System.Globalization.CultureInfo.InvariantCulture) : Min;
+
+    private string FillPercent
+    {
+        get
+        {
+            var range = Max - Min;
+            if (range <= 0) return "0";
+            var pct = (ValueAsDouble - Min) / range * 100;
+            return Math.Clamp(pct, 0, 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+        }
+    }
 
     private async Task OnInputAsync(ChangeEventArgs e)
     {
         if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
-        {
-            var typedValue = ConvertValue<TValue>(v);
-            await SetValueAsync(typedValue);
-        }
+            await SetValueAsync(ConvertValue<TValue>(v));
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (Disabled) return;
-
         double newValue = ValueAsDouble;
 
         switch (e.Key)
         {
-            case "Home":
-                newValue = Min;
-                break;
-            case "End":
-                newValue = Max;
-                break;
+            case "Home":     newValue = Min; break;
+            case "End":      newValue = Max; break;
             case "ArrowRight":
-            case "ArrowUp":
-                newValue = Math.Min(ValueAsDouble + Step, Max);
-                break;
+            case "ArrowUp":  newValue = Math.Min(ValueAsDouble + Step, Max); break;
             case "ArrowLeft":
-            case "ArrowDown":
-                newValue = Math.Max(ValueAsDouble - Step, Min);
-                break;
-            default:
-                return;
+            case "ArrowDown": newValue = Math.Max(ValueAsDouble - Step, Min); break;
+            default: return;
         }
 
-        var typedValue = ConvertValue<TValue>(newValue);
-        await SetValueAsync(typedValue);
+        await SetValueAsync(ConvertValue<TValue>(newValue));
     }
 
     private static T ConvertValue<T>(double value)

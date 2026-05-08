@@ -1,98 +1,171 @@
 @namespace SuperUI.Components
 @inherits SgInputBase<string>
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-color-picker @(Disabled ? "sgc-disabled" : "") @(HasValidationErrors ? "sgc-invalid" : "")">
+    <div class="sgc-color-picker @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")">
         <input id="@_colorInputId"
-               type="color" 
-               class="sgc-color-input" 
-               value="@Value" 
-               @onchange="OnColorChange" 
+               type="color"
+               class="sgc-color-input"
+               value="@Value"
+               @onchange="OnColorChange"
                disabled="@Disabled"
                aria-labelledby="@(!string.IsNullOrEmpty(Label) ? _labelId : null)"
                aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["ColorPicker_Color"] : null)"
-               aria-invalid="@(HasValidationErrors ? "true" : null)"
+               aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy"
                @attributes="AdditionalAttributes" />
-        <input type="text" 
-               class="sgc-color-hex" 
-               value="@Value" 
-               @onchange="OnTextChange" 
+        <input type="text"
+               class="sgc-color-hex"
+               value="@Value"
+               @onchange="OnTextChange"
                disabled="@Disabled"
                placeholder="#000000"
+               maxlength="7"
+               spellcheck="false"
                aria-labelledby="@(!string.IsNullOrEmpty(Label) ? _labelId : null)"
                aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["ColorPicker_HexCode"] : null)"
-               aria-invalid="@(HasValidationErrors ? "true" : null)"
+               aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy" />
+        @if (!string.IsNullOrEmpty(Value) && !Disabled)
+        {
+            <button type="button"
+                    class="sgc-color-copy @(_copied ? "sgc-color-copied" : "")"
+                    @onclick="CopyHexAsync"
+                    aria-label="@Localizer["CopyToClipboard"]"
+                    title="@(_copied ? Localizer["Copied"] : Localizer["CopyToClipboard"])">
+                @if (_copied)
+                {
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
+                        <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0z"/>
+                    </svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true">
+                        <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25v-7.5zM5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25v-7.5zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25h-7.5z"/>
+                    </svg>
+                }
+            </button>
+        }
     </div>
-    @if (HasValidationErrors)
+    @if (Swatches is not null && Swatches.Any() && !Disabled)
     {
-        <span id="@_errorId" class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
+        <div class="sgc-color-swatches" role="group" aria-label="Color swatches">
+            @foreach (var swatch in Swatches)
+            {
+                var sw = swatch;
+                <button type="button"
+                        class="sgc-color-swatch @(sw.Equals(Value, StringComparison.OrdinalIgnoreCase) ? "sgc-selected" : "")"
+                        style="background: @sw"
+                        title="@sw"
+                        aria-label="@sw"
+                        aria-pressed="@(sw.Equals(Value, StringComparison.OrdinalIgnoreCase) ? "true" : "false")"
+                        @onclick="() => SelectSwatchAsync(sw)">
+                </button>
+            }
+        </div>
+    }
+    @if (IsInvalid)
+    {
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
     private readonly string _labelId = "sg-color-label-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _colorInputId = "sg-color-input-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _hintId = "sg-color-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-color-err-" + Guid.NewGuid().ToString("N")[..8];
+    private bool _copied;
+    private CancellationTokenSource? _copiedCts;
+    private IJSObjectReference? _module;
 
-    /// <summary>
-    /// Gets or sets the label text displayed above the color picker.
-    /// </summary>
+    /// <summary>Gets or sets the label text displayed above the color picker.</summary>
     [Parameter] public string? Label { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether a color selection is required.
-    /// </summary>
+
+    /// <summary>Hint text displayed below the color picker.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Override error text. Takes precedence over EditContext validation messages.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Optional list of preset color swatches (hex strings like "#ff0000").</summary>
+    [Parameter] public IEnumerable<string>? Swatches { get; set; }
+
+    /// <summary>Gets or sets whether a color selection is required.</summary>
     [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the color picker is disabled.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the color picker is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the color picker should take full width of its container. Default is true.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the color picker should take full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
+
+    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the color input element.
-    /// </summary>
+    /// <summary>Gets or sets additional HTML attributes to apply to the color input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string? DescribedBy => HasValidationErrors ? _errorId : null;
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
 
     private async Task OnColorChange(ChangeEventArgs e)
     {
-        var val = e.Value?.ToString();
-        await SetValueAsync(val);
+        await SetValueAsync(e.Value?.ToString());
     }
 
     private async Task OnTextChange(ChangeEventArgs e)
     {
-        var val = e.Value?.ToString();
-        if (string.IsNullOrEmpty(val))
-        {
-            await SetValueAsync(null);
-            return;
-        }
-        
-        if (!val.StartsWith("#")) val = "#" + val;
-        // Simple validation for hex color
+        var val = e.Value?.ToString()?.Trim();
+        if (string.IsNullOrEmpty(val)) { await SetValueAsync(null); return; }
+        if (!val.StartsWith('#')) val = "#" + val;
         if (System.Text.RegularExpressions.Regex.IsMatch(val, "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"))
-        {
             await SetValueAsync(val);
+    }
+
+    private Task SelectSwatchAsync(string color) => SetValueAsync(color);
+
+    private async Task CopyHexAsync()
+    {
+        if (string.IsNullOrEmpty(Value)) return;
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+            await _module.InvokeVoidAsync("copyToClipboard", Value);
+            _copied = true;
+            _copiedCts?.Cancel();
+            _copiedCts = new CancellationTokenSource();
+            var token = _copiedCts.Token;
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(1800, token);
+                    _copied = false;
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (TaskCanceledException) { }
+            });
         }
+        catch { }
+    }
+
+    public override void Dispose()
+    {
+        _copiedCts?.Cancel();
+        _copiedCts?.Dispose();
+        base.Dispose();
     }
 }
