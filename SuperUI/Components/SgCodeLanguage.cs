@@ -1,7 +1,7 @@
 namespace SuperUI.Components;
 
 /// <summary>
-/// Defines the language hint for syntax highlighting in <see cref="SgCode"/>.
+/// Defines the language hint for syntax highlighting.
 /// </summary>
 public enum SgCodeLanguage
 {
