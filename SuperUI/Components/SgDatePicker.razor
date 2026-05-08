@@ -37,17 +37,27 @@
                         aria-label="@ClearLabel"
                         title="@ClearLabel"
                         @onclick:stopPropagation="true"
-                        @onclick="ClearAsync">×</button>
+                        @onclick="ClearAsync">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
+                        <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+                    </svg>
+                </button>
             }
-            <span class="sgc-combo-caret" aria-hidden="true">📅</span>
+            <span class="sgc-date-caret" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                    <path d="M11 1a1 1 0 0 0-1 1v1H6V2a1 1 0 0 0-2 0v1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-1V2a1 1 0 0 0-1-1zM3 6h10v7H3V6z"/>
+                </svg>
+            </span>
         </div>
         @if (_open)
         {
-            <div id="@_popupId" class="sgc-date-popup" role="dialog" aria-modal="false">
+            <div id="@_popupId" class="sgc-date-popup" role="dialog" aria-modal="false" aria-label="@Localizer["SelectDate"]">
                 <div class="sgc-date-head">
-                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)">‹</button>
+                    <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(-1)" title="@Localizer["Previous"] year">«</button>
+                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)" title="@Localizer["Previous"]">‹</button>
                     <span class="sgc-date-title">@_view.ToString("MMMM yyyy", System.Globalization.CultureInfo.CurrentCulture)</span>
-                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)">›</button>
+                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)" title="@Localizer["Next"]">›</button>
+                    <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(1)" title="@Localizer["Next"] year">»</button>
                 </div>
                 <div class="sgc-date-grid">
                     @for (var i = 0; i < 7; i++)
@@ -61,16 +71,20 @@
                         var inMonth = dl.Month == _view.Month;
                         var isToday = dl.Date == DateTime.Today;
                         var isSel = Value.HasValue && dl.Date == Value.Value.Date;
-                        <div class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isSel ? "sgc-selected" : "")"
-                             @onclick="() => PickAsync(dl)">@dl.Day</div>
+                        var isDisabled = IsDateDisabled(dl);
+                        <div class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isSel ? "sgc-selected" : "") @(isDisabled ? "sgc-date-disabled" : "")"
+                             role="button"
+                             aria-disabled="@(isDisabled ? "true" : null)"
+                             aria-selected="@(isSel ? "true" : null)"
+                             @onclick="() => { if (!isDisabled) _ = PickAsync(dl); }">@dl.Day</div>
                     }
                 </div>
                 <div class="sgc-date-foot">
-<button class="sgc-btn sgc-sm" type="button" @onclick="TodayAsync">@Localizer["DateToday"]</button>
-                     @if (AllowClear)
-                     {
-                         <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@Localizer["Clear"]</button>
-                     }
+                    <button class="sgc-btn sgc-sm" type="button" @onclick="TodayAsync">@Localizer["Today"]</button>
+                    @if (AllowClear)
+                    {
+                        <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@Localizer["Clear"]</button>
+                    }
                 </div>
             </div>
         }
@@ -96,94 +110,65 @@
     private CancellationTokenSource? _blurCts;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the expression that identifies the bound value for EditContext validation.
-    /// </summary>
+
+    /// <summary>Expression that identifies the bound value for EditContext validation.</summary>
     [Parameter] public Expression<Func<DateTime?>>? ValueExpression { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the currently selected date.
-    /// </summary>
+
+    /// <summary>Gets or sets the currently selected date.</summary>
     [Parameter] public DateTime? Value { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the selected date changes.
-    /// </summary>
+
+    /// <summary>Gets or sets the callback invoked when the selected date changes.</summary>
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the date format string. Default is "d" (short date pattern).
-    /// </summary>
+
+    /// <summary>Gets or sets the date format string. Default is "d" (short date pattern).</summary>
     [Parameter] public string Format { get; set; } = "d";
-    
-    /// <summary>
-    /// Gets or sets the placeholder text shown when no date is selected.
-    /// </summary>
+
+    /// <summary>Gets or sets the placeholder text shown when no date is selected.</summary>
     [Parameter] public string? Placeholder { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the date picker.
-    /// </summary>
+
+    /// <summary>Gets or sets the label text displayed above the date picker.</summary>
     [Parameter] public string? Label { get; set; }
 
-    /// <summary>
-    /// Gets or sets the position of the label. Default is Top.
-    /// </summary>
+    /// <summary>Gets or sets the position of the label. Default is Top.</summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the date picker.
-    /// </summary>
+
+    /// <summary>Gets or sets the hint text displayed below the date picker.</summary>
     [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
+
+    /// <summary>Gets or sets the error text to display.</summary>
     [Parameter] public string? ErrorText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether a clear button is shown when a date is selected. Default is true.
-    /// </summary>
+
+    /// <summary>Gets or sets whether a clear button is shown when a date is selected. Default is true.</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether the date picker is required.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the date picker is required.</summary>
     [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the date picker is disabled.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the date picker is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the date picker should take full width of its container. Default is true.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the date picker should take full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets the minimum selectable date.
-    /// </summary>
+
+    /// <summary>Gets or sets the minimum selectable date.</summary>
     [Parameter] public DateTime? Min { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the maximum selectable date.
-    /// </summary>
+
+    /// <summary>Gets or sets the maximum selectable date.</summary>
     [Parameter] public DateTime? Max { get; set; }
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
+
+    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
     private string ClearLabel => Localizer["Clear"];
-
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
-        ? ErrorText 
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
+        ? ErrorText
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private bool IsDateDisabled(DateTime d) =>
+        (Min.HasValue && d.Date < Min.Value.Date) ||
+        (Max.HasValue && d.Date > Max.Value.Date);
 
     protected override void OnInitialized()
     {
@@ -219,6 +204,7 @@
     }
 
     private void Shift(int months) => _view = _view.AddMonths(months);
+    private void ShiftYear(int years) => _view = _view.AddYears(years);
 
     private IEnumerable<DateTime> BuildGrid()
     {
@@ -231,8 +217,7 @@
 
     private async Task PickAsync(DateTime d)
     {
-        if (Min.HasValue && d.Date < Min.Value.Date) return;
-        if (Max.HasValue && d.Date > Max.Value.Date) return;
+        if (IsDateDisabled(d)) return;
         _open = false;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(d.Date);
         _binder?.NotifyFieldChanged();
@@ -255,4 +240,3 @@
         _binder?.Dispose();
     }
 }
-

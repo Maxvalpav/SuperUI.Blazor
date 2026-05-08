@@ -9,7 +9,7 @@
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "")"
+    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
          tabindex="0"
          @onfocusout="HandleFocusOutAsync"
          @onclick:stopPropagation="true">
@@ -121,13 +121,19 @@
             </div>
         }
     </div>
-    @if (!string.IsNullOrEmpty(Hint))
+    @if (IsInvalid)
     {
-        <span class="sgc-hint">@Hint</span>
+        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+    }
+    else if (!string.IsNullOrEmpty(Hint))
+    {
+        <span id="@_hintId" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
+    private readonly string _hintId = "sg-msex-hint-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-msex-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private string _search = string.Empty;
 
@@ -200,6 +206,11 @@
     /// Gets or sets the hint text displayed below the multi-select.
     /// </summary>
     [Parameter] public string? Hint { get; set; }
+
+    /// <summary>
+    /// Gets or sets the error text to display below the multi-select.
+    /// </summary>
+    [Parameter] public string? ErrorText { get; set; }
     
     /// <summary>
     /// Gets or sets whether the field is marked as required with a visual indicator.
@@ -224,6 +235,9 @@
 
     private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText);
+    private string? DisplayedError => ErrorText;
 
     private string LabelFrom(TItem item) => LabelSelector(item);
 

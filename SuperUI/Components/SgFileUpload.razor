@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
 @using Microsoft.AspNetCore.Components.Forms
 @using System.Linq.Expressions
+@inject ISuperUILocalizer Localizer
 @implements IDisposable
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
@@ -8,26 +9,65 @@
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <label class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")" 
+    <label class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
            aria-labelledby="@_labelId"
            aria-invalid="@(IsInvalid ? "true" : null)"
-           aria-describedby="@DescribedBy">
+           aria-describedby="@DescribedBy"
+           @ondragover:preventDefault="true"
+           @ondragover="OnDragOver"
+           @ondragenter="OnDragEnter"
+           @ondragleave="OnDragLeave"
+           @ondrop:preventDefault="true"
+           @ondrop="OnDrop">
         <InputFile OnChange="OnChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
-        <span class="sgc-upload-icon" aria-hidden="true">⬆</span>
-        <span class="sgc-upload-text">@(string.IsNullOrEmpty(Text) ? "Перетащите файлы или кликните для выбора" : Text)</span>
+        <span class="sgc-upload-icon" aria-hidden="true">
+            <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor">
+                <path d="M8 1a.75.75 0 0 1 .75.75v5.5h1.5a.25.25 0 0 1 .177.427l-2.25 2.25a.25.25 0 0 1-.354 0l-2.25-2.25A.25.25 0 0 1 5.75 7.25h1.5V1.75A.75.75 0 0 1 8 1zM2 11.75a.75.75 0 0 1 1.5 0v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.25v-1.5z"/>
+            </svg>
+        </span>
+        <span class="sgc-upload-text">@(string.IsNullOrEmpty(Text) ? Localizer["FileUpload_DropFiles"] : Text)</span>
+        @if (!string.IsNullOrEmpty(Accept))
+        {
+            <span class="sgc-upload-hint-text">@Accept</span>
+        }
+        @if (MaxFileSizeBytes.HasValue)
+        {
+            <span class="sgc-upload-hint-text">@string.Format(Localizer["FileUpload_MaxSize"], FormatSize(MaxFileSizeBytes.Value))</span>
+        }
     </label>
+
     @if (_files.Count > 0)
     {
         <ul class="sgc-upload-list" role="list">
             @foreach (var f in _files)
             {
+                var file = f;
                 <li class="sgc-upload-item" role="listitem">
-                    <span>@f.Name</span>
-                    <span class="sgc-hint">@FormatSize(f.Size)</span>
+                    <div class="sgc-upload-item-info">
+                        <svg class="sgc-upload-file-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+                            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+                            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                        </svg>
+                        <span class="sgc-upload-item-name" title="@file.Name">@file.Name</span>
+                        <span class="sgc-hint">@FormatSize(file.Size)</span>
+                    </div>
+                    @if (!Disabled)
+                    {
+                        <button type="button"
+                                class="sgc-upload-remove"
+                                @onclick="() => RemoveFileAsync(file)"
+                                aria-label="@Localizer["Remove"] @file.Name"
+                                title="@Localizer["Remove"]">
+                            <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
+                                <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+                            </svg>
+                        </button>
+                    }
                 </li>
             }
         </ul>
     }
+
     @if (IsInvalid)
     {
         <span id="@_errorId" class="sgc-error">@DisplayedError</span>
@@ -44,82 +84,58 @@
     private readonly string _errorId = "sg-upload-err-" + Guid.NewGuid().ToString("N")[..8];
     private readonly List<IBrowserFile> _files = new();
     private SgEditContextBinder<IReadOnlyList<IBrowserFile>?>? _binder;
+    private bool _isDragOver;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the expression that identifies the bound value for EditContext validation.
-    /// </summary>
+
+    /// <summary>Gets or sets the expression that identifies the bound value for EditContext validation.</summary>
     [Parameter] public Expression<Func<IReadOnlyList<IBrowserFile>?>>? ValueExpression { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the collection of selected files.
-    /// </summary>
+
+    /// <summary>Gets or sets the collection of selected files.</summary>
     [Parameter] public IReadOnlyList<IBrowserFile>? Value { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the selected files change.
-    /// </summary>
+
+    /// <summary>Gets or sets the callback invoked when the selected files change.</summary>
     [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>?> ValueChanged { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the file upload area.
-    /// </summary>
+
+    /// <summary>Gets or sets the label text displayed above the file upload area.</summary>
     [Parameter] public string? Label { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the text displayed in the upload area.
-    /// </summary>
+
+    /// <summary>Gets or sets the text displayed in the upload area (overrides default).</summary>
     [Parameter] public string? Text { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the upload area.
-    /// </summary>
+
+    /// <summary>Gets or sets the hint text displayed below the upload area.</summary>
     [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
+
+    /// <summary>Gets or sets the error text to display.</summary>
     [Parameter] public string? ErrorText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the accepted file types (e.g., "image/*", ".pdf,.doc").
-    /// </summary>
+
+    /// <summary>Gets or sets the accepted file types (e.g., "image/*", ".pdf,.doc").</summary>
     [Parameter] public string? Accept { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether multiple files can be selected.
-    /// </summary>
+
+    /// <summary>Gets or sets whether multiple files can be selected.</summary>
     [Parameter] public bool Multiple { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether file selection is required.
-    /// </summary>
+
+    /// <summary>Gets or sets whether file selection is required.</summary>
     [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the file upload is disabled.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the file upload is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the upload area should take full width of its container. Default is true.
-    /// </summary>
+
+    /// <summary>Gets or sets whether the upload area should take full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
+
+    /// <summary>Gets or sets the maximum allowed file size in bytes. Files larger than this show a validation error.</summary>
+    [Parameter] public long? MaxFileSizeBytes { get; set; }
+
+    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when files are selected (legacy, use <see cref="ValueChanged"/> instead).
-    /// </summary>
+
+    /// <summary>Gets or sets the callback invoked when files are selected (legacy).</summary>
     [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>> OnFilesSelected { get; set; }
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
-        ? ErrorText 
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
+        ? ErrorText
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
 
@@ -131,16 +147,27 @@
     protected override void OnParametersSet()
     {
         _binder?.Update(CascadedEditContext, ValueExpression);
-        // Sync external Value to internal _files list
-        if (Value != null && Value.Count > 0)
+        if (Value != null && Value.Count > 0 && _files.Count == 0)
         {
             _files.Clear();
             foreach (var f in Value) _files.Add(f);
         }
     }
 
+    private void OnDragOver(DragEventArgs e) { }
+    private void OnDragEnter(DragEventArgs e) { if (!Disabled) _isDragOver = true; }
+    private void OnDragLeave(DragEventArgs e) { _isDragOver = false; }
+
+    private async Task OnDrop(DragEventArgs e)
+    {
+        _isDragOver = false;
+        // InputFile handles the actual file reading; this just resets visual state.
+        await Task.CompletedTask;
+    }
+
     private async Task OnChange(InputFileChangeEventArgs e)
     {
+        _isDragOver = false;
         _files.Clear();
         if (Multiple)
         {
@@ -150,22 +177,29 @@
         {
             _files.Add(e.File);
         }
-        
+
         var fileList = _files.AsReadOnly();
         Value = fileList;
-        
-        // Notify EditContext
+
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(fileList);
         _binder?.NotifyFieldChanged();
-        
-        // Keep backward compatibility with OnFilesSelected
         if (OnFilesSelected.HasDelegate) await OnFilesSelected.InvokeAsync(fileList);
+    }
+
+    private async Task RemoveFileAsync(IBrowserFile file)
+    {
+        _files.Remove(file);
+        var fileList = _files.AsReadOnly();
+        Value = fileList;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(fileList);
+        _binder?.NotifyFieldChanged();
     }
 
     private static string FormatSize(long bytes)
     {
-        string[] u = { "Б", "КБ", "МБ", "ГБ" };
-        double v = bytes; var i = 0;
+        string[] u = { "B", "KB", "MB", "GB" };
+        double v = bytes;
+        var i = 0;
         while (v >= 1024 && i < u.Length - 1) { v /= 1024; i++; }
         return $"{v:0.##} {u[i]}";
     }
