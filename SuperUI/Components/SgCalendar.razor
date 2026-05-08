@@ -2,10 +2,49 @@
 @using System.Globalization
 @using SuperUI.Localization
 
-<div class="sg-calendar @(View == SgCalendarView.Agenda ? "sg-calendar-agenda-mode" : "")" style="height: @Height;">
+<div class="@RootClass()" style="height: @Height;" @onkeydown="HandleHeaderKey" tabindex="0">
+
+    @if (!string.IsNullOrEmpty(Title) || !string.IsNullOrEmpty(Description) || ToolbarContent is not null || ShowSearch)
+    {
+        <div class="sg-calendar-banner">
+            <div class="sg-calendar-banner-text">
+                @if (!string.IsNullOrEmpty(Title))
+                {
+                    <div class="sg-calendar-banner-title">@Title</div>
+                }
+                @if (!string.IsNullOrEmpty(Description))
+                {
+                    <div class="sg-calendar-banner-desc">@Description</div>
+                }
+            </div>
+            <div class="sg-calendar-banner-toolbar">
+                @if (ShowSearch)
+                {
+                    <div class="sg-calendar-search">
+                        <span class="sg-calendar-search-ico" aria-hidden="true">@((MarkupString)IconSearch)</span>
+                        <input type="search"
+                               class="sg-calendar-search-input"
+                               placeholder="@SearchText"
+                               value="@_search"
+                               aria-label="@SearchText"
+                               @oninput="OnSearchChanged" />
+                        @if (!string.IsNullOrEmpty(_search))
+                        {
+                            <button type="button" class="sg-calendar-search-clear" aria-label="@Localizer["Clear"]" @onclick="ClearSearch">@((MarkupString)IconX)</button>
+                        }
+                    </div>
+                }
+                @if (ToolbarContent is not null)
+                {
+                    @ToolbarContent
+                }
+            </div>
+        </div>
+    }
+
     <div class="sg-calendar-header">
         <div class="sg-calendar-nav">
-            @if (View == SgCalendarView.Month)
+            @if (View == SgCalendarView.Month || View == SgCalendarView.Year)
             {
                 <button type="button" class="sg-calendar-nav-btn" aria-label="@Localizer["Calendar_PrevMonth"] (year)" @onclick="PreviousYear">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
@@ -18,7 +57,7 @@
             <button type="button" class="sg-calendar-nav-btn" aria-label="@Localizer["DataGrid_PageNext"]" @onclick="NextRange">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
             </button>
-            @if (View == SgCalendarView.Month)
+            @if (View == SgCalendarView.Month || View == SgCalendarView.Year)
             {
                 <button type="button" class="sg-calendar-nav-btn" aria-label="@Localizer["Calendar_NextMonth"] (year)" @onclick="NextYear">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
@@ -26,49 +65,127 @@
             }
         </div>
         <div class="sg-calendar-actions">
-            <button type="button" class="sg-calendar-btn sg-calendar-btn-today" @onclick="GoToTodayAsync">@Localizer["Calendar_GoToToday"]</button>
-            <div class="sg-calendar-view-switch">
-                <button type="button" class="@GetViewButtonClass(SgCalendarView.Month)" @onclick="() => SetViewAsync(SgCalendarView.Month)">@Localizer["Calendar_Month"]</button>
-                <button type="button" class="@GetViewButtonClass(SgCalendarView.Week)" @onclick="() => SetViewAsync(SgCalendarView.Week)">@Localizer["Calendar_Week"]</button>
-                <button type="button" class="@GetViewButtonClass(SgCalendarView.Day)" @onclick="() => SetViewAsync(SgCalendarView.Day)">@Localizer["Calendar_Day"]</button>
+            <button type="button" class="sg-calendar-btn sg-calendar-btn-today" @onclick="GoToTodayAsync">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline></svg>
+                <span>@Localizer["Calendar_GoToToday"]</span>
+            </button>
+            <div class="sg-calendar-view-switch" role="tablist">
+                <button type="button" role="tab" class="@GetViewButtonClass(SgCalendarView.Month)" @onclick="() => SetViewAsync(SgCalendarView.Month)">@Localizer["Calendar_Month"]</button>
+                <button type="button" role="tab" class="@GetViewButtonClass(SgCalendarView.Week)" @onclick="() => SetViewAsync(SgCalendarView.Week)">@Localizer["Calendar_Week"]</button>
+                <button type="button" role="tab" class="@GetViewButtonClass(SgCalendarView.Day)" @onclick="() => SetViewAsync(SgCalendarView.Day)">@Localizer["Calendar_Day"]</button>
                 @if (ShowAgendaView)
                 {
-                    <button type="button" class="@GetViewButtonClass(SgCalendarView.Agenda)" @onclick="() => SetViewAsync(SgCalendarView.Agenda)">@Localizer["Calendar_Agenda"]</button>
+                    <button type="button" role="tab" class="@GetViewButtonClass(SgCalendarView.Agenda)" @onclick="() => SetViewAsync(SgCalendarView.Agenda)">@Localizer["Calendar_Agenda"]</button>
+                }
+                @if (ShowYearView)
+                {
+                    <button type="button" role="tab" class="@GetViewButtonClass(SgCalendarView.Year)" @onclick="() => SetViewAsync(SgCalendarView.Year)">@Localizer["Calendar_Year"]</button>
                 }
             </div>
         </div>
     </div>
+
     <div class="sg-calendar-body">
-        @if (View == SgCalendarView.Day)
+
+        @if (Loading)
         {
-            <div class="sg-calendar-day-panel">
-                <div class="sg-calendar-day-header">
-                    <div class="sg-calendar-day-title">@GetWeekdayHeader(Value)</div>
-                    @if (OnAddEvent.HasDelegate || EnableCreation)
-                    {
-                        <button type="button" class="sg-calendar-btn sg-calendar-btn-primary" @onclick="() => HandleAddClick(Value)">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                            @Localizer["Calendar_NewEvent"]
-                        </button>
-                    }
-                </div>
-
-                @{
-                    var dayEvents = GetSelectedDayEvents().ToList();
-                    var alldayEvents = dayEvents.Where(e => e.IsAllDay).ToList();
-                    var timedEvents = dayEvents.Where(e => !e.IsAllDay).ToList();
-                }
-
-                @if (alldayEvents.Any())
+            <div class="sg-calendar-skeleton" aria-busy="true">
+                @for (var i = 0; i < 24; i++)
                 {
-                    <div class="sg-calendar-allday-row">
-                        <div class="sg-calendar-allday-label">@Localizer["Calendar_AllDay"]</div>
-                        <div class="sg-calendar-allday-events">
-                            @foreach (var ev in alldayEvents)
+                    <span class="sg-calendar-skeleton-cell"></span>
+                }
+            </div>
+        }
+        else if (View == SgCalendarView.Day)
+        {
+            @RenderDayView()
+        }
+        else if (View == SgCalendarView.Week)
+        {
+            @RenderWeekView()
+        }
+        else if (View == SgCalendarView.Agenda)
+        {
+            @RenderAgendaView()
+        }
+        else if (View == SgCalendarView.Year)
+        {
+            @RenderYearView()
+        }
+        else
+        {
+            @RenderMonthView()
+        }
+
+    </div>
+</div>
+
+@code {
+
+    private RenderFragment RenderMonthView() => __builder =>
+    {
+        <div class="sg-calendar-weekdays @(ShowWeekNumbers ? "sg-calendar-with-weeknum" : "")">
+            @if (ShowWeekNumbers)
+            {
+                <div class="sg-calendar-weeknum-cell sg-calendar-weeknum-header">@Localizer["Calendar_Week_Short"]</div>
+            }
+            @foreach (var day in GetWeekdayNames())
+            {
+                <div class="sg-calendar-weekday">@day</div>
+            }
+        </div>
+        <div class="sg-calendar-grid @(ShowWeekNumbers ? "sg-calendar-grid-weeknum" : string.Empty)">
+            @{ var allDays = GetDays().ToList(); }
+            @for (var w = 0; w < 6; w++)
+            {
+                if (ShowWeekNumbers)
+                {
+                    <div class="sg-calendar-weeknum-cell">@GetIsoWeek(allDays[w * 7])</div>
+                }
+                @for (var d = 0; d < 7; d++)
+                {
+                    var date = allDays[w * 7 + d];
+                    @RenderDateCell(date)
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderWeekView() => __builder =>
+    {
+        var weekDays = GetWeekDays().ToList();
+        var alldayPerDay = weekDays.ToDictionary(d => d, d => GetEventsForDate(d).Where(e => e.IsAllDay).ToList());
+        var hasAllDay = alldayPerDay.Values.Any(l => l.Count > 0);
+
+        <div class="sg-calendar-week-header">
+            <div class="sg-calendar-time-corner"></div>
+            @foreach (var date in weekDays)
+            {
+                <button type="button" class="sg-calendar-week-day-head @(date == DateTime.Today ? "sg-calendar-week-day-head-today" : "") @(date == Value.Date ? "sg-calendar-week-day-head-selected" : "")"
+                        @onclick="() => SelectDate(date)">
+                    <span class="sg-calendar-week-day-name">@CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]</span>
+                    <span class="sg-calendar-week-day-num">@date.Day</span>
+                </button>
+            }
+        </div>
+
+        @if (hasAllDay)
+        {
+            <div class="sg-calendar-week-allday-row">
+                <div class="sg-calendar-allday-label">@Localizer["Calendar_AllDay"]</div>
+                <div class="sg-calendar-week-allday-grid">
+                    @foreach (var date in weekDays)
+                    {
+                        <div class="sg-calendar-week-allday-cell"
+                             ondragover="event.preventDefault();"
+                             @ondrop="() => HandleDropOnDate(date)">
+                            @foreach (var ev in alldayPerDay[date])
                             {
-                                <div class="sg-calendar-event sg-calendar-event-allday"
+                                <div class="@GetEventClass(ev) sg-calendar-event-allday"
                                      style="@GetEventStyle(ev)"
                                      title="@GetEventTitleAttr(ev)"
+                                     draggable="@( (EnableEditing && EnableDragAndDrop && !ev.IsReadOnly).ToString().ToLowerInvariant() )"
+                                     @ondragstart="() => OnDragStart(ev)"
                                      @onclick="() => HandleEventClick(ev)">
                                     @if (!string.IsNullOrEmpty(ev.Icon))
                                     {
@@ -78,148 +195,284 @@
                                 </div>
                             }
                         </div>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="sg-calendar-week-grid" style="@GridHeightStyle()">
+            <div class="sg-calendar-time-axis">
+                @foreach (var hour in GetHourSlots())
+                {
+                    <div class="sg-calendar-time-slot" style="height: @(HourHeight)px;">
+                        <span class="sg-calendar-time-label">@FormatHour(hour)</span>
                     </div>
                 }
-
-                <div class="sg-calendar-day-events">
-                    @if (timedEvents.Any())
+            </div>
+            @foreach (var date in weekDays)
+            {
+                var timed = GetEventsForDate(date).Where(e => !e.IsAllDay).ToList();
+                <div class="sg-calendar-day-column @(date == DateTime.Today ? "sg-calendar-day-column-today" : "")"
+                     @ondblclick="() => HandleAddClick(date)"
+                     ondragover="event.preventDefault();"
+                     @ondrop="() => HandleDropOnDate(date)">
+                    <div class="sg-calendar-work-range" style="@WorkRangeStyle()"></div>
+                    @foreach (var hour in GetHourSlots())
                     {
-                        @foreach (var ev in timedEvents)
-                        {
-                            <div class="sg-calendar-event sg-calendar-event-expanded"
-                                 style="@GetEventStyle(ev)"
-                                 @onclick="() => HandleEventClick(ev)">
-                                <div class="sg-calendar-event-time">@FormatEventTime(ev)</div>
+                        <div class="sg-calendar-hour-line" style="top: @((hour - DayStartHour) * HourHeight)px;"></div>
+                    }
+                    @if (date == DateTime.Today)
+                    {
+                        <div class="sg-calendar-now-indicator" style="@CurrentTimeIndicatorStyle(date)">
+                            <span class="sg-calendar-now-dot"></span>
+                        </div>
+                    }
+                    @foreach (var ev in timed)
+                    {
+                        <div class="@GetEventClass(ev) sg-calendar-event-timed"
+                             style="@TimedEventStyle(ev)"
+                             title="@GetEventTitleAttr(ev)"
+                             draggable="@( (EnableEditing && EnableDragAndDrop && !ev.IsReadOnly).ToString().ToLowerInvariant() )"
+                             @ondragstart="() => OnDragStart(ev)"
+                             @onclick="() => HandleEventClick(ev)">
+                            <div class="sg-calendar-event-time-inline">@FormatEventTime(ev)</div>
+                            <div class="sg-calendar-event-title">
                                 @if (!string.IsNullOrEmpty(ev.Icon))
                                 {
                                     <span class="sg-calendar-event-icon">@ev.Icon</span>
                                 }
-                                <div class="sg-calendar-event-stack">
-                                    <span class="sg-calendar-event-title">@ev.Title</span>
-                                    @if (!string.IsNullOrWhiteSpace(ev.Description))
-                                    {
-                                        <span class="sg-calendar-event-desc">@ev.Description</span>
-                                    }
-                                </div>
-                                @if (OnDeleteEvent.HasDelegate || EnableEditing)
+                                @ev.Title
+                            </div>
+                            @if (!string.IsNullOrEmpty(ev.Location))
+                            {
+                                <div class="sg-calendar-event-location">@ev.Location</div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderDayView() => __builder =>
+    {
+        var dayEvents = GetSelectedDayEvents().ToList();
+        var allday = dayEvents.Where(e => e.IsAllDay).ToList();
+        var timed = dayEvents.Where(e => !e.IsAllDay).ToList();
+
+        <div class="sg-calendar-day-panel">
+
+            <div class="sg-calendar-day-header">
+                <div class="sg-calendar-day-title-block">
+                    <div class="sg-calendar-day-num">@Value.Day</div>
+                    <div class="sg-calendar-day-meta">
+                        <div class="sg-calendar-day-weekday">@Value.ToString("dddd", CultureInfo.CurrentCulture)</div>
+                        <div class="sg-calendar-day-fulldate">@Value.ToString("dd MMMM yyyy", CultureInfo.CurrentCulture)</div>
+                    </div>
+                </div>
+                @if (OnAddEvent.HasDelegate || EnableCreation)
+                {
+                    <button type="button" class="sg-calendar-btn sg-calendar-btn-primary" @onclick="() => HandleAddClick(Value)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        @Localizer["Calendar_NewEvent"]
+                    </button>
+                }
+            </div>
+
+            @if (allday.Any())
+            {
+                <div class="sg-calendar-allday-row">
+                    <div class="sg-calendar-allday-label">@Localizer["Calendar_AllDay"]</div>
+                    <div class="sg-calendar-allday-events">
+                        @foreach (var ev in allday)
+                        {
+                            <div class="@GetEventClass(ev) sg-calendar-event-allday"
+                                 style="@GetEventStyle(ev)"
+                                 title="@GetEventTitleAttr(ev)"
+                                 @onclick="() => HandleEventClick(ev)">
+                                @if (!string.IsNullOrEmpty(ev.Icon))
                                 {
-                                    <button type="button" class="sg-calendar-event-delete" aria-label="@Localizer["Delete"]" @onclick:stopPropagation="true" @onclick="() => HandleDeleteEvent(ev)">×</button>
+                                    <span class="sg-calendar-event-icon">@ev.Icon</span>
                                 }
+                                <span class="sg-calendar-event-title">@ev.Title</span>
                             </div>
                         }
+                    </div>
+                </div>
+            }
+
+            <div class="sg-calendar-day-grid" style="@GridHeightStyle()">
+                <div class="sg-calendar-time-axis">
+                    @foreach (var hour in GetHourSlots())
+                    {
+                        <div class="sg-calendar-time-slot" style="height: @(HourHeight)px;">
+                            <span class="sg-calendar-time-label">@FormatHour(hour)</span>
+                        </div>
                     }
-                    else if (!alldayEvents.Any())
+                </div>
+                <div class="sg-calendar-day-column sg-calendar-day-column-single @(Value == DateTime.Today ? "sg-calendar-day-column-today" : "")"
+                     @ondblclick="() => HandleAddClick(Value)">
+                    <div class="sg-calendar-work-range" style="@WorkRangeStyle()"></div>
+                    @foreach (var hour in GetHourSlots())
+                    {
+                        <div class="sg-calendar-hour-line" style="top: @((hour - DayStartHour) * HourHeight)px;"></div>
+                    }
+                    @if (Value.Date == DateTime.Today)
+                    {
+                        <div class="sg-calendar-now-indicator" style="@CurrentTimeIndicatorStyle(Value)">
+                            <span class="sg-calendar-now-dot"></span>
+                        </div>
+                    }
+                    @if (!timed.Any() && !allday.Any())
                     {
                         <div class="sg-calendar-empty">
                             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                             <span>@Localizer["Calendar_NoEvents"]</span>
                         </div>
                     }
-                </div>
-            </div>
-        }
-        else if (View == SgCalendarView.Agenda)
-        {
-            <div class="sg-calendar-agenda">
-                @{
-                    var agendaDays = GetAgendaDays().ToList();
-                }
-                @if (!agendaDays.Any())
-                {
-                    <div class="sg-calendar-empty">
-                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                        <span>@Localizer["Calendar_NoEventsRange"]</span>
-                    </div>
-                }
-                else
-                {
-                    @foreach (var date in agendaDays)
+                    else
                     {
-                        <div class="sg-calendar-agenda-day @(date == DateTime.Today ? "sg-calendar-agenda-day-today" : "")">
-                            <div class="sg-calendar-agenda-date">
-                                <div class="sg-calendar-agenda-day-num">@date.Day</div>
-                                <div class="sg-calendar-agenda-day-name">@CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]</div>
-                                <div class="sg-calendar-agenda-day-month">@date.ToString("MMM")</div>
-                            </div>
-                            <div class="sg-calendar-agenda-events">
-                                @foreach (var ev in GetEventsForDate(date))
+                        @foreach (var ev in timed)
+                        {
+                            <div class="@GetEventClass(ev) sg-calendar-event-timed sg-calendar-event-timed-wide"
+                                 style="@TimedEventStyle(ev)"
+                                 title="@GetEventTitleAttr(ev)"
+                                 @onclick="() => HandleEventClick(ev)">
+                                <div class="sg-calendar-event-time-inline">@FormatEventTime(ev)</div>
+                                <div class="sg-calendar-event-title">
+                                    @if (!string.IsNullOrEmpty(ev.Icon))
+                                    {
+                                        <span class="sg-calendar-event-icon">@ev.Icon</span>
+                                    }
+                                    @ev.Title
+                                </div>
+                                @if (!string.IsNullOrEmpty(ev.Location))
                                 {
-                                    <div class="sg-calendar-event sg-calendar-event-agenda"
-                                         style="@GetEventStyle(ev)"
-                                         title="@GetEventTitleAttr(ev)"
-                                         @onclick="() => HandleEventClick(ev)">
-                                        <div class="sg-calendar-event-time">@(ev.IsAllDay ? Localizer["Calendar_AllDay"].ToString() : FormatEventTime(ev))</div>
-                                        @if (!string.IsNullOrEmpty(ev.Icon))
-                                        {
-                                            <span class="sg-calendar-event-icon">@ev.Icon</span>
-                                        }
-                                        <div class="sg-calendar-event-stack">
-                                            <span class="sg-calendar-event-title">@ev.Title</span>
-                                            @if (!string.IsNullOrWhiteSpace(ev.Description))
-                                            {
-                                                <span class="sg-calendar-event-desc">@ev.Description</span>
-                                            }
-                                        </div>
-                                    </div>
+                                    <div class="sg-calendar-event-location">@ev.Location</div>
+                                }
+                                @if (!string.IsNullOrEmpty(ev.Description))
+                                {
+                                    <div class="sg-calendar-event-desc">@ev.Description</div>
+                                }
+                                @if ((OnDeleteEvent.HasDelegate || EnableEditing) && !ev.IsReadOnly)
+                                {
+                                    <button type="button" class="sg-calendar-event-delete" aria-label="@Localizer["Delete"]" @onclick:stopPropagation="true" @onclick="() => HandleDeleteEvent(ev)">×</button>
                                 }
                             </div>
-                        </div>
+                        }
                     }
-                }
+                </div>
             </div>
+        </div>
+    };
+
+    private RenderFragment RenderAgendaView() => __builder =>
+    {
+        var agendaDays = GetAgendaDays().ToList();
+        <div class="sg-calendar-agenda">
+            @if (!agendaDays.Any())
+            {
+                @RenderEmptyState(Localizer["Calendar_NoEventsRange"])
+            }
+            else
+            {
+                @foreach (var date in agendaDays)
+                {
+                    <div class="sg-calendar-agenda-day @(date == DateTime.Today ? "sg-calendar-agenda-day-today" : "")">
+                        <div class="sg-calendar-agenda-date">
+                            <div class="sg-calendar-agenda-day-num">@date.Day</div>
+                            <div class="sg-calendar-agenda-day-name">@CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[(int)date.DayOfWeek]</div>
+                            <div class="sg-calendar-agenda-day-month">@date.ToString("MMM", CultureInfo.CurrentCulture)</div>
+                        </div>
+                        <div class="sg-calendar-agenda-events">
+                            @foreach (var ev in GetEventsForDate(date))
+                            {
+                                <div class="@GetEventClass(ev) sg-calendar-event-agenda"
+                                     style="@GetEventStyle(ev)"
+                                     title="@GetEventTitleAttr(ev)"
+                                     @onclick="() => HandleEventClick(ev)">
+                                    <div class="sg-calendar-event-time">@(ev.IsAllDay ? Localizer["Calendar_AllDay"].ToString() : FormatEventTime(ev))</div>
+                                    @if (!string.IsNullOrEmpty(ev.Icon))
+                                    {
+                                        <span class="sg-calendar-event-icon">@ev.Icon</span>
+                                    }
+                                    <div class="sg-calendar-event-stack">
+                                        <span class="sg-calendar-event-title">@ev.Title</span>
+                                        @if (!string.IsNullOrEmpty(ev.Location))
+                                        {
+                                            <span class="sg-calendar-event-location">@ev.Location</span>
+                                        }
+                                        @if (!string.IsNullOrEmpty(ev.Description))
+                                        {
+                                            <span class="sg-calendar-event-desc">@ev.Description</span>
+                                        }
+                                    </div>
+                                    @if (ev.Status != SgCalendarEventStatus.Confirmed)
+                                    {
+                                        <span class="sg-calendar-event-badge">@StatusLabel(ev.Status)</span>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    };
+
+    private RenderFragment RenderYearView() => __builder =>
+    {
+        <div class="sg-calendar-year-grid">
+            @for (var m = 1; m <= 12; m++)
+            {
+                var month = new DateTime(Value.Year, m, 1);
+                <button type="button" class="sg-calendar-year-month @(month.Month == DateTime.Today.Month && month.Year == DateTime.Today.Year ? "sg-calendar-year-month-current" : "")"
+                        @onclick="() => JumpToMonth(month)">
+                    <div class="sg-calendar-year-month-name">@CultureInfo.CurrentCulture.TextInfo.ToTitleCase(month.ToString("MMMM", CultureInfo.CurrentCulture))</div>
+                    <div class="sg-calendar-year-mini">
+                        <div class="sg-calendar-year-mini-row sg-calendar-year-mini-head">
+                            @foreach (var w in GetMiniWeekdayNames())
+                            {
+                                <span>@w</span>
+                            }
+                        </div>
+                        @{ var miniDays = GetMiniMonthDays(month).ToList(); }
+                        @for (var w = 0; w < 6; w++)
+                        {
+                            <div class="sg-calendar-year-mini-row">
+                                @for (var d = 0; d < 7; d++)
+                                {
+                                    var dd = miniDays[w * 7 + d];
+                                    var hasEvents = GetEventsForDate(dd).Any();
+                                    <span class="sg-calendar-year-mini-day @(dd.Month != month.Month ? "is-out" : "") @(dd == DateTime.Today ? "is-today" : "") @(hasEvents ? "has-events" : "")">@dd.Day</span>
+                                }
+                            </div>
+                        }
+                    </div>
+                </button>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderEmptyState(string text) => __builder =>
+    {
+        if (EmptyContent is not null)
+        {
+            @EmptyContent
         }
         else
         {
-            <div class="sg-calendar-weekdays @(ShowWeekNumbers && View == SgCalendarView.Month ? "sg-calendar-with-weeknum" : "")">
-                @if (ShowWeekNumbers && View == SgCalendarView.Month)
+            <div class="sg-calendar-empty sg-calendar-empty-large">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.45"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                <div class="sg-calendar-empty-title">@text</div>
+                @if (EnableCreation || OnAddEvent.HasDelegate)
                 {
-                    <div class="sg-calendar-weeknum-cell sg-calendar-weeknum-header">@Localizer["Calendar_Week_Short"]</div>
-                }
-                @if (View == SgCalendarView.Week)
-                {
-                    @foreach (var date in GetWeekDays())
-                    {
-                        <div class="sg-calendar-weekday @(date.Date == DateTime.Today ? "sg-calendar-weekday-today" : "")">@GetWeekdayHeader(date)</div>
-                    }
-                }
-                else
-                {
-                    @foreach (var day in GetWeekdayNames())
-                    {
-                        <div class="sg-calendar-weekday">@day</div>
-                    }
-                }
-            </div>
-            <div class="sg-calendar-grid @(View == SgCalendarView.Week ? "sg-calendar-grid-week" : string.Empty) @(ShowWeekNumbers && View == SgCalendarView.Month ? "sg-calendar-grid-weeknum" : string.Empty)">
-                @if (View == SgCalendarView.Month)
-                {
-                    var allDays = GetDays().ToList();
-                    for (var w = 0; w < 6; w++)
-                    {
-                        if (ShowWeekNumbers)
-                        {
-                            <div class="sg-calendar-weeknum-cell">@GetIsoWeek(allDays[w * 7])</div>
-                        }
-                        for (var d = 0; d < 7; d++)
-                        {
-                            var date = allDays[w * 7 + d];
-                            @RenderDateCell(date)
-                        }
-                    }
-                }
-                else
-                {
-                    @foreach (var date in GetWeekDays())
-                    {
-                        @RenderDateCell(date)
-                    }
+                    <button type="button" class="sg-calendar-btn sg-calendar-btn-primary" @onclick="() => HandleAddClick(Value)">@Localizer["Calendar_NewEvent"]</button>
                 }
             </div>
         }
-    </div>
-</div>
+    };
 
-@code {
     private RenderFragment RenderDateCell(DateTime date) => __builder =>
     {
         var dayEvents = GetEventsForDate(date).ToList();
@@ -236,7 +489,7 @@
              @ondrop="() => HandleDropOnDate(date)">
             <div class="sg-calendar-date-header">
                 <span class="sg-calendar-date-value">@date.Day</span>
-                @if (OnAddEvent.HasDelegate || EnableCreation)
+                @if ((OnAddEvent.HasDelegate || EnableCreation))
                 {
                     <button type="button" class="sg-calendar-add-event" aria-label="@Localizer["Calendar_NewEvent"]" @onclick:stopPropagation="true" @onclick="() => HandleAddClick(date)">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
@@ -275,9 +528,9 @@
         }
         else
         {
-            <div class="sg-calendar-event"
-                 draggable="true"
-                 @ondragstart="() => _draggedEvent = ev"
+            <div class="@GetEventClass(ev)"
+                 draggable="@( (EnableEditing && EnableDragAndDrop && !ev.IsReadOnly).ToString().ToLowerInvariant() )"
+                 @ondragstart="() => OnDragStart(ev)"
                  style="@GetEventStyle(ev)"
                  title="@GetEventTitleAttr(ev)"
                  @onclick:stopPropagation="true"
@@ -292,7 +545,11 @@
                     <span class="sg-calendar-event-icon">@ev.Icon</span>
                 }
                 <span class="sg-calendar-event-title">@ev.Title</span>
-                @if (OnDeleteEvent.HasDelegate || EnableEditing)
+                @if (ev.Priority != SgCalendarEventPriority.Normal)
+                {
+                    <span class="sg-calendar-event-pip" title="@PriorityLabel(ev.Priority)"></span>
+                }
+                @if ((OnDeleteEvent.HasDelegate || EnableEditing) && !ev.IsReadOnly)
                 {
                     <button type="button" class="sg-calendar-event-delete" aria-label="@Localizer["Delete"]" @onclick:stopPropagation="true" @onclick="() => HandleDeleteEvent(ev)">×</button>
                 }
@@ -300,19 +557,19 @@
         }
     };
 
-    private string FormatTimeShort(SgCalendarEvent ev)
-    {
-        if (ev.IsAllDay) return string.Empty;
-        var t = ev.StartTime ?? ev.Date.TimeOfDay;
-        return new DateTime(2000, 1, 1).Add(t).ToString("HH:mm");
-    }
+    // ── Inline icons ────────────────────────────────────────────────────────
+    private const string IconSearch =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"11\" cy=\"11\" r=\"8\"></circle><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"></line></svg>";
+    private const string IconX =
+        "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"18\" y1=\"6\" x2=\"6\" y2=\"18\"></line><line x1=\"6\" y1=\"6\" x2=\"18\" y2=\"18\"></line></svg>";
 }
 
-<SgModal @bind-Visible="_isModalVisible" Title="@(_isNewEvent ? Localizer["Calendar_NewEvent"] : Localizer["Calendar_EditEvent"])" Width="440px">
+<SgModal @bind-Visible="_isModalVisible" Title="@(_isNewEvent ? Localizer["Calendar_NewEvent"] : Localizer["Calendar_EditEvent"])" Width="480px">
     <ChildContent>
         <SgStack Orientation="SgOrientation.Vertical" Gap="14px">
             <SgTextBox Label="@Localizer["Calendar_Title"]" @bind-Value="_editingEvent.Title" Required="true" />
             <SgTextBox Label="@Localizer["Calendar_Description"]" @bind-Value="_editingEvent.Description" Multiline="true" Rows="3" />
+            <SgTextBox Label="@Localizer["Calendar_Location"]" @bind-Value="_editingEvent.Location" />
             <div style="display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: end;">
                 <SgDatePicker Label="@Localizer["Calendar_Date"]" @bind-Value="_editingEventDate" Required="true" />
                 <SgCheckBox Label="@Localizer["Calendar_AllDay"]" @bind-Value="_editingEvent.IsAllDay" />
@@ -327,6 +584,16 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                 <SgColorPicker Label="@Localizer["Calendar_Color"]" @bind-Value="_editingEvent.Color" />
                 <SgTextBox Label="@Localizer["Calendar_Icon"]" @bind-Value="_editingEvent.Icon" Placeholder="@Localizer["Calendar_IconPlaceholder"]" />
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                <SgSelect TValue="SgCalendarEventStatus" Label="@Localizer["Calendar_Status"]"
+                          Items="_statusOptions"
+                          LabelSelector="@(v => StatusLabel(v))"
+                          @bind-Value="_editingEvent.Status" />
+                <SgSelect TValue="SgCalendarEventPriority" Label="@Localizer["Calendar_Priority"]"
+                          Items="_priorityOptions"
+                          LabelSelector="@(v => PriorityLabel(v))"
+                          @bind-Value="_editingEvent.Priority" />
             </div>
             <SgSelect TValue="string" Label="@Localizer["Calendar_Recurrence"]"
                       Items="@_recurrenceOptions"
