@@ -17,6 +17,8 @@ export function attach(root, dotnet, opts) {
     };
 
     let active = null;
+    let currentWidth = null;
+    let currentHeight = null;
 
     function onPointerDown(e) {
         if (isDisposed || !dotnet || cfg.disabled) return;
@@ -81,15 +83,25 @@ export function attach(root, dotnet, opts) {
         root.classList.remove('sgc-resizable-active');
         const w = active._w ?? active.startW;
         const h = active._h ?? active.startH;
+        currentWidth = w;
+        currentHeight = h;
         active = null;
         if (!isDisposed && dotnet) {
             try { dotnet.invokeMethodAsync('SetSize', w, h).catch(() => {}); } catch { /* noop */ }
         }
     }
 
+    function reapplySize() {
+        if (currentWidth !== null && currentHeight !== null) {
+            root.style.width = currentWidth + 'px';
+            root.style.height = currentHeight + 'px';
+        }
+    }
+
     root.addEventListener('pointerdown', onPointerDown);
     root._sgResizable = {
         onPointerDown,
+        reapplySize,
         dispose() { isDisposed = true; dotnet = null; }
     };
 }
@@ -100,4 +112,9 @@ export function detach(root) {
     if (dispose) dispose();
     root.removeEventListener('pointerdown', onPointerDown);
     delete root._sgResizable;
+}
+
+export function reapplySize(root) {
+    if (!root || !root._sgResizable) return;
+    root._sgResizable.reapplySize();
 }

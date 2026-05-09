@@ -140,6 +140,9 @@ public class SampleDataService
         var employees = new List<Employee>();
         var random = new Random(42);
 
+        var positions = new[] { "Junior Developer", "Senior Developer", "Team Lead", "Architect", "Manager", "Designer", "QA Engineer", "DevOps Engineer" };
+        var managers = new[] { "Иван Иванов", "Петр Петров", "Сергей Сидоров", "Алексей Смирнов", "Дмитрий Соколов" };
+
         for (int i = 1; i <= count; i++)
         {
             employees.Add(new Employee
@@ -152,7 +155,10 @@ public class SampleDataService
                 Salary = random.Next(30000, 150000),
                 HireDate = DateTime.Now.AddDays(-random.Next(1, 3650)),
                 IsActive = random.Next(0, 100) > 10,
-                Notes = $"Employee record #{i}"
+                Notes = $"Employee record #{i}",
+                Phone = $"+7 ({random.Next(900, 999)}) {random.Next(100, 999)}-{random.Next(10, 99)}-{random.Next(10, 99)}",
+                Position = positions[random.Next(positions.Length)],
+                Manager = managers[random.Next(managers.Length)]
             });
         }
 
