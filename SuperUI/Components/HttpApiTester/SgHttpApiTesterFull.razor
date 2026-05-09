@@ -1,0 +1,1393 @@
+@namespace SuperUI.Components
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using System.Text.RegularExpressions
+@using System.Diagnostics
+@inject HttpClient Http
+@inject SgToastService Toasts
+
+<div class="sg-http-api-tester-full" style="@Style">
+    
+    @* Top Bar with URL and Send Button *@
+    <div style="padding:20px; border-bottom:1px solid var(--sg-border); background:var(--sg-bg);">
+        <SgStack Direction="SgDirection.Horizontal" Gap="16" Style="width:100%; align-items:center;">
+            <div>
+                <div style="margin-bottom:4px; font-size:12px; font-weight:500; color:var(--sg-text-muted);">Method</div>
+                <SgSelect @bind-Value="_currentTab.Method"
+                          Items="@_methods"
+                          TextSelector="@GetMethodText"
+                          ValueSelector="@GetMethodValue"
+                          Size="SgSize.Lg"
+                          Style="width:140px;" />
+            </div>
+            <div style="flex:1;">
+                <div style="margin-bottom:4px; font-size:12px; font-weight:500; color:var(--sg-text-muted);">Request URL</div>
+                <SgTextBox @bind-Value="_currentTab.Url"
+                           Placeholder="https://api.example.com/endpoint"
+                           Size="SgSize.Lg"
+                           Style="width:100%; font-size:14px;" />
+            </div>
+            <div style="align-self:flex-end;">
+                <SgButton Variant="SgButtonVariant.Primary"
+                          Size="SgSize.Lg"
+                          OnClick="SendRequestAsync"
+                          Disabled="_isLoading"
+                          Style="min-width:100px;">
+                    @if (_isLoading)
+                    {
+                        <text>Sending...</text>
+                    }
+                    else
+                    {
+                        <text>Send</text>
+                    }
+                </SgButton>
+            </div>
+            <div style="align-self:flex-end;">
+                <SgButton Variant="SgButtonVariant.Default"
+                          Size="SgSize.Lg"
+                          OnClick="SaveCurrentRequest"
+                          Style="min-width:80px;">
+                    Save
+                </SgButton>
+            </div>
+        </SgStack>
+    </div>
+
+    @* Main Layout: Sidebar + Content *@
+    <div style="display:flex; height:calc(100% - 93px);">
+        
+        @* Left Sidebar *@
+        <div style="width:320px; border-right:1px solid var(--sg-border); overflow:hidden; display:flex; flex-direction:column; background:var(--sg-bg-alt);">
+            <div style="padding:16px; border-bottom:1px solid var(--sg-border);">
+                <SgTextBox @bind-Value="_searchText"
+                           Placeholder="Search collections..."
+                           Size="SgSize.Lg"
+                           Style="width:100%;" />
+            </div>
+            
+            <div style="flex:1; overflow:auto;">
+                <SgTabs>
+                    <SgTabPanel Title="Collections">
+                        <div style="padding:16px;">
+                            @foreach (var col in _collections)
+                            {
+                                <SgCard Style="margin-bottom:16px;">
+                                    <div style="padding:16px;">
+                                        <div style="font-weight:600; font-size:15px; margin-bottom:12px;">@col.Name</div>
+                                        @foreach (var req in col.Requests.Take(5))
+                                        {
+                                            <div style="padding:10px 12px; cursor:pointer; font-size:14px; border-radius:6px; margin-bottom:6px; background:var(--sg-bg); border:1px solid var(--sg-border); transition:all 0.2s;"
+                                                 @onclick="() => LoadRequest(req)">
+                                                <SgBadge Variant="@GetMethodVariant(req.Tab.Method)" 
+                                                         Text="@req.Tab.Method" 
+                                                         Style="font-size:11px; margin-right:8px;" />
+                                                <span style="font-weight:500;">@req.Name</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </SgCard>
+                            }
+                            <SgButton Variant="SgButtonVariant.Default" 
+                                      Size="SgSize.Lg"
+                                      OnClick="CreateNewCollection"
+                                      Style="width:100%;">
+                                + New Collection
+                            </SgButton>
+                        </div>
+                    </SgTabPanel>
+                    
+                    <SgTabPanel Title="History">
+                        <div style="padding:16px;">
+                            @if (!_history.Any())
+                            {
+                                <SgEmpty Description="No history yet" />
+                            }
+                            else
+                            {
+                                @foreach (var entry in _history.Take(20).Reverse())
+                                {
+                                    <div style="padding:12px; border-bottom:1px solid var(--sg-border); cursor:pointer; font-size:14px; background:var(--sg-bg); margin-bottom:8px; border-radius:6px;"
+                                         @onclick="() => LoadHistoryEntry(entry)">
+                                        <SgBadge Variant="@GetMethodVariant(entry.Method)" 
+                                                 Text="@entry.Method" 
+                                                 Style="font-size:11px; margin-bottom:6px;" />
+                                        <div style="margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sg-text-muted); font-size:13px;">
+                                            @entry.Url
+                                        </div>
+                                    </div>
+                                }
+                            }
+                        </div>
+                    </SgTabPanel>
+                    
+                    <SgTabPanel Title="Env">
+                        <div style="padding:16px;">
+                            <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Active Environment</div>
+                            <SgSelect TValue="string" TItem="string"
+                                      @bind-Value="_activeEnvName"
+                                      Items="_environments.Select(e => e.Name).ToList()"
+                                      TextSelector="@((Func<string, string>)(n => n))"
+                                      ValueSelector="@((Func<string, string>)(n => n))"
+                                      Size="SgSize.Lg"
+                                      Style="width:100%; margin-bottom:16px;" />
+                            <SgButton Variant="SgButtonVariant.Default" 
+                                      Size="SgSize.Lg"
+                                      OnClick="() => _envModalOpen = true"
+                                      Style="width:100%;">
+                                Manage Environments
+                            </SgButton>
+                        </div>
+                    </SgTabPanel>
+                </SgTabs>
+            </div>
+        </div>
+
+        @* Main Content Area *@
+        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+            
+            @* Request Configuration *@
+            <div style="height:50%; overflow:auto; border-bottom:1px solid var(--sg-border);">
+                <SgTabs Style="height:100%;">
+                    <SgTabPanel Title="@($"Headers ({_currentTab.Headers.Count(h => h.Enabled)})")">
+                        <div style="padding:20px;">
+                            <div style="margin-bottom:12px; font-size:14px; font-weight:600;">Request Headers</div>
+                            <SgHttpApiTesterKvEditor Items="_currentTab.Headers" />
+                        </div>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="@($"Params ({_currentTab.QueryParams.Count(p => p.Enabled)})")">
+                        <div style="padding:20px;">
+                            <div style="margin-bottom:12px; font-size:14px; font-weight:600;">Query Parameters</div>
+                            <SgHttpApiTesterKvEditor Items="_currentTab.QueryParams" ShowComment="false" />
+                        </div>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="Body">
+                        <div style="padding:20px;">
+                            <div style="margin-bottom:16px;">
+                                <div style="margin-bottom:8px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Body Type</div>
+                                <SgSegmented TValue="string" 
+                                             @bind-Value="_currentTab.BodyType"
+                                             Options="_bodyTypeOptions"
+                                             Size="SgSize.Lg" />
+                            </div>
+                            
+                            @if (_currentTab.BodyType == "JSON" || _currentTab.BodyType == "XML" || _currentTab.BodyType == "Text")
+                            {
+                                <SgTextArea @bind-Value="_currentTab.Body"
+                                            Rows="14"
+                                            Placeholder="@GetBodyPlaceholder()"
+                                            Style="width:100%; font-size:14px; font-family:monospace; line-height:1.6;" />
+                            }
+                            else if (_currentTab.BodyType == "Form")
+                            {
+                                <div style="margin-top:12px;">
+                                    <div style="margin-bottom:12px; font-size:14px; font-weight:600;">Form Data</div>
+                                    <SgHttpApiTesterKvEditor Items="_currentTab.FormFields" ShowComment="false" />
+                                </div>
+                            }
+                        </div>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="Auth">
+                        <div style="padding:20px;">
+                            <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Authentication Type</div>
+                            <SgSelect @bind-Value="_currentTab.AuthType"
+                                      Items="@_authTypes"
+                                      TextSelector="@GetAuthTypeText"
+                                      ValueSelector="@GetAuthTypeValue"
+                                      Size="SgSize.Lg"
+                                      Style="width:280px; margin-bottom:20px;" />
+                            
+                            @if (_currentTab.AuthType == "Bearer Token")
+                            {
+                                <div>
+                                    <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Token</div>
+                                    <SgTextBox @bind-Value="_currentTab.BearerToken"
+                                               Placeholder="your-token-here"
+                                               Size="SgSize.Lg"
+                                               Style="width:100%;" />
+                                </div>
+                            }
+                            else if (_currentTab.AuthType == "Basic Auth")
+                            {
+                                <div style="margin-bottom:16px;">
+                                    <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Username</div>
+                                    <SgTextBox @bind-Value="_currentTab.BasicUser"
+                                               Placeholder="username"
+                                               Size="SgSize.Lg"
+                                               Style="width:100%;" />
+                                </div>
+                                <div>
+                                    <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Password</div>
+                                    <SgTextBox @bind-Value="_currentTab.BasicPassword"
+                                               Type="password"
+                                               Placeholder="password"
+                                               Size="SgSize.Lg"
+                                               Style="width:100%;" />
+                                </div>
+                            }
+                            else if (_currentTab.AuthType == "API Key")
+                            {
+                                <div style="margin-bottom:16px;">
+                                    <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Key Name</div>
+                                    <SgTextBox @bind-Value="_currentTab.ApiKeyName"
+                                               Placeholder="X-API-Key"
+                                               Size="SgSize.Lg"
+                                               Style="width:100%;" />
+                                </div>
+                                <div>
+                                    <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Key Value</div>
+                                    <SgTextBox @bind-Value="_currentTab.ApiKeyValue"
+                                               Placeholder="your-api-key"
+                                               Size="SgSize.Lg"
+                                               Style="width:100%;" />
+                                </div>
+                            }
+                        </div>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="Scripts">
+                        <div style="padding:20px;">
+                            <div style="margin-bottom:20px;">
+                                <div style="margin-bottom:8px; font-weight:600; font-size:14px;">Pre-request Script</div>
+                                <div style="margin-bottom:8px; font-size:12px; color:var(--sg-text-muted);">JavaScript code to run before sending the request</div>
+                                <SgTextArea @bind-Value="_currentTab.PreScript"
+                                            Rows="5"
+                                            Placeholder="// pm.environment.set('key', 'value')"
+                                            Style="width:100%; font-family:monospace; font-size:13px; line-height:1.6;" />
+                            </div>
+                            <div>
+                                <div style="margin-bottom:8px; font-weight:600; font-size:14px;">Test Script</div>
+                                <div style="margin-bottom:8px; font-size:12px; color:var(--sg-text-muted);">JavaScript code to validate the response</div>
+                                <SgTextArea @bind-Value="_currentTab.TestScript"
+                                            Rows="7"
+                                            Placeholder="// pm.test('Status is 200', () => pm.ResponseStatus == 200)"
+                                            Style="width:100%; font-family:monospace; font-size:13px; line-height:1.6;" />
+                            </div>
+                        </div>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="Settings">
+                        <div style="padding:20px;">
+                            <div style="margin-bottom:20px;">
+                                <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Request Timeout</div>
+                                <SgTextBox @bind-Value="_timeoutSeconds"
+                                           Type="number"
+                                           Placeholder="30"
+                                           Size="SgSize.Lg"
+                                           Style="width:200px;" />
+                            </div>
+                            <div style="margin-bottom:16px;">
+                                <SgSwitch @bind-Value="_followRedirects" Label="Follow Redirects" Size="SgSize.Lg" />
+                            </div>
+                            <div style="margin-bottom:16px;">
+                                <SgSwitch @bind-Value="_prettyPrint" Label="Pretty-print JSON responses" Size="SgSize.Lg" />
+                            </div>
+                            <div style="margin-bottom:16px;">
+                                <SgSwitch @bind-Value="_mockEnabled" Label="Use Mock Server" Size="SgSize.Lg" />
+                            </div>
+                            <SgDivider />
+                            <div style="margin-top:20px; margin-bottom:16px;">
+                                <SgSwitch @bind-Value="_runnerMode" Label="Collection Runner Mode" Size="SgSize.Lg" />
+                            </div>
+                            @if (_runnerMode)
+                            {
+                                <SgStack Direction="SgDirection.Horizontal" Gap="16">
+                                    <div>
+                                        <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Iterations</div>
+                                        <SgTextBox @bind-Value="_runnerIterations" 
+                                                   Type="number"
+                                                   Size="SgSize.Lg"
+                                                   Style="width:140px;" />
+                                    </div>
+                                    <div>
+                                        <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Delay (ms)</div>
+                                        <SgTextBox @bind-Value="_runnerDelayMs" 
+                                                   Type="number"
+                                                   Size="SgSize.Lg"
+                                                   Style="width:140px;" />
+                                    </div>
+                                </SgStack>
+                            }
+                        </div>
+                    </SgTabPanel>
+                </SgTabs>
+            </div>
+
+            @* Response Panel *@
+            <div style="height:50%; overflow:auto;">
+                <div style="padding:20px;">
+                    <div style="margin-bottom:12px; font-size:14px; font-weight:600;">Response</div>
+                    <SgHttpApiTesterResponsePanel Snapshot="_currentTab.LastResponse"
+                                                  HasError="_hasError"
+                                                  ErrorMessage="_errorMessage" />
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+@* ════════════════════════════════════════════════════════
+     MODALS & DOCK WINDOWS
+════════════════════════════════════════════════════ *@
+
+@* Save Request Modal *@
+<SgModal Title="Save Request" @bind-Visible="_saveModalOpen" Width="520px">
+    <SgStack Direction="SgDirection.Vertical" Gap="16">
+        <div>
+            <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Request Name</div>
+            <SgTextBox @bind-Value="_saveRequestName" 
+                       Placeholder="My API Request" 
+                       Size="SgSize.Lg"
+                       Style="width:100%;" />
+        </div>
+        <div>
+            <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Description (optional)</div>
+            <SgTextArea @bind-Value="_saveRequestDescription" 
+                        Rows="3" 
+                        Placeholder="Optional description..." 
+                        Style="width:100%;" />
+        </div>
+        <div>
+            <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Collection</div>
+            <SgSelect @bind-Value="_saveToCollectionId"
+                      Items="_collections.Select(c => c.Id.ToString()).ToList()"
+                      TextSelector="@GetCollectionNameById"
+                      ValueSelector="@(id => id)"
+                      Size="SgSize.Lg"
+                      Style="width:100%;" />
+        </div>
+        <SgStack Direction="SgDirection.Horizontal" Gap="8" Style="justify-content:flex-end; margin-top:8px;">
+            <SgButton Variant="SgButtonVariant.Default" 
+                      Size="SgSize.Lg"
+                      OnClick="() => _saveModalOpen = false">
+                Cancel
+            </SgButton>
+            <SgButton Variant="SgButtonVariant.Primary" 
+                      Size="SgSize.Lg"
+                      OnClick="SaveRequestToCollection">
+                Save
+            </SgButton>
+        </SgStack>
+    </SgStack>
+</SgModal>
+
+@* Environment Manager Modal *@
+<SgModal Title="🌍 Environment Manager" @bind-Visible="_envModalOpen" Width="740px">
+    <SgStack Direction="SgDirection.Vertical" Gap="16">
+        <SgStack Direction="SgDirection.Horizontal" Gap="12">
+            <div style="flex:1;">
+                <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Select Environment</div>
+                <SgSelect TValue="string" TItem="string"
+                          @bind-Value="_editEnvName"
+                          Items="_environments.Select(e => e.Name).ToList()"
+                          TextSelector="@((Func<string, string>)(n => n))"
+                          ValueSelector="@((Func<string, string>)(n => n))"
+                          Size="SgSize.Lg"
+                          Style="width:100%;" />
+            </div>
+            <div style="align-self:flex-end;">
+                <SgButton Variant="SgButtonVariant.Default" 
+                          Size="SgSize.Lg"
+                          OnClick="CreateEnvironment">
+                    + New
+                </SgButton>
+            </div>
+            <div style="align-self:flex-end;">
+                <SgButton Variant="SgButtonVariant.Danger" 
+                          Size="SgSize.Lg"
+                          OnClick="DeleteEnvironment">
+                    🗑 Delete
+                </SgButton>
+            </div>
+        </SgStack>
+        @{
+            var editEnv = _environments.FirstOrDefault(e => e.Name == _editEnvName);
+        }
+        @if (editEnv is not null)
+        {
+            <div style="margin-top:8px;">
+                <div style="margin-bottom:12px; font-size:14px; font-weight:600;">Environment Variables</div>
+                <SgHttpApiTesterKvEditor Items="editEnv.Variables" ShowComment="true" />
+            </div>
+        }
+        <SgStack Direction="SgDirection.Horizontal" Gap="8" Style="justify-content:flex-end; margin-top:8px;">
+            <SgButton Variant="SgButtonVariant.Primary" 
+                      Size="SgSize.Lg"
+                      OnClick="() => _envModalOpen = false">
+                Done
+            </SgButton>
+        </SgStack>
+    </SgStack>
+</SgModal>
+
+@* cURL Import Modal *@
+<SgModal Title="📥 Import from cURL" @bind-Visible="_curlImportOpen" Width="680px">
+    <div style="margin-bottom:12px;">
+        <div style="margin-bottom:8px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Paste cURL Command</div>
+        <SgTextArea @bind-Value="_curlInput" 
+                    Rows="10"
+                    Style="font-family:monospace; font-size:13px; line-height:1.6; width:100%;"
+                    Placeholder="curl -X POST 'https://api.example.com/data' \&#10;  -H 'Authorization: Bearer token' \&#10;  -d '{&quot;key&quot;:&quot;value&quot;}'" />
+    </div>
+    <SgStack Direction="SgDirection.Horizontal" Gap="8" Style="justify-content:flex-end; margin-top:12px;">
+        <SgButton Variant="SgButtonVariant.Default" 
+                  Size="SgSize.Lg"
+                  OnClick="() => _curlImportOpen = false">
+            Cancel
+        </SgButton>
+        <SgButton Variant="SgButtonVariant.Primary" 
+                  Size="SgSize.Lg"
+                  OnClick="ImportFromCurl">
+            Import
+        </SgButton>
+    </SgStack>
+</SgModal>
+
+@code {
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private RequestTab _currentTab = new();
+    private bool _isLoading = false;
+    private bool _hasError = false;
+    private string? _errorMessage;
+    private string _searchText = "";
+
+    private readonly string[] _methods = { "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" };
+    private readonly List<SgSegmentedOption<string>> _bodyTypeOptions = new()
+    {
+        new() { Value = "JSON", Label = "JSON" },
+        new() { Value = "XML", Label = "XML" },
+        new() { Value = "Text", Label = "Text" },
+        new() { Value = "Form", Label = "Form" },
+        new() { Value = "None", Label = "None" }
+    };
+    private readonly string[] _authTypes = { "None", "Bearer Token", "Basic Auth", "API Key", "OAuth 2.0" };
+
+    private List<Collection> _collections = new() { new Collection { Name = "My Collection" } };
+    private List<HistoryEntry> _history = new();
+    private List<ApiEnvironment> _environments = new()
+    {
+        new ApiEnvironment
+        {
+            Name = "Default",
+            Variables = new()
+            {
+                new KvPair("baseUrl", "https://jsonplaceholder.typicode.com"),
+                new KvPair("userId", "1"),
+                new KvPair("token", "my-secret-token")
+            }
+        }
+    };
+    private string _activeEnvName = "Default";
+    private string _editEnvName = "Default";
+
+    private bool _saveModalOpen = false;
+    private string _saveRequestName = "";
+    private string _saveRequestDescription = "";
+    private string _saveToCollectionId = "";
+    
+    private bool _envModalOpen = false;
+    private bool _curlImportOpen = false;
+    private string _curlInput = "";
+
+    // Runner
+    private bool _runnerMode = false;
+    private string _runnerIterations = "5";
+    private string _runnerDelayMs = "200";
+    private bool _runnerResultsOpen = false;
+    private List<RunnerResult> _runnerResults = new();
+
+    // Dock windows
+    private bool _wsOpen = false;
+    private bool _mockOpen = false;
+    private bool _statsOpen = false;
+    private bool _diffOpen = false;
+
+    // Settings
+    private string _timeoutSeconds = "30";
+    private bool _followRedirects = true;
+    private bool _prettyPrint = true;
+    private bool _mockEnabled = false;
+
+    // Mock & Stats
+    private List<MockEndpoint> _mockEndpoints = new();
+    private List<RequestStat> _stats = new();
+
+    // Diff
+    private ResponseSnapshot? _diffA = null;
+    private ResponseSnapshot? _diffB = null;
+
+    protected override void OnInitialized()
+    {
+        _saveToCollectionId = _collections.First().Id.ToString();
+    }
+
+    private string GetBodyPlaceholder() => _currentTab.BodyType switch
+    {
+        "JSON" => "{\n  \"key\": \"value\"\n}",
+        "XML" => "<?xml version=\"1.0\"?>\n<root>\n  <item>value</item>\n</root>",
+        _ => "Enter request body..."
+    };
+
+    private async Task SendRequestAsync()
+    {
+        if (_runnerMode)
+        {
+            await RunCollectionLoopAsync();
+            return;
+        }
+
+        _isLoading = true;
+        _hasError = false;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            // Run pre-request script
+            if (!string.IsNullOrWhiteSpace(_currentTab.PreScript))
+            {
+                RunPreRequestScript();
+            }
+
+            var sw = Stopwatch.StartNew();
+            
+            var url = ResolveVariables(_currentTab.Url);
+            var enabledParams = _currentTab.QueryParams.Where(p => p.Enabled).ToList();
+            if (enabledParams.Any())
+            {
+                var queryString = string.Join("&", enabledParams.Select(p => 
+                    $"{Uri.EscapeDataString(ResolveVariables(p.Key))}={Uri.EscapeDataString(ResolveVariables(p.Value))}"));
+                url += (url.Contains('?') ? "&" : "?") + queryString;
+            }
+
+            // Check mock server
+            if (_mockEnabled)
+            {
+                var mock = _mockEndpoints.FirstOrDefault(m =>
+                    m.Enabled &&
+                    m.Method == _currentTab.Method &&
+                    url.EndsWith(m.Path, StringComparison.OrdinalIgnoreCase));
+
+                if (mock is not null)
+                {
+                    if (mock.DelayMs > 0)
+                        await Task.Delay(mock.DelayMs);
+                    mock.HitCount++;
+                    
+                    var mockSnapshot = new ResponseSnapshot
+                    {
+                        Status = mock.StatusCode,
+                        StatusText = "Mock",
+                        ElapsedMs = mock.DelayMs,
+                        ContentType = mock.ContentType,
+                        RawBody = mock.Body,
+                        PrettyBody = FormatBody(mock.Body, mock.ContentType),
+                        ReceivedAt = DateTime.Now
+                    };
+                    
+                    _currentTab.LastResponse = mockSnapshot;
+                    AddToHistory(mockSnapshot);
+                    AddToStats(mockSnapshot);
+                    Toasts.Info($"🎭 Mock hit: {mock.Method} {mock.Path}");
+                    return;
+                }
+            }
+
+            var request = new HttpRequestMessage(new HttpMethod(_currentTab.Method), url);
+
+            foreach (var header in _currentTab.Headers.Where(h => h.Enabled))
+            {
+                if (!string.IsNullOrWhiteSpace(header.Key))
+                {
+                    request.Headers.TryAddWithoutValidation(
+                        ResolveVariables(header.Key), 
+                        ResolveVariables(header.Value));
+                }
+            }
+
+            if (_currentTab.AuthType == "Bearer Token" && !string.IsNullOrWhiteSpace(_currentTab.BearerToken))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                    "Bearer", ResolveVariables(_currentTab.BearerToken));
+            }
+            else if (_currentTab.AuthType == "Basic Auth")
+            {
+                var credentials = Convert.ToBase64String(
+                    Encoding.UTF8.GetBytes($"{_currentTab.BasicUser}:{_currentTab.BasicPassword}"));
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+            }
+            else if (_currentTab.AuthType == "API Key" && !string.IsNullOrWhiteSpace(_currentTab.ApiKeyName))
+            {
+                request.Headers.TryAddWithoutValidation(
+                    ResolveVariables(_currentTab.ApiKeyName), 
+                    ResolveVariables(_currentTab.ApiKeyValue));
+            }
+
+            if (_currentTab.Method != "GET" && _currentTab.Method != "HEAD" && _currentTab.BodyType != "None")
+            {
+                if (_currentTab.BodyType == "Form")
+                {
+                    var formData = _currentTab.FormFields.Where(f => f.Enabled)
+                        .ToDictionary(f => ResolveVariables(f.Key), f => ResolveVariables(f.Value));
+                    request.Content = new FormUrlEncodedContent(formData);
+                }
+                else if (!string.IsNullOrWhiteSpace(_currentTab.Body))
+                {
+                    var mediaType = _currentTab.BodyType switch
+                    {
+                        "JSON" => "application/json",
+                        "XML" => "application/xml",
+                        _ => "text/plain"
+                    };
+                    request.Content = new StringContent(ResolveVariables(_currentTab.Body), Encoding.UTF8, mediaType);
+                }
+            }
+
+            var response = await Http.SendAsync(request);
+            sw.Stop();
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var responseContentType = response.Content.Headers.ContentType?.MediaType ?? "";
+            
+            var snapshot = new ResponseSnapshot
+            {
+                Status = (int)response.StatusCode,
+                StatusText = response.ReasonPhrase ?? "",
+                ElapsedMs = sw.ElapsedMilliseconds,
+                SizeBytes = Encoding.UTF8.GetByteCount(responseBody),
+                ContentType = responseContentType,
+                RawBody = responseBody,
+                PrettyBody = FormatBody(responseBody, responseContentType),
+                ReceivedAt = DateTime.Now
+            };
+
+            foreach (var header in response.Headers)
+            {
+                snapshot.Headers.Add(new KvPair(header.Key, string.Join(", ", header.Value)));
+            }
+            foreach (var header in response.Content.Headers)
+            {
+                snapshot.Headers.Add(new KvPair(header.Key, string.Join(", ", header.Value)));
+            }
+
+            if (responseContentType.Contains("json"))
+            {
+                try
+                {
+                    var jsonNode = JsonNode.Parse(responseBody);
+                    if (jsonNode is JsonArray jsonArray && jsonArray.Count > 0)
+                    {
+                        snapshot.IsJsonArray = true;
+                        ParseJsonArrayToGrid(jsonArray, snapshot);
+                    }
+                }
+                catch { }
+            }
+
+            if (!string.IsNullOrWhiteSpace(_currentTab.TestScript))
+            {
+                RunTests(snapshot);
+            }
+
+            _currentTab.LastResponse = snapshot;
+            AddToHistory(snapshot);
+            AddToStats(snapshot);
+            
+            Toasts.Success($"Request completed in {sw.ElapsedMilliseconds}ms");
+        }
+        catch (Exception ex)
+        {
+            _hasError = true;
+            _errorMessage = ex.Message;
+            
+            _history.Add(new HistoryEntry
+            {
+                Method = _currentTab.Method,
+                Url = _currentTab.Url,
+                Timestamp = DateTime.Now
+            });
+            
+            Toasts.Error($"Request failed: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatBody(string body, string contentType)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return "";
+        
+        if (contentType.Contains("json"))
+        {
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(body);
+                return JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch { }
+        }
+        
+        return body;
+    }
+
+    private void ParseJsonArrayToGrid(JsonArray jsonArray, ResponseSnapshot snapshot)
+    {
+        var columns = new HashSet<string>();
+        var rows = new List<Dictionary<string, object?>>();
+
+        foreach (var item in jsonArray)
+        {
+            if (item is JsonObject jsonObj)
+            {
+                var row = new Dictionary<string, object?>();
+                foreach (var prop in jsonObj)
+                {
+                    columns.Add(prop.Key);
+                    row[prop.Key] = prop.Value?.ToString();
+                }
+                rows.Add(row);
+            }
+        }
+
+        snapshot.GridColumns = columns.ToList();
+        snapshot.GridRows = rows;
+    }
+
+    private void RunTests(ResponseSnapshot snapshot)
+    {
+        try
+        {
+            var runtime = new ScriptRuntime(_currentTab, snapshot, null);
+            
+            var lines = _currentTab.TestScript.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                if (line.Trim().StartsWith("//")) continue;
+                
+                if (line.Contains("pm.test"))
+                {
+                    var testName = ExtractTestName(line);
+                    var condition = EvaluateTestCondition(line, runtime);
+                    runtime.Test(testName, () => condition);
+                }
+            }
+
+            snapshot.Tests = runtime.Results.ToList();
+        }
+        catch (Exception ex)
+        {
+            snapshot.Tests.Add(new TestResult
+            {
+                Name = "Test Execution Error",
+                Passed = false,
+                Message = ex.Message
+            });
+        }
+    }
+
+    private string ExtractTestName(string line)
+    {
+        var start = line.IndexOf('\'');
+        if (start < 0) start = line.IndexOf('"');
+        if (start < 0) return "Test";
+        
+        var end = line.IndexOf('\'', start + 1);
+        if (end < 0) end = line.IndexOf('"', start + 1);
+        if (end < 0) return "Test";
+        
+        return line.Substring(start + 1, end - start - 1);
+    }
+
+    private bool EvaluateTestCondition(string line, ScriptRuntime runtime)
+    {
+        if (line.Contains("ResponseStatus") && line.Contains("=="))
+        {
+            var expectedStatus = ExtractNumber(line);
+            return runtime.ResponseStatus == expectedStatus;
+        }
+        
+        if (line.Contains("ResponseTime") && line.Contains("<"))
+        {
+            var maxTime = ExtractNumber(line);
+            return runtime.ResponseTime < maxTime;
+        }
+        
+        return true;
+    }
+
+    private int ExtractNumber(string line)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(line, @"\d+");
+        return match.Success ? int.Parse(match.Value) : 0;
+    }
+
+    private void SaveCurrentRequest()
+    {
+        _saveRequestName = _currentTab.TabName;
+        _saveModalOpen = true;
+    }
+
+    private void SaveRequestToCollection()
+    {
+        var collectionId = Guid.Parse(_saveToCollectionId);
+        var collection = _collections.FirstOrDefault(c => c.Id == collectionId);
+        if (collection is null) return;
+
+        var savedRequest = new SavedRequest
+        {
+            Name = _saveRequestName,
+            Description = _saveRequestDescription,
+            Tab = new RequestTab
+            {
+                TabName = _currentTab.TabName,
+                Method = _currentTab.Method,
+                Url = _currentTab.Url,
+                BodyType = _currentTab.BodyType,
+                Body = _currentTab.Body,
+                AuthType = _currentTab.AuthType,
+                BearerToken = _currentTab.BearerToken,
+                BasicUser = _currentTab.BasicUser,
+                BasicPassword = _currentTab.BasicPassword,
+                ApiKeyName = _currentTab.ApiKeyName,
+                ApiKeyValue = _currentTab.ApiKeyValue,
+                PreScript = _currentTab.PreScript,
+                TestScript = _currentTab.TestScript,
+                Headers = new List<KvPair>(_currentTab.Headers),
+                QueryParams = new List<KvPair>(_currentTab.QueryParams),
+                FormFields = new List<KvPair>(_currentTab.FormFields)
+            }
+        };
+
+        collection.Requests.Add(savedRequest);
+        _saveModalOpen = false;
+        Toasts.Success($"Request saved to {collection.Name}");
+    }
+
+    private void LoadRequest(SavedRequest req)
+    {
+        _currentTab = new RequestTab
+        {
+            TabName = req.Tab.TabName,
+            Method = req.Tab.Method,
+            Url = req.Tab.Url,
+            BodyType = req.Tab.BodyType,
+            Body = req.Tab.Body,
+            AuthType = req.Tab.AuthType,
+            BearerToken = req.Tab.BearerToken,
+            BasicUser = req.Tab.BasicUser,
+            BasicPassword = req.Tab.BasicPassword,
+            ApiKeyName = req.Tab.ApiKeyName,
+            ApiKeyValue = req.Tab.ApiKeyValue,
+            PreScript = req.Tab.PreScript,
+            TestScript = req.Tab.TestScript,
+            Headers = new List<KvPair>(req.Tab.Headers),
+            QueryParams = new List<KvPair>(req.Tab.QueryParams),
+            FormFields = new List<KvPair>(req.Tab.FormFields)
+        };
+        Toasts.Info($"Loaded: {req.Name}");
+    }
+
+    private void LoadHistoryEntry(HistoryEntry entry)
+    {
+        _currentTab.Method = entry.Method;
+        _currentTab.Url = entry.Url;
+        Toasts.Info("Loaded from history");
+    }
+
+    private void AddRequestToCollection(Collection col)
+    {
+        var req = new SavedRequest
+        {
+            Name = "New Request",
+            Tab = new RequestTab()
+        };
+        col.Requests.Add(req);
+    }
+
+    private void CreateNewCollection()
+    {
+        _collections.Add(new Collection { Name = $"Collection {_collections.Count + 1}" });
+        Toasts.Success("Collection created");
+    }
+
+    private void ClearHistory()
+    {
+        _history.Clear();
+        Toasts.Info("History cleared");
+    }
+
+    private SgBadgeVariant GetMethodVariant(string method) => method switch
+    {
+        "GET" => SgBadgeVariant.Info,
+        "POST" => SgBadgeVariant.Success,
+        "PUT" => SgBadgeVariant.Danger,
+        "PATCH" => SgBadgeVariant.Danger,
+        "DELETE" => SgBadgeVariant.Danger,
+        _ => SgBadgeVariant.Default
+    };
+
+    private SgBadgeVariant GetStatusVariant(int? status) => status switch
+    {
+        >= 200 and < 300 => SgBadgeVariant.Success,
+        >= 300 and < 400 => SgBadgeVariant.Info,
+        >= 400 and < 500 => SgBadgeVariant.Danger,
+        >= 500 => SgBadgeVariant.Danger,
+        _ => SgBadgeVariant.Default
+    };
+
+    private string GetMethodText(string m) => m;
+    private string GetMethodValue(string m) => m;
+    private string GetAuthTypeText(string t) => t;
+    private string GetAuthTypeValue(string t) => t;
+    
+    private string GetCollectionNameById(string id)
+    {
+        var col = _collections.FirstOrDefault(c => c.Id.ToString() == id);
+        return col?.Name ?? "Unknown";
+    }
+    
+    // ─── Variable Substitution ────────────────────────────────────────────────
+    private string ResolveVariables(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return input;
+        var env = _environments.FirstOrDefault(e => e.Name == _activeEnvName);
+        if (env is null) return input;
+        
+        return System.Text.RegularExpressions.Regex.Replace(input, @"\{\{(\w+)\}\}", m =>
+        {
+            var kv = env.Variables.FirstOrDefault(v => v.Key == m.Groups[1].Value && v.Enabled);
+            return kv?.Value ?? m.Value;
+        });
+    }
+    
+    // ─── Pre-request Script ───────────────────────────────────────────────────
+    private void RunPreRequestScript()
+    {
+        try
+        {
+            var env = _environments.FirstOrDefault(e => e.Name == _activeEnvName);
+            var runtime = new ScriptRuntime(_currentTab, null, env);
+            
+            // Simple script execution - in real implementation use Roslyn scripting
+            var lines = _currentTab.PreScript.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                if (line.Trim().StartsWith("//")) continue;
+                
+                // pm.environment.set("key", "value")
+                if (line.Contains("pm.environment.set"))
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(line, @"pm\.environment\.set\(['""](\w+)['""],\s*['""]([^'""]+)['""]");
+                    if (match.Success && env is not null)
+                    {
+                        runtime.EnvSet(match.Groups[1].Value, match.Groups[2].Value);
+                    }
+                }
+                
+                // pm.request.setHeader("key", "value")
+                if (line.Contains("pm.request.setHeader"))
+                {
+                    var match = System.Text.RegularExpressions.Regex.Match(line, @"pm\.request\.setHeader\(['""]([^'""]+)['""],\s*['""]([^'""]+)['""]");
+                    if (match.Success)
+                    {
+                        runtime.SetHeader(match.Groups[1].Value, match.Groups[2].Value);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Info($"Pre-request script error: {ex.Message}");
+        }
+    }
+    
+    // ─── JSON Formatting ──────────────────────────────────────────────────────
+    private void FormatCurrentBody()
+    {
+        if (_currentTab.BodyType != "JSON" || string.IsNullOrWhiteSpace(_currentTab.Body)) return;
+        
+        try
+        {
+            var jsonDoc = JsonDocument.Parse(_currentTab.Body);
+            _currentTab.Body = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+            Toasts.Success("JSON formatted");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Invalid JSON: {ex.Message}");
+        }
+    }
+    
+    private void MinifyCurrentBody()
+    {
+        if (_currentTab.BodyType != "JSON" || string.IsNullOrWhiteSpace(_currentTab.Body)) return;
+        
+        try
+        {
+            var jsonDoc = JsonDocument.Parse(_currentTab.Body);
+            _currentTab.Body = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = false });
+            Toasts.Success("JSON minified");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Invalid JSON: {ex.Message}");
+        }
+    }
+    
+    // ─── cURL Import ──────────────────────────────────────────────────────────
+    private void ImportFromCurl()
+    {
+        try
+        {
+            var curl = _curlInput.Replace("\\\n", " ").Replace("\\", "");
+            
+            // Method
+            var methodMatch = System.Text.RegularExpressions.Regex.Match(curl, @"-X\s+(\w+)");
+            if (methodMatch.Success)
+            {
+                _currentTab.Method = methodMatch.Groups[1].Value.ToUpper();
+            }
+            
+            // URL
+            var urlMatch = System.Text.RegularExpressions.Regex.Match(curl, @"curl\s+(?:-X\s+\w+\s+)?['""]?(https?://[^\s'""]+)['""]?");
+            if (urlMatch.Success)
+            {
+                _currentTab.Url = urlMatch.Groups[1].Value;
+            }
+            
+            // Headers
+            _currentTab.Headers.Clear();
+            _currentTab.Headers.Add(new KvPair("Content-Type", "application/json"));
+            foreach (System.Text.RegularExpressions.Match hm in System.Text.RegularExpressions.Regex.Matches(curl, @"-H\s+['""]([^:]+):\s*([^'""]+)['""]"))
+            {
+                _currentTab.Headers.Add(new KvPair(hm.Groups[1].Value.Trim(), hm.Groups[2].Value.Trim()));
+            }
+            
+            // Body
+            var bodyMatch = System.Text.RegularExpressions.Regex.Match(curl, @"-d\s+['""](.+?)['""]");
+            if (bodyMatch.Success)
+            {
+                _currentTab.Body = bodyMatch.Groups[1].Value.Replace("\\\"", "\"");
+                _currentTab.BodyType = "JSON";
+            }
+            
+            _curlImportOpen = false;
+            _curlInput = "";
+            Toasts.Success("cURL imported successfully");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Import failed: {ex.Message}");
+        }
+    }
+    
+    // ─── Environment Management ───────────────────────────────────────────────
+    private void CreateEnvironment()
+    {
+        var env = new ApiEnvironment { Name = $"Environment {_environments.Count + 1}" };
+        _environments.Add(env);
+        _editEnvName = env.Name;
+        Toasts.Success("Environment created");
+    }
+    
+    private void DeleteEnvironment()
+    {
+        if (_environments.Count <= 1)
+        {
+            Toasts.Info("Cannot delete the last environment");
+            return;
+        }
+        
+        var env = _environments.FirstOrDefault(e => e.Name == _editEnvName);
+        if (env is not null)
+        {
+            _environments.Remove(env);
+            _editEnvName = _environments.First().Name;
+            if (_activeEnvName == env.Name)
+            {
+                _activeEnvName = _environments.First().Name;
+            }
+            Toasts.Success("Environment deleted");
+        }
+    }
+
+    // ─── Helper Methods ───────────────────────────────────────────────────────
+    private void AddToHistory(ResponseSnapshot snapshot)
+    {
+        _history.Add(new HistoryEntry
+        {
+            Method = _currentTab.Method,
+            Url = _currentTab.Url,
+            Status = snapshot.Status,
+            ElapsedMs = snapshot.ElapsedMs,
+            SizeBytes = snapshot.SizeBytes,
+            Timestamp = DateTime.Now
+        });
+    }
+
+    private void AddToStats(ResponseSnapshot snapshot)
+    {
+        _stats.Add(new RequestStat
+        {
+            Label = $"#{_stats.Count + 1}",
+            Ms = snapshot.ElapsedMs,
+            Status = snapshot.Status,
+            Bytes = snapshot.SizeBytes,
+            Success = snapshot.Status is >= 200 and < 300
+        });
+    }
+
+    // ─── Collection Runner ────────────────────────────────────────────────────
+    private async Task RunCollectionLoopAsync()
+    {
+        _runnerResults.Clear();
+        _runnerResultsOpen = true;
+        
+        if (!int.TryParse(_runnerIterations, out var iterations))
+            iterations = 5;
+        if (!int.TryParse(_runnerDelayMs, out var delayMs))
+            delayMs = 200;
+
+        for (int i = 1; i <= iterations; i++)
+        {
+            var result = new RunnerResult { Iteration = i, Label = _currentTab.TabName };
+            try
+            {
+                var snapshot = await ExecuteSingleRequestAsync();
+                result.Status = snapshot.Status;
+                result.ElapsedMs = snapshot.ElapsedMs;
+                result.PassedTests = snapshot.Tests.Count(t => t.Passed);
+                result.TotalTests = snapshot.Tests.Count;
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.Message;
+            }
+            _runnerResults.Add(result);
+            StateHasChanged();
+            
+            if (delayMs > 0 && i < iterations)
+                await Task.Delay(delayMs);
+        }
+        
+        Toasts.Success($"Runner completed: {iterations} iterations");
+    }
+
+    private async Task RunCollectionAsync(Collection col)
+    {
+        _runnerResults.Clear();
+        _runnerResultsOpen = true;
+
+        int i = 1;
+        foreach (var req in col.Requests)
+        {
+            var result = new RunnerResult { Iteration = i++, Label = req.Name };
+            
+            // Temporarily load request
+            var previousTab = _currentTab;
+            _currentTab = new RequestTab
+            {
+                Method = req.Tab.Method,
+                Url = req.Tab.Url,
+                BodyType = req.Tab.BodyType,
+                Body = req.Tab.Body,
+                AuthType = req.Tab.AuthType,
+                BearerToken = req.Tab.BearerToken,
+                BasicUser = req.Tab.BasicUser,
+                BasicPassword = req.Tab.BasicPassword,
+                ApiKeyName = req.Tab.ApiKeyName,
+                ApiKeyValue = req.Tab.ApiKeyValue,
+                PreScript = req.Tab.PreScript,
+                TestScript = req.Tab.TestScript,
+                Headers = new List<KvPair>(req.Tab.Headers),
+                QueryParams = new List<KvPair>(req.Tab.QueryParams),
+                FormFields = new List<KvPair>(req.Tab.FormFields)
+            };
+
+            try
+            {
+                var snapshot = await ExecuteSingleRequestAsync();
+                result.Status = snapshot.Status;
+                result.ElapsedMs = snapshot.ElapsedMs;
+                result.PassedTests = snapshot.Tests.Count(t => t.Passed);
+                result.TotalTests = snapshot.Tests.Count;
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.Message;
+            }
+            
+            _runnerResults.Add(result);
+            StateHasChanged();
+            await Task.Delay(200);
+            
+            // Restore previous tab
+            _currentTab = previousTab;
+        }
+        
+        Toasts.Success($"Collection run completed: {col.Name}");
+    }
+
+    private async Task<ResponseSnapshot> ExecuteSingleRequestAsync()
+    {
+        // Run pre-request script
+        if (!string.IsNullOrWhiteSpace(_currentTab.PreScript))
+        {
+            RunPreRequestScript();
+        }
+
+        var sw = Stopwatch.StartNew();
+        
+        var url = ResolveVariables(_currentTab.Url);
+        var enabledParams = _currentTab.QueryParams.Where(p => p.Enabled).ToList();
+        if (enabledParams.Any())
+        {
+            var queryString = string.Join("&", enabledParams.Select(p => 
+                $"{Uri.EscapeDataString(ResolveVariables(p.Key))}={Uri.EscapeDataString(ResolveVariables(p.Value))}"));
+            url += (url.Contains('?') ? "&" : "?") + queryString;
+        }
+
+        var request = new HttpRequestMessage(new HttpMethod(_currentTab.Method), url);
+
+        foreach (var header in _currentTab.Headers.Where(h => h.Enabled))
+        {
+            if (!string.IsNullOrWhiteSpace(header.Key))
+            {
+                request.Headers.TryAddWithoutValidation(
+                    ResolveVariables(header.Key), 
+                    ResolveVariables(header.Value));
+            }
+        }
+
+        if (_currentTab.AuthType == "Bearer Token" && !string.IsNullOrWhiteSpace(_currentTab.BearerToken))
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+                "Bearer", ResolveVariables(_currentTab.BearerToken));
+        }
+        else if (_currentTab.AuthType == "Basic Auth")
+        {
+            var credentials = Convert.ToBase64String(
+                Encoding.UTF8.GetBytes($"{_currentTab.BasicUser}:{_currentTab.BasicPassword}"));
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+        }
+        else if (_currentTab.AuthType == "API Key" && !string.IsNullOrWhiteSpace(_currentTab.ApiKeyName))
+        {
+            request.Headers.TryAddWithoutValidation(
+                ResolveVariables(_currentTab.ApiKeyName), 
+                ResolveVariables(_currentTab.ApiKeyValue));
+        }
+
+        if (_currentTab.Method != "GET" && _currentTab.Method != "HEAD" && _currentTab.BodyType != "None")
+        {
+            if (_currentTab.BodyType == "Form")
+            {
+                var formData = _currentTab.FormFields.Where(f => f.Enabled)
+                    .ToDictionary(f => ResolveVariables(f.Key), f => ResolveVariables(f.Value));
+                request.Content = new FormUrlEncodedContent(formData);
+            }
+            else if (!string.IsNullOrWhiteSpace(_currentTab.Body))
+            {
+                var mediaType = _currentTab.BodyType switch
+                {
+                    "JSON" => "application/json",
+                    "XML" => "application/xml",
+                    _ => "text/plain"
+                };
+                request.Content = new StringContent(ResolveVariables(_currentTab.Body), Encoding.UTF8, mediaType);
+            }
+        }
+
+        var response = await Http.SendAsync(request);
+        sw.Stop();
+
+        var responseBody = await response.Content.ReadAsStringAsync();
+        var responseContentType = response.Content.Headers.ContentType?.MediaType ?? "";
+        
+        var snapshot = new ResponseSnapshot
+        {
+            Status = (int)response.StatusCode,
+            StatusText = response.ReasonPhrase ?? "",
+            ElapsedMs = sw.ElapsedMilliseconds,
+            SizeBytes = Encoding.UTF8.GetByteCount(responseBody),
+            ContentType = responseContentType,
+            RawBody = responseBody,
+            PrettyBody = FormatBody(responseBody, responseContentType),
+            ReceivedAt = DateTime.Now
+        };
+
+        foreach (var header in response.Headers)
+        {
+            snapshot.Headers.Add(new KvPair(header.Key, string.Join(", ", header.Value)));
+        }
+        foreach (var header in response.Content.Headers)
+        {
+            snapshot.Headers.Add(new KvPair(header.Key, string.Join(", ", header.Value)));
+        }
+
+        if (responseContentType.Contains("json"))
+        {
+            try
+            {
+                var jsonNode = JsonNode.Parse(responseBody);
+                if (jsonNode is JsonArray jsonArray && jsonArray.Count > 0)
+                {
+                    snapshot.IsJsonArray = true;
+                    ParseJsonArrayToGrid(jsonArray, snapshot);
+                }
+            }
+            catch { }
+        }
+
+        if (!string.IsNullOrWhiteSpace(_currentTab.TestScript))
+        {
+            RunTests(snapshot);
+        }
+
+        return snapshot;
+    }
+
+    // ─── Diff Viewer ──────────────────────────────────────────────────────────
+    private string GetDiffATitle()
+    {
+        if (_diffA is null) return "Response A";
+        return $"Response A — {_diffA.Status} {_diffA.ElapsedMs} ms";
+    }
+
+    private string GetDiffBTitle()
+    {
+        if (_diffB is null) return "Response B";
+        return $"Response B — {_diffB.Status} {_diffB.ElapsedMs} ms";
+    }
+
+    private void OpenDiff()
+    {
+        if (_currentTab.LastResponse is null)
+        {
+            Toasts.Info("No response to compare");
+            return;
+        }
+
+        if (_diffA is null)
+        {
+            _diffA = _currentTab.LastResponse;
+            Toasts.Info("Response A set. Send another request and click Diff again for B.");
+        }
+        else
+        {
+            _diffB = _currentTab.LastResponse;
+            _diffOpen = true;
+        }
+    }
+}

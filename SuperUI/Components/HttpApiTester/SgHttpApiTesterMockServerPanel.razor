@@ -1,0 +1,230 @@
+@namespace SuperUI.Components
+@inject SgToastService Toasts
+
+<SgCard Title="🎭 Mock Server">
+    <SgStack Direction="SgDirection.Vertical" Gap="12">
+        
+        <SgAlert Variant="SgAlertVariant.Info">
+            Mock server intercepts matching requests. Enable endpoints below to start mocking.
+        </SgAlert>
+
+        @if (!Endpoints.Any())
+        {
+            <SgEmpty Description="No mock endpoints configured" />
+        }
+        else
+        {
+            <SgDataGrid TItem="MockEndpoint"
+                        Items="Endpoints"
+                        EnablePaging="false"
+                        ShowSearch="false">
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Enabled"
+                                  Value="@(e => e.Enabled ? "✅" : "⬜")"
+                                  Width="80px" />
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Method"
+                                  Value="@(e => e.Method)"
+                                  Width="80px"
+                                  Sortable="true" />
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Path"
+                                  Value="@(e => e.Path)"
+                                  Sortable="true"
+                                  Filterable="true" />
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Status"
+                                  Value="@(e => e.StatusCode.ToString())"
+                                  Width="70px" />
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Delay (ms)"
+                                  Value="@(e => e.DelayMs.ToString())"
+                                  Width="90px" />
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Hits"
+                                  Value="@(e => e.HitCount.ToString())"
+                                  Width="60px" />
+                <SgDataGridColumn TItem="MockEndpoint"
+                                  Title="Actions"
+                                  Width="120px">
+                    <Template Context="endpoint">
+                        <SgStack Direction="SgDirection.Horizontal" Gap="4">
+                            <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="() => EditEndpoint(endpoint)">
+                                ✏
+                            </SgButton>
+                            <SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="() => DeleteEndpoint(endpoint)">
+                                🗑
+                            </SgButton>
+                        </SgStack>
+                    </Template>
+                </SgDataGridColumn>
+            </SgDataGrid>
+        }
+
+        <SgStack Direction="SgDirection.Horizontal" Gap="6">
+            <SgButton Variant="SgButtonVariant.Primary" OnClick="AddEndpoint">
+                + Add Endpoint
+            </SgButton>
+            @if (Endpoints.Any())
+            {
+                <SgButton Variant="SgButtonVariant.Default" OnClick="ResetHits">
+                    🔄 Reset Hits
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Default" OnClick="EnableAll">
+                    ✅ Enable All
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Default" OnClick="DisableAll">
+                    ⬜ Disable All
+                </SgButton>
+            }
+        </SgStack>
+
+    </SgStack>
+</SgCard>
+
+@* Edit Endpoint Modal *@
+<SgModal Title="@(_editTarget is null ? "Add Mock Endpoint" : "Edit Mock Endpoint")"
+         @bind-Visible="_editOpen"
+         Width="600px">
+    @if (_editTarget is not null)
+    {
+        <SgStack Direction="SgDirection.Vertical" Gap="12">
+            <SgCheckBox @bind-Value="_editTarget.Enabled" Label="Enabled" />
+            
+            <SgStack Direction="SgDirection.Horizontal" Gap="8">
+                <SgSelect @bind-Value="_editTarget.Method"
+                          Label="Method"
+                          Items="@(new[]{"GET","POST","PUT","PATCH","DELETE","HEAD","OPTIONS"})"
+                          TextSelector="@GetMethodText"
+                          ValueSelector="@GetMethodValue"
+                          Style="width:120px;" />
+                <SgTextBox @bind-Value="_editTarget.Path"
+                           Label="Path"
+                           Placeholder="/api/mock"
+                           Style="flex:1;" />
+            </SgStack>
+
+            <SgStack Direction="SgDirection.Horizontal" Gap="8">
+                <SgTextBox @bind-Value="_statusCodeStr"
+                           Label="Status Code"
+                           Type="number"
+                           Style="width:120px;" />
+                <SgTextBox @bind-Value="_editTarget.ContentType"
+                           Label="Content-Type"
+                           Placeholder="application/json"
+                           Style="flex:1;" />
+                <SgTextBox @bind-Value="_delayMsStr"
+                           Label="Delay (ms)"
+                           Type="number"
+                           Style="width:120px;" />
+            </SgStack>
+
+            <SgTextArea @bind-Value="_editTarget.Body"
+                        Label="Response Body"
+                        Rows="10"
+                        Placeholder='{ "message": "ok" }'
+                        Style="font-family:monospace; font-size:13px;" />
+
+            <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="justify-content:flex-end;">
+                <SgButton Variant="SgButtonVariant.Default" OnClick="() => _editOpen = false">
+                    Cancel
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Primary" OnClick="SaveEndpoint">
+                    Save
+                </SgButton>
+            </SgStack>
+        </SgStack>
+    }
+</SgModal>
+
+@code {
+    [Parameter] public List<MockEndpoint> Endpoints { get; set; } = new();
+
+    private bool _editOpen = false;
+    private MockEndpoint? _editTarget = null;
+    private string _statusCodeStr = "200";
+    private string _delayMsStr = "0";
+
+    private void AddEndpoint()
+    {
+        _editTarget = new MockEndpoint
+        {
+            Method = "GET",
+            Path = "/api/mock",
+            StatusCode = 200,
+            ContentType = "application/json",
+            Body = "{ \"message\": \"ok\" }",
+            DelayMs = 0
+        };
+        _statusCodeStr = "200";
+        _delayMsStr = "0";
+        _editOpen = true;
+    }
+
+    private void EditEndpoint(MockEndpoint endpoint)
+    {
+        _editTarget = endpoint;
+        _statusCodeStr = endpoint.StatusCode.ToString();
+        _delayMsStr = endpoint.DelayMs.ToString();
+        _editOpen = true;
+    }
+
+    private void SaveEndpoint()
+    {
+        if (_editTarget is null) return;
+        
+        if (int.TryParse(_statusCodeStr, out var statusCode))
+            _editTarget.StatusCode = statusCode;
+        if (int.TryParse(_delayMsStr, out var delayMs))
+            _editTarget.DelayMs = delayMs;
+        
+        if (!Endpoints.Contains(_editTarget))
+        {
+            Endpoints.Add(_editTarget);
+            Toasts.Success("Mock endpoint added");
+        }
+        else
+        {
+            Toasts.Success("Mock endpoint updated");
+        }
+        
+        _editOpen = false;
+        _editTarget = null;
+    }
+
+    private void DeleteEndpoint(MockEndpoint endpoint)
+    {
+        Endpoints.Remove(endpoint);
+        Toasts.Info("Mock endpoint deleted");
+    }
+
+    private void ResetHits()
+    {
+        foreach (var ep in Endpoints)
+        {
+            ep.HitCount = 0;
+        }
+        Toasts.Info("Hit counters reset");
+    }
+
+    private void EnableAll()
+    {
+        foreach (var ep in Endpoints)
+        {
+            ep.Enabled = true;
+        }
+        Toasts.Success("All endpoints enabled");
+    }
+
+    private void DisableAll()
+    {
+        foreach (var ep in Endpoints)
+        {
+            ep.Enabled = false;
+        }
+        Toasts.Info("All endpoints disabled");
+    }
+
+    private string GetMethodText(string m) => m;
+    private string GetMethodValue(string m) => m;
+}

@@ -1,0 +1,396 @@
+@namespace SuperUI.Components
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using System.Diagnostics
+@inject HttpClient Http
+@inject SgToastService Toasts
+
+<div class="sg-http-api-tester" style="@Style">
+    <SgCard>
+        <SgStack Direction="SgDirection.Vertical" Gap="12">
+            
+            @* Request Builder *@
+            <SgStack Direction="SgDirection.Horizontal" Gap="8" Style="align-items:center;">
+                <SgSelect @bind-Value="_currentTab.Method"
+                          Items="@_methods"
+                          TextSelector="@GetMethodText"
+                          ValueSelector="@GetMethodValue"
+                          Style="width:120px;" />
+                
+                <SgTextBox @bind-Value="_currentTab.Url"
+                           Placeholder="https://api.example.com/endpoint"
+                           Style="flex:1;" />
+                
+                <SgButton Variant="SgButtonVariant.Primary"
+                          OnClick="SendRequestAsync"
+                          Disabled="_isLoading">
+                    @if (_isLoading)
+                    {
+                        <SgSpinner Size="SgSize.Sm" />
+                        <span style="margin-left:6px;">Sending...</span>
+                    }
+                    else
+                    {
+                        <span>Send</span>
+                    }
+                </SgButton>
+                
+                <SgButton Variant="SgButtonVariant.Default"
+                          OnClick="SaveRequest">
+                    💾 Save
+                </SgButton>
+            </SgStack>
+
+            @* Request Configuration Tabs *@
+            <SgTabs>
+                <SgTabPanel Title="Headers">
+                    <SgHttpApiTesterKvEditor Items="_currentTab.Headers" />
+                </SgTabPanel>
+
+                <SgTabPanel Title="Query Params">
+                    <SgHttpApiTesterKvEditor Items="_currentTab.QueryParams" ShowComment="false" />
+                </SgTabPanel>
+
+                <SgTabPanel Title="Body">
+                    <SgStack Direction="SgDirection.Vertical" Gap="8">
+                        <SgSegmented @bind-Value="_currentTab.BodyType"
+                                     Items="@_bodyTypes"
+                                     TextSelector="@GetBodyTypeText"
+                                     ValueSelector="@GetBodyTypeValue" />
+                        
+                        @if (_currentTab.BodyType == "JSON" || _currentTab.BodyType == "XML" || _currentTab.BodyType == "Text")
+                        {
+                            <SgTextArea @bind-Value="_currentTab.Body"
+                                        Rows="10"
+                                        Placeholder="@GetBodyPlaceholder()" />
+                        }
+                        else if (_currentTab.BodyType == "Form")
+                        {
+                            <SgHttpApiTesterKvEditor Items="_currentTab.FormFields" ShowComment="false" />
+                        }
+                    </SgStack>
+                </SgTabPanel>
+
+                <SgTabPanel Title="Auth">
+                    <SgStack Direction="SgDirection.Vertical" Gap="12">
+                        <SgSelect @bind-Value="_currentTab.AuthType"
+                                  Label="Auth Type"
+                                  Items="@_authTypes"
+                                  TextSelector="@GetAuthTypeText"
+                                  ValueSelector="@GetAuthTypeValue"
+                                  Style="width:200px;" />
+                        
+                        @if (_currentTab.AuthType == "Bearer Token")
+                        {
+                            <SgTextBox @bind-Value="_currentTab.BearerToken"
+                                       Label="Token"
+                                       Placeholder="your-token-here" />
+                        }
+                        else if (_currentTab.AuthType == "Basic Auth")
+                        {
+                            <SgTextBox @bind-Value="_currentTab.BasicUser"
+                                       Label="Username"
+                                       Placeholder="username" />
+                            <SgTextBox @bind-Value="_currentTab.BasicPassword"
+                                       Label="Password"
+                                       Type="password"
+                                       Placeholder="password" />
+                        }
+                        else if (_currentTab.AuthType == "API Key")
+                        {
+                            <SgTextBox @bind-Value="_currentTab.ApiKeyName"
+                                       Label="Key Name"
+                                       Placeholder="X-API-Key" />
+                            <SgTextBox @bind-Value="_currentTab.ApiKeyValue"
+                                       Label="Key Value"
+                                       Placeholder="your-api-key" />
+                        }
+                    </SgStack>
+                </SgTabPanel>
+
+                <SgTabPanel Title="Tests">
+                    <SgTextArea @bind-Value="_currentTab.TestScript"
+                                Rows="12"
+                                Placeholder="// Example test script:&#10;pm.test('Status is 200', () => pm.ResponseStatus == 200);&#10;pm.expect(pm.ResponseBody).toContain('success');" />
+                </SgTabPanel>
+            </SgTabs>
+
+            <SgDivider />
+
+            @* Response Panel *@
+            <SgHttpApiTesterResponsePanel Snapshot="_currentTab.LastResponse"
+                                          HasError="_hasError"
+                                          ErrorMessage="_errorMessage" />
+
+        </SgStack>
+    </SgCard>
+</div>
+
+@code {
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private RequestTab _currentTab = new();
+    private bool _isLoading = false;
+    private bool _hasError = false;
+    private string? _errorMessage;
+
+    private readonly string[] _methods = { "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS" };
+    private readonly string[] _bodyTypes = { "JSON", "XML", "Text", "Form", "None" };
+    private readonly string[] _authTypes = { "None", "Bearer Token", "Basic Auth", "API Key", "OAuth 2.0" };
+
+    private string GetBodyPlaceholder() => _currentTab.BodyType switch
+    {
+        "JSON" => "{\n  \"key\": \"value\"\n}",
+        "XML" => "<?xml version=\"1.0\"?>\n<root>\n  <item>value</item>\n</root>",
+        _ => "Enter request body..."
+    };
+
+    private async Task SendRequestAsync()
+    {
+        _isLoading = true;
+        _hasError = false;
+        _errorMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            
+            var url = _currentTab.Url;
+            var enabledParams = _currentTab.QueryParams.Where(p => p.Enabled).ToList();
+            if (enabledParams.Any())
+            {
+                var queryString = string.Join("&", enabledParams.Select(p => $"{Uri.EscapeDataString(p.Key)}={Uri.EscapeDataString(p.Value)}"));
+                url += (url.Contains('?') ? "&" : "?") + queryString;
+            }
+
+            var request = new HttpRequestMessage(new HttpMethod(_currentTab.Method), url);
+
+            foreach (var header in _currentTab.Headers.Where(h => h.Enabled))
+            {
+                if (!string.IsNullOrWhiteSpace(header.Key))
+                {
+                    request.Headers.TryAddWithoutValidation(header.Key, header.Value);
+                }
+            }
+
+            if (_currentTab.AuthType == "Bearer Token" && !string.IsNullOrWhiteSpace(_currentTab.BearerToken))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _currentTab.BearerToken);
+            }
+            else if (_currentTab.AuthType == "Basic Auth")
+            {
+                var credentials = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{_currentTab.BasicUser}:{_currentTab.BasicPassword}"));
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credentials);
+            }
+            else if (_currentTab.AuthType == "API Key" && !string.IsNullOrWhiteSpace(_currentTab.ApiKeyName))
+            {
+                request.Headers.TryAddWithoutValidation(_currentTab.ApiKeyName, _currentTab.ApiKeyValue);
+            }
+
+            if (_currentTab.Method != "GET" && _currentTab.Method != "HEAD" && _currentTab.BodyType != "None")
+            {
+                if (_currentTab.BodyType == "Form")
+                {
+                    var formData = _currentTab.FormFields.Where(f => f.Enabled)
+                        .ToDictionary(f => f.Key, f => f.Value);
+                    request.Content = new FormUrlEncodedContent(formData);
+                }
+                else if (!string.IsNullOrWhiteSpace(_currentTab.Body))
+                {
+                    var mediaType = _currentTab.BodyType switch
+                    {
+                        "JSON" => "application/json",
+                        "XML" => "application/xml",
+                        _ => "text/plain"
+                    };
+                    request.Content = new StringContent(_currentTab.Body, Encoding.UTF8, mediaType);
+                }
+            }
+
+            var response = await Http.SendAsync(request);
+            sw.Stop();
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var responseContentType = response.Content.Headers.ContentType?.MediaType ?? "";
+            
+            var snapshot = new ResponseSnapshot
+            {
+                Status = (int)response.StatusCode,
+                StatusText = response.ReasonPhrase ?? "",
+                ElapsedMs = sw.ElapsedMilliseconds,
+                SizeBytes = Encoding.UTF8.GetByteCount(responseBody),
+                ContentType = responseContentType,
+                RawBody = responseBody,
+                PrettyBody = FormatBody(responseBody, responseContentType),
+                ReceivedAt = DateTime.Now
+            };
+
+            foreach (var header in response.Headers)
+            {
+                snapshot.Headers.Add(new KvPair(header.Key, string.Join(", ", header.Value)));
+            }
+            foreach (var header in response.Content.Headers)
+            {
+                snapshot.Headers.Add(new KvPair(header.Key, string.Join(", ", header.Value)));
+            }
+
+            if (responseContentType.Contains("json"))
+            {
+                try
+                {
+                    var jsonNode = JsonNode.Parse(responseBody);
+                    if (jsonNode is JsonArray jsonArray && jsonArray.Count > 0)
+                    {
+                        snapshot.IsJsonArray = true;
+                        ParseJsonArrayToGrid(jsonArray, snapshot);
+                    }
+                }
+                catch { }
+            }
+
+            if (!string.IsNullOrWhiteSpace(_currentTab.TestScript))
+            {
+                RunTests(snapshot);
+            }
+
+            _currentTab.LastResponse = snapshot;
+            Toasts.Success($"Request completed in {sw.ElapsedMilliseconds}ms");
+        }
+        catch (Exception ex)
+        {
+            _hasError = true;
+            _errorMessage = ex.Message;
+            Toasts.Error($"Request failed: {ex.Message}");
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private string FormatBody(string body, string contentType)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return "";
+        
+        if (contentType.Contains("json"))
+        {
+            try
+            {
+                var jsonDoc = JsonDocument.Parse(body);
+                return JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions { WriteIndented = true });
+            }
+            catch { }
+        }
+        
+        return body;
+    }
+
+    private void ParseJsonArrayToGrid(JsonArray jsonArray, ResponseSnapshot snapshot)
+    {
+        var columns = new HashSet<string>();
+        var rows = new List<Dictionary<string, object?>>();
+
+        foreach (var item in jsonArray)
+        {
+            if (item is JsonObject jsonObj)
+            {
+                var row = new Dictionary<string, object?>();
+                foreach (var prop in jsonObj)
+                {
+                    columns.Add(prop.Key);
+                    row[prop.Key] = prop.Value?.ToString();
+                }
+                rows.Add(row);
+            }
+        }
+
+        snapshot.GridColumns = columns.ToList();
+        snapshot.GridRows = rows;
+    }
+
+    private void RunTests(ResponseSnapshot snapshot)
+    {
+        try
+        {
+            var runtime = new ScriptRuntime(_currentTab, snapshot, null);
+            
+            var lines = _currentTab.TestScript.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                if (line.Trim().StartsWith("//")) continue;
+                
+                if (line.Contains("pm.test"))
+                {
+                    var testName = ExtractTestName(line);
+                    var condition = EvaluateTestCondition(line, runtime);
+                    runtime.Test(testName, () => condition);
+                }
+            }
+
+            snapshot.Tests = runtime.Results.ToList();
+        }
+        catch (Exception ex)
+        {
+            snapshot.Tests.Add(new TestResult
+            {
+                Name = "Test Execution Error",
+                Passed = false,
+                Message = ex.Message
+            });
+        }
+    }
+
+    private string ExtractTestName(string line)
+    {
+        var start = line.IndexOf('\'');
+        if (start < 0) start = line.IndexOf('"');
+        if (start < 0) return "Test";
+        
+        var end = line.IndexOf('\'', start + 1);
+        if (end < 0) end = line.IndexOf('"', start + 1);
+        if (end < 0) return "Test";
+        
+        return line.Substring(start + 1, end - start - 1);
+    }
+
+    private bool EvaluateTestCondition(string line, ScriptRuntime runtime)
+    {
+        if (line.Contains("ResponseStatus") && line.Contains("=="))
+        {
+            var expectedStatus = ExtractNumber(line);
+            return runtime.ResponseStatus == expectedStatus;
+        }
+        
+        if (line.Contains("ResponseTime") && line.Contains("<"))
+        {
+            var maxTime = ExtractNumber(line);
+            return runtime.ResponseTime < maxTime;
+        }
+        
+        return true;
+    }
+
+    private int ExtractNumber(string line)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(line, @"\d+");
+        return match.Success ? int.Parse(match.Value) : 0;
+    }
+
+    private void SaveRequest()
+    {
+        Toasts.Info("Save functionality - to be implemented");
+    }
+
+    private string GetMethodText(string m) => m;
+    private string GetMethodValue(string m) => m;
+    private string GetBodyTypeText(string t) => t;
+    private string GetBodyTypeValue(string t) => t;
+    private string GetAuthTypeText(string t) => t;
+    private string GetAuthTypeValue(string t) => t;
+}
