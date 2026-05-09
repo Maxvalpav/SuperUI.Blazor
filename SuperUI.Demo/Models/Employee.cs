@@ -51,4 +51,16 @@ public class Employee
     [Display(Name = "Заметки", Order = 8)]
     [StringLength(500, ErrorMessage = "Не более 500 символов")]
     public string? Notes { get; set; }
+
+    [Display(Name = "Телефон", Order = 9)]
+    [Phone(ErrorMessage = "Некорректный номер телефона")]
+    public string? Phone { get; set; }
+
+    [Display(Name = "Должность", Order = 10)]
+    [StringLength(100, ErrorMessage = "Не более 100 символов")]
+    public string? Position { get; set; }
+
+    [Display(Name = "Руководитель", Order = 11)]
+    [StringLength(100, ErrorMessage = "Не более 100 символов")]
+    public string? Manager { get; set; }
 }

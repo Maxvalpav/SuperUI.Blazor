@@ -1,13 +1,15 @@
 @namespace SuperUI.Components
-@implements IDisposable
+@implements IAsyncDisposable
 
 <button type="@Type.ToString().ToLowerInvariant()"
-        class="sgc-btn @VariantClass @SizeClass @(Block ? "sgc-block" : "") @CssClass"
+        class="sgc-btn @VariantClass @SizeClass @(Block ? "sgc-block" : "") @(_isDebouncing ? "sgc-debouncing" : "") @CssClass"
         style="@Style"
         disabled="@(Disabled || Loading || _isDebouncing)"
         title="@Title"
         @onclick="OnClickAsync"
         aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+        aria-disabled="@(Disabled ? "true" : null)"
+        aria-busy="@(Loading ? "true" : null)"
         @attributes="AdditionalAttributes">
     @if (Loading)
     {
@@ -29,7 +31,6 @@
 
 @code {
     private bool _isDebouncing;
-    private bool _pressed;
     private CancellationTokenSource? _debounceCts;
     private bool _disposed;
 
@@ -127,9 +128,9 @@
     private string VariantClass => Variant switch
     {
         SgButtonVariant.Primary  => "sgc-btn-primary",
-        SgButtonVariant.Danger   => "sgc-danger",
-        SgButtonVariant.Success  => "sgc-success",
-        SgButtonVariant.Ghost    => "sgc-ghost",
+        SgButtonVariant.Danger   => "sgc-btn-danger",
+        SgButtonVariant.Success  => "sgc-btn-success",
+        SgButtonVariant.Ghost    => "sgc-btn-ghost",
         SgButtonVariant.Outlined => "sgc-outlined",
         SgButtonVariant.Dashed   => "sgc-dashed",
         _                        => ""
@@ -145,53 +146,52 @@
     {
         if (Disabled || Loading || _isDebouncing) return;
 
+        if (DebounceInterval > 0)
+        {
+            _isDebouncing = true;
+            StateHasChanged();
+        }
+
         if (IsToggle)
         {
-            var newPressed = !Pressed;
-            Pressed = newPressed;
-            _pressed = newPressed;
+            Pressed = !Pressed;
             if (PressedChanged.HasDelegate)
             {
-                await PressedChanged.InvokeAsync(newPressed);
+                await PressedChanged.InvokeAsync(Pressed);
             }
         }
 
         if (OnClick.HasDelegate)
         {
-            if (DebounceInterval > 0)
-            {
-                _isDebouncing = true;
-                StateHasChanged();
-            }
-
             await OnClick.InvokeAsync(e);
+        }
 
-            if (DebounceInterval > 0)
+        if (DebounceInterval > 0)
+        {
+            _debounceCts?.Cancel();
+            _debounceCts?.Dispose();
+            _debounceCts = new CancellationTokenSource();
+            var token = _debounceCts.Token;
+            try
             {
-                _debounceCts?.Cancel();
-                _debounceCts?.Dispose();
-                _debounceCts = new CancellationTokenSource();
-                var token = _debounceCts.Token;
-                try
-                {
-                    await Task.Delay(DebounceInterval, token);
-                }
-                catch (TaskCanceledException)
-                {
-                    return;
-                }
-                if (_disposed || token.IsCancellationRequested) return;
-                _isDebouncing = false;
-                StateHasChanged();
+                await Task.Delay(DebounceInterval, token);
             }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            if (_disposed || token.IsCancellationRequested) return;
+            _isDebouncing = false;
+            StateHasChanged();
         }
     }
 
-    public void Dispose()
+    public ValueTask DisposeAsync()
     {
         _disposed = true;
         _debounceCts?.Cancel();
         _debounceCts?.Dispose();
         _debounceCts = null;
+        return ValueTask.CompletedTask;
     }
 }

@@ -28,6 +28,39 @@ function restoreRange(editor) {
     return true;
 }
 
+function sanitizeHtml(html) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    
+    const dangerousTags = new Set([
+        'script', 'style', 'link', 'meta', 'iframe', 'object', 
+        'embed', 'form', 'input', 'button', 'select', 'textarea',
+        'svg', 'math', 'base', 'frameset'
+    ]);
+    
+    const walker = document.createTreeWalker(tpl.content, NodeFilter.SHOW_ELEMENT);
+    const toRemove = [];
+    let node;
+    while (node = walker.nextNode()) {
+        if (dangerousTags.has(node.tagName.toLowerCase())) {
+            toRemove.push(node);
+            continue;
+        }
+        [...node.attributes].forEach(attr => {
+            if (/^on[a-z]+$/i.test(attr.name)) {
+                node.removeAttribute(attr.name);
+            }
+            if (/^(href|src|action|formaction|xlink:href)$/i.test(attr.name)) {
+                if (typeof attr.value === 'string' && attr.value.trim().toLowerCase().startsWith('javascript:')) {
+                    node.removeAttribute(attr.name);
+                }
+            }
+        });
+    }
+    toRemove.forEach(n => n.remove());
+    return tpl.innerHTML;
+}
+
 export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
     if (!editorElement) return;
 
@@ -46,15 +79,8 @@ export function initRichTextEditor(editorElement, dotnetRef, placeholder) {
         const html = e.clipboardData.getData('text/html');
         const text = e.clipboardData.getData('text/plain');
         if (html) {
-            const tpl = document.createElement('template');
-            tpl.innerHTML = html;
-            tpl.content.querySelectorAll('script, style, link, meta').forEach(n => n.remove());
-            tpl.content.querySelectorAll('*').forEach(el => {
-                [...el.attributes].forEach(a => {
-                    if (a.name.startsWith('on')) el.removeAttribute(a.name);
-                });
-            });
-            document.execCommand('insertHTML', false, tpl.innerHTML);
+            const sanitized = sanitizeHtml(html);
+            document.execCommand('insertHTML', false, sanitized);
         } else if (text) {
             document.execCommand('insertText', false, text);
         }

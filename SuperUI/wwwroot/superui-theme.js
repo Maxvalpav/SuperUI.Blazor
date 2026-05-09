@@ -4,11 +4,20 @@ const THEME_KEY = 'superui-theme';
 const DEFAULT_THEME = 'light';
 
 export function getTheme() {
-    return localStorage.getItem(THEME_KEY) || DEFAULT_THEME;
+    try {
+        if (typeof localStorage !== 'undefined') {
+            return localStorage.getItem(THEME_KEY) || DEFAULT_THEME;
+        }
+    } catch { }
+    return DEFAULT_THEME;
 }
 
 export function setTheme(theme) {
-    localStorage.setItem(THEME_KEY, theme);
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(THEME_KEY, theme);
+        }
+    } catch { }
     applyTheme(theme);
 }
 

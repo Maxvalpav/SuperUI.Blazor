@@ -3,10 +3,11 @@
 
 <CascadingValue Value="this" IsFixed="true">
     <div class="sgc-dropdown @CssClass"
-         @onfocusout="HandleFocusOutAsync"
          @onmouseleave="HandleMouseLeaveAsync"
          @onkeydown="HandleKeyDownAsync"
-         @onkeydown:stopPropagation="true">
+         @onkeydown:stopPropagation="true"
+         @onblur="HandleBlurAsync"
+         @onblur:stopPropagation="true">
         <div class="sgc-dropdown-trigger"
              role="button"
              aria-haspopup="menu"
@@ -303,11 +304,22 @@
         }
     }
 
-    private async Task HandleFocusOutAsync(FocusEventArgs e)
+    private async Task HandleBlurAsync(FocusEventArgs e)
     {
-        // Wait briefly so item activation completes before we close on focus loss.
-        await Task.Delay(120);
-        if (_open) await CloseAsync();
+        // Only close the menu if focus moved completely outside the dropdown
+        // This prevents closing when clicking on menu items
+        if (Trigger != SgDropdownTrigger.Click) return;
+        
+        // Use a small delay to allow the click event to process first
+        await Task.Delay(50);
+        
+        // Check if the menu is still open and close it
+        // The blur event indicates focus left the dropdown
+        if (_open)
+        {
+            await Task.Delay(70);
+            if (_open) await CloseAsync();
+        }
     }
 
     public void Dispose()

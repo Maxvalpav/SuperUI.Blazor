@@ -21,6 +21,12 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
+    /// <summary>
+    /// Sample size for AutoFit column width calculation (PERF-06).
+    /// Limits the number of rows examined when measuring column widths to improve performance.
+    /// </summary>
+    private const int AutoFitSampleSize = 200;
+
     private readonly List<SgDataGridColumn<TItem>> _columns = new();
     private readonly Dictionary<string, HashSet<string>> _filters = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ColumnFilter> _conditionFilters = new(StringComparer.Ordinal);
@@ -97,6 +103,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
     /// <summary>Incremented when sort rules change</summary>
     private int _sortVersion = 0;
+
+    /// <summary>Tracks if component has been rendered at least once (for ShouldRender optimization)</summary>
+    private bool _hasRendered = false;
 
     /// <summary>Incremented when columns are added/removed/reordered/hidden</summary>
     private int _columnsVersion = 0;
@@ -469,6 +478,13 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     [Parameter] public Func<TItem, string?>? RowTooltip { get; set; }
 
     /// <summary>
+    /// Gets or sets a function that returns a unique key for each row.
+    /// Used for stable row identification across sorting, filtering, and pagination.
+    /// If not provided, row identity is based on object reference.
+    /// </summary>
+    [Parameter] public Func<TItem, string>? RowKeySelector { get; set; }
+
+    /// <summary>
     /// Gets or sets whether to show a row-number column as the first column. Default is false.
     /// </summary>
     [Parameter] public bool ShowRowNumbers { get; set; }
@@ -795,13 +811,14 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
         if (firstRender)
         {
+            _hasRendered = true;
             try
             {
                 var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
                 if (_disposing)
                 {
                     // Component was disposed while we awaited the import — clean up locally.
-                    try { await module.DisposeAsync(); } catch { }
+                    try { await module.DisposeAsync(); } catch (Exception) { }
                     return;
                 }
                 _module = module;
@@ -832,6 +849,28 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
                 Logger.LogWarning(ex, "SgDataGrid: failed to initialize JS interop module");
             }
         }
+    }
+
+    /// <summary>
+    /// Prevents unnecessary re-renders by checking if content has actually changed (PERF-05).
+    /// Only re-renders when items, filters, sort, columns, or grouping change.
+    /// </summary>
+    protected override bool ShouldRender()
+    {
+        // Always render on first render
+        if (!_hasRendered)
+            return true;
+
+        // Check if any content-based version has changed
+        // These versions track actual data changes, not render cycles
+        var itemsChanged = _itemsVersion != _visibleRowsCacheItemsVersion;
+        var filterChanged = _filterVersion != _visibleRowsCacheFilterVersion;
+        var sortChanged = _sortVersion != _visibleRowsCacheSortVersion;
+        var columnsChanged = _columnsVersion != _visibleRowsCacheColumnsVersion;
+        var groupChanged = _groupVersion != _groupTreeCacheGroupVersion;
+
+        // Only render if content has actually changed
+        return itemsChanged || filterChanged || sortChanged || columnsChanged || groupChanged;
     }
 
     internal void RegisterColumn(SgDataGridColumn<TItem> column)
@@ -3928,9 +3967,9 @@ private static object? ConvertFromString(string? text, Type type)
 
         var cols = VisibleColumns;
         var sb = new StringBuilder();
-        sb.AppendLine(string.Join(';', cols.Select(c => EscapeCsv(c.Title))));
+        sb.AppendLine(string.Join(',', cols.Select(c => EscapeCsv(c.Title))));
         foreach (var row in GetFilteredSortedRows())
-            sb.AppendLine(string.Join(';', cols.Select(c => EscapeCsv(GetExportValue(c, row)))));
+            sb.AppendLine(string.Join(',', cols.Select(c => EscapeCsv(GetExportValue(c, row)))));
 
         try
         {
@@ -4031,7 +4070,7 @@ private static object? ConvertFromString(string? text, Type type)
                         return Convert.ToDecimal(raw, CultureInfo.InvariantCulture)
                             .ToString(CultureInfo.InvariantCulture);
                     }
-                    catch { /* fall through */ }
+                    catch (Exception) { /* fall through */ }
                 }
                 return raw.ToString() ?? string.Empty;
 
@@ -4075,7 +4114,7 @@ private static object? ConvertFromString(string? text, Type type)
     private static string EscapeCsv(string? value)
     {
         var text = value ?? string.Empty;
-        if (!text.Contains('"') && !text.Contains(';') && !text.Contains('\n') && !text.Contains('\r'))
+        if (!text.Contains('"') && !text.Contains(',') && !text.Contains('\n') && !text.Contains('\r'))
             return text;
         return "\"" + text.Replace("\"", "\"\"") + "\"";
     }
@@ -4086,7 +4125,7 @@ private static object? ConvertFromString(string? text, Type type)
             return;
 
         var rows = GetFilteredSortedRows();
-        var sampleCount = Math.Min(rows.Count, 200);
+        var sampleCount = Math.Min(rows.Count, AutoFitSampleSize);
         var visible = VisibleColumns;
         var payload = new List<object>(visible.Count);
         for (var c = 0; c < visible.Count; c++)
@@ -4101,6 +4140,11 @@ private static object? ConvertFromString(string? text, Type type)
         try
         {
             var widths = await _module.InvokeAsync<Dictionary<string, int>>("measureColumnWidths", payload, _gridId);
+            
+            // Check if component was disposed while we awaited
+            if (_disposing)
+                return;
+            
             foreach (var pair in widths)
                 _columnWidths[pair.Key] = pair.Value;
             await InvokeAsync(StateHasChanged);
@@ -4868,7 +4912,7 @@ private static object? ConvertFromString(string? text, Type type)
                 return; // can't set null on non-nullable value type
             prop.SetValue(_editModalItem, parsed);
         }
-        catch { /* ignore conversion errors */ }
+        catch (Exception) { /* ignore conversion errors */ }
     }
 
     /// <summary>Parses a string edit value to the column's target type.</summary>
@@ -5075,12 +5119,11 @@ private static object? ConvertFromString(string? text, Type type)
     {
         if (_module is null || _gridRootRef.Context is null) return;
 
-        var rows = GetVisibleRows();
-        var index = _activeRow != null ? rows.IndexOf(_activeRow) : -1;
+        var rowKey = _activeRow != null && RowKeySelector != null ? RowKeySelector(_activeRow) : null;
 
         try
         {
-            await _module.InvokeVoidAsync("setActiveRow", _gridRootRef, index);
+            await _module.InvokeVoidAsync("setActiveRow", _gridRootRef, rowKey);
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }

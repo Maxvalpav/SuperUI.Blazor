@@ -1,34 +1,52 @@
 // superui-tooltip.js - Smart positioning for tooltips with portal support
+// Uses WeakMap to support multiple tooltips on a page
 
-let attachedTooltip = null;
-let dotnetRef = null;
-let isDisposed = false;
+const tooltipInstances = new WeakMap();
 
 export function attach(trigger, tooltip, placement = 'top', dotnet) {
-    isDisposed = false;
-    attachedTooltip = { trigger, tooltip, placement };
-    dotnetRef = dotnet;
+    // Cleanup previous instance on same trigger
+    const existing = tooltipInstances.get(trigger);
+    if (existing) {
+        existing.dispose();
+    }
     
-    // Add focus loss handler to trigger element
+    let isDisposed = false;
+    
+    const handleTriggerBlur = () => {
+        if (!isDisposed && dotnet) {
+            try {
+                dotnet.invokeMethodAsync('HideFromJsAsync').catch(() => {});
+            } catch { }
+        }
+    };
+    
     if (trigger) {
         trigger.addEventListener('blur', handleTriggerBlur);
     }
+    
+    const instance = {
+        trigger,
+        tooltip,
+        placement,
+        dotnet,
+        isDisposed: false,
+        handleTriggerBlur,
+        dispose: () => {
+            isDisposed = true;
+            if (trigger) {
+                trigger.removeEventListener('blur', handleTriggerBlur);
+            }
+        }
+    };
+    
+    tooltipInstances.set(trigger, instance);
 }
 
-export function detach() {
-    isDisposed = true;
-    if (attachedTooltip?.trigger) {
-        attachedTooltip.trigger.removeEventListener('blur', handleTriggerBlur);
-    }
-    attachedTooltip = null;
-    dotnetRef = null;
-}
-
-function handleTriggerBlur() {
-    if (!isDisposed && dotnetRef) {
-        try {
-            dotnetRef.invokeMethodAsync('HideFromJsAsync').catch(() => {});
-        } catch { }
+export function detach(trigger) {
+    const instance = tooltipInstances.get(trigger);
+    if (instance) {
+        instance.dispose();
+        tooltipInstances.delete(trigger);
     }
 }
 
