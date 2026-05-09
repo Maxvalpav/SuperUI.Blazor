@@ -4,6 +4,26 @@ using Microsoft.AspNetCore.Components.Web;
 
 namespace SuperUI.Components;
 
+/// <summary>How <see cref="SgRow"/> should wrap its children.</summary>
+public enum SgFlexWrap
+{
+    /// <summary>Default — wrap to next line as needed (CSS <c>wrap</c>).</summary>
+    Wrap,
+    /// <summary>Never wrap (CSS <c>nowrap</c>).</summary>
+    NoWrap,
+    /// <summary>Wrap in reverse direction.</summary>
+    WrapReverse
+}
+
+/// <summary>Main-axis direction for <see cref="SgRow"/>.</summary>
+public enum SgFlexDirection
+{
+    Row,
+    RowReverse,
+    Column,
+    ColumnReverse
+}
+
 /// <summary>
 /// Cascading context shared from <see cref="SgRow"/> to its <see cref="SgCol"/> children.
 /// Carries gutter and total column-count so columns can compute responsive widths.
@@ -18,7 +38,7 @@ public sealed class SgRowContext
 
 /// <summary>
 /// Flexbox-based grid row. Holds <see cref="SgCol"/> children and exposes alignment,
-/// wrapping, justification and a configurable column-count (12 or 24).
+/// wrapping, justification, direction and a configurable column-count (12 or 24).
 /// </summary>
 public partial class SgRow : ComponentBase
 {
@@ -45,11 +65,26 @@ public partial class SgRow : ComponentBase
     /// <summary>Main-axis distribution. Default <see cref="SgJustifyContent.Start"/>.</summary>
     [Parameter] public SgJustifyContent Justify { get; set; } = SgJustifyContent.Start;
 
-    /// <summary>If <c>true</c>, columns do NOT wrap to next line.</summary>
+    /// <summary>Wrap behaviour. Wins over <see cref="NoWrap"/> when set explicitly.</summary>
+    [Parameter] public SgFlexWrap? Wrap { get; set; }
+
+    /// <summary>Convenience flag — equivalent to <see cref="Wrap"/> = <see cref="SgFlexWrap.NoWrap"/>.</summary>
     [Parameter] public bool NoWrap { get; set; }
 
     /// <summary>If <c>true</c>, columns are laid out in reverse order.</summary>
     [Parameter] public bool Reverse { get; set; }
+
+    /// <summary>Main-axis direction. Wins over <see cref="Reverse"/> when set explicitly.</summary>
+    [Parameter] public SgFlexDirection? Direction { get; set; }
+
+    /// <summary>Render as inline-flex instead of block flex.</summary>
+    [Parameter] public bool Inline { get; set; }
+
+    /// <summary>Stretch the row to 100% width of its parent. Default <c>true</c>.</summary>
+    [Parameter] public bool FullWidth { get; set; } = true;
+
+    /// <summary>HTML tag to render. Default <c>div</c>. Allowed: <c>div, section, header, footer, nav, main, ul</c>.</summary>
+    [Parameter] public string Tag { get; set; } = "div";
 
     /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
@@ -94,11 +129,48 @@ public partial class SgRow : ComponentBase
         _                             => "flex-start"
     };
 
+    private string WrapCss
+    {
+        get
+        {
+            if (Wrap is { } w)
+            {
+                return w switch
+                {
+                    SgFlexWrap.NoWrap      => "nowrap",
+                    SgFlexWrap.WrapReverse => "wrap-reverse",
+                    _                      => "wrap"
+                };
+            }
+            return NoWrap ? "nowrap" : "wrap";
+        }
+    }
+
+    private string DirectionCss
+    {
+        get
+        {
+            if (Direction is { } d)
+            {
+                return d switch
+                {
+                    SgFlexDirection.RowReverse    => "row-reverse",
+                    SgFlexDirection.Column        => "column",
+                    SgFlexDirection.ColumnReverse => "column-reverse",
+                    _                             => "row"
+                };
+            }
+            return Reverse ? "row-reverse" : "row";
+        }
+    }
+
     private string ComputedClass
     {
         get
         {
             var sb = new StringBuilder("sg-row");
+            if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase)) sb.Append(" sg-row-list");
+            if (Inline) sb.Append(" sg-row-inline");
             if (!string.IsNullOrWhiteSpace(CssClass))
             {
                 sb.Append(' ').Append(CssClass);
@@ -112,11 +184,18 @@ public partial class SgRow : ComponentBase
         get
         {
             var sb = new StringBuilder();
-            sb.Append("display:flex;");
-            sb.Append("flex-wrap:").Append(NoWrap ? "nowrap" : "wrap").Append(';');
-            if (Reverse) sb.Append("flex-direction:row-reverse;");
+            sb.Append("display:").Append(Inline ? "inline-flex" : "flex").Append(';');
+            sb.Append("flex-wrap:").Append(WrapCss).Append(';');
+            sb.Append("flex-direction:").Append(DirectionCss).Append(';');
             sb.Append("align-items:").Append(AlignCss).Append(';');
             sb.Append("justify-content:").Append(JustifyCss).Append(';');
+            if (FullWidth && !Inline) sb.Append("width:100%;");
+
+            // Reset list defaults if rendered as <ul>
+            if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase))
+            {
+                sb.Append("list-style:none;margin:0;padding:0;");
+            }
 
             var hasAxisGutter = !string.IsNullOrWhiteSpace(RowGutter) || !string.IsNullOrWhiteSpace(ColumnGutter);
             if (hasAxisGutter)
