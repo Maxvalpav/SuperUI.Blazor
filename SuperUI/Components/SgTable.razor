@@ -33,28 +33,56 @@
     }
 
     <div class="sg-scroll">
-        <table class="sg-table @(FullWidth ? "sg-table-full" : "")">
+        <table class="sg-table @(FullWidth ? "sg-table-full" : "")" @ref="_tableRef">
             <thead>
+                @if (HeaderGroups.Any())
+                {
+                    <tr>
+                        @if (AllowSelection)
+                        {
+                            <th class="sg-th sg-th-group" rowspan="2" style="width: 50px;">
+                                @if (AllowMultiSelect)
+                                {
+                                    <input type="checkbox" class="sg-checkbox"
+                                           checked="@_selectAll" 
+                                           @onchange="async () => await ToggleSelectAll()" />
+                                }
+                            </th>
+                        }
+                        @if (ShowRowNumbers)
+                        {
+                            <th class="sg-th sg-th-group" rowspan="2" style="width: 60px;">№</th>
+                        }
+                        @foreach (var group in HeaderGroups)
+                        {
+                            <th class="sg-th sg-th-group" colspan="@group.ColumnCount">@group.Title</th>
+                        }
+                    </tr>
+                }
                 <tr>
-                    @if (AllowSelection)
+                    @if (AllowSelection && !HeaderGroups.Any())
                     {
                         <th class="sg-th" style="width: 50px;">
                             @if (AllowMultiSelect)
                             {
-                                <input type="checkbox" 
+                                <input type="checkbox" class="sg-checkbox"
                                        checked="@_selectAll" 
                                        @onchange="async () => await ToggleSelectAll()" />
                             }
                         </th>
                     }
-                    @if (ShowRowNumbers)
+                    @if (ShowRowNumbers && !HeaderGroups.Any())
                     {
                         <th class="sg-th" style="width: 60px;">№</th>
                     }
-                    @foreach (var col in Columns)
+                    @for (int i = 0; i < Columns.Count; i++)
                     {
+                        var col = Columns[i];
+                        var colIndex = i;
                         var isSorted = _sortColumnKey == col.Key;
-                        var thClass = "sg-th";
+                        var thClass = "sg-th sg-th-resizable";
+                        if (_draggedColumnIndex == colIndex) thClass += " sg-th-dragging";
+                        if (_dropTargetIndex == colIndex) thClass += " sg-th-drop-target";
                         thClass += col.HeaderAlign switch
                         {
                             SgHAlign.Left => " sg-align-left",
@@ -62,24 +90,41 @@
                             SgHAlign.Right => " sg-align-right",
                             _ => string.Empty
                         };
-                        <th class="@thClass" style="@(string.IsNullOrEmpty(col.Width) ? "" : $"width: {col.Width}")">
-                            <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
-                                  @onclick="@(() => { if (col.Sortable) OnSortClick(col.Key); })">
-                                @col.Title
-                                @if (isSorted)
+                        var colWidth = _columnWidths.ContainsKey(col.Key) ? $"{_columnWidths[col.Key]}px" : col.Width;
+                        <th class="@thClass" 
+                            style="@(string.IsNullOrEmpty(colWidth) ? "" : $"width: {colWidth}; min-width: {colWidth};")"
+                            draggable="@(AllowColumnReorder ? "true" : "false")"
+                            @ondragstart="@(() => OnColumnDragStart(colIndex))"
+                            @ondragover:preventDefault
+                            @ondragover="@(() => OnColumnDragOver(colIndex))"
+                            @ondrop="@(() => OnColumnDrop(colIndex))"
+                            @ondragend="OnColumnDragEnd">
+                            <div class="sg-th-content">
+                                <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
+                                      @onclick="@(() => { if (col.Sortable) OnSortClick(col.Key); })">
+                                    @col.Title
+                                    @if (isSorted)
+                                    {
+                                        <span class="sg-sort-ind">
+                                            @if (_sortDirection == SortDirection.Ascending)
+                                            {
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                                            }
+                                            else if (_sortDirection == SortDirection.Descending)
+                                            {
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                            }
+                                        </span>
+                                    }
+                                </span>
+                                @if (AllowColumnResize)
                                 {
-                                    <span class="sg-sort-ind">
-                                        @if (_sortDirection == SortDirection.Ascending)
-                                        {
-                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                                        }
-                                        else if (_sortDirection == SortDirection.Descending)
-                                        {
-                                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                        }
-                                    </span>
+                                    <div class="sg-resize-handle"
+                                         @onmousedown="@(e => OnResizeStart(e, col.Key))"
+                                         @onmousedown:stopPropagation="true"
+                                         @onclick:stopPropagation="true"></div>
                                 }
-                            </span>
+                            </div>
                         </th>
                     }
                 </tr>
@@ -105,7 +150,7 @@
                             @if (AllowSelection)
                             {
                                 <td class="sg-td">
-                                    <input type="checkbox" 
+                                    <input type="checkbox" class="sg-checkbox"
                                            checked="@IsSelected(item)" 
                                            @onchange="async () => await ToggleSelection(item)"
                                            @onclick:stopPropagation="true" />
@@ -117,6 +162,8 @@
                             }
                             @foreach (var col in Columns)
                             {
+                                var value = col.GetValue(item);
+                                var isBool = value is bool;
                                 var isNumeric = col.IsNumericColumn;
                                 var effectiveHAlign = col.HAlign == SgHAlign.Default
                                     ? (isNumeric ? SgHAlign.Right : SgHAlign.Left)
@@ -147,6 +194,10 @@
                                     @if (col.Template != null)
                                     {
                                         @col.Template(item)
+                                    }
+                                    else if (isBool && col.Template == null)
+                                    {
+                                        <input type="checkbox" class="sg-checkbox" checked="@((bool)value)" disabled />
                                     }
                                     else
                                     {

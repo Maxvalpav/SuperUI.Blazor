@@ -19,6 +19,14 @@ public partial class SgTable<TItem> : ComponentBase
     private int _pageNumber = 1;
     private readonly HashSet<TItem> _selectedItems = new();
     private bool _selectAll;
+    private ElementReference _tableRef;
+    private Dictionary<string, double> _columnWidths = new();
+    private string? _resizingColumn;
+    private double _resizeStartX;
+    private double _resizeStartWidth;
+    private int? _draggedColumnIndex;
+    private int? _dropTargetIndex;
+    private List<SgTableHeaderGroup<TItem>> _headerGroups = new();
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
@@ -46,6 +54,10 @@ public partial class SgTable<TItem> : ComponentBase
     [Parameter] public bool ShowExport { get; set; }
     [Parameter] public bool AllowPageSizeChange { get; set; }
     [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 20, 50, 100 };
+    [Parameter] public bool AllowColumnResize { get; set; } = true;
+    [Parameter] public bool AllowColumnReorder { get; set; } = true;
+
+    internal List<SgTableHeaderGroup<TItem>> HeaderGroups => _headerGroups;
 
     internal IReadOnlyList<SgTableColumn<TItem>> Columns
     {
@@ -158,6 +170,138 @@ public partial class SgTable<TItem> : ComponentBase
     internal void UnregisterColumn(SgTableColumn<TItem> column)
     {
         _columns.Remove(column);
+    }
+
+    internal void RegisterHeaderGroup(SgTableHeaderGroup<TItem> group)
+    {
+        if (!_headerGroups.Contains(group))
+        {
+            _headerGroups.Add(group);
+            StateHasChanged();
+        }
+    }
+
+    internal void UnregisterHeaderGroup(SgTableHeaderGroup<TItem> group)
+    {
+        _headerGroups.Remove(group);
+    }
+
+    // Column resize
+    private async Task OnResizeStart(MouseEventArgs e, string columnKey)
+    {
+        _resizingColumn = columnKey;
+        _resizeStartX = e.ClientX;
+        
+        var col = Columns.FirstOrDefault(c => c.Key == columnKey);
+        if (col != null)
+        {
+            if (_columnWidths.ContainsKey(columnKey))
+            {
+                _resizeStartWidth = _columnWidths[columnKey];
+            }
+            else if (!string.IsNullOrEmpty(col.Width) && col.Width.EndsWith("px"))
+            {
+                _resizeStartWidth = double.Parse(col.Width.Replace("px", ""));
+            }
+            else
+            {
+                _resizeStartWidth = 150; // default width
+            }
+        }
+
+        await JS.InvokeVoidAsync("eval", @"
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            const onMouseMove = (e) => {
+                window.sgTableResizeEvent = e;
+            };
+            const onMouseUp = () => {
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                window.sgTableResizeEnd = true;
+            };
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        ");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_resizingColumn != null)
+        {
+            try
+            {
+                var resizeEvent = await JS.InvokeAsync<MouseEventArgs?>("eval", "window.sgTableResizeEvent");
+                if (resizeEvent != null)
+                {
+                    var delta = resizeEvent.ClientX - _resizeStartX;
+                    var newWidth = Math.Max(50, _resizeStartWidth + delta);
+                    _columnWidths[_resizingColumn] = newWidth;
+                    StateHasChanged();
+                    await JS.InvokeVoidAsync("eval", "window.sgTableResizeEvent = null");
+                }
+
+                var resizeEnd = await JS.InvokeAsync<bool>("eval", "window.sgTableResizeEnd || false");
+                if (resizeEnd)
+                {
+                    _resizingColumn = null;
+                    await JS.InvokeVoidAsync("eval", "window.sgTableResizeEnd = false");
+                }
+            }
+            catch
+            {
+                // Ignore JS interop errors
+            }
+        }
+    }
+
+    // Column drag and drop
+    private void OnColumnDragStart(int columnIndex)
+    {
+        if (!AllowColumnReorder) return;
+        _draggedColumnIndex = columnIndex;
+        StateHasChanged();
+    }
+
+    private void OnColumnDragOver(int columnIndex)
+    {
+        if (!AllowColumnReorder || _draggedColumnIndex == null) return;
+        if (_dropTargetIndex != columnIndex)
+        {
+            _dropTargetIndex = columnIndex;
+            StateHasChanged();
+        }
+    }
+
+    private void OnColumnDrop(int columnIndex)
+    {
+        if (!AllowColumnReorder || _draggedColumnIndex == null || _draggedColumnIndex == columnIndex)
+        {
+            _draggedColumnIndex = null;
+            _dropTargetIndex = null;
+            StateHasChanged();
+            return;
+        }
+
+        var draggedCol = _columns[_draggedColumnIndex.Value];
+        _columns.RemoveAt(_draggedColumnIndex.Value);
+        
+        // Adjust index if dragging from left to right
+        var insertIndex = _draggedColumnIndex.Value < columnIndex ? columnIndex - 1 : columnIndex;
+        _columns.Insert(insertIndex, draggedCol);
+
+        _draggedColumnIndex = null;
+        _dropTargetIndex = null;
+        StateHasChanged();
+    }
+
+    private void OnColumnDragEnd()
+    {
+        _draggedColumnIndex = null;
+        _dropTargetIndex = null;
+        StateHasChanged();
     }
 
     private void OnSearchInput(ChangeEventArgs e)
