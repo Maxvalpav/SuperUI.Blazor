@@ -12,6 +12,7 @@ public class SgGridState
     public List<QueryRule> QueryRules { get; set; } = new();
     public List<PersistedSortRule> Sort { get; set; } = new();
     public List<string> HiddenColumns { get; set; } = new();
+    public List<string> PinnedColumns { get; set; } = new();
     public Dictionary<string, int> ColumnWidths { get; set; } = new();
     public Dictionary<string, int> ColumnOrder { get; set; } = new();
     public List<string> GroupBy { get; set; } = new();

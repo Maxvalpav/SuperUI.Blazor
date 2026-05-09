@@ -158,7 +158,12 @@ public class SampleDataService
                 Notes = $"Employee record #{i}",
                 Phone = $"+7 ({random.Next(900, 999)}) {random.Next(100, 999)}-{random.Next(10, 99)}-{random.Next(10, 99)}",
                 Position = positions[random.Next(positions.Length)],
-                Manager = managers[random.Next(managers.Length)]
+                Manager = managers[random.Next(managers.Length)],
+                YearsOfExperience = random.Next(0, 30),
+                Level = new[] { "Junior", "Middle", "Senior", "Lead", "Principal" }[random.Next(5)],
+                ProjectsCount = random.Next(1, 50),
+                Rating = (decimal)(random.NextDouble() * 5),
+                LastVacationDate = DateTime.Now.AddDays(-random.Next(30, 365))
             });
         }
 
