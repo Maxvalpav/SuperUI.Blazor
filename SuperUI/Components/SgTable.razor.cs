@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
+using System.Text;
 
 namespace SuperUI.Components;
 
@@ -18,11 +20,15 @@ public partial class SgTable<TItem> : ComponentBase
     private readonly HashSet<TItem> _selectedItems = new();
     private bool _selectAll;
 
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public bool ShowSearch { get; set; } = true;
+    [Parameter] public string SearchPlaceholder { get; set; } = "Поиск...";
     [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Height { get; set; }
     [Parameter] public bool FullWidth { get; set; }
     [Parameter] public string? EmptyText { get; set; }
     [Parameter] public bool AutoGenerateColumns { get; set; }
@@ -37,6 +43,9 @@ public partial class SgTable<TItem> : ComponentBase
     [Parameter] public EventCallback<List<TItem>> SelectedItemsChanged { get; set; }
     [Parameter] public EventCallback<TItem> RowClicked { get; set; }
     [Parameter] public EventCallback<TItem> RowDoubleClicked { get; set; }
+    [Parameter] public bool ShowExport { get; set; }
+    [Parameter] public bool AllowPageSizeChange { get; set; }
+    [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 20, 50, 100 };
 
     internal IReadOnlyList<SgTableColumn<TItem>> Columns
     {
@@ -142,6 +151,7 @@ public partial class SgTable<TItem> : ComponentBase
         if (!_columns.Contains(column))
         {
             _columns.Add(column);
+            StateHasChanged();
         }
     }
 
@@ -153,6 +163,7 @@ public partial class SgTable<TItem> : ComponentBase
     private void OnSearchInput(ChangeEventArgs e)
     {
         _searchText = e.Value?.ToString();
+        CurrentPage = 1; // Reset to first page on search
     }
 
     private void OnSortClick(string columnKey)
@@ -174,6 +185,40 @@ public partial class SgTable<TItem> : ComponentBase
             _sortColumnKey = columnKey;
             _sortDirection = SortDirection.Ascending;
         }
+    }
+
+    private void OnPageSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var newSize))
+        {
+            PageSize = newSize;
+            CurrentPage = 1; // Reset to first page
+            StateHasChanged();
+        }
+    }
+
+    private void GoToFirstPage()
+    {
+        CurrentPage = 1;
+        StateHasChanged();
+    }
+
+    private void GoToPreviousPage()
+    {
+        CurrentPage = Math.Max(1, CurrentPage - 1);
+        StateHasChanged();
+    }
+
+    private void GoToNextPage()
+    {
+        CurrentPage = Math.Min(TotalPages, CurrentPage + 1);
+        StateHasChanged();
+    }
+
+    private void GoToLastPage()
+    {
+        CurrentPage = TotalPages;
+        StateHasChanged();
     }
 
     internal bool IsSelected(TItem item) => _selectedItems.Contains(item);
@@ -225,5 +270,42 @@ public partial class SgTable<TItem> : ComponentBase
     {
         if (RowDoubleClicked.HasDelegate)
             await RowDoubleClicked.InvokeAsync(item);
+    }
+
+    private async Task ExportToCsv()
+    {
+        var csv = new StringBuilder();
+        var cols = Columns.ToList();
+
+        // Header
+        csv.AppendLine(string.Join(",", cols.Select(c => EscapeCsv(c.Title))));
+
+        // Rows
+        foreach (var item in FilteredAndSortedItems)
+        {
+            var values = cols.Select(c => EscapeCsv(c.GetDisplay(item)));
+            csv.AppendLine(string.Join(",", values));
+        }
+
+        var fileName = $"{Title ?? "export"}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+        var bytes = Encoding.UTF8.GetBytes(csv.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+
+        await JS.InvokeVoidAsync("eval", $@"
+            const link = document.createElement('a');
+            link.href = 'data:text/csv;charset=utf-8;base64,{base64}';
+            link.download = '{fileName}';
+            link.click();
+        ");
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+        {
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+        return value;
     }
 }

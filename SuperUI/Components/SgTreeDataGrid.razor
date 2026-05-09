@@ -1,0 +1,133 @@
+@namespace SuperUI.Components
+@typeparam TItem where TItem : notnull
+
+<SgDataGrid @ref="_grid"
+            TItem="TItem"
+            Items="Items"
+            IsTree="true"
+            TreeChildren="ChildrenSelector"
+            SelectedItemsChanged="OnSelectedItemsChanged"
+            Height="@Height"
+            CssClass="@CssClass"
+            EmptyText="@EmptyText"
+            ShowSearch="ShowSearch"
+            ShowQuickFilters="ShowQuickFilters"
+            ShowColumnChooser="ShowColumnChooser"
+            ShowStatusBar="ShowStatusBar"
+            AllowAutoFit="AllowAutoFit"
+            AllowMultiSelect="AllowMultiSelect"
+            AllowSingleSelect="AllowSingleSelect"
+            AllowEdit="AllowEdit"
+            AllowDelete="AllowDelete"
+            FullWidth="FullWidth"
+            EnablePaging="EnablePaging"
+            PageSize="PageSize"
+            DetailPlacement="DetailPlacement"
+            AutoDetail="AutoDetail"
+            Loading="Loading"
+            UseModalForEdit="UseModalForEdit"
+            PersistStateKey="@PersistStateKey">
+    <ChildContent>
+        @ChildContent
+    </ChildContent>
+</SgDataGrid>
+
+@code {
+    private SgDataGrid<TItem>? _grid;
+
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public Func<TItem, IEnumerable<TItem>?>? ChildrenSelector { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Height { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string EmptyText { get; set; } = "Нет данных";
+    
+    [Parameter] public TItem? SelectedItem { get; set; }
+    [Parameter] public EventCallback<TItem?> SelectedItemChanged { get; set; }
+
+    [Parameter] public IEnumerable<TItem>? SelectedItems { get; set; }
+    [Parameter] public EventCallback<IEnumerable<TItem>?> SelectedItemsChanged { get; set; }
+
+    // Re-exposing some SgDataGrid parameters for convenience
+    [Parameter] public bool ShowSearch { get; set; } = true;
+    [Parameter] public bool ShowQuickFilters { get; set; }
+    [Parameter] public bool ShowColumnChooser { get; set; } = true;
+    [Parameter] public bool ShowStatusBar { get; set; }
+    [Parameter] public bool AllowAutoFit { get; set; }
+    [Parameter] public bool AllowMultiSelect { get; set; }
+    [Parameter] public bool AllowSingleSelect { get; set; }
+    [Parameter] public bool AllowEdit { get; set; }
+    [Parameter] public bool AllowDelete { get; set; }
+    [Parameter] public bool FullWidth { get; set; }
+    [Parameter] public bool EnablePaging { get; set; } = true;
+    [Parameter] public int PageSize { get; set; } = 25;
+    [Parameter] public DetailPlacement DetailPlacement { get; set; } = DetailPlacement.Inline;
+    [Parameter] public bool AutoDetail { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool UseModalForEdit { get; set; }
+    [Parameter] public string? PersistStateKey { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (_grid != null)
+        {
+            if (SelectedItem != null && !_grid.SelectedItems.Contains(SelectedItem))
+            {
+                _grid.SelectedItems.Clear();
+                _grid.SelectedItems.Add(SelectedItem);
+            }
+            else if (SelectedItems != null)
+            {
+                _grid.SelectedItems.Clear();
+                foreach (var item in SelectedItems) _grid.SelectedItems.Add(item);
+            }
+        }
+    }
+
+    private async Task OnSelectedItemsChanged(IReadOnlyCollection<TItem> selected)
+    {
+        if (AllowMultiSelect)
+        {
+            SelectedItems = selected;
+            if (SelectedItemsChanged.HasDelegate) await SelectedItemsChanged.InvokeAsync(SelectedItems);
+        }
+        else
+        {
+            SelectedItem = selected.FirstOrDefault();
+            if (SelectedItemChanged.HasDelegate) await SelectedItemChanged.InvokeAsync(SelectedItem);
+        }
+    }
+
+    public async Task ExpandAllAsync()
+    {
+        if (Items == null || _grid == null) return;
+        foreach (var item in Items)
+        {
+            await ExpandRecursiveAsync(item);
+        }
+        await _grid.RefreshAsync();
+    }
+
+    public async Task CollapseAllAsync()
+    {
+        if (_grid == null) return;
+        _grid.ExpandedItems.Clear();
+        await _grid.RefreshAsync();
+    }
+
+    private async Task ExpandRecursiveAsync(TItem item)
+    {
+        if (_grid == null) return;
+        _grid.ExpandedItems.Add(item);
+        var children = ChildrenSelector?.Invoke(item);
+        if (children != null)
+        {
+            foreach (var child in children)
+            {
+                await ExpandRecursiveAsync(child);
+            }
+        }
+    }
+
+    public Task RefreshAsync() => _grid?.RefreshAsync() ?? Task.CompletedTask;
+}
