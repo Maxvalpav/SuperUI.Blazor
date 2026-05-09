@@ -1,0 +1,4 @@
+- [ ] Добавить в `SuperUI/Components/HttpApiTester/SgHttpApiTesterFull.razor` метод `LoadSnippet(SavedRequest snippet)`
+      - [ ] Реализация: делегировать в `LoadRequest(snippet)` и показать toast
+- [ ] Пересобрать проект и проверить, что CS0103 исчезла
+- [ ] Дальше (опционально): не трогать текущие предупреждения CS8974/CS0414/CS8669 до следующего шага

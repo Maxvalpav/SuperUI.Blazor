@@ -9,56 +9,52 @@
 @inject HttpClient Http
 @inject SgToastService Toasts
 
-<div class="sg-http-api-tester-full" style="@Style">
+<div class="sg-http-api-tester-full" style="display:flex; flex-direction:column; height:100%; width:100%; min-height:0; overflow:hidden; @Style">
     
     @* Top Bar with URL and Send Button *@
-    <div style="padding:20px; border-bottom:1px solid var(--sg-border); background:var(--sg-bg);">
-        <SgStack Direction="SgDirection.Horizontal" Gap="16" Style="width:100%; align-items:center;">
-            <div>
-                <div style="margin-bottom:4px; font-size:12px; font-weight:500; color:var(--sg-text-muted);">Method</div>
+    <div style="padding:18px 20px; border-bottom:2px solid var(--sg-border); background:var(--sg-bg-alt); flex-shrink:0;">
+        <div style="display:flex; gap:12px; align-items:flex-end; width:100%;">
+            <div style="flex:0 0 150px;">
+                <div style="margin-bottom:6px; font-size:12px; font-weight:600; color:var(--sg-text-muted); text-transform:uppercase; letter-spacing:0.5px;">Method</div>
                 <SgSelect @bind-Value="_currentTab.Method"
                           Items="@_methods"
                           TextSelector="@GetMethodText"
                           ValueSelector="@GetMethodValue"
                           Size="SgSize.Lg"
-                          Style="width:140px;" />
+                          Style="width:100%; height:44px;" />
             </div>
-            <div style="flex:1;">
-                <div style="margin-bottom:4px; font-size:12px; font-weight:500; color:var(--sg-text-muted);">Request URL</div>
+            <div style="flex:1 1 auto; min-width:0;">
+                <div style="margin-bottom:6px; font-size:12px; font-weight:600; color:var(--sg-text-muted); text-transform:uppercase; letter-spacing:0.5px;">Request URL</div>
                 <SgTextBox @bind-Value="_currentTab.Url"
                            Placeholder="https://api.example.com/endpoint"
                            Size="SgSize.Lg"
-                           Style="width:100%; font-size:14px;" />
+                           Style="width:100%; height:44px; font-size:14px;" />
             </div>
-            <div style="align-self:flex-end;">
-                <SgButton Variant="SgButtonVariant.Primary"
-                          Size="SgSize.Lg"
-                          OnClick="SendRequestAsync"
-                          Disabled="_isLoading"
-                          Style="min-width:100px;">
-                    @if (_isLoading)
-                    {
-                        <text>Sending...</text>
-                    }
-                    else
-                    {
-                        <text>Send</text>
-                    }
-                </SgButton>
-            </div>
-            <div style="align-self:flex-end;">
-                <SgButton Variant="SgButtonVariant.Default"
-                          Size="SgSize.Lg"
-                          OnClick="SaveCurrentRequest"
-                          Style="min-width:80px;">
-                    Save
-                </SgButton>
-            </div>
-        </SgStack>
+            <SgButton Variant="SgButtonVariant.Primary"
+                      Size="SgSize.Lg"
+                      OnClick="SendRequestAsync"
+                      Disabled="_isLoading"
+                      Style="min-width:110px; height:44px; font-weight:600;">
+                @if (_isLoading)
+                {
+                    <text>Sending...</text>
+                }
+                else
+                {
+                    <text>Send</text>
+                }
+            </SgButton>
+            <SgButton Variant="SgButtonVariant.Default"
+                      Size="SgSize.Lg"
+                      OnClick="SaveCurrentRequest"
+                      Style="min-width:90px; height:44px;">
+                Save
+            </SgButton>
+        </div>
     </div>
 
     @* Main Layout: Sidebar + Content *@
-    <div style="display:flex; height:calc(100% - 93px);">
+    <div style="display:flex; flex:1; min-height:0;">
         
         @* Left Sidebar *@
         <div style="width:320px; border-right:1px solid var(--sg-border); overflow:hidden; display:flex; flex-direction:column; background:var(--sg-bg-alt);">
@@ -72,50 +68,67 @@
             <div style="flex:1; overflow:auto;">
                 <SgTabs>
                     <SgTabPanel Title="Collections">
-                        <div style="padding:16px;">
+                        <div style="padding:14px;">
                             @foreach (var col in _collections)
                             {
-                                <SgCard Style="margin-bottom:16px;">
-                                    <div style="padding:16px;">
-                                        <div style="font-weight:600; font-size:15px; margin-bottom:12px;">@col.Name</div>
-                                        @foreach (var req in col.Requests.Take(5))
-                                        {
-                                            <div style="padding:10px 12px; cursor:pointer; font-size:14px; border-radius:6px; margin-bottom:6px; background:var(--sg-bg); border:1px solid var(--sg-border); transition:all 0.2s;"
-                                                 @onclick="() => LoadRequest(req)">
-                                                <SgBadge Variant="@GetMethodVariant(req.Tab.Method)" 
-                                                         Text="@req.Tab.Method" 
-                                                         Style="font-size:11px; margin-right:8px;" />
-                                                <span style="font-weight:500;">@req.Name</span>
-                                            </div>
-                                        }
+                                <div style="margin-bottom:14px; background:var(--sg-bg); border:1px solid var(--sg-border); border-radius:8px; padding:12px;">
+                                    <div style="font-weight:600; font-size:14px; margin-bottom:10px; display:flex; align-items:center; justify-content:space-between;">
+                                        <span>📁 @col.Name</span>
+                                        <span style="font-size:11px; color:var(--sg-text-muted); font-weight:400;">@col.Requests.Count item(s)</span>
                                     </div>
-                                </SgCard>
+                                    @if (!col.Requests.Any())
+                                    {
+                                        <div style="font-size:12px; color:var(--sg-text-muted); padding:6px 0;">No saved requests</div>
+                                    }
+                                    @foreach (var req in col.Requests.Take(8))
+                                    {
+                                        <div style="padding:8px 10px; cursor:pointer; font-size:13px; border-radius:6px; margin-bottom:5px; background:var(--sg-bg-alt); border:1px solid var(--sg-border); display:flex; align-items:center; gap:8px;"
+                                             @onclick="() => LoadRequest(req)">
+                                            <SgBadge Variant="@GetMethodVariant(req.Tab.Method)"
+                                                     Text="@req.Tab.Method"
+                                                     Style="font-size:10px;" />
+                                            <span style="font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">@req.Name</span>
+                                        </div>
+                                    }
+                                </div>
                             }
-                            <SgButton Variant="SgButtonVariant.Default" 
-                                      Size="SgSize.Lg"
+                            <SgButton Variant="SgButtonVariant.Default"
+                                      Size="SgSize.Md"
                                       OnClick="CreateNewCollection"
                                       Style="width:100%;">
                                 + New Collection
                             </SgButton>
                         </div>
                     </SgTabPanel>
-                    
+
                     <SgTabPanel Title="History">
-                        <div style="padding:16px;">
+                        <div style="padding:14px;">
                             @if (!_history.Any())
                             {
                                 <SgEmpty Description="No history yet" />
                             }
                             else
                             {
-                                @foreach (var entry in _history.Take(20).Reverse())
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                                    <span style="font-size:12px; color:var(--sg-text-muted);">@_history.Count entries</span>
+                                    <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="ClearHistory">Clear</SgButton>
+                                </div>
+                                @foreach (var entry in _history.Take(30).Reverse())
                                 {
-                                    <div style="padding:12px; border-bottom:1px solid var(--sg-border); cursor:pointer; font-size:14px; background:var(--sg-bg); margin-bottom:8px; border-radius:6px;"
+                                    <div style="padding:10px; cursor:pointer; font-size:13px; background:var(--sg-bg); margin-bottom:6px; border-radius:6px; border:1px solid var(--sg-border);"
                                          @onclick="() => LoadHistoryEntry(entry)">
-                                        <SgBadge Variant="@GetMethodVariant(entry.Method)" 
-                                                 Text="@entry.Method" 
-                                                 Style="font-size:11px; margin-bottom:6px;" />
-                                        <div style="margin-top:6px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sg-text-muted); font-size:13px;">
+                                        <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                                            <SgBadge Variant="@GetMethodVariant(entry.Method)"
+                                                     Text="@entry.Method"
+                                                     Style="font-size:10px;" />
+                                            @if (entry.Status > 0)
+                                            {
+                                                <SgBadge Variant="@GetStatusVariant(entry.Status)"
+                                                         Text="@entry.Status.ToString()"
+                                                         Style="font-size:10px;" />
+                                            }
+                                        </div>
+                                        <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sg-text-muted); font-size:12px;">
                                             @entry.Url
                                         </div>
                                     </div>
@@ -123,23 +136,70 @@
                             }
                         </div>
                     </SgTabPanel>
-                    
+
+                    <SgTabPanel Title="Snippets">
+                        <div style="padding:14px;">
+                            <div style="font-size:12px; color:var(--sg-text-muted); margin-bottom:10px; line-height:1.5;">
+                                Click any snippet to load it into the current request.
+                            </div>
+                            @foreach (var snippet in _snippets)
+                            {
+                                <div style="padding:10px 12px; cursor:pointer; font-size:13px; background:var(--sg-bg); margin-bottom:8px; border-radius:6px; border:1px solid var(--sg-border);"
+                                     @onclick="() => LoadSnippet(snippet)">
+                                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+                                        <SgBadge Variant="@GetMethodVariant(snippet.Tab.Method)"
+                                                 Text="@snippet.Tab.Method"
+                                                 Style="font-size:10px;" />
+                                        <span style="font-weight:600;">@snippet.Name</span>
+                                    </div>
+                                    <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sg-text-muted); font-size:11px;">
+                                        @snippet.Tab.Url
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(snippet.Description))
+                                    {
+                                        <div style="font-size:11px; color:var(--sg-text-muted); margin-top:4px; line-height:1.4;">
+                                            @snippet.Description
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </SgTabPanel>
+
                     <SgTabPanel Title="Env">
-                        <div style="padding:16px;">
-                            <div style="margin-bottom:6px; font-size:13px; font-weight:500; color:var(--sg-text-muted);">Active Environment</div>
+                        <div style="padding:14px;">
+                            <div style="margin-bottom:6px; font-size:12px; font-weight:600; color:var(--sg-text-muted); text-transform:uppercase; letter-spacing:0.5px;">Active Environment</div>
                             <SgSelect TValue="string" TItem="string"
                                       @bind-Value="_activeEnvName"
                                       Items="_environments.Select(e => e.Name).ToList()"
                                       TextSelector="@((Func<string, string>)(n => n))"
                                       ValueSelector="@((Func<string, string>)(n => n))"
-                                      Size="SgSize.Lg"
-                                      Style="width:100%; margin-bottom:16px;" />
-                            <SgButton Variant="SgButtonVariant.Default" 
-                                      Size="SgSize.Lg"
+                                      Size="SgSize.Md"
+                                      Style="width:100%; margin-bottom:12px;" />
+                            <SgButton Variant="SgButtonVariant.Default"
+                                      Size="SgSize.Md"
                                       OnClick="() => _envModalOpen = true"
                                       Style="width:100%;">
                                 Manage Environments
                             </SgButton>
+
+                            @{
+                                var activeEnv = _environments.FirstOrDefault(e => e.Name == _activeEnvName);
+                            }
+                            @if (activeEnv is not null && activeEnv.Variables.Any())
+                            {
+                                <div style="margin-top:16px;">
+                                    <div style="font-size:12px; font-weight:600; color:var(--sg-text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.5px;">Variables</div>
+                                    @foreach (var v in activeEnv.Variables.Where(x => x.Enabled))
+                                    {
+                                        <div style="padding:6px 8px; background:var(--sg-bg); border-radius:4px; border:1px solid var(--sg-border); margin-bottom:4px; font-family:monospace; font-size:11px;">
+                                            <span style="color:var(--sg-primary); font-weight:600;">{{@v.Key}}</span>
+                                            <span style="color:var(--sg-text-muted);"> = </span>
+                                            <span style="overflow:hidden; text-overflow:ellipsis;">@v.Value</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     </SgTabPanel>
                 </SgTabs>
@@ -147,10 +207,10 @@
         </div>
 
         @* Main Content Area *@
-        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+        <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; min-height:0;">
             
             @* Request Configuration *@
-            <div style="height:50%; overflow:auto; border-bottom:1px solid var(--sg-border);">
+            <div style="flex:0 0 45%; min-height:240px; overflow:auto; border-bottom:1px solid var(--sg-border);">
                 <SgTabs Style="height:100%;">
                     <SgTabPanel Title="@($"Headers ({_currentTab.Headers.Count(h => h.Enabled)})")">
                         <div style="padding:20px;">
@@ -320,7 +380,7 @@
             </div>
 
             @* Response Panel *@
-            <div style="height:50%; overflow:auto;">
+            <div style="flex:1 1 55%; min-height:280px; overflow:auto; background:var(--sg-bg);">
                 <div style="padding:20px;">
                     <div style="margin-bottom:12px; font-size:14px; font-weight:600;">Response</div>
                     <SgHttpApiTesterResponsePanel Snapshot="_currentTab.LastResponse"
@@ -473,6 +533,111 @@
 
     private List<Collection> _collections = new() { new Collection { Name = "My Collection" } };
     private List<HistoryEntry> _history = new();
+    private List<SavedRequest> _snippets = new()
+    {
+        new SavedRequest
+        {
+            Name = "JSONPlaceholder — Get Posts",
+            Description = "Fetch a list of demo posts.",
+            Tab = new RequestTab
+            {
+                Method = "GET",
+                Url = "https://jsonplaceholder.typicode.com/posts",
+                Headers = new() { new KvPair("Accept", "application/json") }
+            }
+        },
+        new SavedRequest
+        {
+            Name = "JSONPlaceholder — Get Post by ID",
+            Description = "Fetch a single post.",
+            Tab = new RequestTab
+            {
+                Method = "GET",
+                Url = "https://jsonplaceholder.typicode.com/posts/1",
+                Headers = new() { new KvPair("Accept", "application/json") }
+            }
+        },
+        new SavedRequest
+        {
+            Name = "JSONPlaceholder — Create Post",
+            Description = "POST a new post (JSON body).",
+            Tab = new RequestTab
+            {
+                Method = "POST",
+                Url = "https://jsonplaceholder.typicode.com/posts",
+                Headers = new() { new KvPair("Content-Type", "application/json") },
+                BodyType = "JSON",
+                Body = "{\n  \"title\": \"My Post\",\n  \"body\": \"Hello world\",\n  \"userId\": 1\n}"
+            }
+        },
+        new SavedRequest
+        {
+            Name = "Reqres — List Users",
+            Description = "Paginated user list.",
+            Tab = new RequestTab
+            {
+                Method = "GET",
+                Url = "https://reqres.in/api/users",
+                QueryParams = new() { new KvPair("page", "2") }
+            }
+        },
+        new SavedRequest
+        {
+            Name = "Reqres — Login",
+            Description = "POST credentials to receive a token.",
+            Tab = new RequestTab
+            {
+                Method = "POST",
+                Url = "https://reqres.in/api/login",
+                Headers = new() { new KvPair("Content-Type", "application/json") },
+                BodyType = "JSON",
+                Body = "{\n  \"email\": \"eve.holt@reqres.in\",\n  \"password\": \"cityslicka\"\n}"
+            }
+        },
+        new SavedRequest
+        {
+            Name = "GitHub API — User Profile",
+            Description = "Public GitHub profile (no auth).",
+            Tab = new RequestTab
+            {
+                Method = "GET",
+                Url = "https://api.github.com/users/octocat",
+                Headers = new()
+                {
+                    new KvPair("Accept", "application/vnd.github+json"),
+                    new KvPair("User-Agent", "SuperUI-Tester")
+                }
+            }
+        },
+        new SavedRequest
+        {
+            Name = "Bearer Auth Example",
+            Description = "Request with Bearer token from env.",
+            Tab = new RequestTab
+            {
+                Method = "GET",
+                Url = "{{baseUrl}}/posts/{{userId}}",
+                AuthType = "Bearer Token",
+                BearerToken = "{{token}}"
+            }
+        },
+        new SavedRequest
+        {
+            Name = "Form-Urlencoded Example",
+            Description = "POST application/x-www-form-urlencoded.",
+            Tab = new RequestTab
+            {
+                Method = "POST",
+                Url = "https://httpbin.org/post",
+                BodyType = "Form",
+                FormFields = new()
+                {
+                    new KvPair("name", "John"),
+                    new KvPair("email", "john@example.com")
+                }
+            }
+        }
+    };
     private List<ApiEnvironment> _environments = new()
     {
         new ApiEnvironment
@@ -897,6 +1062,12 @@
             FormFields = new List<KvPair>(req.Tab.FormFields)
         };
         Toasts.Info($"Loaded: {req.Name}");
+    }
+
+    private void LoadSnippet(SavedRequest snippet)
+    {
+        LoadRequest(snippet);
+        Toasts.Info($"Loaded snippet: {snippet.Name}");
     }
 
     private void LoadHistoryEntry(HistoryEntry entry)
