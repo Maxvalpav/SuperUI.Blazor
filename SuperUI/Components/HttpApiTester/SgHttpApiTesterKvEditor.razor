@@ -1,0 +1,101 @@
+@namespace SuperUI.Components
+
+<SgStack Direction="SgDirection.Vertical" Gap="4">
+
+    @* Заголовки колонок *@
+    <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="padding:0 4px;">
+        <span style="width:32px;"></span>
+        <span style="flex:1; font-size:11px; color:var(--sg-text-muted); font-weight:600;">KEY</span>
+        <span style="flex:1; font-size:11px; color:var(--sg-text-muted); font-weight:600;">VALUE</span>
+        @if (ShowComment)
+        {
+            <span style="flex:1; font-size:11px; color:var(--sg-text-muted); font-weight:600;">DESCRIPTION</span>
+        }
+        <span style="width:28px;"></span>
+    </SgStack>
+
+    @for (int i = 0; i < Items.Count; i++)
+    {
+        var idx = i;
+        var item = Items[idx];
+        <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="align-items:center;">
+            <SgCheckBox @bind-Value="item.Enabled"
+                        Style="width:32px; flex-shrink:0;" />
+            <SgTextBox @bind-Value="item.Key"
+                       Placeholder="key"
+                       Style="@($"flex:1; opacity:{(item.Enabled ? 1 : 0.45)}")" />
+            <SgTextBox @bind-Value="item.Value"
+                       Placeholder="value"
+                       Style="@($"flex:1; opacity:{(item.Enabled ? 1 : 0.45)}")" />
+            @if (ShowComment)
+            {
+                <SgTextBox @bind-Value="item.Comment"
+                           Placeholder="description"
+                           Style="flex:1; opacity:0.7;" />
+            }
+            <SgButton Variant="SgButtonVariant.Danger"
+                      Size="SgSize.Sm"
+                      OnClick="() => Items.RemoveAt(idx)"
+                      Style="width:28px; padding:0;">✕</SgButton>
+        </SgStack>
+    }
+
+    <SgStack Direction="SgDirection.Horizontal" Gap="6">
+        <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="AddRow">
+            + Add Row
+        </SgButton>
+        @if (Items.Any())
+        {
+            <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="DisableAll">
+                Disable All
+            </SgButton>
+            <SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="ClearAll">
+                Clear
+            </SgButton>
+        }
+        @if (AllowBulkPaste)
+        {
+            <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="() => _pasteOpen = true">
+                📋 Bulk Paste
+            </SgButton>
+        }
+    </SgStack>
+
+</SgStack>
+
+@* Bulk paste modal *@
+<SgModal Title="Bulk Paste (key: value per line)"
+         @bind-Visible="_pasteOpen"
+         Width="480px">
+    <SgTextArea @bind-Value="_bulkText" Rows="10"
+                Placeholder="Content-Type: application/json&#10;Authorization: Bearer token123" />
+    <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="justify-content:flex-end; margin-top:8px;">
+        <SgButton Variant="SgButtonVariant.Default" OnClick="() => _pasteOpen = false">Cancel</SgButton>
+        <SgButton Variant="SgButtonVariant.Primary" OnClick="ApplyBulkPaste">Apply</SgButton>
+    </SgStack>
+</SgModal>
+
+@code {
+    [Parameter] public List<KvPair> Items { get; set; } = new();
+    [Parameter] public bool ShowComment { get; set; } = true;
+    [Parameter] public bool AllowBulkPaste { get; set; } = true;
+
+    private bool _pasteOpen = false;
+    private string _bulkText = "";
+
+    private void AddRow() => Items.Add(new KvPair());
+    private void DisableAll() => Items.ForEach(i => i.Enabled = false);
+    private void ClearAll() => Items.Clear();
+
+    private void ApplyBulkPaste()
+    {
+        foreach (var line in _bulkText.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var idx = line.IndexOf(':');
+            if (idx < 0) continue;
+            Items.Add(new KvPair(line[..idx].Trim(), line[(idx + 1)..].Trim()));
+        }
+        _bulkText = "";
+        _pasteOpen = false;
+    }
+}

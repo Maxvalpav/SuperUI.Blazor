@@ -1,0 +1,185 @@
+@namespace SuperUI.Components
+
+<SgCard Title="📊 Session Statistics">
+    @if (!Stats.Any())
+    {
+        <SgEmpty Description="No requests sent yet. Statistics will appear here after sending requests." />
+    }
+    else
+    {
+        <SgStack Direction="SgDirection.Vertical" Gap="16">
+            
+            @* Summary Statistics *@
+            <SgStack Direction="SgDirection.Horizontal" Gap="16" Style="flex-wrap:wrap;">
+                <SgStatistic Label="Total Requests" Value="@Stats.Count.ToString()" />
+                <SgStatistic Label="✅ Successful" Value="@GetSuccessCount().ToString()" />
+                <SgStatistic Label="❌ Failed" Value="@GetFailedCount().ToString()" />
+                <SgStatistic Label="Avg Time" Value="@($"{GetAvgTime():F0} ms")" />
+                <SgStatistic Label="Min / Max" Value="@($"{GetMinTime()} / {GetMaxTime()} ms")" />
+                <SgStatistic Label="Total Data" Value="@GetTotalData()" />
+            </SgStack>
+
+            <SgDivider />
+
+            @* Latency Chart *@
+            <div>
+                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Request Latency</h4>
+                <SgChart TItem="object"
+                         Type="Line"
+                         Labels="@GetLatencyLabels()"
+                         Datasets="@GetLatencyDatasets()"
+                         Style="height:200px;" />
+            </div>
+
+            <SgDivider />
+
+            @* Status Distribution *@
+            <div>
+                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Status Code Distribution</h4>
+                <SgChart TItem="object"
+                         Type="Doughnut"
+                         Labels="@GetStatusLabels()"
+                         Datasets="@GetStatusDatasets()"
+                         Style="height:200px;" />
+            </div>
+
+            <SgDivider />
+
+            @* Success Rate *@
+            <div>
+                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Success Rate</h4>
+                <SgProgress Value="@GetSuccessCount()" Max="@Stats.Count" Variant="@GetSuccessVariant()" />
+                <span style="font-size:12px; color:var(--sg-text-muted); margin-top:4px; display:block;">
+                    @GetSuccessRate()% success rate (@GetSuccessCount() of @Stats.Count requests)
+                </span>
+            </div>
+
+            @* Recent Requests Table *@
+            <div>
+                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Recent Requests</h4>
+                <SgDataGrid TItem="RequestStat"
+                            Items="Stats.TakeLast(10).Reverse().ToList()"
+                            EnablePaging="false"
+                            ShowSearch="false">
+                    <SgDataGridColumn TItem="RequestStat"
+                                      Title="Status"
+                                      Value="@(s => s.Success ? "✅" : "❌")"
+                                      Width="60px" />
+                    <SgDataGridColumn TItem="RequestStat"
+                                      Title="Label"
+                                      Value="@(s => s.Label)"
+                                      Sortable="true" />
+                    <SgDataGridColumn TItem="RequestStat"
+                                      Title="Code"
+                                      Value="@(s => s.Status.ToString())"
+                                      Width="70px" />
+                    <SgDataGridColumn TItem="RequestStat"
+                                      Title="Time"
+                                      Value="@(s => $"{s.Ms} ms")"
+                                      Width="90px"
+                                      Sortable="true" />
+                    <SgDataGridColumn TItem="RequestStat"
+                                      Title="Size"
+                                      Value="@(s => FormatBytes(s.Bytes))"
+                                      Width="90px" />
+                </SgDataGrid>
+            </div>
+
+        </SgStack>
+    }
+</SgCard>
+
+@code {
+    [Parameter] public List<RequestStat> Stats { get; set; } = new();
+
+    private int GetSuccessCount() => Stats.Count(s => s.Success);
+    private int GetFailedCount() => Stats.Count - GetSuccessCount();
+    private double GetAvgTime() => Stats.Any() ? Stats.Average(s => s.Ms) : 0;
+    private long GetMinTime() => Stats.Any() ? Stats.Min(s => s.Ms) : 0;
+    private long GetMaxTime() => Stats.Any() ? Stats.Max(s => s.Ms) : 0;
+    
+    private string GetTotalData()
+    {
+        var totalBytes = Stats.Sum(s => s.Bytes);
+        if (totalBytes < 1024) return $"{totalBytes} B";
+        if (totalBytes < 1024 * 1024) return $"{totalBytes / 1024.0:F1} KB";
+        return $"{totalBytes / (1024.0 * 1024.0):F2} MB";
+    }
+
+    private int GetSuccessRate()
+    {
+        if (!Stats.Any()) return 0;
+        return (int)((GetSuccessCount() / (double)Stats.Count) * 100);
+    }
+
+    private SgSpinnerVariant GetSuccessVariant()
+    {
+        var rate = GetSuccessRate();
+        if (rate >= 90) return SgSpinnerVariant.Success;
+        if (rate >= 70) return SgSpinnerVariant.Info;
+        return SgSpinnerVariant.Danger;
+    }
+
+    private string[] GetLatencyLabels()
+    {
+        return Stats.Select((s, i) => $"#{i + 1}").ToArray();
+    }
+
+    private object[] GetLatencyDatasets()
+    {
+        var data = Stats.Select(s => (object)s.Ms).ToArray();
+        return new object[]
+        {
+            new
+            {
+                Label = "Latency (ms)",
+                Data = data,
+                BorderColor = "#60a5fa",
+                BackgroundColor = "rgba(96, 165, 250, 0.1)"
+            }
+        };
+    }
+
+    private string[] GetStatusLabels()
+    {
+        var groups = Stats.GroupBy(s => s.Status / 100 * 100)
+                          .OrderBy(g => g.Key)
+                          .Select(g => $"{g.Key}xx")
+                          .ToArray();
+        return groups;
+    }
+
+    private object[] GetStatusDatasets()
+    {
+        var groups = Stats.GroupBy(s => s.Status / 100 * 100)
+                          .OrderBy(g => g.Key)
+                          .ToList();
+        
+        var data = groups.Select(g => (object)g.Count()).ToArray();
+        var colors = groups.Select(g => g.Key switch
+        {
+            200 => "#10b981",
+            300 => "#3b82f6",
+            400 => "#f59e0b",
+            500 => "#ef4444",
+            _ => "#6b7280"
+        }).ToArray();
+
+        return new object[]
+        {
+            new
+            {
+                Label = "Responses",
+                Data = data,
+                BackgroundColor = colors
+            }
+        };
+    }
+
+    private string FormatBytes(int bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F2} MB";
+    }
+}

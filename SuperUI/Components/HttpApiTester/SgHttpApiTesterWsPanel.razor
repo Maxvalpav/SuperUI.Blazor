@@ -1,0 +1,282 @@
+@namespace SuperUI.Components
+@using System.Net.WebSockets
+@using System.Text
+@inject SgToastService Toasts
+@implements IAsyncDisposable
+
+<SgCard Title="🔌 WebSocket Client">
+    <SgStack Direction="SgDirection.Vertical" Gap="12">
+        
+        @* Connection Bar *@
+        <SgStack Direction="SgDirection.Horizontal" Gap="8" Style="align-items:center;">
+            <SgTextBox @bind-Value="_wsUrl"
+                       Placeholder="wss://echo.websocket.org"
+                       Style="flex:1;"
+                       Disabled="@(_ws?.State == WebSocketState.Open)" />
+            
+            @if (_ws?.State == WebSocketState.Open)
+            {
+                <SgBadge Variant="SgBadgeVariant.Success" Text="🟢 Connected" />
+                <SgButton Variant="SgButtonVariant.Danger" OnClick="DisconnectAsync">
+                    Disconnect
+                </SgButton>
+            }
+            else
+            {
+                <SgBadge Variant="SgBadgeVariant.Muted" Text="⚫ Disconnected" />
+                <SgButton Variant="SgButtonVariant.Primary" OnClick="ConnectAsync" Disabled="_isConnecting">
+                    @if (_isConnecting)
+                    {
+                        <SgSpinner Size="SgSize.Sm" />
+                        <span style="margin-left:6px;">Connecting...</span>
+                    }
+                    else
+                    {
+                        <span>Connect</span>
+                    }
+                </SgButton>
+            }
+        </SgStack>
+
+        @* Send Message *@
+        @if (_ws?.State == WebSocketState.Open)
+        {
+            <SgStack Direction="SgDirection.Vertical" Gap="6">
+                <SgTextArea @bind-Value="_sendText"
+                            Rows="4"
+                            Placeholder="Type message to send..."
+                            Style="font-family:monospace; font-size:13px;" />
+                <SgStack Direction="SgDirection.Horizontal" Gap="6">
+                    <SgButton Variant="SgButtonVariant.Primary" OnClick="SendMessageAsync">
+                        📤 Send
+                    </SgButton>
+                    <SgButton Variant="SgButtonVariant.Default" OnClick="() => _sendText = GetSampleJson()">
+                        📋 Sample JSON
+                    </SgButton>
+                    <span style="flex:1;"></span>
+                    <span style="font-size:12px; color:var(--sg-text-muted);">
+                        Sent: @_sentCount | Received: @_recvCount
+                    </span>
+                </SgStack>
+            </SgStack>
+        }
+
+        <SgDivider />
+
+        @* Messages List *@
+        <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="align-items:center; margin-bottom:6px;">
+            <span style="font-weight:600; font-size:14px;">Messages (@_messages.Count)</span>
+            <span style="flex:1;"></span>
+            @if (_messages.Any())
+            {
+                <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="ClearMessages">
+                    🗑 Clear
+                </SgButton>
+            }
+        </SgStack>
+
+        @if (!_messages.Any())
+        {
+            <SgEmpty Description="No messages yet. Connect and send a message." />
+        }
+        else
+        {
+            <div style="max-height:400px; overflow-y:auto; border:1px solid var(--sg-border); border-radius:4px; padding:8px;">
+                @foreach (var msg in _messages.AsEnumerable().Reverse())
+                {
+                    <div style="margin-bottom:8px; padding:8px; border-radius:4px; background:@(msg.Direction == "send" ? "var(--sg-bg-alt)" : "var(--sg-bg)");">
+                        <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="align-items:center; margin-bottom:4px;">
+                            <SgBadge Variant="@(msg.Direction == "send" ? SgBadgeVariant.Info : SgBadgeVariant.Success)"
+                                     Text="@(msg.Direction == "send" ? "📤 SENT" : "📥 RECV")" />
+                            <span style="font-size:11px; color:var(--sg-text-muted);">
+                                @msg.Timestamp.ToString("HH:mm:ss.fff")
+                            </span>
+                            @if (msg.IsJson)
+                            {
+                                <SgBadge Variant="SgBadgeVariant.Muted" Text="JSON" Style="font-size:9px;" />
+                            }
+                        </SgStack>
+                        <pre style="margin:0; font-size:12px; font-family:monospace; white-space:pre-wrap; word-break:break-all;">@msg.Text</pre>
+                    </div>
+                }
+            </div>
+        }
+
+    </SgStack>
+</SgCard>
+
+@code {
+    private string _wsUrl = "wss://echo.websocket.org";
+    private string _sendText = "";
+    private ClientWebSocket? _ws;
+    private CancellationTokenSource? _cts;
+    private bool _isConnecting = false;
+    private int _sentCount = 0;
+    private int _recvCount = 0;
+    private List<WsMessage> _messages = new();
+
+    private async Task ConnectAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_wsUrl))
+        {
+            Toasts.Info("Please enter WebSocket URL");
+            return;
+        }
+
+        _isConnecting = true;
+        StateHasChanged();
+
+        try
+        {
+            _ws = new ClientWebSocket();
+            _cts = new CancellationTokenSource();
+            await _ws.ConnectAsync(new Uri(_wsUrl), _cts.Token);
+            Toasts.Success("Connected to WebSocket");
+            _ = ReceiveLoopAsync();
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Connection failed: {ex.Message}");
+            _ws?.Dispose();
+            _ws = null;
+        }
+        finally
+        {
+            _isConnecting = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        if (_ws is null) return;
+        
+        try
+        {
+            _cts?.Cancel();
+            if (_ws.State == WebSocketState.Open)
+            {
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "User disconnect", CancellationToken.None);
+            }
+            Toasts.Info("Disconnected");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Disconnect error: {ex.Message}");
+        }
+        finally
+        {
+            _ws?.Dispose();
+            _ws = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SendMessageAsync()
+    {
+        if (_ws?.State != WebSocketState.Open)
+        {
+            Toasts.Info("Not connected");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_sendText))
+        {
+            Toasts.Info("Message is empty");
+            return;
+        }
+
+        try
+        {
+            var bytes = Encoding.UTF8.GetBytes(_sendText);
+            await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            
+            _messages.Add(new WsMessage
+            {
+                Direction = "send",
+                Text = _sendText,
+                IsJson = IsJson(_sendText),
+                Timestamp = DateTime.Now
+            });
+            
+            _sentCount++;
+            _sendText = "";
+            Toasts.Success("Message sent");
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Send failed: {ex.Message}");
+        }
+    }
+
+    private async Task ReceiveLoopAsync()
+    {
+        var buffer = new byte[64 * 1024];
+        
+        while (_ws?.State == WebSocketState.Open)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                WebSocketReceiveResult result;
+                
+                do
+                {
+                    result = await _ws.ReceiveAsync(new ArraySegment<byte>(buffer), _cts!.Token);
+                    sb.Append(Encoding.UTF8.GetString(buffer, 0, result.Count));
+                }
+                while (!result.EndOfMessage);
+
+                var text = sb.ToString();
+                _messages.Add(new WsMessage
+                {
+                    Direction = "recv",
+                    Text = text,
+                    IsJson = IsJson(text),
+                    Timestamp = DateTime.Now
+                });
+                
+                _recvCount++;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception)
+            {
+                break;
+            }
+        }
+    }
+
+    private void ClearMessages()
+    {
+        _messages.Clear();
+        _sentCount = 0;
+        _recvCount = 0;
+    }
+
+    private static bool IsJson(string text)
+    {
+        text = text.Trim();
+        return (text.StartsWith('{') && text.EndsWith('}')) || (text.StartsWith('[') && text.EndsWith(']'));
+    }
+
+    private string GetSampleJson() => "{\n  \"type\": \"ping\",\n  \"timestamp\": \"" + DateTime.Now.ToString("o") + "\"\n}";
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts?.Cancel();
+        if (_ws is not null)
+        {
+            if (_ws.State == WebSocketState.Open)
+            {
+                await _ws.CloseAsync(WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+            }
+            _ws.Dispose();
+        }
+        _cts?.Dispose();
+    }
+}

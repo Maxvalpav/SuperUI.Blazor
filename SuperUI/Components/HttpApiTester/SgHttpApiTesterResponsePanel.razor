@@ -1,0 +1,329 @@
+@namespace SuperUI.Components
+@using System.Text
+@using System.Text.Json
+@inject IJSRuntime JS
+@inject SgToastService Toasts
+
+@if (Snapshot is null && !HasError)
+{
+    <SgEmpty Description="Send a request to see the response" />
+}
+else
+{
+    @* ── Status Bar ── *@
+    <SgStack Direction="SgDirection.Horizontal" Gap="8" Style="flex-wrap:wrap; align-items:center; margin-bottom:8px;">
+        @if (HasError)
+        {
+            <SgBadge Variant="SgBadgeVariant.Danger" Text="Network Error" />
+            <span style="color:var(--sg-danger); font-size:13px;">@ErrorMessage</span>
+        }
+        else if (Snapshot is not null)
+        {
+            <SgBadge Variant="@StatusVariant" Text="@($"{Snapshot.Status} {Snapshot.StatusText}")" />
+            <SgBadge Variant="SgBadgeVariant.Default" Text="@($"⏱ {Snapshot.ElapsedMs} ms")" />
+            <SgBadge Variant="@SizeVariant" Text="@($"📦 {FormatSize(Snapshot.SizeBytes)}")" />
+            <SgBadge Variant="SgBadgeVariant.Muted" Text="@Snapshot.ContentType" />
+
+            @if (Snapshot.Tests.Any())
+            {
+                var passed = Snapshot.Tests.Count(t => t.Passed);
+                var total = Snapshot.Tests.Count;
+                <SgBadge Variant="@(passed == total ? SgBadgeVariant.Success : SgBadgeVariant.Danger)"
+                         Text="@($"✅ {passed}/{total} tests")" />
+            }
+        }
+
+        <span style="flex:1;"></span>
+
+        @if (Snapshot?.RawBody is not null)
+        {
+            <SgDropdown Text="⬇ Export">
+                <SgMenuItem Text="📋 Copy to clipboard" OnClick="CopyAsync" />
+                <SgMenuItem Text="💾 Download JSON" OnClick="DownloadJsonAsync"
+                            Disabled="@(!Snapshot.ContentType?.Contains("json") == true)" />
+                <SgMenuItem Text="📊 Export CSV" OnClick="ExportCsvAsync" Disabled="@(!Snapshot.IsJsonArray)" />
+                <SgMenuItem Text="🔧 Export as cURL" OnClick="ExportCurlAsync" />
+            </SgDropdown>
+        }
+    </SgStack>
+
+    <SgDivider />
+
+    @* ── Response Tabs ── *@
+    <SgTabs Style="margin-top:8px;">
+
+        @* Body *@
+        <SgTabPanel Title="@(Snapshot?.IsJsonArray == true ? $"Body [{Snapshot.GridRows.Count} rows]" : "Body")">
+            @if (Snapshot?.IsJsonArray == true && Snapshot.GridRows.Any())
+            {
+                @* DataGrid для массивов *@
+                <SgStack Direction="SgDirection.Horizontal" Gap="6" Style="margin-bottom:6px; align-items:center;">
+                    <SgSegmented @bind-Value="_viewMode"
+                                 Items="@(new[]{"Grid","Chart","JSON"})"
+                                 TextSelector="@GetViewModeText"
+                                 ValueSelector="@GetViewModeValue" />
+                    @if (_viewMode == "Chart" && Snapshot.GridColumns.Any())
+                    {
+                        <SgSelect @bind-Value="_chartXCol" 
+                                  Items="Snapshot.GridColumns"
+                                  TextSelector="@GetColumnText"
+                                  ValueSelector="@GetColumnValue" 
+                                  Style="width:120px;" 
+                                  Placeholder="X axis" />
+                        <SgSelect @bind-Value="_chartYCol" 
+                                  Items="Snapshot.GridColumns"
+                                  TextSelector="@GetColumnText"
+                                  ValueSelector="@GetColumnValue" 
+                                  Style="width:120px;" 
+                                  Placeholder="Y axis" />
+                        <SgSelect @bind-Value="_chartType" 
+                                  Items="@(new[]{"Bar","Line","Pie","Doughnut"})"
+                                  TextSelector="@GetChartTypeText"
+                                  ValueSelector="@GetChartTypeValue" 
+                                  Style="width:110px;" />
+                    }
+                </SgStack>
+
+                @if (_viewMode == "Grid")
+                {
+                    <SgDataGrid TItem="Dictionary<string, object?>"
+                                Items="Snapshot.GridRows"
+                                ShowSearch="true"
+                                ShowQuickFilters="true"
+                                EnablePaging="true"
+                                PageSize="20"
+                                AllowMultiSelect="true"
+                                ExportCsv="true">
+                        @foreach (var col in Snapshot.GridColumns)
+                        {
+                            var c = col;
+                            <SgDataGridColumn TItem="Dictionary<string, object?>"
+                                              Title="@c"
+                                              Value="@(row => row.TryGetValue(c, out var v) ? v?.ToString() ?? "" : "")"
+                                              Sortable="true"
+                                              Filterable="true" />
+                        }
+                    </SgDataGrid>
+                }
+                else if (_viewMode == "Chart" && !string.IsNullOrEmpty(_chartXCol) && !string.IsNullOrEmpty(_chartYCol))
+                {
+                    <SgChart TItem="object"
+                             Type="@_chartType"
+                             Labels="@GetChartLabels()"
+                             Datasets="@GetChartDatasets()"
+                             Style="height:380px;" />
+                }
+                else
+                {
+                    <pre style="background:var(--sg-bg-alt); padding:12px; border-radius:4px; overflow:auto; max-height:400px; font-size:12px; font-family:monospace;">@Snapshot.PrettyBody</pre>
+                }
+            }
+            else if (Snapshot?.RawBody is not null)
+            {
+                <pre style="background:var(--sg-bg-alt); padding:12px; border-radius:4px; overflow:auto; max-height:400px; font-size:12px; font-family:monospace;">@Snapshot.PrettyBody</pre>
+            }
+            else if (!HasError)
+            {
+                <SgEmpty Description="Empty response body" />
+            }
+        </SgTabPanel>
+
+        @* Tests *@
+        <SgTabPanel Title="@($"Tests ({Snapshot?.Tests.Count ?? 0})")">
+            @if (Snapshot?.Tests.Any() == true)
+            {
+                <SgDataGrid TItem="TestResult"
+                            Items="Snapshot.Tests"
+                            EnablePaging="false"
+                            ShowSearch="false">
+                    <SgDataGridColumn TItem="TestResult"
+                                      Title="Status"
+                                      Value="@(t => t.Passed ? "✅ PASS" : "❌ FAIL")"
+                                      Width="80px" />
+                    <SgDataGridColumn TItem="TestResult" Title="Test Name" Value="@(t => t.Name)" Sortable="true" />
+                    <SgDataGridColumn TItem="TestResult" Title="Message" Value="@(t => t.Message)" />
+                    <SgDataGridColumn TItem="TestResult" Title="Duration" Value="@(t => $"{t.DurationMs} ms")" Width="80px" />
+                </SgDataGrid>
+
+                <SgProgress Value="@GetPassedCount()" Max="@Snapshot.Tests.Count"
+                            Variant="@(GetFailedCount() == 0 ? SgSpinnerVariant.Success : SgSpinnerVariant.Danger)"
+                            Style="margin-top:8px;" />
+                <span style="font-size:12px; color:var(--sg-text-muted);">
+                    @GetPassedCount() passed · @GetFailedCount() failed
+                </span>
+            }
+            else
+            {
+                <SgEmpty Description="No test assertions. Add tests in the Tests tab." />
+            }
+        </SgTabPanel>
+
+        @* Response Headers *@
+        <SgTabPanel Title="@($"Headers ({Snapshot?.Headers.Count ?? 0})")">
+            @if (Snapshot?.Headers.Any() == true)
+            {
+                <SgDataGrid TItem="KvPair"
+                            Items="Snapshot.Headers"
+                            ShowSearch="true"
+                            EnablePaging="false">
+                    <SgDataGridColumn TItem="KvPair" Title="Header" Value="@(h => h.Key)" Sortable="true" Filterable="true" />
+                    <SgDataGridColumn TItem="KvPair" Title="Value" Value="@(h => h.Value)" Filterable="true" />
+                </SgDataGrid>
+            }
+            else
+            {
+                <SgEmpty />
+            }
+        </SgTabPanel>
+
+        @* Raw *@
+        <SgTabPanel Title="Raw">
+            <pre style="background:var(--sg-bg-alt); padding:12px; border-radius:4px; overflow:auto; max-height:400px; font-size:12px; font-family:monospace;">@(Snapshot?.RawBody ?? "")</pre>
+        </SgTabPanel>
+
+        @* Timeline *@
+        <SgTabPanel Title="Timeline">
+            @if (Snapshot is not null)
+            {
+                var timelineItems = new List<DescriptionItem>
+                {
+                    new() { Label = "🕐 Received At", Value = Snapshot.ReceivedAt.ToString("HH:mm:ss.fff") },
+                    new() { Label = "⏱ Total Time", Value = $"{Snapshot.ElapsedMs} ms" },
+                    new() { Label = "📦 Response Size", Value = FormatSize(Snapshot.SizeBytes) },
+                    new() { Label = "📄 Content-Type", Value = Snapshot.ContentType },
+                    new() { Label = "📊 Array Items", Value = Snapshot.IsJsonArray ? Snapshot.GridRows.Count.ToString() : "—" },
+                    new() { Label = "🔑 JSON Fields", Value = Snapshot.IsJsonArray ? Snapshot.GridColumns.Count.ToString() : "—" }
+                };
+                
+                <SgDescriptions Columns="2" Items="timelineItems" />
+            }
+        </SgTabPanel>
+
+    </SgTabs>
+}
+
+@code {
+    [Parameter] public ResponseSnapshot? Snapshot { get; set; }
+    [Parameter] public bool HasError { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public bool CompareMode { get; set; } = false;
+    [Parameter] public EventCallback OnDiffRequest { get; set; }
+    [Parameter] public RequestTab? SourceRequest { get; set; }
+
+    private string _viewMode = "Grid";
+    private string _chartXCol = "";
+    private string _chartYCol = "";
+    private string _chartType = "Bar";
+
+    protected override void OnParametersSet()
+    {
+        if (Snapshot?.IsJsonArray == true && Snapshot.GridColumns.Any())
+        {
+            if (string.IsNullOrEmpty(_chartXCol))
+                _chartXCol = Snapshot.GridColumns.First();
+            if (string.IsNullOrEmpty(_chartYCol) && Snapshot.GridColumns.Count > 1)
+                _chartYCol = Snapshot.GridColumns.Skip(1).First();
+        }
+    }
+
+    private SgBadgeVariant StatusVariant => Snapshot?.Status switch
+    {
+        >= 200 and < 300 => SgBadgeVariant.Success,
+        >= 300 and < 400 => SgBadgeVariant.Info,
+        >= 400 and < 500 => SgBadgeVariant.Danger,
+        >= 500 => SgBadgeVariant.Danger,
+        _ => SgBadgeVariant.Default
+    };
+
+    private SgBadgeVariant SizeVariant => Snapshot?.SizeBytes switch
+    {
+        < 1024 => SgBadgeVariant.Success,
+        < 10240 => SgBadgeVariant.Info,
+        < 102400 => SgBadgeVariant.Danger,
+        _ => SgBadgeVariant.Danger
+    };
+
+    private string FormatSize(int bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes / (1024.0 * 1024.0):F1} MB";
+    }
+
+    private async Task CopyAsync()
+    {
+        if (Snapshot?.RawBody is not null)
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Snapshot.RawBody);
+            Toasts.Success("Response copied to clipboard");
+        }
+    }
+
+    private int GetPassedCount() => Snapshot?.Tests.Count(t => t.Passed) ?? 0;
+    private int GetFailedCount() => (Snapshot?.Tests.Count ?? 0) - GetPassedCount();
+    
+    private string GetViewModeText(string s) => s;
+    private string GetViewModeValue(string s) => s;
+    private string GetColumnText(string s) => s;
+    private string GetColumnValue(string s) => s;
+    private string GetChartTypeText(string s) => s;
+    private string GetChartTypeValue(string s) => s;
+
+    private string[] GetChartLabels()
+    {
+        if (Snapshot is null || string.IsNullOrEmpty(_chartXCol)) return Array.Empty<string>();
+        return Snapshot.GridRows
+            .Select(r => r.TryGetValue(_chartXCol, out var v) ? v?.ToString() ?? "" : "")
+            .ToArray();
+    }
+
+    private object[] GetChartDatasets()
+    {
+        if (Snapshot is null || string.IsNullOrEmpty(_chartYCol)) return Array.Empty<object>();
+        var data = Snapshot.GridRows
+            .Select(r =>
+            {
+                if (!r.TryGetValue(_chartYCol, out var v)) return 0.0;
+                return double.TryParse(v?.ToString(), out var d) ? d : 0.0;
+            }).ToArray();
+        return new object[] { new { Label = _chartYCol, Data = data } };
+    }
+
+    private async Task DownloadJsonAsync()
+    {
+        if (Snapshot?.RawBody is null) return;
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(Snapshot.PrettyBody));
+        await JS.InvokeVoidAsync("eval",
+            $"(()=>{{var a=document.createElement('a');a.href='data:application/json;base64,{b64}';a.download='response.json';a.click();}})()");
+        Toasts.Success("Download started");
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        if (Snapshot is null || !Snapshot.IsJsonArray) return;
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Join(",", Snapshot.GridColumns.Select(c => $"\"{c}\"")));
+        foreach (var row in Snapshot.GridRows)
+        {
+            var vals = Snapshot.GridColumns.Select(c =>
+                row.TryGetValue(c, out var v) ? $"\"{v?.ToString()?.Replace("\"", "\"\"") ?? ""}\"" : "\"\"");
+            sb.AppendLine(string.Join(",", vals));
+        }
+        var b64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(sb.ToString()));
+        await JS.InvokeVoidAsync("eval",
+            $"(()=>{{var a=document.createElement('a');a.href='data:text/csv;base64,{b64}';a.download='response.csv';a.click();}})()");
+        Toasts.Success("CSV exported");
+    }
+
+    private async Task ExportCurlAsync()
+    {
+        if (SourceRequest is null) { Toasts.Info("Source request not available"); return; }
+        var sb = new StringBuilder($"curl -X {SourceRequest.Method} \\\n  '{SourceRequest.Url}'");
+        foreach (var h in SourceRequest.Headers.Where(h => h.Enabled && !string.IsNullOrWhiteSpace(h.Key)))
+            sb.Append($" \\\n  -H '{h.Key}: {h.Value}'");
+        if (!string.IsNullOrWhiteSpace(SourceRequest.Body))
+            sb.Append($" \\\n  -d '{SourceRequest.Body.Replace("'", "\\'")}'");
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+        Toasts.Success("cURL command copied to clipboard");
+    }
+}
