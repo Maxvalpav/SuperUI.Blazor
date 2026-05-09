@@ -144,6 +144,16 @@ public partial class SgStack : ComponentBase
         }
     }
 
+    private string FixUnit(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "0px";
+        if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out _))
+        {
+            return value + "px";
+        }
+        return value;
+    }
+
     private string ComputedStyle
     {
         get
@@ -152,15 +162,14 @@ public partial class SgStack : ComponentBase
             sb.Append("display:").Append(Inline ? "inline-flex" : "flex").Append(';');
             sb.Append("flex-direction:").Append(FlexDirectionCss).Append(';');
 
-            // gap handling: per-axis if provided, otherwise unified
-            if (!string.IsNullOrWhiteSpace(RowGap) || !string.IsNullOrWhiteSpace(ColumnGap))
+            var gapVal = FixUnit(Gap);
+            var rowGapVal = !string.IsNullOrWhiteSpace(RowGap) ? FixUnit(RowGap) : gapVal;
+            var colGapVal = !string.IsNullOrWhiteSpace(ColumnGap) ? FixUnit(ColumnGap) : gapVal;
+
+            if (rowGapVal != "0px" || colGapVal != "0px")
             {
-                sb.Append("row-gap:").Append(RowGap ?? Gap).Append(';');
-                sb.Append("column-gap:").Append(ColumnGap ?? Gap).Append(';');
-            }
-            else
-            {
-                sb.Append("gap:").Append(Gap).Append(';');
+                sb.Append("row-gap:").Append(rowGapVal).Append(';');
+                sb.Append("column-gap:").Append(colGapVal).Append(';');
             }
 
             sb.Append("align-items:").Append(AlignCss).Append(';');

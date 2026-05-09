@@ -61,6 +61,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private List<string> _groupBuilderKeys = new();
     private Dictionary<string, Aggregate> _groupBuilderAggregates = new(StringComparer.Ordinal);
     private bool _showSavedViewsPanel;
+    // Working copies for column chooser
+    private HashSet<string> _chooserHiddenColumns = new(StringComparer.Ordinal);
+    private HashSet<string> _chooserPinnedColumns = new(StringComparer.Ordinal);
     private int _currentPage = 1;
     private TItem? _activeRow = default;
     private TItem? _lastSelectedItem = default;
@@ -1035,6 +1038,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             QueryRules = _queryRules.Select(CloneQueryRule).ToList(),
             Sort = _sort.Select(x => new PersistedSortRule { Key = x.Key, Dir = x.Dir }).ToList(),
             HiddenColumns = _hiddenColumns.ToList(),
+            PinnedColumns = _pinnedColumns.ToList(),
             ColumnWidths = new Dictionary<string, int>(_columnWidths, StringComparer.Ordinal),
             ColumnOrder = new Dictionary<string, int>(_columnOrder, StringComparer.Ordinal),
             GroupBy = _groupByKeys.ToList(),
@@ -1102,6 +1106,14 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         _hiddenColumns.Clear();
         foreach (var key in state.HiddenColumns)
             _hiddenColumns.Add(key);
+        _columnsVersion++;
+
+        _pinnedColumns.Clear();
+        foreach (var key in state.PinnedColumns)
+            _pinnedColumns.Add(key);
+        System.Diagnostics.Debug.WriteLine($"[DataGrid] ImportStateAsync: Loaded pinned columns: {string.Join(",", _pinnedColumns)}");
+        _pinnedLeftOffsetsCache = null;
+        _pinnedLeftOffsetsCacheVersion = -1;
         _columnsVersion++;
 
         _columnWidths.Clear();
@@ -1567,7 +1579,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
         _orderedColumnsCache = _columns
             .Select((column, index) => (column, index))
-            .OrderBy(x => _columnOrder.TryGetValue(x.column.Key, out var order) ? order : int.MaxValue)
+            // Pinned columns must come first so they visually appear at the left edge
+            .OrderBy(x => IsColumnPinned(x.column.Key) ? 0 : 1)
+            .ThenBy(x => _columnOrder.TryGetValue(x.column.Key, out var order) ? order : int.MaxValue)
             .ThenBy(x => x.index)
             .Select(x => x.column)
             .ToList();
@@ -3505,7 +3519,20 @@ private static object? ConvertFromString(string? text, Type type)
             return $"width:{width}px;min-width:{width}px;";
 
         if (!string.IsNullOrWhiteSpace(col.Width))
-            return $"width:{col.Width};min-width:{col.Width};";
+        {
+            var w = col.Width;
+            // Ensure width has units
+            if (!w.EndsWith("px", StringComparison.OrdinalIgnoreCase) && 
+                !w.EndsWith("%", StringComparison.OrdinalIgnoreCase) &&
+                !w.EndsWith("em", StringComparison.OrdinalIgnoreCase) &&
+                !w.EndsWith("rem", StringComparison.OrdinalIgnoreCase))
+            {
+                // If it's just a number, add px
+                if (int.TryParse(w, out _))
+                    w = w + "px";
+            }
+            return $"width:{w};min-width:{w};";
+        }
 
         return string.Empty;
     }
@@ -3517,7 +3544,9 @@ private static object? ConvertFromString(string? text, Type type)
 
         EnsurePinnedLeftOffsets();
         if (_pinnedLeftOffsetsCache is not null && _pinnedLeftOffsetsCache.TryGetValue(col.Key, out var left))
+        {
             return $"left:{left}px;";
+        }
 
         return string.Empty;
     }
@@ -3535,17 +3564,27 @@ private static object? ConvertFromString(string? text, Type type)
         if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
             left += 32;
 
+        System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Building cache, pinnedColumns={string.Join(",", _pinnedColumns)}");
+
         var visibleColumns = VisibleColumns;
+        
         for (var i = 0; i < visibleColumns.Count; i++)
         {
             var column = visibleColumns[i];
+            
+            // Only process pinned columns
             if (!IsColumnPinned(column.Key))
                 continue;
 
+            var width = EstimateWidth(column);
+            // Store the current left position for this pinned column
             _pinnedLeftOffsetsCache[column.Key] = left;
-            left += EstimateWidth(column);
+            System.Diagnostics.Debug.WriteLine($"[DataGrid]   Pinned: {column.Key}, left={left}px, width={width}px");
+            // Add this column's width to left for the next pinned column
+            left += width;
         }
 
+        System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Complete, {_pinnedLeftOffsetsCache.Count} pinned columns");
         _pinnedLeftOffsetsCacheVersion = _columnsVersion;
     }
 
@@ -3703,48 +3742,48 @@ private static object? ConvertFromString(string? text, Type type)
         return result;
     }
 
-    private bool IsColumnHidden(string key) => _hiddenColumns.Contains(key);
+    private bool IsColumnHidden(string key) => _showChooser ? _chooserHiddenColumns.Contains(key) : _hiddenColumns.Contains(key);
 
     private bool IsColumnPinned(string key)
     {
         // Runtime override takes priority over column parameter
-        if (_pinnedColumns.Contains(key)) return true;
-        var col = GetColumnByKey(key);
-        return col?.Pinned == true;
+        var pinnedSet = _showChooser ? _chooserPinnedColumns : _pinnedColumns;
+        var result = pinnedSet.Contains(key) || (GetColumnByKey(key)?.Pinned == true);
+        return result;
     }
 
     private async Task ToggleColumnHiddenAsync(string key, bool hidden)
     {
         if (hidden)
-            _hiddenColumns.Add(key);
+            _chooserHiddenColumns.Add(key);
         else
-            _hiddenColumns.Remove(key);
-        _columnsVersion++;
-        _pinnedLeftOffsetsCache = null;
-        await SaveStateAsync();
+            _chooserHiddenColumns.Remove(key);
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task ToggleColumnPinnedAsync(string key, bool pin)
     {
         if (pin)
-            _pinnedColumns.Add(key);
+            _chooserPinnedColumns.Add(key);
         else
-            _pinnedColumns.Remove(key);
-        _columnsVersion++;
-        _pinnedLeftOffsetsCache = null;
-        await SaveStateAsync();
+            _chooserPinnedColumns.Remove(key);
         await InvokeAsync(StateHasChanged);
     }
 
-    private Task ToggleChooserAsync()
+    private async Task ToggleChooserAsync()
     {
+        if (!_showChooser)
+        {
+            // Opening chooser - copy current state to working copies
+            _chooserHiddenColumns = new HashSet<string>(_hiddenColumns, StringComparer.Ordinal);
+            _chooserPinnedColumns = new HashSet<string>(_pinnedColumns, StringComparer.Ordinal);
+        }
         _showChooser = !_showChooser;
         _showExportMenu = false;
         _showSortBuilder = false;
         _showGroupBuilder = false;
         _showSavedViewsPanel = false;
-        return Task.CompletedTask;
+        await InvokeAsync(StateHasChanged);
     }
 
     private Task ToggleExportMenuAsync()
@@ -3759,9 +3798,123 @@ private static object? ConvertFromString(string? text, Type type)
 
     private async Task HandleChooserFocusOutAsync(FocusEventArgs _)
     {
-        // Small delay to allow click events to process before closing
-        await Task.Delay(150);
+        // Don't close on focus out - only close on explicit button clicks
+        await Task.CompletedTask;
+    }
+
+    private async Task ApplyChooserChangesAsync()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] ========== APPLY CHOOSER CHANGES START ==========");
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] _chooserPinnedColumns before: {string.Join(",", _chooserPinnedColumns)}");
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] _pinnedColumns before: {string.Join(",", _pinnedColumns)}");
+            
+            // Close menu FIRST before applying changes
+            _showChooser = false;
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Chooser closed, _showChooser = false");
+            
+            // Apply changes
+            _hiddenColumns.Clear();
+            foreach (var key in _chooserHiddenColumns)
+                _hiddenColumns.Add(key);
+
+            _pinnedColumns.Clear();
+            foreach (var key in _chooserPinnedColumns)
+                _pinnedColumns.Add(key);
+
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Pinned columns after: {string.Join(", ", _pinnedColumns)}");
+
+            // Invalidate all caches
+            _columnsVersion++;
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] _columnsVersion incremented to: {_columnsVersion}");
+            
+            _pinnedLeftOffsetsCache = null;
+            _pinnedLeftOffsetsCacheVersion = -1;
+            _visibleColumnsCache = null;
+            _visibleColumnsCacheVersion = -1;
+            _columnSpanCacheVersion = -1;
+            _orderedColumnsCache = null;
+            _orderedColumnsCacheColumnsVersion = -1;
+            InvalidateComputedRowsCache();
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] All caches invalidated");
+            
+            // Force rebuild of pinned offsets cache
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Forcing rebuild of pinned offsets cache...");
+            EnsurePinnedLeftOffsets();
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Pinned offsets cache rebuilt");
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Calling StateHasChanged...");
+            await InvokeAsync(StateHasChanged);
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] StateHasChanged completed");
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Saving state...");
+            await SaveStateAsync();
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] State saved");
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] ========== APPLY CHOOSER CHANGES END ==========");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] ERROR in ApplyChooserChangesAsync: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    private async Task ApplyChooserChangesWithoutClosingAsync()
+    {
+        try
+        {
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Apply button clicked!");
+            
+            // Apply changes but keep menu open
+            _hiddenColumns.Clear();
+            foreach (var key in _chooserHiddenColumns)
+                _hiddenColumns.Add(key);
+
+            _pinnedColumns.Clear();
+            foreach (var key in _chooserPinnedColumns)
+                _pinnedColumns.Add(key);
+
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Hidden columns: {string.Join(", ", _hiddenColumns)}");
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Pinned columns: {string.Join(", ", _pinnedColumns)}");
+
+            // Invalidate all caches
+            _columnsVersion++;
+            _pinnedLeftOffsetsCache = null;
+            _pinnedLeftOffsetsCacheVersion = -1;
+            _visibleColumnsCache = null;
+            _visibleColumnsCacheVersion = -1;
+            _columnSpanCacheVersion = -1;
+            _orderedColumnsCache = null;
+            _orderedColumnsCacheColumnsVersion = -1;
+            InvalidateComputedRowsCache();
+            
+            // Force rebuild of pinned offsets cache
+            EnsurePinnedLeftOffsets();
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Changes applied, calling StateHasChanged");
+            await InvokeAsync(StateHasChanged);
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Saving state");
+            await SaveStateAsync();
+            
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Apply completed successfully");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[DataGrid] Error in ApplyChooserChangesWithoutClosingAsync: {ex.Message}\n{ex.StackTrace}");
+        }
+    }
+
+    private async Task CancelChooserChangesAsync()
+    {
+        // Restore original values from actual collections
+        _chooserHiddenColumns = new HashSet<string>(_hiddenColumns, StringComparer.Ordinal);
+        _chooserPinnedColumns = new HashSet<string>(_pinnedColumns, StringComparer.Ordinal);
         _showChooser = false;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleExportFocusOutAsync(FocusEventArgs _)

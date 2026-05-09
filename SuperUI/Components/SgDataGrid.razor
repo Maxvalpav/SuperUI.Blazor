@@ -337,26 +337,32 @@
                 </button>
                 @if (_showChooser)
                 {
-                    <div class="sg-chooser-menu">
+                    <div class="sg-chooser-menu" @onclick:stopPropagation="true">
                         <div class="sg-chooser-head">@Localizer["DataGrid_ShowColumns"]</div>
-                        @foreach (var col in _columns)
-                        {
-                            var k = col.Key;
-                            <div class="sg-chooser-item sg-chooser-col-row">
-                                <label class="sg-chooser-col-vis">
-                                    <input type="checkbox"
-                                           checked="@(!IsColumnHidden(k))"
-                                           @onchange="@(e => ToggleColumnHiddenAsync(k, e.Value is not true))" />
-                                    <span>@col.Title</span>
-                                </label>
-                                <label class="sg-chooser-pin-label" title="Закрепить колонку">
-                                    <input type="checkbox"
-                                           checked="@IsColumnPinned(k)"
-                                           @onchange="@(e => ToggleColumnPinnedAsync(k, e.Value is true))" />
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
-                                </label>
-                            </div>
-                        }
+                        <div class="sg-chooser-items-scroll">
+                            @foreach (var col in _columns)
+                            {
+                                var k = col.Key;
+                                <div class="sg-chooser-item sg-chooser-col-row">
+                                    <label class="sg-chooser-col-vis">
+                                        <input type="checkbox"
+                                               checked="@(!IsColumnHidden(k))"
+                                               @onchange="@(e => ToggleColumnHiddenAsync(k, e.Value is not true))" />
+                                        <span>@col.Title</span>
+                                    </label>
+                                    <label class="sg-chooser-pin-label" title="Закрепить колонку">
+                                        <input type="checkbox"
+                                               checked="@IsColumnPinned(k)"
+                                               @onchange="@(e => ToggleColumnPinnedAsync(k, e.Value is true))" />
+                                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>
+                                    </label>
+                                </div>
+                            }
+                        </div>
+                        <div class="sg-chooser-footer">
+                            <button type="button" class="sg-btn primary" @onclick="ApplyChooserChangesAsync">@Localizer["DataGrid_Apply"]</button>
+                            <button type="button" class="sg-btn" @onclick="CancelChooserChangesAsync">@Localizer["DataGrid_Cancel"]</button>
+                        </div>
                     </div>
                 }
             </div>
@@ -1524,6 +1530,12 @@
             var widthStyle = GetColumnWidthStyle(colLocal);
             var pinStyle = GetColumnPinStyle(colLocal);
             
+            // Debug ONLY for first row and pinned columns
+            if (rowNumber == 1 && IsColumnPinned(colLocal.Key))
+            {
+                System.Diagnostics.Debug.WriteLine($"[DataGrid] Row 1, Column {colLocal.Key}: pinStyle='{pinStyle}'");
+            }
+            
             // Get the actual value first so we can detect numeric type from it
             var cellVal = colLocal.Value is not null ? colLocal.Value(itemLocal) : null;
 
@@ -1578,11 +1590,25 @@
                 if (!string.IsNullOrEmpty(extra))
                     tdClass += " " + extra;
             }
+            
+            // Debug ONLY for first row and pinned columns
+            if (rowNumber == 1 && IsColumnPinned(colLocal.Key))
+            {
+                System.Diagnostics.Debug.WriteLine($"[DataGrid] Row 1, Column {colLocal.Key}: tdClass='{tdClass}'");
+            }
+            
             builder.OpenElement(seq++, "td");
             builder.AddAttribute(seq++, "class", tdClass);
             var tdStyle = widthStyle + pinStyle + padStyle;
             if (isNumericCol && colLocal.HAlign == SgHAlign.Default)
                 tdStyle += "text-align:right;";
+            
+            // Debug ONLY for first row and pinned columns
+            if (rowNumber == 1 && IsColumnPinned(colLocal.Key))
+            {
+                System.Diagnostics.Debug.WriteLine($"[DataGrid] Row 1, Column {colLocal.Key}: tdStyle='{tdStyle}'");
+            }
+            
             // Apply CellStyle function if set
             if (colLocal.CellStyle is not null)
             {

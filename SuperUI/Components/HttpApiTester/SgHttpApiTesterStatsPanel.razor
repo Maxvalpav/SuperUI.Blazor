@@ -7,64 +7,57 @@
     }
     else
     {
-        <SgStack Direction="SgDirection.Vertical" Gap="16">
+        <SgStack Orientation="SgOrientation.Vertical" Gap="24">
             
             @* Summary Statistics *@
-            <SgStack Direction="SgDirection.Horizontal" Gap="16" Style="flex-wrap:wrap;">
-                <SgStatistic Label="Total Requests" Value="@Stats.Count.ToString()" />
-                <SgStatistic Label="✅ Successful" Value="@GetSuccessCount().ToString()" />
-                <SgStatistic Label="❌ Failed" Value="@GetFailedCount().ToString()" />
-                <SgStatistic Label="Avg Time" Value="@($"{GetAvgTime():F0} ms")" />
-                <SgStatistic Label="Min / Max" Value="@($"{GetMinTime()} / {GetMaxTime()} ms")" />
-                <SgStatistic Label="Total Data" Value="@GetTotalData()" />
-            </SgStack>
-
-            <SgDivider />
-
-            @* Latency Chart *@
-            <div>
-                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Request Latency</h4>
-                <SgChart TItem="object"
-                         Type="Line"
-                         Labels="@GetLatencyLabels()"
-                         Datasets="@GetLatencyDatasets()"
-                         Style="height:200px;" />
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px;">
+                <SgKPICard Title="Total Requests" Value="@((double)Stats.Count)" Formatter="N0" Icon="📊" />
+                <SgKPICard Title="Successful" Value="@((double)GetSuccessCount())" Formatter="N0" Icon="✅" IconColor="var(--sg-success)" />
+                <SgKPICard Title="Failed" Value="@((double)GetFailedCount())" Formatter="N0" Icon="❌" IconColor="var(--sg-danger)" />
+                <SgKPICard Title="Avg Time" Value="@GetAvgTime()" Suffix=" ms" Formatter="N0" Icon="⏱" />
+                <SgKPICard Title="Total Data" ValueText="@GetTotalData()" Icon="💾" />
+                <SgKPICard Title="Success Rate" Value="@GetSuccessRate()" Suffix="%" Formatter="N1" Icon="📈" />
             </div>
 
             <SgDivider />
 
-            @* Status Distribution *@
-            <div>
-                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Status Code Distribution</h4>
-                <SgChart TItem="object"
-                         Type="Doughnut"
-                         Labels="@GetStatusLabels()"
-                         Datasets="@GetStatusDatasets()"
-                         Style="height:200px;" />
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">
+                @* Latency Chart *@
+                <SgCard Title="Request Latency">
+                    <SgChart TItem="object"
+                             Type="Line"
+                             Labels="@GetLatencyLabels()"
+                             Datasets="@GetLatencyDatasets()"
+                             Style="height:250px;" />
+                </SgCard>
+
+                @* Status Distribution *@
+                <SgCard Title="Status Code Distribution">
+                    <SgChart TItem="object"
+                             Type="Doughnut"
+                             Labels="@GetStatusLabels()"
+                             Datasets="@GetStatusDatasets()"
+                             Style="height:250px;" />
+                </SgCard>
             </div>
 
             <SgDivider />
-
-            @* Success Rate *@
-            <div>
-                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Success Rate</h4>
-                <SgProgress Value="@GetSuccessCount()" Max="@Stats.Count" Variant="@GetSuccessVariant()" />
-                <span style="font-size:12px; color:var(--sg-text-muted); margin-top:4px; display:block;">
-                    @GetSuccessRate()% success rate (@GetSuccessCount() of @Stats.Count requests)
-                </span>
-            </div>
 
             @* Recent Requests Table *@
             <div>
-                <h4 style="margin:0 0 8px 0; font-size:14px; font-weight:600;">Recent Requests</h4>
+                <h4 style="margin:0 0 12px 0; font-size:16px; font-weight:600;">Recent Requests</h4>
                 <SgDataGrid TItem="RequestStat"
                             Items="Stats.TakeLast(10).Reverse().ToList()"
                             EnablePaging="false"
                             ShowSearch="false">
                     <SgDataGridColumn TItem="RequestStat"
                                       Title="Status"
-                                      Value="@(s => s.Success ? "✅" : "❌")"
-                                      Width="60px" />
+                                      Width="80px">
+                        <Template Context="s">
+                            <SgBadge Variant="@(s.Success ? SgBadgeVariant.Success : SgBadgeVariant.Danger)"
+                                     Text="@(s.Success ? "SUCCESS" : "FAILED")" />
+                        </Template>
+                    </SgDataGridColumn>
                     <SgDataGridColumn TItem="RequestStat"
                                       Title="Label"
                                       Value="@(s => s.Label)"
@@ -72,16 +65,16 @@
                     <SgDataGridColumn TItem="RequestStat"
                                       Title="Code"
                                       Value="@(s => s.Status.ToString())"
-                                      Width="70px" />
+                                      Width="80px" />
                     <SgDataGridColumn TItem="RequestStat"
                                       Title="Time"
                                       Value="@(s => $"{s.Ms} ms")"
-                                      Width="90px"
+                                      Width="100px"
                                       Sortable="true" />
                     <SgDataGridColumn TItem="RequestStat"
                                       Title="Size"
                                       Value="@(s => FormatBytes(s.Bytes))"
-                                      Width="90px" />
+                                      Width="100px" />
                 </SgDataGrid>
             </div>
 

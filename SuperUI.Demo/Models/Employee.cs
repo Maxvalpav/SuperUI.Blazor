@@ -63,4 +63,23 @@ public class Employee
     [Display(Name = "Руководитель", Order = 11)]
     [StringLength(100, ErrorMessage = "Не более 100 символов")]
     public string? Manager { get; set; }
+
+    [Display(Name = "Опыт (лет)", Order = 12)]
+    [Range(0, 60, ErrorMessage = "Опыт должен быть от 0 до 60 лет")]
+    public int? YearsOfExperience { get; set; }
+
+    [Display(Name = "Уровень", Order = 13)]
+    [StringLength(50, ErrorMessage = "Не более 50 символов")]
+    public string? Level { get; set; }
+
+    [Display(Name = "Проектов", Order = 14)]
+    [Range(0, 1000, ErrorMessage = "Количество проектов должно быть от 0 до 1000")]
+    public int? ProjectsCount { get; set; }
+
+    [Display(Name = "Рейтинг", Order = 15)]
+    [Range(0, 5, ErrorMessage = "Рейтинг должен быть от 0 до 5")]
+    public decimal? Rating { get; set; }
+
+    [Display(Name = "Последний отпуск", Order = 16)]
+    public DateTime? LastVacationDate { get; set; }
 }
