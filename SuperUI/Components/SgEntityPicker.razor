@@ -2,7 +2,7 @@
 @using SuperUI.Components
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
-@typeparam TItem
+@typeparam TItem where TItem : notnull
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -64,7 +64,6 @@
 @code {
     private bool _modalVisible;
     private bool _pickerOpen;
-    private ElementReference _pickerRef;
     private SgPopover? _popover;
     private SgDataGrid<TItem>? _grid;
     private HashSet<TItem> _pendingSelection = new();
@@ -195,9 +194,15 @@
         
         @if (Inline && MultiSelect)
         {
-            <div class="sgc-picker-inline-footer" style="margin-top: 12px; display: flex; justify-content: flex-end; gap: 8px;">
-                <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="ConfirmSelectionAsync">@EffectiveSelectText</SgButton>
-                <SgButton Size="SgSize.Sm" OnClick="CloseInlineAsync">@EffectiveCancelText</SgButton>
+            <div class="sgc-picker-inline-footer" style="margin-top: 12px; display: flex; justify-content: space-between; gap: 8px;">
+                <div style="display: flex; gap: 8px;">
+                    <SgButton Size="SgSize.Sm" OnClick="SelectAllAsync">@Localizer["SelectAll"]</SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="ClearSelectionAsync">@EffectiveClearText</SgButton>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="ConfirmSelectionAsync">@EffectiveSelectText</SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="CloseInlineAsync">@EffectiveCancelText</SgButton>
+                </div>
             </div>
         }
         @if (Inline && !MultiSelect && Value is not null)
@@ -370,6 +375,18 @@
         {
             Values = list;
             if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(Values);
+        }
+    }
+
+    private async Task SelectAllAsync()
+    {
+        if (_grid is null) return;
+        var rows = _grid.Items ?? Items;
+        if (rows != null)
+        {
+            _pendingSelection.Clear();
+            foreach (var item in rows) _pendingSelection.Add(item);
+            SyncGridSelection();
         }
     }
 }

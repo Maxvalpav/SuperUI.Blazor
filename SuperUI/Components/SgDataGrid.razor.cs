@@ -14,7 +14,7 @@ using System.Text.Encodings.Web;
 
 namespace SuperUI.Components;
 
-public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
+public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where TItem : notnull
 {
     private static readonly JsonSerializerOptions StateJsonOptions = new()
     {
@@ -41,6 +41,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     private List<FilterRule> _pendingRules = [new()];
     private bool _pendingRulesAnd = true;
     private string? _pendingFilterKey;
+    private SortDirection? _pendingSort;
     private string? _search;
     private string _filterMenuSearchText = string.Empty;
     private string? _openFilterColumn;
@@ -219,6 +220,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     /// Gets or sets additional CSS class names to apply to the grid container.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets the height of the grid. Can be a CSS value like "400px" or "100%".
+    /// </summary>
+    [Parameter] public string? Height { get; set; }
 
     /// <summary>
     /// Gets or sets the text displayed when the grid has no data.
@@ -468,6 +474,111 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
     [Parameter] public bool ShowRowNumbers { get; set; }
 
     /// <summary>
+    /// Gets or sets a function that returns children for a tree-mode grid.
+    /// When set, the grid operates in tree mode.
+    /// </summary>
+    [Parameter] public Func<TItem, IEnumerable<TItem>?>? TreeChildren { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the expand/collapse button in the first data column for tree mode.
+    /// </summary>
+    [Parameter] public bool IsTree { get; set; }
+
+    /// <summary>
+    /// Gets or sets the set of expanded items in tree mode.
+    /// </summary>
+    [Parameter] public HashSet<TItem> ExpandedItems { get; set; } = new();
+
+    /// <summary>
+    /// Callback invoked when the set of expanded items changes.
+    /// </summary>
+    [Parameter] public EventCallback<HashSet<TItem>> ExpandedItemsChanged { get; set; }
+
+    private readonly HashSet<TItem> _expandedTreeNodes = new();
+
+    internal bool IsTreeNodeExpanded(TItem item) => 
+        ExpandedItems.Contains(item) || _expandedTreeNodes.Contains(item);
+
+    internal bool IsLastChild(TItem item)
+    {
+        if (Items == null || TreeChildren == null) return false;
+        
+        // This is a simplified check. For a robust solution, we'd need parent context.
+        // For now, let's focus on the visual indent and expanders.
+        return false; 
+    }
+
+    internal async Task ToggleTreeNodeExpandedAsync(TItem item)
+    {
+        if (ExpandedItems.Contains(item))
+        {
+            ExpandedItems.Remove(item);
+        }
+        else if (_expandedTreeNodes.Contains(item))
+        {
+            _expandedTreeNodes.Remove(item);
+        }
+        else
+        {
+            _expandedTreeNodes.Add(item);
+        }
+
+        if (ExpandedItemsChanged.HasDelegate)
+            await ExpandedItemsChanged.InvokeAsync(ExpandedItems);
+
+        _itemsVersion++;
+        InvalidateComputedRowsCache();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task ExpandAllTreeNodesAsync()
+    {
+        if (Items == null || TreeChildren == null) return;
+
+        void ExpandRecursive(TItem item)
+        {
+            var children = TreeChildren.Invoke(item);
+            if (children != null && children.Any())
+            {
+                if (!ExpandedItems.Contains(item) && !_expandedTreeNodes.Contains(item))
+                {
+                    _expandedTreeNodes.Add(item);
+                }
+
+                foreach (var child in children)
+                {
+                    ExpandRecursive(child);
+                }
+            }
+        }
+
+        foreach (var item in Items)
+        {
+            ExpandRecursive(item);
+        }
+
+        if (ExpandedItemsChanged.HasDelegate)
+            await ExpandedItemsChanged.InvokeAsync(ExpandedItems);
+
+        _itemsVersion++;
+        InvalidateComputedRowsCache();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async Task CollapseAllTreeNodesAsync()
+    {
+        ExpandedItems.Clear();
+        _expandedTreeNodes.Clear();
+
+        if (ExpandedItemsChanged.HasDelegate)
+            await ExpandedItemsChanged.InvokeAsync(ExpandedItems);
+
+        _itemsVersion++;
+        InvalidateComputedRowsCache();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
     /// Callback invoked after an item is successfully saved via the edit modal (for both add and edit operations).
     /// </summary>
     [Parameter] public EventCallback<TItem> RowSaved { get; set; }
@@ -545,6 +656,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
 
             _columnSpanCacheValue = VisibleColumns.Count
                 + ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline ? 1 : 0)
+                + (IsTree ? 1 : 0)
                 + (SelectionEnabled ? 1 : 0)
                 + (AllowEdit || AllowDelete ? 1 : 0)
                 + (ShowRowNumbers ? 1 : 0);
@@ -1589,6 +1701,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         return _filteredSortedRowsCache;
     }
 
+    private readonly Dictionary<TItem, int> _rowLevels = new();
+
     private List<TItem> GetFilteredRows()
     {
         // Check if cache is valid for current items and filter versions
@@ -1598,6 +1712,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             return _filteredRowsCache;
 
         EnsureAutoGeneratedColumns();
+        _rowLevels.Clear();
 
         // Direct iteration without ToList() to avoid unnecessary copy
         var result = new List<TItem>();
@@ -1642,28 +1757,41 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
             preparedQueryRules.Add((col, queryRule, ResolveColumnType(col)));
         }
 
-        // Direct iteration over Items without ToList() copy
-        if (Items is IList<TItem> itemsList)
+        if (IsTree && TreeChildren != null)
         {
-            for (var i = 0; i < itemsList.Count; i++)
+            if (Items != null)
             {
-                var item = itemsList[i];
-                if (hasSearch && !MatchesSearch(item))
-                    continue;
-                if (!ItemPassesFilters(item, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules))
-                    continue;
-                result.Add(item);
+                foreach (var item in Items)
+                {
+                    AddTreeItemRecursive(item, 0, result, hasSearch, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules);
+                }
             }
         }
-        else if (Items is not null)
+        else
         {
-            foreach (var item in Items)
+            // Direct iteration over Items without ToList() copy
+            if (Items is IList<TItem> itemsList)
             {
-                if (hasSearch && !MatchesSearch(item))
-                    continue;
-                if (!ItemPassesFilters(item, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules))
-                    continue;
-                result.Add(item);
+                for (var i = 0; i < itemsList.Count; i++)
+                {
+                    var item = itemsList[i];
+                    if (hasSearch && !MatchesSearch(item))
+                        continue;
+                    if (!ItemPassesFilters(item, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules))
+                        continue;
+                    result.Add(item);
+                }
+            }
+            else if (Items is not null)
+            {
+                foreach (var item in Items)
+                {
+                    if (hasSearch && !MatchesSearch(item))
+                        continue;
+                    if (!ItemPassesFilters(item, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules))
+                        continue;
+                    result.Add(item);
+                }
             }
         }
 
@@ -1671,6 +1799,92 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable
         _filteredRowsCacheItemsVersion = _itemsVersion;
         _filteredRowsCacheFilterVersion = _filterVersion;
         return _filteredRowsCache;
+    }
+
+    private IEnumerable<TItem> GetAllTreeItems()
+    {
+        if (Items == null || TreeChildren == null) yield break;
+        foreach (var item in Items)
+        {
+            foreach (var subItem in TraverseTree(item))
+            {
+                yield return subItem;
+            }
+        }
+    }
+
+    private IEnumerable<TItem> TraverseTree(TItem item)
+    {
+        yield return item;
+        var children = TreeChildren?.Invoke(item);
+        if (children != null)
+        {
+            foreach (var child in children)
+            {
+                foreach (var subChild in TraverseTree(child))
+                {
+                    yield return subChild;
+                }
+            }
+        }
+    }
+
+    private bool AddTreeItemRecursive(
+        TItem item, 
+        int level, 
+        List<TItem> result, 
+        bool hasSearch,
+        List<(SgDataGridColumn<TItem> Column, string Value)> preparedQuickFilters,
+        List<(SgDataGridColumn<TItem> Column, HashSet<string> Values)> preparedValueFilters,
+        List<(SgDataGridColumn<TItem> Column, ColumnFilter Filter)> preparedConditionFilters,
+        List<(SgDataGridColumn<TItem> Column, QueryRule Rule, Type TargetType)> preparedQueryRules)
+    {
+        bool selfMatches = true;
+        if (hasSearch && !MatchesSearch(item)) selfMatches = false;
+        if (selfMatches && !ItemPassesFilters(item, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules)) selfMatches = false;
+
+        var children = TreeChildren?.Invoke(item);
+        var childrenResults = new List<TItem>();
+        bool anyChildMatches = false;
+        bool hasActiveFilter = hasSearch || preparedQuickFilters.Count > 0 || preparedValueFilters.Count > 0 || preparedConditionFilters.Count > 0 || preparedQueryRules.Count > 0;
+
+        if (children != null)
+        {
+            foreach (var child in children)
+            {
+                // We always recurse if filtering is active to find matches deep in the tree.
+                // If not filtering, we only recurse if the current node is expanded.
+                if (hasActiveFilter || IsTreeNodeExpanded(item))
+                {
+                    var childSubList = new List<TItem>();
+                    if (AddTreeItemRecursive(child, level + 1, childSubList, hasSearch, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules))
+                    {
+                        anyChildMatches = true;
+                        childrenResults.AddRange(childSubList);
+                    }
+                }
+            }
+        }
+
+        bool shouldInclude = selfMatches || anyChildMatches;
+
+        if (shouldInclude)
+        {
+            result.Add(item);
+            _rowLevels[item] = level;
+            
+            // If filtering is active and the node itself doesn't match but we are including it because children match, 
+            // we force it to be expanded so the matching children are visible.
+            if (hasActiveFilter && !selfMatches && anyChildMatches)
+            {
+                _expandedTreeNodes.Add(item);
+            }
+
+            // Add children results (already filtered/processed)
+            result.AddRange(childrenResults);
+        }
+
+        return shouldInclude;
     }
 
     private bool ItemPassesFilters(
@@ -2398,6 +2612,24 @@ private static object? ConvertFromString(string? text, Type type)
         }
     }
 
+    private async Task SetSortAsync(string key, SortDirection dir, bool multi)
+    {
+        if (!multi)
+            _sort.Clear();
+        else
+            _sort.RemoveAll(x => x.Key == key);
+
+        _sort.Add(new PersistedSortRule { Key = key, Dir = dir });
+        _sortVersion++;
+        _currentPage = 1;
+        await SaveStateAsync();
+        await RaiseStateChangedAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private bool HasColumnFilter(string key) =>
+        _filters.ContainsKey(key) || _conditionFilters.ContainsKey(key);
+
     private async Task ToggleSortAsync(string key, bool multi)
     {
         var existing = _sort.FirstOrDefault(x => x.Key == key);
@@ -2478,12 +2710,27 @@ private static object? ConvertFromString(string? text, Type type)
             _pendingRulesAnd = true;
         }
 
+        // Initialize pending sort from current sort
+        _pendingSort = GetSort(key);
+
         await InvokeAsync(StateHasChanged);
     }
 
     private Task CloseFilterMenuAsync()
     {
         _openFilterColumn = null;
+        return Task.CompletedTask;
+    }
+
+    private Task SetPendingSortAsync(SortDirection dir)
+    {
+        _pendingSort = dir;
+        return Task.CompletedTask;
+    }
+
+    private Task ClearPendingSortAsync()
+    {
+        _pendingSort = null;
         return Task.CompletedTask;
     }
 
@@ -2591,42 +2838,41 @@ private static object? ConvertFromString(string? text, Type type)
         var seen = new HashSet<string?>(StringComparer.Ordinal);
         var values = new List<string?>();
 
-        if (Items is not null)
+        var itemsToIterate = IsTree && TreeChildren != null ? GetAllTreeItems() : (Items ?? Enumerable.Empty<TItem>());
+
+        foreach (var item in itemsToIterate)
         {
-            foreach (var item in Items)
+            string rawKey;
+            string displayLabel;
+
+            if (useRaw)
             {
-                string rawKey;
-                string displayLabel;
+                var raw = col.GetValue(item);
+                // Build rawKey from the actual value — no formatting
+                rawKey = raw switch
+                {
+                    null => string.Empty,
+                    DateTime dt => dt.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    DateTimeOffset dto => dto.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    Enum e => e.ToString(),          // enum name
+                    _ => raw.ToString() ?? string.Empty  // numeric: plain number string
+                };
+                // Display label: formatted for UI
+                displayLabel = col.GetDisplay(item);
+            }
+            else
+            {
+                displayLabel = col.GetDisplay(item);
+                rawKey = displayLabel;
+            }
 
-                if (useRaw)
-                {
-                    var raw = col.GetValue(item);
-                    // Build rawKey from the actual value — no formatting
-                    rawKey = raw switch
-                    {
-                        null => string.Empty,
-                        DateTime dt => dt.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        DateTimeOffset dto => dto.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
-                        Enum e => e.ToString(),          // enum name
-                        _ => raw.ToString() ?? string.Empty  // numeric: plain number string
-                    };
-                    // Display label: formatted for UI
-                    displayLabel = col.GetDisplay(item);
-                }
-                else
-                {
-                    displayLabel = col.GetDisplay(item);
-                    rawKey = displayLabel;
-                }
-
-                var normalized = string.IsNullOrEmpty(rawKey) ? null : rawKey;
-                if (seen.Add(normalized))
-                {
-                    values.Add(normalized);
-                    if (useRaw && normalized is not null)
-                        displayToRaw[normalized] = displayLabel;
-                }
+            var normalized = string.IsNullOrEmpty(rawKey) ? null : rawKey;
+            if (seen.Add(normalized))
+            {
+                values.Add(normalized);
+                if (useRaw && normalized is not null)
+                    displayToRaw[normalized] = displayLabel;
             }
         }
 
@@ -2700,6 +2946,7 @@ private static object? ConvertFromString(string? text, Type type)
         _pendingSelectedValues = GetDistinctNormalizedValuesForColumn(key);
         _pendingRules = [new()];
         _pendingRulesAnd = true;
+        _pendingSort = null;
         // No StateHasChanged - will be called when filter is applied
         return Task.CompletedTask;
     }
@@ -2717,6 +2964,20 @@ private static object? ConvertFromString(string? text, Type type)
             _filters[key] = _pendingSelectedValues.ToHashSet(StringComparer.Ordinal);
 
         ApplyPendingConditionFilter(key);
+
+        // Apply pending sort
+        if (_pendingSort.HasValue)
+        {
+            if (_pendingSort.Value == SortDirection.None)
+            {
+                await RemoveSortAsync(key);
+            }
+            else
+            {
+                await SetSortAsync(key, _pendingSort.Value, false);
+            }
+        }
+
         _filterVersion++;  // Increment filter version when filter changes
         _openFilterColumn = null;
         _currentPage = 1;
@@ -3855,7 +4116,7 @@ private static object? ConvertFromString(string? text, Type type)
     private async Task ToggleRowAsync(TItem item, bool selected)
     {
         if (RowDisabled?.Invoke(item) == true) return;
-        if (AllowSingleSelect)
+        if (AllowSingleSelect && !AllowMultiSelect)
         {
             // Single-select: clear all previous selections, then select the clicked item
             SelectedItems.Clear();
@@ -5114,7 +5375,7 @@ private sealed class GridObjectComparer : IComparer<object?>
      }
 }
 
-public sealed class SgDataGridContextMenuEventArgs<TItem>
+public sealed class SgDataGridContextMenuEventArgs<TItem> where TItem : notnull
 {
     public required TItem Item { get; init; }
     public SgDataGridColumn<TItem>? Column { get; init; }
@@ -5126,7 +5387,7 @@ public sealed class SgDataGridContextMenuEventArgs<TItem>
 }
 
 /// <summary>Event args for cell click and double-click events.</summary>
-public sealed class SgDataGridCellClickEventArgs<TItem>
+public sealed class SgDataGridCellClickEventArgs<TItem> where TItem : notnull
 {
     public required TItem Item { get; init; }
     public required SgDataGridColumn<TItem> Column { get; init; }

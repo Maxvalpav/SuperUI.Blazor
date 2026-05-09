@@ -2,7 +2,7 @@ using Microsoft.AspNetCore.Components;
 
 namespace SuperUI.Components;
 
-public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable
+public sealed class SgDataGridColumn<TItem> : ComponentBase, IDisposable where TItem : notnull
 {
     [CascadingParameter] public SgDataGrid<TItem>? Owner { get; set; }
 

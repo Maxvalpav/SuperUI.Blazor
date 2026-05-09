@@ -15,7 +15,7 @@
      @onclick:stopPropagation="false"
      @onkeydown="HandleKeyDownAsync"
      tabindex="0"
-     style="outline: none;">
+     style="outline: none; @(string.IsNullOrEmpty(Height) ? "" : $"height: {Height};")">
     <div class="sg-toolbar">
         @if (!string.IsNullOrEmpty(Title))
         {
@@ -394,6 +394,17 @@
                 </button>
             </div>
         }
+        @if (IsTree)
+        {
+            <div class="sg-btn-group">
+                <button type="button" class="sg-btn" @onclick="ExpandAllTreeNodesAsync" title="@Localizer["ExpandAll"]" aria-label="@Localizer["ExpandAll"]">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="12" y1="11" x2="12" y2="17"></line><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+                </button>
+                <button type="button" class="sg-btn" @onclick="CollapseAllTreeNodesAsync" title="@Localizer["CollapseAll"]" aria-label="@Localizer["CollapseAll"]">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path><line x1="9" y1="14" x2="15" y2="14"></line></svg>
+                </button>
+            </div>
+        }
 
         @{ var _bulkEditCols = AllowBulkEdit ? GetBulkEditableColumns() : null; }
         @if (SelectionEnabled && SelectedItems.Count > 0)
@@ -455,6 +466,10 @@
                     @if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
                     {
                         <th class="sg-col-expand"></th>
+                    }
+                    @if (IsTree)
+                    {
+                        <th class="sg-col-tree-expand"></th>
                     }
                     @if (SelectionEnabled)
                     {
@@ -536,6 +551,34 @@
                                 <div class="sg-filter-menu sg-filter-menu--@menuSide" @onclick:stopPropagation="true">
                                     <div class="sg-filter-menu-body">
 
+                                    @* ── Sorting Section ────────────────────────────────────────── *@
+                                    <div class="sg-filter-divider">@Localizer["DataGrid_Sort"]</div>
+                                    <div class="sg-filter-sort-section">
+                                        <button class="sg-filter-menu-item @(_pendingSort == SortDirection.Ascending ? "sg-filter-menu-item-selected" : "")" type="button" @onclick="@(() => SetPendingSortAsync(SortDirection.Ascending))">
+                                            <span class="sg-filter-menu-icon">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="M11 4h4"/><path d="M11 8h7"/><path d="M11 12h10"/></svg>
+                                            </span>
+                                            <span>@Localizer["DataGrid_SortAsc"]</span>
+                                        </button>
+                                        <button class="sg-filter-menu-item @(_pendingSort == SortDirection.Descending ? "sg-filter-menu-item-selected" : "")" type="button" @onclick="@(() => SetPendingSortAsync(SortDirection.Descending))">
+                                            <span class="sg-filter-menu-icon">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/><path d="M11 12h10"/><path d="M11 16h7"/><path d="M11 20h4"/></svg>
+                                            </span>
+                                            <span>@Localizer["DataGrid_SortDesc"]</span>
+                                        </button>
+                                        @if (HasColumnFilter(key) || _pendingSort.HasValue)
+                                        {
+                                            <button class="sg-filter-menu-item sg-filter-clear-item" type="button" @onclick="@(async () => { await ClearPendingAsync(key); await ClearPendingSortAsync(); })">
+                                                <span class="sg-filter-menu-icon">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H5c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                                                </span>
+                                                <span>@Localizer["DataGrid_Reset"]</span>
+                                            </button>
+                                        }
+                                    </div>
+
+                                    <div class="sg-filter-divider">@Localizer["DataGrid_FilterConditions"]</div>
+
                                     @* AND / OR toggle *@
                                     @if (PendingRules.Count > 1)
                                     {
@@ -556,7 +599,7 @@
                                         var rule = PendingRules[rIdx];
                                         var colFilterType = GetColumnFilterType(key);
                                         <div class="sg-filter-rule">
-<select class="sg-filter-cond-select"
+                                            <select class="sg-filter-cond-select"
                                                      value="@rule.Condition.ToString()"
                                                      @onchange="async e => await SetPendingRuleConditionAsync(rIdx, Enum.Parse<FilterCondition>(e.Value!.ToString()!))">
                                                  @* Text operators — shown for string/enum columns *@
@@ -580,7 +623,7 @@
                                                  <option value="IsEmpty">@Localizer["DataGrid_FilterIsEmpty"]</option>
                                                  <option value="IsNotEmpty">@Localizer["DataGrid_FilterIsNotEmpty"]</option>
                                              </select>
-@if (rule.Condition != FilterCondition.IsEmpty && rule.Condition != FilterCondition.IsNotEmpty)
+                                             @if (rule.Condition != FilterCondition.IsEmpty && rule.Condition != FilterCondition.IsNotEmpty)
                                              {
                                                  @if (colFilterType == "bool")
                                                  {
@@ -639,58 +682,60 @@
                                     }
 
                                     @* Add rule *@
-<div class="sg-filter-add-rule">
+                                    <div class="sg-filter-add-rule">
                                          <button class="sg-btn sg-sm" type="button" @onclick="AddPendingRuleAsync">@Localizer["DataGrid_FilterAddCondition"]</button>
                                      </div>
 
-                                     @* Quick apply *@
-                                     <div class="sg-filter-cond-apply">
-                                         <button class="sg-btn primary sg-filter-apply-btn" type="button"
-                                                 @onclick="async () => await ApplyConditionFilterAsync(key)">
-                                             @Localizer["DataGrid_FilterApply"]
-                                         </button>
-                                     </div>
-
                                      @* Divider *@
-                                     <div class="sg-filter-divider">@Localizer["DataGrid_FilterOrValues"]</div>
+                                     @{
+                                         var distinctValues = GetDistinctValuesForColumn(key)
+                                             .Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || 
+                                                        (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
+                                             .ToList();
+                                     }
 
-                                    @* Checkbox list *@
-                                    <div class="sg-filter-search">
-                                        <svg class="sg-filter-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
-                                        <input class="sg-quick-filter-input sg-filter-search-input"
-                                               placeholder="@Localizer["DataGrid_QuickFilter"]..."
-                                               value="@_filterMenuSearchText"
-                                               @oninput="@(e => { _filterMenuSearchText = e.Value?.ToString() ?? string.Empty; })" />
-                                        @if (!string.IsNullOrEmpty(_filterMenuSearchText))
-                                        {
-                                            <button type="button" class="sg-filter-search-clear" title="Очистить"
-                                                    @onclick="@(() => _filterMenuSearchText = string.Empty)"
-                                                    @onclick:stopPropagation="true">
-                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                            </button>
-                                        }
-                                    </div>
-                                    <div class="sg-filter-actions">
-<label class="sg-filter-all">
-                                             <input type="checkbox"
-                                                    checked="@IsPendingAllSelected(key)"
-                                                    @onchange="@(e => TogglePendingAllAsync(key, e.Value is true))" />
-                                             @Localizer["DataGrid_FilterAll"]
-                                         </label>
-                                    </div>
-<div class="sg-filter-list">
-                                         @foreach (var val in GetDistinctValuesForColumn(key).Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false)))
-                                         {
-                                             var display = GetDisplayLabelForFilterValue(key, val);
-                                             var selected = IsPendingValueSelected(val);
-                                             <label class="sg-filter-item" @key="val">
+                                     @if (distinctValues.Count > 0)
+                                     {
+                                         <div class="sg-filter-divider">@Localizer["DataGrid_FilterOrValues"]</div>
+
+                                        @* Checkbox list *@
+                                        <div class="sg-filter-search">
+                                            <svg class="sg-filter-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                                            <input class="sg-quick-filter-input sg-filter-search-input"
+                                                   placeholder="@Localizer["DataGrid_QuickFilter"]..."
+                                                   value="@_filterMenuSearchText"
+                                                   @oninput="@(e => { _filterMenuSearchText = e.Value?.ToString() ?? string.Empty; })" />
+                                            @if (!string.IsNullOrEmpty(_filterMenuSearchText))
+                                            {
+                                                <button type="button" class="sg-filter-search-clear" title="Очистить"
+                                                        @onclick="@(() => _filterMenuSearchText = string.Empty)"
+                                                        @onclick:stopPropagation="true">
+                                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                </button>
+                                            }
+                                        </div>
+                                        <div class="sg-filter-actions">
+                                             <label class="sg-filter-all">
                                                  <input type="checkbox"
-                                                        checked="@selected"
-                                                        @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
-                                                 <span>@display</span>
+                                                        checked="@IsPendingAllSelected(key)"
+                                                        @onchange="@(e => TogglePendingAllAsync(key, e.Value is true))" />
+                                                 @Localizer["DataGrid_FilterAll"]
                                              </label>
-                                         }
-                                     </div>@* end sg-filter-list *@
+                                        </div>
+                                         <div class="sg-filter-list">
+                                             @foreach (var val in distinctValues)
+                                             {
+                                                 var display = GetDisplayLabelForFilterValue(key, val);
+                                                 var selected = IsPendingValueSelected(val);
+                                                 <label class="sg-filter-item" @key="val">
+                                                     <input type="checkbox"
+                                                            checked="@selected"
+                                                            @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
+                                                     <span>@display</span>
+                                                 </label>
+                                             }
+                                         </div>@* end sg-filter-list *@
+                                     }
 
                                     </div>@* end sg-filter-menu-body *@
 
@@ -701,9 +746,8 @@
                                              @(IsGroupedBy(key) ? Localizer["DataGrid_FilterUnGroupBy"] : Localizer["DataGrid_FilterGroupBy"])
                                          </button>
                                          <div class="sg-spacer"></div>
-                                         <button type="button" class="sg-btn" @onclick="async () => await ClearPendingAsync(key)">@Localizer["DataGrid_FilterReset"]</button>
-                                         <button type="button" class="sg-btn" @onclick="CloseFilterMenuAsync">@Localizer["DataGrid_FilterCancel"]</button>
                                          <button type="button" class="sg-btn primary" @onclick="ApplyFilterAsync">@Localizer["DataGrid_FilterOk"]</button>
+                                         <button type="button" class="sg-btn" @onclick="CloseFilterMenuAsync">@Localizer["DataGrid_FilterCancel"]</button>
                                      </div>
                                 </div>
                             }
@@ -724,7 +768,11 @@
                              @if (ShowRowNumbers) { <th class="sg-th sg-col-num"></th> }
                              @if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
                              {
-                                 <th class="sg-col-expand"></th>
+                                 <th class="sg-th sg-col-expand"></th>
+                             }
+                             @if (IsTree)
+                             {
+                                 <th class="sg-th sg-col-tree-expand"></th>
                              }
                              @if (SelectionEnabled)
                              {
@@ -775,6 +823,7 @@
                         <tr>
                             @if (SelectionEnabled) { <td><SgSkeleton Width="16px" Height="16px" Shape="SgSkeletonShape.Rect" /></td> }
                             @if (DetailTemplate is not null) { <td></td> }
+                            @if (IsTree) { <td class="sg-col-tree-expand"></td> }
                             @foreach (var col in _columns.Where(c => !c.Hidden))
                             {
                                 <td><SgSkeleton Width="80%" Height="14px" /></td>
@@ -830,7 +879,9 @@
                         }
                         @for (var _ri = 0; _ri < rows.Count; _ri++)
                         {
-                            @RenderRow(rows[_ri], visibleCols, 0, (CurrentPage - 1) * PageSize + _ri + 1)
+                            var rowItem = rows[_ri];
+                            var rowIndent = IsTree && _rowLevels.TryGetValue(rowItem, out var level) ? level : 0;
+                            @RenderRow(rowItem, visibleCols, rowIndent, (CurrentPage - 1) * PageSize + _ri + 1)
                         }
                         @if (useVirtualization && bottomPadding > 0)
                         {
@@ -847,6 +898,10 @@
                         @if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
                         {
                             <td class="sg-agg sg-col-expand"></td>
+                        }
+                        @if (IsTree)
+                        {
+                            <td class="sg-agg sg-col-tree-expand"></td>
                         }
                         @if (SelectionEnabled)
                         {
@@ -1387,6 +1442,62 @@
             builder.CloseElement();
         }
 
+        if (IsTree)
+        {
+            var children = TreeChildren?.Invoke(itemLocal);
+            var showTreeExpander = children != null && children.Any();
+            builder.OpenElement(seq++, "td");
+            builder.AddAttribute(seq++, "class", "sg-cell sg-col-tree-expand");
+            builder.AddAttribute(seq++, "role", "gridcell");
+            if (showTreeExpander)
+            {
+                var isExpanded = IsTreeNodeExpanded(itemLocal);
+                builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
+                builder.AddAttribute(seq++, "onclick", Microsoft.AspNetCore.Components.EventCallback.Factory.Create(this, () => ToggleTreeNodeExpandedAsync(itemLocal)));
+                
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "sg-expand-icon");
+                if (isExpanded)
+                {
+                    builder.AddContent(seq++, (RenderFragment)(b => {
+                        b.OpenElement(0, "svg");
+                        b.AddAttribute(1, "width", "12");
+                        b.AddAttribute(2, "height", "12");
+                        b.AddAttribute(3, "viewBox", "0 0 24 24");
+                        b.AddAttribute(4, "fill", "none");
+                        b.AddAttribute(5, "stroke", "currentColor");
+                        b.AddAttribute(6, "stroke-width", "3");
+                        b.AddAttribute(7, "stroke-linecap", "round");
+                        b.AddAttribute(8, "stroke-linejoin", "round");
+                        b.OpenElement(9, "polyline");
+                        b.AddAttribute(10, "points", "6 9 12 15 18 9");
+                        b.CloseElement();
+                        b.CloseElement();
+                    }));
+                }
+                else
+                {
+                    builder.AddContent(seq++, (RenderFragment)(b => {
+                        b.OpenElement(0, "svg");
+                        b.AddAttribute(1, "width", "12");
+                        b.AddAttribute(2, "height", "12");
+                        b.AddAttribute(3, "viewBox", "0 0 24 24");
+                        b.AddAttribute(4, "fill", "none");
+                        b.AddAttribute(5, "stroke", "currentColor");
+                        b.AddAttribute(6, "stroke-width", "3");
+                        b.AddAttribute(7, "stroke-linecap", "round");
+                        b.AddAttribute(8, "stroke-linejoin", "round");
+                        b.OpenElement(9, "polyline");
+                        b.AddAttribute(10, "points", "9 18 15 12 9 6");
+                        b.CloseElement();
+                        b.CloseElement();
+                    }));
+                }
+                builder.CloseElement();
+            }
+            builder.CloseElement();
+        }
+
         if (SelectionEnabled)
         {
             builder.OpenElement(seq++, "td");
@@ -1395,9 +1506,9 @@
             builder.AddAttribute(seq++, "role", "gridcell");
             builder.AddEventStopPropagationAttribute(seq++, "onclick", true);
             builder.OpenElement(seq++, "input");
-            builder.AddAttribute(seq++, "type", AllowSingleSelect ? "radio" : "checkbox");
-            builder.AddAttribute(seq++, "class", AllowSingleSelect ? "sg-row-radio" : "sg-row-checkbox");
-            builder.AddAttribute(seq++, "name", AllowSingleSelect ? _gridId + "_radio" : null);
+            builder.AddAttribute(seq++, "type", (AllowSingleSelect && !AllowMultiSelect) ? "radio" : "checkbox");
+            builder.AddAttribute(seq++, "class", (AllowSingleSelect && !AllowMultiSelect) ? "sg-row-radio" : "sg-row-checkbox");
+            builder.AddAttribute(seq++, "name", (AllowSingleSelect && !AllowMultiSelect) ? _gridId + "_radio" : null);
             builder.AddAttribute(seq++, "checked", isSelected);
             builder.AddAttribute(seq++, "aria-label", Localizer["DataGrid_SelectRow"]);
             builder.AddAttribute(seq++, "onchange", Microsoft.AspNetCore.Components.EventCallback.Factory.Create<Microsoft.AspNetCore.Components.ChangeEventArgs>(this, e => ToggleRowAsync(itemLocal, e.Value is true)));
@@ -1412,10 +1523,22 @@
             var colLocal = col;
             var widthStyle = GetColumnWidthStyle(colLocal);
             var pinStyle = GetColumnPinStyle(colLocal);
-            var padStyle = first && indent > 0 ? $"padding-left:{8 + indent * 16}px;" : "";
-
+            
             // Get the actual value first so we can detect numeric type from it
             var cellVal = colLocal.Value is not null ? colLocal.Value(itemLocal) : null;
+
+            // Tree mode indentation and expander
+            string padStyle = "";
+            bool showTreeExpander = false;
+            if (first && IsTree)
+            {
+                var children = TreeChildren?.Invoke(itemLocal);
+                showTreeExpander = children != null && children.Any();
+            }
+            else if (first && indent > 0)
+            {
+                padStyle = $"padding-left:{8 + indent * 16}px;";
+            }
 
             // Resolve numeric: check cellVal type directly (most reliable),
             // then fall back to cached/reflected detection.
@@ -1447,6 +1570,7 @@
             }
 
             var tdClass = GetColumnTdClass(colLocal, isNumericCol);
+            if (first && IsTree) tdClass += " sg-tree-cell";
             // Apply CellClass function if set
             if (colLocal.CellClass is not null)
             {
@@ -1480,6 +1604,36 @@
             }
             builder.AddAttribute(seq++, "style", tdStyle);
             builder.AddAttribute(seq++, "role", "gridcell");
+
+            if (first && IsTree)
+            {
+                var level = _rowLevels.TryGetValue(itemLocal, out var l) ? l : 0;
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sg-tree-cell-inner");
+                builder.AddAttribute(seq++, "style", $"padding-left:{level * 20}px;");
+
+                if (level > 0)
+                {
+                    // Draw vertical guides for parent levels
+                    for (int i = 1; i <= level; i++)
+                    {
+                        builder.OpenElement(seq++, "div");
+                        builder.AddAttribute(seq++, "class", "sg-tree-guide");
+                        builder.AddAttribute(seq++, "style", $"left: {(i - 1) * 20 + 10}px;"); 
+                        builder.CloseElement();
+                    }
+                    
+                    // Horizontal guide for current node
+                    builder.OpenElement(seq++, "div");
+                    builder.AddAttribute(seq++, "class", "sg-tree-guide-horizontal");
+                    builder.AddAttribute(seq++, "style", $"left: {(level - 1) * 20 + 10}px;");
+                    builder.CloseElement();
+                }
+
+                builder.OpenElement(seq++, "div");
+                builder.AddAttribute(seq++, "class", "sg-tree-content");
+            }
+
             // Only add oncontextmenu handler if OnRowContextMenu delegate is set
             if (OnRowContextMenu.HasDelegate)
             {
@@ -1556,7 +1710,14 @@
                     }
                 }
             }
-            builder.CloseElement();
+
+            if (first && IsTree)
+            {
+                builder.CloseElement(); // div.sg-tree-content
+                builder.CloseElement(); // div.sg-tree-cell-inner
+            }
+
+            builder.CloseElement(); // td
             first = false;
         }
 
