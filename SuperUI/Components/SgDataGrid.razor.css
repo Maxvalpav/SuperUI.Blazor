@@ -17,7 +17,8 @@
     color: var(--sg-fg);
     border: 1px solid var(--sg-border);
     border-radius: var(--sui-radius-md);
-    overflow: hidden;
+    /* overflow: clip не создаёт scroll-контейнер и не ломает position:sticky у потомков */
+    overflow: clip;
     font-family: var(--sui-font);
     font-size: 12px;
     display: flex;
@@ -26,7 +27,8 @@
 }
 
 .sg-root.sg-modal-open .sg-quick-filter-row {
-    display: none;
+    /* Don't hide quick filters when modal is open - they should remain visible */
+    /* display: none; */
 }
 
 /* When any modal is open — prevent sticky thead from overlapping the modal backdrop */
@@ -198,7 +200,7 @@
     min-height: 0;
     max-height: 560px;
     scrollbar-gutter: stable;
-    contain: style;
+    /* contain: style убран — он может мешать position:sticky в thead */
     scrollbar-width: thin;
     scrollbar-color: var(--sui-border-hover, #b0b0b0) transparent;
 }
@@ -263,26 +265,25 @@
 }
 
 .sg-table thead tr.sg-quick-filter-row th {
-    top: 30px;
+    position: sticky !important;
+    top: 30px !important;
     z-index: 1;
     padding: 4px 6px;
     height: 30px;
     border-bottom: 1px solid var(--sg-border);
     font-weight: 400;
+    background: var(--sg-header-bg) !important;
 }
 
 .sg-table thead tr.sg-quick-filter-row th.sg-pinned {
-    z-index: 2;
+    z-index: 3 !important; /* Higher than regular quick filter cells */
     position: sticky !important;
-    background: var(--sg-bg);
+    background: var(--sg-header-bg) !important;
 }
 
 .sg-quick-filter-cell {
     vertical-align: middle;
-}
-
-.sg-quick-filter-cell.sg-pinned {
-    background: var(--sg-bg);
+    pointer-events: auto !important; /* Ensure cell allows interactions */
 }
 
 .sg-quick-filter-input {
@@ -293,12 +294,15 @@
     padding: 0 6px;
     border: 1px solid var(--sg-border);
     border-radius: var(--sui-radius-sm);
-    background: var(--sui-bg-primary);
+    background: var(--sui-bg-primary) !important;
     color: var(--sg-fg);
     outline: none;
     font-size: 11px;
     box-sizing: border-box;
     transition: all 0.1s;
+    position: relative !important;
+    z-index: 10 !important; /* Ensure input is above parent sticky cell */
+    pointer-events: auto !important; /* Ensure input is clickable */
 }
 
 .sg-quick-filter-input::placeholder {
@@ -466,6 +470,7 @@
 .sg-filter-list {
     flex: none;
     max-height: 180px;
+    min-height: 60px; /* Prevent collapse when empty */
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -474,6 +479,21 @@
     border: 1px solid var(--sg-border);
     border-radius: var(--sui-radius-sm);
     background: var(--sui-bg-primary);
+}
+
+.sg-filter-list-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-height: 100px; /* Prevent menu collapse */
+}
+
+.sg-filter-empty-hint {
+    padding: 20px;
+    text-align: center;
+    color: var(--sg-muted);
+    font-style: italic;
+    font-size: 12px;
 }
 
 .sg-filter-sort-section {
@@ -753,11 +773,22 @@
     text-align: center;
     padding: 0 !important;
     vertical-align: middle;
+    border-right: 1px solid var(--sg-border) !important;
 }
 .sg-col-check input {
     cursor: pointer;
     margin: 0;
     display: block;
+}
+
+.sg-col-num {
+    width: 36px;
+    min-width: 36px;
+    text-align: center;
+    padding: 0 !important;
+    vertical-align: middle;
+    font-size: 11px;
+    color: var(--sg-muted);
 }
 
 .sg-col-expand {
@@ -977,6 +1008,22 @@
     position: sticky !important;
     z-index: 3;
     display: table-cell;
+    background: var(--sg-bg);
+}
+
+/* Technical columns (row numbers, checkboxes, expand, tree) - always pinned */
+.sg-table tbody tr td.sg-col-num.sg-pinned,
+.sg-table tbody tr td.sg-col-check.sg-pinned,
+.sg-table tbody tr td.sg-col-expand.sg-pinned,
+.sg-table tbody tr td.sg-col-tree-expand.sg-pinned {
+    background: var(--sg-bg);
+}
+
+/* Add shadow to the last technical pinned column to separate from scrollable content */
+.sg-table thead th.sg-last-pinned-tech,
+.sg-table tbody tr td.sg-last-pinned-tech,
+.sg-table tfoot td.sg-last-pinned-tech {
+    box-shadow: 2px 0 4px -1px rgba(0, 0, 0, 0.12);
 }
 
 .sg-table thead th.sg-pinned {
@@ -984,26 +1031,28 @@
     background: var(--sg-header-bg);
     display: table-cell;
 }
+
+/* Row state backgrounds for ALL pinned cells — must override row background */
 .sg-table tbody tr.sg-selected td.sg-pinned {
-    background: var(--sg-selected);
+    background: var(--sg-selected) !important;
 }
 .sg-table tbody tr:nth-child(even) td.sg-pinned {
-    background: var(--sg-row-alt);
+    background: var(--sg-row-alt) !important;
 }
 .sg-table tbody tr:nth-child(odd) td.sg-pinned {
-    background: var(--sg-bg);
+    background: var(--sg-bg) !important;
 }
 .sg-table tbody tr:hover td.sg-pinned {
-    background: var(--sg-hover);
+    background: var(--sg-hover) !important;
 }
 .sg-table tbody tr.sg-selected:hover td.sg-pinned {
-    background: #b8d5f0;
+    background: #b8d5f0 !important;
 }
 .sg-table tbody tr.sg-active td.sg-pinned {
-    background: var(--sg-selected);
+    background: var(--sg-selected) !important;
 }
 .sg-table tbody tr.sg-active:hover td.sg-pinned {
-    background: #b8d5f0;
+    background: #b8d5f0 !important;
 }
 
 .sg-resizer {
