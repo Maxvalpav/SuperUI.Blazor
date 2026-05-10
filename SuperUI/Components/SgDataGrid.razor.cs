@@ -2859,9 +2859,32 @@ private static object? ConvertFromString(string? text, Type type)
 
     private async Task TogglePendingAllAsync(string key, bool selected)
     {
-        _pendingSelectedValues = selected
-            ? GetDistinctNormalizedValuesForColumn(key)
-            : new HashSet<string>(StringComparer.Ordinal);
+        if (selected)
+        {
+            // Get all distinct values for the column
+            var allValues = GetDistinctValuesForColumn(key);
+            
+            // Filter by search text if present
+            var filteredValues = allValues
+                .Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || 
+                           (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
+                .ToList();
+            
+            // Normalize and add to pending selection
+            var normalized = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var val in filteredValues)
+            {
+                var norm = NormalizeFilterValue(val);
+                if (norm is not null)
+                    normalized.Add(norm);
+            }
+            _pendingSelectedValues = normalized;
+        }
+        else
+        {
+            _pendingSelectedValues = new HashSet<string>(StringComparer.Ordinal);
+        }
+        
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3545,13 +3568,115 @@ private static object? ConvertFromString(string? text, Type type)
         EnsurePinnedLeftOffsets();
         if (_pinnedLeftOffsetsCache is not null && _pinnedLeftOffsetsCache.TryGetValue(col.Key, out var left))
         {
-            // Inline `position: sticky` so it works for cells rendered via RenderTreeBuilder,
-            // where Blazor's CSS isolation attribute may not match the `.sg-pinned` rules.
-            // Background must be opaque so scrolling cells don't show through.
-            return $"position:sticky;left:{left}px;z-index:3;background:var(--sg-bg);";
+            // Inline position:sticky bypasses Blazor CSS isolation issues with RenderTreeBuilder.
+            // No background here — CSS rules handle it per row state (even/odd/hover/selected).
+            return $"position:sticky;left:{left}px;z-index:3;";
         }
 
         return string.Empty;
+    }
+
+    private string GetColumnPinStyleForHeader(SgDataGridColumn<TItem> col)
+    {
+        if (!IsColumnPinned(col.Key))
+            return string.Empty;
+
+        EnsurePinnedLeftOffsets();
+        if (_pinnedLeftOffsetsCache is not null && _pinnedLeftOffsetsCache.TryGetValue(col.Key, out var left))
+        {
+            // For thead: add position:sticky with both top:0 (vertical) and left:X (horizontal)
+            // z-index:4 to be above tbody cells (z-index:3)
+            return $"position:sticky;top:0;left:{left}px;z-index:4;background:var(--sg-header-bg);";
+        }
+
+        return string.Empty;
+    }
+
+    private string GetColumnPinStyleForQuickFilter(SgDataGridColumn<TItem> col)
+    {
+        if (!IsColumnPinned(col.Key))
+            return string.Empty;
+
+        EnsurePinnedLeftOffsets();
+        if (_pinnedLeftOffsetsCache is not null && _pinnedLeftOffsetsCache.TryGetValue(col.Key, out var left))
+        {
+            // Quick filter row: position:sticky with top:30px (below main header) and left:X (horizontal)
+            // z-index:3 to be above non-pinned quick filter cells (z-index:1) and above tbody (z-index:3 when pinned)
+            return $"position:sticky;top:30px;left:{left}px;z-index:3;background:var(--sg-header-bg);";
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Calculates the left offset for technical columns (row numbers, checkboxes, expand, tree).
+    /// Technical columns are always pinned and their order is fixed.
+    /// </summary>
+    private int GetTechnicalColumnLeft(string columnType)
+    {
+        var left = 0;
+        
+        // Order: rowNum (36px) → expand (32px) → tree (32px) → check (28px)
+        // Each column adds its width to left for columns that come after it
+        
+        if (columnType == "expand")
+        {
+            if (ShowRowNumbers) left += 36;
+            return left;
+        }
+        
+        if (columnType == "tree")
+        {
+            if (ShowRowNumbers) left += 36;
+            if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline) left += 32;
+            return left;
+        }
+        
+        if (columnType == "check")
+        {
+            if (ShowRowNumbers) left += 36;
+            if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline) left += 32;
+            if (IsTree) left += 32;
+            return left;
+        }
+        
+        return 0;
+    }
+
+    /// <summary>
+    /// Returns inline sticky style for technical columns in tbody.
+    /// Includes position:sticky, left offset, z-index, and background color.
+    /// Background is set to transparent so CSS rules for row states (hover, selected, even/odd) work correctly.
+    /// </summary>
+    private string GetTechnicalColumnPinStyle(string columnType)
+    {
+        var left = GetTechnicalColumnLeft(columnType);
+        // Use transparent background so row background colors (even/odd, selected, hover) show through
+        // The CSS rules will handle the actual background via .sg-pinned class
+        return $"position:sticky;left:{left}px;z-index:3;";
+    }
+
+    /// <summary>
+    /// Returns the type of the last technical column that is enabled.
+    /// Used to add shadow to visually separate pinned columns from scrollable content.
+    /// </summary>
+    private string GetLastTechnicalColumnType()
+    {
+        if (SelectionEnabled) return "check";
+        if (IsTree) return "tree";
+        if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline) return "expand";
+        if (ShowRowNumbers) return "rownum";
+        return "";
+    }
+
+    /// <summary>
+    /// Returns CSS class for technical column, including sg-last-pinned-tech for the last one.
+    /// </summary>
+    private string GetTechnicalColumnClass(string baseClass, string columnType)
+    {
+        var lastType = GetLastTechnicalColumnType();
+        var isLast = columnType == lastType;
+        return isLast ? $"{baseClass} sg-last-pinned-tech" : baseClass;
     }
 
     private void EnsurePinnedLeftOffsets()
@@ -3562,12 +3687,22 @@ private static object? ConvertFromString(string? text, Type type)
         _pinnedLeftOffsetsCache ??= new Dictionary<string, int>(StringComparer.Ordinal);
         _pinnedLeftOffsetsCache.Clear();
 
-        var left = SelectionEnabled ? 28 : 0;
-        // Also account for expand column
+        var left = 0;
+        
+        // 1. Add row numbers column width if enabled
+        if (ShowRowNumbers) left += 36;
+        
+        // 2. Add selection column width (checkbox/radio) if enabled
+        if (SelectionEnabled) left += 28;
+        
+        // 3. Add expand column width if enabled
         if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
             left += 32;
+        
+        // 4. Add tree expand column width if enabled
+        if (IsTree) left += 32;
 
-        System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Building cache, pinnedColumns={string.Join(",", _pinnedColumns)}");
+        System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Building cache, pinnedColumns={string.Join(",", _pinnedColumns)}, initial left={left}px");
 
         var visibleColumns = VisibleColumns;
         
