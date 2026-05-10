@@ -1,6 +1,8 @@
 @namespace SuperUI.Components
 @typeparam TItem where TItem : notnull
 @using SuperUI.Localization
+@using Microsoft.AspNetCore.Components
+@implements IHandleEvent
 @inject ISuperUILocalizer Localizer
 
 <SgModal Visible="@Visible"
@@ -67,7 +69,7 @@
                 {
                     @foreach (var rule in _rules)
                     {
-                        <div class="sgrh-rule @(rule.IsEnabled ? "" : "sgrh-rule-disabled")" @key="rule.Id">
+                        <div class="sgrh-rule @(rule.IsEnabled ? "" : "sgrh-rule-disabled")" @key="rule">
 
                             @* ── Rule header: name + toggle + delete ── *@
                             <div class="sgrh-rule-head">
@@ -194,7 +196,7 @@
                                 <div class="sgrh-cond-list">
                                     @foreach (var (condition, idx) in rule.Rules.Select((c, i) => (c, i)))
                                     {
-                                        <div class="sgrh-cond-row" @key="idx">
+                                        <div class="sgrh-cond-row" @key="condition">
                                             @* Field selector *@
                                             <select class="sg-filter-cond-select sgrh-cond-field"
                                                     value="@(condition.FieldName ?? "")"
@@ -318,10 +320,36 @@
 
     private List<RowHighlightRule> _rules = new();
     private IReadOnlyList<QueryField> _fields = Array.Empty<QueryField>();
+    private bool _suppressRender;
+    private bool _wasVisible;
+
+    // Allow specific event handlers to mutate state without triggering a re-render
+    // (so inputs keep focus while typing).
+    Task IHandleEvent.HandleEventAsync(EventCallbackWorkItem item, object? arg)
+    {
+        var task = item.InvokeAsync(arg);
+        var shouldAwait = !task.IsCompletedSuccessfully && task.Status != TaskStatus.Canceled;
+        if (_suppressRender)
+        {
+            _suppressRender = false;
+            return shouldAwait ? task : Task.CompletedTask;
+        }
+        StateHasChanged();
+        return shouldAwait ? AwaitAndRerenderAsync(task) : Task.CompletedTask;
+    }
+
+    private async Task AwaitAndRerenderAsync(Task task)
+    {
+        try { await task; }
+        finally { StateHasChanged(); }
+    }
 
     protected override void OnParametersSet()
     {
-        if (Grid is not null && Visible)
+        // Only (re)load rules on the visible-edge transition, not on every parent re-render.
+        // Otherwise typing into a value input would bubble a parent render that resets _rules
+        // and visually drops the rule the user is editing.
+        if (Grid is not null && Visible && !_wasVisible)
         {
             _fields = Grid.GetQueryFields();
             _rules = Grid.GetRowHighlightRules()
@@ -331,12 +359,15 @@
                     Name = r.Name,
                     Rules = r.Rules.Select(CloneQueryRule).ToList(),
                     RulesAnd = r.RulesAnd,
+                    TargetColumnKey = r.TargetColumnKey,
                     BackgroundColor = r.BackgroundColor,
                     TextColor = r.TextColor,
                     IsEnabled = r.IsEnabled
                 })
                 .ToList();
         }
+
+        _wasVisible = Visible;
     }
 
     private static QueryRule CloneQueryRule(QueryRule rule) =>
@@ -364,17 +395,26 @@
         _rules.ForEach(r => r.IsEnabled = allDisabled);
     }
 
-    private void UpdateRuleName(RowHighlightRule rule, string? name) =>
+    private void UpdateRuleName(RowHighlightRule rule, string? name)
+    {
         rule.Name = name ?? string.Empty;
+        _suppressRender = true;
+    }
 
     private void ToggleRuleEnabled(RowHighlightRule rule, bool enabled) =>
         rule.IsEnabled = enabled;
 
-    private void UpdateRuleBackgroundColor(RowHighlightRule rule, string? color) =>
+    private void UpdateRuleBackgroundColor(RowHighlightRule rule, string? color)
+    {
         rule.BackgroundColor = string.IsNullOrWhiteSpace(color) ? null : color;
+        _suppressRender = true;
+    }
 
-    private void UpdateRuleTextColor(RowHighlightRule rule, string? color) =>
+    private void UpdateRuleTextColor(RowHighlightRule rule, string? color)
+    {
         rule.TextColor = string.IsNullOrWhiteSpace(color) ? null : color;
+        _suppressRender = true;
+    }
 
     private void SetRuleTarget(RowHighlightRule rule, string? columnKey) =>
         rule.TargetColumnKey = string.IsNullOrWhiteSpace(columnKey) ? null : columnKey;
@@ -425,6 +465,7 @@
     {
         if (index >= 0 && index < rule.Rules.Count)
             rule.Rules[index].Value = value;
+        _suppressRender = true;
     }
 
     private QueryField? GetField(string? fieldName) =>
