@@ -3545,7 +3545,10 @@ private static object? ConvertFromString(string? text, Type type)
         EnsurePinnedLeftOffsets();
         if (_pinnedLeftOffsetsCache is not null && _pinnedLeftOffsetsCache.TryGetValue(col.Key, out var left))
         {
-            return $"left:{left}px;";
+            // Inline `position: sticky` so it works for cells rendered via RenderTreeBuilder,
+            // where Blazor's CSS isolation attribute may not match the `.sg-pinned` rules.
+            // Background must be opaque so scrolling cells don't show through.
+            return $"position:sticky;left:{left}px;z-index:3;background:var(--sg-bg);";
         }
 
         return string.Empty;
