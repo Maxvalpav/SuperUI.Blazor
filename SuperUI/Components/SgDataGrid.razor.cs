@@ -31,6 +31,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private readonly Dictionary<string, HashSet<string>> _filters = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ColumnFilter> _conditionFilters = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _quickFilters = new(StringComparer.Ordinal);
+    /// <summary>Incremented on every quick-filter keystroke so ShouldRender sees UI changes before debounced _filterVersion.</summary>
+    private int _quickFilterUiVersion;
+    private int _lastRenderedQuickFilterUiVersion = -1;
     private readonly List<QueryRule> _queryRules = new();
     private readonly List<PersistedSortRule> _sort = new();
     private readonly List<RowHighlightRule> _rowHighlightRules = new();
@@ -812,6 +815,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         if (_disposing)
             return;
 
+        _lastRenderedQuickFilterUiVersion = _quickFilterUiVersion;
+
         if (firstRender)
         {
             _hasRendered = true;
@@ -856,7 +861,8 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
     /// <summary>
     /// Prevents unnecessary re-renders by checking if content has actually changed (PERF-05).
-    /// Only re-renders when items, filters, sort, columns, or grouping change.
+    /// Includes quick-filter typing (<see cref="_quickFilterUiVersion"/>): otherwise scroll/virtualization
+    /// can re-render with a stale bound <c>value</c> while <see cref="_filterVersion"/> is still debounced.
     /// </summary>
     protected override bool ShouldRender()
     {
@@ -871,9 +877,10 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         var sortChanged = _sortVersion != _visibleRowsCacheSortVersion;
         var columnsChanged = _columnsVersion != _visibleRowsCacheColumnsVersion;
         var groupChanged = _groupVersion != _groupTreeCacheGroupVersion;
+        var quickFilterTyping = _quickFilterUiVersion != _lastRenderedQuickFilterUiVersion;
 
         // Only render if content has actually changed
-        return itemsChanged || filterChanged || sortChanged || columnsChanged || groupChanged;
+        return itemsChanged || filterChanged || sortChanged || columnsChanged || groupChanged || quickFilterTyping;
     }
 
     internal void RegisterColumn(SgDataGridColumn<TItem> column)
@@ -2610,6 +2617,9 @@ private static object? ConvertFromString(string? text, Type type)
         else
             _quickFilters[key] = value;
 
+        _quickFilterUiVersion++;
+        StateHasChanged();
+
         if (_quickFilterDebounceCts.TryGetValue(key, out var existing))
         {
             existing.Cancel();
@@ -3600,9 +3610,9 @@ private static object? ConvertFromString(string? text, Type type)
         EnsurePinnedLeftOffsets();
         if (_pinnedLeftOffsetsCache is not null && _pinnedLeftOffsetsCache.TryGetValue(col.Key, out var left))
         {
-            // Quick filter row: position:sticky with top:30px (below main header) and left:X (horizontal)
-            // z-index:3 to be above non-pinned quick filter cells (z-index:1) and above tbody (z-index:3 when pinned)
-            return $"position:sticky;top:30px;left:{left}px;z-index:3;background:var(--sg-header-bg);";
+            // Quick filter row: must stack ABOVE tbody pinned cells (z-index 3) or body paints on top and steals clicks.
+            // Main header pinned uses z-index 4; quick filter uses 5–6 band (see CSS).
+            return $"position:sticky;top:30px;left:{left}px;z-index:6;background:var(--sg-header-bg);";
         }
 
         return string.Empty;
@@ -3688,19 +3698,17 @@ private static object? ConvertFromString(string? text, Type type)
         _pinnedLeftOffsetsCache.Clear();
 
         var left = 0;
-        
-        // 1. Add row numbers column width if enabled
+
+        // Match thead column order: rowNum → detail expand → tree → selection → data
+        // (must match GetTechnicalColumnLeft and markup in SgDataGrid.razor)
         if (ShowRowNumbers) left += 36;
-        
-        // 2. Add selection column width (checkbox/radio) if enabled
-        if (SelectionEnabled) left += 28;
-        
-        // 3. Add expand column width if enabled
+
         if ((DetailTemplate is not null || AutoDetail) && DetailPlacement == DetailPlacement.Inline)
             left += 32;
-        
-        // 4. Add tree expand column width if enabled
+
         if (IsTree) left += 32;
+
+        if (SelectionEnabled) left += 28;
 
         System.Diagnostics.Debug.WriteLine($"[DataGrid] EnsurePinnedLeftOffsets: Building cache, pinnedColumns={string.Join(",", _pinnedColumns)}, initial left={left}px");
 
