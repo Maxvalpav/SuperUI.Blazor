@@ -264,10 +264,11 @@
     overflow: visible;
 }
 
+/* Whole quick-filter band above tbody pinned (z-index 3) so rows don’t cover inputs when scrolling */
 .sg-table thead tr.sg-quick-filter-row th {
     position: sticky !important;
     top: 30px !important;
-    z-index: 1;
+    z-index: 5 !important;
     padding: 4px 6px;
     height: 30px;
     border-bottom: 1px solid var(--sg-border);
@@ -276,7 +277,7 @@
 }
 
 .sg-table thead tr.sg-quick-filter-row th.sg-pinned {
-    z-index: 3 !important; /* Higher than regular quick filter cells */
+    z-index: 6 !important;
     position: sticky !important;
     background: var(--sg-header-bg) !important;
 }
@@ -773,7 +774,6 @@
     text-align: center;
     padding: 0 !important;
     vertical-align: middle;
-    border-right: 1px solid var(--sg-border) !important;
 }
 .sg-col-check input {
     cursor: pointer;
@@ -805,6 +805,38 @@
     max-width: 32px;
     text-align: center;
     padding: 0 !important;
+}
+
+/* Technical columns (#, expand, tree, checkbox): same grid lines as data columns */
+.sg-table thead th.sg-col-num,
+.sg-table thead th.sg-col-expand,
+.sg-table thead th.sg-col-tree-expand,
+.sg-table thead th.sg-col-check {
+    border-right: 1px solid var(--sg-border) !important;
+    border-bottom: 1px solid var(--sg-border-strong) !important;
+}
+
+.sg-table thead tr.sg-quick-filter-row th.sg-col-num,
+.sg-table thead tr.sg-quick-filter-row th.sg-col-expand,
+.sg-table thead tr.sg-quick-filter-row th.sg-col-tree-expand,
+.sg-table thead tr.sg-quick-filter-row th.sg-col-check {
+    border-right: 1px solid var(--sg-border) !important;
+    border-bottom: 1px solid var(--sg-border) !important;
+}
+
+.sg-table tbody tr td.sg-cell.sg-col-num,
+.sg-table tbody tr td.sg-cell.sg-col-expand,
+.sg-table tbody tr td.sg-cell.sg-col-tree-expand,
+.sg-table tbody tr td.sg-cell.sg-col-check {
+    border-right: 1px solid var(--sg-border) !important;
+    border-bottom: 1px solid var(--sg-border) !important;
+}
+
+.sg-table tfoot td.sg-agg.sg-col-num,
+.sg-table tfoot td.sg-agg.sg-col-expand,
+.sg-table tfoot td.sg-agg.sg-col-tree-expand,
+.sg-table tfoot td.sg-agg.sg-col-check {
+    border-right: 1px solid var(--sg-border) !important;
 }
 .sg-expand-icon {
     font-size: 9px;
@@ -1019,11 +1051,33 @@
     background: var(--sg-bg);
 }
 
-/* Add shadow to the last technical pinned column to separate from scrollable content */
+/*
+ * Last technical column: opaque strip (not semi-transparent shadow) masks sub-pixel seam
+ * between sticky tech block and horizontally scrolling cells — avoids “leaking” letters.
+ */
 .sg-table thead th.sg-last-pinned-tech,
-.sg-table tbody tr td.sg-last-pinned-tech,
+.sg-table thead tr.sg-quick-filter-row th.sg-last-pinned-tech {
+    box-shadow: 6px 0 0 0 var(--sg-header-bg) !important;
+}
+.sg-table tbody tr:nth-child(odd) td.sg-last-pinned-tech {
+    box-shadow: 6px 0 0 0 var(--sg-bg) !important;
+}
+.sg-table tbody tr:nth-child(even) td.sg-last-pinned-tech {
+    box-shadow: 6px 0 0 0 var(--sg-row-alt) !important;
+}
+.sg-table tbody tr:hover td.sg-last-pinned-tech {
+    box-shadow: 6px 0 0 0 var(--sg-hover) !important;
+}
+.sg-table tbody tr.sg-selected td.sg-last-pinned-tech,
+.sg-table tbody tr.sg-active td.sg-last-pinned-tech {
+    box-shadow: 6px 0 0 0 var(--sg-selected) !important;
+}
+.sg-table tbody tr.sg-selected:hover td.sg-last-pinned-tech,
+.sg-table tbody tr.sg-active:hover td.sg-last-pinned-tech {
+    box-shadow: 6px 0 0 0 #b8d5f0 !important;
+}
 .sg-table tfoot td.sg-last-pinned-tech {
-    box-shadow: 2px 0 4px -1px rgba(0, 0, 0, 0.12);
+    box-shadow: 6px 0 0 0 var(--sg-toolbar-bg) !important;
 }
 
 .sg-table thead th.sg-pinned {
@@ -2132,14 +2186,14 @@
     stroke: var(--sg-accent);
 }
 
-/* Shadow on right edge of last pinned column */
-.sg-pinned {
+/* Shadow on pinned columns — skip last technical cell (uses opaque seam mask above) */
+.sg-pinned:not(.sg-last-pinned-tech) {
     position: sticky !important;
     z-index: 3;
     background: var(--sg-bg);
     box-shadow: 2px 0 4px -1px rgba(0,0,0,0.12);
 }
-.sg-table thead th.sg-pinned {
+.sg-table thead th.sg-pinned:not(.sg-last-pinned-tech) {
     z-index: 4;
     background: var(--sg-header-bg);
     box-shadow: 2px 0 4px -1px rgba(0,0,0,0.15);
