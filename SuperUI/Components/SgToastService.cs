@@ -47,6 +47,7 @@ public sealed class SgToastService : IAsyncDisposable
 {
     private readonly int _defaultDurationMs;
     private readonly Dictionary<string, SgToast> _activeToasts = new();
+    private readonly SemaphoreSlim _lock = new(1, 1);
     private bool _disposed;
 
     /// <summary>Initializes a new instance of <see cref="SgToastService"/>.</summary>
@@ -73,7 +74,7 @@ public sealed class SgToastService : IAsyncDisposable
     /// <param name="durationMs">Duration in milliseconds. Uses default if not specified.</param>
     public void Show(string message, string? title = null, SgToastVariant variant = SgToastVariant.Default, int? durationMs = null)
     {
-        if (_disposed) throw new ObjectDisposedException(nameof(SgToastService));
+        if (_disposed) return;
 
         var t = new SgToast
         {
@@ -83,7 +84,14 @@ public sealed class SgToastService : IAsyncDisposable
             DurationMs = durationMs ?? _defaultDurationMs
         };
 
-        _activeToasts[t.Id] = t;
+        _lock.Wait();
+        try
+        {
+            if (_disposed) return;
+            _activeToasts[t.Id] = t;
+        }
+        finally { _lock.Release(); }
+
         Added?.Invoke(t);
     }
 
@@ -104,23 +112,36 @@ public sealed class SgToastService : IAsyncDisposable
     {
         if (_disposed) return;
 
-        if (_activeToasts.Remove(id, out var toast))
+        SgToast? toast;
+        _lock.Wait();
+        try
         {
-            try { toast.TimeoutCts?.Cancel(); } catch { }
+            if (!_activeToasts.Remove(id, out toast)) return;
         }
+        finally { _lock.Release(); }
 
+        _ = toast.DisposeAsync();
         Removed?.Invoke(id);
     }
 
     /// <summary>Disposes the service and cancels all active toast timeouts.</summary>
     public async ValueTask DisposeAsync()
     {
-        if (_disposed) return;
-        _disposed = true;
+        await _lock.WaitAsync();
+        try
+        {
+            if (_disposed) return;
+            _disposed = true;
 
-        foreach (var toast in _activeToasts.Values)
-            await toast.DisposeAsync();
+            foreach (var toast in _activeToasts.Values)
+                await toast.DisposeAsync();
 
-        _activeToasts.Clear();
+            _activeToasts.Clear();
+        }
+        finally
+        {
+            _lock.Release();
+            _lock.Dispose();
+        }
     }
 }
