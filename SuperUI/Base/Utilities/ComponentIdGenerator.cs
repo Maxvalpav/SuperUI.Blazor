@@ -25,6 +25,16 @@ public static class ComponentIdGenerator
     public static string NextGlobal(string prefix = "cmp")
     {
         var id = Interlocked.Increment(ref _counter);
-        return $"sg-{prefix}-{id:x}"; // hex для краткости
+        return $"sg-{prefix}-{id:x}";
+    }
+
+    /// <summary>
+    /// Стабильный ID на основе контента (для SSR hydration).
+    /// Для многоэкземплярных сценариев (SSR, multiple circuits).
+    /// </summary>
+    public static string Stable(string prefix, string key)
+    {
+        var hash = string.GetHashCode(key, StringComparison.Ordinal);
+        return $"sg-{prefix}-{hash:x8}";
     }
 }

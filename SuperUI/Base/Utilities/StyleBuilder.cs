@@ -5,15 +5,18 @@ namespace SuperUI.Utilities;
 /// </summary>
 public readonly struct StyleBuilder
 {
-    private readonly List<(string Prop, string Value)>? _styles;
+    private readonly List<(string Prop, string Value)> _styles;
 
-    public StyleBuilder() { }
+    public StyleBuilder()
+    {
+        _styles = [];
+    }
 
     public StyleBuilder Add(string property, string? value, bool condition = true)
     {
         if (!condition || string.IsNullOrWhiteSpace(value)) return this;
         var result = Clone();
-        result._styles!.Add((property, value));
+        result._styles.Add((property, value));
         return result;
     }
 
@@ -28,26 +31,25 @@ public readonly struct StyleBuilder
     {
         if (string.IsNullOrWhiteSpace(userStyle)) return this;
         var result = Clone();
-        // Парсим и добавляем пользовательские стили
         foreach (var part in userStyle.Split(';', StringSplitOptions.RemoveEmptyEntries))
         {
             var kv = part.Split(':', 2);
             if (kv.Length == 2)
-                result._styles!.Add((kv[0].Trim(), kv[1].Trim()));
+                result._styles.Add((kv[0].Trim(), kv[1].Trim()));
         }
         return result;
     }
 
     public string? Build()
     {
-        if (_styles is null || _styles.Count == 0) return null;
+        if (_styles.Count == 0) return null;
         return string.Join("; ", _styles.Select(s => $"{s.Prop}: {s.Value}"));
     }
 
     private StyleBuilder Clone()
     {
         var r = new StyleBuilder();
-        (_styles ?? []).ForEach(s => r._styles!.Add(s));
+        _styles.ForEach(s => r._styles.Add(s));
         return r;
     }
 

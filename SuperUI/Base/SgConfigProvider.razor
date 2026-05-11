@@ -1,0 +1,44 @@
+@* Провайдер конфигурации — оборачивает приложение *@
+
+<CascadingValue Value="_themeContext">
+    <CascadingValue Value="_configContext">
+        <CascadingValue Name="RightToLeft" Value="_config.IsRtl">
+            <CascadingValue Name="Culture" Value="_config.DefaultCulture">
+                <div style="@ThemeTokens" id="sg-root" data-theme="@_config.Theme">
+                    @ChildContent
+                </div>
+            </CascadingValue>
+        </CascadingValue>
+    </CascadingValue>
+</CascadingValue>
+
+@code {
+    [Parameter] public SgConfig Config { get; set; } = new();
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private SgConfig _config = new();
+    private SgThemeContext _themeContext = new();
+    private SgConfigContext _configContext = new();
+
+    private string ThemeTokens => new StyleBuilder()
+        .AddVar("sg-primary", _config.PrimaryColor ?? "#3b82f6")
+        .AddVar("sg-secondary", _config.SecondaryColor ?? "#64748b")
+        .AddVar("sg-danger", _config.DangerColor ?? "#ef4444")
+        .AddVar("sg-success", _config.SuccessColor ?? "#22c55e")
+        .AddVar("sg-warning", _config.WarningColor ?? "#f59e0b")
+        .AddVar("sg-border-radius", _config.BorderRadius ?? "6px")
+        .AddVar("sg-font-family", _config.FontFamily ?? "system-ui, sans-serif")
+        .Build() ?? "";
+
+    protected override void OnParametersSet()
+    {
+        _config = Config;
+        _themeContext = new SgThemeContext
+        {
+            Theme = _config.Theme,
+            IsRtl = _config.IsRtl,
+            Culture = _config.DefaultCulture
+        };
+        _configContext = new SgConfigContext { Config = _config };
+    }
+}

@@ -1,0 +1,43 @@
+@* Компонент Error Boundary для отдельного компонента *@
+
+@if (_error is null)
+{
+    @ChildContent
+}
+else
+{
+    @if (FallbackContent != null)
+    {
+        @FallbackContent(_error)
+    }
+    else
+    {
+        <div class="sg-error-boundary" role="alert">
+            <div class="sg-alert sg-alert-danger" role="alert">
+                <strong>Ошибка компонента:</strong> @_error.Message
+            </div>
+            <button class="sg-btn sg-btn-secondary" @onclick="Reset">Повторить</button>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment<Exception>? FallbackContent { get; set; }
+    [Parameter] public EventCallback<Exception> OnError { get; set; }
+
+    private Exception? _error;
+
+    protected override void OnParametersSet()
+    {
+        _error = null;
+    }
+
+    protected override async Task OnErrorAsync(Exception exception)
+    {
+        _error = exception;
+        await OnError.InvokeAsync(exception);
+    }
+
+    private void Reset() => _error = null;
+}

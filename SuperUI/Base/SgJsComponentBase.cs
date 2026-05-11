@@ -117,6 +117,9 @@ public abstract class SgJsComponentBase : SgComponentBase
     /// </summary>
     protected async ValueTask SafeInvokeVoidAsync(string identifier, params object?[] args)
     {
+#if DEBUG
+        Diagnostics.JsCallCount++;
+#endif
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return;
 
@@ -132,6 +135,9 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { /* компонент удалён */ }
         catch (Exception ex)
         {
+#if DEBUG
+            Diagnostics.JsErrorCount++;
+#endif
             Logger.LogError(ex, "[{ComponentId}] JS call '{Identifier}' failed", ComponentId, identifier);
         }
     }
@@ -142,6 +148,9 @@ public abstract class SgJsComponentBase : SgComponentBase
     /// </summary>
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
+#if DEBUG
+        Diagnostics.JsCallCount++;
+#endif
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return default;
 
@@ -157,6 +166,9 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { return default; }
         catch (Exception ex)
         {
+#if DEBUG
+            Diagnostics.JsErrorCount++;
+#endif
             Logger.LogError(ex, "[{ComponentId}] JS call '{Identifier}' failed", ComponentId, identifier);
             return default;
         }

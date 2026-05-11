@@ -1,5 +1,8 @@
+using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
+using SuperUI.Diagnostics;
 using SuperUI.Hooks;
+using SuperUI.Reactive;
 using SuperUI.State;
 using SuperUI.Utilities;
 
@@ -71,6 +74,11 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     private readonly List<IComponentHook> _hooks = [];
     private readonly SemaphoreSlim _disposeLock = new(1, 1);
 
+#if DEBUG
+    private readonly ComponentDiagnostics _diagnostics = new();
+    private Stopwatch _renderTimer = new();
+#endif
+
     // ── Хуки ─────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -92,7 +100,10 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// </summary>
     protected override bool ShouldRender()
     {
-        // Если стал невидимым — нужен ОДИН рендер, чтобы убрать из DOM
+#if DEBUG
+        if (_renderTimer.IsRunning) return false;
+        _renderTimer.Restart();
+#endif
         if (!Visible && _previousVisible)
         {
             _previousVisible = false;
@@ -102,7 +113,6 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         if (!Visible) return false;
         _previousVisible = true;
 
-        // Хуки могут подавить рендер
         foreach (var hook in _hooks)
         {
             if (hook is IRenderHook rh && !rh.ShouldRender(this))
@@ -149,6 +159,9 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected override async Task OnInitializedAsync()
     {
         LogLifecycle(nameof(OnInitializedAsync));
+#if DEBUG
+        _diagnostics.ComponentId = ComponentId;
+#endif
         foreach (var hook in _hooks)
         {
             if (hook is IAsyncComponentHook ah)
@@ -159,6 +172,9 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 
     protected override void OnParametersSet()
     {
+#if DEBUG
+        _diagnostics.ParameterChangeCount++;
+#endif
         foreach (var hook in _hooks) hook.OnParametersSet(this);
         base.OnParametersSet();
     }
@@ -175,8 +191,19 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 
     protected override void OnAfterRender(bool firstRender)
     {
+        using var _ = SignalTracker.EnterScope(this);
+#if DEBUG
+        if (_renderTimer.IsRunning)
+        {
+            _renderTimer.Stop();
+            var elapsed = _renderTimer.ElapsedMilliseconds;
+            _diagnostics.RenderCount++;
+            _diagnostics.LastRenderMs = elapsed;
+            _diagnostics.AverageRenderMs = (_diagnostics.AverageRenderMs * (_diagnostics.RenderCount - 1) + elapsed) / _diagnostics.RenderCount;
+        }
+#endif
         foreach (var hook in _hooks) hook.OnAfterRender(this, firstRender);
-        _shouldRender = true; // сбросить после рендера
+        _shouldRender = true;
         base.OnAfterRender(firstRender);
     }
 
@@ -184,13 +211,18 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     {
         foreach (var hook in _hooks)
         {
-            if (hook is IAsyncComponentHook ah)
-                await ah.OnAfterRenderAsync(this, firstRender);
+            if (hook is IAsyncComponentHook asyncHook)
+                await asyncHook.OnAfterRenderAsync(this, firstRender);
         }
         await base.OnAfterRenderAsync(firstRender);
     }
 
     // ── CSS / Style builders ──────────────────────────────────────────────────
+
+#if DEBUG
+    /// <summary>Диагностика компонента (только в DEBUG режиме).</summary>
+    public ComponentDiagnostics Diagnostics => _diagnostics;
+#endif
 
     /// <summary>Создать CssBuilder с базовым классом компонента.</summary>
     protected CssBuilder Css(string? baseClass = null)
