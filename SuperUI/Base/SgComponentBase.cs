@@ -3,9 +3,9 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
+using SuperUI.Base.Reactive;
 using SuperUI.Diagnostics;
 using SuperUI.Hooks;
-using SuperUI.Reactive;
 using SuperUI.Services;
 using SuperUI.Base.Tokens;
 using SuperUI.Utilities;
@@ -70,6 +70,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     private bool _previousVisible = true;
     private bool _renderRequested;            // ИСПРАВЛЕНО: заменяет _shouldRender
     private readonly List<IComponentHook> _hooks = [];
+    private ComponentSignalTracker? _signalBatcher;    // ИННОВАЦИЯ: batch рендеры
 
     // ARIA кэш — инвалидируется при изменении параметров
     private IReadOnlyDictionary<string, object>? _ariaCache;
@@ -88,6 +89,9 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         // Вызывается в конструкторе — безопасно, т.к. это не virtual method call
         // (ComponentPrefix реализован в каждом наследнике через override без virtual call chain)
         ComponentId = ComponentIdGenerator.Next(ComponentPrefix);
+
+        // ИННОВАЦИЯ: инициализируем ComponentSignalTracker для бэтчинга рендеров
+        _signalBatcher = new ComponentSignalTracker(this);
 
 #if DEBUG
         _diagnostics = new ComponentDiagnostics { ComponentId = ComponentId };
@@ -136,10 +140,23 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return true;
     }
 
-    /// Подавить следующий рендер (если внешний код вызвал StateHasChanged по ошибке).
+    /// <summary>Подавить следующий рендер (оптимизация).</summary>
     protected void SuppressNextRender() => _renderRequested = false;
 
-    // ── SetParametersAsync — ИСПРАВЛЕНО ───────────────────────────────────────
+    /// <summary>
+    /// ИННОВАЦИЯ: Render batching. Multiple changes in same tick = single render.
+    /// Hides ComponentBase.StateHasChanged to route through ComponentSignalTracker.
+    /// </summary>
+    public new void StateHasChanged()
+    {
+        if (IsDisposed) return;
+        if (_signalBatcher is not null)
+            _signalBatcher.ScheduleRender();
+        else
+            base.StateHasChanged();
+    }
+
+     // ── SetParametersAsync — ИСПРАВЛЕНО ───────────────────────────────────────
     /// <summary>
     /// ИСПРАВЛЕНО:
     /// - НЕ вызываем SetParameterProperties вручную (нарушение контракта Blazor)
@@ -319,17 +336,27 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected virtual ValueTask DisposeComponentAsync() => ValueTask.CompletedTask;
+    protected virtual ValueTask DisposeComponentAsync()
+    {
+        // ИННОВАЦИЯ: dispose ComponentSignalTracker
+        _signalBatcher?.Dispose();
+        return ValueTask.CompletedTask;
+    }
 
     // ── Вспомогательные методы ────────────────────────────────────────────────
     /// <summary>
     /// Запросить перерисовку компонента (безопасно из любого контекста).
+    /// ИННОВАЦИЯ: wrapped in SignalTracker.EnterScope для автоматической подписки сигналов.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task RefreshAsync()
     {
         if (IsDisposed) return Task.CompletedTask;
-        return InvokeAsync(StateHasChanged);
+        return InvokeAsync(() =>
+        {
+            using (SignalTracker.EnterScope(this))
+                StateHasChanged();
+        });
     }
 
     public Task RefreshAsync(Action action)
@@ -338,7 +365,8 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(() =>
         {
             action();
-            StateHasChanged();
+            using (SignalTracker.EnterScope(this))
+                StateHasChanged();
         });
     }
 

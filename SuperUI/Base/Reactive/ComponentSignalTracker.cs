@@ -1,6 +1,4 @@
 // SuperUI/Base/Reactive/ComponentSignalTracker.cs
-using System.Threading;
-
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
@@ -11,14 +9,14 @@ namespace SuperUI.Base.Reactive;
 ///
 /// Решение: CollectSignals → batch → один StateHasChanged() за тик.
 /// </summary>
-public sealed class RenderBatcher : IDisposable
+public sealed class ComponentSignalTracker : IDisposable
 {
     private readonly SgComponentBase _component;
     private volatile int _pendingCount;
     private Task? _batchTask;
     private readonly Lock _lock = new();
 
-    public RenderBatcher(SgComponentBase component)
+    public ComponentSignalTracker(SgComponentBase component)
     {
         _component = component;
     }
@@ -41,7 +39,6 @@ public sealed class RenderBatcher : IDisposable
 
     private async Task FlushAsync()
     {
-        // Yield — позволяем накопиться всем изменениям текущего syncCtx
         await Task.Yield();
         Interlocked.Exchange(ref _pendingCount, 0);
         lock (_lock) { _batchTask = null; }
