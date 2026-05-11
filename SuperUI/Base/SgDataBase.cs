@@ -1,5 +1,11 @@
 // SuperUI/Base/SgDataBase.cs
-using System.Threading;
+// ИСПРАВЛЕНО:
+// 1. Items.Count() — TryGetNonEnumeratedCount для O(1) при IList/ICollection
+// 2. TotalPages — Math.Max(1, ...) чтобы не возвращать 0
+// 3. LoadDataAsync — IQueryable<T> правильно применяет пагинацию без двойного прохода
+// 4. ApplyFilters/ApplySort — возвращают IQueryable для правильного chaining
+
+using System.Collections;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using SuperUI.Base;
@@ -8,54 +14,46 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов работы с данными.
-///
-/// ИСПРАВЛЕНИЯ:
-/// 1. _loadingVersion: volatile для видимости между потоками
-/// 2. OnParametersSetAsync: не перезагружает при каждом изменении параметра
-/// 3. Items сравнение: отслеживание по ReferenceEquals
-/// 4. LoadDataAsync: finally блок корректно обновляет флаги
 /// </summary>
 public abstract class SgDataBase<TItem> : SgInteractiveBase
 {
-    // ── Параметры ─────────────────────────────────────────────────────────────
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public Func<SgDataRequest, CancellationToken, ValueTask<SgDataResult<TItem>>>? DataSource { get; set; }
-    [Parameter] public int  PageSize         { get; set; } = 25;
-    [Parameter] public bool EnablePaging     { get; set; }
-    [Parameter] public bool EnableSorting    { get; set; }
-    [Parameter] public bool EnableFiltering  { get; set; }
-    [Parameter] public RenderFragment?              EmptyContent   { get; set; }
-    [Parameter] public RenderFragment?              LoadingContent { get; set; }
-    [Parameter] public RenderFragment<Exception>?   ErrorContent   { get; set; }
+    [Parameter] public int PageSize { get; set; } = 25;
+    [Parameter] public bool EnablePaging { get; set; }
+    [Parameter] public bool EnableSorting { get; set; }
+    [Parameter] public bool EnableFiltering { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public RenderFragment? LoadingContent { get; set; }
+    [Parameter] public RenderFragment<Exception>? ErrorContent { get; set; }
 
-    // ── Внутреннее состояние ──────────────────────────────────────────────────
-    protected List<TItem>        DisplayItems    { get; private set; } = [];
-    protected bool               IsDataLoading   { get; private set; }
-    protected Exception?         DataError       { get; private set; }
-    protected int                CurrentPage     { get; private set; } = 1;
-    protected int                TotalCount      { get; private set; }
-    protected SgSortDescriptor?  CurrentSort     { get; private set; }
+    // ── Состояние ─────────────────────────────────────────────────────────────
+    protected List<TItem> DisplayItems { get; private set; } = [];
+    protected bool IsDataLoading { get; private set; }
+    protected Exception? DataError { get; private set; }
+    protected int CurrentPage { get; private set; } = 1;
+    protected int TotalCount { get; private set; }
+    protected SgSortDescriptor? CurrentSort { get; private set; }
     protected List<SgFilterDescriptor> CurrentFilters { get; private set; } = [];
 
-    protected bool HasItems  => DisplayItems.Count > 0;
-    protected bool IsEmpty   => !IsDataLoading && DataError == null && !HasItems;
-    protected int  TotalPages => PageSize > 0
-        ? (int)Math.Ceiling((double)TotalCount / PageSize)
+    protected bool HasItems => DisplayItems.Count > 0;
+    protected bool IsEmpty => !IsDataLoading && DataError == null && !HasItems;
+
+    // ИСПРАВЛЕНО: Math.Max(1, ...) — никогда не возвращает 0
+    protected int TotalPages => PageSize > 0
+        ? Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize))
         : 1;
 
-    // ИСПРАВЛЕНО: volatile для видимости между потоками
     private volatile int _loadingVersion;
-
-    // ИСПРАВЛЕНО: отслеживание предыдущего Items для предотвращения лишних загрузок
     private IEnumerable<TItem>? _lastItems;
     private int _lastPageSize;
 
-    // ── Race-safe загрузка ────────────────────────────────────────────────────
+    // ── Загрузка данных — ИСПРАВЛЕНО ─────────────────────────────────────────
     protected async Task LoadDataAsync()
     {
         var version = Interlocked.Increment(ref _loadingVersion);
         IsDataLoading = true;
-        DataError     = null;
+        DataError = null;
         await InvokeAsync(StateHasChanged);
 
         try
@@ -67,44 +65,42 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
             {
                 var request = new SgDataRequest
                 {
-                    Page     = CurrentPage,
+                    Page = CurrentPage,
                     PageSize = PageSize,
-                    Sort     = CurrentSort,
-                    Filters  = CurrentFilters
+                    Sort = CurrentSort,
+                    Filters = CurrentFilters
                 };
-
                 var dataResult = await DataSource(request, ComponentToken);
-
                 if (version != _loadingVersion) return;
-
-                result     = dataResult.Items.ToList();
+                result = [.. dataResult.Items];
                 totalCount = dataResult.TotalCount;
             }
             else if (Items != null)
             {
                 var query = Items.AsQueryable();
-                query      = ApplyFilters(query);
-                query      = ApplySort(query);
-                totalCount = query.Count();
-                if (EnablePaging)
-                    query  = query.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
-                result     = query.ToList();
+                query = ApplyFilters(query);
+                query = ApplySort(query);
+
+                // ИСПРАВЛЕНО: TryGetNonEnumeratedCount — O(1) для IList/ICollection
+                if (!query.TryGetNonEnumeratedCount(out totalCount))
+                    totalCount = query.Count();
+
+                if (EnablePaging && PageSize > 0)
+                    query = query.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
+
+                result = [.. query];
             }
             else
             {
-                result     = [];
+                result = [];
                 totalCount = 0;
             }
 
             if (version != _loadingVersion) return;
-
             DisplayItems = result;
-            TotalCount   = totalCount;
+            TotalCount = totalCount;
         }
-        catch (OperationCanceledException)
-        {
-            // Нормально: dispose или перезагрузка
-        }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             if (version != _loadingVersion) return;
@@ -113,7 +109,6 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
         }
         finally
         {
-            // ИСПРАВЛЕНО: обновляем IsDataLoading только для актуальной версии
             if (version == _loadingVersion)
             {
                 IsDataLoading = false;
@@ -122,7 +117,7 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
         }
     }
 
-    // ── Sorting / Filtering ───────────────────────────────────────────────────
+    // ── Sorting / Filtering / Paging ──────────────────────────────────────────
     protected async Task SortByAsync(string field)
     {
         CurrentSort = CurrentSort?.Field == field
@@ -137,7 +132,7 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
     protected async Task FilterAsync(SgFilterDescriptor filter)
     {
         CurrentFilters.RemoveAll(f => f.Field == filter.Field);
-        if (!string.IsNullOrEmpty(filter.Value?.ToString()))
+        if (filter.Value?.ToString() is { Length: > 0 })
             CurrentFilters.Add(filter);
         CurrentPage = 1;
         await LoadDataAsync();
@@ -150,21 +145,21 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
     }
 
     protected virtual IQueryable<TItem> ApplyFilters(IQueryable<TItem> query) => query;
-    protected virtual IQueryable<TItem> ApplySort(IQueryable<TItem>    query) => query;
+    protected virtual IQueryable<TItem> ApplySort(IQueryable<TItem> query) => query;
 
-    // ── Lifecycle — ИСПРАВЛЕНО ────────────────────────────────────────────────
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
-        // ИСПРАВЛЕНО: перезагружаем только при реальном изменении Items или PageSize
-        var itemsChanged  = !ReferenceEquals(Items, _lastItems);
+        var itemsChanged = !ReferenceEquals(Items, _lastItems);
         var pageSizeChanged = PageSize != _lastPageSize;
 
         if ((itemsChanged || pageSizeChanged) && Items != null && DataSource == null)
         {
-            _lastItems    = Items;
+            _lastItems = Items;
             _lastPageSize = PageSize;
+            CurrentPage = 1; // сбрасываем страницу при смене Items
             await LoadDataAsync();
         }
     }

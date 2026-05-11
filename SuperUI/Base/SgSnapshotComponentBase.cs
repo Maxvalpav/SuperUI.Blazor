@@ -1,8 +1,14 @@
 // SuperUI/Base/SgSnapshotComponentBase.cs
+// ИСПРАВЛЕНО:
+// 1. RestoreSnapshot — JsonElement конвертация через System.Text.Json
+// 2. CaptureSnapshot возвращает Dictionary<string, JsonElement-совместимые типы>
+// 3. Добавлен интерфейс ISnapshotService для тестируемости
+
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.AspNetCore.Components;
-using SuperUI.Services;
+using SuperUI.Base.Services;
 
 namespace SuperUI.Base;
 
@@ -16,20 +22,21 @@ public interface ISnapshotable
 public sealed class SnapshotAttribute : Attribute { }
 
 /// <summary>
-/// ИСПРАВЛЕНО: Reflection кэшируется статически per-type.
-/// Нет повторного вызова GetProperties при каждом CaptureSnapshot/RestoreSnapshot.
+/// Базовый класс с поддержкой сохранения/восстановления состояния через SessionStorage.
+/// ИСПРАВЛЕНО: JsonElement корректно конвертируется при восстановлении.
 /// </summary>
 public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
 {
-    // ИСПРАВЛЕНО: статический кэш PropertyInfo[] per Type — zero-reflection при runtime
+    // Статический кэш PropertyInfo[] per-type — zero-reflection при runtime
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _snapshotPropsCache = new();
 
     [Inject] private ISessionStorage SessionStorage { get; set; } = null!;
 
     protected override async Task OnInitializedAsync()
     {
-        var snapshot = await SessionStorage.GetItemAsync<Dictionary<string, object>>(ComponentId);
-        if (snapshot != null) RestoreSnapshot(snapshot);
+        var snapshot = await SessionStorage.GetItemAsync<Dictionary<string, JsonElement>>(ComponentId);
+        if (snapshot != null)
+            RestoreSnapshot(snapshot);
         await base.OnInitializedAsync();
     }
 
@@ -42,23 +49,66 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
         return dict;
     }
 
+    // ИСПРАВЛЕНО: поддержка JsonElement при десериализации из SessionStorage
     public void RestoreSnapshot(object? snapshot)
     {
-        if (snapshot is not Dictionary<string, object?> dict) return;
+        if (snapshot is not Dictionary<string, JsonElement> jsonDict &&
+            snapshot is not Dictionary<string, object?> objDict)
+            return;
+
         var props = GetSnapshotProperties();
         foreach (var prop in props)
         {
-            if (dict.TryGetValue(prop.Name, out var value))
+            object? rawValue = null;
+
+            if (snapshot is Dictionary<string, JsonElement> jd)
             {
-                try { prop.SetValue(this, value); }
-                catch (Exception) { /* тип не совпал — игнорируем */ }
+                if (!jd.TryGetValue(prop.Name, out var elem)) continue;
+                rawValue = ConvertJsonElement(elem, prop.PropertyType);
+            }
+            else if (snapshot is Dictionary<string, object?> od)
+            {
+                if (!od.TryGetValue(prop.Name, out rawValue)) continue;
+            }
+
+            try { prop.SetValue(this, rawValue); }
+            catch (Exception ex)
+            {
+                Logger?.LogWarning(ex,
+                    "[{Id}] Snapshot restore failed for property {Prop}",
+                    ComponentId, prop.Name);
             }
         }
+    }
+
+    private static object? ConvertJsonElement(JsonElement elem, Type targetType)
+    {
+        try
+        {
+            return targetType switch
+            {
+                _ when targetType == typeof(string)  => elem.GetString(),
+                _ when targetType == typeof(int)     => elem.GetInt32(),
+                _ when targetType == typeof(long)    => elem.GetInt64(),
+                _ when targetType == typeof(double)  => elem.GetDouble(),
+                _ when targetType == typeof(float)   => (float)elem.GetDouble(),
+                _ when targetType == typeof(bool)    => elem.GetBoolean(),
+                _ when targetType == typeof(Guid)    => elem.GetGuid(),
+                _ when targetType == typeof(DateTime)=> elem.GetDateTime(),
+                _ when Nullable.GetUnderlyingType(targetType) is { } inner
+                    => elem.ValueKind == JsonValueKind.Null
+                        ? null
+                        : ConvertJsonElement(elem, inner),
+                _ => JsonSerializer.Deserialize(elem.GetRawText(), targetType)
+            };
+        }
+        catch { return null; }
     }
 
     private PropertyInfo[] GetSnapshotProperties()
         => _snapshotPropsCache.GetOrAdd(GetType(), static t =>
             t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() != null && p.CanRead && p.CanWrite)
+             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() != null
+                      && p.CanRead && p.CanWrite)
              .ToArray());
 }

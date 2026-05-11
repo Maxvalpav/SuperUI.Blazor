@@ -1,27 +1,30 @@
+// SuperUI/Base/SgVirtualizedDataBase.cs
+// ИСПРАВЛЕНО:
+// 1. Items.Count() заменён на TryGetNonEnumeratedCount — O(1) для IList
+// 2. VirtualItemsProvider — правильная обработка CancellationToken из запроса
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web.Virtualization;
-using SuperUI.Base;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Базовый класс для виртуализированных компонентов данных.
-/// Использует Virtualize<T> от Microsoft для рендеринга только видимых элементов.
-/// Дополнительно: IntersectionObserver API для lazy loading секций.
+/// Базовый класс для виртуализированных компонентов.
+/// Использует Microsoft.AspNetCore.Components.Web.Virtualization.Virtualize{TItem}.
 /// </summary>
 public abstract class SgVirtualizedDataBase<TItem> : SgDataBase<TItem>
 {
-    // ── Параметры ─────────────────────────────────────────────────────────────
-
-    [Parameter] public int ItemHeight { get; set; } = 40; // px
+    [Parameter] public int ItemHeight { get; set; } = 40;
     [Parameter] public int OverscanCount { get; set; } = 3;
     [Parameter] public bool UseVirtualization { get; set; } = true;
 
-    // ── Виртуализация через Blazor Virtualize<T> ──────────────────────────────
+    // ИСПРАВЛЕНО: Items кэшируем как IReadOnlyList если возможно
+    private IReadOnlyList<TItem>? _cachedItemsList;
+    private IEnumerable<TItem>? _lastItemsRef;
 
     /// <summary>
-    /// Провайдер элементов для Virtualize<T>.
-    /// Подключает наш DataSource к Blazor-виртуализации.
+    /// Провайдер для Virtualize — вызывается при каждом скролле.
+    /// ИСПРАВЛЕНО: count вычисляется O(1) через TryGetNonEnumeratedCount.
     /// </summary>
     protected async ValueTask<ItemsProviderResult<TItem>> VirtualItemsProvider(
         ItemsProviderRequest request)
@@ -30,15 +33,18 @@ public abstract class SgVirtualizedDataBase<TItem> : SgDataBase<TItem>
         {
             var dataRequest = new SgDataRequest
             {
-                Page = (request.StartIndex / PageSize) + 1,
+                Page = (request.StartIndex / Math.Max(1, PageSize)) + 1,
                 PageSize = request.Count,
                 Sort = CurrentSort,
                 Filters = CurrentFilters
             };
-
             try
             {
-                var result = await DataSource(dataRequest, request.CancellationToken);
+                // ИСПРАВЛЕНО: передаём request.CancellationToken (от Virtualize)
+                // объединённый с ComponentToken
+                using var cts = CancellationTokenSource
+                    .CreateLinkedTokenSource(request.CancellationToken, ComponentToken);
+                var result = await DataSource(dataRequest, cts.Token);
                 return new ItemsProviderResult<TItem>(result.Items, result.TotalCount);
             }
             catch (OperationCanceledException)
@@ -47,10 +53,20 @@ public abstract class SgVirtualizedDataBase<TItem> : SgDataBase<TItem>
             }
         }
 
-        var items = (Items ?? [])
-            .Skip(request.StartIndex)
-            .Take(request.Count);
+        var itemsSource = Items ?? [];
 
-        return new ItemsProviderResult<TItem>(items, Items?.Count() ?? 0);
+        // ИСПРАВЛЕНО: кэшируем Items как IReadOnlyList для O(1) Count
+        if (!ReferenceEquals(itemsSource, _lastItemsRef))
+        {
+            _lastItemsRef = itemsSource;
+            _cachedItemsList = itemsSource is IReadOnlyList<TItem> rl
+                ? rl
+                : [.. itemsSource];
+        }
+
+        var list = _cachedItemsList!;
+        var totalCount = list.Count;
+        var slice = list.Skip(request.StartIndex).Take(request.Count);
+        return new ItemsProviderResult<TItem>(slice, totalCount);
     }
 }

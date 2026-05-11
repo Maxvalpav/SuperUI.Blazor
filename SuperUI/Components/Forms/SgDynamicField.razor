@@ -1,62 +1,79 @@
+@* SuperUI/Components/Forms/SgDynamicField.razor *@
+@* ИСПРАВЛЕНО: добавлен @typeparam TProp, исправлен For через object-совместимый подход *@
 @typeparam TModel
-@using SuperUI.Base
-@using SuperUI.Components.Forms
+@typeparam TProp
+
+@using System.Linq.Expressions
 @using Microsoft.AspNetCore.Components.Forms
 
-@inherits SgComponentBase
-
-@if (Field is TextField<TModel, TProp> textField)
+@if (FieldType == typeof(string) || FieldType == typeof(string?))
 {
-    <div class="sg-form-field">
-        @if (!string.IsNullOrEmpty(textField.Config.Label))
-        {
-            <label for="@EffectiveId">@textField.Config.Label</label>
-        }
-        <input
-            id="@EffectiveId"
-            type="@TextTypeToString(textField.Config.Type)"
-            @bind="GetValue<string>(Model, textField.Property)"
-            placeholder="@textField.Config.Placeholder" />
-    </div>
+    <SgTextBox Label="@Label"
+               Value="@(GetStringValue())"
+               ValueChanged="@(async v => await SetValueAsync(v))"
+               Placeholder="@Placeholder" />
 }
-else if (Field is NumberField<TModel, TProp> numField)
+else if (FieldType == typeof(int) || FieldType == typeof(int?))
 {
-    <div class="sg-form-field">
-        @if (!string.IsNullOrEmpty(numField.Config.Label))
-        {
-            <label for="@EffectiveId">@numField.Config.Label</label>
-        }
-        <input
-            id="@EffectiveId"
-            type="number"
-            @bind="GetValue<TProp>(Model, numField.Property)" />
-    </div>
+    <SgNumberEdit Label="@Label"
+                  Value="@(GetValue<int?>())"
+                  ValueChanged="@(async v => await SetValueAsync(v))"
+                  Placeholder="@Placeholder" />
+}
+else if (FieldType == typeof(bool) || FieldType == typeof(bool?))
+{
+    <SgCheckBox Label="@Label"
+                Value="@(GetValue<bool>())"
+                ValueChanged="@(async v => await SetValueAsync(v))" />
 }
 else
 {
-    <div class="sg-form-field">[Unsupported field type]</div>
+    <SgTextBox Label="@Label"
+               Value="@(GetStringValue())"
+               ValueChanged="@(async v => await SetValueAsync(v))"
+               Placeholder="@Placeholder" />
 }
 
 @code {
-    [Parameter] public IFormField? Field { get; set; }
-    [Parameter] public TModel? Model { get; set; }
+    [Parameter, EditorRequired] public TModel? Model { get; set; }
+    [Parameter, EditorRequired] public Expression<Func<TModel, TProp>>? For { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
 
-    private static string TextTypeToString(SgInputType type) => type switch
-    {
-        SgInputType.Email => "email",
-        SgInputType.Password => "password",
-        SgInputType.Number => "number",
-        SgInputType.Tel => "tel",
-        SgInputType.Url => "url",
-        SgInputType.Date => "date",
-        SgInputType.Time => "time",
-        SgInputType.DateTime => "datetime-local",
-        _ => "text"
-    };
+    private Type FieldType => typeof(TProp);
 
-    private static TProp GetValue<TProp>(TModel model, Expression<Func<TModel, TProp>> expr)
+    private TProp? GetCurrentValue()
     {
-        var compiled = expr.Compile();
-        return compiled(model);
+        if (Model is null || For is null) return default;
+        var compiled = For.Compile();
+        return compiled(Model);
+    }
+
+    private T? GetValue<T>()
+    {
+        var v = GetCurrentValue();
+        if (v is T typed) return typed;
+        return default;
+    }
+
+    private string? GetStringValue() => GetCurrentValue()?.ToString();
+
+    private async Task SetValueAsync<TVal>(TVal? newValue)
+    {
+        // Обновление через Reflection (без Expression Trees для setter)
+        if (Model is null || For is null) return;
+
+        if (For.Body is MemberExpression memberExpr)
+        {
+            var prop = (System.Reflection.PropertyInfo)memberExpr.Member;
+            try
+            {
+                object? converted = newValue is TProp direct
+                    ? direct
+                    : Convert.ChangeType(newValue, typeof(TProp));
+                prop.SetValue(Model, converted);
+            }
+            catch { }
+        }
     }
 }

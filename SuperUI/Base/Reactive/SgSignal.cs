@@ -1,112 +1,50 @@
 // SuperUI/Base/Reactive/SgSignal.cs
-using System.Collections.Concurrent;
-
-namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Signal-based state management для Blazor.
+/// Реактивный сигнал — автоматически перерисовывает компоненты при изменении.
+/// Вдохновлён Solid.js signals, адаптирован под Blazor threading model.
 /// </summary>
-public sealed class SgSignal<T> : IDisposable
+public sealed class SgSignal<T>
 {
     private T _value;
-    private readonly List<WeakReference<Action>> _subscribers = [];
+    private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
     private readonly Lock _lock = new();
-    private readonly IEqualityComparer<T> _comparer;
 
-    public SgSignal(T initialValue, IEqualityComparer<T>? comparer = null)
-    {
-        _value    = initialValue;
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-    }
+    public SgSignal(T initial) => _value = initial;
 
     public T Value
     {
-        get
-        {
-            // Трекинг текущего computation context
-            SignalTracker.Track(this);
-            return _value;
-        }
-        set
-        {
-            if (_comparer.Equals(_value, value)) return;
-            _value = value;
-            NotifySubscribers();
-        }
+        get => _value;
+        set => Set(value);
     }
 
-    internal void Subscribe(Action callback)
+    public void Set(T newValue)
+    {
+        if (EqualityComparer<T>.Default.Equals(_value, newValue)) return;
+        _value = newValue;
+        NotifySubscribers();
+    }
+
+    public void Subscribe(SgComponentBase component)
     {
         lock (_lock)
-        {
-            // Очищаем мёртвые WeakReference
-            _subscribers.RemoveAll(r => !r.TryGetTarget(out _));
-            _subscribers.Add(new WeakReference<Action>(callback));
-        }
+            _subscribers.Add(new WeakReference<SgComponentBase>(component));
     }
 
     private void NotifySubscribers()
     {
-        List<Action> toNotify;
+        List<WeakReference<SgComponentBase>>? dead = null;
         lock (_lock)
         {
-            toNotify = _subscribers
-                .Select(r => { r.TryGetTarget(out var t); return t; })
-                .Where(t => t != null)
-                .ToList()!;
-        }
-        foreach (var sub in toNotify) sub();
-    }
-
-    public void Dispose()
-    {
-        lock (_lock) _subscribers.Clear();
-    }
-
-    public static implicit operator T(SgSignal<T> signal) => signal.Value;
-}
-
-/// <summary>Computed Signal — вычисляемое значение с мемоизацией.</summary>
-public sealed class SgComputed<T> : IDisposable
-{
-    private readonly Func<T> _compute;
-    private T _cached;
-    private bool _isDirty = true;
-    private readonly IEqualityComparer<T> _comparer;
-    private readonly List<Action> _notifiers = [];
-
-    public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null)
-    {
-        _compute  = compute;
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-        _cached   = default!;
-    }
-
-    public T Value
-    {
-        get
-        {
-            if (_isDirty)
+            foreach (var weakRef in _subscribers)
             {
-                var newVal = _compute();
-                if (!_comparer.Equals(_cached, newVal))
-                {
-                    _cached = newVal;
-                    NotifySubscribers();
-                }
-                _isDirty = false;
+                if (weakRef.TryGetTarget(out var comp) && !comp.IsDisposed)
+                    _ = comp.RefreshAsync();
+                else
+                    (dead ??= new()).Add(weakRef);
             }
-            return _cached;
+            if (dead is not null)
+                foreach (var d in dead) _subscribers.Remove(d);
         }
     }
-
-    internal void Invalidate()
-    {
-        _isDirty = true;
-        NotifySubscribers();
-    }
-
-    private void NotifySubscribers() => _notifiers.ForEach(n => n());
-
-    public void Dispose() => _notifiers.Clear();
 }

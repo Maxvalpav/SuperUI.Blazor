@@ -1,42 +1,47 @@
+@* SuperUI/Components/Forms/SgVirtualForm.razor *@
+@* ИСПРАВЛЕНО: явный TItem="SgFieldDescriptor" в Virtualize *@
 @typeparam TModel
 
 @using Microsoft.AspNetCore.Components.Web.Virtualization
-@using SuperUI.Base
 
-@inherits SgComponentBase
-
-@if (Fields is null || Model is null)
+@if (_fields.Count > 0)
 {
-    @if (LoadingContent is not null)
-    {
-        <div class="sg-virtual-form-loading">
-            @LoadingContent
-        </div>
-    }
-    return;
+    <div class="sg-virtual-form">
+        <Virtualize TItem="SgFieldDescriptor"
+                    Items="@_fields"
+                    ItemSize="@ItemHeight"
+                    OverscanCount="3"
+                    Context="field">
+            <ItemContent>
+                <SgDynamicField TModel="TModel"
+                                TField="object"
+                                Model="@Model"
+                                FieldDescriptor="@field"
+                                Label="@field.Label" />
+            </ItemContent>
+        </Virtualize>
+    </div>
 }
 
-<Virtualize Items="@Fields" ItemSize="@ItemHeight" OverscanCount="@OverscanCount">
-    <ItemContent>
-        <SgDynamicField Field="@context" Model="@Model" />
-    </ItemContent>
-</Virtualize>
-
 @code {
-    /// <summary>
-    /// Поля формы для виртуализации.
-    /// </summary>
-    [Parameter] public IReadOnlyList<IFormField>? Fields { get; set; }
+    [Parameter, EditorRequired] public TModel? Model { get; set; }
+    [Parameter] public int ItemHeight { get; set; } = 56;
 
-    /// <summary>Модель данных формы.</summary>
-    [Parameter] public TModel? Model { get; set; }
+    private List<SgFieldDescriptor> _fields = [];
 
-    /// <summary>Контент во время загрузки полей.</summary>
-    [Parameter] public RenderFragment? LoadingContent { get; set; }
+    protected override void OnParametersSet()
+    {
+        if (Model is null) return;
+        _fields = SgFieldDescriptorBuilder.Build<TModel>();
+    }
+}
 
-    /// <summary>Высота каждой строки в пикселях.</summary>
-    [Parameter] public int ItemHeight { get; set; } = 72;
-
-    /// <summary>Количество дополнительных видимых элементов.</summary>
-    [Parameter] public int OverscanCount { get; set; } = 5;
+/// <summary>Дескриптор поля формы для виртуализации.</summary>
+public sealed class SgFieldDescriptor
+{
+    public string Name { get; init; } = "";
+    public string? Label { get; init; }
+    public Type FieldType { get; init; } = typeof(string);
+    public bool Required { get; init; }
+    public int Order { get; init; }
 }
