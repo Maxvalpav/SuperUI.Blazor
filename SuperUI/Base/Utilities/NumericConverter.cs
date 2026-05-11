@@ -8,10 +8,10 @@ using System.Numerics;
 /// </summary>
 public sealed class NumericConverter<T> : SgConverter<T> where T : struct, INumber<T>
 {
-    public override bool TryConvert(string? text, out T? value, out string? error)
+    public override bool TryConvert(string? text, out T value, out string? error)
     {
         error = null;
-        if (string.IsNullOrWhiteSpace(text)) { value = null; return true; }
+        if (string.IsNullOrWhiteSpace(text)) { value = default; return true; }
 
         if (T.TryParse(text, NumberStyles.Any, Culture ?? CultureInfo.CurrentCulture, out var parsed))
         {
@@ -19,11 +19,11 @@ public sealed class NumericConverter<T> : SgConverter<T> where T : struct, INumb
             return true;
         }
 
-        value = null;
+        value = default;
         error = $"Cannot convert '{text}' to {typeof(T).Name}";
         return false;
     }
 
-    public override string? ConvertBack(T? value)
-        => value?.ToString(null, Culture as CultureInfo ?? CultureInfo.CurrentCulture);
+    public override string? ConvertBack(T value)
+        => value.ToString(null, Culture as CultureInfo ?? CultureInfo.CurrentCulture);
 }

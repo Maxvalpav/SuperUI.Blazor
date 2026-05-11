@@ -1,6 +1,6 @@
 using SuperUI.Base;
 
-namespace SuperUI.Base.Reactive;
+namespace SuperUI.Reactive;
 
 /// <summary>
 /// Реактивный Signal для умного трекинга зависимостей.
@@ -43,7 +43,7 @@ public sealed class Signal<T>
         foreach (var weakRef in _subscribers)
         {
             if (weakRef.TryGetTarget(out var component) && !component.IsDisposed)
-                component.InvokeAsync(component.StateHasChanged);
+                _ = component.RefreshAsync(); // fire-and-forget
             else
                 toRemove.Add(weakRef);
         }

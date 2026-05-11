@@ -1,6 +1,6 @@
 using SuperUI.Base;
 
-namespace SuperUI.Base.Reactive;
+namespace SuperUI.Reactive;
 
 /// <summary>
 /// Трекер сигналов для текущего рендера.

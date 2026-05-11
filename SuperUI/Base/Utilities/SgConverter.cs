@@ -11,6 +11,7 @@ public interface ISgConverter<T>
 {
     bool TryConvert(string? text, out T? value, out string? error);
     string? ConvertBack(T? value);
+
 }
 
 /// <summary>

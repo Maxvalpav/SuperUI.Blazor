@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using SuperUI.Diagnostics;
 using SuperUI.Hooks;
 using SuperUI.Reactive;
-using SuperUI.State;
+using SuperUI.Services;
 using SuperUI.Utilities;
+using CssBuilder = SuperUI.Utilities.SgCssBuilder;
 
 namespace SuperUI.Base;
 
@@ -66,7 +68,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected string EffectiveId => Id ?? ComponentId;
 
     /// <summary>Был ли компонент удалён.</summary>
-    protected bool IsDisposed { get; private set; }
+    internal bool IsDisposed { get; private set; }
 
     // ── Внутреннее состояние ──────────────────────────────────────────────────
 
@@ -304,6 +306,20 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// <summary>Префикс ID по имени типа. Можно переопределить.</summary>
     protected static string GetComponentPrefix()
         => "cmp"; // Наследники переопределяют: "btn", "inp", "dlg"
+
+    /// <summary>Запросить перерисовку компонента (безопасно из любого контекста).</summary>
+    public Task RefreshAsync()
+    {
+        if (IsDisposed) return Task.CompletedTask;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Запросить перерисовку компонента с выполнением действия (безопасно из любого контекста).</summary>
+    public Task RefreshAsync(Action action)
+    {
+        if (IsDisposed) return Task.CompletedTask;
+        return InvokeAsync(() => { action(); StateHasChanged(); });
+    }
 
     /// <summary>Безопасный InvokeAsync для событий — не бросает если компонент удалён.</summary>
     protected Task SafeInvokeAsync(Func<Task> action)
