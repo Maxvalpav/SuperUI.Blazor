@@ -1,5 +1,5 @@
 // SuperUI/Base/Utilities/StyleBuilder.cs
-namespace SuperUI.Utilities;
+namespace SuperUI.Base.Utilities;
 
 /// <summary>
 /// Fluent inline-style builder.

@@ -1,4 +1,4 @@
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Сервис определения режима пререндеринга.

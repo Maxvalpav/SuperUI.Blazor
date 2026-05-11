@@ -1,26 +1,12 @@
-namespace SuperUI.Hooks;
-
-using SuperUI.Base;
+namespace SuperUI.Base.Hooks;
 
 /// <summary>
-/// Интерфейс хука жизненного цикла компонента.
-/// Хуки регистрируются в AddHook() и вызываются автоматически.
+/// Синхронный хук жизненного цикла компонента.
+/// Реализуйте этот интерфейс для перехвата lifecycle событий.
 /// </summary>
 public interface IComponentHook
 {
-    void OnInitialized(SgComponentBase component) { }
-    void OnParametersSet(SgComponentBase component) { }
-    void OnAfterRender(SgComponentBase component, bool firstRender) { }
-}
-
-public interface IAsyncComponentHook : IComponentHook
-{
-    Task OnInitializedAsync(SgComponentBase component) => Task.CompletedTask;
-    Task OnParametersSetAsync(SgComponentBase component) => Task.CompletedTask;
-    Task OnAfterRenderAsync(SgComponentBase component, bool firstRender) => Task.CompletedTask;
-}
-
-public interface IRenderHook : IComponentHook
-{
-    bool ShouldRender(SgComponentBase component);
+    void OnInitialized(SgComponentBase component);
+    void OnParametersSet(SgComponentBase component);
+    void OnAfterRender(SgComponentBase component, bool firstRender);
 }

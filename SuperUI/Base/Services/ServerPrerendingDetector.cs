@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Http;
 
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Реализация для Blazor Server / Web App.

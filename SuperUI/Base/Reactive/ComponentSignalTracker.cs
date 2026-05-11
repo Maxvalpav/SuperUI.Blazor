@@ -1,49 +1,54 @@
-// SuperUI/Base/Reactive/ComponentSignalTracker.cs
+using System.Threading.Tasks;
+using SuperUI.Base;
+
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Автоматический render batching для Blazor.
-///
-/// Проблема: в Blazor каждый StateHasChanged() триггерит рендер немедленно.
-/// При изменении 10 свойств = 10 рендеров.
-///
-/// Решение: CollectSignals → batch → один StateHasChanged() за тик.
+/// Render batching: несколько StateHasChanged за один тик = один рендер.
+/// Использует lock-free Interlocked для планирования.
 /// </summary>
 public sealed class ComponentSignalTracker : IDisposable
 {
     private readonly SgComponentBase _component;
-    private volatile int _pendingCount;
-    private Task? _batchTask;
-    private readonly Lock _lock = new();
+    private volatile int _scheduled; // 0 = нет задачи, 1 = задача запланирована
+    private volatile bool _disposed;
 
     public ComponentSignalTracker(SgComponentBase component)
     {
-        _component = component;
+        _component = component ?? throw new ArgumentNullException(nameof(component));
     }
 
     /// <summary>
     /// Запланировать рендер в следующий микротаск.
-    /// Несколько вызовов в одном тике = один рендер.
+    /// Несколько вызовов за один тик = один рендер.
     /// </summary>
     public void ScheduleRender()
     {
-        var count = Interlocked.Increment(ref _pendingCount);
-        if (count == 1)
+        if (_disposed) return;
+
+        // Если уже запланировано (1) — ничего не делаем
+        // Если не запланировано (0) — ставим 1 и запускаем задачу
+        if (Interlocked.Exchange(ref _scheduled, 1) == 0)
         {
-            lock (_lock)
-            {
-                _batchTask ??= FlushAsync();
-            }
+            _ = FlushAsync();
         }
     }
 
     private async Task FlushAsync()
     {
         await Task.Yield();
-        Interlocked.Exchange(ref _pendingCount, 0);
-        lock (_lock) { _batchTask = null; }
-        await _component.RefreshAsync();
+
+        // Сбрасываем флаг ПЕРЕД вызовом рендера
+        Interlocked.Exchange(ref _scheduled, 0);
+
+        if (_disposed || _component.IsDisposed)
+            return;
+
+        await _component.InvokeStateHasChangedAsync();
     }
 
-    public void Dispose() { }
+    public void Dispose()
+    {
+        _disposed = true;
+    }
 }

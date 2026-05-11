@@ -1,14 +1,11 @@
 using Microsoft.JSInterop;
 using SuperUI.Base;
+using SuperUI.Base.Hooks;
 
-namespace SuperUI.Hooks;
+namespace SuperUI.Base.Hooks;
 
 /// <summary>
-/// Адаптивный рендеринг — автоматически throttle рендеры
-/// при высокой нагрузке (например, быстрые обновления данных).
-/// 
-/// Использует Intersection Observer для полного отключения рендеров
-/// когда компонент вне viewport.
+/// Адаптивный рендеринг — throttle рендеры при высокой нагрузке.
 /// </summary>
 public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
 {
@@ -18,12 +15,12 @@ public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
     private readonly TimeSpan _minInterval;
 
     public AdaptiveRenderHook(TimeSpan? minInterval = null)
-        => _minInterval = minInterval ?? TimeSpan.FromMilliseconds(16); // 60fps cap
+        => _minInterval = minInterval ?? TimeSpan.FromMilliseconds(16);
 
+    // IRenderHook
     public bool ShouldRender(SgComponentBase c)
     {
         if (!_isVisible) return false;
-
         var now = DateTime.UtcNow;
         if (now - _lastRender < _minInterval) return false;
         _lastRender = now;
@@ -32,8 +29,15 @@ public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
     }
 
     [JSInvokable]
-    public void OnVisibilityChanged(bool isVisible)
-    {
-        _isVisible = isVisible;
-    }
+    public void OnVisibilityChanged(bool isVisible) => _isVisible = isVisible;
+
+    // IComponentHook
+    public void OnInitialized(SgComponentBase component) { }
+    public void OnParametersSet(SgComponentBase component) { }
+    public void OnAfterRender(SgComponentBase component, bool firstRender) { }
+
+    // IAsyncComponentHook
+    public Task OnInitializedAsync(SgComponentBase component) => Task.CompletedTask;
+    public Task OnParametersSetAsync(SgComponentBase component) => Task.CompletedTask;
+    public Task OnAfterRenderAsync(SgComponentBase component, bool firstRender) => Task.CompletedTask;
 }

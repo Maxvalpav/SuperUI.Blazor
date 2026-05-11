@@ -1,12 +1,12 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using SuperUI.Base;
+using SuperUI.Base.Hooks;
 
-namespace SuperUI.Hooks;
+namespace SuperUI.Base.Hooks;
 
 /// <summary>
 /// Хук для структурированного логирования жизненного цикла компонента.
-/// Встраивается в SgComponentBase через [Conditional("DEBUG")].
 /// </summary>
 public sealed class StructuredLifecycleHook : IAsyncComponentHook, IRenderHook
 {
@@ -15,12 +15,20 @@ public sealed class StructuredLifecycleHook : IAsyncComponentHook, IRenderHook
 
     public StructuredLifecycleHook(ILogger logger) => _logger = logger;
 
+    // IComponentHook
     public void OnInitialized(SgComponentBase c)
     {
         _sw.Restart();
         _logger.LogDebug("Component {ComponentType} {ComponentId} initialized",
             c.GetType().Name, c.ComponentId);
     }
+
+    public void OnParametersSet(SgComponentBase c) { }
+    public void OnAfterRender(SgComponentBase c, bool firstRender) { }
+
+    // IAsyncComponentHook
+    public Task OnInitializedAsync(SgComponentBase c) => Task.CompletedTask;
+    public Task OnParametersSetAsync(SgComponentBase c) => Task.CompletedTask;
 
     public Task OnAfterRenderAsync(SgComponentBase c, bool firstRender)
     {
@@ -33,5 +41,6 @@ public sealed class StructuredLifecycleHook : IAsyncComponentHook, IRenderHook
         return Task.CompletedTask;
     }
 
+    // IRenderHook
     public bool ShouldRender(SgComponentBase c) => true;
 }

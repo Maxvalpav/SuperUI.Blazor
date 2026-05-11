@@ -1,4 +1,4 @@
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Сервис управления ловушкой фокуса (Focus Trap) для модальных окон и оверлеев.

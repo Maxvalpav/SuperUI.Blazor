@@ -1,6 +1,7 @@
 using SuperUI.Base;
+using SuperUI.Base.Reactive;
 
-namespace SuperUI.Reactive;
+namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Реактивный Signal для умного трекинга зависимостей.

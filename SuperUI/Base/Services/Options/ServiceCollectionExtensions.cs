@@ -1,6 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Методы расширения для регистрации SuperUI в DI.

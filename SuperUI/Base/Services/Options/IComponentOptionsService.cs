@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Options;
 
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Централизованные настройки компонентов.

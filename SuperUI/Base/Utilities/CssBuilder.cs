@@ -1,7 +1,7 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
 using System.Text;
 
-namespace SuperUI.Utilities;
+namespace SuperUI.Base.Utilities;
 
 /// <summary>
 /// Zero-allocation Fluent CSS class builder.

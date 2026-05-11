@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 
-namespace SuperUI.Interop;
+namespace SuperUI.Base.Interop;
 
 /// <summary>
 /// Расширенный сервис JS Interop с 5 уровнями защиты.

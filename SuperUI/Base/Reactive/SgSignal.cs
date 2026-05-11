@@ -110,29 +110,3 @@ public sealed class SgComputed<T> : IDisposable
 
     public void Dispose() => _notifiers.Clear();
 }
-
-/// <summary>Трекер активного контекста для Signal подписок.</summary>
-internal static class SignalTracker
-{
-    private static readonly System.Threading.AsyncLocal<SgComponentBase?> _currentComponent = new();
-
-    internal static IDisposable EnterScope(SgComponentBase component)
-    {
-        var prev = _currentComponent.Value;
-        _currentComponent.Value = component;
-        return new ScopeHandle(prev);
-    }
-
-    internal static void Track<T>(SgSignal<T> signal)
-    {
-        if (_currentComponent.Value is not null)
-            signal.Subscribe(() => _currentComponent.Value!.RefreshAsync());
-    }
-
-    private sealed class ScopeHandle : IDisposable
-    {
-        private readonly SgComponentBase? _prev;
-        public ScopeHandle(SgComponentBase? prev) => _prev = prev;
-        public void Dispose() => _currentComponent.Value = _prev;
-    }
-}

@@ -1,32 +1,62 @@
 using SuperUI.Base;
 
-namespace SuperUI.Reactive;
+namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Трекер сигналов для текущего рендера.
-/// Хранит текущий компонент для автоматической подписки на сигналы.
+/// Статический трекер для автоматической подписки на сигналы при рендере.
+/// Используется в RefreshAsync для scope-based signal tracking.
 /// </summary>
 public static class SignalTracker
 {
-    private static readonly AsyncLocal<SgComponentBase?> _currentComponent = new();
+    [ThreadStatic]
+    private static SgComponentBase? _currentComponent;
 
+    /// <summary>
+    /// Открыть scope отслеживания сигналов для компонента.
+    /// Все сигналы прочитанные в scope автоматически подписывают компонент.
+    /// </summary>
+    public static IDisposable EnterScope(SgComponentBase component)
+    {
+        var previous = _currentComponent;
+        _currentComponent = component;
+        return new ScopeHandle(previous);
+    }
+
+    /// <summary>
+    /// Текущий компонент в scope (null если вне scope).
+    /// </summary>
+    internal static SgComponentBase? Current => _currentComponent;
+
+    /// <summary>
+    /// Автоподписка для SgSignal<T>.
+    /// </summary>
+    internal static void Track<T>(SgSignal<T> signal)
+    {
+        if (_currentComponent is not null)
+            signal.Subscribe(() => _currentComponent!.RefreshAsync());
+    }
+
+    /// <summary>
+    /// Автоподписка для Signal<T> (ComponentSignalGraph).
+    /// </summary>
     internal static void Track<T>(Signal<T> signal)
     {
-        var component = _currentComponent.Value;
-        if (component != null)
-            signal.Subscribe(component);
+        if (_currentComponent is not null)
+            signal.Subscribe(_currentComponent);
     }
 
-    internal static IDisposable EnterScope(SgComponentBase component)
+    private sealed class ScopeHandle : IDisposable
     {
-        _currentComponent.Value = component;
-        return new ScopeDisposable(() => _currentComponent.Value = null);
-    }
-}
+        private readonly SgComponentBase? _previous;
 
-internal sealed class ScopeDisposable : IDisposable
-{
-    private readonly Action _onDispose;
-    public ScopeDisposable(Action onDispose) => _onDispose = onDispose;
-    public void Dispose() => _onDispose();
+        public ScopeHandle(SgComponentBase? previous)
+        {
+            _previous = previous;
+        }
+
+        public void Dispose()
+        {
+            _currentComponent = _previous;
+        }
+    }
 }

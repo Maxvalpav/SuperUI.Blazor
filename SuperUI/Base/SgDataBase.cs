@@ -1,6 +1,7 @@
 // SuperUI/Base/SgDataBase.cs
 using System.Threading;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using SuperUI.Base;
 
 namespace SuperUI.Base;

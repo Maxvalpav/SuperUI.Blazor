@@ -1,6 +1,7 @@
 using SuperUI.Base;
+using SuperUI.Base.Hooks;
 
-namespace SuperUI.Hooks;
+namespace SuperUI.Base.Hooks;
 
 /// <summary>
 /// Хук для обработки ошибок в жизненном цикле компонента.
@@ -11,8 +12,15 @@ public sealed class ErrorBoundaryHook : IAsyncComponentHook
 
     public ErrorBoundaryHook(Action<Exception> onError) => _onError = onError;
 
-    public Task OnInitializedAsync(SgComponentBase c)
-        => SafeExecute(() => Task.CompletedTask);
+    // IComponentHook
+    public void OnInitialized(SgComponentBase c) { }
+    public void OnParametersSet(SgComponentBase c) { }
+    public void OnAfterRender(SgComponentBase c, bool firstRender) { }
+
+    // IAsyncComponentHook
+    public Task OnInitializedAsync(SgComponentBase c) => SafeExecute(() => Task.CompletedTask);
+    public Task OnParametersSetAsync(SgComponentBase c) => Task.CompletedTask;
+    public Task OnAfterRenderAsync(SgComponentBase c, bool firstRender) => Task.CompletedTask;
 
     private async Task SafeExecute(Func<Task> action)
     {

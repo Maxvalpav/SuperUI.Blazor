@@ -1,9 +1,8 @@
 
-
 using Microsoft.JSInterop;
-using SuperUI.Interop;
+using SuperUI.Base.Interop;
 
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Реализация сервиса управления ловушкой фокуса.
