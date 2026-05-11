@@ -47,7 +47,7 @@ public abstract class SgAIBase : Components.Base.SgInteractiveBase
 
         try
         {
-            await foreach (var chunk in AIProvider.StreamAsync(prompt, _lifecycleToken.Current))
+            await foreach (var chunk in AIProvider.StreamAsync(prompt, ComponentCancellationToken))
             {
                 StreamingBuffer += chunk;
                 // Throttle: обновляем UI не чаще чем раз в 50ms

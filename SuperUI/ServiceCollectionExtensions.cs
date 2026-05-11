@@ -4,6 +4,7 @@ using SuperUI.Base.Hooks;
 using SuperUI.Base.RenderBudget;
 using SuperUI.Components;
 using SuperUI.Localization;
+using SuperUI.Options;
 using SuperUI.Services;
 using SuperUI.Utilities;
 

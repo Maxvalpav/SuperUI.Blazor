@@ -26,7 +26,7 @@ public interface IAdditionalAttributesMerger
 /// - aria-*: пользовательские атрибуты имеют приоритет (allow override)
 /// - остальные: пользовательские атрибуты имеют приоритет
 /// </summary>
-public static class AdditionalAttributesMerger : IAdditionalAttributesMerger
+public sealed class AdditionalAttributesMerger : IAdditionalAttributesMerger
 {
     /// <summary>Singleton instance для DI.</summary>
     public static readonly IAdditionalAttributesMerger Instance = new AdditionalAttributesMerger();
@@ -34,7 +34,7 @@ public static class AdditionalAttributesMerger : IAdditionalAttributesMerger
     /// <summary>
     /// Слить внутренние атрибуты компонента с пользовательскими.
     /// </summary>
-    public static IReadOnlyDictionary<string, object?> Merge(
+    public IReadOnlyDictionary<string, object?> Merge(
         IReadOnlyDictionary<string, object?>? componentAttributes,
         IReadOnlyDictionary<string, object?>? userAttributes)
     {

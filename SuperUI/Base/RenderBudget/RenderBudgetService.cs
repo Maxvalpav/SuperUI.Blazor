@@ -53,12 +53,23 @@ public sealed class RenderBudgetService : IRenderBudgetService, IAsyncDisposable
         if (priority == RenderPriority.Critical)
             return renderAction();
 
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         lock (_lock)
         {
-            _queue.Enqueue(renderAction, (int)priority);
+            _queue.Enqueue(async () =>
+            {
+                try
+                {
+                    await renderAction();
+                    tcs.SetResult();
+                }
+                catch (Exception ex)
+                {
+                    tcs.SetException(ex);
+                }
+            }, (int)priority);
         }
-
-        return Task.CompletedTask;
+        return tcs.Task; // caller может await реальный рендер
     }
 
     private async Task ProcessQueueAsync()

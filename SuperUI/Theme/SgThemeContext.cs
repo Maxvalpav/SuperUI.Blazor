@@ -1,6 +1,9 @@
-// Файл: Services/ThemeContext.cs
+// ─────────────────────────────────────────────────────────────────
+// FILE: Theme/SgThemeContext.cs
+// Тема передаётся через CascadingValue и содержит дизайн-токены.
+// ─────────────────────────────────────────────────────────────────
 
-namespace SuperUI.Services;
+namespace SuperUI.Theme;
 
 /// <summary>
 /// Контекст темы — передаётся через CascadingValue.

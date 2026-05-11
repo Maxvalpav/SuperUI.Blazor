@@ -6,7 +6,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Converters;
+using SuperUI.Options;
 using SuperUI.State;
+using SuperUI.Theme;
 using SuperUI.Utilities;
 
 namespace SuperUI.Components.Base;
@@ -35,6 +37,12 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 
     // Race-safe токен для async операций
     private readonly LifecycleToken _lifecycleToken = new();
+
+    /// <summary>
+    /// Защищённый доступ к CancellationToken для наследников.
+    /// Используется в SgAIBase и других классах для race-safe async операций.
+    /// </summary>
+    protected CancellationToken ComponentCancellationToken => _lifecycleToken.Current;
 
     // Auto-unsubscribe event subscriptions
     private readonly EventSubscriptionManager _subscriptions = new();
@@ -65,7 +73,13 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     [Inject] protected IJSRuntime JS { get; set; } = default!;
 
     // Nullable — не всегда доступен (WASM)
-    [Inject(Key = "optional")] private IHttpContextAccessor? _httpContextAccessor { get; set; }
+    // BL0007: IHttpContextAccessor может не быть зарегистрирован в WASM
+#pragma warning disable BL0007
+    [Inject] private IHttpContextAccessor? _httpContextAccessor { get; set; }
+#pragma warning restore BL0007
+
+    // ComponentHookRegistry для хуков жизненного цикла
+    [Inject] private IComponentHookRegistry? _hookRegistry { get; set; }
 
     // ── Cascading параметры ───────────────────────────────────────────────────
 
@@ -272,6 +286,10 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         {
             LogLifecycle(nameof(OnInitializedAsync));
             await OnComponentInitializedAsync(token);
+            
+            // Invoke component hooks после инициализации
+            if (_hookRegistry is not null)
+                await _hookRegistry.InvokeInitializedAsync(this, GetType().Name);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {

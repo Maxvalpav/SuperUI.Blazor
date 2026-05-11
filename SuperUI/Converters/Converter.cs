@@ -71,8 +71,47 @@ public class Converter<TValue>
     protected virtual TValue? DefaultFromString(string? value)
     {
         if (string.IsNullOrEmpty(value)) return default;
-        try { return (TValue?)System.ComponentModel.TypeDescriptor.GetConverter(typeof(TValue)).ConvertFromString(value); }
-        catch { throw new FormatException($"Не удалось преобразовать '{value}' в {typeof(TValue).Name}"); }
+        
+        // Trim-safe для WASM (.NET 8+): используем ISpanParsable<T> вместо TypeDescriptor
+        var targetType = typeof(TValue);
+        
+        // Проверяем ISpanParsable<T> (числа, DateTime, GUID в .NET 8+)
+        if (targetType.IsAssignableTo(typeof(ISpanParsable<TValue>)))
+        {
+            try
+            {
+                return ISpanParsable<TValue>.Parse(value.AsSpan(), System.Globalization.CultureInfo.InvariantCulture);
+            }
+            catch
+            {
+                throw new FormatException($"Не удалось преобразовать '{value}' в {targetType.Name}");
+            }
+        }
+        
+        // Fallback для Nullable<T>
+        if (targetType.IsGenericType && targetType.GetGenericTypeDefinition() == typeof(Nullable<>))
+        {
+            var underlyingType = Nullable.GetUnderlyingType(targetType)!;
+            if (underlyingType.IsAssignableTo(typeof(IParsable<>).MakeGenericType(underlyingType)))
+            {
+                var method = underlyingType.GetMethod("Parse", 
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static,
+                    [typeof(string), typeof(IFormatProvider)]);
+                if (method is not null)
+                    return (TValue?)method.Invoke(null, [value, System.Globalization.CultureInfo.InvariantCulture]);
+            }
+            return default;
+        }
+        
+        // Legacy fallback: TypeDescriptor (может не работать в trimmed WASM)
+        try 
+        { 
+            return (TValue?)System.ComponentModel.TypeDescriptor.GetConverter(typeof(TValue)).ConvertFromString(value); 
+        }
+        catch 
+        { 
+            throw new FormatException($"Не удалось преобразовать '{value}' в {targetType.Name}"); 
+        }
     }
 }
 

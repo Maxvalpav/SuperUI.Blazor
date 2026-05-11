@@ -1,6 +1,9 @@
-// Файл: Services/ComponentOptionsProvider.cs
+// ─────────────────────────────────────────────────────────────────
+// FILE: Theme/SgComponentOptions.cs
+// Глобальные опции компонентов передаются через CascadingValue.
+// ─────────────────────────────────────────────────────────────────
 
-namespace SuperUI.Services;
+namespace SuperUI.Theme;
 
 /// <summary>
 /// Централизованный провайдер настроек компонентов.
@@ -42,11 +45,10 @@ public sealed class ComponentOptionsProvider : IComponentOptionsProvider
 /// <summary>Опции для конкретного компонента через каскадный параметр.</summary>
 public sealed class SgComponentOptions
 {
-    public SgSize DefaultSize { get; set; } = SgSize.Md;
+    public Components.SgSize DefaultSize { get; set; } = Components.SgSize.Md;
     public SgVariant DefaultVariant { get; set; } = SgVariant.Default;
     public bool DisableAnimations { get; set; }
     public bool ReducedMotion { get; set; }
 }
 
-public enum SgSize { Xs, Sm, Md, Lg, Xl }
 public enum SgVariant { Default, Primary, Secondary, Success, Warning, Error, Info }
