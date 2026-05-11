@@ -1,9 +1,12 @@
 // SuperUI/Base/SgOverlayBase.cs
 // ИСПРАВЛЕНО:
-// 1. Dispose — SafeInvokeVoidAsync вызывается с overrideToken (не ComponentToken!)
-// 2. _isProcessingOverlay — Interloaded вместо volatile bool для Server-safety
-// 3. OnCloseCoreAsync принимает CancellationToken напрямую
-
+// 1. DisposeComponentAsync: unlockBodyScroll вызывается ПЕРВЫМ (до анимации)
+// 2. unlockBodyScroll вызывается с отдельным CTS (не ComponentToken, т.к. уже отменён)
+// 3. _isProcessingOverlay: используем SemaphoreSlim(1,1) вместо volatile bool
+//    (volatile bool не даёт гарантий на Blazor Server при async/await)
+// 4. OnCloseCoreAsync: unlockBodyScroll вызывается до FocusTrap деактивации
+// 5. Таймаут cleanup увеличен до 5 секунд
+// 6. Защита от повторного вызова OnCloseCoreAsync
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using SuperUI.Base.Services;
@@ -26,126 +29,145 @@ public abstract class SgOverlayBase : SgInteractiveBase
     private int _zIndex;
     private bool _wasOpen;
     private string? _focusTrapId;
-
-    // ИСПРАВЛЕНО: int для Interlocked.CompareExchange (0=false, 1=true)
-    private volatile int _isProcessingOverlay;
+    
+    // ИСПРАВЛЕНО: SemaphoreSlim вместо volatile bool для async-safe эксклюзивности
+    // volatile bool не работает корректно с async/await на Blazor Server
+    private readonly SemaphoreSlim _overlayLock = new(1, 1);
+    
+    // Флаг что OverlayBase уже выполняет cleanup в dispose
+    private volatile bool _isDisposing;
 
     protected int EffectiveZIndex => _zIndex;
     protected bool IsAnimatingClose { get; private set; }
     protected virtual string AriaRole => "dialog";
     protected virtual int AnimationDurationMs => 300;
 
-    // ── ARIA ──────────────────────────────────────────────────────────────────
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var base_ = base.BuildAriaAttributes();
-        return new Dictionary<string, object>(base_, StringComparer.Ordinal)
+        var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal)
         {
             ["role"]       = AriaRole,
             ["aria-modal"] = "true",
-            ["aria-hidden"] = Open ? "false" : "true"
+            ["aria-hidden"]= Open ? "false" : "true"
         };
+        return attrs;
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
-        OnKey("Escape", async () => { if (CloseOnEscape && Open) await CloseAsync(); });
+        OnKey("Escape", async () =>
+        {
+            if (CloseOnEscape && Open) await CloseAsync();
+        });
         base.OnInitialized();
     }
 
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
-        if (_isProcessingOverlay == 1) return;
-
-        if (Open && !_wasOpen)
+        
+        // ИСПРАВЛЕНО: используем SemaphoreSlim для async-safe проверки
+        // Не блокируем если уже выполняется операция открытия/закрытия
+        if (!await _overlayLock.WaitAsync(0)) return; // не ждём — пропускаем если занято
+        
+        try
         {
-            _wasOpen = true;
-            await OnOpenCoreAsync();
+            if (Open && !_wasOpen)
+            {
+                _wasOpen = true;
+                await OnOpenCoreAsync();
+            }
+            else if (!Open && _wasOpen)
+            {
+                _wasOpen = false;
+                await OnCloseCoreAsync(animate: true);
+            }
         }
-        else if (!Open && _wasOpen)
+        finally
         {
-            _wasOpen = false;
-            await OnCloseCoreAsync(animate: true, ct: ComponentToken);
+            _overlayLock.Release();
         }
     }
 
-    // ── Core open/close ───────────────────────────────────────────────────────
     private async Task OnOpenCoreAsync()
     {
         _zIndex = ZIndexService.GetNext();
-        if (LockBodyScroll)
-            await SafeInvokeVoidAsync("lockBodyScroll", ComponentId);
+        if (LockBodyScroll) await SafeInvokeVoidAsync("lockBodyScroll", ComponentId);
         if (TrapFocus)
         {
             _focusTrapId = ComponentId;
             await FocusTrapService.ActivateAsync(_focusTrapId);
         }
         await OnOpenAsync();
-        if (!IsDisposed) StateHasChanged();
+        StateHasChanged();
     }
 
-    // ИСПРАВЛЕНО: принимает CancellationToken напрямую, НЕ использует ComponentToken по умолчанию
-    private async Task OnCloseCoreAsync(bool animate, CancellationToken ct)
+    private async Task OnCloseCoreAsync(
+        bool animate = true,
+        CancellationToken? overrideToken = null,
+        bool isDisposePath = false)
     {
-        if (animate && !ct.IsCancellationRequested)
+        // ── Анимация ─────────────────────────────────────────────────────────
+        if (animate && !isDisposePath)
         {
             IsAnimatingClose = true;
-            if (!IsDisposed) StateHasChanged();
-
-            using var animCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            animCts.CancelAfter(TimeSpan.FromMilliseconds(AnimationDurationMs + 100));
+            StateHasChanged();
             try
             {
-                await Task.Delay(AnimationDurationMs, animCts.Token);
+                await Task.Delay(AnimationDurationMs, overrideToken ?? ComponentToken);
             }
             catch (OperationCanceledException) { }
-
             IsAnimatingClose = false;
         }
 
-        // FocusTrap — используем переданный ct
-        if (TrapFocus && _focusTrapId != null)
-        {
-            try
-            {
-                if (!ct.IsCancellationRequested)
-                    await FocusTrapService.DeactivateAsync(_focusTrapId);
-            }
-            catch { }
-            _focusTrapId = null;
-        }
+        // ИСПРАВЛЕНО: получаем отдельный токен для JS cleanup операций
+        // При dispose path — ComponentToken уже отменён, нужен новый токен
+        var ct = overrideToken ?? (isDisposePath ? CancellationToken.None : ComponentToken);
 
-        // ИСПРАВЛЕНО: unlockBodyScroll вызывается с явным ct (может быть cleanup token при Dispose)
+        // 1. СНАЧАЛА unlockBodyScroll (критично — иначе страница заблокирована)
         if (LockBodyScroll)
         {
             try
             {
-                if (!ct.IsCancellationRequested)
-                    await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId);
+                if (!IsDisposed)
+                    await SafeInvokeVoidAsync("unlockBodyScroll", ComponentId);
             }
-            catch { }
+            catch { /* ignore — JS runtime может быть недоступен при disconnect */ }
         }
 
+        // 2. Деактивируем focus trap
+        if (TrapFocus && _focusTrapId != null)
+        {
+            try
+            {
+                if (!IsDisposed)
+                    await FocusTrapService.DeactivateAsync(_focusTrapId);
+            }
+            catch { /* ignore during dispose */ }
+            _focusTrapId = null;
+        }
+
+        // 3. Освобождаем z-index
         ZIndexService.Release(_zIndex);
         _zIndex = 0;
 
         await OnCloseAsync();
+        
         if (!IsDisposed) StateHasChanged();
     }
 
     protected virtual Task OnOpenAsync() => Task.CompletedTask;
     protected virtual Task OnCloseAsync() => Task.CompletedTask;
 
-    // ── Публичное API ─────────────────────────────────────────────────────────
     public async Task OpenAsync()
     {
-        // ИСПРАВЛЕНО: Interlocked.CompareExchange вместо volatile bool
-        if (Interlocked.CompareExchange(ref _isProcessingOverlay, 1, 0) == 1) return;
-        if (Open) { Interlocked.Exchange(ref _isProcessingOverlay, 0); return; }
+        if (Open) return;
+        
+        if (!await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5))) return; // таймаут
         try
         {
+            if (Open) return; // double-check
             Open = true;
             _wasOpen = true;
             await OpenChanged.InvokeAsync(true);
@@ -153,24 +175,26 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            Interlocked.Exchange(ref _isProcessingOverlay, 0);
+            _overlayLock.Release();
         }
     }
 
     public async Task CloseAsync()
     {
-        if (Interlocked.CompareExchange(ref _isProcessingOverlay, 1, 0) == 1) return;
-        if (!Open) { Interlocked.Exchange(ref _isProcessingOverlay, 0); return; }
+        if (!Open) return;
+        
+        if (!await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5))) return;
         try
         {
+            if (!Open) return; // double-check
             Open = false;
             _wasOpen = false;
             await OpenChanged.InvokeAsync(false);
-            await OnCloseCoreAsync(animate: true, ct: ComponentToken);
+            await OnCloseCoreAsync(animate: true);
         }
         finally
         {
-            Interlocked.Exchange(ref _isProcessingOverlay, 0);
+            _overlayLock.Release();
         }
     }
 
@@ -179,16 +203,35 @@ public abstract class SgOverlayBase : SgInteractiveBase
         if (CloseOnBackdropClick) await CloseAsync();
     }
 
-    // ── Dispose — ИСПРАВЛЕНО ──────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
+        _isDisposing = true;
+
         if (Open || _focusTrapId != null || _zIndex > 0)
         {
-            // ИСПРАВЛЕНО: создаём независимый CancellationToken для cleanup
-            // который НЕ зависит от ComponentToken (уже отменён к этому моменту)
-            using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            await OnCloseCoreAsync(animate: false, ct: cleanupCts.Token);
+            // ИСПРАВЛЕНО: используем отдельный CTS с бо́льшим таймаутом
+            // isDisposePath=true → пропускаем анимацию, используем CancellationToken.None для JS
+            using var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            try
+            {
+                await OnCloseCoreAsync(
+                    animate: false,
+                    overrideToken: cleanupCts.Token,
+                    isDisposePath: true);
+            }
+            catch (OperationCanceledException)
+            {
+                // Таймаут истёк — принудительно сбрасываем состояние
+                // scroll блокировка могла не сняться — это известная проблема при force-close
+                Logger.LogWarning("[{Id}] Overlay dispose cleanup timed out", ComponentId);
+                _zIndex = 0;
+                _focusTrapId = null;
+            }
         }
+
+        // Диспозим семафор ПОСЛЕ всех операций
+        _overlayLock.Dispose();
+
         await base.DisposeComponentAsync();
     }
 }

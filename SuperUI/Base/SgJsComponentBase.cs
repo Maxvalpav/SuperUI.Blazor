@@ -1,13 +1,11 @@
 // SuperUI/Base/SgJsComponentBase.cs
 // ИСПРАВЛЕНО:
-// 1. ObjectDisposedException ловится в finally блоке GetModuleAsync
-// 2. DisposeComponentAsync — правильный порядок: Cancel → модуль → ref → CTS
-// 3. _moduleLock.Release() защищён от двойного вызова
-// 4. DotNetRef создаётся атомарно через Interlocked (уже было — OK)
-// 5. SafeInvokeVoidAsync — использует overrideToken для Dispose-сценария
-
+// 1. Семафор ВСЕГДА освобождается в finally (даже при IsDisposed=true)
+// 2. Добавлен таймаут 30с на WaitAsync чтобы не зависать вечно
+// 3. LifecycleToken инициализируется в конструкторе (не лениво) — thread-safe
+// 4. DisposeComponentAsync: порядок операций безопасен (сначала Cancel, потом Dispose модуля)
+// 5. DotNetRef: Interlocked.CompareExchange уже корректен (оставлен)
 using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
@@ -18,22 +16,29 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов, использующих JavaScript Interop.
-/// SemaphoreSlim(1,1) вместо SpinWait — корректно на Blazor Server.
+/// 
+/// ИСПРАВЛЕНИЯ:
+/// - Семафор ВСЕГДА освобождается в finally блоке
+/// - Таймаут на ожидание семафора (30 секунд)
+/// - LifecycleToken создаётся в OnInitialized (не лениво) для thread-safety
+/// - Правильный порядок dispose: Cancel → DisposeModule → DisposeSemaphore
 /// </summary>
 public abstract class SgJsComponentBase : SgComponentBase
 {
-    // ── Инъекции ──────────────────────────────────────────────────────────────
+    // ── Инъекции ───────────────────────────────────────────────────────────────
     [Inject] protected IJSRuntime JS { get; set; } = null!;
     [Inject] protected IPrerendingDetector PrerendingDetector { get; set; } = null!;
 
     // ── JS Module ──────────────────────────────────────────────────────────────
+    // Семафор: не более одной параллельной загрузки модуля
     private readonly SemaphoreSlim _moduleLock = new(1, 1);
     private volatile bool _moduleLockDisposed;
     private IJSObjectReference? _module;
     protected virtual string? JsModulePath => null;
 
-    // ── DotNetRef — атомарное создание ───────────────────────────────────────
+    // ── DotNetRef ──────────────────────────────────────────────────────────────
     private DotNetObjectReference<SgJsComponentBase>? _dotNetRef;
+
     protected DotNetObjectReference<SgJsComponentBase> DotNetRef
     {
         get
@@ -42,55 +47,61 @@ public abstract class SgJsComponentBase : SgComponentBase
             {
                 var newRef = DotNetObjectReference.Create<SgJsComponentBase>(this);
                 var existing = Interlocked.CompareExchange(ref _dotNetRef, newRef, null);
-                if (existing is not null) newRef.Dispose(); // проиграли гонку
+                if (existing is not null) newRef.Dispose(); // проиграли гонку — диспозим созданный
             }
             return _dotNetRef;
         }
     }
 
-    // ── Prerendering ──────────────────────────────────────────────────────────
+    // ── Prerendering ───────────────────────────────────────────────────────────
     protected bool IsPrerendering => PrerendingDetector.IsPrerendering;
 
-    // ── LifecycleToken ────────────────────────────────────────────────────────
-    private LifecycleToken? _lifecycleToken;
-    protected CancellationToken ComponentToken =>
-        (_lifecycleToken ??= new LifecycleToken()).Token;
+    // ── LifecycleToken ─────────────────────────────────────────────────────────
+    // ИСПРАВЛЕНО: создаётся в конструкторе, не лениво
+    // Это гарантирует что ComponentToken всегда валиден с момента создания объекта
+    private LifecycleToken _lifecycleToken = new();
+    protected CancellationToken ComponentToken => _lifecycleToken.Token;
 
     protected override void OnInitialized()
     {
-        // Пересоздаём токен при переинициализации (например Hot Reload)
+        // Пересоздаём токен при повторной инициализации (hot-reload сценарий)
         var old = Interlocked.Exchange(ref _lifecycleToken, new LifecycleToken());
-        old?.Cancel();
-        old?.Dispose();
+        old.Cancel();
+        old.Dispose();
         base.OnInitialized();
     }
 
-    // ── GetModuleAsync ────────────────────────────────────────────────────────
+    // ── GetModuleAsync ─────────────────────────────────────────────────────────
     protected async ValueTask<IJSObjectReference?> GetModuleAsync()
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancelled)
             return null;
 
-        // Быстрый путь без блокировки
+        // Быстрый путь без входа в семафор
         if (_module is not null) return _module;
 
-        // ИСПРАВЛЕНО: передаём ComponentToken в WaitAsync — прервётся при Dispose
-        if (_moduleLockDisposed) return null;
-        try
-        {
-            await _moduleLock.WaitAsync(ComponentToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) { return null; }
-        catch (ObjectDisposedException) { return null; }
+        // ИСПРАВЛЕНО: используем CancellationTokenSource с таймаутом 30с
+        // чтобы не зависнуть если семафор никогда не освободится
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            ComponentToken, timeoutCts.Token);
 
+        bool semaphoreAcquired = false;
         try
         {
-            if (_module is not null) return _module; // double-check
-            if (IsDisposed || ComponentToken.IsCancellationRequested) return null;
+            await _moduleLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
+            semaphoreAcquired = true;
+
+            // Double-check после получения семафора
+            if (_module is not null) return _module;
+
+            if (IsDisposed || ComponentToken.IsCancelled)
+                return null;
 
             var path = JsModulePath ?? "_content/SuperUI/superui.js";
             _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import", ComponentToken, path);
+
             return _module;
         }
         catch (TaskCanceledException) { return null; }
@@ -99,18 +110,17 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { return null; }
         catch (JSException ex)
         {
-            Logger.LogError(ex, "[{Id}] JS module load failed: {Path}",
-                ComponentId, JsModulePath);
+            Logger.LogError(ex, "[{Id}] JS module load failed: {Path}", ComponentId, JsModulePath);
             return null;
         }
         finally
         {
-            // ИСПРАВЛЕНО: Release только если семафор не был Dispose'd
-            if (!_moduleLockDisposed)
+            // ИСПРАВЛЕНО: ВСЕГДА освобождаем семафор если он был получен
+            // Независимо от IsDisposed — иначе ожидающие потоки зависнут
+            if (semaphoreAcquired && !_moduleLockDisposed)
             {
                 try { _moduleLock.Release(); }
-                catch (ObjectDisposedException) { }
-                catch (SemaphoreFullException) { }
+                catch (ObjectDisposedException) { /* семафор уже задиспожен — нормально */ }
             }
         }
     }
@@ -144,29 +154,25 @@ public abstract class SgJsComponentBase : SgComponentBase
 #if DEBUG
             Diagnostics.JsErrorCount++;
 #endif
-            Logger.LogError(ex, "[{ComponentId}] JS call '{Identifier}' failed",
+            Logger.LogError(ex, "[{ComponentId}] JS void call '{Identifier}' failed",
                 ComponentId, identifier);
         }
     }
 
-    // Перегрузка без overrideToken для нормального использования
-    protected ValueTask SafeInvokeVoidAsync(string identifier, params object?[] args)
-        => SafeInvokeVoidAsync(identifier, null, args);
-
-    protected async ValueTask<TResult?> SafeInvokeAsync<TResult>(
-        string identifier,
-        params object?[] args)
+    // ── SafeInvokeAsync<T> ─────────────────────────────────────────────────────
+    protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
 #if DEBUG
         Diagnostics.JsCallCount++;
 #endif
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancelled)
             return default;
+
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return default;
-            return await module.InvokeAsync<TResult>(identifier, ComponentToken, args);
+            return await module.InvokeAsync<T>(identifier, ComponentToken, args);
         }
         catch (TaskCanceledException) { return default; }
         catch (OperationCanceledException) { return default; }
@@ -183,11 +189,11 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
-    protected async ValueTask SafeGlobalInvokeVoidAsync(
-        string identifier,
-        params object?[] args)
+    // ── SafeGlobalInvokeVoidAsync ──────────────────────────────────────────────
+    protected async ValueTask SafeGlobalInvokeVoidAsync(string identifier, params object?[] args)
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancelled) return;
+
         try
         {
             await JS.InvokeVoidAsync(identifier, ComponentToken, args);
@@ -198,31 +204,31 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { }
     }
 
-    // ── Dispose ───────────────────────────────────────────────────────────────
+    // ── Dispose ────────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
-        // 1. Отменяем токен ПЕРВЫМ — прерывает все ожидающие операции
-        _lifecycleToken?.Cancel();
+        // 1. Отменяем токен — все текущие JS вызовы получат OperationCanceledException
+        _lifecycleToken.Cancel();
 
-        // 2. Помечаем семафор как disposed ДО его Dispose — предотвращает Race
-        _moduleLockDisposed = true;
-        _moduleLock.Dispose();
-
-        // 3. Утилизируем JS модуль
+        // 2. Диспозим JS модуль (безопасно — все вызовы уже прерваны токеном)
         if (_module is not null)
         {
             try { await _module.DisposeAsync(); }
-            catch { /* ignore — connection may be gone */ }
+            catch { /* JS runtime может быть уже недоступен */ }
             _module = null;
         }
 
-        // 4. DotNet ref
+        // 3. Помечаем семафор как disposed и диспозим его
+        // (после этого все WaitAsync получат ObjectDisposedException → handled)
+        _moduleLockDisposed = true;
+        _moduleLock.Dispose();
+
+        // 4. Диспозим DotNetRef
         _dotNetRef?.Dispose();
         _dotNetRef = null;
 
-        // 5. Lifecycle token (уже отменён, теперь освобождаем)
-        _lifecycleToken?.Dispose();
-        _lifecycleToken = null;
+        // 5. Диспозим LifecycleToken
+        _lifecycleToken.Dispose();
 
         await base.DisposeComponentAsync();
     }

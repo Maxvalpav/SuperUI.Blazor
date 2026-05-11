@@ -1,10 +1,10 @@
 // SuperUI/Base/SgFormBase.cs
 // ИСПРАВЛЕНО:
-// 1. ConvertError сбрасывается в SetValueAsync
-// 2. BuildAriaAttributes не создаёт лишний dict при отсутствии доп.атрибутов
-// 3. HasError — cached bool чтобы не вызывать LINQ дважды
-// 4. ValidateNow() — публичный метод для программной валидации
-// 5. SetValueAsync — защита от рекурсии через _isSettingValue
+// 1. SetValueAsync: NotifyFieldChanged ПЕРЕД ValueChanged (EditContext обновляется первым)
+// 2. OnValidationStateChanged: Task не теряется (логируем ошибки)
+// 3. BuildAriaAttributes: не вызывает base при каждом изменении (кэш через generation)
+// 4. CurrentText синхронизируется атомарно с Value
+// 5. AttachEditContext/DetachEditContext: идемпотентны
 
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
@@ -97,10 +97,13 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             Value = value;
             _lastSyncedValue = value;
             CurrentText = EffectiveConverter.ConvertBack(value);
-            ConvertError = null; // ИСПРАВЛЕНО: сбрасываем ошибку конвертации
+            ConvertError = null;
 
-            await ValueChanged.InvokeAsync(value);
+            // ИСПРАВЛЕНО: сначала NotifyFieldChanged → потом ValueChanged
+            // Это гарантирует что EditContext обновлён до того, как родитель
+            // получит событие и возможно прочитает состояние валидации
             _editContext?.NotifyFieldChanged(_fieldIdentifier);
+            await ValueChanged.InvokeAsync(value);
         }
         finally
         {
@@ -198,9 +201,24 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContextAttached = false;
     }
 
+    // ИСПРАВЛЕНО: не теряем Task, логируем ошибки
     private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
-        if (!IsDisposed) InvokeAsync(StateHasChanged);
+        if (IsDisposed) return;
+
+        var task = InvokeAsync(StateHasChanged);
+
+        // На Blazor Server task может завершиться с ошибкой
+        // Регистрируем continuation для логирования (не блокируем)
+        if (!task.IsCompletedSuccessfully)
+        {
+            _ = task.ContinueWith(t =>
+            {
+                if (t.IsFaulted && t.Exception is not null)
+                    Logger.LogWarning(t.Exception.InnerException ?? t.Exception,
+                        "[{Id}] OnValidationStateChanged StateHasChanged error", ComponentId);
+            }, TaskScheduler.Default);
+        }
     }
 
     protected override async ValueTask DisposeComponentAsync()
