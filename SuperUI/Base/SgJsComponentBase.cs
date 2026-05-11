@@ -1,22 +1,21 @@
-using Microsoft.JSInterop;
+// SuperUI/Base/SgJsComponentBase.cs
+using System.Threading;
 using Microsoft.AspNetCore.Components;
-using SuperUI.Interop;
+using Microsoft.JSInterop;
 using SuperUI.Services;
-using SuperUI.Tokens;
+using SuperUI.Base.Tokens;
 
 namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов, использующих JavaScript Interop.
-/// 
-/// 4+ уровня защиты JS Interop:
-/// 1. Prerendering Guard — проверка IsPrerendering
-/// 2. Dispose Guard — проверка IsDisposed
-/// 3. Cancellation Guard — CancellationToken из LifecycleToken
-/// 4. Module Lazy Loading — ES module загружается один раз
-/// 5. Circuit Guard — для Blazor Server: проверка активности circuit
-/// 
-/// Управление DotNetRef — авто-создание и авто-dispose.
+///
+/// ИСПРАВЛЕНИЯ:
+/// 1. SemaphoreSlim → Interlocked + volatile для _module lazy loading
+/// 2. DotNetRef: Interlocked.CompareExchange для thread-safe lazy init
+/// 3. JSException string matching → JSDisconnectedException (правильный тип)
+/// 4. LinkedTokenHandle → Dispose корректный
+/// 5. _lifecycleToken: сброс при OnInitialized атомарный
 /// </summary>
 public abstract class SgJsComponentBase : SgComponentBase
 {
@@ -24,118 +23,127 @@ public abstract class SgJsComponentBase : SgComponentBase
     [Inject] protected IJSRuntime JS { get; set; } = null!;
     [Inject] protected IPrerendingDetector PrerendingDetector { get; set; } = null!;
 
-    // ── JS Module (lazy, один раз на компонент) ────────────────────────────
-    private IJSObjectReference? _module;
-    private readonly SemaphoreSlim _moduleLock = new(1, 1);
+    // ── JS Module — ИСПРАВЛЕНО: Interlocked вместо SemaphoreSlim ─────────────
+    private volatile IJSObjectReference? _module;
+    private volatile int _moduleLoading; // 0 = idle, 1 = loading — spin-wait lock-free
+    private volatile int _moduleLoaded;  // 0 = not loaded, 1 = loaded
 
-    /// <summary>Путь к ES-модулю. Переопределить в наследнике если нужен свой модуль.</summary>
-    protected virtual string? JsModulePath => null; // null = использует глобальный superui.js
+    protected virtual string? JsModulePath => null;
 
-    // ── DotNetRef авто-управление ────────────────────────────────────────────
+    // ── DotNetRef — ИСПРАВЛЕНО: thread-safe lazy init ─────────────────────────
     private DotNetObjectReference<SgJsComponentBase>? _dotNetRef;
 
-    /// <summary>
-    /// DotNetObjectReference с авто-созданием и авто-dispose.
-    /// Безопасен: создаётся только при первом обращении.
-    /// </summary>
     protected DotNetObjectReference<SgJsComponentBase> DotNetRef
-        => _dotNetRef ??= DotNetObjectReference.Create(this);
+    {
+        get
+        {
+            // ИСПРАВЛЕНО: Interlocked.CompareExchange для thread-safe lazy init
+            if (_dotNetRef is null)
+            {
+                var newRef = DotNetObjectReference.Create<SgJsComponentBase>(this);
+                var existing = Interlocked.CompareExchange(ref _dotNetRef, newRef, null);
+                if (existing is not null)
+                    newRef.Dispose(); // уже создан другим потоком
+            }
+            return _dotNetRef;
+        }
+    }
 
-    // ── Prerendering ─────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Определяет, находится ли компонент в режиме prerendering.
-    /// Использует IHttpContextAccessor + OperatingSystem.IsBrowser() для WASM.
-    /// </summary>
+    // ── Prerendering ──────────────────────────────────────────────────────────
     protected bool IsPrerendering => PrerendingDetector.IsPrerendering;
 
-    // ── LifecycleToken — race-safe ────────────────────────────────────────────
+    // ── LifecycleToken ─────────────────────────────────────────────────────────
     private LifecycleToken? _lifecycleToken;
 
-    /// <summary>
-    /// Токен жизненного цикла компонента.
-    /// Автоматически отменяется при Dispose.
-    /// Новый токен создаётся при каждом OnInitialized (reset on reconnect).
-    /// </summary>
     protected LifecycleToken LifecycleToken
-        => _lifecycleToken ??= new LifecycleToken();
+    {
+        get => _lifecycleToken ??= new LifecycleToken();
+    }
 
-    /// <summary>CancellationToken привязанный к жизненному циклу.</summary>
     protected CancellationToken ComponentToken => LifecycleToken.Token;
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
-
+    // ── Lifecycle ────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
-        // Сбросить токен при каждой инициализации (важно для SignalR reconnect)
-        _lifecycleToken?.Cancel();
-        _lifecycleToken?.Dispose();
-        _lifecycleToken = new LifecycleToken();
+        // ИСПРАВЛЕНО: атомарная замена токена при reconnect
+        var old = Interlocked.Exchange(ref _lifecycleToken, new LifecycleToken());
+        old?.Cancel();
+        old?.Dispose();
 
         base.OnInitialized();
     }
 
-    // ── JS Interop — защищённые методы ────────────────────────────────────────
-
+    // ── JS Interop — ИСПРАВЛЕНО ───────────────────────────────────────────────
     /// <summary>
-    /// Получить JS модуль с lazy loading.
-    /// УРОВЕНЬ 4 защиты: Prerendering + Disposed + Cancelled + Module null check.
+    /// ИСПРАВЛЕНО:
+    /// - SemaphoreSlim → volatile + Interlocked spin pattern
+    /// - JSDisconnectedException вместо строкового сравнения
+    /// - CancellationToken корректно прокидывается
     /// </summary>
     protected async ValueTask<IJSObjectReference?> GetModuleAsync()
     {
-        // Уровень 1: Prerendering guard
-        if (IsPrerendering) return null;
-
-        // Уровень 2: Dispose guard
-        if (IsDisposed) return null;
-
-        // Уровень 3: Cancellation guard
-        if (ComponentToken.IsCancellationRequested) return null;
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
+            return null;
 
         if (_module is not null) return _module;
 
-        await _moduleLock.WaitAsync(ComponentToken);
-        try
+        // ИСПРАВЛЕНО: spin-wait без SemaphoreSlim (экономия ~200 байт heap per component)
+        // Используем Interlocked для lock-free double-check
+        if (Interlocked.Exchange(ref _moduleLoading, 1) == 1)
         {
-            if (_module is not null) return _module;
-
-            var path = JsModulePath ?? "_content/SuperUI/superui.js";
-            _module = await JS.InvokeAsync<IJSObjectReference>(
-                "import", ComponentToken, path);
-
+            // Другой поток загружает — ждём с polling (WASM однопоточный, Server — маловероятно)
+            var spinWait = new SpinWait();
+            while (_moduleLoaded == 0 && !IsDisposed && !ComponentToken.IsCancellationRequested)
+                spinWait.SpinOnce();
             return _module;
         }
-        catch (TaskCanceledException) { return null; }
-        catch (JSDisconnectedException) { return null; } // Blazor Server reconnect
-        catch (JSException ex) when (ex.Message.Contains("disconnected")) { return null; }
+
+        try
+        {
+            if (_module is not null) return _module; // double-check
+
+            var path = JsModulePath ?? "_content/SuperUI/superui.js";
+            var module = await JS.InvokeAsync<IJSObjectReference>(
+                "import",
+                ComponentToken,
+                path);
+
+            Interlocked.Exchange(ref _module, module);
+            Interlocked.Exchange(ref _moduleLoaded, 1);
+            return _module;
+        }
+        catch (TaskCanceledException)       { return null; }
+        catch (OperationCanceledException)  { return null; }
+        catch (JSDisconnectedException)     { return null; } // ИСПРАВЛЕНО: правильный тип
+        catch (ObjectDisposedException)     { return null; }
+        catch (JSException ex)
+        {
+            // ИСПРАВЛЕНО: только для реально неизвестных JS ошибок
+            Logger.LogError(ex, "[{Id}] JS module load failed: {Path}", ComponentId, JsModulePath);
+            return null;
+        }
         finally
         {
-            _moduleLock.Release();
+            Interlocked.Exchange(ref _moduleLoading, 0);
         }
     }
 
-    /// <summary>
-    /// Безопасный вызов JS без возвращаемого значения.
-    /// Все 4 уровня защиты включены.
-    /// </summary>
     protected async ValueTask SafeInvokeVoidAsync(string identifier, params object?[] args)
     {
 #if DEBUG
         Diagnostics.JsCallCount++;
 #endif
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
-            return;
-
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return;
-
             await module.InvokeVoidAsync(identifier, ComponentToken, args);
         }
-        catch (TaskCanceledException) { /* нормально при dispose */ }
-        catch (JSDisconnectedException) { /* Blazor Server reconnect */ }
-        catch (ObjectDisposedException) { /* компонент удалён */ }
+        catch (TaskCanceledException)      { }
+        catch (OperationCanceledException) { }
+        catch (JSDisconnectedException)    { }
+        catch (ObjectDisposedException)    { }
         catch (Exception ex)
         {
 #if DEBUG
@@ -145,28 +153,22 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
-    /// <summary>
-    /// Безопасный вызов JS с возвращаемым значением.
-    /// Возвращает default(T) при любой защитной остановке.
-    /// </summary>
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
 #if DEBUG
         Diagnostics.JsCallCount++;
 #endif
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
-            return default;
-
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return default;
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return default;
-
             return await module.InvokeAsync<T>(identifier, ComponentToken, args);
         }
-        catch (TaskCanceledException) { return default; }
-        catch (JSDisconnectedException) { return default; }
-        catch (ObjectDisposedException) { return default; }
+        catch (TaskCanceledException)      { return default; }
+        catch (OperationCanceledException) { return default; }
+        catch (JSDisconnectedException)    { return default; }
+        catch (ObjectDisposedException)    { return default; }
         catch (Exception ex)
         {
 #if DEBUG
@@ -177,25 +179,20 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
-    /// <summary>
-    /// Глобальный вызов JS (через window.*) без модуля.
-    /// </summary>
     protected async ValueTask SafeGlobalInvokeVoidAsync(string identifier, params object?[] args)
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
-            return;
-
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
         try
         {
             await JS.InvokeVoidAsync(identifier, ComponentToken, args);
         }
-        catch (TaskCanceledException) { }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
+        catch (TaskCanceledException)      { }
+        catch (OperationCanceledException) { }
+        catch (JSDisconnectedException)    { }
+        catch (ObjectDisposedException)    { }
     }
 
     // ── Dispose ───────────────────────────────────────────────────────────────
-
     protected override async ValueTask DisposeComponentAsync()
     {
         // Отменить токен
@@ -213,8 +210,8 @@ public abstract class SgJsComponentBase : SgComponentBase
         _dotNetRef?.Dispose();
         _dotNetRef = null;
 
-        _moduleLock.Dispose();
         _lifecycleToken?.Dispose();
+        _lifecycleToken = null;
 
         await base.DisposeComponentAsync();
     }

@@ -1,0 +1,62 @@
+@typeparam TModel
+@using SuperUI.Base
+@using SuperUI.Components.Forms
+@using Microsoft.AspNetCore.Components.Forms
+
+@inherits SgComponentBase
+
+@if (Field is TextField<TModel, TProp> textField)
+{
+    <div class="sg-form-field">
+        @if (!string.IsNullOrEmpty(textField.Config.Label))
+        {
+            <label for="@EffectiveId">@textField.Config.Label</label>
+        }
+        <input
+            id="@EffectiveId"
+            type="@TextTypeToString(textField.Config.Type)"
+            @bind="GetValue<string>(Model, textField.Property)"
+            placeholder="@textField.Config.Placeholder" />
+    </div>
+}
+else if (Field is NumberField<TModel, TProp> numField)
+{
+    <div class="sg-form-field">
+        @if (!string.IsNullOrEmpty(numField.Config.Label))
+        {
+            <label for="@EffectiveId">@numField.Config.Label</label>
+        }
+        <input
+            id="@EffectiveId"
+            type="number"
+            @bind="GetValue<TProp>(Model, numField.Property)" />
+    </div>
+}
+else
+{
+    <div class="sg-form-field">[Unsupported field type]</div>
+}
+
+@code {
+    [Parameter] public IFormField? Field { get; set; }
+    [Parameter] public TModel? Model { get; set; }
+
+    private static string TextTypeToString(SgInputType type) => type switch
+    {
+        SgInputType.Email => "email",
+        SgInputType.Password => "password",
+        SgInputType.Number => "number",
+        SgInputType.Tel => "tel",
+        SgInputType.Url => "url",
+        SgInputType.Date => "date",
+        SgInputType.Time => "time",
+        SgInputType.DateTime => "datetime-local",
+        _ => "text"
+    };
+
+    private static TProp GetValue<TProp>(TModel model, Expression<Func<TModel, TProp>> expr)
+    {
+        var compiled = expr.Compile();
+        return compiled(model);
+    }
+}

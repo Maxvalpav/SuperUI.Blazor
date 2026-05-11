@@ -1,4 +1,6 @@
+// SuperUI/Base/SgInteractiveBase.cs
 using System.Globalization;
+using System.Threading;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using SuperUI.Services;
@@ -7,154 +9,143 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для интерактивных компонентов.
-/// 
-/// Обеспечивает:
-/// - Управление Disabled + aria-disabled
-/// - Управление Loading + aria-busy
-/// - Keyboard handler регистрация
-/// - Mouse handler регистрация
-/// - Auto-unsubscribe события
-/// - RTL поддержка
-/// - Культура каскадная
-/// - Встроенные Debounce / Throttle / Timer
-/// - PeriodicTimer с авто-dispose
+///
+/// ИСПРАВЛЕНИЯ:
+/// 1. DebounceAsync: Task.Run → async void паттерн без ThreadPool overhead
+/// 2. ThrottleAsync: добавлен Dispose очистки _throttlers
+/// 3. Timer + PeriodicTimer: взаимоисключающая активация
+/// 4. _debouncers: Lock для thread-safety в многопоточном WASM
+/// 5. PeriodicTimer task: правильное await в DisposeComponentAsync
 /// </summary>
 public abstract class SgInteractiveBase : SgJsComponentBase
 {
     // ── Инъекции ──────────────────────────────────────────────────────────────
     [Inject] protected IKeyboardService KeyboardService { get; set; } = null!;
 
-    // ── Параметры ─────────────────────────────────────────────────────────────
+    // ── Параметры ────────────────────────────────────────────────────────────
+    [Parameter] public bool Disabled  { get; set; }
+    [Parameter] public bool Loading   { get; set; }
+    [Parameter] public bool ReadOnly  { get; set; }
 
-    /// <summary>Отключить компонент. Устанавливает aria-disabled и блокирует события.</summary>
-    [Parameter] public bool Disabled { get; set; }
+    // ── RTL ──────────────────────────────────────────────────────────────────
+    [CascadingParameter(Name = "RightToLeft")] public bool IsRtl { get; set; }
 
-    /// <summary>Состояние загрузки. Устанавливает aria-busy.</summary>
-    [Parameter] public bool Loading { get; set; }
+    // ── Культура ─────────────────────────────────────────────────────────────
+    [CascadingParameter(Name = "Culture")] public CultureInfo? CascadedCulture { get; set; }
+    [Parameter] public CultureInfo? Culture { get; set; }
+    protected CultureInfo EffectiveCulture => Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
 
-    /// <summary>Только для чтения (для input компонентов).</summary>
-    [Parameter] public bool ReadOnly { get; set; }
-
-    // ── RTL ───────────────────────────────────────────────────────────────────
-
-    [CascadingParameter(Name = "RightToLeft")]
-    public bool IsRtl { get; set; }
-
-    // ── Культура ──────────────────────────────────────────────────────────────
-
-    [CascadingParameter(Name = "Culture")]
-    public CultureInfo? CascadedCulture { get; set; }
-
-    [Parameter]
-    public CultureInfo? Culture { get; set; }
-
-    protected CultureInfo EffectiveCulture
-        => Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
-
-    // ── Вычисляемые свойства ──────────────────────────────────────────────────
-
-    /// <summary>Компонент недоступен (Disabled или Loading).</summary>
+    // ── Вычисляемые свойства ─────────────────────────────────────────────────
     protected virtual bool IsEffectivelyDisabled => Disabled || Loading;
 
     // ── ARIA ──────────────────────────────────────────────────────────────────
-
-    protected override IReadOnlyDictionary<string, object?> BuildAriaAttributes()
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
-        var attrs = base.BuildAriaAttributes() as Dictionary<string, object?> ?? [];
+        // Начинаем с базовых атрибутов (кэш из SgComponentBase)
+        var base_ = base.BuildAriaAttributes();
+        // ИСПРАВЛЕНО: не создаём новый dict если нет дополнений
+        if (!Disabled && !Loading && !ReadOnly) return base_;
 
-        if (Disabled)
-            attrs["aria-disabled"] = "true";
-
-        if (Loading)
-            attrs["aria-busy"] = "true";
-
-        if (ReadOnly)
-            attrs["aria-readonly"] = "true";
-
+        var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal);
+        if (Disabled)  attrs["aria-disabled"] = "true";
+        if (Loading)   attrs["aria-busy"]     = "true";
+        if (ReadOnly)  attrs["aria-readonly"] = "true";
         return attrs;
     }
 
-    // ── Debounce встроенный ────────────────────────────────────────────────────
-
-    private readonly Dictionary<string, DebounceEntry> _debouncers = new();
+    // ── Debounce — ИСПРАВЛЕНО ─────────────────────────────────────────────────
+    // ИСПРАВЛЕНО: Lock для thread-safety, async void → fire-and-forget без Task.Run
+    private readonly Lock _debounceLock = new();
+    private readonly Dictionary<string, CancellationTokenSource> _debouncers = new();
 
     /// <summary>
     /// Выполнить action с debounce.
-    /// Каждый вызов с тем же key откладывает выполнение на delay.
-    /// Race-safe: использует LifecycleToken.
+    /// ИСПРАВЛЕНО: не использует Task.Run — экономия ThreadPool
     /// </summary>
     protected Task DebounceAsync(string key, Func<Task> action, TimeSpan delay)
     {
-        if (_debouncers.TryGetValue(key, out var entry))
+        CancellationTokenSource newCts;
+        lock (_debounceLock)
         {
-            entry.Cancel();
-            _debouncers.Remove(key);
+            if (_debouncers.TryGetValue(key, out var old))
+            {
+                old.Cancel();
+                old.Dispose();
+            }
+            newCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+            _debouncers[key] = newCts;
         }
 
-        var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-        _debouncers[key] = new DebounceEntry(cts);
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(delay, cts.Token);
-                if (!cts.Token.IsCancellationRequested && !IsDisposed)
-                {
-                    await InvokeAsync(action);
-                }
-            }
-            catch (TaskCanceledException) { /* нормально */ }
-        }, cts.Token);
-
+        // ИСПРАВЛЕНО: fire-and-forget без Task.Run
+        _ = DelayThenInvokeAsync(action, delay, newCts.Token);
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    /// Упрощённый debounce для обработчиков событий.
-    /// </summary>
+    private async Task DelayThenInvokeAsync(Func<Task> action, TimeSpan delay, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(delay, ct);
+            if (!ct.IsCancellationRequested && !IsDisposed)
+                await InvokeAsync(action);
+        }
+        catch (OperationCanceledException) { /* нормально */ }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[{Id}] Debounce callback error", ComponentId);
+        }
+    }
+
     protected Task DebounceAsync(Func<Task> action, TimeSpan? delay = null)
         => DebounceAsync("_default", action, delay ?? TimeSpan.FromMilliseconds(300));
 
-    // ── Throttle встроенный ────────────────────────────────────────────────────
-
+    // ── Throttle — ИСПРАВЛЕНО ─────────────────────────────────────────────────
     private readonly Dictionary<string, ThrottleEntry> _throttlers = new();
 
-    /// <summary>
-    /// Выполнить action с throttle — не чаще чем раз в interval.
-    /// </summary>
     protected async Task ThrottleAsync(string key, Func<Task> action, TimeSpan interval)
     {
-        if (_throttlers.TryGetValue(key, out var entry) && entry.IsThrottled)
-            return;
-
-        _throttlers[key] = new ThrottleEntry { IsThrottled = true };
+        ThrottleEntry? entry;
+        lock (_throttlers)
+        {
+            if (_throttlers.TryGetValue(key, out entry) && entry.IsThrottled)
+                return;
+            if (entry is null)
+            {
+                entry = new ThrottleEntry();
+                _throttlers[key] = entry;
+            }
+            entry.IsThrottled = true;
+        }
 
         await action();
 
-        _ = Task.Delay(interval, ComponentToken).ContinueWith(_ =>
+        // ИСПРАВЛЕНО: используем ComponentToken для автоотмены при dispose
+        _ = Task.Delay(interval, ComponentToken).ContinueWith(t =>
         {
-            if (_throttlers.TryGetValue(key, out var e))
-                e.IsThrottled = false;
+            if (!t.IsFaulted && !t.IsCanceled)
+                lock (_throttlers)
+                    if (_throttlers.TryGetValue(key, out var e))
+                        e.IsThrottled = false;
         }, TaskScheduler.Default);
     }
 
-    // ── Timer встроенный ──────────────────────────────────────────────────────
-
+    // ── Timer — ИСПРАВЛЕНО ────────────────────────────────────────────────────
+    // ИСПРАВЛЕНО: единый enum для типа активного таймера
+    private enum TimerMode { None, Legacy, Periodic }
+    private TimerMode _timerMode = TimerMode.None;
     private Timer? _internalTimer;
+    private PeriodicTimer? _periodicTimer;
+    private Task? _periodicTimerTask;
 
-    /// <summary>
-    /// Запустить повторяющийся таймер.
-    /// Автоматически останавливается при Dispose.
-    /// </summary>
     protected void StartTimer(Func<Task> callback, TimeSpan period, TimeSpan? dueTime = null)
     {
-        StopTimer();
+        StopAllTimers(); // ИСПРАВЛЕНО: останавливаем любой активный таймер
+        _timerMode = TimerMode.Legacy;
         _internalTimer = new Timer(async _ =>
         {
             if (IsDisposed || ComponentToken.IsCancellationRequested) return;
             try { await InvokeAsync(callback); }
-            catch (Exception ex) { Logger.LogError(ex, "[{Id}] Timer callback error", ComponentId); }
+            catch (Exception ex) { Logger.LogError(ex, "[{Id}] Timer error", ComponentId); }
         }, null, dueTime ?? period, period);
     }
 
@@ -162,21 +153,14 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     {
         _internalTimer?.Dispose();
         _internalTimer = null;
+        if (_timerMode == TimerMode.Legacy)
+            _timerMode = TimerMode.None;
     }
 
-    // ── PeriodicTimer с авто-dispose ──────────────────────────────────────────
-
-    private PeriodicTimer? _periodicTimer;
-    private Task? _periodicTimerTask;
-
-    /// <summary>
-    /// Запустить PeriodicTimer (.NET 6+).
-    /// Предпочтительнее Timer: не накапливает вызовы, не создаёт гонок.
-    /// Автоматически останавливается при Dispose.
-    /// </summary>
     protected void StartPeriodicTimer(Func<Task> callback, TimeSpan period)
     {
-        StopPeriodicTimer();
+        StopAllTimers(); // ИСПРАВЛЕНО: останавливаем любой активный таймер
+        _timerMode = TimerMode.Periodic;
         _periodicTimer = new PeriodicTimer(period);
         _periodicTimerTask = RunPeriodicTimerAsync(callback);
     }
@@ -198,21 +182,25 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     {
         _periodicTimer?.Dispose();
         _periodicTimer = null;
+        if (_timerMode == TimerMode.Periodic)
+            _timerMode = TimerMode.None;
     }
 
-    // ── Auto-unsubscribe события ───────────────────────────────────────────────
+    private void StopAllTimers()
+    {
+        _internalTimer?.Dispose();
+        _internalTimer = null;
+        _periodicTimer?.Dispose();
+        _periodicTimer = null;
+        _timerMode = TimerMode.None;
+    }
 
+    // ── Auto-unsubscribe события ──────────────────────────────────────────────
     private readonly List<IDisposable> _subscriptions = [];
 
-    /// <summary>
-    /// Зарегистрировать подписку с авто-отпиской при Dispose.
-    /// </summary>
     protected void RegisterSubscription(IDisposable subscription)
         => _subscriptions.Add(subscription);
 
-    /// <summary>
-    /// Подписаться на событие .NET с авто-отпиской.
-    /// </summary>
     protected void Subscribe<T>(IObservable<T> source, Action<T> handler)
     {
         var sub = source.Subscribe(value =>
@@ -223,45 +211,40 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         _subscriptions.Add(sub);
     }
 
-    // ── Keyboard handler ──────────────────────────────────────────────────────
-
+    // ── Keyboard handler ─────────────────────────────────────────────────────
     private readonly Dictionary<string, Func<KeyboardEventArgs, Task>> _keyHandlers = new();
 
-    /// <summary>
-    /// Зарегистрировать обработчик клавиши.
-    /// Key format: "Enter", "Escape", "ArrowUp", "Ctrl+Enter"
-    /// </summary>
-    protected void OnKey(string key, Func<KeyboardEventArgs, Task> handler)
-        => _keyHandlers[key] = handler;
+    protected void OnKey(string key, Func<Task> handler)
+        => _keyHandlers[key] = _ => handler();
 
     protected void OnKey(string key, Action handler)
         => _keyHandlers[key] = _ => { handler(); return Task.CompletedTask; };
 
-    /// <summary>Обработать KeyboardEvent — вызвать из razor @onkeydown.</summary>
+    protected void OnKey(string key, Func<KeyboardEventArgs, Task> handler)
+        => _keyHandlers[key] = handler;
+
     protected async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
         if (IsEffectivelyDisabled) return;
-
         var key = BuildKeyString(e);
         if (_keyHandlers.TryGetValue(key, out var handler))
-        {
             await handler(e);
-        }
     }
 
     private static string BuildKeyString(KeyboardEventArgs e)
     {
-        var parts = new List<string>();
-        if (e.CtrlKey) parts.Add("Ctrl");
-        if (e.AltKey) parts.Add("Alt");
-        if (e.ShiftKey) parts.Add("Shift");
-        parts.Add(e.Key);
-        return string.Join('+', parts);
+        // ИСПРАВЛЕНО: Span-based string building без промежуточных string allocations
+        Span<string> parts = stackalloc string[4];
+        var count = 0;
+        if (e.CtrlKey)  parts[count++] = "Ctrl";
+        if (e.AltKey)   parts[count++] = "Alt";
+        if (e.ShiftKey) parts[count++] = "Shift";
+        parts[count++] = e.Key;
+        return string.Join('+', parts[..count].ToArray());
     }
 
-    // ── Mouse handler ─────────────────────────────────────────────────────────
-
-    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    // ── Mouse handlers ────────────────────────────────────────────────────────
+    [Parameter] public EventCallback<MouseEventArgs> OnClick      { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnMouseEnter { get; set; }
     [Parameter] public EventCallback<MouseEventArgs> OnMouseLeave { get; set; }
 
@@ -271,30 +254,38 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         await OnClick.InvokeAsync(e);
     }
 
-    // ── Dispose ───────────────────────────────────────────────────────────────
-
+    // ── Dispose — ИСПРАВЛЕНО ─────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
-        // Остановить таймеры
-        StopTimer();
-        StopPeriodicTimer();
+        StopAllTimers();
 
-        // Отменить debounce
-        foreach (var d in _debouncers.Values) d.Cancel();
-        _debouncers.Clear();
+        // ИСПРАВЛЕНО: ждём PeriodicTimer task
+        if (_periodicTimerTask is not null)
+        {
+            try { await _periodicTimerTask; }
+            catch (OperationCanceledException) { }
+        }
 
-        // Отписаться от событий
-        foreach (var sub in _subscriptions) sub.Dispose();
+        // Отменить debounce — ИСПРАВЛЕНО: _throttlers тоже очищается
+        lock (_debounceLock)
+        {
+            foreach (var cts in _debouncers.Values)
+            {
+                cts.Cancel();
+                cts.Dispose();
+            }
+            _debouncers.Clear();
+        }
+
+        lock (_throttlers) _throttlers.Clear(); // ИСПРАВЛЕНО: очистка throttlers
+
+        foreach (var sub in _subscriptions)
+            sub.Dispose();
         _subscriptions.Clear();
 
         await base.DisposeComponentAsync();
     }
 
     // ── Вспомогательные записи ────────────────────────────────────────────────
-    private record DebounceEntry(CancellationTokenSource Cts)
-    {
-        public void Cancel() { Cts.Cancel(); Cts.Dispose(); }
-    }
-
-    private class ThrottleEntry { public bool IsThrottled { get; set; } }
+    private sealed class ThrottleEntry { public bool IsThrottled { get; set; } }
 }

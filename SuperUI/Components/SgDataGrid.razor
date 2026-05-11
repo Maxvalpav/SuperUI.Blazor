@@ -8,7 +8,7 @@
 </CascadingValue>
 
 <CascadingValue Value="Localizer" IsFixed="false">
-<div class="sg-root @(ShowColumnBorders ? "sg-col-borders" : "") @(_editModalVisible || _bulkEditModalOpen ? "sg-modal-open" : "") @CssClass"
+<div class="sg-root @(ShowColumnBorders ? "sg-col-borders" : "") @(_editModalVisible || _bulkEditModalOpen || _rowHighlighterModalOpen ? "sg-modal-open" : "") @CssClass"
      id="@_gridId"
      @ref="_gridRootRef"
      @onclick="CloseFilterMenuAsync"
@@ -694,17 +694,29 @@
 
                                      @* Divider *@
                                      @{
-                                         var distinctValues = GetDistinctValuesForColumn(key)
-                                             .Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || 
-                                                        (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
-                                             .ToList();
+                                         var distinctReady = !_filterDistinctLoading
+                                             && _distinctValuesCacheItemsVersion == _itemsVersion
+                                             && _distinctValuesCache.ContainsKey(key);
+                                         var distinctValues = distinctReady
+                                             ? GetDistinctValuesForColumn(key)
+                                                 .Where(v => string.IsNullOrEmpty(_filterMenuSearchText) ||
+                                                            (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
+                                                 .ToList()
+                                             : new List<string?>();
                                      }
 
                                      <div class="sg-filter-divider">@Localizer["DataGrid_FilterOrValues"]</div>
 
                                      @* Checkbox list - always render container to prevent menu collapse *@
                                      <div class="sg-filter-list-wrap">
-                                         @if (distinctValues.Count > 0)
+                                         @if (_filterDistinctLoading)
+                                         {
+                                             <div class="sg-filter-loading" role="status" aria-live="polite">
+                                                 <span class="sg-filter-spinner" aria-hidden="true"></span>
+                                                 <span>@Localizer["DataGrid_Loading"]</span>
+                                             </div>
+                                         }
+                                         else if (distinctValues.Count > 0)
                                          {
                                              <div class="sg-filter-search">
                                                  <svg class="sg-filter-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -729,19 +741,123 @@
                                                       @Localizer["DataGrid_FilterAll"]
                                                   </label>
                                              </div>
-                                              <div class="sg-filter-list">
-                                                  @foreach (var val in distinctValues)
-                                                  {
-                                                      var display = GetDisplayLabelForFilterValue(key, val);
-                                                      var selected = IsPendingValueSelected(val);
-                                                      <label class="sg-filter-item" @key="val">
-                                                          <input type="checkbox"
-                                                                 checked="@selected"
-                                                                 @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
-                                                          <span>@display</span>
-                                                      </label>
-                                                  }
-                                              </div>@* end sg-filter-list *@
+                                              @if (IsDateColumn(key))
+                                              {
+                                                  var tree = BuildDateFilterTree(key, distinctValues, _filterMenuSearchText ?? string.Empty);
+                                                  <div class="sg-filter-list sg-filter-date-tree">
+                                                      @if (tree.HasEmpty)
+                                                      {
+                                                          var emptySelected = IsPendingValueSelected(null);
+                                                          <label class="sg-filter-item">
+                                                              <input type="checkbox"
+                                                                     checked="@emptySelected"
+                                                                     @onchange="@(e => TogglePendingValueAsync(null, e.Value is true))" />
+                                                              <span>@Localizer["DataGrid_FilterEmpty"]</span>
+                                                          </label>
+                                                      }
+                                                      @foreach (var yearNode in tree.Years)
+                                                      {
+                                                          var yNode = yearNode;
+                                                          var yearDays = yNode.Months.SelectMany(m => m.Days).ToList();
+                                                          var yState = GetDateNodeState(yearDays);
+                                                          var yCollapsed = IsDateNodeCollapsed(yNode.Year);
+                                                          <div class="sg-filter-tree-node sg-filter-tree-year" @key="@yNode.Year">
+                                                              <div class="sg-filter-tree-row">
+                                                                  <button type="button" class="sg-filter-tree-toggle"
+                                                                          aria-expanded="@(yCollapsed ? "false" : "true")"
+                                                                          @onclick="@(() => ToggleDateNodeCollapsedAsync(yNode.Year))"
+                                                                          @onclick:stopPropagation="true">
+                                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                                          @if (yCollapsed)
+                                                                          {
+                                                                              <polyline points="9 6 15 12 9 18"></polyline>
+                                                                          }
+                                                                          else
+                                                                          {
+                                                                              <polyline points="6 9 12 15 18 9"></polyline>
+                                                                          }
+                                                                      </svg>
+                                                                  </button>
+                                                                  <label class="sg-filter-item sg-filter-tree-label @(yState == 1 ? "sg-filter-indeterminate" : "")">
+                                                                      <input type="checkbox"
+                                                                             checked="@(yState == 2)"
+                                                                             @onchange="@(e => ToggleDateNodeAsync(yearDays, e.Value is true))" />
+                                                                      <span>@yNode.Year</span>
+                                                                  </label>
+                                                              </div>
+                                                              @if (!yCollapsed)
+                                                              {
+                                                                  <div class="sg-filter-tree-children">
+                                                                      @foreach (var monthNode in yNode.Months)
+                                                                      {
+                                                                          var mNode = monthNode;
+                                                                          var mState = GetDateNodeState(mNode.Days);
+                                                                          var mCollapsed = IsDateNodeCollapsed(mNode.YearMonth);
+                                                                          <div class="sg-filter-tree-node sg-filter-tree-month" @key="@mNode.YearMonth">
+                                                                              <div class="sg-filter-tree-row">
+                                                                                  <button type="button" class="sg-filter-tree-toggle"
+                                                                                          aria-expanded="@(mCollapsed ? "false" : "true")"
+                                                                                          @onclick="@(() => ToggleDateNodeCollapsedAsync(mNode.YearMonth))"
+                                                                                          @onclick:stopPropagation="true">
+                                                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                                                                          @if (mCollapsed)
+                                                                                          {
+                                                                                              <polyline points="9 6 15 12 9 18"></polyline>
+                                                                                          }
+                                                                                          else
+                                                                                          {
+                                                                                              <polyline points="6 9 12 15 18 9"></polyline>
+                                                                                          }
+                                                                                      </svg>
+                                                                                  </button>
+                                                                                  <label class="sg-filter-item sg-filter-tree-label @(mState == 1 ? "sg-filter-indeterminate" : "")">
+                                                                                      <input type="checkbox"
+                                                                                             checked="@(mState == 2)"
+                                                                                             @onchange="@(e => ToggleDateNodeAsync(mNode.Days, e.Value is true))" />
+                                                                                      <span>@GetMonthLabel(mNode.Month)</span>
+                                                                                  </label>
+                                                                              </div>
+                                                                              @if (!mCollapsed)
+                                                                              {
+                                                                                  <div class="sg-filter-tree-children">
+                                                                                      @foreach (var dayRaw in mNode.Days)
+                                                                                      {
+                                                                                          var dRaw = dayRaw;
+                                                                                          var dDisplay = GetDisplayLabelForFilterValue(key, dRaw);
+                                                                                          var dSelected = IsPendingValueSelected(dRaw);
+                                                                                          <label class="sg-filter-item sg-filter-tree-leaf" @key="@dRaw">
+                                                                                              <input type="checkbox"
+                                                                                                     checked="@dSelected"
+                                                                                                     @onchange="@(e => TogglePendingValueAsync(dRaw, e.Value is true))" />
+                                                                                              <span>@dDisplay</span>
+                                                                                          </label>
+                                                                                      }
+                                                                                  </div>
+                                                                              }
+                                                                          </div>
+                                                                      }
+                                                                  </div>
+                                                              }
+                                                          </div>
+                                                      }
+                                                  </div>
+                                              }
+                                              else
+                                              {
+                                                  <div class="sg-filter-list">
+                                                      @foreach (var val in distinctValues)
+                                                      {
+                                                          var display = GetDisplayLabelForFilterValue(key, val);
+                                                          var selected = IsPendingValueSelected(val);
+                                                          <label class="sg-filter-item" @key="val">
+                                                              <input type="checkbox"
+                                                                     checked="@selected"
+                                                                     @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
+                                                              <span>@display</span>
+                                                          </label>
+                                                      }
+                                                  </div>@* end sg-filter-list *@
+                                              }
                                          }
                                          else if (!string.IsNullOrEmpty(_filterMenuSearchText))
                                          {

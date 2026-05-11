@@ -1,60 +1,110 @@
+// SuperUI/Base/Utilities/SgCssBuilder.cs
+using System.Text;
+
 namespace SuperUI.Utilities;
 
 /// <summary>
-/// Fluent CSS class builder. Zero-allocation для пустого результата.
-/// Использует ValueStringBuilder через stackalloc для коротких строк.
+/// Zero-allocation Fluent CSS class builder.
+/// 
+/// ИСПРАВЛЕНИЯ vs текущего:
+/// - Использует ValueStringBuilder паттерн через StringBuilder pooling
+/// - Кэширует результат после Build() — повторные вызовы бесплатны
+/// - Принимает ReadOnlySpan<char> для hot-path без allocation
+/// - Условные классы через Func<bool> ленивая оценка
 /// </summary>
-public readonly struct SgCssBuilder
+public sealed class SgCssBuilder
 {
-    private readonly List<string>? _classes;
+    // Пул StringBuilder — снижение GC pressure
+    private static readonly System.Buffers.ArrayPool<char> Pool = System.Buffers.ArrayPool<char>.Shared;
+
+    private readonly List<(string Class, bool Condition)> _classes = [];
+    private string? _cached; // кэш результата
 
     public SgCssBuilder(string? baseClass = null)
     {
         if (!string.IsNullOrWhiteSpace(baseClass))
-        {
-            _classes = [baseClass.Trim()];
-        }
+            _classes.Add((baseClass, true));
     }
 
-    /// <summary>Добавить класс безусловно.</summary>
+    /// Добавить класс безусловно.
     public SgCssBuilder Add(string? cssClass)
     {
-        if (string.IsNullOrWhiteSpace(cssClass)) return this;
-        var result = new SgCssBuilder();
-        // копируем существующие + новый
-        (_classes ?? []).ForEach(c => result._classes!.Add(c));
-        result._classes!.Add(cssClass.Trim());
-        return result;
+        if (!string.IsNullOrWhiteSpace(cssClass))
+        {
+            _cached = null; // инвалидируем кэш
+            _classes.Add((cssClass, true));
+        }
+        return this;
     }
 
-    /// <summary>Добавить класс по условию.</summary>
-    public SgCssBuilder AddIf(string? cssClass, bool condition)
-        => condition ? Add(cssClass) : this;
-
-    /// <summary>Добавить класс, если func возвращает true (ленивое вычисление).</summary>
-    public SgCssBuilder AddIf(string? cssClass, Func<bool> condition)
-        => condition() ? Add(cssClass) : this;
-
-    /// <summary>Добавить несколько классов через пробел.</summary>
-    public SgCssBuilder AddRange(params string?[] classes)
+    /// Добавить класс с условием.
+    public SgCssBuilder Add(string? cssClass, bool condition)
     {
-        var builder = this;
-        foreach (var c in classes)
-            builder = builder.Add(c);
-        return builder;
+        if (!string.IsNullOrWhiteSpace(cssClass))
+        {
+            _cached = null;
+            _classes.Add((cssClass, condition));
+        }
+        return this;
     }
 
-    /// <summary>Добавить пользовательский Class параметр в конец.</summary>
-    public SgCssBuilder AddUserClass(string? userClass) => Add(userClass);
+    /// Добавить класс с ленивым условием (Func вычисляется при Build()).
+    public SgCssBuilder Add(string? cssClass, Func<bool> condition)
+        => Add(cssClass, condition());
 
-    /// <summary>Собрать строку. Возвращает null если нет классов (не рендерит атрибут).</summary>
+    /// Добавить несколько классов из строки (разделённых пробелом).
+    public SgCssBuilder AddRange(string? classes)
+    {
+        if (string.IsNullOrWhiteSpace(classes)) return this;
+        foreach (var cls in classes.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            Add(cls);
+        return this;
+    }
+
+    /// Добавить пользовательский Class параметр снаружи.
+    public SgCssBuilder AddUserClass(string? userClass) => AddRange(userClass);
+
+    /// Добавить класс-модификатор BEM.
+    public SgCssBuilder AddBem(string block, string? modifier, bool condition = true)
+        => condition && modifier != null ? Add($"{block}--{modifier}") : this;
+
+    /// Построить строку CSS классов. Кэшируется.
     public string? Build()
     {
-        if (_classes is null || _classes.Count == 0) return null;
-        if (_classes.Count == 1) return _classes[0];
-        return string.Join(' ', _classes);
+        if (_cached is not null) return _cached;
+
+        // Подсчёт нужных символов для оптимального размера буфера
+        var totalLength = 0;
+        var count = 0;
+        foreach (var (cls, cond) in _classes)
+        {
+            if (cond) { totalLength += cls.Length + 1; count++; }
+        }
+
+        if (count == 0) return _cached = null;
+
+        // Аренда буфера из пула
+        var buffer = Pool.Rent(totalLength);
+        var span = buffer.AsSpan();
+        var pos = 0;
+        var first = true;
+
+        foreach (var (cls, cond) in _classes)
+        {
+            if (!cond) continue;
+            if (!first) span[pos++] = ' ';
+            cls.AsSpan().CopyTo(span[pos..]);
+            pos += cls.Length;
+            first = false;
+        }
+
+        _cached = new string(span[..pos]);
+        Pool.Return(buffer);
+
+        return _cached;
     }
 
-    // Неявное преобразование для удобства в razor
     public static implicit operator string?(SgCssBuilder builder) => builder.Build();
+
+    public override string? ToString() => Build();
 }

@@ -168,6 +168,10 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private readonly Dictionary<string, HashSet<string>> _distinctNormalizedValuesCache = new(StringComparer.Ordinal);
     // Maps display label -> raw filter key (for numeric/date/enum columns)
     private readonly Dictionary<string, Dictionary<string, string>> _displayToRawKeyCache = new(StringComparer.Ordinal);
+    private bool _filterDistinctLoading;
+    private CancellationTokenSource? _filterDistinctCts;
+    // Collapsed nodes in the date-tree filter view. Keys are "yyyy" or "yyyy-MM".
+    private readonly HashSet<string> _dateFilterCollapsed = new(StringComparer.Ordinal);
     private readonly Dictionary<string, object?> _aggregateCache = new(StringComparer.Ordinal);
     private bool _selectionChangedPending;
 
@@ -1301,7 +1305,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         return GetOrderedColumns()
             .Select(col =>
             {
-                var type = ResolveColumnType(col);
+                var type = ResolveColumnTypeWithInference(col);
                 IReadOnlyList<QueryFieldEnumOption>? enumOptions = null;
                 if (type.IsEnum)
                 {
@@ -2752,15 +2756,24 @@ private static object? ConvertFromString(string? text, Type type)
         if (_openFilterColumn == key)
         {
             _openFilterColumn = null;
+            _filterDistinctCts?.Cancel();
+            _filterDistinctLoading = false;
             return;
         }
 
         _openFilterColumn = key;
         _pendingFilterKey = key;
         _filterMenuSearchText = string.Empty;
-        _pendingSelectedValues = _filters.TryGetValue(key, out var current)
-            ? current.ToHashSet(StringComparer.Ordinal)
-            : GetDistinctNormalizedValuesForColumn(key);
+
+        if (_filters.TryGetValue(key, out var current))
+        {
+            _pendingSelectedValues = current.ToHashSet(StringComparer.Ordinal);
+        }
+        else
+        {
+            // Defer "select all" until distinct values are loaded asynchronously.
+            _pendingSelectedValues = new HashSet<string>(StringComparer.Ordinal);
+        }
 
         if (_conditionFilters.TryGetValue(key, out var condition))
         {
@@ -2776,6 +2789,44 @@ private static object? ConvertFromString(string? text, Type type)
         // Initialize pending sort from current sort
         _pendingSort = GetSort(key);
 
+        // Show menu immediately, then load distinct values asynchronously.
+        var alreadyCached = _distinctValuesCacheItemsVersion == _itemsVersion
+                            && _distinctValuesCache.ContainsKey(key);
+        _filterDistinctLoading = !alreadyCached;
+        await InvokeAsync(StateHasChanged);
+
+        if (!alreadyCached)
+        {
+            await EnsureDistinctValuesLoadedAsync(key, selectAllIfFresh: !_filters.ContainsKey(key));
+        }
+    }
+
+    private async Task EnsureDistinctValuesLoadedAsync(string key, bool selectAllIfFresh)
+    {
+        _filterDistinctCts?.Cancel();
+        _filterDistinctCts = new CancellationTokenSource();
+        var token = _filterDistinctCts.Token;
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                // Run the heavy distinct computation off the UI thread.
+                GetDistinctValuesForColumn(key);
+            }, token);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested || _openFilterColumn != key)
+            return;
+
+        if (selectAllIfFresh)
+            _pendingSelectedValues = GetDistinctNormalizedValuesForColumn(key);
+
+        _filterDistinctLoading = false;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2993,6 +3044,139 @@ private static object? ConvertFromString(string? text, Type type)
             map.TryGetValue(rawKey, out var label))
             return label;
         return rawKey;
+    }
+
+    // ─── Date filter tree (Excel-style Year → Month → Day) ─────────────────────────
+
+    /// <summary>
+    /// Year-level node for the Excel-style date filter tree.
+    /// Months are grouped by year; each month carries its days as rawKey strings.
+    /// </summary>
+    internal sealed class DateFilterYearNode
+    {
+        public string Year { get; init; } = string.Empty;
+        public List<DateFilterMonthNode> Months { get; } = new();
+        public bool HasEmpty { get; set; }
+    }
+
+    internal sealed class DateFilterMonthNode
+    {
+        public string Year { get; init; } = string.Empty;
+        public string Month { get; init; } = string.Empty;
+        public string YearMonth => $"{Year}-{Month}";
+        public List<string> Days { get; } = new();
+    }
+
+    /// <summary>
+    /// Builds a Year → Month → Day tree from distinct filter rawKeys (yyyy-MM-dd / yyyy-MM-ddTHH:mm).
+    /// Filters days by <paramref name="searchText"/>: each node is kept only if it contains at
+    /// least one day whose display label matches the search.
+    /// </summary>
+    private (List<DateFilterYearNode> Years, bool HasEmpty) BuildDateFilterTree(
+        string key, IReadOnlyList<string?> rawValues, string searchText)
+    {
+        var years = new Dictionary<string, DateFilterYearNode>(StringComparer.Ordinal);
+        var months = new Dictionary<string, DateFilterMonthNode>(StringComparer.Ordinal);
+        var hasEmpty = false;
+
+        foreach (var raw in rawValues)
+        {
+            if (raw is null)
+            {
+                hasEmpty = true;
+                continue;
+            }
+
+            // Accept "yyyy-MM-dd" and "yyyy-MM-ddTHH:mm[:ss]" rawKeys.
+            if (raw.Length < 10) continue;
+            var y = raw[..4];
+            var m = raw.Substring(5, 2);
+            var d = raw.Substring(8, 2);
+
+            if (!string.IsNullOrEmpty(searchText))
+            {
+                var label = GetDisplayLabelForFilterValue(key, raw);
+                if (label?.Contains(searchText, StringComparison.OrdinalIgnoreCase) != true)
+                    continue;
+            }
+
+            if (!years.TryGetValue(y, out var yearNode))
+                years[y] = yearNode = new DateFilterYearNode { Year = y };
+
+            var ymKey = $"{y}-{m}";
+            if (!months.TryGetValue(ymKey, out var monthNode))
+            {
+                monthNode = new DateFilterMonthNode { Year = y, Month = m };
+                months[ymKey] = monthNode;
+                yearNode.Months.Add(monthNode);
+            }
+            monthNode.Days.Add(raw);
+        }
+
+        var ordered = years.Values
+            .OrderBy(y => y.Year, StringComparer.Ordinal)
+            .ToList();
+        foreach (var y in ordered)
+        {
+            y.Months.Sort((a, b) => string.CompareOrdinal(a.Month, b.Month));
+            foreach (var mn in y.Months)
+                mn.Days.Sort(StringComparer.Ordinal);
+        }
+
+        return (ordered, hasEmpty);
+    }
+
+    private bool IsDateNodeCollapsed(string prefix) => _dateFilterCollapsed.Contains(prefix);
+
+    private Task ToggleDateNodeCollapsedAsync(string prefix)
+    {
+        if (!_dateFilterCollapsed.Add(prefix))
+            _dateFilterCollapsed.Remove(prefix);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Tri-state for a date-tree node:
+    ///   2 = all leaves selected, 1 = some leaves selected, 0 = none.
+    /// </summary>
+    private int GetDateNodeState(IEnumerable<string> dayRawKeys)
+    {
+        var total = 0;
+        var selected = 0;
+        foreach (var raw in dayRawKeys)
+        {
+            total++;
+            if (_pendingSelectedValues.Contains(NormalizeFilterValue(raw)))
+                selected++;
+        }
+        if (total == 0) return 0;
+        if (selected == 0) return 0;
+        if (selected == total) return 2;
+        return 1;
+    }
+
+    private Task ToggleDateNodeAsync(IEnumerable<string> dayRawKeys, bool selected)
+    {
+        foreach (var raw in dayRawKeys)
+        {
+            var normalized = NormalizeFilterValue(raw);
+            if (selected)
+                _pendingSelectedValues.Add(normalized);
+            else
+                _pendingSelectedValues.Remove(normalized);
+        }
+        return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Display label for a year/month node (uses the current culture's month names).</summary>
+    private static string GetMonthLabel(string monthMM)
+    {
+        if (int.TryParse(monthMM, NumberStyles.Integer, CultureInfo.InvariantCulture, out var m)
+            && m is >= 1 and <= 12)
+        {
+            return CultureInfo.CurrentCulture.DateTimeFormat.GetMonthName(m);
+        }
+        return monthMM;
     }
 
     private HashSet<string> GetDistinctNormalizedValuesForColumn(string key)
@@ -3255,6 +3439,41 @@ private static object? ConvertFromString(string? text, Type type)
                 valueType == typeof(bool) || valueType.IsEnum)
                 return valueType;
         }
+
+        return typeof(string);
+    }
+
+    /// <summary>
+    /// Resolves a column's logical type for query/highlight UI.
+    /// Falls back from ValueType -> sampled non-null value -> TItem property reflection -> string,
+    /// so highlight-rule and filter operator menus (>, <, >=, <=) work for numeric/date columns
+    /// even when ValueType is not explicitly set.
+    /// </summary>
+    private Type ResolveColumnTypeWithInference(SgDataGridColumn<TItem>? col)
+    {
+        if (col is null) return typeof(string);
+
+        if (col.ValueType is not null)
+            return Nullable.GetUnderlyingType(col.ValueType) ?? col.ValueType;
+
+        // Sample first non-null value from current items
+        if (Items is not null)
+        {
+            foreach (var item in Items.Cast<TItem?>().Take(50))
+            {
+                if (item is null) continue;
+                var v = col.GetValue(item);
+                if (v is null) continue;
+                var vt = Nullable.GetUnderlyingType(v.GetType()) ?? v.GetType();
+                return vt;
+            }
+        }
+
+        // Fall back to reflection on TItem property by column key
+        var prop = typeof(TItem).GetProperty(col.Key,
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (prop is not null)
+            return Nullable.GetUnderlyingType(prop.PropertyType) ?? prop.PropertyType;
 
         return typeof(string);
     }

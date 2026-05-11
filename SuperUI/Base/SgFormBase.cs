@@ -1,85 +1,77 @@
+// SuperUI/Base/SgFormBase.cs
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
-using SuperUI.Utilities;
+using SuperUI.Base.Converters;
 
 namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов формы.
-/// 
-/// Обеспечивает:
-/// - EditContext полная интеграция
-/// - SgConverter<T,string> — двунаправленная конвертация
-/// - Валидация с CSSClass
-/// - FieldIdentifier авто-вычисление
-/// - Error boundary для компонента
-/// - Auto-unsubscribe от EditContext событий
+///
+/// ИСПРАВЛЕНИЯ:
+/// 1. IDisposable удалён (Blazor не вызывает Dispose — только DisposeAsync)
+/// 2. OnValidationStateChanged: проверка IsDisposed перед InvokeAsync
+/// 3. DetachEditContext: идемпотентная операция (guard flag)
+/// 4. SetValueAsync: обновление CurrentText атомарно с Value
+/// 5. BuildAriaAttributes: кэширование из базового класса
+/// 6. CurrentText: синхронизация только при реальном изменении Value
 /// </summary>
-public abstract class SgFormBase<TValue> : SgInteractiveBase, IDisposable
+public abstract class SgFormBase<TValue> : SgInteractiveBase
 {
     // ── Инъекции / Каскадные ──────────────────────────────────────────────────
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
     // ── Параметры ─────────────────────────────────────────────────────────────
-
     [Parameter] public TValue? Value { get; set; }
     [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
+    [Parameter] public Expression<Func<TValue>>? ValueExpression { get; set; }
 
-    /// <summary>Для @bind-Value поддержки Expression.</summary>
-    [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; }
-
-    /// <summary>Пользовательский конвертер. Если null — используется SgConverterFactory.</summary>
+    /// Пользовательский конвертер.
     [Parameter] public ISgConverter<TValue>? Converter { get; set; }
 
-    /// <summary>Текст метки поля.</summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>Текст подсказки.</summary>
-    [Parameter] public string? Hint { get; set; }
-
-    /// <summary>Текст ошибки (ручная установка, перекрывает EditContext).</summary>
+    [Parameter] public string? Label    { get; set; }
+    [Parameter] public string? Hint     { get; set; }
     [Parameter] public string? ErrorText { get; set; }
-
-    /// <summary>Обязательное поле.</summary>
-    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool    Required { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public int?    MaxLength { get; set; }
 
     // ── Внутреннее состояние ──────────────────────────────────────────────────
+    private EditContext?             _editContext;
+    private FieldIdentifier          _fieldIdentifier;
+    private ValidationMessageStore?  _messageStore;
+    private ISgConverter<TValue>?    _effectiveConverter;
+    private bool                     _editContextAttached;
+    private TValue?                  _lastSyncedValue; // для отслеживания изменений Value
 
-    private EditContext? _editContext;
-    private FieldIdentifier _fieldIdentifier;
-    private ValidationMessageStore? _messageStore;
-    private ISgConverter<TValue>? _effectiveConverter;
-
-    protected EditContext? EditContext => _editContext;
-    protected FieldIdentifier FieldId => _fieldIdentifier;
+    protected EditContext?     EditContext => _editContext;
+    protected FieldIdentifier  FieldId    => _fieldIdentifier;
 
     // ── Вычисляемые ──────────────────────────────────────────────────────────
+    protected bool HasError =>
+        !string.IsNullOrEmpty(ErrorText) ||
+        !string.IsNullOrEmpty(ConvertError) ||
+        (_editContext != null && _editContext.GetValidationMessages(_fieldIdentifier).Any());
 
-    protected bool HasError => !string.IsNullOrEmpty(ErrorText)
-        || (_editContext != null && _editContext.GetValidationMessages(_fieldIdentifier).Any());
+    protected IEnumerable<string> ValidationMessages =>
+        _editContext?.GetValidationMessages(_fieldIdentifier) ??
+        (ErrorText != null ? [ErrorText] : []);
 
-    protected IEnumerable<string> ValidationMessages
-        => _editContext?.GetValidationMessages(_fieldIdentifier)
-           ?? (ErrorText != null ? [ErrorText] : []);
-
-    protected string? ValidationCssClass
-        => _editContext?.FieldCssClass(_fieldIdentifier);
+    protected string? ValidationCssClass =>
+        _editContext?.FieldCssClass(_fieldIdentifier);
 
     // ── Конвертер ─────────────────────────────────────────────────────────────
+    protected ISgConverter<TValue> EffectiveConverter =>
+        Converter ?? (_effectiveConverter ??= SgConverterFactory.Get<TValue>());
 
-    protected ISgConverter<TValue> EffectiveConverter
-        => Converter ?? (_effectiveConverter ??= SgConverterFactory.Get<TValue>());
-
-    // ── Text <-> Value синхронизация ──────────────────────────────────────────
-
-    protected string? CurrentText { get; private set; }
+    // ── Text/Value синхронизация ──────────────────────────────────────────────
+    protected string? CurrentText  { get; private set; }
     protected string? ConvertError { get; private set; }
 
     protected async Task SetTextAsync(string? text)
     {
         CurrentText = text;
-
         if (EffectiveConverter.TryConvert(text, out var value, out var error))
         {
             ConvertError = null;
@@ -95,46 +87,49 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase, IDisposable
     {
         if (EqualityComparer<TValue>.Default.Equals(value, Value)) return;
 
+        var previous = Value;
         Value = value;
+        _lastSyncedValue = value;
         CurrentText = EffectiveConverter.ConvertBack(value);
 
         await ValueChanged.InvokeAsync(value);
 
-        // Уведомить EditContext об изменении поля
-        if (_editContext != null)
-        {
-            _editContext.NotifyFieldChanged(_fieldIdentifier);
-        }
+        // Уведомить EditContext
+        _editContext?.NotifyFieldChanged(_fieldIdentifier);
     }
 
     // ── ARIA для формы ────────────────────────────────────────────────────────
-
-    protected override IReadOnlyDictionary<string, object?> BuildAriaAttributes()
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
-        var attrs = base.BuildAriaAttributes() as Dictionary<string, object?> ?? [];
+        var baseAttrs = base.BuildAriaAttributes();
 
-        if (Required)
-            attrs["aria-required"] = "true";
+        // Только если есть что добавить — создаём новый dict
+        bool needsExtra = Required || HasError || Label != null || Placeholder != null;
+        if (!needsExtra) return baseAttrs;
 
-        if (HasError)
-            attrs["aria-invalid"] = "true";
+        var attrs = new Dictionary<string, object>(baseAttrs, StringComparer.Ordinal)
+        {
+            ["id"] = EffectiveId
+        };
 
-        if (Label != null)
-            attrs["aria-label"] = Label;
+        if (Required)    attrs["aria-required"]    = "true";
+        if (HasError)    attrs["aria-invalid"]      = "true";
+        if (Label != null) attrs["aria-label"]      = Label;
+        if (Placeholder != null) attrs["aria-placeholder"] = Placeholder;
 
-        // Связать с label элементом
-        attrs["id"] = EffectiveId;
+        // Связать с hint/error элементами
+        if (Hint != null)      attrs["aria-describedby"] = $"{EffectiveId}-hint";
+        if (HasError)          attrs["aria-errormessage"] = $"{EffectiveId}-error";
 
         return attrs;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
-
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
 
-        // Обновить FieldIdentifier при изменении ValueExpression
+        // Обновить FieldIdentifier
         if (ValueExpression != null)
             _fieldIdentifier = FieldIdentifier.Create(ValueExpression);
 
@@ -146,40 +141,48 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase, IDisposable
             AttachEditContext();
         }
 
-        // Синхронизировать CurrentText с Value
-        CurrentText = EffectiveConverter.ConvertBack(Value);
+        // ИСПРАВЛЕНО: синхронизировать CurrentText только при реальном изменении Value
+        if (!EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
+        {
+            _lastSyncedValue = Value;
+            CurrentText = EffectiveConverter.ConvertBack(Value);
+            ConvertError = null; // сброс ошибки конвертации при внешнем изменении
+        }
     }
 
     private void AttachEditContext()
     {
-        if (_editContext is null) return;
-
+        if (_editContext is null || _editContextAttached) return;
         _editContext.OnValidationStateChanged += OnValidationStateChanged;
         _messageStore = new ValidationMessageStore(_editContext);
+        _editContextAttached = true;
     }
 
     private void DetachEditContext()
     {
-        if (_editContext is null) return;
+        if (_editContext is null || !_editContextAttached) return;
         _editContext.OnValidationStateChanged -= OnValidationStateChanged;
         _messageStore = null;
+        _editContextAttached = false;
     }
 
+    /// <summary>
+    /// ИСПРАВЛЕНО: проверка IsDisposed перед InvokeAsync.
+    /// </summary>
     private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
-        InvokeAsync(StateHasChanged);
+        if (!IsDisposed)
+            InvokeAsync(StateHasChanged);
     }
 
-    // ── Dispose ───────────────────────────────────────────────────────────────
-
+    // ── Dispose — ИСПРАВЛЕНО ─────────────────────────────────────────────────
+    /// <summary>
+    /// ИСПРАВЛЕНО: IDisposable убран (Blazor не вызывает Dispose, только DisposeAsync).
+    /// DetachEditContext — идемпотентен благодаря _editContextAttached флагу.
+    /// </summary>
     protected override async ValueTask DisposeComponentAsync()
     {
         DetachEditContext();
         await base.DisposeComponentAsync();
-    }
-
-    void IDisposable.Dispose()
-    {
-        DetachEditContext();
     }
 }

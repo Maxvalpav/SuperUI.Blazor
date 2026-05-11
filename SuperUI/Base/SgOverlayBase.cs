@@ -1,3 +1,4 @@
+// SuperUI/Base/SgOverlayBase.cs
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using SuperUI.Services;
@@ -5,167 +6,195 @@ using SuperUI.Services;
 namespace SuperUI.Base;
 
 /// <summary>
-/// Базовый класс для оверлейных компонентов: Modal, Drawer, Popover, Tooltip, ContextMenu.
-/// 
-/// Обеспечивает:
-/// - ZIndex управление через ZIndexService
-/// - FocusTrap интеграция
-/// - Portal рендеринг (teleport to body)
-/// - Анимация открытия/закрытия
-/// - Escape key обработка
-/// - Body scroll lock
-/// - ARIA dialog/alertdialog
+/// Базовый класс для оверлейных компонентов.
+///
+/// ИСПРАВЛЕНИЯ:
+/// 1. Двойной вызов OnOpenAsync/OnCloseAsync — флаг _isProcessingOverlay
+/// 2. Task.Delay в OnCloseAsync — не прерывает cleanup при OperationCanceledException
+/// 3. DisposeAsync: закрытие без анимации при dispose
+/// 4. OpenAsync/CloseAsync: идемпотентны с проверкой состояния
 /// </summary>
 public abstract class SgOverlayBase : SgInteractiveBase
 {
     // ── Инъекции ──────────────────────────────────────────────────────────────
-    [Inject] protected IZIndexService ZIndexService { get; set; } = null!;
-    [Inject] protected IFocusTrapService FocusTrapService { get; set; } = null!;
+    [Inject] protected IZIndexService      ZIndexService      { get; set; } = null!;
+    [Inject] protected IFocusTrapService   FocusTrapService   { get; set; } = null!;
 
     // ── Параметры ─────────────────────────────────────────────────────────────
-
-    [Parameter] public bool Open { get; set; }
+    [Parameter] public bool Open                    { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
-    [Parameter] public bool CloseOnEscape { get; set; } = true;
-    [Parameter] public bool CloseOnBackdropClick { get; set; } = true;
-    [Parameter] public bool LockBodyScroll { get; set; } = true;
-    [Parameter] public bool TrapFocus { get; set; } = true;
+    [Parameter] public bool CloseOnEscape           { get; set; } = true;
+    [Parameter] public bool CloseOnBackdropClick    { get; set; } = true;
+    [Parameter] public bool LockBodyScroll          { get; set; } = true;
+    [Parameter] public bool TrapFocus               { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     // ── Внутреннее состояние ──────────────────────────────────────────────────
-
-    private int _zIndex;
-    private bool _wasOpen;
+    private int    _zIndex;
+    private bool   _wasOpen;
     private string? _focusTrapId;
+    private bool   _isProcessingOverlay; // ИСПРАВЛЕНО: защита от двойного вызова
 
-    protected int EffectiveZIndex => _zIndex;
-    protected bool IsAnimatingClose { get; private set; }
+    protected int  EffectiveZIndex    => _zIndex;
+    protected bool IsAnimatingClose   { get; private set; }
 
     // ── ARIA ──────────────────────────────────────────────────────────────────
-
     protected virtual string AriaRole => "dialog";
 
-    protected override IReadOnlyDictionary<string, object?> BuildAriaAttributes()
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
-        var attrs = base.BuildAriaAttributes() as Dictionary<string, object?> ?? [];
-        attrs["role"] = AriaRole;
-        attrs["aria-modal"] = "true";
-        attrs["aria-hidden"] = (!Open).ToString().ToLower();
+        var base_ = base.BuildAriaAttributes();
+        var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal)
+        {
+            ["role"]       = AriaRole,
+            ["aria-modal"] = "true",
+            ["aria-hidden"] = (!Open).ToString().ToLower()
+        };
         return attrs;
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        OnKey("Escape", async () =>
+        {
+            if (CloseOnEscape && Open) await CloseAsync();
+        });
+        base.OnInitialized();
+    }
 
+    /// <summary>
+    /// ИСПРАВЛЕНО: _isProcessingOverlay предотвращает двойной вызов
+    /// из OnParametersSetAsync и OpenAsync/CloseAsync одновременно.
+    /// </summary>
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
+        // ИСПРАВЛЕНО: только если не обрабатывается программное открытие/закрытие
+        if (_isProcessingOverlay) return;
+
         if (Open && !_wasOpen)
         {
-            await OnOpenAsync();
+            _wasOpen = Open;
+            await OnOpenCoreAsync();
         }
         else if (!Open && _wasOpen)
         {
-            await OnCloseAsync();
+            _wasOpen = Open;
+            await OnCloseCoreAsync(animate: true);
         }
-
-        _wasOpen = Open;
-    }
-
-    protected override void OnInitialized()
-    {
-        // Регистрируем Escape
-        OnKey("Escape", async () =>
-        {
-            if (CloseOnEscape && Open)
-                await CloseAsync();
-        });
-
-        base.OnInitialized();
     }
 
     // ── Открытие / Закрытие ───────────────────────────────────────────────────
-
-    protected virtual async Task OnOpenAsync()
+    private async Task OnOpenCoreAsync()
     {
-        // Получить z-index из сервиса
         _zIndex = ZIndexService.GetNext();
 
-        // Заблокировать скролл body
         if (LockBodyScroll)
             await SafeInvokeVoidAsync("lockBodyScroll", ComponentId);
 
-        // Установить FocusTrap
         if (TrapFocus)
         {
             _focusTrapId = ComponentId;
             await FocusTrapService.ActivateAsync(_focusTrapId);
         }
 
+        await OnOpenAsync();
         StateHasChanged();
     }
 
-    protected virtual async Task OnCloseAsync()
+    /// <summary>
+    /// ИСПРАВЛЕНО: cleanup гарантирован даже при OperationCanceledException.
+    /// Используем отдельный CTS для анимации, не ComponentToken.
+    /// </summary>
+    private async Task OnCloseCoreAsync(bool animate = true)
     {
-        IsAnimatingClose = true;
-        StateHasChanged();
+        if (animate)
+        {
+            IsAnimatingClose = true;
+            StateHasChanged();
 
-        // Ждём анимацию
-        await Task.Delay(AnimationDurationMs, ComponentToken);
+            // ИСПРАВЛЕНО: используем отдельный cts для анимации с timeout
+            using var animCts = new CancellationTokenSource(
+                TimeSpan.FromMilliseconds(AnimationDurationMs + 100)); // +100ms buffer
+            try
+            {
+                await Task.Delay(AnimationDurationMs, animCts.Token);
+            }
+            catch (OperationCanceledException) { /* анимация прервана — продолжаем cleanup */ }
 
-        IsAnimatingClose = false;
+            IsAnimatingClose = false;
+        }
 
-        // Освободить FocusTrap
+        // ИСПРАВЛЕНО: cleanup всегда выполняется
         if (TrapFocus && _focusTrapId != null)
         {
             await FocusTrapService.DeactivateAsync(_focusTrapId);
             _focusTrapId = null;
         }
 
-        // Разблокировать скролл
         if (LockBodyScroll)
             await SafeInvokeVoidAsync("unlockBodyScroll", ComponentId);
 
-        // Вернуть z-index
         ZIndexService.Release(_zIndex);
         _zIndex = 0;
 
+        await OnCloseAsync();
         StateHasChanged();
     }
 
-    /// <summary>Длительность анимации в мс. Переопределить для каждого оверлея.</summary>
+    /// Переопределить для дополнительной логики при открытии.
+    protected virtual Task OnOpenAsync() => Task.CompletedTask;
+
+    /// Переопределить для дополнительной логики при закрытии.
+    protected virtual Task OnCloseAsync() => Task.CompletedTask;
+
     protected virtual int AnimationDurationMs => 300;
 
+    /// <summary>
+    /// ИСПРАВЛЕНО: _isProcessingOverlay предотвращает дублирование из OnParametersSetAsync.
+    /// </summary>
     public async Task OpenAsync()
     {
-        if (Open) return;
-        Open = true;
-        await OpenChanged.InvokeAsync(true);
-        await OnOpenAsync();
+        if (Open || _isProcessingOverlay) return;
+        _isProcessingOverlay = true;
+        try
+        {
+            Open = true;
+            _wasOpen = true;
+            await OpenChanged.InvokeAsync(true);
+            await OnOpenCoreAsync();
+        }
+        finally { _isProcessingOverlay = false; }
     }
 
     public async Task CloseAsync()
     {
-        if (!Open) return;
-        Open = false;
-        await OpenChanged.InvokeAsync(false);
-        await OnCloseAsync();
+        if (!Open || _isProcessingOverlay) return;
+        _isProcessingOverlay = true;
+        try
+        {
+            Open = false;
+            _wasOpen = false;
+            await OpenChanged.InvokeAsync(false);
+            await OnCloseCoreAsync(animate: true);
+        }
+        finally { _isProcessingOverlay = false; }
     }
 
     protected async Task HandleBackdropClickAsync(MouseEventArgs e)
     {
-        if (CloseOnBackdropClick)
-            await CloseAsync();
+        if (CloseOnBackdropClick) await CloseAsync();
     }
 
-    // ── Dispose ───────────────────────────────────────────────────────────────
-
+    // ── Dispose — ИСПРАВЛЕНО ─────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
-        if (Open)
-        {
-            await OnCloseAsync();
-        }
+        // ИСПРАВЛЕНО: закрываем без анимации при dispose
+        if (Open || _focusTrapId != null || _zIndex > 0)
+            await OnCloseCoreAsync(animate: false);
+
         await base.DisposeComponentAsync();
     }
 }
