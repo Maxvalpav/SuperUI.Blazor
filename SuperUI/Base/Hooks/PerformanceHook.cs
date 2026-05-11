@@ -1,28 +1,33 @@
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
 using SuperUI.Base;
 
-namespace SuperUI.Hooks;
+namespace SuperUI.Base.Hooks;
 
 /// <summary>
-/// Хук для логирования производительности первого рендера.
+/// Хук для логирования производительности рендера.
+/// Логирует время рендера если оно превышает 1 кадр (16 мс).
 /// </summary>
-public sealed class PerformanceHook : IAsyncComponentHook
+public sealed class PerformanceHook : IAsyncComponentHook, IRenderHook
 {
-    private readonly ILogger _logger;
-    private readonly Stopwatch _sw = new();
+    private long _renderStart;
 
-    public PerformanceHook(ILogger logger) => _logger = logger;
+    public void OnInitialized(SgComponentBase component) { }
 
-    public void OnInitialized(SgComponentBase c)
-        => _sw.Restart();
-
-    public Task OnAfterRenderAsync(SgComponentBase c, bool firstRender)
+    public bool ShouldRender(SgComponentBase component)
     {
-        if (firstRender)
-            _logger.LogDebug("[{Id}] First render: {Ms}ms", c.ComponentId, _sw.ElapsedMilliseconds);
-        return Task.CompletedTask;
+        _renderStart = Stopwatch.GetTimestamp();
+        return true;
     }
 
-    public bool ShouldRender(SgComponentBase c) => true;
+    public void OnAfterRender(SgComponentBase component, bool firstRender)
+    {
+        var elapsed = Stopwatch.GetElapsedTime(_renderStart).TotalMilliseconds;
+        if (elapsed > 16) // > 1 frame
+            Console.WriteLine($"[PERF] {component.ComponentId}: {elapsed:F1}ms");
+    }
+
+    public Task OnInitializedAsync(SgComponentBase component) => Task.CompletedTask;
+    public Task OnParametersSetAsync(SgComponentBase component) => Task.CompletedTask;
+    public Task OnAfterRenderAsync(SgComponentBase component, bool firstRender) => Task.CompletedTask;
+    public void OnParametersSet(SgComponentBase component) { }
 }

@@ -1,6 +1,7 @@
 @using System.Threading.Tasks
 @inherits Microsoft.AspNetCore.Components.Web.ErrorBoundary
-@* Компонент Error Boundary для отдельного компонента *@
+
+@* Компонент Error Boundary для изоляции ошибок отдельного компонента *@
 
 @if (_error is null)
 {
@@ -8,38 +9,60 @@
 }
 else
 {
-    @if (FallbackContent != null)
+    @if (FallbackContent is not null)
     {
         @FallbackContent(_error)
     }
     else
     {
         <div class="sg-error-boundary" role="alert">
-            <div class="sg-alert sg-alert-danger" role="alert">
-                <strong>Ошибка компонента:</strong> @_error.Message
+            <div class="sg-error-boundary__message">
+                ⚠️ Ошибка компонента: @_error.Message
             </div>
-            <button class="sg-btn sg-btn-secondary" @onclick="Reset">Повторить</button>
+            <button class="sg-btn sg-btn--sm sg-btn--secondary"
+                    type="button"
+                    @onclick="ResetAsync">
+                Повторить
+            </button>
         </div>
     }
 }
 
 @code {
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public RenderFragment<Exception>? FallbackContent { get; set; }
-    [Parameter] public EventCallback<Exception> OnError { get; set; }
+    [Parameter] public RenderFragment?             ChildContent    { get; set; }
+    [Parameter] public RenderFragment<Exception>?  FallbackContent { get; set; }
+    [Parameter] public EventCallback<Exception>    OnError         { get; set; }
 
     private Exception? _error;
 
     protected override void OnParametersSet()
     {
+        // Сброс ошибки при смене параметров — позволяет восстановление извне
         _error = null;
     }
 
-    protected override async ValueTask OnErrorAsync(Exception exception)
+    /// <summary>
+    /// ✅ ИСПРАВЛЕНИЕ CS0508:
+    /// Было:   protected override async ValueTask OnErrorAsync(Exception exception)
+    ///         → CS0508: возвращаемый тип должен быть Task
+    /// Стало:  protected override async Task OnErrorAsync(Exception exception)
+    ///
+    /// В Blazor 8+ сигнатура ErrorBoundary.OnErrorAsync вернулась к Task (не ValueTask).
+    /// Контракт: Microsoft.AspNetCore.Components.Web.ErrorBoundary.OnErrorAsync(Exception)
+    /// </summary>
+    protected override async Task OnErrorAsync(Exception exception)
     {
         _error = exception;
-        await OnError.InvokeAsync(exception);
+
+        // Уведомляем внешних подписчиков об ошибке
+        if (OnError.HasDelegate)
+            await OnError.InvokeAsync(exception);
     }
 
-    private void Reset() => _error = null;
+    private async Task ResetAsync()
+    {
+        _error = null;
+        Recover(); // встроенный метод ErrorBoundary для сброса состояния
+        await Task.CompletedTask;
+    }
 }

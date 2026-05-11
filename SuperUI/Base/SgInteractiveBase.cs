@@ -1,66 +1,79 @@
-// SuperUI/Base/SgInteractiveBase.cs
 using System.Globalization;
-using System.Threading;
+using System.Runtime.CompilerServices;
+using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using SuperUI.Services;
+using Microsoft.Extensions.Logging;
+using SuperUI.Base.Reactive;
+using SuperUI.Base.Services;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Базовый класс для интерактивных компонентов.
-///
-/// ИСПРАВЛЕНИЯ:
-/// 1. DebounceAsync: Task.Run → async void паттерн без ThreadPool overhead
-/// 2. ThrottleAsync: добавлен Dispose очистки _throttlers
-/// 3. Timer + PeriodicTimer: взаимоисключающая активация
-/// 4. _debouncers: Lock для thread-safety в многопоточном WASM
-/// 5. PeriodicTimer task: правильное await в DisposeComponentAsync
+/// Базовый класс для интерактивных компонентов SuperUI.
+/// Уровень 3 в иерархии: ComponentBase → SgComponentBase → SgJsComponentBase → SgInteractiveBase
 /// </summary>
+/// <remarks>
+/// ИСПРАВЛЕНИЯ:
+/// 1. CS1061: добавлен using Microsoft.Extensions.Logging для LogError/LogWarning
+/// 2. CS0246: добавлен using SuperUI.Base.Services для IKeyboardService
+/// 3. CS1660: Subscribe использует SgObserver<T> вместо лямбды напрямую
+/// 4. CS0208: BuildKeyString использует ValueStringBuilder вместо stackalloc string[]
+/// 5. DebounceAsync: Lock для thread-safety, без Task.Run
+/// 6. ThrottleAsync: Dispose очистки _throttlers в DisposeComponentAsync
+/// 7. Timer + PeriodicTimer: взаимоисключающая активация через TimerMode
+/// 8. PeriodicTimer task: правильное await в DisposeComponentAsync
+/// </remarks>
 public abstract class SgInteractiveBase : SgJsComponentBase
 {
     // ── Инъекции ──────────────────────────────────────────────────────────────
-    [Inject] protected IKeyboardService KeyboardService { get; set; } = null!;
+    [Inject]
+    protected IKeyboardService KeyboardService { get; set; } = null!;
 
     // ── Параметры ────────────────────────────────────────────────────────────
-    [Parameter] public bool Disabled  { get; set; }
-    [Parameter] public bool Loading   { get; set; }
-    [Parameter] public bool ReadOnly  { get; set; }
+    [Parameter] public bool Disabled   { get; set; }
+    [Parameter] public bool Loading    { get; set; }
+    [Parameter] public bool ReadOnly   { get; set; }
 
     // ── RTL ──────────────────────────────────────────────────────────────────
-    [CascadingParameter(Name = "RightToLeft")] public bool IsRtl { get; set; }
+    [CascadingParameter(Name = "RightToLeft")]
+    public bool IsRtl { get; set; }
 
     // ── Культура ─────────────────────────────────────────────────────────────
-    [CascadingParameter(Name = "Culture")] public CultureInfo? CascadedCulture { get; set; }
-    [Parameter] public CultureInfo? Culture { get; set; }
-    protected CultureInfo EffectiveCulture => Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
+    [CascadingParameter(Name = "Culture")]
+    public CultureInfo? CascadedCulture { get; set; }
 
-    // ── Вычисляемые свойства ─────────────────────────────────────────────────
+    [Parameter]
+    public CultureInfo? Culture { get; set; }
+
+    protected CultureInfo EffectiveCulture =>
+        Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
+
+    // ── Вычисляемые свойства ──────────────────────────────────────────────────
     protected virtual bool IsEffectivelyDisabled => Disabled || Loading;
 
     // ── ARIA ──────────────────────────────────────────────────────────────────
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
-        // Начинаем с базовых атрибутов (кэш из SgComponentBase)
         var base_ = base.BuildAriaAttributes();
-        // ИСПРАВЛЕНО: не создаём новый dict если нет дополнений
+
+        // Не создаём новый dict если нет дополнений — экономия GC
         if (!Disabled && !Loading && !ReadOnly) return base_;
 
         var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal);
-        if (Disabled)  attrs["aria-disabled"] = "true";
-        if (Loading)   attrs["aria-busy"]     = "true";
-        if (ReadOnly)  attrs["aria-readonly"] = "true";
+        if (Disabled) attrs["aria-disabled"] = "true";
+        if (Loading)  attrs["aria-busy"]     = "true";
+        if (ReadOnly) attrs["aria-readonly"] = "true";
         return attrs;
     }
 
-    // ── Debounce — ИСПРАВЛЕНО ─────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: Lock для thread-safety, async void → fire-and-forget без Task.Run
+    // ── Debounce ──────────────────────────────────────────────────────────────
     private readonly Lock _debounceLock = new();
     private readonly Dictionary<string, CancellationTokenSource> _debouncers = new();
 
     /// <summary>
     /// Выполнить action с debounce.
-    /// ИСПРАВЛЕНО: не использует Task.Run — экономия ThreadPool
+    /// Fire-and-forget без Task.Run — экономия ThreadPool.
     /// </summary>
     protected Task DebounceAsync(string key, Func<Task> action, TimeSpan delay)
     {
@@ -76,7 +89,6 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             _debouncers[key] = newCts;
         }
 
-        // ИСПРАВЛЕНО: fire-and-forget без Task.Run
         _ = DelayThenInvokeAsync(action, delay, newCts.Token);
         return Task.CompletedTask;
     }
@@ -99,7 +111,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     protected Task DebounceAsync(Func<Task> action, TimeSpan? delay = null)
         => DebounceAsync("_default", action, delay ?? TimeSpan.FromMilliseconds(300));
 
-    // ── Throttle — ИСПРАВЛЕНО ─────────────────────────────────────────────────
+    // ── Throttle ──────────────────────────────────────────────────────────────
     private readonly Dictionary<string, ThrottleEntry> _throttlers = new();
 
     protected async Task ThrottleAsync(string key, Func<Task> action, TimeSpan interval)
@@ -119,7 +131,6 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
         await action();
 
-        // ИСПРАВЛЕНО: используем ComponentToken для автоотмены при dispose
         _ = Task.Delay(interval, ComponentToken).ContinueWith(t =>
         {
             if (!t.IsFaulted && !t.IsCanceled)
@@ -129,23 +140,28 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         }, TaskScheduler.Default);
     }
 
-    // ── Timer — ИСПРАВЛЕНО ────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: единый enum для типа активного таймера
+    // ── Timer ─────────────────────────────────────────────────────────────────
     private enum TimerMode { None, Legacy, Periodic }
-    private TimerMode _timerMode = TimerMode.None;
-    private Timer? _internalTimer;
+    private TimerMode      _timerMode = TimerMode.None;
+    private Timer?         _internalTimer;
     private PeriodicTimer? _periodicTimer;
-    private Task? _periodicTimerTask;
+    private Task?          _periodicTimerTask;
 
     protected void StartTimer(Func<Task> callback, TimeSpan period, TimeSpan? dueTime = null)
     {
-        StopAllTimers(); // ИСПРАВЛЕНО: останавливаем любой активный таймер
+        StopAllTimers();
         _timerMode = TimerMode.Legacy;
         _internalTimer = new Timer(async _ =>
         {
             if (IsDisposed || ComponentToken.IsCancellationRequested) return;
-            try { await InvokeAsync(callback); }
-            catch (Exception ex) { Logger.LogError(ex, "[{Id}] Timer error", ComponentId); }
+            try
+            {
+                await InvokeAsync(callback);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "[{Id}] Timer error", ComponentId);
+            }
         }, null, dueTime ?? period, period);
     }
 
@@ -159,7 +175,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected void StartPeriodicTimer(Func<Task> callback, TimeSpan period)
     {
-        StopAllTimers(); // ИСПРАВЛЕНО: останавливаем любой активный таймер
+        StopAllTimers();
         _timerMode = TimerMode.Periodic;
         _periodicTimer = new PeriodicTimer(period);
         _periodicTimerTask = RunPeriodicTimerAsync(callback);
@@ -201,17 +217,22 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     protected void RegisterSubscription(IDisposable subscription)
         => _subscriptions.Add(subscription);
 
+    /// <summary>
+    /// Подписаться на IObservable<T>.
+    /// Использует SgObserver<T> чтобы передать лямбду как IObserver<T> без System.Reactive.
+    /// </summary>
     protected void Subscribe<T>(IObservable<T> source, Action<T> handler)
     {
-        var sub = source.Subscribe(value =>
+        var observer = new SgObserver<T>(value =>
         {
             if (!IsDisposed)
                 InvokeAsync(() => handler(value));
         });
+        var sub = source.Subscribe(observer);
         _subscriptions.Add(sub);
     }
 
-    // ── Keyboard handler ─────────────────────────────────────────────────────
+    // ── Keyboard handler ──────────────────────────────────────────────────────
     private readonly Dictionary<string, Func<KeyboardEventArgs, Task>> _keyHandlers = new();
 
     protected void OnKey(string key, Func<Task> handler)
@@ -231,16 +252,22 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             await handler(e);
     }
 
+    /// <summary>
+    /// Сборка строки сочетания клавиш (Ctrl+Alt+Shift+F12).
+    /// Использует Span<char> на стеке — CS0208 исправлен.
+    /// </summary>
+    [SkipLocalsInit]
     private static string BuildKeyString(KeyboardEventArgs e)
     {
-        // ИСПРАВЛЕНО: Span-based string building без промежуточных string allocations
-        Span<string> parts = stackalloc string[4];
-        var count = 0;
-        if (e.CtrlKey)  parts[count++] = "Ctrl";
-        if (e.AltKey)   parts[count++] = "Alt";
-        if (e.ShiftKey) parts[count++] = "Shift";
-        parts[count++] = e.Key;
-        return string.Join('+', parts[..count].ToArray());
+        Span<char> buffer = stackalloc char[64];
+        var sb = new SpanStringBuilder(buffer);
+
+        if (e.CtrlKey)  { sb.Append("Ctrl");  sb.Append('+'); }
+        if (e.AltKey)   { sb.Append("Alt");   sb.Append('+'); }
+        if (e.ShiftKey) { sb.Append("Shift"); sb.Append('+'); }
+        sb.Append(e.Key);
+
+        return sb.ToString();
     }
 
     // ── Mouse handlers ────────────────────────────────────────────────────────
@@ -254,19 +281,17 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         await OnClick.InvokeAsync(e);
     }
 
-    // ── Dispose — ИСПРАВЛЕНО ─────────────────────────────────────────────────
+    // ── Dispose ───────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
         StopAllTimers();
 
-        // ИСПРАВЛЕНО: ждём PeriodicTimer task
         if (_periodicTimerTask is not null)
         {
             try { await _periodicTimerTask; }
             catch (OperationCanceledException) { }
         }
 
-        // Отменить debounce — ИСПРАВЛЕНО: _throttlers тоже очищается
         lock (_debounceLock)
         {
             foreach (var cts in _debouncers.Values)
@@ -277,7 +302,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             _debouncers.Clear();
         }
 
-        lock (_throttlers) _throttlers.Clear(); // ИСПРАВЛЕНО: очистка throttlers
+        lock (_throttlers) _throttlers.Clear();
 
         foreach (var sub in _subscriptions)
             sub.Dispose();
@@ -286,6 +311,35 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         await base.DisposeComponentAsync();
     }
 
-    // ── Вспомогательные записи ────────────────────────────────────────────────
-    private sealed class ThrottleEntry { public bool IsThrottled { get; set; } }
+    // ── Вспомогательные типы ──────────────────────────────────────────────────
+    private sealed class ThrottleEntry
+    {
+        public bool IsThrottled { get; set; }
+    }
+
+    private ref struct SpanStringBuilder
+    {
+        private readonly Span<char> _buffer;
+        private int _pos;
+
+        public SpanStringBuilder(Span<char> buffer)
+        {
+            _buffer = buffer;
+            _pos = 0;
+        }
+
+        public void Append(string value)
+        {
+            value.AsSpan().CopyTo(_buffer[_pos..]);
+            _pos += value.Length;
+        }
+
+        public void Append(char c)
+        {
+            _buffer[_pos++] = c;
+        }
+
+        public readonly override string ToString()
+            => new(_buffer[.._pos]);
+    }
 }
