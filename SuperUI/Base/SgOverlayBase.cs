@@ -1,10 +1,12 @@
 // SuperUI/Base/SgOverlayBase.cs
 // ИСПРАВЛЕНО:
-// 1. unlockBodyScroll вызывается ПЕРВЫМ в OnCloseCoreAsync (до FocusTrap, до анимации при dispose)
+// 1. unlockBodyScroll вызывается ПЕРВЫМ в OnCloseCoreAsync
 // 2. isDisposePath=true → пропускаем анимацию, используем CancellationToken.None для JS
-// 3. _overlayLock: SemaphoreSlim вместо volatile bool (async-safe)
-// 4. DisposeComponentAsync: отдельный cleanup CTS с таймаутом 5с
-// 5. OpenAsync/CloseAsync защищены try/catch ObjectDisposedException для _overlayLock
+// 3. _overlayLock: SemaphoreSlim (async-safe, в отличие от volatile bool)
+// 4. DisposeComponentAsync: cleanup CTS с таймаутом 5с
+// 5. FocusTrapService.ActivateAsync защищена try/catch (prerendering)
+// 6. OpenAsync/CloseAsync: защита ObjectDisposedException
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
@@ -35,11 +37,12 @@ public abstract class SgOverlayBase : SgInteractiveBase
     private volatile bool _isDisposing;
 
     // ИСПРАВЛЕНО: SemaphoreSlim вместо volatile bool
-    // volatile bool не работает корректно с async/await на Blazor Server
+    // async/await не совместим с volatile bool для sync primitives
     private readonly SemaphoreSlim _overlayLock = new(1, 1);
 
     protected int EffectiveZIndex => _zIndex;
     protected bool IsAnimatingClose { get; private set; }
+
     protected virtual string AriaRole => "dialog";
     protected virtual int AnimationDurationMs => 300;
 
@@ -48,8 +51,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
         var base_ = base.BuildAriaAttributes();
         var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal)
         {
-            ["role"]        = AriaRole,
-            ["aria-modal"]  = "true",
+            ["role"] = AriaRole,
+            ["aria-modal"] = "true",
             ["aria-hidden"] = Open ? "false" : "true"
         };
         return attrs;
@@ -67,10 +70,9 @@ public abstract class SgOverlayBase : SgInteractiveBase
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
-
         if (_isDisposing) return;
 
-        // Не блокируем если уже выполняется операция открытия/закрытия
+        // WaitAsync(0) — не блокируем если операция уже выполняется
         if (!await _overlayLock.WaitAsync(0)) return;
         try
         {
@@ -94,13 +96,22 @@ public abstract class SgOverlayBase : SgInteractiveBase
     private async Task OnOpenCoreAsync()
     {
         _zIndex = ZIndexService.GetNext();
+
         if (LockBodyScroll)
             await SafeInvokeVoidAsync("lockBodyScroll", null, ComponentId);
+
+        // ИСПРАВЛЕНО: FocusTrap защищён try/catch (может упасть при prerendering)
         if (TrapFocus)
         {
             _focusTrapId = ComponentId;
-            await FocusTrapService.ActivateAsync(_focusTrapId);
+            try { await FocusTrapService.ActivateAsync(_focusTrapId); }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "[{Id}] FocusTrap activate failed", ComponentId);
+                _focusTrapId = null;
+            }
         }
+
         await OnOpenAsync();
         StateHasChanged();
     }
@@ -110,7 +121,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
         CancellationToken? overrideToken = null,
         bool isDisposePath = false)
     {
-        // ── Анимация ──────────────────────────────────────────────────────────
+        // Анимация (пропускаем при dispose)
         if (animate && !isDisposePath)
         {
             IsAnimatingClose = true;
@@ -123,32 +134,21 @@ public abstract class SgOverlayBase : SgInteractiveBase
             IsAnimatingClose = false;
         }
 
-        // Определяем токен для JS cleanup
         // При isDisposePath ComponentToken уже отменён → используем CancellationToken.None
         var ct = overrideToken ?? (isDisposePath ? CancellationToken.None : ComponentToken);
 
         // ИСПРАВЛЕНО: 1. СНАЧАЛА unlockBodyScroll — критично для UX
-        // Даже если FocusTrap или cleanup займёт время → scroll уже разблокирован
         if (LockBodyScroll)
         {
-            try
-            {
-                await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId);
-            }
-            catch
-            {
-                // ignore — JS runtime может быть недоступен при disconnect
-            }
+            try { await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId); }
+            catch { /* JS runtime может быть недоступен */ }
         }
 
         // 2. Деактивируем focus trap
         if (TrapFocus && _focusTrapId != null)
         {
-            try
-            {
-                await FocusTrapService.DeactivateAsync(_focusTrapId);
-            }
-            catch { /* ignore during dispose */ }
+            try { await FocusTrapService.DeactivateAsync(_focusTrapId); }
+            catch { }
             _focusTrapId = null;
         }
 
@@ -169,7 +169,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
         bool acquired;
         try { acquired = await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5)); }
-        catch (ObjectDisposedException) { return; } // Dispose уже вызван
+        catch (ObjectDisposedException) { return; }
 
         if (!acquired) return;
         try
@@ -182,7 +182,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            try { _overlayLock.Release(); } catch (ObjectDisposedException) { }
+            try { _overlayLock.Release(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -205,7 +206,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            try { _overlayLock.Release(); } catch (ObjectDisposedException) { }
+            try { _overlayLock.Release(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -230,14 +232,12 @@ public abstract class SgOverlayBase : SgInteractiveBase
             }
             catch (OperationCanceledException)
             {
-                // Таймаут истёк — принудительно сбрасываем состояние
                 Logger.LogWarning("[{Id}] Overlay dispose cleanup timed out", ComponentId);
                 _zIndex = 0;
                 _focusTrapId = null;
             }
         }
 
-        // Диспозим семафор ПОСЛЕ всех операций
         _overlayLock.Dispose();
         await base.DisposeComponentAsync();
     }

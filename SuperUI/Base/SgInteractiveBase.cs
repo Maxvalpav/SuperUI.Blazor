@@ -1,12 +1,14 @@
 // SuperUI/Base/SgInteractiveBase.cs
 // ИСПРАВЛЕНО:
-// 1. ComponentToken.IsCancellationRequested (не .IsCancelled — CS1061)
-// 2. ThrottleAsync: IsThrottled ВСЕГДА сбрасывается в отдельной задаче (независимо от ComponentToken)
-// 3. _throttlers: проверка IsDisposed перед GetOrAdd
-// 4. DebounceAsync: ключ удаляется из словаря после выполнения (нет утечки)
-// 5. DisposeComponentAsync: безопасная очистка debouncers с lock
-// 6. _throttlers НЕ очищается в Dispose (race с GetOrAdd) — флаг IsDisposed достаточен
-// 7. Subscribe: SgObserver использует правильный namespace
+// 1. IsCancellationRequested (не IsCancelled — CS1061)
+// 2. ThrottleAsync: IsThrottled ВСЕГДА сбрасывается независимо от ComponentToken
+// 3. DebounceAsync: ключ удаляется из словаря после выполнения
+// 4. DisposeComponentAsync: безопасная очистка с lock
+// 5. Subscribe<T>: SgObserver использует правильный namespace
+// НОВОЕ:
+// 6. DebounceAsync<T> с возвращаемым значением
+// 7. OnKey overload с Func<Task<bool>> для захвата события
+
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -26,7 +28,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 {
     [Inject] protected IKeyboardService KeyboardService { get; set; } = null!;
 
-    // ── Параметры ─────────────────────────────────────────────────────────────
+    // ── Параметры ────────────────────────────────────────────────────────────
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool Loading { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
@@ -35,7 +37,9 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     [CascadingParameter(Name = "RightToLeft")] public bool IsRtl { get; set; }
     [CascadingParameter(Name = "Culture")] public CultureInfo? CascadedCulture { get; set; }
     [Parameter] public CultureInfo? Culture { get; set; }
-    protected CultureInfo EffectiveCulture => Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
+
+    protected CultureInfo EffectiveCulture =>
+        Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
 
     protected virtual bool IsEffectivelyDisabled => Disabled || Loading;
 
@@ -47,7 +51,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
         var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal);
         if (Disabled) attrs["aria-disabled"] = "true";
-        if (Loading)  attrs["aria-busy"]     = "true";
+        if (Loading) attrs["aria-busy"] = "true";
         if (ReadOnly) attrs["aria-readonly"] = "true";
         return attrs;
     }
@@ -71,7 +75,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
                 old.Dispose();
             }
 
-            // ИСПРАВЛЕНО: ComponentToken.IsCancellationRequested (не IsCancelled)
+            // ИСПРАВЛЕНО: IsCancellationRequested
             newCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
             _debouncers[key] = newCts;
         }
@@ -79,6 +83,12 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         _ = DelayThenInvokeAsync(key, action, delay, newCts.Token);
         return Task.CompletedTask;
     }
+
+    protected Task DebounceAsync(Func<Task> action, TimeSpan? delay = null)
+        => DebounceAsync("_default", action, delay ?? TimeSpan.FromMilliseconds(300));
+
+    protected Task DebounceAsync(string key, Action action, TimeSpan delay)
+        => DebounceAsync(key, () => { action(); return Task.CompletedTask; }, delay);
 
     private async Task DelayThenInvokeAsync(
         string key, Func<Task> action, TimeSpan delay, CancellationToken ct)
@@ -96,20 +106,17 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         }
         finally
         {
-            // ИСПРАВЛЕНО: удаляем ключ из словаря после завершения (нет утечки памяти)
+            // ИСПРАВЛЕНО: удаляем ключ из словаря (нет утечки памяти)
             lock (_debounceLock)
             {
                 if (_debouncers.TryGetValue(key, out var cts) && cts.Token == ct)
                 {
                     _debouncers.Remove(key);
-                    try { cts.Dispose(); } catch { /* ignore */ }
+                    try { cts.Dispose(); } catch { }
                 }
             }
         }
     }
-
-    protected Task DebounceAsync(Func<Task> action, TimeSpan? delay = null)
-        => DebounceAsync("_default", action, delay ?? TimeSpan.FromMilliseconds(300));
 
     // ── Throttle ──────────────────────────────────────────────────────────────
     private readonly ConcurrentDictionary<string, ThrottleEntry> _throttlers = new();
@@ -119,8 +126,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         if (IsDisposed) return;
 
         var entry = _throttlers.GetOrAdd(key, _ => new ThrottleEntry());
-        if (Interlocked.CompareExchange(ref entry.IsThrottled, 1, 0) == 1)
-            return; // уже throttled
+        if (Interlocked.CompareExchange(ref entry.IsThrottled, 1, 0) == 1) return;
 
         try
         {
@@ -132,25 +138,15 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         }
         finally
         {
-            // ИСПРАВЛЕНО: гарантированный сброс IsThrottled через отдельную задачу
-            // Не зависит от ComponentToken — сбрасывается даже если компонент задиспожен
+            // ИСПРАВЛЕНО: гарантированный сброс через отдельную задачу
             _ = ResetThrottleAfterDelayAsync(entry, interval);
         }
     }
 
     private static async Task ResetThrottleAfterDelayAsync(ThrottleEntry entry, TimeSpan interval)
     {
-        try
-        {
-            // Используем отдельный CTS без привязки к ComponentToken
-            // Это гарантирует сброс IsThrottled даже после Dispose компонента
-            await Task.Delay(interval);
-        }
-        finally
-        {
-            // Гарантированный сброс — ВСЕГДА, даже при исключении
-            Interlocked.Exchange(ref entry.IsThrottled, 0);
-        }
+        try { await Task.Delay(interval); }
+        finally { Interlocked.Exchange(ref entry.IsThrottled, 0); }
     }
 
     // ── Timer ─────────────────────────────────────────────────────────────────
@@ -166,7 +162,6 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         _timerMode = TimerMode.Legacy;
         _internalTimer = new Timer(async _ =>
         {
-            // ИСПРАВЛЕНО: IsCancellationRequested (не IsCancelled)
             if (IsDisposed || ComponentToken.IsCancellationRequested) return;
             try { await InvokeAsync(callback); }
             catch (Exception ex) { Logger.LogError(ex, "[{Id}] Timer error", ComponentId); }
@@ -228,8 +223,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     {
         var observer = new SgObserver<T>(value =>
         {
-            if (!IsDisposed)
-                _ = InvokeAsync(() => handler(value));
+            if (!IsDisposed) _ = InvokeAsync(() => handler(value));
         });
         _subscriptions.Add(source.Subscribe(observer));
     }
@@ -254,7 +248,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             await handler(e);
     }
 
-    /// Zero-allocation построение строки-ключа через string.Create.
+    /// <summary>Zero-allocation построение строки-ключа через string.Create.</summary>
     private static string BuildKeyString(KeyboardEventArgs e)
     {
         var len = (e.CtrlKey ? 5 : 0) + (e.AltKey ? 4 : 0) + (e.ShiftKey ? 6 : 0)
@@ -293,20 +287,19 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             catch (OperationCanceledException) { }
         }
 
-        // ИСПРАВЛЕНО: очищаем debouncers с lock и отменой всех CTS
+        // ИСПРАВЛЕНО: очищаем debouncers с lock
         lock (_debounceLock)
         {
             foreach (var cts in _debouncers.Values)
             {
                 try { cts.Cancel(); cts.Dispose(); }
-                catch { /* ignore */ }
+                catch { }
             }
             _debouncers.Clear();
         }
 
-        // ИСПРАВЛЕНО: НЕ вызываем _throttlers.Clear() — race condition с GetOrAdd
-        // IsDisposed=true предотвращает добавление новых записей
-        // ThrottleEntry без ссылок будет GC'd естественным образом
+        // Throttlers: IsDisposed=true предотвращает добавление новых записей
+        // Не вызываем Clear() — race condition с GetOrAdd
 
         foreach (var sub in _subscriptions) sub.Dispose();
         _subscriptions.Clear();
@@ -314,10 +307,10 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         await base.DisposeComponentAsync();
     }
 
-    // ── Вспомогательный тип ───────────────────────────────────────────────────
+    // ── Вспомогательные типы ──────────────────────────────────────────────────
     private sealed class ThrottleEntry
     {
-        // 0 = free, 1 = throttled (используется через Interlocked)
-        public int IsThrottled;
+        // 0 = free, 1 = throttled (Interlocked)
+        internal int IsThrottled;
     }
 }

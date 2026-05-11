@@ -188,6 +188,17 @@ public sealed class AriaBuilder
 
     /// <summary>Количество атрибутов.</summary>
     public int Count => _attrs?.Count ?? 0;
+
+    /// <summary>Добавить произвольный атрибут (не ARIA).</summary>
+    public AriaBuilder Custom(string key, object value)
+    {
+        Attrs[key] = value;
+        return this;
+    }
+
+    /// <summary>Условное добавление атрибута.</summary>
+    public AriaBuilder If(bool condition, Func<AriaBuilder, AriaBuilder> configure)
+        => condition ? configure(this) : this;
 }
 
 internal static class AriaExtensions

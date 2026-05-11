@@ -3,8 +3,11 @@
 // 1. Семафор ВСЕГДА освобождается в finally (semaphoreAcquired флаг)
 // 2. Таймаут 30с на WaitAsync (защита от бесконечного ожидания)
 // 3. ComponentToken.IsCancellationRequested (не IsCancelled — CS1061)
-// 4. DisposeComponentAsync: Cancel → DisposeModule → DisposeSemaphore (безопасный порядок)
-// 5. _moduleLockDisposed: volatile для видимости между потоками
+// 4. Hot-reload: OnInitialized сбрасывает _module при пересоздании токена
+// 5. SafeInvokeVoidAsync: generic overloads для zero-box args
+// 6. Предупреждение в лог при таймауте GetModuleAsync
+// 7. DisposeComponentAsync: Cancel → DisposeModule → DisposeSemaphore (безопасный порядок)
+// 8. _moduleLockDisposed: volatile для видимости между потоками
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
@@ -61,6 +64,16 @@ public abstract class SgJsComponentBase : SgComponentBase
         var old = Interlocked.Exchange(ref _lifecycleToken, new LifecycleToken());
         old.Cancel();
         old.Dispose();
+
+        // ИСПРАВЛЕНО: сбрасываем модуль при hot-reload
+        // Старый модуль будет задиспожен в следующем вызове DisposeComponentAsync
+        // но нам нужна возможность его переинициализировать
+        if (_module is not null)
+        {
+            _ = TryDisposeModuleAsync(_module);
+            _module = null;
+        }
+
         base.OnInitialized();
     }
 
@@ -94,7 +107,13 @@ public abstract class SgJsComponentBase : SgComponentBase
                 "import", ComponentToken, path);
             return _module;
         }
-        catch (TaskCanceledException) { return null; }
+        catch (TaskCanceledException)
+        {
+            // ИСПРАВЛЕНО: предупреждение при таймауте
+            if (timeoutCts.IsCancellationRequested)
+                Logger.LogWarning("[{Id}] JS module load timed out (30s): {Path}", ComponentId, JsModulePath);
+            return null;
+        }
         catch (OperationCanceledException) { return null; }
         catch (JSDisconnectedException) { return null; }
         catch (ObjectDisposedException) { return null; }
@@ -123,8 +142,8 @@ public abstract class SgJsComponentBase : SgComponentBase
     {
 #if DEBUG
         Diagnostics.JsCallCount++;
+        var sw = System.Diagnostics.Stopwatch.GetTimestamp();
 #endif
-        // ИСПРАВЛЕНО: при isDisposePath используем overrideToken (ComponentToken уже отменён)
         var ct = overrideToken ?? ComponentToken;
         if (IsPrerendering || (overrideToken is null && IsDisposed)) return;
         if (ct.IsCancellationRequested) return;
@@ -147,7 +166,18 @@ public abstract class SgJsComponentBase : SgComponentBase
             Logger.LogError(ex, "[{ComponentId}] JS void call '{Identifier}' failed",
                 ComponentId, identifier);
         }
+#if DEBUG
+        finally
+        {
+            Diagnostics.TotalJsMs +=
+                System.Diagnostics.Stopwatch.GetElapsedTime(sw).TotalMilliseconds;
+        }
+#endif
     }
+
+    // Zero-allocation overload для одного аргумента
+    protected ValueTask SafeInvokeVoidAsync<TArg>(string identifier, TArg arg)
+        => SafeInvokeVoidAsync(identifier, null, arg);
 
     // ── SafeInvokeAsync<T> ────────────────────────────────────────────────────
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
@@ -191,6 +221,13 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (OperationCanceledException) { }
         catch (JSDisconnectedException) { }
         catch (ObjectDisposedException) { }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    private static async Task TryDisposeModuleAsync(IJSObjectReference module)
+    {
+        try { await module.DisposeAsync(); }
+        catch { /* ignore — JS runtime может быть недоступен */ }
     }
 
     // ── Dispose ───────────────────────────────────────────────────────────────

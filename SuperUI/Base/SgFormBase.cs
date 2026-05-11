@@ -1,10 +1,10 @@
 // SuperUI/Base/SgFormBase.cs
 // ИСПРАВЛЕНО:
-// 1. SetValueAsync: NotifyFieldChanged ПЕРЕД ValueChanged (EditContext обновляется первым)
-// 2. OnValidationStateChanged: Task не теряется, ошибки логируются
-// 3. AttachEditContext/DetachEditContext: идемпотентны
-// 4. Рекурсионная защита в SetValueAsync (_isSettingValue)
-// 5. CurrentText синхронизируется только при реальном внешнем изменении
+// 1. NotifyFieldChanged ПЕРЕД ValueChanged (EditContext обновляется первым)
+// 2. OnValidationStateChanged: InvokeAsync без ContinueWith (Server thread-safety)
+// 3. MaxLength применяется к aria-maxlength
+// 4. _isSettingValue логирует в DEBUG при рекурсии
+
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -14,12 +14,12 @@ using SuperUI.Base.Converters;
 namespace SuperUI.Base;
 
 /// <summary>
-/// Базовый класс для компонентов формы (input, select, datepicker и т.д.).
+/// Базовый класс для компонентов формы.
 /// Уровень 4: ComponentBase → ... → SgInteractiveBase → SgFormBase
 /// </summary>
 public abstract class SgFormBase<TValue> : SgInteractiveBase
 {
-    // ── Каскадный EditContext ──────────────────────────────────────────────────
+    // ── Каскадный EditContext ─────────────────────────────────────────────────
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
     // ── Параметры ─────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     private ISgConverter<TValue>? _effectiveConverter;
     private bool _editContextAttached;
     private TValue? _lastSyncedValue;
-    private bool _isSettingValue; // защита от рекурсии в SetValueAsync
+    private bool _isSettingValue; // защита от рекурсии
 
     protected EditContext? EditContext => _editContext;
     protected FieldIdentifier FieldId => _fieldIdentifier;
@@ -52,7 +52,8 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         {
             if (!string.IsNullOrEmpty(ErrorText)) return true;
             if (!string.IsNullOrEmpty(ConvertError)) return true;
-            if (_editContext != null && _editContext.GetValidationMessages(_fieldIdentifier).Any()) return true;
+            if (_editContext != null &&
+                _editContext.GetValidationMessages(_fieldIdentifier).Any()) return true;
             return false;
         }
     }
@@ -67,7 +68,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     protected ISgConverter<TValue> EffectiveConverter =>
         Converter ?? (_effectiveConverter ??= SgConverterFactory.Get<TValue>());
 
-    // ── Text/Value синхронизация ──────────────────────────────────────────────
+    // ── Text/Value синхронизация ───────────────────────────────────────────────
     protected string? CurrentText { get; private set; }
     protected string? ConvertError { get; private set; }
 
@@ -87,8 +88,15 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
 
     protected async Task SetValueAsync(TValue? value)
     {
-        if (_isSettingValue) return;
-        if (EqualityComparer<TValue?>.Default.Equals(value, Value)) return;
+        if (_isSettingValue)
+        {
+#if DEBUG
+            Logger.LogDebug("[{Id}] SetValueAsync: рекурсивный вызов проигнорирован", ComponentId);
+#endif
+            return;
+        }
+
+        if (EqualityComparer<TValue>.Default.Equals(value, Value)) return;
 
         _isSettingValue = true;
         try
@@ -99,8 +107,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             ConvertError = null;
 
             // ИСПРАВЛЕНО: сначала NotifyFieldChanged → потом ValueChanged
-            // EditContext должен быть обновлён ДО того как родитель получит событие
-            // и возможно прочитает состояние валидации
+            // EditContext должен обновиться ДО события (родитель может читать валидацию)
             _editContext?.NotifyFieldChanged(_fieldIdentifier);
             await ValueChanged.InvokeAsync(value);
         }
@@ -131,7 +138,8 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var baseAttrs = base.BuildAriaAttributes();
-        bool needsExtra = Required || HasError || Label != null || Placeholder != null;
+        bool needsExtra = Required || HasError || Label != null
+                          || Placeholder != null || MaxLength.HasValue;
         if (!needsExtra) return baseAttrs;
 
         var attrs = new Dictionary<string, object>(baseAttrs, StringComparer.Ordinal)
@@ -139,12 +147,14 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             ["id"] = EffectiveId
         };
 
-        if (Required)     attrs["aria-required"]    = "true";
-        if (HasError)     attrs["aria-invalid"]     = "true";
-        if (Label != null) attrs["aria-label"]       = Label;
+        if (Required) attrs["aria-required"] = "true";
+        if (HasError) attrs["aria-invalid"] = "true";
+        if (Label != null) attrs["aria-label"] = Label;
         if (Placeholder != null) attrs["aria-placeholder"] = Placeholder;
         if (Hint != null) attrs["aria-describedby"] = $"{EffectiveId}-hint";
-        if (HasError)     attrs["aria-errormessage"] = $"{EffectiveId}-error";
+        if (HasError) attrs["aria-errormessage"] = $"{EffectiveId}-error";
+        // ИСПРАВЛЕНО: MaxLength → aria-maxlength
+        if (MaxLength.HasValue) attrs["aria-maxlength"] = MaxLength.Value.ToString();
 
         return attrs;
     }
@@ -164,9 +174,9 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             AttachEditContext();
         }
 
-        // Синхронизируем CurrentText только при реальном внешнем изменении Value
+        // Синхронизируем CurrentText только при реальном внешнем изменении
         if (!_isSettingValue &&
-            !EqualityComparer<TValue?>.Default.Equals(Value, _lastSyncedValue))
+            !EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
         {
             _lastSyncedValue = Value;
             CurrentText = EffectiveConverter.ConvertBack(Value);
@@ -191,20 +201,13 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContextAttached = false;
     }
 
-    // ИСПРАВЛЕНО: Task не теряется — логируем ошибки через ContinueWith
+    // ИСПРАВЛЕНО: используем InvokeAsync напрямую (Server thread-safety)
+    // ContinueWith(TaskScheduler.Default) выполняется в thread pool вне Blazor SynchronizationContext
     private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
         if (IsDisposed) return;
-        var task = InvokeAsync(StateHasChanged);
-        if (!task.IsCompletedSuccessfully)
-        {
-            _ = task.ContinueWith(t =>
-            {
-                if (t.IsFaulted && t.Exception is not null)
-                    Logger.LogWarning(t.Exception.InnerException ?? t.Exception,
-                        "[{Id}] OnValidationStateChanged StateHasChanged error", ComponentId);
-            }, TaskScheduler.Default);
-        }
+        // InvokeAsync корректно маршалирует вызов в Blazor SynchronizationContext
+        _ = InvokeAsync(StateHasChanged);
     }
 
     protected override async ValueTask DisposeComponentAsync()
