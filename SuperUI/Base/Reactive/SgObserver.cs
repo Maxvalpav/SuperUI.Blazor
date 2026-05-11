@@ -1,23 +1,17 @@
+// SuperUI/Base/Reactive/SgObserver.cs
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Минимальный IObserver<T> без зависимости от System.Reactive.
-/// Позволяет передавать лямбду туда, где нужен IObserver<T>.
+/// Минимальная реализация IObserver<T> для Subscribe паттерна.
+/// Избегает зависимости от System.Reactive.
 /// </summary>
-/// <remarks>
-/// Используется в SgInteractiveBase.Subscribe() вместо source.Subscribe(lambda),
-/// которое требует пакет System.Reactive и его перегрузки.
-/// </remarks>
 internal sealed class SgObserver<T> : IObserver<T>
 {
     private readonly Action<T> _onNext;
     private readonly Action<Exception>? _onError;
     private readonly Action? _onCompleted;
 
-    public SgObserver(
-        Action<T> onNext,
-        Action<Exception>? onError = null,
-        Action? onCompleted = null)
+    public SgObserver(Action<T> onNext, Action<Exception>? onError = null, Action? onCompleted = null)
     {
         _onNext = onNext ?? throw new ArgumentNullException(nameof(onNext));
         _onError = onError;

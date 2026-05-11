@@ -1,12 +1,9 @@
 namespace SuperUI.Base.Hooks;
 
 /// <summary>
-/// Хук управления рендерингом.
+/// Хук для контроля рендера компонента.
 /// </summary>
 public interface IRenderHook : IComponentHook
 {
-    /// <summary>
-    /// Возврат false — подавить рендер компонента.
-    /// </summary>
     bool ShouldRender(SgComponentBase component);
 }

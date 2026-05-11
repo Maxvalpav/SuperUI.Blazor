@@ -1,36 +1,60 @@
 @* SuperUI/Components/Forms/SgDynamicField.razor *@
-@* ИСПРАВЛЕНО: добавлен @typeparam TProp, исправлен For через object-совместимый подход *@
+@* ИСПРАВЛЕНО:
+   1. Добавлен @typeparam TProp (RZ10001)
+   2. SgNumberEdit: явно указан TValue (RZ10001) — не nullable (struct constraint)
+   3. typeof(string?) заменён на typeof(string) (CS8632)
+   4. Generic методы в Razor заменены на typed свойства (избегаем проблем парсинга < > ?)
+   5. EventCallback.Factory.Create для корректного создания типизированных EventCallback
+*@
 @typeparam TModel
 @typeparam TProp
 
 @using System.Linq.Expressions
 @using Microsoft.AspNetCore.Components.Forms
+@using SuperUI.Components.Forms
 
-@if (FieldType == typeof(string) || FieldType == typeof(string?))
+@if (FieldType == typeof(string))
 {
     <SgTextBox Label="@Label"
-               Value="@(GetStringValue())"
-               ValueChanged="@(async v => await SetValueAsync(v))"
+               Value="@StringValue"
+               ValueChanged="@(EventCallback.Factory.Create<string?>(this, (string? v) => SetValueObjectAsync(v)))"
                Placeholder="@Placeholder" />
 }
-else if (FieldType == typeof(int) || FieldType == typeof(int?))
+else if (FieldType == typeof(int))
 {
-    <SgNumberEdit Label="@Label"
-                  Value="@(GetValue<int?>())"
-                  ValueChanged="@(async v => await SetValueAsync(v))"
+    <SgNumberEdit TValue="int"
+                  Label="@Label"
+                  Value="@IntValue"
+                  ValueChanged="@(EventCallback.Factory.Create(this, (object? v) => SetValueObjectAsync(v)))"
                   Placeholder="@Placeholder" />
 }
-else if (FieldType == typeof(bool) || FieldType == typeof(bool?))
+else if (FieldType == typeof(double))
+{
+    <SgNumberEdit TValue="double"
+                  Label="@Label"
+                  Value="@DoubleValue"
+                  ValueChanged="@(EventCallback.Factory.Create(this, (object? v) => SetValueObjectAsync(v)))"
+                  Placeholder="@Placeholder" />
+}
+else if (FieldType == typeof(bool))
 {
     <SgCheckBox Label="@Label"
-                Value="@(GetValue<bool>())"
-                ValueChanged="@(async v => await SetValueAsync(v))" />
+                Value="@BoolValue"
+                ValueChanged="@(EventCallback.Factory.Create<bool>(this, (bool v) => SetValueObjectAsync(v)))" />
+}
+else if (FieldType == typeof(DateTime))
+{
+    <SgDatePicker TValue="DateTime?"
+                  Label="@Label"
+                  Value="@DateTimeValue"
+                  ValueChanged="@(EventCallback.Factory.Create<DateTime?>(this, (DateTime? v) => SetValueObjectAsync(v)))" />
 }
 else
 {
+    @* Fallback: текстовое поле для всех остальных типов *@
     <SgTextBox Label="@Label"
-               Value="@(GetStringValue())"
-               ValueChanged="@(async v => await SetValueAsync(v))"
+               Value="@StringValue"
+               ValueChanged="@(EventCallback.Factory.Create<string?>(this, (string? v) => SetValueObjectAsync(v)))"
                Placeholder="@Placeholder" />
 }
 
@@ -42,27 +66,24 @@ else
 
     private Type FieldType => typeof(TProp);
 
-    private TProp? GetCurrentValue()
+    private TProp? CurrentValue
     {
-        if (Model is null || For is null) return default;
-        var compiled = For.Compile();
-        return compiled(Model);
+        get
+        {
+            if (Model is null || For is null) return default;
+            return For.Compile()(Model);
+        }
     }
 
-    private T? GetValue<T>()
-    {
-        var v = GetCurrentValue();
-        if (v is T typed) return typed;
-        return default;
-    }
+    private string? StringValue => CurrentValue?.ToString();
+    private int IntValue => CurrentValue is int iv ? iv : 0;
+    private double DoubleValue => CurrentValue is double dv ? dv : 0;
+    private bool BoolValue => CurrentValue is bool bv && bv;
+    private DateTime? DateTimeValue => CurrentValue is DateTime dtv ? dtv : null;
 
-    private string? GetStringValue() => GetCurrentValue()?.ToString();
-
-    private async Task SetValueAsync<TVal>(TVal? newValue)
+    private async Task SetValueObjectAsync(object? newValue)
     {
-        // Обновление через Reflection (без Expression Trees для setter)
         if (Model is null || For is null) return;
-
         if (For.Body is MemberExpression memberExpr)
         {
             var prop = (System.Reflection.PropertyInfo)memberExpr.Member;
@@ -73,7 +94,7 @@ else
                     : Convert.ChangeType(newValue, typeof(TProp));
                 prop.SetValue(Model, converted);
             }
-            catch { }
+            catch { /* type mismatch — ignore */ }
         }
     }
 }

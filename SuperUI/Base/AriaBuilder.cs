@@ -1,27 +1,21 @@
 // SuperUI/Base/AriaBuilder.cs
 // ИСПРАВЛЕНО:
 // - Build() возвращает ReadOnlyDictionary (снэпшот), не живой внутренний словарь
-// - BuildInto() для zero-allocation слияния
-// - Merge() теперь работает только с внутренним состоянием builder'а
-// - ToAriaString() вынесен в отдельный static class
+// - BuildInto() для zero-allocation слияния в существующий словарь
+// - Merge() корректно: только читает из other, не мутирует возвращаемый результат
+// - Has() и Count — удобные методы
 namespace SuperUI.Base;
 
 /// <summary>
 /// Fluent builder для ARIA атрибутов. WAI-ARIA 1.2.
-/// 
-/// ИСПРАВЛЕНИЯ:
-/// - Build() возвращает иммутабельный снэпшот (новый Dictionary)
-/// - Добавлен BuildInto(dict) для zero-allocation слияния
-/// - Merge теперь корректно: только читает из other, не мутирует
 /// </summary>
 public sealed class AriaBuilder
 {
     // Используем небольшую начальную ёмкость — большинство компонентов имеют 2-6 ARIA атрибутов
     private Dictionary<string, object>? _attrs;
-
     private Dictionary<string, object> Attrs => _attrs ??= new Dictionary<string, object>(6, StringComparer.Ordinal);
 
-    // ── Роли ────────────────────────────────────────────────────────────────────
+    // ── Роли ──────────────────────────────────────────────────────────────────
     public AriaBuilder Role(string role) => Set("role", role);
     public AriaBuilder Button() => Role("button");
     public AriaBuilder Dialog() => Role("dialog").Modal(true);
@@ -80,7 +74,7 @@ public sealed class AriaBuilder
     public AriaBuilder Definition() => Role("definition");
     public AriaBuilder Article() => Role("article");
 
-    // ── Состояния ───────────────────────────────────────────────────────────────
+    // ── Состояния ─────────────────────────────────────────────────────────────
     public AriaBuilder Disabled(bool value = true) => Set("aria-disabled", value.ToAriaString());
     public AriaBuilder Expanded(bool value) => Set("aria-expanded", value.ToAriaString());
     public AriaBuilder Selected(bool value) => Set("aria-selected", value.ToAriaString());
@@ -99,7 +93,7 @@ public sealed class AriaBuilder
     public AriaBuilder MultiSelectable(bool value) => Set("aria-multiselectable", value.ToAriaString());
     public AriaBuilder Orientation(string value) => Set("aria-orientation", value);
 
-    // ── Связи ───────────────────────────────────────────────────────────────────
+    // ── Связи ─────────────────────────────────────────────────────────────────
     public AriaBuilder Label(string text) => Set("aria-label", text);
     public AriaBuilder LabelledBy(string id) => Set("aria-labelledby", id);
     public AriaBuilder DescribedBy(string id) => Set("aria-describedby", id);
@@ -113,7 +107,7 @@ public sealed class AriaBuilder
     public AriaBuilder RoleDescription(string desc) => Set("aria-roledescription", desc);
     public AriaBuilder Placeholder(string text) => Set("aria-placeholder", text);
 
-    // ── Live regions ──────────────────────────────────────────────────────────── 
+    // ── Live regions ──────────────────────────────────────────────────────────
     public AriaBuilder Live(string politeness = "polite") => Set("aria-live", politeness);
     public AriaBuilder Polite() => Live("polite");
     public AriaBuilder Assertive() => Live("assertive");
@@ -121,7 +115,7 @@ public sealed class AriaBuilder
     public AriaBuilder Atomic(bool value = true) => Set("aria-atomic", value.ToAriaString());
     public AriaBuilder Relevant(string value = "additions text") => Set("aria-relevant", value);
 
-    // ── Числовые атрибуты ────────────────────────────────────────────────────────
+    // ── Числовые атрибуты ─────────────────────────────────────────────────────
     public AriaBuilder ValueMin(double min) => Set("aria-valuemin", min);
     public AriaBuilder ValueMax(double max) => Set("aria-valuemax", max);
     public AriaBuilder ValueNow(double now) => Set("aria-valuenow", now);
@@ -136,13 +130,12 @@ public sealed class AriaBuilder
     public AriaBuilder RowIndex(int index) => Set("aria-rowindex", index);
     public AriaBuilder RowSpan(int span) => Set("aria-rowspan", span);
 
-    // ── Keyboard ─────────────────────────────────────────────────────────────────
+    // ── Keyboard ──────────────────────────────────────────────────────────────
     public AriaBuilder TabIndex(int index) => Set("tabindex", index);
     public AriaBuilder TabStop() => TabIndex(0);
     public AriaBuilder NoTabStop() => TabIndex(-1);
 
-    // ── Сборка ──────────────────────────────────────────────────────────────────
-
+    // ── Сборка ────────────────────────────────────────────────────────────────
     private AriaBuilder Set(string key, object? value)
     {
         if (value is not null) Attrs[key] = value;
@@ -157,8 +150,7 @@ public sealed class AriaBuilder
     {
         if (_attrs is null || _attrs.Count == 0)
             return EmptyReadOnly;
-        
-        // Создаём НОВЫЙ словарь — снэпшот
+        // ИСПРАВЛЕНО: создаём НОВЫЙ словарь — снэпшот, а не ссылку на внутренний
         return new Dictionary<string, object>(_attrs, StringComparer.Ordinal);
     }
 
@@ -185,16 +177,16 @@ public sealed class AriaBuilder
         return this;
     }
 
-    private static readonly IReadOnlyDictionary<string, object> EmptyReadOnly
-        = new Dictionary<string, object>(0, StringComparer.Ordinal);
+    private static readonly IReadOnlyDictionary<string, object> EmptyReadOnly =
+        new Dictionary<string, object>(0, StringComparer.Ordinal);
 
-    /// <summary>НОВЫЙ: сбросить все атрибуты (переиспользование builder'а).</summary>
+    /// <summary>Сбросить все атрибуты (переиспользование builder'а).</summary>
     public AriaBuilder Clear() { _attrs?.Clear(); return this; }
 
-    /// <summary>НОВЫЙ: проверить наличие атрибута.</summary>
+    /// <summary>Проверить наличие атрибута.</summary>
     public bool Has(string key) => _attrs?.ContainsKey(key) == true;
 
-    /// <summary>НОВЫЙ: количество атрибутов.</summary>
+    /// <summary>Количество атрибутов.</summary>
     public int Count => _attrs?.Count ?? 0;
 }
 

@@ -1,7 +1,8 @@
 // SuperUI/Base/Hooks/SgPerformanceInterceptor.cs
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
-using SuperUI.Base;
+
+namespace SuperUI.Base.Hooks;
 
 /// <summary>
 /// Перехватчик для мониторинга производительности рендера компонентов.

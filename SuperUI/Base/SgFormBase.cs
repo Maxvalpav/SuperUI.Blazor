@@ -1,24 +1,25 @@
 // SuperUI/Base/SgFormBase.cs
 // ИСПРАВЛЕНО:
 // 1. SetValueAsync: NotifyFieldChanged ПЕРЕД ValueChanged (EditContext обновляется первым)
-// 2. OnValidationStateChanged: Task не теряется (логируем ошибки)
-// 3. BuildAriaAttributes: не вызывает base при каждом изменении (кэш через generation)
-// 4. CurrentText синхронизируется атомарно с Value
-// 5. AttachEditContext/DetachEditContext: идемпотентны
-
+// 2. OnValidationStateChanged: Task не теряется, ошибки логируются
+// 3. AttachEditContext/DetachEditContext: идемпотентны
+// 4. Рекурсионная защита в SetValueAsync (_isSettingValue)
+// 5. CurrentText синхронизируется только при реальном внешнем изменении
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.Extensions.Logging;
 using SuperUI.Base.Converters;
 
 namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов формы (input, select, datepicker и т.д.).
+/// Уровень 4: ComponentBase → ... → SgInteractiveBase → SgFormBase
 /// </summary>
 public abstract class SgFormBase<TValue> : SgInteractiveBase
 {
-    // ── Каскадный EditContext ─────────────────────────────────────────────────
+    // ── Каскадный EditContext ──────────────────────────────────────────────────
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
     // ── Параметры ─────────────────────────────────────────────────────────────
@@ -45,8 +46,6 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     protected EditContext? EditContext => _editContext;
     protected FieldIdentifier FieldId => _fieldIdentifier;
 
-    // ── Вычисляемые ───────────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: HasError вычисляется один раз, а не несколько раз при каждом рендере
     protected bool HasError
     {
         get
@@ -88,8 +87,8 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
 
     protected async Task SetValueAsync(TValue? value)
     {
-        if (_isSettingValue) return; // защита от рекурсии
-        if (EqualityComparer<TValue>.Default.Equals(value, Value)) return;
+        if (_isSettingValue) return;
+        if (EqualityComparer<TValue?>.Default.Equals(value, Value)) return;
 
         _isSettingValue = true;
         try
@@ -100,8 +99,8 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             ConvertError = null;
 
             // ИСПРАВЛЕНО: сначала NotifyFieldChanged → потом ValueChanged
-            // Это гарантирует что EditContext обновлён до того, как родитель
-            // получит событие и возможно прочитает состояние валидации
+            // EditContext должен быть обновлён ДО того как родитель получит событие
+            // и возможно прочитает состояние валидации
             _editContext?.NotifyFieldChanged(_fieldIdentifier);
             await ValueChanged.InvokeAsync(value);
         }
@@ -111,7 +110,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         }
     }
 
-    /// <summary>Программно добавить ошибку валидации в ValidationMessageStore.</summary>
+    // ── Программная валидация ─────────────────────────────────────────────────
     public void AddValidationError(string message)
     {
         if (_messageStore is null || _editContext is null) return;
@@ -119,7 +118,6 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContext.NotifyValidationStateChanged();
     }
 
-    /// <summary>Очистить программно добавленные ошибки.</summary>
     public void ClearValidationErrors()
     {
         if (_messageStore is null || _editContext is null) return;
@@ -127,14 +125,9 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContext.NotifyValidationStateChanged();
     }
 
-    /// <summary>ИСПРАВЛЕНО: публичный метод для программной валидации.</summary>
-    public void ValidateNow()
-    {
-        if (_editContext is null) return;
-        _editContext.Validate();
-    }
+    public void ValidateNow() => _editContext?.Validate();
 
-    // ── ARIA — ИСПРАВЛЕНО: не создаёт новый dict если не нужно ──────────────
+    // ── ARIA ──────────────────────────────────────────────────────────────────
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var baseAttrs = base.BuildAriaAttributes();
@@ -147,14 +140,11 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         };
 
         if (Required)     attrs["aria-required"]    = "true";
-        if (HasError)     attrs["aria-invalid"]      = "true";
+        if (HasError)     attrs["aria-invalid"]     = "true";
         if (Label != null) attrs["aria-label"]       = Label;
         if (Placeholder != null) attrs["aria-placeholder"] = Placeholder;
-
-        if (Hint != null)
-            attrs["aria-describedby"] = $"{EffectiveId}-hint";
-        if (HasError)
-            attrs["aria-errormessage"] = $"{EffectiveId}-error";
+        if (Hint != null) attrs["aria-describedby"] = $"{EffectiveId}-hint";
+        if (HasError)     attrs["aria-errormessage"] = $"{EffectiveId}-error";
 
         return attrs;
     }
@@ -176,7 +166,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
 
         // Синхронизируем CurrentText только при реальном внешнем изменении Value
         if (!_isSettingValue &&
-            !EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
+            !EqualityComparer<TValue?>.Default.Equals(Value, _lastSyncedValue))
         {
             _lastSyncedValue = Value;
             CurrentText = EffectiveConverter.ConvertBack(Value);
@@ -201,15 +191,11 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContextAttached = false;
     }
 
-    // ИСПРАВЛЕНО: не теряем Task, логируем ошибки
+    // ИСПРАВЛЕНО: Task не теряется — логируем ошибки через ContinueWith
     private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
         if (IsDisposed) return;
-
         var task = InvokeAsync(StateHasChanged);
-
-        // На Blazor Server task может завершиться с ошибкой
-        // Регистрируем continuation для логирования (не блокируем)
         if (!task.IsCompletedSuccessfully)
         {
             _ = task.ContinueWith(t =>

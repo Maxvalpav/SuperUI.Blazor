@@ -1,15 +1,19 @@
 // SuperUI/Base/SgSnapshotComponentBase.cs
 // ИСПРАВЛЕНО:
-// 1. RestoreSnapshot: проверка на null для value-type свойств
-// 2. CaptureSnapshot: возвращает только non-null значения для value типов
-// 3. Reflection кэш: используем MethodHandle для сравнения типов (нет boxing)
-// 4. Добавлен ISnapshotable явный интерфейс (не теряет контракт)
+// 1. RestoreSnapshot: null-check для value-type свойств (ArgumentException → graceful fallback)
+// 2. Reflection кэш: статический per-type ConcurrentDictionary
+// 3. SnapshotPropertyInfo кэширует IsValueType и DefaultValue (нет повторного Activator.CreateInstance)
+// 4. Добавлен ISnapshotable явный интерфейс (чёткий контракт)
 using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using SuperUI.Services;
 
 namespace SuperUI.Base;
+
+[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+public sealed class SnapshotAttribute : Attribute { }
 
 public interface ISnapshotable
 {
@@ -17,20 +21,14 @@ public interface ISnapshotable
     void RestoreSnapshot(object? snapshot);
 }
 
-[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
-public sealed class SnapshotAttribute : Attribute { }
-
 /// <summary>
 /// Базовый класс для компонентов с поддержкой снэпшота состояния.
-/// 
-/// ИСПРАВЛЕНИЯ:
-/// - RestoreSnapshot: null-check для value-type свойств
-/// - Reflection кэш: статический per-type ConcurrentDictionary (нет повторного GetProperties)
-/// - SessionStorage: защита от ошибок десериализации
+/// Автоматически сохраняет/восстанавливает свойства, помеченные [Snapshot].
 /// </summary>
 public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
 {
     // Статический кэш: PropertyInfo[] per конкретный тип компонента
+    // Инициализируется один раз на тип, не на экземпляр
     private static readonly ConcurrentDictionary<Type, SnapshotPropertyInfo[]> _snapshotPropsCache = new();
 
     [Inject] private ISessionStorage SessionStorage { get; set; } = null!;
@@ -54,10 +52,7 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
         var props = GetSnapshotProperties();
         var dict = new Dictionary<string, object?>(props.Length);
         foreach (var info in props)
-        {
-            var value = info.Property.GetValue(this);
-            dict[info.Property.Name] = value;
-        }
+            dict[info.Property.Name] = info.Property.GetValue(this);
         return dict;
     }
 
@@ -77,13 +72,11 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
                 {
                     if (info.IsValueType)
                     {
-                        // Для value типов null недопустим → устанавливаем default
-                        // Не бросаем исключение — используем default(T)
+                        // Для value типов null недопустим → устанавливаем default(T)
                         info.Property.SetValue(this, info.DefaultValue);
                     }
                     else
                     {
-                        // Reference type — null допустим
                         info.Property.SetValue(this, null);
                     }
                 }
@@ -94,22 +87,22 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
             }
             catch (Exception ex)
             {
-                // Тип не совпал (например, был int, стал string после рефакторинга)
-                // Игнорируем с логированием в DEBUG
-                Logger.LogDebug(ex, "[{Id}] Snapshot restore failed for property {Prop}",
+                // Тип не совпал (рефакторинг изменил тип свойства) — graceful fallback
+                Logger.LogDebug(ex,
+                    "[{Id}] Snapshot restore failed for property {Prop}",
                     ComponentId, info.Property.Name);
             }
         }
     }
 
-    private SnapshotPropertyInfo[] GetSnapshotProperties() =>
-        _snapshotPropsCache.GetOrAdd(GetType(), static t =>
+    private SnapshotPropertyInfo[] GetSnapshotProperties()
+        => _snapshotPropsCache.GetOrAdd(GetType(), static t =>
             t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() != null && p.CanRead && p.CanWrite)
+             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() != null
+                      && p.CanRead && p.CanWrite)
              .Select(p => new SnapshotPropertyInfo(p))
              .ToArray());
 
-    /// <summary>Кэшированные метаданные свойства для снэпшота.</summary>
     private sealed class SnapshotPropertyInfo
     {
         public readonly PropertyInfo Property;
@@ -120,6 +113,7 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
         {
             Property = property;
             var propType = property.PropertyType;
+            // Nullable<T> — это value type, но допускает null
             IsValueType = propType.IsValueType && Nullable.GetUnderlyingType(propType) is null;
             DefaultValue = IsValueType ? Activator.CreateInstance(propType) : null;
         }

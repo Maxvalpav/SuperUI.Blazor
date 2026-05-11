@@ -1,0 +1,88 @@
+@* SuperUI/Base/Diagnostics/SgDiagnosticsPanel.razor *@
+@* Встроенная панель диагностики — показывает render stats, signal graph, ARIA score *@
+@* Активируется через SuperUI DevTools или keyboard shortcut Alt+Shift+D *@
+
+#if DEBUG
+@using SuperUI.Base.Diagnostics
+@inject ISgDiagnosticsCollector Collector
+
+<div class="sg-devtools-panel" style="@PanelStyle">
+    <div class="sg-devtools-header">
+        <span>SuperUI DevTools</span>
+        <button @onclick="Close">×</button>
+    </div>
+
+    <div class="sg-devtools-tabs">
+        <button class="@TabClass("renders")" @onclick="@(() => _tab = "renders")">Renders</button>
+        <button class="@TabClass("signals")" @onclick="@(() => _tab = "signals")">Signals</button>
+        <button class="@TabClass("aria")"    @onclick="@(() => _tab = "aria")">ARIA</button>
+    </div>
+
+    @if (_tab == "renders")
+    {
+        <table class="sg-devtools-table">
+            <thead>
+                <tr>
+                    <th>Component</th>
+                    <th>Renders</th>
+                    <th>Avg ms</th>
+                    <th>Last ms</th>
+                    <th>JS Calls</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var d in Collector.GetAll())
+                {
+                    <tr class="@RenderClass(d)">
+                        <td>@d.ComponentId</td>
+                        <td>@d.RenderCount</td>
+                        <td>@d.AverageRenderMs.ToString("F1")</td>
+                        <td>@d.LastRenderMs.ToString("F1")</td>
+                        <td>@d.JsCallCount</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+    else if (_tab == "signals")
+    {
+        <div class="sg-signal-graph">
+            <p>Signal dependency graph — @Collector.SignalCount signals active</p>
+            @foreach (var s in Collector.GetSignals())
+            {
+                <div class="sg-signal-row">
+                    <span class="sg-signal-name">@s.Name</span>
+                    <span class="sg-signal-subs">@s.SubscriberCount subscribers</span>
+                    <span class="sg-signal-value">@s.ValuePreview</span>
+                </div>
+            }
+        </div>
+    }
+    else if (_tab == "aria")
+    {
+        <div class="sg-aria-score">
+            <div class="score">ARIA Score: @Collector.AriaScore / 100</div>
+            @foreach (var issue in Collector.GetAriaIssues())
+            {
+                <div class="sg-aria-issue @issue.Severity.ToLower()">
+                    <span class="component">@issue.ComponentId</span>
+                    <span class="message">@issue.Message</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+#endif
+
+@code {
+    private string _tab = "renders";
+    private bool _visible = true;
+
+    private string PanelStyle => _visible
+        ? "position:fixed;bottom:0;right:0;width:600px;height:300px;background:#1e1e1e;color:#fff;z-index:99999;overflow:auto;font-size:12px;"
+        : "display:none";
+
+    private string TabClass(string tab) => _tab == tab ? "active" : "";
+    private string RenderClass(ComponentDiagnostics d) => d.AverageRenderMs > 16 ? "slow" : "";
+    private void Close() => _visible = false;
+}

@@ -9,4 +9,5 @@ public interface IComponentHook
     void OnInitialized(SgComponentBase component);
     void OnParametersSet(SgComponentBase component);
     void OnAfterRender(SgComponentBase component, bool firstRender);
+    bool ShouldRender(SgComponentBase component) => true; // default interface implementation
 }

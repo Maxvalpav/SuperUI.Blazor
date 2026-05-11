@@ -1,0 +1,95 @@
+@* SuperUI/Components/SgCommandPalette.razor *@
+@* Cmd+K / Ctrl+K command palette — нет ни в одной Blazor библиотеке *@
+@inherits SgOverlayBase
+
+@if (Open)
+{
+    <div class="sg-command-palette-backdrop" @onclick="CloseAsync"></div>
+    <div class="sg-command-palette" role="dialog" aria-label="Command palette">
+        <div class="sg-command-palette-search">
+            <input @ref="_searchRef"
+                   type="text"
+                   placeholder="Введите команду..."
+                   @bind="_query"
+                   @bind:event="oninput"
+                   @onkeydown="HandleKeyAsync"
+                   class="sg-command-input" />
+        </div>
+
+        <div class="sg-command-results" role="listbox">
+            @foreach (var (cmd, idx) in FilteredCommands.Select((c, i) => (c, i)))
+            {
+                <div class="sg-command-item @(idx == _selectedIndex ? "selected" : "")"
+                     role="option"
+                     aria-selected="@(idx == _selectedIndex)"
+                     @onclick="@(() => ExecuteCommand(cmd))">
+                    <span class="sg-command-icon">@cmd.Icon</span>
+                    <span class="sg-command-label">@cmd.Label</span>
+                    @if (cmd.Shortcut != null)
+                    {
+                        <kbd class="sg-command-shortcut">@cmd.Shortcut</kbd>
+                    }
+                    @if (cmd.Group != null)
+                    {
+                        <span class="sg-command-group">@cmd.Group</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public List<SgCommand> Commands { get; set; } = [];
+    [Parameter] public EventCallback<SgCommand> OnCommandExecuted { get; set; }
+
+    private string _query = "";
+    private int _selectedIndex = 0;
+    private ElementReference _searchRef;
+
+    private IEnumerable<SgCommand> FilteredCommands =>
+        string.IsNullOrWhiteSpace(_query)
+            ? Commands
+            : Commands.Where(c =>
+                c.Label.Contains(_query, StringComparison.OrdinalIgnoreCase) ||
+                (c.Keywords?.Any(k => k.Contains(_query, StringComparison.OrdinalIgnoreCase)) == true));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Open)
+        {
+            try { await _searchRef.FocusAsync(); } catch { }
+        }
+        await base.OnAfterRenderAsync(firstRender);
+    }
+
+    private async Task HandleKeyAsync(KeyboardEventArgs e)
+    {
+        var filtered = FilteredCommands.ToList();
+        switch (e.Key)
+        {
+            case "ArrowDown":
+                _selectedIndex = Math.Min(_selectedIndex + 1, filtered.Count - 1);
+                break;
+            case "ArrowUp":
+                _selectedIndex = Math.Max(_selectedIndex - 1, 0);
+                break;
+            case "Enter":
+                if (_selectedIndex < filtered.Count)
+                    await ExecuteCommand(filtered[_selectedIndex]);
+                break;
+            case "Escape":
+                await CloseAsync();
+                break;
+        }
+    }
+
+    private async Task ExecuteCommand(SgCommand cmd)
+    {
+        await CloseAsync();
+        await OnCommandExecuted.InvokeAsync(cmd);
+        await cmd.ExecuteAsync();
+        _query = "";
+        _selectedIndex = 0;
+    }
+}

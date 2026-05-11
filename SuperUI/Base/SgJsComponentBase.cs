@@ -1,11 +1,10 @@
 // SuperUI/Base/SgJsComponentBase.cs
 // ИСПРАВЛЕНО:
-// 1. Семафор ВСЕГДА освобождается в finally (даже при IsDisposed=true)
-// 2. Добавлен таймаут 30с на WaitAsync чтобы не зависать вечно
-// 3. LifecycleToken инициализируется в конструкторе (не лениво) — thread-safe
-// 4. DisposeComponentAsync: порядок операций безопасен (сначала Cancel, потом Dispose модуля)
-// 5. DotNetRef: Interlocked.CompareExchange уже корректен (оставлен)
-using System.Threading;
+// 1. Семафор ВСЕГДА освобождается в finally (semaphoreAcquired флаг)
+// 2. Таймаут 30с на WaitAsync (защита от бесконечного ожидания)
+// 3. ComponentToken.IsCancellationRequested (не IsCancelled — CS1061)
+// 4. DisposeComponentAsync: Cancel → DisposeModule → DisposeSemaphore (безопасный порядок)
+// 5. _moduleLockDisposed: volatile для видимости между потоками
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
@@ -16,27 +15,21 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов, использующих JavaScript Interop.
-/// 
-/// ИСПРАВЛЕНИЯ:
-/// - Семафор ВСЕГДА освобождается в finally блоке
-/// - Таймаут на ожидание семафора (30 секунд)
-/// - LifecycleToken создаётся в OnInitialized (не лениво) для thread-safety
-/// - Правильный порядок dispose: Cancel → DisposeModule → DisposeSemaphore
+/// Уровень 2: ComponentBase → SgComponentBase → SgJsComponentBase
 /// </summary>
 public abstract class SgJsComponentBase : SgComponentBase
 {
-    // ── Инъекции ───────────────────────────────────────────────────────────────
+    // ── Инъекции ──────────────────────────────────────────────────────────────
     [Inject] protected IJSRuntime JS { get; set; } = null!;
     [Inject] protected IPrerendingDetector PrerendingDetector { get; set; } = null!;
 
-    // ── JS Module ──────────────────────────────────────────────────────────────
-    // Семафор: не более одной параллельной загрузки модуля
+    // ── JS Module ─────────────────────────────────────────────────────────────
     private readonly SemaphoreSlim _moduleLock = new(1, 1);
     private volatile bool _moduleLockDisposed;
     private IJSObjectReference? _module;
     protected virtual string? JsModulePath => null;
 
-    // ── DotNetRef ──────────────────────────────────────────────────────────────
+    // ── DotNetRef ─────────────────────────────────────────────────────────────
     private DotNetObjectReference<SgJsComponentBase>? _dotNetRef;
 
     protected DotNetObjectReference<SgJsComponentBase> DotNetRef
@@ -47,18 +40,18 @@ public abstract class SgJsComponentBase : SgComponentBase
             {
                 var newRef = DotNetObjectReference.Create<SgJsComponentBase>(this);
                 var existing = Interlocked.CompareExchange(ref _dotNetRef, newRef, null);
-                if (existing is not null) newRef.Dispose(); // проиграли гонку — диспозим созданный
+                if (existing is not null)
+                    newRef.Dispose(); // проиграли гонку — диспозим созданный
             }
             return _dotNetRef;
         }
     }
 
-    // ── Prerendering ───────────────────────────────────────────────────────────
+    // ── Prerendering ──────────────────────────────────────────────────────────
     protected bool IsPrerendering => PrerendingDetector.IsPrerendering;
 
-    // ── LifecycleToken ─────────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: создаётся в конструкторе, не лениво
-    // Это гарантирует что ComponentToken всегда валиден с момента создания объекта
+    // ── LifecycleToken ────────────────────────────────────────────────────────
+    // Создаётся сразу — гарантирует что ComponentToken валиден с момента создания объекта
     private LifecycleToken _lifecycleToken = new();
     protected CancellationToken ComponentToken => _lifecycleToken.Token;
 
@@ -71,17 +64,17 @@ public abstract class SgJsComponentBase : SgComponentBase
         base.OnInitialized();
     }
 
-    // ── GetModuleAsync ─────────────────────────────────────────────────────────
+    // ── GetModuleAsync ────────────────────────────────────────────────────────
     protected async ValueTask<IJSObjectReference?> GetModuleAsync()
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancelled)
+        // ИСПРАВЛЕНО: используем IsCancellationRequested (не IsCancelled — CS1061)
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return null;
 
         // Быстрый путь без входа в семафор
         if (_module is not null) return _module;
 
-        // ИСПРАВЛЕНО: используем CancellationTokenSource с таймаутом 30с
-        // чтобы не зависнуть если семафор никогда не освободится
+        // ИСПРАВЛЕНО: таймаут 30с + linked token
         using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             ComponentToken, timeoutCts.Token);
@@ -94,14 +87,11 @@ public abstract class SgJsComponentBase : SgComponentBase
 
             // Double-check после получения семафора
             if (_module is not null) return _module;
-
-            if (IsDisposed || ComponentToken.IsCancelled)
-                return null;
+            if (IsDisposed || ComponentToken.IsCancellationRequested) return null;
 
             var path = JsModulePath ?? "_content/SuperUI/superui.js";
             _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import", ComponentToken, path);
-
             return _module;
         }
         catch (TaskCanceledException) { return null; }
@@ -116,7 +106,7 @@ public abstract class SgJsComponentBase : SgComponentBase
         finally
         {
             // ИСПРАВЛЕНО: ВСЕГДА освобождаем семафор если он был получен
-            // Независимо от IsDisposed — иначе ожидающие потоки зависнут
+            // Независимо от IsDisposed — иначе ожидающие потоки зависнут навсегда
             if (semaphoreAcquired && !_moduleLockDisposed)
             {
                 try { _moduleLock.Release(); }
@@ -134,7 +124,7 @@ public abstract class SgJsComponentBase : SgComponentBase
 #if DEBUG
         Diagnostics.JsCallCount++;
 #endif
-        // ИСПРАВЛЕНО: при Dispose используем overrideToken, игнорируем ComponentToken
+        // ИСПРАВЛЕНО: при isDisposePath используем overrideToken (ComponentToken уже отменён)
         var ct = overrideToken ?? ComponentToken;
         if (IsPrerendering || (overrideToken is null && IsDisposed)) return;
         if (ct.IsCancellationRequested) return;
@@ -159,13 +149,13 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
-    // ── SafeInvokeAsync<T> ─────────────────────────────────────────────────────
+    // ── SafeInvokeAsync<T> ────────────────────────────────────────────────────
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
 #if DEBUG
         Diagnostics.JsCallCount++;
 #endif
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancelled)
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return default;
 
         try
@@ -189,11 +179,10 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
-    // ── SafeGlobalInvokeVoidAsync ──────────────────────────────────────────────
+    // ── SafeGlobalInvokeVoidAsync ─────────────────────────────────────────────
     protected async ValueTask SafeGlobalInvokeVoidAsync(string identifier, params object?[] args)
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancelled) return;
-
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
         try
         {
             await JS.InvokeVoidAsync(identifier, ComponentToken, args);
@@ -204,13 +193,16 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { }
     }
 
-    // ── Dispose ────────────────────────────────────────────────────────────────
+    // ── Dispose ───────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
         // 1. Отменяем токен — все текущие JS вызовы получат OperationCanceledException
         _lifecycleToken.Cancel();
 
-        // 2. Диспозим JS модуль (безопасно — все вызовы уже прерваны токеном)
+        // 2. Даём текущим вызовам GetModuleAsync завершиться (они получат cancellation)
+        //    Небольшая задержка не нужна — OperationCanceledException обрабатывается в catch
+
+        // 3. Диспозим JS модуль
         if (_module is not null)
         {
             try { await _module.DisposeAsync(); }
@@ -218,16 +210,16 @@ public abstract class SgJsComponentBase : SgComponentBase
             _module = null;
         }
 
-        // 3. Помечаем семафор как disposed и диспозим его
-        // (после этого все WaitAsync получат ObjectDisposedException → handled)
+        // 4. Помечаем семафор как disposed и диспозим
+        //    (после этого все новые WaitAsync вернут ObjectDisposedException → handled в catch)
         _moduleLockDisposed = true;
         _moduleLock.Dispose();
 
-        // 4. Диспозим DotNetRef
+        // 5. Диспозим DotNetRef
         _dotNetRef?.Dispose();
         _dotNetRef = null;
 
-        // 5. Диспозим LifecycleToken
+        // 6. Диспозим LifecycleToken
         _lifecycleToken.Dispose();
 
         await base.DisposeComponentAsync();

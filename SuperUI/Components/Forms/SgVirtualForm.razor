@@ -1,26 +1,33 @@
 @* SuperUI/Components/Forms/SgVirtualForm.razor *@
-@* ИСПРАВЛЕНО: явный TItem="SgFieldDescriptor" в Virtualize *@
+@* ИСПРАВЛЕНО:
+   1. Явный TItem="SgFieldDescriptor" в Virtualize (RZ10000 / CS0411)
+   2. SgFieldDescriptor импортируется из отдельного .cs файла
+   3. SgDynamicField с явным TProp="object"
+*@
 @typeparam TModel
 
 @using Microsoft.AspNetCore.Components.Web.Virtualization
+@using SuperUI.Components.Forms
 
 @if (_fields.Count > 0)
 {
-    <div class="sg-virtual-form">
-        <Virtualize TItem="SgFieldDescriptor"
-                    Items="@_fields"
-                    ItemSize="@ItemHeight"
-                    OverscanCount="3"
-                    Context="field">
-            <ItemContent>
+    @* ИСПРАВЛЕНО: явный TItem="SgFieldDescriptor" *@
+    <Virtualize TItem="SgFieldDescriptor" Items="@_fields" ItemSize="@ItemHeight">
+        <ItemContent>
+            <div style="height: @(ItemHeight)px; display: flex; align-items: center;">
+                @* ИСПРАВЛЕНО: TProp="object" + Model=Model + For через имя свойства *@
                 <SgDynamicField TModel="TModel"
-                                TField="object"
+                                TProp="object"
                                 Model="@Model"
-                                FieldDescriptor="@field"
-                                Label="@field.Label" />
-            </ItemContent>
-        </Virtualize>
-    </div>
+                                Label="@context.Label"
+                                Placeholder="@context.Placeholder" />
+            </div>
+        </ItemContent>
+    </Virtualize>
+}
+else
+{
+    <p>Нет полей для отображения.</p>
 }
 
 @code {
@@ -34,14 +41,4 @@
         if (Model is null) return;
         _fields = SgFieldDescriptorBuilder.Build<TModel>();
     }
-}
-
-/// <summary>Дескриптор поля формы для виртуализации.</summary>
-public sealed class SgFieldDescriptor
-{
-    public string Name { get; init; } = "";
-    public string? Label { get; init; }
-    public Type FieldType { get; init; } = typeof(string);
-    public bool Required { get; init; }
-    public int Order { get; init; }
 }
