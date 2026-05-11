@@ -1,49 +1,54 @@
 // SuperUI/Base/SgRenderBoundary.cs
-// НОВЫЙ: декларативный контроль рендера (аналог React.memo)
-// Предотвращает лишние рендеры дочерних компонентов
-
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Граница рендера: предотвращает перерисовку ChildContent
-/// если указанные параметры не изменились.
-/// Аналог React.memo() / shouldComponentUpdate().
+/// Граница рендера: предотвращает перерисовку <see cref="ChildContent"/>
+/// если указанные <see cref="Dependencies"/> не изменились.
 /// </summary>
+/// <remarks>
+/// Аналог React.memo() / shouldComponentUpdate.
+///
+/// ⚠️ Dependencies сравниваются через <see cref="object.Equals"/> (shallow).
+/// Для mutable объектов передавайте неизменяемые snapshot-значения.
+/// </remarks>
 /// <example>
-/// <SgRenderBoundary Dependencies="@(new object[] { count, filter })">
-///     <HeavyComponent />
-/// </SgRenderBoundary>
+/// <code>
+/// &lt;SgRenderBoundary Dependencies="@(new object[] { _items.Count, _selectedId })"&gt;
+///     &lt;ExpensiveComponent /&gt;
+/// &lt;/SgRenderBoundary&gt;
+/// </code>
 /// </example>
 public sealed class SgRenderBoundary : ComponentBase
 {
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// Зависимости: массив объектов. Перерисовка только если хотя бы одна изменилась.
-    /// Аналог массива зависимостей useEffect в React.
+    /// Зависимости. Перерисовка происходит только при изменении хотя бы одной.
+    /// Сравнение — <see cref="object.Equals"/> (shallow, не deep-clone).
     /// </summary>
     [Parameter] public object?[]? Dependencies { get; set; }
 
-    /// <summary>Принудительно разрешить следующий рендер.</summary>
+    /// <summary>Принудительно разрешить следующий рендер (игнорирует Dependencies).</summary>
     [Parameter] public bool ForceRender { get; set; }
 
     private object?[]? _prevDependencies;
-    private bool _shouldRender = true;
+    // Отдельный флаг: ShouldRender может вызываться несколько раз до OnAfterRender
+    private bool _renderOccurred;
 
     protected override bool ShouldRender()
     {
         if (ForceRender || _prevDependencies is null)
         {
-            _shouldRender = true;
+            _renderOccurred = true;
             return true;
         }
 
         if (Dependencies is null || Dependencies.Length != _prevDependencies.Length)
         {
-            _shouldRender = true;
+            _renderOccurred = true;
             return true;
         }
 
@@ -51,23 +56,22 @@ public sealed class SgRenderBoundary : ComponentBase
         {
             if (!Equals(Dependencies[i], _prevDependencies[i]))
             {
-                _shouldRender = true;
+                _renderOccurred = true;
                 return true;
             }
         }
 
-        _shouldRender = false;
+        _renderOccurred = false;
         return false;
     }
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (_shouldRender && Dependencies is not null)
+        // Обновляем snapshot только если реально был рендер
+        if (_renderOccurred && Dependencies is not null)
             _prevDependencies = (object?[])Dependencies.Clone();
     }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
-    {
-        builder.AddContent(0, ChildContent);
-    }
+        => builder.AddContent(0, ChildContent);
 }

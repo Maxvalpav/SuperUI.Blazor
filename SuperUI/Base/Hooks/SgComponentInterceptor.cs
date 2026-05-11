@@ -1,25 +1,28 @@
 // SuperUI/Base/Hooks/SgComponentInterceptor.cs
 // ИСПРАВЛЕНО:
-// 1. Добавлен namespace SuperUI.Base.Hooks (отсутствовал — CS0246)
-// 2. Добавлен using SuperUI.Base (для SgComponentBase)
-// 3. Реализует IAsyncComponentHook корректно
+// 1. Реализует IRenderHook явно (не просто объявляет ShouldRender)
+// 2. ShouldRender помечен virtual
+// 3. Документация
 using SuperUI.Base;
 
 namespace SuperUI.Base.Hooks;
 
 /// <summary>
-/// Базовый хук-перехватчик для сквозной функциональности:
-/// - Логирование производительности
-/// - A/B тестирование
-/// - Feature flags
-/// - Аудит действий пользователя
+/// Базовый класс для хуков-перехватчиков (cross-cutting concerns).
 /// </summary>
-public abstract class SgComponentInterceptor : IAsyncComponentHook
+/// <remarks>
+/// Используется для: логирования производительности, feature flags, A/B тестов, аудита.
+/// Реализует <see cref="IAsyncComponentHook"/> и <see cref="IRenderHook"/>.
+/// Переопределяйте только нужные методы.
+/// </remarks>
+public abstract class SgComponentInterceptor : IAsyncComponentHook, IRenderHook
 {
     // IComponentHook
     public virtual void OnInitialized(SgComponentBase component) { }
     public virtual void OnParametersSet(SgComponentBase component) { }
     public virtual void OnAfterRender(SgComponentBase component, bool firstRender) { }
+
+    // IRenderHook — ИСПРАВЛЕНО: virtual (переопределяется в SgPerformanceInterceptor и др.)
     public virtual bool ShouldRender(SgComponentBase component) => true;
 
     // IAsyncComponentHook

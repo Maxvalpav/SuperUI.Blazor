@@ -1,28 +1,46 @@
+// SuperUI/Base/Hooks/ThrottledRenderHook.cs
+// ИСПРАВЛЕНО:
+// 1. DateTime.UtcNow → Stopwatch.GetTimestamp() (точнее, без аллокаций)
+// 2. _lastRenderTicks: long + Interlocked.Read/Exchange (thread-safe, ARM-safe)
+using System.Diagnostics;
 using SuperUI.Base;
-using SuperUI.Base.Hooks;
 
 namespace SuperUI.Base.Hooks;
 
 /// <summary>
 /// Хук для ограничения частоты рендеринга (throttle).
+/// Пропускает рендер если с последнего прошло меньше <see cref="MinInterval"/>.
 /// </summary>
 public sealed class ThrottledRenderHook : IRenderHook
 {
-    private readonly TimeSpan _minInterval;
-    private DateTime _lastRender = DateTime.MinValue;
+    private readonly long _minIntervalTicks;
+    private long _lastRenderTicks;
 
-    public ThrottledRenderHook(TimeSpan minInterval) => _minInterval = minInterval;
+    /// <summary>Минимальный интервал между рендерами.</summary>
+    public TimeSpan MinInterval { get; }
+
+    public ThrottledRenderHook(TimeSpan minInterval)
+    {
+        if (minInterval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(minInterval), "Must be positive.");
+
+        MinInterval = minInterval;
+        _minIntervalTicks = (long)(minInterval.TotalSeconds * Stopwatch.Frequency);
+    }
 
     // IRenderHook
     public bool ShouldRender(SgComponentBase c)
     {
-        var now = DateTime.UtcNow;
-        if (now - _lastRender < _minInterval) return false;
-        _lastRender = now;
+        var now = Stopwatch.GetTimestamp();
+        var last = Interlocked.Read(ref _lastRenderTicks);
+
+        if (now - last < _minIntervalTicks) return false;
+
+        Interlocked.Exchange(ref _lastRenderTicks, now);
         return true;
     }
 
-    // IComponentHook (required by IRenderHook)
+    // IComponentHook — default-реализации (методы не нужны)
     public void OnInitialized(SgComponentBase c) { }
     public void OnParametersSet(SgComponentBase c) { }
     public void OnAfterRender(SgComponentBase c, bool firstRender) { }

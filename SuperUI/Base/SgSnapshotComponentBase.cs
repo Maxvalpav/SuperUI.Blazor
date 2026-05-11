@@ -1,35 +1,33 @@
 // SuperUI/Base/SgSnapshotComponentBase.cs
-// ИСПРАВЛЕНО:
-// 1. RestoreSnapshot: null-check для value-type свойств (ArgumentException → graceful fallback)
-// 2. Reflection кэш: статический per-type ConcurrentDictionary
-// 3. SnapshotPropertyInfo кэширует IsValueType и DefaultValue (нет повторного Activator.CreateInstance)
-// 4. Добавлен ISnapshotable явный интерфейс (чёткий контракт)
 using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
-using SuperUI.Services;
+using SuperUI.Base.Services;
 
 namespace SuperUI.Base;
 
-[AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
+/// <summary>Помечает свойство для включения в snapshot.</summary>
+[AttributeUsage(AttributeTargets.Property)]
 public sealed class SnapshotAttribute : Attribute { }
 
+/// <summary>Контракт для компонентов с поддержкой снэпшота.</summary>
 public interface ISnapshotable
 {
-    object? CaptureSnapshot();
-    void RestoreSnapshot(object? snapshot);
+    /// <summary>Захватить текущее состояние помеченных свойств.</summary>
+    Dictionary<string, object?> CaptureSnapshot();
+
+    /// <summary>Восстановить состояние из ранее захваченного снэпшота.</summary>
+    void RestoreSnapshot(Dictionary<string, object?> snapshot);
 }
 
 /// <summary>
-/// Базовый класс для компонентов с поддержкой снэпшота состояния.
-/// Автоматически сохраняет/восстанавливает свойства, помеченные [Snapshot].
+/// Базовый класс для компонентов с автоматическим сохранением/восстановлением
+/// состояния через SessionStorage.
 /// </summary>
 public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
 {
-    // Статический кэш: PropertyInfo[] per конкретный тип компонента
-    // Инициализируется один раз на тип, не на экземпляр
-    private static readonly ConcurrentDictionary<Type, SnapshotPropertyInfo[]> _snapshotPropsCache = new();
+    private static readonly ConcurrentDictionary<Type, SnapshotPropertyInfo[]> _cache = new();
 
     [Inject] private ISessionStorage SessionStorage { get; set; } = null!;
 
@@ -37,17 +35,19 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
     {
         try
         {
-            var snapshot = await SessionStorage.GetItemAsync<Dictionary<string, object?>>(ComponentId);
-            if (snapshot != null) RestoreSnapshot(snapshot);
+            var snapshot = await SessionStorage
+                .GetItemAsync<Dictionary<string, object?>>(ComponentId);
+            if (snapshot is not null)
+                RestoreSnapshot(snapshot);
         }
         catch (Exception ex)
         {
-            Logger.LogWarning(ex, "[{Id}] Failed to restore snapshot from session storage", ComponentId);
+            Logger.LogWarning(ex, "[{Id}] Failed to restore snapshot", ComponentId);
         }
         await base.OnInitializedAsync();
     }
 
-    public object? CaptureSnapshot()
+    public Dictionary<string, object?> CaptureSnapshot()
     {
         var props = GetSnapshotProperties();
         var dict = new Dictionary<string, object?>(props.Length);
@@ -56,29 +56,20 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
         return dict;
     }
 
-    public void RestoreSnapshot(object? snapshot)
+    public void RestoreSnapshot(Dictionary<string, object?> snapshot)
     {
-        if (snapshot is not Dictionary<string, object?> dict) return;
-
         var props = GetSnapshotProperties();
         foreach (var info in props)
         {
-            if (!dict.TryGetValue(info.Property.Name, out var value)) continue;
-
+            if (!snapshot.TryGetValue(info.Property.Name, out var value)) continue;
             try
             {
-                // ИСПРАВЛЕНО: проверка на null для value-type свойств
                 if (value is null)
                 {
                     if (info.IsValueType)
-                    {
-                        // Для value типов null недопустим → устанавливаем default(T)
                         info.Property.SetValue(this, info.DefaultValue);
-                    }
                     else
-                    {
                         info.Property.SetValue(this, null);
-                    }
                 }
                 else
                 {
@@ -87,19 +78,19 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
             }
             catch (Exception ex)
             {
-                // Тип не совпал (рефакторинг изменил тип свойства) — graceful fallback
-                Logger.LogDebug(ex,
-                    "[{Id}] Snapshot restore failed for property {Prop}",
+                Logger.LogDebug(ex, "[{Id}] Snapshot restore skipped for {Prop}",
                     ComponentId, info.Property.Name);
             }
         }
     }
 
     private SnapshotPropertyInfo[] GetSnapshotProperties()
-        => _snapshotPropsCache.GetOrAdd(GetType(), static t =>
+        => _cache.GetOrAdd(GetType(), static t =>
             t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() != null
-                      && p.CanRead && p.CanWrite)
+             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() is not null
+                      && p.CanRead && p.CanWrite
+                      // Проверяем что setter не private (допускаем public/internal/protected)
+                      && p.SetMethod is { IsPrivate: false })
              .Select(p => new SnapshotPropertyInfo(p))
              .ToArray());
 
@@ -113,7 +104,6 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
         {
             Property = property;
             var propType = property.PropertyType;
-            // Nullable<T> — это value type, но допускает null
             IsValueType = propType.IsValueType && Nullable.GetUnderlyingType(propType) is null;
             DefaultValue = IsValueType ? Activator.CreateInstance(propType) : null;
         }

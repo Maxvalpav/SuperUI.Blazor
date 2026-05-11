@@ -18,6 +18,11 @@ public sealed class StyleBuilder
 
     public StyleBuilder() { }
 
+    public StyleBuilder(string? baseStyle) : this()
+    {
+        AddUserStyle(baseStyle);
+    }
+
     public StyleBuilder Add(string property, string? value, bool condition = true)
     {
         if (!condition || string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(property))
