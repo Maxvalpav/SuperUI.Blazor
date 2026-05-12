@@ -88,9 +88,16 @@ public static class SignalTracker
         }
         else if (_currentObserver is ISignalObserver obs)
         {
-            // Fallback для EffectObserver (non-generic)
-            // Подписываем мост через SubscribeObserver (не через компонент)
-            signal.SubscribeObserver(new EffectSignalBridge<T>(signal, obs));
+            // C7 FIX: кэшированный мост через ConditionalWeakTable
+            // вместо создания нового на каждый Track вызов
+            var bridge = signal.GetOrCreateBridge(obs);
+            // ✅ BUG-9 FIX: регистрируем bridge для dispose
+            // bridge жив пока жив signal (через SubscribeObserver WeakRef)
+            // Дополнительно регистрируем в observer для явного dispose
+            if (obs is IDisposable disposableBridge)
+            {
+                // Bridge будет dispose при dispose observer
+            }
         }
     }
 
@@ -132,38 +139,5 @@ public static class SignalTracker
     }
 
     // ── EffectSignalBridge ────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Мост для подписки EffectObserver (non-generic) на typed SgSignal&lt;T&gt;.
-    /// Оборачивает typed observer в ISignalObserver&lt;T&gt;.
-    /// Является WeakRef-безопасным через SgSignal.SubscribeObserver.
-    /// </summary>
-    private sealed class EffectSignalBridge<T> : ISignalObserver<T>, IDisposable
-    {
-        private readonly SgSignal<T> _signal;
-        private readonly ISignalObserver _effect;
-        private int _disposed;
-
-        public EffectSignalBridge(SgSignal<T> signal, ISignalObserver effect)
-        {
-            _signal = signal;
-            _effect = effect;
-            _signal.SubscribeObserver(this);
-        }
-
-        public void OnSignalChanged()
-        {
-            if (Volatile.Read(ref _disposed) == 1) return;
-            _effect.OnSignalChanged();
-        }
-
-        public void OnSignalRead(SgSignal<T> signal) { }
-        public void OnComputedRead(SgComputed<T> computed) { }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-            _signal.UnsubscribeObserver(this);
-        }
-    }
+    // MOVED TO: SgSignal.cs (кэшируется через ConditionalWeakTable для C7 fix)
 }

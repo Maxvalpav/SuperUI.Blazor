@@ -89,12 +89,15 @@ public sealed class SgComputed<T> : IDisposable
 
             if (!_comparer.Equals(_cachedValue, newValue))
             {
-                _cachedValue = newValue;
+                // ✅ PERF-5 FIX: Volatile.Write для visibility между потоками (Blazor Server)
+                // На WASM это no-op, но безопасно.
+                Volatile.Write(ref _cachedValue!, newValue);
                 _observer.NotifyChanged();  // уведомить зависимые computed/components
             }
             else
             {
-                _cachedValue = newValue;    // обновляем даже если равно (ссылки могут меняться)
+                // Обновляем даже если равно (ссылки могут меняться)
+                Volatile.Write(ref _cachedValue!, newValue);
             }
         }
         catch (Exception ex)

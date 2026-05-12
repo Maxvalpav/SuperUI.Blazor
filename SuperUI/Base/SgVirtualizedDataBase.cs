@@ -40,6 +40,8 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
     private bool _isLoading;
     private string? _loadError;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
+    // П5: Кэш предзагруженных страниц
+    private readonly Dictionary<int, SgDataResult<TItem>> _prefetchCache = new();
 
     // ── Публичные свойства ───────────────────────────────────────────────────
     /// <summary>Отображаемые элементы (после загрузки/фильтрации).</summary>
@@ -113,6 +115,18 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
     {
         if (LoadData is null || IsDisposed) return;
 
+        // П5: Проверить кэш предзагруженных данных
+        if (_prefetchCache.TryGetValue(page, out var cached))
+        {
+            _items.Clear();
+            _items.AddRange(cached.Items);
+            _totalCount = cached.TotalCount;
+            _currentPage = page;
+            _prefetchCache.Remove(page);
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
         // Пропустить если уже идёт загрузка (fire-and-forget protection)
         if (!await _loadLock.WaitAsync(0)) return;
 
@@ -159,9 +173,51 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
         }
     }
 
+    // ── Prefetch оптимизация ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// П5: Предзагрузить следующую страницу в фоне.
+    /// Вызывайте после загрузки текущей страницы для мгновенного переключения.
+    /// </summary>
+    protected async Task PrefetchNextPageAsync()
+    {
+        if (LoadData is null || IsDisposed || !HasNextPage) return;
+
+        var nextPage = _currentPage + 1;
+
+        // Fire-and-forget: не ждём, не меняем UI
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var request = new SgDataRequest
+                {
+                    Page = nextPage,
+                    PageSize = PageSize,
+                    CancellationToken = ComponentToken
+                };
+
+                // Предзагружаем данные в фоне
+                var result = await LoadData(request);
+
+                // Сохраняем для мгновенного показа при переходе
+                if (result is not null && !IsDisposed)
+                {
+                    _prefetchCache[nextPage] = result;
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "[{Id}] Prefetch page {Page} failed", ComponentId, nextPage);
+            }
+        }, ComponentToken);
+    }
+
     // ── Dispose ──────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
+        _prefetchCache.Clear();
         _loadLock.Dispose();
         await base.DisposeComponentAsync();
     }

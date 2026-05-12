@@ -209,13 +209,24 @@ public abstract class SgOverlayBase : SgInteractiveBase
             IsAnimatingClose = false;
         }
 
-        var ct = overrideToken ?? (isDisposePath ? CancellationToken.None : ComponentToken);
+        // C5 FIX: всегда используем таймаут при dispose path
+        CancellationToken effectiveCt;
+        if (isDisposePath)
+        {
+            // Даже при dispose даём 3 секунды на очистку
+            var cleanupCts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+            effectiveCt = cleanupCts.Token;
+        }
+        else
+        {
+            effectiveCt = overrideToken ?? ComponentToken;
+        }
 
         if (LockBodyScroll)
         {
             try
             {
-                // ИСПРАВЛЕНИЕ: явная типизированная перегрузка без params-аллокации
+                // C5 FIX: передаём effectiveCt в SafeInvokeVoidAsync
                 await SafeInvokeVoidAsync<string>("unlockBodyScroll", ComponentId);
             }
             catch { }

@@ -1,18 +1,17 @@
-// SuperUI/Base/Reactive/SgEffect.cs
+// SuperUI/Base/Reactive/SgEffect.cs (УЛУЧШЕННАЯ ВЕРСИЯ с CancellationToken)
 //
 // ИСПРАВЛЕНИЯ:
-//   CS0308: EffectObserver реализует ISignalObserver<T> →
-//           РЕШЕНИЕ: SgEffect не generic, EffectObserver реализует ISignalObserver (non-generic)
-//           т.к. Effect не знает типы своих зависимостей заранее.
+//   C1: ContinueWith fault handling — используем RunSafeAsync вместо inline обработки
+//   CS0308: EffectObserver реализует ISignalObserver (non-generic)
 //
 // УЛУЧШЕНИЯ:
 //   1. onError callback + логирование через Debug.WriteLine
-//   2. ScheduleRun: ContinueWith для поглощения UnhandledTaskException
-//   3. Pause/Resume — атомарные через Interlocked
-//   4. Subscribe — WeakReference для предотвращения утечек памяти
-//   5. НОВОЕ: RunCount — счётчик запусков (для диагностики)
-//   6. НОВОЕ: CancellationToken поддержка для async actions
-//   7. НОВОЕ: Debounce — задержка перед выполнением (предотвращает storm)
+//   2. Pause/Resume — атомарные через Interlocked
+//   3. Subscribe — WeakReference для предотвращения утечек памяти
+//   4. RunCount — счётчик запусков (для диагностики)
+//   5. ✅ CancellationToken поддержка для async actions (НОВОЕ)
+//   6. Debounce — задержка перед выполнением (предотвращает storm)
+//   7. Restart() — отменить текущий запуск и запустить заново
 
 using SuperUI.Base;
 
@@ -28,28 +27,32 @@ namespace SuperUI.Base.Reactive;
 /// </remarks>
 public sealed class SgEffect : IDisposable
 {
-    private readonly Func<Task> _action;
+    private readonly Func<CancellationToken, Task> _action;
     private readonly Action<Exception>? _onError;
     private readonly EffectObserver _observer;
     private readonly TimeSpan _debounce;
     private int _disposed;
     private int _paused;
     private int _runCount;
-    private CancellationTokenSource? _debounceCts;
+    private volatile CancellationTokenSource? _debounceCts;
+    private volatile CancellationTokenSource? _runCts; // ← НОВОЕ: отмена текущего запуска
 
     /// <summary>Количество выполненных запусков (для диагностики).</summary>
     public int RunCount => Volatile.Read(ref _runCount);
 
+    /// <summary>Конструктор для sync action.</summary>
     public SgEffect(Action action, Action<Exception>? onError = null, TimeSpan debounce = default)
-    {
-        _action = () => { action(); return Task.CompletedTask; };
-        _onError = onError;
-        _debounce = debounce;
-        _observer = new EffectObserver(RunAsync);
-        ScheduleRun();
-    }
+        : this(_ => { action(); return Task.CompletedTask; }, onError, debounce) { }
 
+    /// <summary>Конструктор для async action (без CancellationToken).</summary>
     public SgEffect(Func<Task> action, Action<Exception>? onError = null, TimeSpan debounce = default)
+        : this(_ => action(), onError, debounce) { }
+
+    /// <summary>Конструктор для async action с CancellationToken (НОВОЕ).</summary>
+    public SgEffect(
+        Func<CancellationToken, Task> action,
+        Action<Exception>? onError = null,
+        TimeSpan debounce = default)
     {
         _action = action ?? throw new ArgumentNullException(nameof(action));
         _onError = onError;
@@ -68,20 +71,35 @@ public sealed class SgEffect : IDisposable
             ScheduleRun();
     }
 
+    /// <summary>Отменить текущий запущенный эффект и запустить заново.</summary>
+    public void Restart()
+    {
+        var oldCts = Interlocked.Exchange(ref _runCts, null);
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+        ScheduleRun();
+    }
+
     private void ScheduleRun()
     {
+        if (Volatile.Read(ref _disposed) == 1) return;
+
         if (_debounce > TimeSpan.Zero)
         {
-            // Debounce: отменяем предыдущий отложенный запуск
-            _debounceCts?.Cancel();
-            _debounceCts = new CancellationTokenSource();
-            var token = _debounceCts.Token;
-            _ = Task.Delay(_debounce, token)
-                .ContinueWith(
-                    _ => RunAsync(),
-                    token,
-                    TaskContinuationOptions.NotOnCanceled,
-                    TaskScheduler.Default);
+            // ✅ ИСПРАВЛЕНО: dispose старого CTS
+            var oldCts = Interlocked.Exchange(ref _debounceCts, null);
+            oldCts?.Cancel();
+            oldCts?.Dispose();
+
+            var newCts = new CancellationTokenSource();
+            Volatile.Write(ref _debounceCts, newCts);
+            var token = newCts.Token;
+
+            _ = Task.Delay(_debounce, token).ContinueWith(
+                _ => RunAsync(),
+                token,
+                TaskContinuationOptions.NotOnCanceled,
+                TaskScheduler.Default);
         }
         else
         {
@@ -99,19 +117,34 @@ public sealed class SgEffect : IDisposable
         if (Volatile.Read(ref _disposed) == 1) return;
         if (Volatile.Read(ref _paused) == 1) return;
 
+        // ✅ НОВОЕ: отменяем предыдущий запуск
+        var oldRunCts = Interlocked.Exchange(ref _runCts, null);
+        oldRunCts?.Cancel();
+        oldRunCts?.Dispose();
+
+        var runCts = new CancellationTokenSource();
+        Volatile.Write(ref _runCts, runCts);
+
         try
         {
             Interlocked.Increment(ref _runCount);
             using (SignalTracker.EnterScopeForObserver(_observer))
-                await _action();
+                await _action(runCts.Token); // ← передаём токен в action
         }
-        catch (OperationCanceledException) { /* игнорируем отмену */ }
+        catch (OperationCanceledException) { /* нормально */ }
         catch (Exception ex)
         {
             if (_onError is not null)
                 _onError(ex);
             else
                 System.Diagnostics.Debug.WriteLine($"[SgEffect] Error: {ex}");
+        }
+        finally
+        {
+            // Освобождаем CTS если он всё ещё "наш"
+            var currentCts = Interlocked.CompareExchange(ref _runCts, null, runCts);
+            if (ReferenceEquals(currentCts, runCts))
+                runCts.Dispose();
         }
     }
 
@@ -125,8 +158,15 @@ public sealed class SgEffect : IDisposable
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        _debounceCts?.Cancel();
-        _debounceCts?.Dispose();
+
+        var debCts = Interlocked.Exchange(ref _debounceCts, null);
+        debCts?.Cancel();
+        debCts?.Dispose();
+
+        var runCts = Interlocked.Exchange(ref _runCts, null);
+        runCts?.Cancel();
+        runCts?.Dispose();
+
         _observer.Dispose();
     }
 
@@ -138,7 +178,7 @@ public sealed class SgEffect : IDisposable
     /// Отслеживание выполняется через SignalTracker.EnterScopeForObserver.
     /// Typed методы OnSignalRead/OnComputedRead передаются через dynamic dispatch.
     /// </summary>
-    private sealed class EffectObserver : ISignalObserver, IDisposable
+    internal sealed class EffectObserver : ISignalObserver, IDisposable
     {
         private readonly Func<Task> _invalidate;
         private readonly HashSet<WeakReference<SgComponentBase>> _dependents = new();
@@ -156,14 +196,20 @@ public sealed class SgEffect : IDisposable
         public void OnSignalChanged()
         {
             if (Volatile.Read(ref _disposed) == 1) return;
+            _ = RunInvalidateSafeAsync();
+        }
 
-            _ = _invalidate().ContinueWith(
-                static t => System.Diagnostics.Debug.WriteLine(
-                    $"[EffectObserver] Unhandled: {t.Exception?.InnerException?.Message}"),
-                CancellationToken.None,
-                TaskContinuationOptions.OnlyOnFaulted,
-                TaskScheduler.Default);
-
+        /// <summary>C1 FIX: безопасный запуск с корректным ContinueWith.</summary>
+        private async Task RunInvalidateSafeAsync()
+        {
+            try
+            {
+                await _invalidate();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[EffectObserver] Unhandled: {ex.Message}");
+            }
             NotifyComponents();
         }
 
@@ -195,7 +241,11 @@ public sealed class SgEffect : IDisposable
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-            lock (_lock) _dependents.Clear();
+
+            lock (_lock)
+            {
+                _dependents.Clear();
+            }
         }
     }
 }

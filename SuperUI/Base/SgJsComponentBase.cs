@@ -176,14 +176,21 @@ public abstract class SgJsComponentBase : SgComponentBase
         Diagnostics.JsCallCount++;
         var sw = Stopwatch.GetTimestamp();
 #endif
+        // C3 FIX: проверяем оба токена ДО GetModuleAsync
         var ct = overrideToken ?? ComponentToken;
-        if (IsPrerendering || (overrideToken is null && IsDisposed)) return;
+        if (IsPrerendering) return;
+        if (overrideToken is null && IsDisposed) return;
         if (ct.IsCancellationRequested) return;
 
         try
         {
+            // GetModuleAsync сам проверяет ComponentToken, но overrideToken может быть другим
             var module = await GetModuleAsync();
             if (module is null) return;
+
+            // C3 FIX: повторная проверка токена после загрузки модуля
+            if (ct.IsCancellationRequested) return;
+
             await module.InvokeVoidAsync(identifier, ct, args);
         }
         catch (TaskCanceledException) { }

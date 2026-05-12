@@ -9,6 +9,7 @@
 // ✅ ThrowIfDisposed с CallerMemberName
 // ✅ CreateStyle() и Css() — единственные объявления
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
@@ -27,14 +28,14 @@ namespace SuperUI.Base;
 /// Базовый класс уровня 1 для всех компонентов SuperUI.
 /// Иерархия: ComponentBase → SgComponentBase → SgJsComponentBase → SgInteractiveBase
 /// </summary>
-public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
+public abstract class SgComponentBase : ComponentBase, IAsyncDisposable, ISgComponent
 {
     // ── Инъекции ──────────────────────────────────────────────────────────────
 
     [Inject] protected ILogger<SgComponentBase> Logger { get; set; } = null!;
 
     /// <summary>Необязательная инъекция — может быть null в тестах.</summary>
-    [Inject(Key = null)] protected IComponentOptionsService? OptionsService { get; set; }
+    [Inject] protected IComponentOptionsService? OptionsService { get; set; }
 
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
 
@@ -125,7 +126,8 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     private int _previousVisible = 1;
     private readonly List<IComponentHook> _hooks = [];
     private ComponentSignalTracker? _signalBatcher;
-    private List<IDisposable>? _reactiveDisposables;
+    // M1 FIX: ConcurrentBag для thread-safe добавления подписок из любого потока
+    private readonly ConcurrentBag<IDisposable> _reactiveDisposables = new();
     private readonly CancellationTokenSource _cts = new();
 
     // ARIA / Filter cache
@@ -179,7 +181,8 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
             ? new SgSignal<TValue>(initial)
             : new SgSignal<TValue>(initial, comparer);
         signal.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(signal);
+        // M1 FIX: ConcurrentBag.Add — thread-safe
+        _reactiveDisposables.Add(signal);
         return signal;
     }
 
@@ -189,7 +192,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(action);
         var effect = new SgEffect(action);
         effect.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(effect);
+        _reactiveDisposables.Add(effect);
         return effect;
     }
 
@@ -199,7 +202,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(action);
         var effect = new SgEffect(action);
         effect.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(effect);
+        _reactiveDisposables.Add(effect);
         return effect;
     }
 
@@ -209,13 +212,13 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(compute);
         var computed = new SgComputed<TValue>(compute);
         computed.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(computed);
+        _reactiveDisposables.Add(computed);
         return computed;
     }
 
     /// <summary>Регистрация для внутреннего использования фабриками.</summary>
     protected void RegisterEffectInternal(IDisposable disposable)
-        => (_reactiveDisposables ??= []).Add(disposable);
+        => _reactiveDisposables.Add(disposable);
 
     // ── ShouldRender ───────────────────────────────────────────────────────────
 
@@ -524,28 +527,30 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 
         LogLifecycle(nameof(DisposeAsync));
 
-        try { await _cts.CancelAsync(); } catch { /* ignored */ }
+        // П8: CancelAsync с ConfigureAwait(false) для Blazor Server
+        // Предотвращает deadlock при возврате в SynchronizationContext
+        try { await _cts.CancelAsync().ConfigureAwait(false); }
+        catch { /* ignored */ }
         _cts.Dispose();
 
-        if (_reactiveDisposables is not null)
+        // M1 FIX: ConcurrentBag — безопасный перебор из любого потока
+        while (_reactiveDisposables.TryTake(out var rd))
         {
-            foreach (var rd in _reactiveDisposables)
+            try { rd.Dispose(); }
+            catch (Exception ex)
             {
-                try { rd.Dispose(); }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId);
-                }
+                Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId);
             }
-            _reactiveDisposables.Clear();
         }
 
         foreach (var hook in _hooks)
         {
             try
             {
-                if (hook is IAsyncDisposable ad) await ad.DisposeAsync();
-                else if (hook is IDisposable d) d.Dispose();
+                if (hook is IAsyncDisposable ad)
+                    await ad.DisposeAsync().ConfigureAwait(false); // П8
+                else if (hook is IDisposable d)
+                    d.Dispose();
             }
             catch (Exception ex)
             {
@@ -554,7 +559,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         }
         _hooks.Clear();
 
-        await DisposeComponentAsync();
+        await DisposeComponentAsync().ConfigureAwait(false); // П8
         GC.SuppressFinalize(this);
     }
 

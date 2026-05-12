@@ -31,6 +31,9 @@ public sealed class SgCssBuilder
     private readonly string? _base;
     private List<string>? _parts;
     private string? _prefix;
+    // П9: Scoped CSS support
+    private string? _scopeId;
+    private bool _scoped;
 
     /// <summary>Создать builder с базовым CSS-классом.</summary>
     public SgCssBuilder(string? baseClass = null)
@@ -51,7 +54,16 @@ public sealed class SgCssBuilder
         if (!string.IsNullOrWhiteSpace(cssClass))
         {
             var cls = cssClass.Trim();
-            if (_prefix is not null) cls = _prefix + cls;
+            // П9 FIX: модифицированный Add() для поддержки scoped
+            if (_scoped && !string.IsNullOrEmpty(_scopeId))
+            {
+                // Scoped класс: scopeId_className
+                cls = _scopeId + "_" + cls;
+            }
+            else if (_prefix is not null)
+            {
+                cls = _prefix + cls;
+            }
             (_parts ??= new List<string>()).Add(cls);
         }
         return this;
@@ -189,6 +201,39 @@ public sealed class SgCssBuilder
     // ── Prefix ───────────────────────────────────────────────────────────────
 
     /// <summary>
+    /// П9: Добавить scope ID для CSS Modules / Scoped CSS.
+    /// Все классы будут уникальными для этого компонента.
+    /// Пример: .Scoped("cmp123").Add("button") → "cmp123_button"
+    /// </summary>
+    public SgCssBuilder Scoped(string? componentId)
+    {
+        if (!string.IsNullOrWhiteSpace(componentId))
+        {
+            _scopeId = componentId.Trim();
+            _scoped = true;
+        }
+        return this;
+    }
+
+    /// <summary>Проверить, используется ли Scoped CSS.</summary>
+    public bool IsScoped => _scoped;
+
+    /// <summary>
+    /// Добавить CSS custom property (--var: value).
+    /// Полезно для theme-friendly стилей.
+    /// </summary>
+    public SgCssBuilder Var(string name, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(name))
+        {
+            (_parts ??= new List<string>()).Add($"--{name}:{value}");
+        }
+        return this;
+    }
+
+    // ── Prefix ───────────────────────────────────────────────────────────────
+
+    /// <summary>
     /// Установить префикс для всех последующих Add() вызовов.
     /// Пример: .WithPrefix("sg-").Add("button") → "sg-button"
     /// </summary>
@@ -222,7 +267,12 @@ public sealed class SgCssBuilder
     /// <summary>Создать независимую копию builder-а.</summary>
     public SgCssBuilder Clone()
     {
-        var clone = new SgCssBuilder(_base) { _prefix = _prefix };
+        var clone = new SgCssBuilder(_base)
+        {
+            _prefix = _prefix,
+            _scopeId = _scopeId,
+            _scoped = _scoped
+        };
         if (_parts is not null)
             clone._parts = new List<string>(_parts);
         return clone;
@@ -232,7 +282,7 @@ public sealed class SgCssBuilder
 
     /// <summary>
     /// Собрать итоговую строку CSS-классов.
-    /// Fast-path для 0-3 дополнительных частей (без StringBuilder аллокации).
+    /// Fast-path для 0-5 дополнительных частей (без StringBuilder аллокации).
     /// </summary>
     public string Build()
     {
@@ -247,8 +297,14 @@ public sealed class SgCssBuilder
         if (hasBase && _parts!.Count == 2) return string.Concat(_base, " ", _parts[0], " ", _parts[1]);
         if (!hasBase && _parts!.Count == 3) return string.Concat(_parts[0], " ", _parts[1], " ", _parts[2]);
         if (hasBase && _parts!.Count == 3) return string.Concat(_base, " ", _parts[0], " ", _parts[1], " ", _parts[2]);
+        
+        // ✅ НОВЫЕ fast-paths для 4 и 5 частей:
+        if (!hasBase && _parts!.Count == 4) return string.Concat(_parts[0], " ", _parts[1], " ", _parts[2], " ", _parts[3]);
+        if (hasBase && _parts!.Count == 4) return $"{_base} {_parts[0]} {_parts[1]} {_parts[2]} {_parts[3]}";
+        if (!hasBase && _parts!.Count == 5) return string.Concat(_parts[0], " ", _parts[1], " ", _parts[2], " ", _parts[3], " ", _parts[4]);
+        if (hasBase && _parts!.Count == 5) return $"{_base} {_parts[0]} {_parts[1]} {_parts[2]} {_parts[3]} {_parts[4]}";
 
-        // General path
+        // General path (StringBuilder для 6+ частей)
         var capacity = (hasBase ? _base!.Length + 1 : 0) + _parts!.Count * 14;
         var sb = new StringBuilder(capacity);
         if (hasBase) sb.Append(_base);

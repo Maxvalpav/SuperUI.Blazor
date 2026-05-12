@@ -38,15 +38,33 @@ public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
     // ИСПРАВЛЕНИЕ: ConcurrentDictionary для thread-safety на Server
     private readonly ConcurrentDictionary<string, List<string>> _fieldErrors = new();
 
+    // C6 FIX: кэш CompletionPercent с инвалидацией
+    private double _cachedCompletionPercent = -1;
+    private int _completionGeneration;
+
     // ── Completion ───────────────────────────────────────────────────────────────
 
-    /// <summary>Процент заполнения формы (0-100).</summary>
+    /// <summary>
+    /// Процент заполнения формы (0-100).
+    /// C6 FIX: кэшируется с инвалидацией вместо вычисления каждый раз.
+    /// </summary>
     protected double CompletionPercent
     {
         get
         {
+            // Инвалидация при изменении ошибок (косвенный признак изменения данных)
+            var currentGen = _fieldErrors.Count + _fieldErrors.Sum(kv => kv.Value.Count);
+            if (_cachedCompletionPercent >= 0 && _completionGeneration == currentGen)
+                return _cachedCompletionPercent;
+
             var props = GetModelProperties();
-            if (props.Length == 0) return 0;
+            if (props.Length == 0)
+            {
+                _cachedCompletionPercent = 0;
+                _completionGeneration = currentGen;
+                return 0;
+            }
+
             int filled = 0;
             foreach (var p in props)
             {
@@ -54,8 +72,17 @@ public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
                 if (val is not null && (val is not string s || !string.IsNullOrWhiteSpace(s)))
                     filled++;
             }
-            return (double)filled / props.Length * 100;
+
+            _cachedCompletionPercent = (double)filled / props.Length * 100;
+            _completionGeneration = currentGen;
+            return _cachedCompletionPercent;
         }
+    }
+
+    /// <summary>Инвалидировать кэш CompletionPercent.</summary>
+    protected void InvalidateCompletionCache()
+    {
+        _cachedCompletionPercent = -1;
     }
 
     // ── Validation ───────────────────────────────────────────────────────────────

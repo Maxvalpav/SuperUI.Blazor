@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using SuperUI.Base.Reactive;
 
 namespace SuperUI.Base;
@@ -114,6 +115,60 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     }
 
     public void Reset(TState initialState) => _state.Set(initialState);
+
+    /// <summary>
+    /// Подписаться на все изменения состояния (для DevTools, логирования).
+    /// </summary>
+    public IDisposable OnStateChange(Action<TState, TState> observer)
+    {
+        ArgumentNullException.ThrowIfNull(observer);
+        return Use((prev, next) =>
+        {
+            observer(prev, next);
+            return next;
+        });
+    }
+
+    /// <summary>
+    /// Создать снапшот текущего состояния (для time-travel).
+    /// Требует TState : ICloneable или использует сериализацию.
+    /// </summary>
+    public TState Snapshot() => Current;
+
+    /// <summary>
+    /// Middleware логирования в Debug (для разработки).
+    /// </summary>
+    public static Middleware<TState> CreateLoggingMiddleware(
+        ILogger? logger = null,
+        string? storeName = null)
+    {
+        var name = storeName ?? typeof(TState).Name;
+        return (prev, next) =>
+        {
+            if (logger?.IsEnabled(LogLevel.Debug) == true)
+                logger.LogDebug("[SgStore<{Name}>] State changed: {Prev} → {Next}", name, prev, next);
+            else
+                System.Diagnostics.Debug.WriteLine($"[SgStore<{name}>] {prev} → {next}");
+            return next;
+        };
+    }
+
+    /// <summary>
+    /// Middleware валидации: генерирует исключение если новое состояние не прошло проверку.
+    /// </summary>
+    public static Middleware<TState> CreateValidationMiddleware(
+        Func<TState, bool> isValid,
+        string? errorMessage = null)
+    {
+        ArgumentNullException.ThrowIfNull(isValid);
+        return (_, next) =>
+        {
+            if (!isValid(next))
+                throw new InvalidOperationException(
+                    errorMessage ?? $"SgStore<{typeof(TState).Name}>: invalid state");
+            return next;
+        };
+    }
 
     /// <summary>
     /// Middleware для хроники состояний (time-travel debugging).

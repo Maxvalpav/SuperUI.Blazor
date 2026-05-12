@@ -1,19 +1,4 @@
-// SuperUI/Base/Reactive/SgSignal.cs
-//
-// ИСПРАВЛЕНИЯ:
-//   CS0308: ISignalObserver<T> теперь корректно объявлен (два интерфейса)
-//   Строки 24, 86, 91, 172 — все используют ISignalObserver<T> (generic)
-//
-// УЛУЧШЕНИЯ:
-//   1. Reset(T) — сброс без уведомления (для тестов, инициализации)
-//   2. ToString() — информативный вывод
-//   3. AsObservable() — BehaviorSubject-семантика (emit current value on subscribe)
-//   4. PurgeDeadSubscribers() — публичная очистка WeakRef
-//   5. Корректный lock-порядок, нет deadlock
-//   6. Volatile.Read для _disposedInt везде
-//   7. NotifySubscribers() изолирует исключения observer'ов
-//   8. ForceNotify() — принудительное уведомление без изменения значения
-
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using SuperUI.Base;
 
@@ -25,17 +10,20 @@ namespace SuperUI.Base.Reactive;
 /// <typeparam name="T">Тип значения.</typeparam>
 /// <remarks>
 /// Thread safety:
-///   WASM: однопоточный — lock не нужен логически, но используется для ARM-корректности.
-///   Server: per-circuit, но сигналы могут обновляться из фоновых потоков → lock обязателен.
+/// WASM: однопоточный — lock не нужен логически, но используется для ARM-корректности.
+/// Server: per-circuit, но сигналы могут обновляться из фоновых потоков → lock обязателен.
 /// </remarks>
 public sealed class SgSignal<T> : IDisposable
 {
     private T _value;
     private readonly IEqualityComparer<T> _comparer;
 
-    // ИСПРАВЛЕНИЕ CS0308: используем ISignalObserver<T> (generic)
-    private readonly HashSet<ISignalObserver<T>> _observers = new();           // строка 24 была сломана
-    private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
+    // ИСПРАВЛЕНИЕ C7: кэш EffectSignalBridge чтобы не создавать новый на каждый Track
+    private readonly ConditionalWeakTable<ISignalObserver, EffectSignalBridge<T>> _bridgeCache = new();
+
+    private readonly HashSet<WeakReference<SgComponentBase>> _observers = new();
+    private readonly HashSet<ISignalObserver<T>> _subscribers = new();
+    private readonly HashSet<ISignalObserver> _genericObservers = new();
     private readonly object _lock = new();
     private int _disposedInt;
 
@@ -64,9 +52,7 @@ public sealed class SgSignal<T> : IDisposable
         lock (_lock) return _value;
     }
 
-    /// <summary>
-    /// Установить значение. Уведомляет подписчиков только при реальном изменении.
-    /// </summary>
+    /// <summary>Установить значение. Уведомляет подписчиков только при реальном изменении.</summary>
     public void Set(T newValue)
     {
         if (Volatile.Read(ref _disposedInt) == 1) return;
@@ -81,9 +67,7 @@ public sealed class SgSignal<T> : IDisposable
         if (changed) NotifySubscribers();
     }
 
-    /// <summary>
-    /// Атомарный read → compute → write. Предотвращает Lost Update при concurrent доступе.
-    /// </summary>
+    /// <summary>Атомарный read → compute → write.</summary>
     public void Update(Func<T, T> updater)
     {
         ArgumentNullException.ThrowIfNull(updater);
@@ -101,154 +85,208 @@ public sealed class SgSignal<T> : IDisposable
         if (changed) NotifySubscribers();
     }
 
-    /// <summary>
-    /// Сбросить значение БЕЗ уведомления подписчиков.
-    /// Используется в тестах и при silent-инициализации.
-    /// </summary>
+    /// <summary>Сбросить значение БЕЗ уведомления подписчиков.</summary>
     public void Reset(T value)
     {
         lock (_lock) { _value = value; }
     }
 
-    /// <summary>
-    /// Принудительно уведомить подписчиков без изменения значения.
-    /// Полезно когда мутируется ссылочный тип (List, Dictionary).
-    /// </summary>
+    /// <summary>Принудительно уведомить подписчиков без изменения значения.</summary>
     public void ForceNotify()
     {
         if (Volatile.Read(ref _disposedInt) == 1) return;
         NotifySubscribers();
     }
 
-    /// <summary>IObservable с BehaviorSubject-семантикой (emit current value on subscribe).</summary>
-    public IObservable<T> AsObservable() => new SignalObservable(this);
+    /// <summary>IObservable с BehaviorSubject-семантикой.</summary>
+    public IObservable<T> AsObservable() => new SignalObservable<T>(this);
 
-    // ── Internal API ──────────────────────────────────────────────────────────
+    // ── Internal API ──────────────────────────────────────────────────────
 
     internal void Subscribe(SgComponentBase component)
     {
-        lock (_lock) _subscribers.Add(new WeakReference<SgComponentBase>(component));
+        lock (_lock) _observers.Add(new WeakReference<SgComponentBase>(component));
     }
 
-    // ИСПРАВЛЕНИЕ CS0308 строки 86, 91: используем ISignalObserver<T>
     internal void SubscribeObserver(ISignalObserver<T> observer)
     {
-        lock (_lock) _observers.Add(observer);
+        lock (_lock) _subscribers.Add(observer);
     }
 
     internal void UnsubscribeObserver(ISignalObserver<T> observer)
     {
-        lock (_lock) _observers.Remove(observer);
+        lock (_lock) _subscribers.Remove(observer);
     }
 
-    // ── Maintenance ───────────────────────────────────────────────────────────
+    /// <summary>Для EffectObserver (non-generic) через мост.</summary>
+    internal void SubscribeGenericObserver(ISignalObserver observer)
+    {
+        lock (_lock) _genericObservers.Add(observer);
+    }
 
-    /// <summary>Принудительно удалить мёртвые WeakRef (GC-уборка).</summary>
+    internal void UnsubscribeGenericObserver(ISignalObserver observer)
+    {
+        lock (_lock) _genericObservers.Remove(observer);
+    }
+
+    // ── C7 FIX: кэшированный мост ────────────────────────────────────────
+
+    /// <summary>
+    /// Получить или создать EffectSignalBridge для observer.
+    /// ИСПРАВЛЕНИЕ: кэширует мост через ConditionalWeakTable.
+    /// </summary>
+    internal EffectSignalBridge<T> GetOrCreateBridge(ISignalObserver observer)
+    {
+        // ConditionalWeakTable потокобезопасен
+        if (!_bridgeCache.TryGetValue(observer, out var bridge))
+        {
+            bridge = new EffectSignalBridge<T>(this, observer);
+            _bridgeCache.AddOrUpdate(observer, bridge);
+        }
+        return bridge;
+    }
+
+    // ── Maintenance ───────────────────────────────────────────────────────
+
+    /// <summary>Принудительно удалить мёртвые WeakRef.</summary>
     public void PurgeDeadSubscribers()
     {
-        lock (_lock) _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
+        lock (_lock) _observers.RemoveWhere(w => !w.TryGetTarget(out _));
     }
 
     internal void Cleanup()
     {
         lock (_lock)
-            _subscribers.RemoveWhere(wr => !wr.TryGetTarget(out var c) || c.IsDisposed);
+            _observers.RemoveWhere(wr => !wr.TryGetTarget(out var c) || c.IsDisposed);
     }
 
-    // ── Notification ──────────────────────────────────────────────────────────
+    // ── C2 FIX: NotifySubscribers без deadlock ───────────────────────────
 
     private void NotifySubscribers()
     {
-        List<WeakReference<SgComponentBase>>? snapshot = null;
+        // П1: Используем ArrayPool для уменьшения аллокаций
+        WeakReference<SgComponentBase>[]? observerSnapshot = null;
+        ISignalObserver<T>[]? subscriberSnapshot = null;
+        ISignalObserver[]? genericSnapshot = null;
+        int observerCount = 0, subscriberCount = 0, genericCount = 0;
         List<WeakReference<SgComponentBase>>? dead = null;
-        ISignalObserver<T>[]? observerSnapshot = null;   // ИСПРАВЛЕНИЕ: typed array
 
         lock (_lock)
         {
-            if (_subscribers.Count == 0 && _observers.Count == 0) return;
+            if (_observers.Count == 0 && _subscribers.Count == 0 && _genericObservers.Count == 0)
+                return;
 
-            if (_subscribers.Count > 0)
+            // Снимаем снепшоты ПОД lock для консистентности
+            if (_observers.Count > 0)
             {
-                snapshot = new(_subscribers.Count);
-                foreach (var weakRef in _subscribers)
+                observerSnapshot = ArrayPool<WeakReference<SgComponentBase>>.Shared.Rent(_observers.Count);
+                foreach (var weakRef in _observers)
                 {
                     if (weakRef.TryGetTarget(out var comp) && !comp.IsDisposed)
-                        snapshot.Add(weakRef);
+                        observerSnapshot[observerCount++] = weakRef;
                     else
                         (dead ??= new()).Add(weakRef);
                 }
                 if (dead is not null)
-                    foreach (var d in dead) _subscribers.Remove(d);
+                    foreach (var d in dead) _observers.Remove(d);
             }
 
-            if (_observers.Count > 0)
-                observerSnapshot = _observers.ToArray();
+            if (_subscribers.Count > 0)
+            {
+                subscriberSnapshot = ArrayPool<ISignalObserver<T>>.Shared.Rent(_subscribers.Count);
+                foreach (var sub in _subscribers)
+                    subscriberSnapshot[subscriberCount++] = sub;
+            }
+
+            if (_genericObservers.Count > 0)
+            {
+                genericSnapshot = ArrayPool<ISignalObserver>.Shared.Rent(_genericObservers.Count);
+                foreach (var obs in _genericObservers)
+                    genericSnapshot[genericCount++] = obs;
+            }
         }
 
-        // Уведомляем компоненты через batch (вне lock!)
-        if (snapshot is not null)
-            foreach (var weakRef in snapshot)
-                if (weakRef.TryGetTarget(out var comp) && !comp.IsDisposed)
+        // 🔑 ВАЖНО: уведомления ВНЕ lock — предотвращает deadlock (C2)
+
+        // Уведомляем компоненты через batch
+        if (observerSnapshot is not null)
+        {
+            for (int i = 0; i < observerCount; i++)
+            {
+                if (observerSnapshot[i].TryGetTarget(out var comp) && !comp.IsDisposed)
                     SignalBatch.NotifyComponent(comp);
+            }
+            ArrayPool<WeakReference<SgComponentBase>>.Shared.Return(observerSnapshot);
+        }
 
         // Уведомляем typed observers (computed/effect) — изолируем исключения
-        if (observerSnapshot is not null)
-            foreach (var observer in observerSnapshot)
+        if (subscriberSnapshot is not null)
+        {
+            for (int i = 0; i < subscriberCount; i++)
             {
-                try { observer.OnSignalChanged(); }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[SgSignal<{typeof(T).Name}>] Observer error: {ex.Message}");
-                }
+                try { subscriberSnapshot[i].OnSignalChanged(); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[SgSignal<{typeof(T).Name}>] Observer error: {ex.Message}"); }
             }
+            ArrayPool<ISignalObserver<T>>.Shared.Return(subscriberSnapshot);
+        }
+
+        // Уведомляем generic observers (EffectObserver через мост)
+        if (genericSnapshot is not null)
+        {
+            for (int i = 0; i < genericCount; i++)
+            {
+                try { genericSnapshot[i].OnSignalChanged(); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[SgSignal<{typeof(T).Name}>] GenericObserver error: {ex.Message}"); }
+            }
+            ArrayPool<ISignalObserver>.Shared.Return(genericSnapshot);
+        }
     }
 
-    // ── IDisposable ───────────────────────────────────────────────────────────
+    // ── IDisposable ───────────────────────────────────────────────────────
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
+
         lock (_lock)
         {
-            _subscribers.Clear();
             _observers.Clear();
+            _subscribers.Clear();
+            _genericObservers.Clear();
         }
     }
 
-    // ── Операторы ─────────────────────────────────────────────────────────────
+    // ── Операторы ─────────────────────────────────────────────────────────
 
     public static implicit operator T(SgSignal<T> signal) => signal.Value;
 
     public override string ToString() => $"SgSignal<{typeof(T).Name}>({_value})";
 
-    // ── IObservable адаптер ───────────────────────────────────────────────────
+    // ── IObservable адаптер ───────────────────────────────────────────────
 
-    private sealed class SignalObservable : IObservable<T>
+    private sealed class SignalObservable<TObs> : IObservable<TObs>
     {
-        private readonly SgSignal<T> _signal;
-        public SignalObservable(SgSignal<T> signal) => _signal = signal;
+        private readonly SgSignal<TObs> _signal;
 
-        public IDisposable Subscribe(IObserver<T> observer)
+        public SignalObservable(SgSignal<TObs> signal) => _signal = signal;
+
+        public IDisposable Subscribe(IObserver<TObs> observer)
         {
             ArgumentNullException.ThrowIfNull(observer);
-            var adapter = new ObserverAdapter(observer, _signal);
+            var adapter = new ObserverAdapter<TObs>(observer, _signal);
             _signal.SubscribeObserver(adapter);
-            // BehaviorSubject-семантика: emit current value immediately
-            try { observer.OnNext(_signal.Peek()); }
-            catch { /* observer не должен бросать в OnNext */ }
+            try { observer.OnNext(_signal.Peek()); } catch { }
             return adapter;
         }
     }
 
-    // ИСПРАВЛЕНИЕ CS0308 строка 172: ISignalObserver<T> (generic)
-    private sealed class ObserverAdapter : ISignalObserver<T>, IDisposable
+    private sealed class ObserverAdapter<TObs> : ISignalObserver<TObs>, IDisposable
     {
-        private readonly IObserver<T> _observer;
-        private readonly SgSignal<T> _signal;
+        private readonly IObserver<TObs> _observer;
+        private readonly SgSignal<TObs> _signal;
         private int _disposed;
 
-        public ObserverAdapter(IObserver<T> observer, SgSignal<T> signal)
+        public ObserverAdapter(IObserver<TObs> observer, SgSignal<TObs> signal)
         {
             _observer = observer;
             _signal = signal;
@@ -257,20 +295,54 @@ public sealed class SgSignal<T> : IDisposable
         public void OnSignalChanged()
         {
             if (Volatile.Read(ref _disposed) == 1) return;
-            try { _observer.OnNext(_signal.Peek()); }
-            catch { }
+            try { _observer.OnNext(_signal.Peek()); } catch { }
         }
 
-        // ISignalObserver<T> — typed методы (не используются в этом адаптере)
-        public void OnSignalRead(SgSignal<T> signal) { }
-        public void OnComputedRead(SgComputed<T> computed) { }
+        public void OnSignalRead(SgSignal<TObs> signal) { }
+
+        public void OnComputedRead(SgComputed<TObs> computed) { }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
             _signal.UnsubscribeObserver(this);
-            try { _observer.OnCompleted(); }
-            catch { }
+            try { _observer.OnCompleted(); } catch { }
         }
+    }
+}
+
+// ── EffectSignalBridge (вынесен из SignalTracker для переиспользования) ──
+
+/// <summary>
+/// Мост для подписки EffectObserver (non-generic) на typed SgSignal&lt;T&gt;.
+/// ИСПРАВЛЕНИЕ C7: кэшируется в SgSignal для предотвращения утечек подписок.
+/// </summary>
+internal sealed class EffectSignalBridge<T> : ISignalObserver<T>, IDisposable
+{
+    private readonly SgSignal<T> _signal;
+    private readonly ISignalObserver _effect;
+    private int _disposed;
+
+    public EffectSignalBridge(SgSignal<T> signal, ISignalObserver effect)
+    {
+        _signal = signal;
+        _effect = effect;
+    }
+
+    public void OnSignalChanged()
+    {
+        if (Volatile.Read(ref _disposed) == 1) return;
+        _effect.OnSignalChanged();
+    }
+
+    public void OnSignalRead(SgSignal<T> signal) { }
+
+    public void OnComputedRead(SgComputed<T> computed) { }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        _signal.UnsubscribeObserver(this);
+        _signal.UnsubscribeGenericObserver(_effect);
     }
 }

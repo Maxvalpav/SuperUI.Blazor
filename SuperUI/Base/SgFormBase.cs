@@ -104,6 +104,8 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     private bool _editContextAttached;
     private TValue? _lastSyncedValue;
     private bool _isSettingValue;
+    // M2 FIX: объект синхронизации для double-check locking
+    private readonly object _converterLock = new();
 
     // ── Защищённые свойства ───────────────────────────────────────────────────
 
@@ -135,6 +137,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
 
     /// <summary>
     /// Эффективный конвертер (Converter ?? SgConverterFactory.Get).
+    /// M2 FIX: double-check locking для thread-safety на Blazor Server.
     /// Lazy-init. Инвалидируется при смене параметра Converter.
     /// </summary>
     protected ISgConverter<TValue> EffectiveConverter
@@ -142,14 +145,22 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         get
         {
             if (Converter is not null) return Converter;
-            if (_effectiveConverter is not null) return _effectiveConverter;
+            if (_effectiveConverter is not null)
+                return _effectiveConverter;
 
-            _effectiveConverter = SgConverterFactory.Get<TValue>()
-                ?? throw new InvalidOperationException(
-                    $"Конвертер для типа '{typeof(TValue).FullName}' не найден. " +
-                    $"Либо зарегистрируйте конвертер через SgConverterFactory.Register<{typeof(TValue).Name}>(), " +
-                    $"либо укажите параметр Converter='...' явно.");
-            return _effectiveConverter;
+            // M2 FIX: double-check locking
+            lock (_converterLock)
+            {
+                if (_effectiveConverter is not null)
+                    return _effectiveConverter;
+
+                _effectiveConverter = SgConverterFactory.Get<TValue>()
+                    ?? throw new InvalidOperationException(
+                        $"Конвертер для типа '{typeof(TValue).FullName}' не найден. " +
+                        $"Либо зарегистрируйте конвертер через SgConverterFactory.Register<{typeof(TValue).Name}>(), " +
+                        $"либо укажите параметр Converter='...' явно.");
+                return _effectiveConverter;
+            }
         }
     }
 
@@ -211,6 +222,45 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             // EditContext ПЕРЕД событием (для корректного CSS-класса)
             _editContext?.NotifyFieldChanged(_fieldIdentifier);
             await ValueChanged.InvokeAsync(value);
+        }
+        finally
+        {
+            _isSettingValue = false;
+        }
+    }
+
+    /// <summary>
+    /// Установить значение программно БЕЗ вызова ValueChanged.
+    /// Используется для инициализации поля из внешнего источника (API, store).
+    /// Обновляет CurrentText и сбрасывает ConvertError.
+    /// </summary>
+    protected void SetValueSilently(TValue? value)
+    {
+        _isSettingValue = true;
+        try
+        {
+            Value = value;
+            _lastSyncedValue = value;
+            CurrentText = EffectiveConverter.ConvertBack(value);
+            ConvertError = null;
+        }
+        finally
+        {
+            _isSettingValue = false;
+        }
+    }
+
+    /// <summary>
+    /// Установить текст программно БЕЗ конвертации и валидации.
+    /// Используется для отображения текста из внешнего источника как есть.
+    /// </summary>
+    protected void SetTextSilently(string? text)
+    {
+        _isSettingValue = true;
+        try
+        {
+            CurrentText = text;
+            ConvertError = null;
         }
         finally
         {
@@ -306,11 +356,14 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     {
         base.OnParametersSet();
 
-        // ✅ УЛУЧШЕНИЕ: инвалидируем _effectiveConverter при смене параметра Converter
+        // M2 FIX: инвалидация под lock для консистентности
         if (!ReferenceEquals(Converter, _previousConverter))
         {
-            _previousConverter = Converter;
-            _effectiveConverter = null;
+            lock (_converterLock)
+            {
+                _previousConverter = Converter;
+                _effectiveConverter = null;
+            }
         }
 
         // Обновляем FieldIdentifier при смене ValueExpression

@@ -75,10 +75,43 @@ internal sealed class KeyboardService : IKeyboardService, IAsyncDisposable
         try
         {
             _dotNetRef = DotNetObjectReference.Create(this);
-            // Регистрируем window keydown listener через superui.js
-            // В реальном проекте: await _js.InvokeVoidAsync("superui.registerKeyboard", _dotNetRef)
+            _module = await _js.InvokeAsync<IJSObjectReference>(
+                "import", CancellationToken.None,
+                "_content/SuperUI/superui.js");
+
+            // L3 FIX: ожидаем регистрацию, а не fire-and-forget
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("superui.registerKeyboard", _dotNetRef);
+                _logger.LogDebug("KeyboardService initialized successfully");
+            }
         }
-        catch (Exception ex) { _logger.LogError(ex, "KeyboardService init failed"); }
+        catch (JSDisconnectedException)
+        {
+            // L3 FIX: разрешаем повторную инициализацию
+            _initialized = false;
+        }
+        catch (Exception ex)
+        {
+            // L3 FIX: разрешаем повторную инициализацию
+            _initialized = false;
+            _logger.LogError(ex, "KeyboardService init failed — горячие клавиши не будут работать");
+        }
+    }
+
+    /// <summary>
+    /// L3 FIX: метод для ручного переподключения при разрыве соединения.
+    /// </summary>
+    public async Task ReconnectAsync()
+    {
+        _initialized = false;
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch { }
+            _module = null;
+        }
+        await EnsureInitializedAsync();
     }
 
     private static string BuildKeyString(KeyboardEventArgs e)

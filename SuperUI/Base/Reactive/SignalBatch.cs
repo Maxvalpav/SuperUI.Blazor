@@ -78,10 +78,13 @@ public static class SignalBatch
     {
         if (_pending is not { Count: > 0 }) return;
 
-        var snapshot = new List<SgComponentBase>(_pending);
-        _pending.Clear();
+        // ✅ PERF-2 FIX: Swap вместо Copy — берём набор и заменяем пустым
+        // Компоненты, уведомлённые во время Flush, попадут в новый _pending
+        // и будут обработаны в следующем цикле (вложенные батчи).
+        var toFlush = _pending;
+        _pending = null; // следующие уведомления пойдут в новый HashSet
 
-        foreach (var c in snapshot)
+        foreach (var c in toFlush)
         {
             if (c.IsDisposed) continue;
             try

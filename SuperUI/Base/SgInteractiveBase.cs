@@ -309,22 +309,48 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     // ── Component-level keyboard ──────────────────────────────────────────────
     private readonly ConcurrentDictionary<string, Func<KeyboardEventArgs, Task>> _keyHandlers = new();
+    private readonly ConcurrentDictionary<string, Func<KeyboardEventArgs, Task>> _keyUpHandlers = new();
 
-    protected void OnKey(string key, Func<Task> handler)
+    /// <summary>Зарегистрировать обработчик KeyDown.</summary>
+    protected void OnKeyDown(string key, Func<Task> handler)
         => _keyHandlers[key] = _ => handler();
 
-    protected void OnKey(string key, Action handler)
-        => _keyHandlers[key] = _ => { handler(); return Task.CompletedTask; };
-
-    protected void OnKey(string key, Func<KeyboardEventArgs, Task> handler)
+    /// <summary>Зарегистрировать обработчик KeyDown (с аргументами).</summary>
+    protected void OnKeyDown(string key, Func<KeyboardEventArgs, Task> handler)
         => _keyHandlers[key] = handler;
+
+    /// <summary>
+    /// Зарегистрировать обработчик KeyUp (семантически правильно для кнопок и активации).
+    /// </summary>
+    protected void OnKeyUp(string key, Func<Task> handler)
+        => _keyUpHandlers[key] = _ => handler();
+
+    /// <summary>Зарегистрировать обработчик KeyUp с аргументами.</summary>
+    protected void OnKeyUp(string key, Func<KeyboardEventArgs, Task> handler)
+        => _keyUpHandlers[key] = handler;
+
+    /// <summary>Удалить обработчик KeyDown.</summary>
+    protected void RemoveKeyDown(string key)
+        => _keyHandlers.TryRemove(key, out _);
+
+    /// <summary>Удалить обработчик KeyUp.</summary>
+    protected void RemoveKeyUp(string key)
+        => _keyUpHandlers.TryRemove(key, out _);
+
+    /// <summary>Удалить обработчик клавиши (устаревший метод).</summary>
+    [Obsolete("Use RemoveKeyDown() or RemoveKeyUp() for semantic correctness.", false)]
+    protected void RemoveKey(string key)
+    {
+        RemoveKeyDown(key);
+        RemoveKeyUp(key);
+    }
 
     /// <summary>
     /// Зарегистрировать обработчик клавиши с возможностью предотвратить default-поведение.
     /// </summary>
     /// <param name="key">Строка клавиши (напр. "Ctrl+s", "Escape").</param>
     /// <param name="handler">Handler: возвращает true = handled (preventDefault), false = pass-through.</param>
-    protected void OnKey(string key, Func<KeyboardEventArgs, Task<bool>> handler)
+    protected void OnKeyDown(string key, Func<KeyboardEventArgs, Task<bool>> handler)
         => _keyHandlers[key] = async e =>
         {
             var handled = await handler(e);
@@ -332,9 +358,35 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             _ = handled;
         };
 
-    /// <summary>Удалить обработчик клавиши.</summary>
-    protected void RemoveKey(string key)
-        => _keyHandlers.TryRemove(key, out _);
+    /// <summary>
+    /// Зарегистрировать обработчик KeyUp с возможностью предотвратить default-поведение.
+    /// </summary>
+    protected void OnKeyUp(string key, Func<KeyboardEventArgs, Task<bool>> handler)
+        => _keyUpHandlers[key] = async e =>
+        {
+            var handled = await handler(e);
+            _ = handled;
+        };
+
+    /// <summary>Устаревший метод — используйте OnKeyDown() или OnKeyUp() для семантической корректности.</summary>
+    [Obsolete("Use OnKeyDown() or OnKeyUp() for semantic correctness.", false)]
+    protected void OnKey(string key, Func<Task> handler)
+        => OnKeyDown(key, handler);
+
+    /// <summary>Устаревший метод — используйте OnKeyDown() или OnKeyUp() для семантической корректности.</summary>
+    [Obsolete("Use OnKeyDown() or OnKeyUp() for semantic correctness.", false)]
+    protected void OnKey(string key, Action handler)
+        => OnKeyDown(key, handler);
+
+    /// <summary>Устаревший метод — используйте OnKeyDown() или OnKeyUp() для семантической корректности.</summary>
+    [Obsolete("Use OnKeyDown() or OnKeyUp() for semantic correctness.", false)]
+    protected void OnKey(string key, Func<KeyboardEventArgs, Task> handler)
+        => OnKeyDown(key, handler);
+
+    /// <summary>Устаревший метод — используйте OnKeyDown() или OnKeyUp() для семантической корректности.</summary>
+    [Obsolete("Use OnKeyDown() or OnKeyUp() for semantic correctness.", false)]
+    protected void OnKey(string key, Func<KeyboardEventArgs, Task<bool>> handler)
+        => OnKeyDown(key, handler);
 
     protected async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
@@ -345,10 +397,15 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     }
 
     /// <summary>
-    /// Обработчик KeyUp событий. Использует те же _keyHandlers что и HandleKeyDownAsync.
+    /// Обработчик KeyUp событий (ИСПРАВЛЕНИЕ: отдельный словарь _keyUpHandlers).
     /// </summary>
-    protected Task HandleKeyUpAsync(KeyboardEventArgs e)
-        => IsEffectivelyDisabled ? Task.CompletedTask : HandleKeyDownAsync(e);
+    protected async Task HandleKeyUpAsync(KeyboardEventArgs e)
+    {
+        if (IsEffectivelyDisabled) return;
+        var key = BuildKeyString(e);
+        if (!string.IsNullOrEmpty(key) && _keyUpHandlers.TryGetValue(key, out var handler))
+            await handler(e);
+    }
 
     /// <summary>
     /// УЛУЧШЕНО: защита от null Key; zero-allocation через string.Create.

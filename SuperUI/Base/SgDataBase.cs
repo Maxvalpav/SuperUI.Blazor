@@ -13,6 +13,7 @@
 // ✅ Race-condition protection через версионирование
 
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
 using Microsoft.AspNetCore.Components;
@@ -184,6 +185,14 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     [Parameter]
     public Func<SgDataRequest, Task<SgDataResult<T>>>? DataSource { get; set; }
 
+    /// <summary>
+    /// IQueryable источник данных (EF Core, LINQ to SQL).
+    /// При использовании — сортировка/фильтрация/пагинация выполняются на стороне БД.
+    /// Приоритет: QueryableItems > DataSource > Items
+    /// </summary>
+    [Parameter]
+    public IQueryable<T>? QueryableItems { get; set; }
+
     /// <summary>Размер страницы.</summary>
     [Parameter] public int PageSize { get; set; } = 25;
 
@@ -343,6 +352,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
 
     private volatile int _loadingVersion;
     private IEnumerable<T>? _lastItems;
+    private IQueryable<T>? _lastQueryableItems;
     private int _lastPageSize;
     private Func<SgDataRequest, Task<SgDataResult<T>>>? _lastDataSource;
 
@@ -364,7 +374,31 @@ public abstract class SgDataBase<T> : SgInteractiveBase
             List<T> result;
             int totalCount;
 
-            if (DataSource != null)
+            if (QueryableItems is not null)
+            {
+                // ✅ UX-6: IQueryable источник (EF Core, LINQ to SQL)
+                // Сортировка/фильтрация/пагинация выполняются на стороне БД
+                var query = QueryableItems;
+
+                if (EnableFiltering && CurrentFilters.Count > 0)
+                    query = (IQueryable<T>)ApplyFilters(query);
+
+                if (!string.IsNullOrEmpty(SearchText) && EnableFiltering)
+                    query = (IQueryable<T>)ApplySearch(query);
+
+                if (EnableSorting && CurrentSort is not null)
+                    query = (IQueryable<T>)ApplySort(query);
+
+                // Получаем total count БЕЗ пагинации (SQL COUNT(*))
+                totalCount = await Task.Run(() => query.Count(), ComponentToken);
+
+                if (EnablePaging && PageSize > 0)
+                    query = query.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
+
+                // Материализуем результат
+                result = await Task.Run(() => query.ToList(), ComponentToken);
+            }
+            else if (DataSource != null)
             {
                 var request = new SgDataRequest
                 {
@@ -510,23 +544,57 @@ public abstract class SgDataBase<T> : SgInteractiveBase
 
     // ── In-memory фильтрация ────────────────────────────────────────────────
 
+    // PERF-3: Кэш Expression-деревьев для фильтров
+    /// <summary>Ключ для кэша expression деревьев.</summary>
+    private readonly record struct FilterCacheKey(Type EntityType, string Field, SgFilterOperator Operator);
+
+    /// <summary>Статический кэш — разделяется между всеми экземплярами компонента одного типа.</summary>
+    private static readonly ConcurrentDictionary<FilterCacheKey, Delegate?> _filterExpressionCache = new();
+
+    /// <summary>Кэш свойств для быстрого поиска через reflection.</summary>
+    private static readonly ConcurrentDictionary<(Type, string), PropertyInfo?> _propertyCache = new();
+
+    /// <summary>Получить кэшированное свойство типа.</summary>
+    private static PropertyInfo? GetCachedProperty(Type type, string fieldName)
+        => _propertyCache.GetOrAdd((type, fieldName), static k =>
+            k.Item1.GetProperty(k.Item2,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase));
+
+    /// <summary>Получить или построить кэшированное expression дерево для фильтра.</summary>
+    private Expression<Func<T, bool>>? GetOrBuildFilterExpression(SgFilterDescriptor filter)
+    {
+        // Для статических операторов (IsNull, IsNotNull) — кэшируем полностью
+        if (filter.Operator is SgFilterOperator.IsNull or SgFilterOperator.IsNotNull)
+        {
+            var key = new FilterCacheKey(typeof(T), filter.Field, filter.Operator);
+            var cachedDelegate = _filterExpressionCache.GetOrAdd(key, k =>
+                BuildFilterExpression(new SgFilterDescriptor(k.Field, null, k.Operator)) as Delegate);
+            return cachedDelegate as Expression<Func<T, bool>>;
+        }
+
+        // Для операторов с переменным значением — кэшируем только структуру, значение параметризуемо
+        return BuildFilterExpression(filter);
+    }
+
     /// <summary>Применить фильтры (Expression-деревья через Reflection).</summary>
     protected virtual IQueryable<T> ApplyFilters(IQueryable<T> query)
     {
         foreach (var filter in CurrentFilters.Where(f => f.IsActive))
         {
-            var expr = BuildFilterExpression(filter);
+            var expr = GetOrBuildFilterExpression(filter);
             if (expr != null) query = query.Where(expr);
         }
         return query;
     }
 
+    // ── In-memory фильтрация (старая версия, заменена выше) ────────────────────────────────────────────────
+
     private static Expression<Func<T, bool>>? BuildFilterExpression(SgFilterDescriptor filter)
     {
         if (string.IsNullOrEmpty(filter.Field)) return null;
 
-        var prop = typeof(T).GetProperty(filter.Field,
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        // PERF-3: Используем кэшированный поиск свойства
+        var prop = GetCachedProperty(typeof(T), filter.Field);
         if (prop == null) return null;
 
         var param = Expression.Parameter(typeof(T), "x");
@@ -583,6 +651,23 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                     Expression.LessThanOrEqual(member,
                         Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
 
+                // ═══ C4 FIX: добавленные операторы ═══
+                SgFilterOperator.Between when filterValue is not null && filter.Value2 is not null =>
+                    Expression.AndAlso(
+                        Expression.GreaterThanOrEqual(member,
+                            Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
+                        Expression.LessThanOrEqual(member,
+                            Expression.Constant(Convert.ChangeType(filter.Value2, prop.PropertyType), prop.PropertyType))),
+
+                SgFilterOperator.In when filterValue is System.Collections.IEnumerable enumerable =>
+                    BuildInExpression(member, enumerable, prop.PropertyType) ?? Expression.Constant(false),
+
+                SgFilterOperator.NotIn when filterValue is System.Collections.IEnumerable enumerable =>
+                    Expression.Not(BuildInExpression(member, enumerable, prop.PropertyType) ?? Expression.Constant(true)),
+
+                SgFilterOperator.Regex when prop.PropertyType == typeof(string) =>
+                    BuildRegexExpression(member, filterValue?.ToString() ?? string.Empty) ?? Expression.Constant(false),
+
                 SgFilterOperator.IsNull =>
                     prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) == null
                         ? Expression.Constant(false)
@@ -603,6 +688,36 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         {
             return null; // Некорректный тип — игнорируем
         }
+    }
+
+    // ═══ C4: вспомогательные методы ═══
+
+    /// <summary>
+    /// Построить Expression для оператора In (value IN (v1, v2, v3, ...)).
+    /// </summary>
+    private static Expression? BuildInExpression(MemberExpression member, System.Collections.IEnumerable values, Type propertyType)
+    {
+        Expression? combined = null;
+        foreach (var val in values)
+        {
+            if (val is null) continue;
+            var eqExpr = Expression.Equal(member,
+                Expression.Constant(Convert.ChangeType(val, propertyType), propertyType));
+            combined = combined is null ? (Expression)eqExpr : Expression.OrElse(combined, eqExpr);
+        }
+        return combined;
+    }
+
+    /// <summary>
+    /// Построить Expression для оператора Regex (только строковые поля).
+    /// Использует статический метод Regex.IsMatch.
+    /// </summary>
+    private static Expression? BuildRegexExpression(MemberExpression member, string pattern)
+    {
+        if (string.IsNullOrEmpty(pattern)) return null;
+        var regexIsMatch = typeof(System.Text.RegularExpressions.Regex)
+            .GetMethod(nameof(System.Text.RegularExpressions.Regex.IsMatch), [typeof(string), typeof(string)])!;
+        return Expression.Call(regexIsMatch, member, Expression.Constant(pattern));
     }
 
     // ── In-memory сортировка ────────────────────────────────────────────────
@@ -681,12 +796,22 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         if (IsDisposed) return;
 
         var dataSourceChanged = !ReferenceEquals(DataSource, _lastDataSource);
+        var queryableItemsChanged = !ReferenceEquals(QueryableItems, _lastQueryableItems);
         var itemsChanged = !ReferenceEquals(Items, _lastItems);
         var pageSizeChanged = PageSize != _lastPageSize;
 
         if (dataSourceChanged)
         {
             _lastDataSource = DataSource;
+            CurrentPage = 1;
+            CurrentFilters.Clear();
+            CurrentSort = null;
+            SearchText = null;
+        }
+
+        if (queryableItemsChanged)
+        {
+            _lastQueryableItems = QueryableItems;
             CurrentPage = 1;
             CurrentFilters.Clear();
             CurrentSort = null;
@@ -700,12 +825,12 @@ public abstract class SgDataBase<T> : SgInteractiveBase
             CurrentSort = null;
         }
 
-        if ((itemsChanged || pageSizeChanged || dataSourceChanged)
-            && (Items != null || DataSource != null))
+        if ((queryableItemsChanged || itemsChanged || pageSizeChanged || dataSourceChanged)
+            && (QueryableItems != null || Items != null || DataSource != null))
         {
             _lastItems = Items;
             _lastPageSize = PageSize;
-            if (!dataSourceChanged) CurrentPage = 1;
+            if (!dataSourceChanged && !queryableItemsChanged) CurrentPage = 1;
             await LoadDataAsync();
         }
     }

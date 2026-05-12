@@ -1,142 +1,122 @@
-using Microsoft.AspNetCore.Components;
+// SuperUI/Base/State/ParameterState.cs — НОВЫЙ (UX-5)
+//
+// НОВОЕ:
+// ✅ Отслеживание изменений параметров компонента
+// ✅ Поддержка кастомных компараторов
+// ✅ Callback при изменении параметра
+// ✅ Аналог MudBlazor ParameterState<T>
+// ✅ Упрощает логику OnParametersSet()
 
 namespace SuperUI.Base.State;
 
 /// <summary>
-/// Типизированное состояние параметра компонента с change-tracking и fluent API.
-/// 
-/// Решает проблему: "что изменилось с прошлого рендера?"
-/// 
-/// Вдохновлено MudBlazor ParameterState, но с:
-/// - Fluent API (цепочки)
-/// - Async change handlers
-/// - Previous value tracking
-/// - Equality comparer настраиваемый
-/// - SetValueAsync без StateHasChanged (контроль вызывающей стороны)
+/// Отслеживает изменения параметра компонента.
+/// Позволяет определить, изменился ли параметр между рендерами.
 /// </summary>
+/// <typeparam name="T">Тип параметра.</typeparam>
+/// <remarks>
+/// Аналог MudBlazor ParameterState&lt;T&gt;, но с поддержкой кастомных компараторов
+/// и callback при изменении.
+/// 
+/// Использование:
+/// <code>
+/// private ParameterState&lt;string&gt; _labelState;
+/// 
+/// [Parameter] public string Label { get; set; }
+/// 
+/// protected override void OnInitialized()
+/// {
+///     _labelState = ParameterState&lt;string&gt;.Attach(
+///         () => Label,
+///         onChange: (prev, next) => Console.WriteLine($"Label changed: {prev} → {next}")
+///     );
+/// }
+/// 
+/// protected override void OnParametersSet()
+/// {
+///     if (_labelState.Sync())
+///     {
+///         // Label изменился
+///         UpdateUI();
+///     }
+/// }
+/// </code>
+/// </remarks>
 public sealed class ParameterState<T>
 {
-    private T? _value;
-    private T? _previousValue;
-    private bool _initialized;
-    private Func<T?>? _parameterAccessor;
-    private Func<EventCallback<T>>? _callbackAccessor;
-    private Func<ParameterChangedEventArgs<T>, Task>? _changeHandler;
-    private IEqualityComparer<T?> _comparer = EqualityComparer<T?>.Default;
+    private T _value;
+    private T _previousValue;
+    private bool _hasChanged;
+    private readonly IEqualityComparer<T> _comparer;
+    private readonly Func<T> _getter;
+    private readonly Action<T, T>? _onChange; // (prev, next)
 
-    public T? Value => _value;
-    public T? PreviousValue => _previousValue;
-    public bool HasChanged => !_comparer.Equals(_value, _previousValue);
-
-    // ── Fluent API ────────────────────────────────────────────────────────────
-
-    public ParameterState<T> WithParameter(Func<T?> accessor)
+    private ParameterState(
+        Func<T> getter,
+        IEqualityComparer<T>? comparer = null,
+        Action<T, T>? onChange = null)
     {
-        _parameterAccessor = accessor;
-        return this;
+        _getter = getter ?? throw new ArgumentNullException(nameof(getter));
+        _comparer = comparer ?? EqualityComparer<T>.Default;
+        _onChange = onChange;
+        _value = getter();
+        _previousValue = _value;
     }
 
-    public ParameterState<T> WithEventCallback(Func<EventCallback<T>> callbackAccessor)
-    {
-        _callbackAccessor = callbackAccessor;
-        return this;
-    }
+    // ── Свойства ────────────────────────────────────────────────────────────
 
-    public ParameterState<T> WithChangeHandler(Func<ParameterChangedEventArgs<T>, Task> handler)
-    {
-        _changeHandler = handler;
-        return this;
-    }
+    /// <summary>Текущее значение параметра.</summary>
+    public T Value => _value;
 
-    public ParameterState<T> WithChangeHandler(Action handler)
-    {
-        _changeHandler = _ => { handler(); return Task.CompletedTask; };
-        return this;
-    }
+    /// <summary>Предыдущее значение (до последнего Sync()).</summary>
+    public T PreviousValue => _previousValue;
 
-    public ParameterState<T> WithComparer(IEqualityComparer<T?> comparer)
-    {
-        _comparer = comparer;
-        return this;
-    }
+    /// <summary>true — параметр изменился в последнем Sync().</summary>
+    public bool HasChanged => _hasChanged;
 
-    // ── Обновление из SetParametersAsync ─────────────────────────────────────
+    // ── Фабрика ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Вызывается при каждом SetParametersAsync.
-    /// Обновляет значение и вызывает handler если изменилось.
+    /// Создать экземпляр с автоматическим getter из компонента.
     /// </summary>
-    internal async Task UpdateAsync()
+    /// <param name="getter">Функция для получения текущего значения параметра.</param>
+    /// <param name="comparer">Кастомный компаратор (по умолчанию EqualityComparer&lt;T&gt;.Default).</param>
+    /// <param name="onChange">Callback при изменении: (previousValue, newValue).</param>
+    /// <returns>Новый экземпляр ParameterState.</returns>
+    public static ParameterState<T> Attach(
+        Func<T> getter,
+        IEqualityComparer<T>? comparer = null,
+        Action<T, T>? onChange = null)
+        => new(getter, comparer, onChange);
+
+    // ── Синхронизация ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Обновить значение из параметра компонента.
+    /// Вызывается из OnParametersSet().
+    /// </summary>
+    /// <returns>true если значение изменилось.</returns>
+    public bool Sync()
     {
-        if (_parameterAccessor is null) return;
+        var newValue = _getter();
+        _hasChanged = !_comparer.Equals(_value, newValue);
 
-        var newValue = _parameterAccessor();
-        _previousValue = _value;
-
-        if (!_initialized || !_comparer.Equals(_value, newValue))
+        if (_hasChanged)
         {
+            _previousValue = _value;
             _value = newValue;
-            _initialized = true;
-
-            if (_changeHandler != null && _initialized)
-            {
-                await _changeHandler(new ParameterChangedEventArgs<T>(_previousValue, newValue));
-            }
-        }
-    }
-
-    // ── Программное обновление ────────────────────────────────────────────────
-
-    /// <summary>
-    /// Обновить значение программно (не через параметр).
-    /// Также вызывает EventCallback и changeHandler.
-    /// </summary>
-    public async Task SetValueAsync(T? value)
-    {
-        if (_comparer.Equals(_value, value)) return;
-
-        _previousValue = _value;
-        _value = value;
-
-        // Уведомить через EventCallback (для @bind-*)
-        if (_callbackAccessor != null)
-        {
-            var callback = _callbackAccessor();
-            if (callback.HasDelegate && value is not null)
-                await callback.InvokeAsync(value);
+            _onChange?.Invoke(_previousValue, _value);
         }
 
-        // Вызвать changeHandler
-        if (_changeHandler != null)
-        {
-            await _changeHandler(new ParameterChangedEventArgs<T>(_previousValue, value));
-        }
-    }
-}
-
-public record ParameterChangedEventArgs<T>(T? OldValue, T? NewValue);
-
-/// <summary>
-/// Scope для регистрации параметров. Использовать в конструкторе компонента.
-/// </summary>
-public sealed class ParameterScope : IDisposable
-{
-    private readonly List<Func<Task>> _updaters = [];
-    private bool _disposed;
-
-    public ParameterState<T> Register<T>(string parameterName)
-    {
-        var state = new ParameterState<T>();
-        _updaters.Add(() => state.UpdateAsync());
-        return state;
+        return _hasChanged;
     }
 
-    /// <summary>Обновить все зарегистрированные параметры.</summary>
-    internal async Task UpdateAllAsync()
-    {
-        foreach (var updater in _updaters)
-            await updater();
-    }
+    // ── Операторы ───────────────────────────────────────────────────────────
 
-    public void Dispose() => _disposed = true;
+    /// <summary>Неявное приведение к T (возвращает Value).</summary>
+    public static implicit operator T(ParameterState<T> state) => state._value;
+
+    /// <summary>Информативное представление состояния.</summary>
+    public override string ToString()
+        => $"ParameterState<{typeof(T).Name}> {{ Value={_value}, Changed={_hasChanged} }}";
 }
