@@ -1,53 +1,80 @@
 // SuperUI/Base/Diagnostics/ComponentDiagnostics.cs
-// УЛУЧШЕНО:
-// 1. Добавлены SignalSubscriptionCount, BatchedRenderCount
-// 2. ToString() расширен
-// 3. GetReport() для structured logging
+//
+// Диагностические метрики компонента.
+// Доступны только в DEBUG-сборках через SgComponentBase.Diagnostics.
+//
+// Не используем lock — чтения/записи из одного потока (per-circuit на Server).
+// Interlocked не нужен: диагностика не критична к атомарности.
 
 namespace SuperUI.Base.Diagnostics;
 
 /// <summary>
-/// Диагностические метрики компонента (только DEBUG).
-/// Доступны через SgComponentBase.Diagnostics в DEBUG сборке.
+/// Диагностические метрики компонента SuperUI.
+/// Доступны только в DEBUG: <c>#if DEBUG</c>.
 /// </summary>
 public sealed class ComponentDiagnostics
 {
+    /// <summary>ID компонента.</summary>
     public string ComponentId { get; set; } = string.Empty;
 
-    // Рендер
-    public int RenderCount { get; set; }
-    public double LastRenderMs { get; set; }
-    public double AverageRenderMs { get; set; }
-    public double MaxRenderMs { get; set; }
-    public int BatchedRenderCount { get; set; }    // сколько раз batching объединил рендеры
+    // ── Render метрики ───────────────────────────────────────────────────────
 
-    // Параметры
+    /// <summary>Общее количество рендеров.</summary>
+    public int RenderCount { get; set; }
+
+    /// <summary>Время последнего рендера в мс.</summary>
+    public double LastRenderMs { get; set; }
+
+    /// <summary>Максимальное время рендера в мс.</summary>
+    public double MaxRenderMs { get; set; }
+
+    /// <summary>Среднее время рендера в мс.</summary>
+    public double AverageRenderMs { get; set; }
+
+    // ── Parameter метрики ────────────────────────────────────────────────────
+
+    /// <summary>Количество вызовов SetParameters.</summary>
     public int ParameterChangeCount { get; set; }
 
-    // JS Interop
+    // ── JS Interop метрики ───────────────────────────────────────────────────
+
+    /// <summary>Количество JS-вызовов.</summary>
     public int JsCallCount { get; set; }
+
+    /// <summary>Количество ошибок JS-вызовов.</summary>
     public int JsErrorCount { get; set; }
+
+    /// <summary>Суммарное время JS-вызовов в мс.</summary>
     public double TotalJsMs { get; set; }
 
-    // Reactive
-    public int SignalSubscriptionCount { get; set; }  // сколько сигналов отслеживается
-    public int SignalNotificationCount { get; set; }   // сколько раз получали уведомление
+    /// <summary>Среднее время JS-вызова в мс.</summary>
+    public double AverageJsMs
+        => JsCallCount > 0 ? TotalJsMs / JsCallCount : 0;
 
-    public override string ToString() =>
-        $"[{ComponentId}] " +
-        $"Renders={RenderCount} (avg={AverageRenderMs:F2}ms, max={MaxRenderMs:F2}ms), " +
-        $"Batched={BatchedRenderCount}, " +
-        $"JS={JsCallCount} (err={JsErrorCount}, {TotalJsMs:F0}ms), " +
-        $"Params={ParameterChangeCount}, " +
-        $"Signals={SignalSubscriptionCount} (notified={SignalNotificationCount})";
+    // ── Signal метрики ───────────────────────────────────────────────────────
 
-    /// <summary>Сбросить статистику рендеров.</summary>
-    public void ResetRenderStats()
+    /// <summary>Количество рендеров инициированных сигналами.</summary>
+    public int SignalRenderCount { get; set; }
+
+    // ── Форматирование ───────────────────────────────────────────────────────
+
+    /// <summary>Краткая сводка метрик в одну строку.</summary>
+    public override string ToString()
+        => $"[{ComponentId}] renders={RenderCount}, " +
+           $"lastMs={LastRenderMs:F1}, maxMs={MaxRenderMs:F1}, avgMs={AverageRenderMs:F1}, " +
+           $"params={ParameterChangeCount}, js={JsCallCount}(err={JsErrorCount}, avgMs={AverageJsMs:F1})";
+
+    /// <summary>Сбросить все метрики.</summary>
+    public void Reset()
     {
         RenderCount = 0;
         LastRenderMs = 0;
-        AverageRenderMs = 0;
         MaxRenderMs = 0;
-        BatchedRenderCount = 0;
+        AverageRenderMs = 0;
+        ParameterChangeCount = 0;
+        JsCallCount = 0;
+        JsErrorCount = 0;
+        TotalJsMs = 0;
+        SignalRenderCount = 0;
     }
 }

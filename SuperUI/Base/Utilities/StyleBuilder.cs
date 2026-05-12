@@ -1,96 +1,93 @@
 // SuperUI/Base/Utilities/StyleBuilder.cs
-using System.Text;
+//
+// Fluent-builder для inline CSS-стилей.
+// Используется в SgComponentBase.CreateStyle().
 
 namespace SuperUI.Base.Utilities;
 
 /// <summary>
-/// Fluent inline-style builder.
+/// Fluent-builder для inline CSS-стилей.
 /// </summary>
-/// <remarks>
-/// Mutable by design (как <see cref="SgCssBuilder"/>): каждый <c>Add</c> возвращает
-/// тот же экземпляр — fluent-цепочка не аллоцирует промежуточные builders.
-/// Не thread-safe; предполагается локальное использование внутри одного рендера.
-/// Совместим с WASM и Server.
-/// </remarks>
+/// <example>
+/// <code>
+/// string style = CreateStyle("color: red")
+///     .If(Width.HasValue, $"width: {Width}px")
+///     .If(IsHidden, "display: none")
+///     .Build();
+/// </code>
+/// </example>
 public sealed class StyleBuilder
 {
-    private readonly List<(string Prop, string Value)> _styles = [];
-    private string? _cached;
+    private readonly string? _base;
+    private List<string>? _parts;
 
-    public StyleBuilder() { }
-
-    public StyleBuilder(string? baseStyle)
+    public StyleBuilder(string? baseStyle = null)
     {
-        AddUserStyle(baseStyle);
+        _base = NormalizeStyle(baseStyle);
     }
 
-    public StyleBuilder Add(string property, string? value, bool condition = true)
+    /// <summary>Добавить стиль безусловно.</summary>
+    public StyleBuilder Add(string? style)
     {
-        if (!condition || string.IsNullOrWhiteSpace(property) || string.IsNullOrWhiteSpace(value))
-            return this;
-        _cached = null;
-        _styles.Add((property.Trim(), value!.Trim()));
+        var s = NormalizeStyle(style);
+        if (s is not null) (_parts ??= new()).Add(s);
         return this;
     }
 
-    public StyleBuilder Add(string property, string? value, Func<bool> condition)
-        => condition() ? Add(property, value) : this;
-
-    public StyleBuilder AddIf(string property, string? value, Func<bool> condition)
-        => condition() ? Add(property, value) : this;
-
-    public StyleBuilder AddVar(string cssVar, string? value, bool condition = true)
-        => Add($"--{cssVar}", value, condition);
-
-    /// <summary>
-    /// Добавить произвольную style-строку пользователя ("prop: val; prop2: val2").
-    /// Безопасно обрабатывает malformed input — пропускает невалидные сегменты.
-    /// </summary>
-    public StyleBuilder AddUserStyle(string? userStyle)
+    /// <summary>Добавить стиль по условию.</summary>
+    public StyleBuilder If(bool condition, string? style)
     {
-        if (string.IsNullOrWhiteSpace(userStyle)) return this;
-
-        var span = userStyle.AsSpan();
-        var start = 0;
-        while (start < span.Length)
-        {
-            var rest = span[start..];
-            var semi = rest.IndexOf(';');
-            var segment = semi < 0 ? rest : rest[..semi];
-            start += semi < 0 ? rest.Length : semi + 1;
-
-            var colon = segment.IndexOf(':');
-            if (colon <= 0) continue;
-
-            var prop = segment[..colon].Trim();
-            var val = segment[(colon + 1)..].Trim();
-            if (prop.IsEmpty || val.IsEmpty) continue;
-
-            _cached = null;
-            _styles.Add((prop.ToString(), val.ToString()));
-        }
+        if (condition) Add(style);
         return this;
     }
 
+    /// <summary>Добавить CSS-свойство по условию.</summary>
+    public StyleBuilder If(bool condition, string property, string value)
+    {
+        if (condition && !string.IsNullOrWhiteSpace(property))
+            (_parts ??= new()).Add($"{property}: {value}");
+        return this;
+    }
+
+    /// <summary>Добавить CSS-свойство безусловно.</summary>
+    public StyleBuilder Property(string property, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(property) && !string.IsNullOrWhiteSpace(value))
+            (_parts ??= new()).Add($"{property}: {value}");
+        return this;
+    }
+
+    /// <summary>Добавить CSS-переменную: --var-name: value.</summary>
+    public StyleBuilder Variable(string name, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(value))
+            (_parts ??= new()).Add($"--{name.TrimStart('-')}: {value}");
+        return this;
+    }
+
+    /// <summary>Собрать строку стилей.</summary>
     public string? Build()
     {
-        if (_cached is not null) return _cached;
-        if (_styles.Count == 0) return _cached = null;
+        if (_parts is null || _parts.Count == 0) return _base;
 
-        var capacity = 0;
-        for (var i = 0; i < _styles.Count; i++)
-            capacity += _styles[i].Prop.Length + _styles[i].Value.Length + 4;
+        var parts = new List<string>(_parts.Count + 1);
+        if (_base is not null) parts.Add(_base);
+        parts.AddRange(_parts);
 
-        var sb = new StringBuilder(capacity);
-        for (var i = 0; i < _styles.Count; i++)
-        {
-            if (i > 0) sb.Append("; ");
-            sb.Append(_styles[i].Prop).Append(": ").Append(_styles[i].Value);
-        }
-
-        return _cached = sb.ToString();
+        var result = string.Join("; ", parts);
+        // Гарантируем завершающую точку с запятой
+        return result.EndsWith(';') ? result : result + ";";
     }
 
     public static implicit operator string?(StyleBuilder builder) => builder.Build();
+
     public override string? ToString() => Build();
+
+    private static string? NormalizeStyle(string? style)
+    {
+        if (string.IsNullOrWhiteSpace(style)) return null;
+        var s = style.Trim();
+        // Убираем лишние точки с запятой в конце для нормализации
+        return s.TrimEnd(';').Trim();
+    }
 }

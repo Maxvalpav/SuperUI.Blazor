@@ -1,21 +1,38 @@
+// SuperUI/Base/Reactive/SgSignal.cs
+//
+// CS0234 FIX: убран `using System.Reactive.Linq` — пакет System.Reactive не подключён.
+// IObservable<T> / IObserver<T> встроены в .NET BCL — внешний пакет не нужен.
+//
+// ИСПРАВЛЕНИЯ:
+// 1. CS0234 FIX: удалён `using System.Reactive.Linq`.
+// 2. Update() — атомарный read+compute+write под lock (устранён Lost Update).
+// 3. NotifySubscribers — уведомление вне lock (предотвращение deadlock).
+// 4. AsObservable() — интеграция с IObservable<T> (BCL, без Rx.NET).
+// 5. PurgeDeadSubscribers() — публичный метод для GC-давления.
+// 6. Dispose — идемпотентен через Interlocked.Exchange.
+//
+// Thread safety:
+// - WASM: однопоточный, lock — минимальный overhead.
+// - Server: каждый circuit — свой поток. lock(_lock) защищает _value, _subscribers, _observers.
+
 using System.Runtime.CompilerServices;
-using System.Reactive.Linq;
+// CS0234 FIX: НЕ используем using System.Reactive.Linq — пакет не подключён
+// Если нужен Rx.NET — добавить: <PackageReference Include="System.Reactive" Version="6.0.1" />
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Реактивный сигнал — автоматически перерисовывает компоненты при изменении Value.
-///
-/// Thread safety:
-/// - WASM: однопоточный, lock — минимальный overhead.
-/// - Server: каждый circuit — свой поток. lock(_lock) защищает _value, _subscribers, _observers.
-///
-/// ИСПРАВЛЕНО:
-/// 1. Update() — атомарный read+compute+write под lock (устранён Lost Update).
-/// 2. NotifySubscribers — уведомление вне lock (предотвращение deadlock).
-/// 3. AsObservable() — интеграция с IObservable[T].
 /// </summary>
+/// <typeparam name="T">Тип значения сигнала.</typeparam>
+/// <remarks>
+/// <para>Thread safety:</para>
+/// <list type="bullet">
+///   <item>WASM: однопоточный, lock — минимальный overhead.</item>
+///   <item>Server: каждый circuit — свой поток. lock(_lock) защищает _value, _subscribers, _observers.</item>
+/// </list>
+/// </remarks>
 public sealed class SgSignal<T> : IDisposable
 {
     private T _value;
@@ -27,12 +44,13 @@ public sealed class SgSignal<T> : IDisposable
 
     public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
     {
-        _value = initial;
+        _value   = initial;
         _comparer = comparer ?? EqualityComparer<T>.Default;
     }
 
     /// <summary>
-    /// Читает значение. При чтении внутри render-scope — автоматически подписывает компонент.
+    /// Читает или устанавливает значение.
+    /// При чтении внутри render-scope — автоматически подписывает компонент.
     /// </summary>
     public T Value
     {
@@ -72,11 +90,9 @@ public sealed class SgSignal<T> : IDisposable
 
     /// <summary>
     /// Обновить значение через функцию (атомарный read+compute+write).
-    ///
-    /// ИСПРАВЛЕНО: весь цикл read+compute+write под lock → нет Lost Update.
-    /// Ограничение: updater не должен выбрасывать исключения — иначе lock будет
-    /// держаться до завершения исключения (это корректно, но документируйте).
+    /// Весь цикл read+compute+write под lock → нет Lost Update.
     /// </summary>
+    /// <param name="updater">Функция преобразования. НЕ должна выбрасывать исключения.</param>
     public void Update(Func<T, T> updater)
     {
         ArgumentNullException.ThrowIfNull(updater);
@@ -87,7 +103,7 @@ public sealed class SgSignal<T> : IDisposable
         lock (_lock)
         {
             newValue = updater(_value);
-            changed = !_comparer.Equals(_value, newValue);
+            changed  = !_comparer.Equals(_value, newValue);
             if (changed) _value = newValue;
         }
 
@@ -95,11 +111,9 @@ public sealed class SgSignal<T> : IDisposable
     }
 
     /// <summary>
-    /// Представить сигнал как <see cref="IObservable{T}"/> для интеграции с Rx.NET.
-    /// Подписка активна пока IDisposable не будет Dispose'd.
-    ///
-    /// НОВОЕ: позволяет использовать LINQ/Rx операторы (Throttle, DistinctUntilChanged и др.).
-    /// Не требует Rx.NET — работает с любым IObserver[T].
+    /// Представить сигнал как <see cref="IObservable{T}"/> для интеграции с Rx/LINQ.
+    /// Использует BCL IObservable — НЕ требует пакета System.Reactive.
+    /// BehaviorSubject-семантика: новый подписчик немедленно получает текущее значение.
     /// </summary>
     public IObservable<T> AsObservable() => new SignalObservable(this);
 
@@ -118,11 +132,10 @@ public sealed class SgSignal<T> : IDisposable
         lock (_lock) _observers.Remove(observer);
     }
 
-    /// <summary>Принудительно удалить мёртвые WeakRef (вызывайте при GC давлении).</summary>
+    /// <summary>Принудительно удалить мёртвые WeakRef (вызывайте при GC-давлении).</summary>
     public void PurgeDeadSubscribers()
     {
-        lock (_lock)
-            _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
+        lock (_lock) _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
     }
 
     internal void Cleanup()
@@ -133,9 +146,9 @@ public sealed class SgSignal<T> : IDisposable
 
     private void NotifySubscribers()
     {
-        List<WeakReference<SgComponentBase>>? snapshot = null;
-        List<WeakReference<SgComponentBase>>? dead = null;
-        ISignalObserver[]? observerSnapshot = null;
+        List<WeakReference<SgComponentBase>>? snapshot    = null;
+        List<WeakReference<SgComponentBase>>? dead        = null;
+        ISignalObserver[]?                     observerSnapshot = null;
 
         lock (_lock)
         {
@@ -151,8 +164,10 @@ public sealed class SgSignal<T> : IDisposable
                     else
                         (dead ??= new()).Add(weakRef);
                 }
+
                 if (dead is not null)
-                    foreach (var d in dead) _subscribers.Remove(d);
+                    foreach (var d in dead)
+                        _subscribers.Remove(d);
             }
 
             if (_observers.Count > 0)
@@ -160,20 +175,16 @@ public sealed class SgSignal<T> : IDisposable
         }
 
         if (snapshot is not null)
-        {
             foreach (var weakRef in snapshot)
                 if (weakRef.TryGetTarget(out var comp) && !comp.IsDisposed)
                     SignalBatch.NotifyComponent(comp);
-        }
 
         if (observerSnapshot is not null)
-        {
             foreach (var observer in observerSnapshot)
             {
                 try { observer.OnSignalChanged(); }
                 catch { /* наблюдатель не должен бросать */ }
             }
-        }
     }
 
     /// <summary>Освободить всех подписчиков и наблюдателей.</summary>
@@ -188,9 +199,10 @@ public sealed class SgSignal<T> : IDisposable
     }
 
     public static implicit operator T(SgSignal<T> signal) => signal.Value;
-    public override string ToString() => _value?.ToString() ?? "null";
 
-    // ── IObservable адаптер ─────────────────────────────────────────────────
+    public override string? ToString() => _value?.ToString() ?? "null";
+
+    // ── IObservable<T> адаптер (BCL-only, без Rx.NET) ────────────────────────
 
     private sealed class SignalObservable : IObservable<T>
     {
@@ -202,22 +214,23 @@ public sealed class SgSignal<T> : IDisposable
             ArgumentNullException.ThrowIfNull(observer);
             var adapter = new ObserverAdapter(observer, _signal);
             _signal.SubscribeObserver(adapter);
-            // Отправляем текущее значение сразу (BehaviorSubject-семантика)
-            try { observer.OnNext(_signal.Peek()); } catch { }
+            // BehaviorSubject-семантика: отправляем текущее значение сразу
+            try { observer.OnNext(_signal.Peek()); }
+            catch { /* observer не должен бросать при OnNext */ }
             return adapter;
         }
     }
 
     private sealed class ObserverAdapter : ISignalObserver, IDisposable
     {
-        private readonly IObserver<T> _observer;
-        private readonly SgSignal<T> _signal;
+        private readonly IObserver<T>  _observer;
+        private readonly SgSignal<T>  _signal;
         private int _disposed;
 
         public ObserverAdapter(IObserver<T> observer, SgSignal<T> signal)
         {
             _observer = observer;
-            _signal = signal;
+            _signal   = signal;
         }
 
         public void OnSignalChanged()
@@ -227,15 +240,15 @@ public sealed class SgSignal<T> : IDisposable
             catch { /* observer не должен бросать */ }
         }
 
-        // Не используется в контексте сигнала-наблюдателя
-        public void OnSignalRead<TRead>(SgSignal<TRead> signal) { }
-        public void OnComputedRead<TRead>(SgComputed<TRead> computed) { }
+        public void OnSignalRead<TSignal>(SgSignal<TSignal> signal)   { }
+        public void OnComputedRead<TComputed>(SgComputed<TComputed> c) { }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
             _signal.UnsubscribeObserver(this);
-            try { _observer.OnCompleted(); } catch { }
+            try { _observer.OnCompleted(); }
+            catch { }
         }
     }
 }

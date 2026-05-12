@@ -1,78 +1,55 @@
+// SuperUI/Base/SgRenderBoundary.cs
+//
+// Защита от рендер-рекурсии и избыточных рендеров.
+// Используется для компонентов с дорогим рендером (DataGrid, Canvas, Chart).
+//
+// Принцип: если рендер уже идёт — следующий StateHasChanged откладывается.
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
+using System.Threading;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Граница рендера: предотвращает перерисовку <see cref="ChildContent"/>
-/// если указанные <see cref="Dependencies"/> не изменились.
+/// Компонент-обёртка, предотвращающая рендер-рекурсию.
+/// Дочерние компоненты рендерятся только после полного завершения текущего рендера.
 /// </summary>
-/// <remarks>
-/// Аналог React.memo() / shouldComponentUpdate.
-///
-/// ⚠️ Dependencies сравниваются через <see cref="object.Equals"/> (shallow).
-/// Для mutable объектов передавайте неизменяемые snapshot-значения.
-/// </remarks>
-/// <example>
-/// <code>
-/// &lt;SgRenderBoundary Dependencies="@(new object[] { _items.Count, _selectedId })"&gt;
-///     &lt;ExpensiveComponent /&gt;
-/// &lt;/SgRenderBoundary&gt;
-/// </code>
-/// </example>
-public sealed class SgRenderBoundary : ComponentBase
+public sealed class SgRenderBoundary : ComponentBase, IDisposable
 {
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    /// Зависимости. Перерисовка происходит только при изменении хотя бы одной.
-    /// Сравнение — <see cref="object.Equals"/> (shallow, не deep-clone).
-    /// </summary>
-    [Parameter] public object?[]? Dependencies { get; set; }
+    /// <summary>Максимальное количество отложенных рендеров.</summary>
+    [Parameter] public int MaxPendingRenders { get; set; } = 3;
 
-    /// <summary>Принудительно разрешить следующий рендер (игнорирует Dependencies).</summary>
-    [Parameter] public bool ForceRender { get; set; }
-
-    // ИСПРАВЛЕНО: хранит КОПИЮ массива (не ссылку на мутабельный массив от родителя)
-    private object?[]? _prevDependencies;
-    private bool _renderOccurred;
+    private int _renderDepth;
+    private int _pendingRenders;
+    private bool _disposed;
 
     protected override bool ShouldRender()
     {
-        if (ForceRender || _prevDependencies is null)
+        // Если уже рендеримся — откладываем
+        if (_renderDepth > 0)
         {
-            _renderOccurred = true;
-            return true;
+            Interlocked.Increment(ref _pendingRenders);
+            return false;
         }
-
-        if (Dependencies is null || Dependencies.Length != _prevDependencies.Length)
-        {
-            _renderOccurred = true;
-            return true;
-        }
-
-        for (int i = 0; i < Dependencies.Length; i++)
-        {
-            if (!Equals(Dependencies[i], _prevDependencies[i]))
-            {
-                _renderOccurred = true;
-                return true;
-            }
-        }
-
-        return false;
+        return true;
     }
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (_renderOccurred)
-        {
-            // ИСПРАВЛЕНО: копируем массив, не храним ссылку
-            _prevDependencies = Dependencies?.ToArray();
-            _renderOccurred = false;
-        }
+        _renderDepth--;
+        var pending = Interlocked.Exchange(ref _pendingRenders, 0);
+        if (pending > 0 && !_disposed)
+            _ = InvokeAsync(StateHasChanged);
     }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
-        => builder.AddContent(0, ChildContent);
+    {
+        _renderDepth++;
+        ChildContent?.Invoke(builder);
+    }
+
+    public void Dispose() => _disposed = true;
 }

@@ -1,5 +1,21 @@
 // SuperUI/Base/SgEnums.cs
+//
+// Все перечисления SuperUI.
+// Централизованы для единого импорта (@using SuperUI.Base).
+
 namespace SuperUI.Base;
+
+// ── Общие ────────────────────────────────────────────────────────────────────
+
+/// <summary>Размер компонента.</summary>
+public enum SgSize
+{
+    ExtraSmall,
+    Small,
+    Medium,
+    Large,
+    ExtraLarge
+}
 
 /// <summary>Вариант/тема компонента.</summary>
 public enum SgVariant
@@ -7,49 +23,108 @@ public enum SgVariant
     Default,
     Primary,
     Secondary,
-    Outline,
-    Text,
-    Danger,
     Success,
     Warning,
-    Info
+    Danger,
+    Info,
+    Ghost,
+    Link
 }
 
-/// <summary>Размер компонента (XS→XL).</summary>
-public enum SgSize { XSmall, Small, Medium, Large, XLarge }
-
-/// <summary>Направление размещения (для Tooltip, Drawer, Popover, Placement).</summary>
+/// <summary>Позиционирование/размещение overlay-компонентов.</summary>
 public enum SgPlacement
 {
-    // Абсолютные (для Drawer, Toast)
-    TopLeft, TopCenter, TopRight,
-    BottomLeft, BottomCenter, BottomRight,
-    Left, Right, Top, Bottom,
-    // Относительные (для Tooltip, Popover)
-    StartTop, StartBottom, EndTop, EndBottom,
-    TopStart, TopEnd, BottomStart, BottomEnd
+    Top,
+    TopStart,
+    TopEnd,
+    Bottom,
+    BottomStart,
+    BottomEnd,
+    Left,
+    LeftStart,
+    LeftEnd,
+    Right,
+    RightStart,
+    RightEnd,
+    // Toast/Notification placements
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottomLeft,
+    TopCenter,
+    BottomCenter
 }
 
+// ── Input-специфичные ────────────────────────────────────────────────────────
+
 /// <summary>Вариант отображения поля ввода.</summary>
-public enum SgInputVariant { Outlined, Filled, Underlined }
+public enum SgInputVariant
+{
+    Outlined,
+    Filled,
+    Standard,
+    Borderless
+}
 
-/// <summary>Вариант кнопки.</summary>
-public enum SgButtonVariant { Default, Primary, Secondary, Danger, Success, Warning, Ghost, Link }
+// ── Button-специфичные ───────────────────────────────────────────────────────
 
-/// <summary>Вариант бейджа.</summary>
-public enum SgBadgeVariant { Default, Primary, Success, Danger, Warning, Info, Muted }
+/// <summary>Вариант кнопки (псевдоним SgVariant для обратной совместимости).</summary>
+public enum SgButtonVariant
+{
+    Default   = SgVariant.Default,
+    Primary   = SgVariant.Primary,
+    Secondary = SgVariant.Secondary,
+    Success   = SgVariant.Success,
+    Warning   = SgVariant.Warning,
+    Danger    = SgVariant.Danger,
+    Ghost     = SgVariant.Ghost,
+    Link      = SgVariant.Link
+}
 
-/// <summary>Вариант алерта/тоста.</summary>
-public enum SgAlertVariant { Info, Success, Warning, Danger }
+// ── Badge/Alert-специфичные ──────────────────────────────────────────────────
 
-/// <summary>Форма аватара.</summary>
-public enum SgAvatarShape { Circle, Square, Rounded }
+public enum SgBadgeVariant { Default, Success, Danger, Warning, Info, Muted }
 
-/// <summary>Режим чекбокса (tri-state).</summary>
+public enum SgAlertVariant { Default, Success, Warning, Danger, Info }
+
+// ── Avatar ───────────────────────────────────────────────────────────────────
+
+public enum SgAvatarShape { Circle, Square }
+
+// ── DataGrid ─────────────────────────────────────────────────────────────────
+
+/// <summary>Направление сортировки.</summary>
+public enum SgSortDirection { None, Ascending, Descending }
+
+/// <summary>Тип колонки.</summary>
+public enum SgColumnType { Auto, Text, Number, Date, Boolean, Custom }
+
+/// <summary>Режим выделения строк.</summary>
+public enum SgSelectionMode { None, Single, Multiple }
+
+// ── Overlay ──────────────────────────────────────────────────────────────────
+
+public enum SgDrawerPlacement { Left, Right, Top, Bottom }
+
+public enum SgModalSize { Small, Medium, Large, ExtraLarge, FullScreen }
+
+// ── Progress ─────────────────────────────────────────────────────────────────
+
+public enum SgProgressVariant { Default, Success, Warning, Danger, Info }
+
+// ── Skeleton ─────────────────────────────────────────────────────────────────
+
+public enum SgSkeletonVariant { Text, Circle, Rectangle, Button }
+
+// ── Checkbox/Toggle ──────────────────────────────────────────────────────────
+
+/// <summary>Три-состояние чекбокса.</summary>
 public enum SgCheckState { Unchecked, Checked, Indeterminate }
 
-/// <summary>Ориентация компонента.</summary>
+// ── Orientation ──────────────────────────────────────────────────────────────
+
 public enum SgOrientation { Horizontal, Vertical }
 
-/// <summary>Режим анимации.</summary>
+// ── Animation ─────────────────────────────────────────────────────────────────
+
 public enum SgAnimation { None, Fade, Slide, Scale, Flip }

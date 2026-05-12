@@ -1,78 +1,107 @@
+// SuperUI/ServiceCollectionExtensions.cs
+//
+// Extension-метод для регистрации всех сервисов SuperUI в DI.
+// Поддерживает WASM, Server, Web App (Auto), Hybrid.
+//
+// Использование:
+//   builder.Services.AddSuperUI();
+//   builder.Services.AddSuperUI(opts => opts.DefaultTheme = "light");
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 using SuperUI.Base.Services;
-using SuperUI.Components;
-using SuperUI.Localization;
-using SuperUI.Services;
+using System;
 
 namespace SuperUI;
 
 /// <summary>
-/// DI registration helpers for SuperUI.
+/// Расширения для регистрации SuperUI в DI-контейнере.
 /// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Registers the SuperUI services (<see cref="SgToastService"/>, <see cref="SgConfirmService"/>, 
-    /// <see cref="ISuperUILocalizer"/>, <see cref="SgZIndexService"/>)
-    /// with the dependency injection container.
+    /// Зарегистрировать все сервисы SuperUI.
     /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    public static IServiceCollection AddSuperUI(this IServiceCollection services)
-        => services.AddSuperUI(_ => { });
-
-    /// <summary>
-    /// Registers the SuperUI services and applies the supplied configuration delegate.
-    /// </summary>
-    /// <param name="services">The service collection.</param>
-    /// <param name="configure">Delegate that mutates the <see cref="SuperUiOptions"/>.</param>
-    /// <returns>The same service collection so calls can be chained.</returns>
-    /// <remarks>
-    /// Services are registered as Scoped, which is appropriate for both Blazor Server and Blazor WebAssembly.
-    /// In Blazor Server, each circuit gets its own instance, ensuring proper isolation.
-    /// In Blazor WebAssembly, each user session gets its own instance.
-    /// </remarks>
-    public static IServiceCollection AddSuperUI(this IServiceCollection services, Action<SuperUiOptions> configure)
+    /// <param name="services">Коллекция сервисов.</param>
+    /// <param name="configure">Опциональная конфигурация библиотеки.</param>
+    /// <returns>Коллекция сервисов (для чейнинга).</returns>
+    /// <example>
+    /// <code>
+    /// // Минимальная регистрация
+    /// builder.Services.AddSuperUI();
+    ///
+    /// // С конфигурацией
+    /// builder.Services.AddSuperUI(opts =>
+    /// {
+    ///     opts.DefaultTheme          = "light";
+    ///     opts.DefaultCulture        = "ru-RU";
+    ///     opts.DefaultToastDurationMs = 5000;
+    ///
+    ///     opts.Button  = new() { ShowRipple = false };
+    ///     opts.DataGrid = new() { DefaultPageSize = 50 };
+    /// });
+    /// </code>
+    /// </example>
+    public static IServiceCollection AddSuperUI(
+        this IServiceCollection services,
+        Action<SgLibraryOptions>? configure = null)
     {
         ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(configure);
 
-        services.Configure(configure);
-        // Toast, Confirm, and Notification services are Scoped to ensure proper isolation
-        // in Blazor Server (per-circuit) and Blazor WebAssembly (per-session)
-        services.TryAddScoped<SgToastService>();
-        services.TryAddScoped<SgConfirmService>();
-        services.TryAddScoped<SgNotificationService>();
-        services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
-        services.TryAddScoped<SgZIndexService>();
-        services.TryAddScoped<SgThemeService>();
-        services.TryAddScoped<SgRagService>();
-        services.TryAddScoped<ISessionStorage, JsSessionStorage>();
+        // Опции библиотеки
+        if (configure is not null)
+            services.Configure<SgLibraryOptions>(configure);
+        else
+            services.TryAddSingleton(
+                Microsoft.Extensions.Options.Options.Create(new SgLibraryOptions()));
+
+        // Основной сервис настроек компонентов
+        services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
+
+        // Z-index менеджер
+        // Scoped для Server (per-circuit), Singleton для WASM
+        services.TryAddScoped<IZIndexService, ZIndexService>();
+
+        // Focus trap
+        services.TryAddScoped<IFocusTrapService, JsFocusTrapService>();
+
+        // Keyboard service
+        services.TryAddScoped<IKeyboardService, KeyboardService>();
+
+        // Prerendering detector
+        // На Server — через IHttpContextAccessor
+        // На WASM — всегда false
+        RegisterPrerendingDetector(services);
 
         return services;
     }
 
-    /// <summary>
-    /// Registers WebAssembly-specific SuperUI services.
-    /// Call this instead of <see cref="AddSuperUI"/> for Blazor WASM projects.
-    /// </summary>
-    public static IServiceCollection AddSuperUIWASM(this IServiceCollection services, Action<SuperUiOptions>? configure = null)
+    private static void RegisterPrerendingDetector(IServiceCollection services)
     {
-        services.TryAddSingleton<IPrerendingDetector, WasmPrerendingDetector>();
-        return configure is not null ? services.AddSuperUI(configure) : services.AddSuperUI();
-    }
+        // Проверяем доступность IHttpContextAccessor (только Server)
+        services.TryAddSingleton<IPrerendingDetector>(sp =>
+        {
+            // На WASM OperatingSystem.IsBrowser() == true
+            if (OperatingSystem.IsBrowser())
+                return WasmPrerendingDetector.Instance;
 
-    /// <summary>
-    /// Registers Server/WebApp-specific SuperUI services.
-    /// Call this instead of <see cref="AddSuperUI"/> for Blazor Server projects.
-    /// Requires Microsoft.AspNetCore.Http.Abstractions package for IHttpContextAccessor.
-    /// </summary>
-    public static IServiceCollection AddSuperUIServer(this IServiceCollection services, Action<SuperUiOptions>? configure = null)
-    {
-        services.TryAddSingleton<IPrerendingDetector, ServerPrerendingDetector>();
-        // Note: IHttpContextAccessor registration is typically done by the hosting application
-        // For standalone usage, add Microsoft.AspNetCore.Http.Abstractions package
-        return configure is not null ? services.AddSuperUI(configure) : services.AddSuperUI();
+            // На Server пробуем получить IHttpContextAccessor
+            var accessor = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
+            return accessor is not null
+                ? new ServerPrerenderingDetector(accessor)
+                : WasmPrerendingDetector.Instance;
+        });
     }
+}
+
+// Делаем WasmPrerendingDetector доступным как статический синглтон
+file sealed class WasmDetectorSingleton { }
+
+internal sealed class WasmPrerendingDetector : IPrerendingDetector
+{
+    public static readonly WasmPrerendingDetector Instance = new();
+    private WasmPrerendingDetector() { }
+    public bool IsPrerendering => false;
+    public bool IsInteractive => true;
 }

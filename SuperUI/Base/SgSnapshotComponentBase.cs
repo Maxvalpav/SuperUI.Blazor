@@ -1,191 +1,66 @@
-using System.Collections.Concurrent;
-using System.Reflection;
-using System.Text.Json;
-using Microsoft.AspNetCore.Components;
-using Microsoft.Extensions.Logging;
-using SuperUI.Base.Services;
+// SuperUI/Base/SgSnapshotComponentBase.cs
+//
+// Компонент с оптимизацией рендера через снапшоты параметров.
+// Перерисовывается ТОЛЬКО при реальном изменении параметров (структурное сравнение).
+//
+// Аналог React.PureComponent / React.memo.
+//
+// НОВОЕ:
+// 1. ShouldRender — сравнивает параметры через снапшот.
+// 2. CaptureSnapshot() — вызывается автоматически после OnParametersSet.
+// 3. ParametersChanged() — виртуальный: переопределите для custom-сравнения.
 
 namespace SuperUI.Base;
 
-/// <summary>Помечает свойство для включения в snapshot.</summary>
-[AttributeUsage(AttributeTargets.Property)]
-public sealed class SnapshotAttribute : Attribute { }
-
-/// <summary>Контракт для компонентов с поддержкой снэпшота.</summary>
-public interface ISnapshotable
-{
-    /// <summary>Захватить текущее состояние помеченных свойств.</summary>
-    Dictionary<string, object?> CaptureSnapshot();
-
-    /// <summary>Восстановить состояние из ранее захваченного снэпшота.</summary>
-    void RestoreSnapshot(Dictionary<string, object?> snapshot);
-}
-
 /// <summary>
-/// Базовый класс для компонентов с автоматическим сохранением/восстановлением
-/// состояния через SessionStorage.
+/// Базовый класс с оптимизацией рендера через снапшоты параметров.
 /// </summary>
 /// <remarks>
-/// Работает на Blazor WASM и Blazor Server.
-/// При prerendering — пропускает операции JS interop.
+/// Перерисовывается только при реальном изменении параметров.
+/// Аналог <c>React.PureComponent</c> / <c>shouldComponentUpdate</c>.
 /// </remarks>
-public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
+public abstract class SgSnapshotComponentBase : SgComponentBase
 {
-    // Кэш reflection — per-Type, статический (hot-reload безопасен через .NET 9 MetadataUpdateHandler)
-    private static readonly ConcurrentDictionary<Type, SnapshotPropertyInfo[]> _cache = new();
-    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
+    private IReadOnlyDictionary<string, object>? _snapshot;
+    private bool _firstRender = true;
 
-    [Inject] private ISessionStorage SessionStorage { get; set; } = null!;
+    protected override bool ShouldRender()
+    {
+        if (!base.ShouldRender()) return false;
+        if (_firstRender) return true;
+        return ParametersChanged();
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        CaptureSnapshot();
+        _firstRender = false;
+    }
 
     /// <summary>
-    /// Автоматически сохранять snapshot при каждом OnParametersSetAsync.
-    /// По умолчанию false — вызывайте SaveSnapshotAsync() вручную.
+    /// Сравнить текущие параметры со снапшотом.
+    /// Переопределите для custom-сравнения.
     /// </summary>
-    [Parameter] public bool AutoSave { get; set; } = false;
-
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
-
-    protected override async Task OnInitializedAsync()
+    protected virtual bool ParametersChanged()
     {
-        // ИСПРАВЛЕНО: сначала базовая инициализация (устанавливает параметры, инжекции)
-        await base.OnInitializedAsync();
+        if (_snapshot is null) return true;
+        if (AdditionalAttributes is null && _snapshot.Count == 0) return false;
+        if (AdditionalAttributes?.Count != _snapshot.Count) return true;
 
-        // Затем восстанавливаем snapshot
-        try
-        {
-            var snapshot = await SessionStorage.GetItemAsync<Dictionary<string, object?>>(ComponentId);
-            if (snapshot is not null)
-                RestoreSnapshot(snapshot);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "[{Id}] Failed to restore snapshot", ComponentId);
-        }
+        if (AdditionalAttributes is not null)
+            foreach (var kvp in AdditionalAttributes)
+                if (!_snapshot.TryGetValue(kvp.Key, out var old) || !Equals(old, kvp.Value))
+                    return true;
+
+        return false;
     }
 
-    protected override async Task OnParametersSetAsync()
+    /// <summary>Зафиксировать текущие параметры как снапшот.</summary>
+    protected void CaptureSnapshot()
     {
-        await base.OnParametersSetAsync();
-
-        if (AutoSave)
-        {
-            try { await SaveSnapshotAsync(); }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "[{Id}] AutoSave snapshot failed", ComponentId);
-            }
-        }
-    }
-
-    // ── Public API ─────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Сохранить текущий snapshot в SessionStorage.
-    /// Вызывайте вручную или используйте AutoSave=true.
-    /// </summary>
-    public async Task SaveSnapshotAsync()
-    {
-        if (IsDisposed) return;
-        try
-        {
-            var snapshot = CaptureSnapshot();
-            await SessionStorage.SetItemAsync(ComponentId, snapshot);
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "[{Id}] Failed to save snapshot", ComponentId);
-        }
-    }
-
-    /// <summary>Удалить snapshot из SessionStorage.</summary>
-    public async Task ClearSnapshotAsync()
-    {
-        if (IsDisposed) return;
-        try { await SessionStorage.RemoveItemAsync(ComponentId); }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "[{Id}] Failed to clear snapshot", ComponentId);
-        }
-    }
-
-    // ── ISnapshotable ──────────────────────────────────────────────────────────
-
-    public Dictionary<string, object?> CaptureSnapshot()
-    {
-        var props = GetSnapshotProperties();
-        var dict = new Dictionary<string, object?>(props.Length);
-        foreach (var info in props)
-            dict[info.Property.Name] = info.Property.GetValue(this);
-        return dict;
-    }
-
-    public void RestoreSnapshot(Dictionary<string, object?> snapshot)
-    {
-        var props = GetSnapshotProperties();
-        foreach (var info in props)
-        {
-            if (!snapshot.TryGetValue(info.Property.Name, out var value)) continue;
-            try
-            {
-                // ИСПРАВЛЕНО: JsonElement конвертация с передачей JsonSerializerOptions
-                var converted = ConvertFromJson(value, info.Property.PropertyType, info);
-                info.Property.SetValue(this, converted);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogDebug(ex, "[{Id}] Snapshot restore skipped for {Prop}",
-                    ComponentId, info.Property.Name);
-            }
-        }
-    }
-
-    // ── Internals ──────────────────────────────────────────────────────────────
-
-    private static object? ConvertFromJson(object? value, Type targetType, SnapshotPropertyInfo info)
-    {
-        if (value is null)
-            return info.IsValueType ? info.DefaultValue : null;
-
-        if (targetType.IsInstanceOfType(value)) return value;
-
-        if (value is JsonElement element)
-        {
-            try
-            {
-                // ИСПРАВЛЕНО: передаём JsonSerializerOptions с Web-настройками
-                return element.Deserialize(targetType, _jsonOptions);
-            }
-            catch
-            {
-                return info.IsValueType ? info.DefaultValue : null;
-            }
-        }
-
-        try { return Convert.ChangeType(value, Nullable.GetUnderlyingType(targetType) ?? targetType); }
-        catch { return info.IsValueType ? info.DefaultValue : null; }
-    }
-
-    private SnapshotPropertyInfo[] GetSnapshotProperties()
-        => _cache.GetOrAdd(GetType(), static t =>
-            t.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-             .Where(p => p.GetCustomAttribute<SnapshotAttribute>() is not null
-                         && p.CanRead && p.CanWrite
-                         && p.SetMethod is { IsPrivate: false })
-             .Select(p => new SnapshotPropertyInfo(p))
-             .ToArray());
-
-    private sealed class SnapshotPropertyInfo
-    {
-        public readonly PropertyInfo Property;
-        public readonly bool IsValueType;
-        public readonly object? DefaultValue;
-
-        public SnapshotPropertyInfo(PropertyInfo property)
-        {
-            Property = property;
-            var propType = property.PropertyType;
-            IsValueType = propType.IsValueType && Nullable.GetUnderlyingType(propType) is null;
-            DefaultValue = IsValueType ? Activator.CreateInstance(propType) : null;
-        }
+        _snapshot = AdditionalAttributes is null
+            ? new Dictionary<string, object>()
+            : new Dictionary<string, object>(AdditionalAttributes);
     }
 }

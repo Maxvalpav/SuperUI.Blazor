@@ -24,8 +24,6 @@ public record SgFilterDescriptor(
     string? Value2 = null  // для Between
 );
 
-public enum SgSortDirection { Asc, Desc }
-
 public enum SgFilterOperator
 {
     Equals,

@@ -1,62 +1,39 @@
 // SuperUI/Base/Reactive/Signal.cs
-// LEGACY: оригинальный Signal<T> вынесен в отдельный файл
+//
+// Legacy-обёртка для обратной совместимости.
 // Используйте SgSignal<T> для нового кода.
-// Этот файл обеспечивает обратную совместимость.
-// ИСПРАВЛЕНО CS0101: удалён из ComponentSignalGraph.cs, живёт только здесь.
-
-using SuperUI.Base;
+// Signal<T> делегирует все операции SgSignal<T>.
+//
+// [Obsolete] помечен для migration warning в IntelliSense.
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Legacy реактивный сигнал. Используйте <see cref="SgSignal{T}"/> для нового кода.
-/// Оставлен для обратной совместимости.
 /// </summary>
-[Obsolete("Используйте SgSignal<T>. Signal<T> будет удалён в следующей major версии.")]
-public sealed class Signal<T>
+[Obsolete("Use SgSignal<T> instead. Signal<T> will be removed in a future version.")]
+public sealed class Signal<T> : IDisposable
 {
-    private T _value;
-    private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = [];
-    private readonly IEqualityComparer<T> _comparer;
+    private readonly SgSignal<T> _inner;
 
-    public Signal(T initialValue, IEqualityComparer<T>? comparer = null)
-    {
-        _value = initialValue;
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-    }
+    public Signal(T initial, IEqualityComparer<T>? comparer = null)
+        => _inner = new SgSignal<T>(initial, comparer);
 
     public T Value
     {
-        get
-        {
-            SignalTracker.Track(this);
-            return _value;
-        }
+        get => _inner.Value;
+        set => _inner.Set(value);
     }
 
-    public void Set(T newValue)
-    {
-        if (_comparer.Equals(_value, newValue)) return;
-        _value = newValue;
-        NotifySubscribers();
-    }
+    public T Peek()  => _inner.Peek();
+    public void Set(T value) => _inner.Set(value);
+    public void Update(Func<T, T> updater) => _inner.Update(updater);
+    public IObservable<T> AsObservable() => _inner.AsObservable();
 
-    internal void Subscribe(SgComponentBase component)
-        => _subscribers.Add(new WeakReference<SgComponentBase>(component));
+    internal void Subscribe(SgComponentBase component) => _inner.Subscribe(component);
 
-    private void NotifySubscribers()
-    {
-        var toRemove = new List<WeakReference<SgComponentBase>>();
-        // Копируем перед итерацией для thread safety
-        var snapshot = _subscribers.ToList();
-        foreach (var weakRef in snapshot)
-        {
-            if (weakRef.TryGetTarget(out var component) && !component.IsDisposed)
-                SignalBatch.NotifyComponent(component);
-            else
-                toRemove.Add(weakRef);
-        }
-        foreach (var dead in toRemove)
-            _subscribers.Remove(dead);
-    }
+    public void Dispose() => _inner.Dispose();
+
+    public static implicit operator T(Signal<T> s) => s.Value;
+    public override string? ToString() => _inner.ToString();
 }

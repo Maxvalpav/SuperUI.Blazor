@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Base.Services;
-using SuperUI.Base.Tokens;
+using SuperUI.Base.Utilities;
 
 namespace SuperUI.Base;
 
