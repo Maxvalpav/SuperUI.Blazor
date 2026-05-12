@@ -13,12 +13,13 @@
 //   ✅ IsDisposed check в OnParametersSetAsync (было) + в SortByAsync/FilterAsync
 //   ✅ SgLoadingState — детализированное состояние вместо bool
 
-using System.Collections;
-using System.Linq.Expressions;
-using System.Reflection;
-using Microsoft.AspNetCore.Components;
-using Microsoft.Extensions.Logging;
-using SuperUI.Base;
+    using System.Collections;
+    using System.Linq;
+    using System.Linq.Expressions;
+    using System.Reflection;
+    using Microsoft.AspNetCore.Components;
+    using Microsoft.Extensions.Logging;
+    using SuperUI.Base;
 
 namespace SuperUI.Base;
 
@@ -81,6 +82,9 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     /// <summary>Текущие фильтры.</summary>
     protected List<SgFilterDescriptor> CurrentFilters { get; private set; } = [];
 
+    /// <summary>Текущий текст глобального поиска.</summary>
+    protected string? SearchText { get; private set; }
+
     /// <summary>true если есть хоть один элемент для отображения.</summary>
     protected bool HasItems => DisplayItems.Count > 0;
 
@@ -124,7 +128,8 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                     Page = CurrentPage,
                     PageSize = PageSize,
                     Sort = CurrentSort,
-                    Filters = CurrentFilters
+                    Filters = CurrentFilters,
+                    SearchText = SearchText
                 };
 
                 var dataResult = await DataSource(request, ComponentToken);
@@ -140,6 +145,10 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                 // УЛУЧШЕНИЕ: базовая in-memory реализация фильтрации
                 if (EnableFiltering && CurrentFilters.Count > 0)
                     query = ApplyFilters(query);
+
+                // УЛУЧШЕНИЕ: глобальный поиск по всем строковым полям
+                if (!string.IsNullOrEmpty(SearchText) && EnableFiltering)
+                    query = ApplySearch(query);
 
                 // УЛУЧШЕНИЕ: базовая in-memory реализация сортировки
                 if (EnableSorting && CurrentSort is not null)
@@ -221,6 +230,26 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     {
         if (IsDisposed) return;
         CurrentPage = Math.Max(1, Math.Min(page, TotalPages));
+        await LoadDataAsync();
+    }
+
+    /// <summary>Установить глобальный поисковый текст и перезагрузить данные.</summary>
+    public async Task SearchAsync(string? text)
+    {
+        if (IsDisposed) return;
+        SearchText = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+        CurrentPage = 1;
+        await LoadDataAsync();
+    }
+
+    /// <summary>Сбросить все фильтры, сортировку и поиск.</summary>
+    public async Task ResetAsync()
+    {
+        if (IsDisposed) return;
+        CurrentFilters.Clear();
+        CurrentSort = null;
+        SearchText = null;
+        CurrentPage = 1;
         await LoadDataAsync();
     }
 
@@ -348,6 +377,8 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         return (IQueryable<T>)method.Invoke(null, [query, keySelector])!;
     }
 
+
+
     // ── Lifecycle ────────────────────────────────────────────────────────────────
 
     /// <inheritdoc/>
@@ -364,10 +395,19 @@ public abstract class SgDataBase<T> : SgInteractiveBase
             CurrentPage = 1;
             CurrentFilters.Clear();
             CurrentSort = null;
+            SearchText = null;   // сброс поиска при смене DataSource
         }
 
         var itemsChanged   = !ReferenceEquals(Items, _lastItems);
         var pageSizeChanged = PageSize != _lastPageSize;
+
+        if (itemsChanged)
+        {
+            // При смене in-memory коллекции сбрасываем поиск (новые данные — новый контекст)
+            SearchText = null;
+            CurrentFilters.Clear();
+            CurrentSort = null;
+        }
 
         if ((itemsChanged || pageSizeChanged || dataSourceChanged)
             && (Items != null || DataSource != null))
@@ -377,5 +417,46 @@ public abstract class SgDataBase<T> : SgInteractiveBase
             if (!dataSourceChanged) CurrentPage = 1;
             await LoadDataAsync();
         }
+    }
+
+    // ── Базовая in-memory поиск ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Применить глобальный поиск по всем string-полям типа T.
+    /// УЛУЧШЕНИЕ: case-insensitive Contains через StringComparison.OrdinalIgnoreCase.
+    /// </summary>
+    protected virtual IQueryable<T> ApplySearch(IQueryable<T> query)
+    {
+        if (string.IsNullOrEmpty(SearchText)) return query;
+
+        var stringProperties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.PropertyType == typeof(string))
+            .ToArray();
+
+        if (stringProperties.Length == 0) return query;
+
+        var param = Expression.Parameter(typeof(T), "x");
+        Expression? combined = null;
+
+        foreach (var prop in stringProperties)
+        {
+            var member = Expression.Property(param, prop);
+            var containsMethod = typeof(string).GetMethod(nameof(string.Contains), [typeof(string), typeof(StringComparison)]);
+            var call = Expression.Call(
+                member,
+                containsMethod!,
+                Expression.Constant(SearchText, typeof(string)),
+                Expression.Constant(StringComparison.OrdinalIgnoreCase, typeof(StringComparison)));
+
+            combined = combined is null ? (Expression)call : Expression.OrElse(combined, call);
+        }
+
+        if (combined is not null)
+        {
+            var lambda = Expression.Lambda<Func<T, bool>>(combined, param);
+            query = query.Where(lambda);
+        }
+
+        return query;
     }
 }

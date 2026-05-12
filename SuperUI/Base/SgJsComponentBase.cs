@@ -344,6 +344,18 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
+    /// <summary>
+    /// Вызвать функцию JS с поддержкой fallback-значения при ошибке.
+    /// </summary>
+    protected async ValueTask<TResult> SafeInvokeAsync<TResult>(
+        string identifier,
+        TResult fallback,
+        params object?[] args)
+    {
+        var result = await SafeInvokeAsync<TResult>(identifier, args);
+        return result is null ? fallback : result;
+    }
+
     /// <summary>ИСПРАВЛЕНО: 1-arg generic без params-аллокации.</summary>
     protected async ValueTask<TResult> SafeInvokeAsync<TResult, T1>(string identifier, T1 arg1)
     {
@@ -389,6 +401,18 @@ public abstract class SgJsComponentBase : SgComponentBase
                 ComponentId, identifier);
             return default!;
         }
+    }
+
+    /// <summary>
+    /// Гарантирует загрузку JS-модуля при первом рендере.
+    /// Вызывайте из OnFirstRenderAsync().
+    /// </summary>
+    /// <returns>true если модуль загружен успешно.</returns>
+    protected async Task<bool> EnsureModuleAsync()
+    {
+        if (IsPrerendering) return false;
+        var module = await GetModuleAsync();
+        return module is not null;
     }
 
     // ── SafeGlobalInvokeVoidAsync ───────────────────────────────────────────────────

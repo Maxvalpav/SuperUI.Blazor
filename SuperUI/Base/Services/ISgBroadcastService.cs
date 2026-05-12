@@ -1,30 +1,23 @@
-// SuperUI/Base/Services/ISgBroadcastService.cs
-// Cross-tab / cross-circuit messaging
-// WASM: BroadcastChannel API (через JS interop)
-// Server: SignalR Hub (через IHubContext)
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Широковещательный сервис для inter-tab (WASM) и inter-circuit (Server) коммуникации.
-/// На WASM использует BroadcastChannel Web API.
-/// На Server использует SignalR IHubContext.
+/// Широковещательный сервис для межкомпонентной коммуникации.
+/// In-process реализация через Channel (WASM: single-tab, Server: cross-circuit).
+/// Для cross-tab/cross-server требуется внешний транспорт (SignalR/Redis).
 /// </summary>
 public interface ISgBroadcastService : IAsyncDisposable
 {
-    /// <summary>Отправить сообщение всем подписчикам того же канала.</summary>
+    /// <summary>Опубликовать сообщение всем подписчикам того же канала.</summary>
     Task PublishAsync<T>(string channel, T message) where T : notnull;
 
-    /// <summary>Подписаться на канал.</summary>
+    /// <summary>Подписаться на канал (async handler).</summary>
     IAsyncDisposable Subscribe<T>(string channel, Func<T, Task> handler) where T : notnull;
 
-    /// <summary>Подписаться на канал (синхронный handler).</summary>
+    /// <summary>Подписаться на канал (sync handler).</summary>
     IAsyncDisposable Subscribe<T>(string channel, Action<T> handler) where T : notnull;
 }
 
-/// <summary>
-/// Сообщение о присутствии пользователя в поле формы.
-/// Используется для Conflict-free Editing Indicators.
-/// </summary>
+/// <summary>Сообщение о присутствии пользователя в поле формы.</summary>
 public sealed record SgFieldPresenceMessage(
     string UserId,
     string DisplayName,

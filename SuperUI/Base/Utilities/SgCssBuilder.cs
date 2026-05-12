@@ -70,6 +70,18 @@ public sealed class SgCssBuilder
         return this;
     }
 
+    /// <summary>
+    /// Добавить классы из строки (разделённой пробелами).
+    /// Полезно для передачи Class параметра.
+    /// </summary>
+    public SgCssBuilder AddClasses(string? classes)
+    {
+        if (string.IsNullOrWhiteSpace(classes)) return this;
+        foreach (var cls in classes.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            Add(cls);
+        return this;
+    }
+
     // ── Условные ─────────────────────────────────────────────────────────────────
 
     /// <summary>Добавить класс при выполнении условия.</summary>
@@ -121,6 +133,17 @@ public sealed class SgCssBuilder
     {
         if (!string.IsNullOrWhiteSpace(cssClass) && _parts is not null)
             _parts.Remove(cssClass.Trim());
+        return this;
+    }
+
+    /// <summary>
+    /// Применить функцию-трансформацию к последнему добавленному классу.
+    /// </summary>
+    public SgCssBuilder Transform(Func<string, string> transform)
+    {
+        ArgumentNullException.ThrowIfNull(transform);
+        if (_parts is { Count: > 0 })
+            _parts[^1] = transform(_parts[^1]);
         return this;
     }
 

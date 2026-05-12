@@ -83,3 +83,29 @@ public sealed class SgMenuContext
     public int Level { get; init; }
     public Action? OnClose { get; init; }
 }
+
+/// <summary>Контекст SgVirtualList / SgTreeView для виртуализированных компонентов.</summary>
+public sealed class SgVirtualContext
+{
+    public int VisibleStartIndex { get; init; }
+    public int VisibleEndIndex { get; init; }
+    public int TotalCount { get; init; }
+    public double ItemHeight { get; init; }
+}
+
+/// <summary>Контекст SgSplitter для дочерних панелей.</summary>
+public sealed class SgSplitterContext
+{
+    public SgOrientation Orientation { get; init; }
+    public double[] PanelSizes { get; init; } = [];
+    public Action<int, double>? OnPanelResize { get; init; }
+}
+
+/// <summary>Контекст SgDataForm для полей формы.</summary>
+public sealed class SgDataFormContext
+{
+    public SgFormContext? Form { get; init; }
+    public bool ShowValidation { get; init; } = true;
+    public bool IsReadOnly { get; init; }
+    public string? LabelPosition { get; init; } = "top"; // "top" | "left" | "right"
+}

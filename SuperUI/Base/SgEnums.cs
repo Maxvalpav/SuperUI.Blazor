@@ -208,3 +208,46 @@ public enum SgTreeNodeState
     /// <summary>Ошибка загрузки дочерних элементов.</summary>
     Error
 }
+
+// ── ДОПОЛНИТЕЛЬНЫЕ ENUMS ───────────────────────────────────────────────────────────
+
+/// <summary>Режим рендеринга компонента (для оптимизации).</summary>
+public enum SgRenderMode
+{
+    /// <summary>Авто: Blazor решает когда рендерить.</summary>
+    Auto,
+    /// <summary>Принудительно: рендерить при каждом StateHasChanged.</summary>
+    Force,
+    /// <summary>Ручной: только при явном вызове StateHasChanged.</summary>
+    Manual
+}
+
+/// <summary>Тип строки DataGrid (для виртуализации и группировки).</summary>
+public enum SgRowType
+{
+    Data,
+    Group,
+    Footer,
+    Placeholder
+}
+
+/// <summary>Вариант подтверждения (SgConfirmService).</summary>
+public enum SgConfirmVariant
+{
+    Default,
+    Info,
+    Warning,
+    Danger,
+    Success
+}
+
+/// <summary>Тип toast-уведомления.</summary>
+public enum SgToastType
+{
+    Default,
+    Success,
+    Warning,
+    Error,
+    Info,
+    Loading
+}

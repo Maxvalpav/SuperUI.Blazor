@@ -48,6 +48,11 @@ public sealed class StyleBuilder
     public StyleBuilder Property(string property, double value, string unit = "") =>
         Property(property, FormattableString.Invariant($"{value:G}{unit}"));
 
+    // ── CSS calc() ─────────────────────────────────────────────────────────────────
+    /// <summary>Добавить CSS calc() выражение.</summary>
+    public StyleBuilder Calc(string property, string expression)
+        => Property(property, $"calc({expression})");
+
     // ── Условные ─────────────────────────────────────────────────────────────────
     public StyleBuilder If(bool condition, string? style)                              { if (condition) Add(style);                    return this; }
     public StyleBuilder If(bool condition, string property, string value)              { if (condition) Property(property, value);     return this; }
@@ -69,6 +74,12 @@ public sealed class StyleBuilder
 
     public StyleBuilder Variable(string name, double value, string unit = "") =>
         Variable(name, FormattableString.Invariant($"{value:G}{unit}"));
+
+    /// <summary>
+    /// Добавить transition свойство.
+    /// </summary>
+    public StyleBuilder Transition(string properties = "all", int durationMs = 300, string easing = "ease")
+        => Property("transition", $"{properties} {durationMs}ms {easing}");
 
     // ── Удаление ─────────────────────────────────────────────────────────────────
     public StyleBuilder Remove(string property)

@@ -1,6 +1,4 @@
-// SuperUI/Base/SgReactiveBase.cs
-// НОВЫЙ ФАЙЛ: Convenience base class для компонентов активно использующих реактивность.
-// Предоставляет готовые фабричные методы прямо в шаблоне компонента.
+using System.Collections.Generic;
 using SuperUI.Base.Reactive;
 namespace SuperUI.Base;
 
@@ -26,6 +24,8 @@ namespace SuperUI.Base;
 /// </remarks>
 public abstract class SgReactiveBase : SgComponentBase
 {
+    private readonly List<IParameterSyncEffect> _parameterSyncEffects = new();
+
     /// <summary>Создать и зарегистрировать реактивный сигнал.</summary>
     protected SgSignal<T> Signal<T>(T initial, IEqualityComparer<T>? comparer = null)
         => CreateSignal(initial, comparer);
@@ -50,5 +50,65 @@ public abstract class SgReactiveBase : SgComponentBase
         effect.Subscribe(this);
         RegisterEffectInternal(effect);
         return effect;
+    }
+
+    /// <summary>
+    /// Создать сигнал, привязанный к параметру компонента.
+    /// Автоматически обновляется при изменении параметра в OnParametersChangedAsync.
+    /// </summary>
+    protected SgSignal<T> SignalFromParameter<T>(Func<T> getter, IEqualityComparer<T>? comparer = null)
+    {
+        var signal = CreateSignal(getter(), comparer);
+        var effect = new ParameterSyncEffect<T>(signal, getter, this);
+        RegisterEffectInternal(effect);
+        _parameterSyncEffects.Add(effect);
+        return signal;
+    }
+
+    /// <summary>
+    /// Вызывается при каждом изменении параметров после базовых хуков.
+    /// Переопределите для кастомной логики, но вызывайте base.
+    /// </summary>
+    protected override Task OnParametersChangedAsync()
+    {
+        foreach (var effect in _parameterSyncEffects)
+            effect.Sync();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// ИСПРАВЛЕНИЕ: освобождаем список parameter sync effects.
+    /// </summary>
+    protected override async ValueTask DisposeComponentAsync()
+    {
+        _parameterSyncEffects.Clear();
+        await base.DisposeComponentAsync();
+    }
+
+    // ── Helper types ─────────────────────────────────────────────────────────────
+
+    private interface IParameterSyncEffect
+    {
+        void Sync();
+    }
+
+    private sealed class ParameterSyncEffect<T> : IDisposable, IParameterSyncEffect
+    {
+        private readonly SgSignal<T> _signal;
+        private readonly Func<T> _getter;
+        private readonly SgComponentBase _component;
+        private bool _disposed;
+
+        public ParameterSyncEffect(SgSignal<T> signal, Func<T> getter, SgComponentBase component)
+        {
+            _signal = signal;
+            _getter = getter;
+            _component = component;
+        }
+
+        // Вызывается из OnParametersChangedAsync
+        public void Sync() => _signal.Set(_getter());
+
+        public void Dispose() => _disposed = true;
     }
 }

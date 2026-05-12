@@ -118,6 +118,22 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     protected Task DebounceAsync(string key, Action action, TimeSpan delay)
         => DebounceAsync(key, () => { action(); return Task.CompletedTask; }, delay);
 
+    /// <summary>
+    /// Создать debounced обёртку вокруг EventCallback.
+    /// </summary>
+    protected EventCallback<TValue> WithDebounce<TValue>(
+        EventCallback<TValue> callback,
+        int delayMs = 300)
+    {
+        return EventCallback.Factory.Create<TValue>(this, async value =>
+        {
+            await DebounceAsync(
+                $"__callback_{callback.GetHashCode()}",
+                () => callback.InvokeAsync(value),
+                TimeSpan.FromMilliseconds(delayMs));
+        });
+    }
+
     /// <summary>Явно отменить все pending debounce-операции.</summary>
     public void ClearDebouncers()
     {
@@ -303,6 +319,19 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     protected void OnKey(string key, Func<KeyboardEventArgs, Task> handler)
         => _keyHandlers[key] = handler;
 
+    /// <summary>
+    /// Зарегистрировать обработчик клавиши с возможностью предотвратить default-поведение.
+    /// </summary>
+    /// <param name="key">Строка клавиши (напр. "Ctrl+s", "Escape").</param>
+    /// <param name="handler">Handler: возвращает true = handled (preventDefault), false = pass-through.</param>
+    protected void OnKey(string key, Func<KeyboardEventArgs, Task<bool>> handler)
+        => _keyHandlers[key] = async e =>
+        {
+            var handled = await handler(e);
+            // handled используется JSInterop для preventDefault на уровне JS
+            _ = handled;
+        };
+
     /// <summary>Удалить обработчик клавиши.</summary>
     protected void RemoveKey(string key)
         => _keyHandlers.TryRemove(key, out _);
@@ -314,6 +343,12 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         if (!string.IsNullOrEmpty(key) && _keyHandlers.TryGetValue(key, out var handler))
             await handler(e);
     }
+
+    /// <summary>
+    /// Обработчик KeyUp событий. Использует те же _keyHandlers что и HandleKeyDownAsync.
+    /// </summary>
+    protected Task HandleKeyUpAsync(KeyboardEventArgs e)
+        => IsEffectivelyDisabled ? Task.CompletedTask : HandleKeyDownAsync(e);
 
     /// <summary>
     /// УЛУЧШЕНО: защита от null Key; zero-allocation через string.Create.

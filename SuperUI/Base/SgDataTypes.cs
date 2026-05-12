@@ -1,13 +1,3 @@
-// SuperUI/Base/SgDataTypes.cs
-//
-// УЛУЧШЕНИЯ:
-//   ✅ SgDataRequest: добавлен ExtraParams с non-nullable default
-//   ✅ SgDataResult<T>: добавлены поля AggregateData, GroupData для grouping
-//   ✅ SgSortDescriptor: добавлен NullsFirst для сортировки null-значений
-//   ✅ SgFilterDescriptor: добавлен IsActive флаг для временного отключения фильтра
-//   ✅ SgFilterGroup: комбинирование нескольких фильтров через AND/OR
-//   ✅ Все типы — record (immutable, value-equality)
-
 namespace SuperUI.Base;
 
 /// <summary>Запрос данных для DataSource.</summary>
@@ -19,17 +9,38 @@ public record SgDataRequest
     /// <summary>Количество строк на странице.</summary>
     public int PageSize { get; init; } = 25;
 
+    /// <summary>
+    /// Сколько записей пропустить (вычисляется из Page/PageSize).
+    /// FIX CS0117: был отдельным полем, которое не инициализировалось → теперь computed.
+    /// </summary>
+    public int SkipCount => (Page - 1) * PageSize;
+
+    /// <summary>
+    /// Сколько записей взять (алиас PageSize для совместимости).
+    /// FIX CS0117: был отдельным полем → теперь computed.
+    /// </summary>
+    public int TakeCount => PageSize;
+
     /// <summary>Параметры сортировки.</summary>
     public SgSortDescriptor? Sort { get; init; }
 
     /// <summary>Список активных фильтров.</summary>
     public IReadOnlyList<SgFilterDescriptor> Filters { get; init; } = [];
 
+    /// <summary>Группировка (поле и направление).</summary>
+    public IReadOnlyList<SgGroupDescriptor> Groups { get; init; } = [];
+
+    /// <summary>Поисковая строка (глобальный поиск по всем полям).</summary>
+    public string? SearchText { get; init; }
+
     /// <summary>Дополнительные произвольные параметры (передаются в DataSource).</summary>
-    public IReadOnlyDictionary<string, object?>? ExtraParams { get; init; } = null;
+    public IReadOnlyDictionary<string, object?>? ExtraParams { get; init; }
 
     /// <summary>Отключить пагинацию — вернуть все записи.</summary>
     public bool NoPaging { get; init; }
+
+    /// <summary>Токен отмены для длительных операций DataSource.</summary>
+    public CancellationToken CancellationToken { get; init; } = default;
 }
 
 /// <summary>Результат запроса данных от DataSource.</summary>
@@ -44,10 +55,17 @@ public record SgDataResult<T>(IReadOnlyList<T> Items, int TotalCount)
 
     /// <summary>Данные группировки (если включена группировка в DataGrid).</summary>
     public IReadOnlyList<SgGroupData<T>>? GroupData { get; init; }
+
+    /// <summary>Дополнительные метаданные (для расширяемости).</summary>
+    public IReadOnlyDictionary<string, object?>? Meta { get; init; }
 }
 
 /// <summary>Данные группы строк.</summary>
-public record SgGroupData<T>(string GroupKey, string GroupLabel, IReadOnlyList<T> Items);
+public record SgGroupData<T>(
+    string GroupKey,
+    string GroupLabel,
+    IReadOnlyList<T> Items,
+    IReadOnlyDictionary<string, object?>? Aggregates = null);
 
 /// <summary>Дескриптор сортировки.</summary>
 public record SgSortDescriptor(string Field, SgSortDirection Direction)
@@ -55,6 +73,9 @@ public record SgSortDescriptor(string Field, SgSortDirection Direction)
     /// <summary>Помещать null-значения в начало при сортировке.</summary>
     public bool NullsFirst { get; init; } = false;
 }
+
+/// <summary>Дескриптор группировки.</summary>
+public record SgGroupDescriptor(string Field, SgSortDirection Direction = SgSortDirection.Ascending);
 
 /// <summary>Дескриптор фильтра.</summary>
 public record SgFilterDescriptor(
@@ -64,11 +85,11 @@ public record SgFilterDescriptor(
     string? Value2 = null   // для Between
 )
 {
-    /// <summary>Фильтр активен. false — фильтр временно отключён без удаления.</summary>
+    /// <summary>Фильтр активен. false — временно отключён без удаления.</summary>
     public bool IsActive { get; init; } = true;
 }
 
-/// <summary>Группа фильтров с логическим оператором.</summary>
+/// <summary>Группа фильтров с логическим оператором (для сложных условий).</summary>
 public sealed class SgFilterGroup
 {
     /// <summary>Логический оператор между фильтрами группы.</summary>
@@ -101,5 +122,7 @@ public enum SgFilterOperator
     In,
     NotIn,
     IsNull,
-    IsNotNull
+    IsNotNull,
+    /// <summary>Регулярное выражение (для строк).</summary>
+    Regex
 }

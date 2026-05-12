@@ -1,4 +1,9 @@
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 
 namespace SuperUI.Base;
 
@@ -9,98 +14,127 @@ namespace SuperUI.Base;
 /// <typeparam name="TItem">Тип элемента данных.</typeparam>
 public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
 {
-    // ── Параметры ──────────────────────────────────────────────────────────────
+    // ── Параметры ────────────────────────────────────────────────────────────
+    /// <summary>Статические данные (in-memory).</summary>
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
+
+    /// <summary>Асинхронный провайдер данных (server-side / lazy).</summary>
     [Parameter] public Func<SgDataRequest, Task<SgDataResult<TItem>>>? LoadData { get; set; }
+
+    /// <summary>Количество строк на странице.</summary>
     [Parameter] public int PageSize { get; set; } = 50;
+
+    /// <summary>Включить постраничную навигацию.</summary>
     [Parameter] public bool EnablePaging { get; set; } = true;
+
+    /// <summary>Включить виртуализацию (scroll-based).</summary>
     [Parameter] public bool EnableVirtualization { get; set; } = false;
+
+    /// <summary>Callback при старте загрузки данных.</summary>
     [Parameter] public EventCallback<SgDataRequest> OnLoadData { get; set; }
 
-    // ── Состояние ──────────────────────────────────────────────────────────────
+    // ── Состояние ────────────────────────────────────────────────────────────
     private readonly List<TItem> _items = [];
     private int _currentPage = 1;
     private int _totalCount;
     private bool _isLoading;
     private string? _loadError;
-    private SgDataRequest? _lastRequest;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
 
-    // ── Публичные свойства ─────────────────────────────────────────────────────
+    // ── Публичные свойства ───────────────────────────────────────────────────
+    /// <summary>Отображаемые элементы (после загрузки/фильтрации).</summary>
     public IReadOnlyList<TItem> DisplayItems => _items;
+
+    /// <summary>Общее количество элементов (до пагинации).</summary>
     public int TotalCount => _totalCount;
+
+    /// <summary>Текущая страница (1-based).</summary>
     public int CurrentPage => _currentPage;
+
+    /// <summary>Данные загружаются.</summary>
     public bool IsLoading => _isLoading;
+
+    /// <summary>Текст ошибки последней загрузки (null = нет ошибки).</summary>
     public string? LoadError => _loadError;
-    public int TotalPages => PageSize > 0
-        ? (int)Math.Ceiling((double)_totalCount / PageSize) : 0;
+
+    /// <summary>Общее количество страниц.</summary>
+    public int TotalPages => PageSize > 0 ? (int)Math.Ceiling((double)_totalCount / PageSize) : 0;
+
+    /// <summary>Есть предыдущая страница.</summary>
     public bool HasPreviousPage => _currentPage > 1;
+
+    /// <summary>Есть следующая страница.</summary>
     public bool HasNextPage => _currentPage < TotalPages;
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
-    protected override async Task OnParametersSetAsync()
-    {
-        await base.OnParametersSetAsync();
-        if (Items is not null)
-        {
-            // Локальные данные — без загрузки
-            _items.Clear();
-            _items.AddRange(Items);
-            _totalCount = _items.Count;
-        }
-    }
+    /// <summary>Нет данных и нет ошибки.</summary>
+    public bool IsEmpty => !_isLoading && _loadError is null && _items.Count == 0;
 
-    protected override async Task OnFirstRenderAsync()
-    {
-        await base.OnFirstRenderAsync();
-        if (LoadData is not null && Items is null)
-            await LoadPageAsync(_currentPage);
-    }
-
-    // ── Публичные методы ───────────────────────────────────────────────────────
+    // ── Навигация по страницам ───────────────────────────────────────────────
+    /// <summary>Перейти на первую страницу.</summary>
     public Task GoToFirstPageAsync() => GoToPageAsync(1);
-    public Task GoToLastPageAsync()  => GoToPageAsync(TotalPages);
-    public Task NextPageAsync()      => HasNextPage  ? GoToPageAsync(_currentPage + 1) : Task.CompletedTask;
-    public Task PreviousPageAsync()  => HasPreviousPage ? GoToPageAsync(_currentPage - 1) : Task.CompletedTask;
 
+    /// <summary>Перейти на последнюю страницу.</summary>
+    public Task GoToLastPageAsync() => GoToPageAsync(TotalPages);
+
+    /// <summary>Перейти на следующую страницу.</summary>
+    public Task NextPageAsync() => HasNextPage
+        ? GoToPageAsync(_currentPage + 1)
+        : Task.CompletedTask;
+
+    /// <summary>Перейти на предыдущую страницу.</summary>
+    public Task PreviousPageAsync() => HasPreviousPage
+        ? GoToPageAsync(_currentPage - 1)
+        : Task.CompletedTask;
+
+    /// <summary>Перейти на указанную страницу.</summary>
     public async Task GoToPageAsync(int page)
     {
+        if (IsDisposed) return;
         if (page < 1 || (TotalPages > 0 && page > TotalPages)) return;
         _currentPage = page;
         await LoadPageAsync(page);
     }
 
+    /// <summary>Перезагрузить с первой страницы.</summary>
     public async Task ReloadAsync()
     {
+        if (IsDisposed) return;
         _currentPage = 1;
         _items.Clear();
         if (LoadData is not null)
             await LoadPageAsync(1);
     }
 
-    // ── Внутренние методы ──────────────────────────────────────────────────────
+    // ── Внутренняя загрузка ─────────────────────────────────────────────────
+    /// <summary>
+    /// Загрузить указанную страницу данных.
+    /// </summary>
     protected async Task LoadPageAsync(int page)
     {
         if (LoadData is null || IsDisposed) return;
-        if (!await _loadLock.WaitAsync(0)) return; // пропустить если уже грузим
+
+        // Пропустить если уже идёт загрузка (fire-and-forget protection)
+        if (!await _loadLock.WaitAsync(0)) return;
 
         try
         {
             _isLoading = true;
             _loadError = null;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
 
+            // FIX CS0117: убраны поля Skip/Take — они не существуют в SgDataRequest.
+            // Используем Page/PageSize; вычисляемые SkipCount/TakeCount доступны как computed.
             var request = new SgDataRequest
             {
                 Page = page,
-                PageSize = PageSize,
-                Skip = (page - 1) * PageSize,
-                Take = PageSize
+                PageSize = PageSize
+                // SkipCount и TakeCount — computed свойства, не нужно задавать
             };
-            _lastRequest = request;
+
             await OnLoadData.InvokeAsync(request);
 
             var result = await LoadData(request);
+
             if (result is not null && !IsDisposed)
             {
                 _items.Clear();
@@ -109,24 +143,26 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
                 _currentPage = page;
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* нормальная отмена */ }
         catch (Exception ex)
         {
             _loadError = ex.Message;
+            // FIX CS1061: Logger доступен из SgComponentBase (унаследован через SgInteractiveBase)
             Logger.LogError(ex, "[{Id}] LoadData error page={Page}", ComponentId, page);
         }
         finally
         {
             _isLoading = false;
             _loadLock.Release();
-            if (!IsDisposed) StateHasChanged();
+            if (!IsDisposed)
+                await InvokeAsync(StateHasChanged);
         }
     }
 
+    // ── Dispose ──────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
         _loadLock.Dispose();
         await base.DisposeComponentAsync();
     }
 }
-

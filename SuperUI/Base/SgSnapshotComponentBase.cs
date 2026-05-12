@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Components;
+
 namespace SuperUI.Base;
 
 /// <summary>
@@ -8,12 +10,13 @@ namespace SuperUI.Base;
 public abstract class SgSnapshotComponentBase<TState> : SgInteractiveBase
     where TState : class
 {
-    private readonly Stack<TState> _undoStack = new();
+    // FIX: LinkedList вместо Stack — эффективное удаление с хвоста O(1) без ToArray
+    private readonly LinkedList<TState> _undoStack = new();
     private readonly Stack<TState> _redoStack = new();
     private int _maxSnapshots = 50;
 
     /// <summary>Максимальное количество снимков в истории.</summary>
-    [Parameter]
+    [Parameter]  // ← FIX CS0246: using Microsoft.AspNetCore.Components добавлен
     public int MaxSnapshots
     {
         get => _maxSnapshots;
@@ -33,31 +36,35 @@ public abstract class SgSnapshotComponentBase<TState> : SgInteractiveBase
     /// Сохранить текущее состояние для undo.
     /// Вызывайте ПЕРЕД мутирующей операцией.
     /// </summary>
+    /// <remarks>
+    /// УЛУЧШЕНИЕ: LinkedList → удаление первого (самого старого) элемента O(1).
+    /// Оригинал: Stack.ToArray() + rebuild → O(n).
+    /// </remarks>
     protected void SaveSnapshot(TState snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         _redoStack.Clear(); // новое действие сбрасывает redo
 
-        // Ограничиваем размер стека
+        // FIX: LinkedList.RemoveFirst() — O(1) вместо O(n) через ToArray
         while (_undoStack.Count >= _maxSnapshots)
-        {
-            // Stack не поддерживает RemoveLast → конвертируем временно
-            var temp = _undoStack.ToArray();
-            _undoStack.Clear();
-            for (int i = temp.Length - 2; i >= 0; i--) // пропускаем последний (самый старый)
-                _undoStack.Push(temp[i]);
-        }
+            _undoStack.RemoveFirst();
 
-        _undoStack.Push(snapshot);
+        _undoStack.AddLast(snapshot);
     }
 
     /// <summary>Отменить последнее действие.</summary>
     public async Task UndoAsync()
     {
         if (!CanUndo || IsDisposed) return;
+
         var current = GetCurrentState();
-        if (current is not null) _redoStack.Push(current);
-        var snapshot = _undoStack.Pop();
+        if (current is not null)
+            _redoStack.Push(current);
+
+        // FIX: LinkedList → берём с конца (последний = самый новый)
+        var snapshot = _undoStack.Last!.Value;
+        _undoStack.RemoveLast();
+
         await ApplySnapshotAsync(snapshot);
         StateHasChanged();
     }
@@ -66,8 +73,11 @@ public abstract class SgSnapshotComponentBase<TState> : SgInteractiveBase
     public async Task RedoAsync()
     {
         if (!CanRedo || IsDisposed) return;
+
         var current = GetCurrentState();
-        if (current is not null) _undoStack.Push(current);
+        if (current is not null)
+            _undoStack.AddLast(current);
+
         var snapshot = _redoStack.Pop();
         await ApplySnapshotAsync(snapshot);
         StateHasChanged();
@@ -79,6 +89,9 @@ public abstract class SgSnapshotComponentBase<TState> : SgInteractiveBase
         _undoStack.Clear();
         _redoStack.Clear();
     }
+
+    /// <summary>Количество шагов redo в стеке.</summary>
+    public int RedoCount => _redoStack.Count;
 
     /// <summary>Получить текущее состояние компонента (для сохранения перед undo/redo).</summary>
     protected abstract TState? GetCurrentState();

@@ -318,7 +318,20 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         await base.OnParametersSetAsync();
         foreach (var hook in _hooks)
             if (hook is IAsyncComponentHook ah) await ah.OnParametersSetAsync(this);
+        // Вызываем переопределяемый hook
+        await OnParametersChangedAsync();
     }
+
+    /// <summary>
+    /// Вызывается при каждом изменении параметров ПОСЛЕ базового OnParametersSetAsync.
+    /// Переопределяйте вместо OnParametersSetAsync для упрощённого API.
+    /// </summary>
+    /// <remarks>
+    /// Разница от OnParametersSetAsync:
+    /// - не нужно вызывать base.OnParametersSetAsync()
+    /// - вызывается только при реальных изменениях (после хуков)
+    /// </remarks>
+    protected virtual Task OnParametersChangedAsync() => Task.CompletedTask;
 
     /// <inheritdoc/>
     protected override void OnAfterRender(bool firstRender)
@@ -445,6 +458,12 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(async () => { await action(); StateHasChanged(); });
     }
 
+    /// <summary>
+    /// Безопасный StateHasChanged через InvokeAsync (для вызова из фоновых потоков).
+    /// </summary>
+    protected Task RefreshFromBackgroundAsync()
+        => IsDisposed ? Task.CompletedTask : InvokeAsync(() => base.StateHasChanged());
+
     /// <summary>InvokeAsync с проверкой IsDisposed.</summary>
     protected Task SafeInvokeAsync(Func<Task> action)
     {
@@ -457,6 +476,16 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     {
         if (IsDisposed) return Task.CompletedTask;
         return InvokeAsync(action);
+    }
+
+    /// <summary>
+    /// Выполнить действие и вернуть результат с безопасным InvokeAsync.
+    /// Полезно при вызове из Timer/Observable где нет UI-контекста.
+    /// </summary>
+    protected Task<TResult> SafeInvokeAsync<TResult>(Func<TResult> func)
+    {
+        if (IsDisposed) return Task.FromResult(default(TResult)!);
+        return InvokeAsync(func);
     }
 
     // ── Service helpers ──────────────────────────────────────────────────────────

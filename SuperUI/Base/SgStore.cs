@@ -45,6 +45,23 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     }
 
     /// <summary>
+    /// Выполнить несколько действий как один атомарный batch (один StateHasChanged).
+    /// </summary>
+    public async Task BatchAsync(params Func<TState, TState>[] reducers)
+    {
+        if (Volatile.Read(ref _disposedInt) == 1) return;
+        TState current;
+        lock (_dispatchLock)
+        {
+            current = _state.Peek();
+            foreach (var reducer in reducers)
+                current = reducer(current);
+        }
+        _state.Set(current);
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Async dispatch для асинхронных операций (action creators).
     /// Thread-safe: использует оптимистичную конкуренцию с повторными попытками чтобы избежать Lost Update.
     /// При превышении максимального количества повторов (5) генерирует InvalidOperationException.
@@ -122,6 +139,12 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     /// </summary>
     public SgComputed<TResult> Select<TResult>(Func<TState, TResult> selector)
         => new(() => selector(_state.Peek()));
+
+    /// <summary>
+    /// Подписаться на изменения состояния (IObservable-совместимо).
+    /// </summary>
+    public IDisposable Subscribe(Action<TState> observer)
+        => _state.Subscribe(observer);
 
     /// <summary>
     /// ИСПРАВЛЕНО: Interlocked.Exchange — атомарный compare-and-swap.
