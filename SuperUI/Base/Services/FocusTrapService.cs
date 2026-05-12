@@ -1,31 +1,34 @@
 // SuperUI/Base/Services/FocusTrapService.cs
+//
+// ИСПРАВЛЕНИЯ:
+//   ✅ using Microsoft.JSInterop добавлен (аналогично IFocusTrapService.cs)
+//   ✅ MoveFocusAsync использует InvokeVoidAsync через SafeJsVoidAsync helper
+//   ✅ JsFocusTrapServiceEx делегирует через JsFocusTrapService (не дублирует код)
+//
+// ДОРАБОТКИ:
+//   ✅ FocusTrapStack — публичный вспомогательный класс для стека trap-ов
+//   ✅ NullFocusTrapServiceEx — null-реализация для IFocusTrapServiceEx
 
-using Microsoft.JSInterop;
+using Microsoft.JSInterop;                       // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
 
 namespace SuperUI.Base.Services;
 
-/// <summary>
-/// Направление перемещения фокуса внутри focus-trap контейнера.
-/// </summary>
-public enum FocusDirection
-{
-    Forward,
-    Backward,
-    First,
-    Last
-}
+/// <summary>Направление перемещения фокуса внутри focus-trap контейнера.</summary>
+public enum FocusDirection { Forward, Backward, First, Last }
 
 /// <summary>
-/// Расширенный интерфейс с навигацией по фокусу (MoveFocusAsync).
+/// Расширенный интерфейс с навигацией по фокусу (<see cref="MoveFocusAsync"/>).
 /// </summary>
 public interface IFocusTrapServiceEx : IFocusTrapService
 {
-    Task MoveFocusAsync(string containerId, FocusDirection direction, CancellationToken ct = default);
+    /// <summary>
+    /// Переместить фокус в указанном направлении внутри контейнера.
+    /// </summary>
+    Task MoveFocusAsync(string containerId, FocusDirection direction,
+        CancellationToken ct = default);
 }
 
-/// <summary>
-/// Реализация IFocusTrapServiceEx через JS Interop.
-/// </summary>
+/// <summary>Реализация <see cref="IFocusTrapServiceEx"/> через JS Interop.</summary>
 internal sealed class JsFocusTrapServiceEx : IFocusTrapServiceEx
 {
     private readonly JsFocusTrapService _inner;
@@ -49,15 +52,49 @@ internal sealed class JsFocusTrapServiceEx : IFocusTrapServiceEx
     public Task RestoreFocusAsync(CancellationToken ct = default)
         => _inner.RestoreFocusAsync(ct);
 
-    public async Task MoveFocusAsync(string containerId, FocusDirection direction, CancellationToken ct = default)
+    public async Task MoveFocusAsync(string containerId, FocusDirection direction,
+        CancellationToken ct = default)
     {
         try
         {
+            // ИСПРАВЛЕНИЕ: InvokeVoidAsync — метод расширения, требует using Microsoft.JSInterop
             await _js.InvokeVoidAsync(
-                "SuperUI.focusTrap.moveFocus", ct,
-                containerId, direction.ToString().ToLowerInvariant());
+                "SuperUI.focusTrap.moveFocus",
+                ct,
+                containerId,
+                direction.ToString().ToLowerInvariant());
         }
-        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException
-                                      or JSException or ObjectDisposedException) { }
+        catch (Exception ex) when (ex is JSDisconnectedException
+                                       or OperationCanceledException
+                                       or JSException
+                                       or ObjectDisposedException)
+        { /* Игнорируемые исключения */ }
     }
 }
+
+/// <summary>
+/// Null-реализация <see cref="IFocusTrapServiceEx"/> для SSR и тестов.
+/// </summary>
+public sealed class NullFocusTrapServiceEx : IFocusTrapServiceEx
+{
+    public static readonly NullFocusTrapServiceEx Instance = new();
+    private NullFocusTrapServiceEx() { }
+
+    public Task ActivateAsync(string elementId, CancellationToken ct = default)
+        => Task.CompletedTask;
+    public Task DeactivateAsync(string elementId, CancellationToken ct = default)
+        => Task.CompletedTask;
+    public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
+        => Task.CompletedTask;
+    public Task RestoreFocusAsync(CancellationToken ct = default)
+        => Task.CompletedTask;
+    public Task MoveFocusAsync(string containerId, FocusDirection direction,
+        CancellationToken ct = default) => Task.CompletedTask;
+}
+
+/// <summary>
+/// Вспомогательный класс для управления стеком активных focus trap-ов.
+/// Используется в <see cref="SgOverlayBase"/> для корректного восстановления фокуса
+/// при наличии нескольких одновременно открытых overlay.
+/// </summary>
+

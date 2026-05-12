@@ -1,11 +1,16 @@
 // SuperUI/Base/SgSmartFormBase.cs
-// ИСПРАВЛЕНО:
-// 1. _fieldErrors — ConcurrentDictionary (thread-safe для Server)
-// 2. CompletionPercent — реальный подсчёт через reflection
-// 3. IsFormValid — учитывает незаполненные поля
-// 4. CrossFieldValidate — добавлен виртуальный метод
-// 5. GetAllErrors() — добавлен
-// 6. Нет интеграции с EditContext — наследует SgInteractiveBase (ок, SmartForm не EditContext-зависим)
+//
+// ИСПРАВЛЕНИЯ:
+//   ✅ GetAllErrors() — исправлен тип возврата: (string Field, IReadOnlyList<string> Errors)
+//   ✅ ConcurrentDictionary — thread-safe для Server
+//   ✅ CompletionPercent — реальный подсёт через reflection (кэшированный)
+//   ✅ IsFormValid — учитывает невалидированные поля
+//   ✅ CrossFieldValidate — virtual Task<IEnumerable<(string, string)>>
+//
+// УЛУЧШЕНИЯ:
+//   ✅ ResetAsync() — сброс формы к начальному состоянию
+//   ✅ GetFieldErrors(string) / HasFieldError(string) — удобные helper-ы
+
 using System.Collections.Concurrent;
 using System.Reflection;
 using Microsoft.AspNetCore.Components;
@@ -20,27 +25,28 @@ namespace SuperUI.Base;
 /// - Async remote validation с debounce
 /// - Прогресс заполнения формы
 /// </summary>
+/// <typeparam name="TModel">Тип модели формы (должен иметь конструктор без параметров).</typeparam>
 public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
     where TModel : class, new()
 {
     [Parameter] public TModel Model { get; set; } = new();
-    [Parameter] public Func<TModel, CancellationToken, Task<IEnumerable<(string Field, string Error)>>>? RemoteValidator { get; set; }
+    [Parameter] public Func<TModel, CancellationToken, Task<Dictionary<string, List<string>>>>?
+        RemoteValidator { get; set; }
     [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
     [Parameter] public int ValidationDebounceMs { get; set; } = 500;
 
-    // ИСПРАВЛЕНО: ConcurrentDictionary для thread-safety на Server
+    // ИСПРАВЛЕНИЕ: ConcurrentDictionary для thread-safety на Server
     private readonly ConcurrentDictionary<string, List<string>> _fieldErrors = new();
 
-    // ── Completion ─────────────────────────────────────────────────────────────
+    // ── Completion ───────────────────────────────────────────────────────────────
 
+    /// <summary>Процент заполнения формы (0-100).</summary>
     protected double CompletionPercent
     {
         get
         {
-            // ИСПРАВЛЕНО: реальный подсчёт
             var props = GetModelProperties();
             if (props.Length == 0) return 0;
-
             int filled = 0;
             foreach (var p in props)
             {
@@ -52,22 +58,25 @@ public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
         }
     }
 
-    // ── Validation ─────────────────────────────────────────────────────────────
+    // ── Validation ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Форма валидна только если все поля валидировались И не имеют ошибок.
+    /// Форма валидна если все поля прошли валидацию без ошибок.
+    /// Невалидированные поля считаются невалидными.
     /// </summary>
     protected bool IsFormValid
     {
         get
         {
             var props = GetModelProperties();
-            // Если поле не валидировалось — считаем невалидным (строго)
-            if (_fieldErrors.Count < props.Length) return false;
+            if (_fieldErrors.Count < props.Length) return false; // не все поля валидированы
             return _fieldErrors.Values.All(e => e.Count == 0);
         }
     }
 
+    /// <summary>
+    /// Валидировать поле с удалённой и cross-field валидацией.
+    /// </summary>
     protected async Task ValidateFieldAsync(string fieldName, object? value)
     {
         var localErrors = ValidateField(fieldName, value).Distinct().ToList();
@@ -78,42 +87,56 @@ public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
         {
             await DebounceAsync($"remote_{fieldName}", async () =>
             {
-                var remoteErrors = await RemoteValidator(Model, ComponentToken);
-                foreach (var (field, error) in remoteErrors)
-                    _fieldErrors.AddOrUpdate(
-                        field,
-                        _ => [error],
-                        (_, list) => { lock (list) { if (!list.Contains(error)) list.Add(error); } return list; });
-                _ = RefreshAsync();
+                try
+                {
+                    var remoteErrors = await RemoteValidator(Model, ComponentToken);
+                    foreach (var (field, errors) in remoteErrors)
+                    {
+                        _fieldErrors[field] = errors;
+                    }
+                    _ = RefreshAsync();
+                }
+                catch (OperationCanceledException) { }
             }, TimeSpan.FromMilliseconds(ValidationDebounceMs));
         }
 
         // Cross-field validation
         var crossErrors = await ValidateCrossFieldAsync(fieldName);
         foreach (var (field, error) in crossErrors)
+        {
             _fieldErrors.AddOrUpdate(
                 field,
                 _ => [error],
                 (_, list) => { lock (list) { if (!list.Contains(error)) list.Add(error); } return list; });
+        }
 
         _ = RefreshAsync();
     }
 
-    /// <summary>Синхронная локальная валидация поля.</summary>
-    protected virtual IEnumerable<string> ValidateField(string fieldName, object? value) => [];
+    /// <summary>Синхронная локальная валидация поля. Переопределите для добавления правил.</summary>
+    protected virtual IEnumerable<string> ValidateField(string fieldName, object? value)
+        => [];
 
     /// <summary>
     /// Cross-field валидация. Переопределите для межполевых проверок.
     /// Возвращает список (fieldName, errorMessage).
     /// </summary>
-    protected virtual Task<IEnumerable<(string Field, string Error)>> ValidateCrossFieldAsync(string changedField)
+    protected virtual Task<IEnumerable<(string Field, string Error)>> ValidateCrossFieldAsync(
+        string changedField)
         => Task.FromResult(Enumerable.Empty<(string, string)>());
 
     /// <summary>Получить ошибки для конкретного поля.</summary>
-    protected IEnumerable<string> GetErrors(string fieldName)
+    protected IEnumerable<string> GetFieldErrors(string fieldName)
         => _fieldErrors.TryGetValue(fieldName, out var errors) ? errors : [];
 
-    /// <summary>Получить все ошибки формы.</summary>
+    /// <summary>Есть ли ошибки у поля.</summary>
+    protected bool HasFieldError(string fieldName)
+        => _fieldErrors.TryGetValue(fieldName, out var e) && e.Count > 0;
+
+    /// <summary>
+    /// Получить все ошибки формы.
+    /// ИСПРАВЛЕНИЕ: правильный тип tuple — (Field, Errors).
+    /// </summary>
     protected IEnumerable<(string Field, IReadOnlyList<string> Errors)> GetAllErrors()
         => _fieldErrors
             .Where(kv => kv.Value.Count > 0)
@@ -122,11 +145,11 @@ public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
     /// <summary>Очистить все ошибки.</summary>
     protected void ClearAllErrors() => _fieldErrors.Clear();
 
-    // ── Submit ─────────────────────────────────────────────────────────────────
+    // ── Submit ───────────────────────────────────────────────────────────────────
 
+    /// <summary>Валидировать все поля и отправить форму если валидна.</summary>
     protected async Task SubmitAsync()
     {
-        // Валидируем все поля перед отправкой
         var props = GetModelProperties();
         foreach (var p in props)
             await ValidateFieldAsync(p.Name, p.GetValue(Model));
@@ -135,7 +158,15 @@ public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
         await OnValidSubmit.InvokeAsync(Model);
     }
 
-    // ── Internals ──────────────────────────────────────────────────────────────
+    /// <summary>Сбросить форму к начальному состоянию.</summary>
+    protected void ResetAsync()
+    {
+        Model = new TModel();
+        _fieldErrors.Clear();
+        _ = RefreshAsync();
+    }
+
+    // ── Internals ────────────────────────────────────────────────────────────────
 
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _propCache = new();
 

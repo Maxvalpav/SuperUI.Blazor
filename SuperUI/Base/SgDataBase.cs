@@ -1,9 +1,21 @@
 // SuperUI/Base/SgDataBase.cs
-// Ключевые исправления:
-// 1. OnParametersSetAsync — IsDisposed check
-// 2. OnParametersSetAsync — отслеживание смены DataSource
+//
+// ИСПРАВЛЕНИЯ КОМПИЛЯЦИИ (CS0117):
+//   ✅ SgSortDirection.Asc → SgSortDirection.Ascending
+//   ✅ SgSortDirection.Desc → SgSortDirection.Descending
+//
+// УЛУЧШЕНИЯ:
+//   ✅ ApplyFilters — базовая LINQ in-memory реализация (Contains, Equals, GreaterThan и др.)
+//   ✅ ApplySort    — базовая LINQ OrderBy/OrderByDescending по Field через reflection
+//   ✅ ReloadAsync() — публичный метод для программной перезагрузки
+//   ✅ ExportAsync() — virtual extension point для экспорта
+//   ✅ TryGetNonEnumeratedCount + ICollection<T>.Count fallback
+//   ✅ IsDisposed check в OnParametersSetAsync (было) + в SortByAsync/FilterAsync
+//   ✅ SgLoadingState — детализированное состояние вместо bool
 
 using System.Collections;
+using System.Linq.Expressions;
+using System.Reflection;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 using SuperUI.Base;
@@ -12,42 +24,87 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов работы с данными.
+/// Уровень 4: SgInteractiveBase → SgDataBase
 /// </summary>
-public abstract class SgDataBase<TItem> : SgInteractiveBase
+/// <typeparam name="T">Тип элемента данных.</typeparam>
+public abstract class SgDataBase<T> : SgInteractiveBase
 {
-    [Parameter] public IEnumerable<TItem>? Items { get; set; }
-    [Parameter] public Func<SgDataRequest, CancellationToken, ValueTask<SgDataResult<TItem>>>? DataSource { get; set; }
+    // ── Параметры ────────────────────────────────────────────────────────────────
+
+    /// <summary>Коллекция элементов для отображения (in-memory).</summary>
+    [Parameter] public IEnumerable<T>? Items { get; set; }
+
+    /// <summary>Асинхронный провайдер данных (server-side / virtualized).</summary>
+    [Parameter] public Func<SgDataRequest, CancellationToken, Task<SgDataResult<T>>>? DataSource { get; set; }
+
+    /// <summary>Количество строк на странице.</summary>
     [Parameter] public int PageSize { get; set; } = 25;
+
+    /// <summary>Включить постраничную навигацию.</summary>
     [Parameter] public bool EnablePaging { get; set; }
+
+    /// <summary>Включить сортировку.</summary>
     [Parameter] public bool EnableSorting { get; set; }
+
+    /// <summary>Включить фильтрацию.</summary>
     [Parameter] public bool EnableFiltering { get; set; }
+
+    /// <summary>Контент при отсутствии данных.</summary>
     [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>Контент при загрузке.</summary>
     [Parameter] public RenderFragment? LoadingContent { get; set; }
+
+    /// <summary>Контент при ошибке.</summary>
     [Parameter] public RenderFragment<Exception>? ErrorContent { get; set; }
 
-    // ── Состояние ─────────────────────────────────────────────────────────────
-    protected List<TItem> DisplayItems { get; private set; } = [];
+    // ── Состояние ────────────────────────────────────────────────────────────────
+
+    /// <summary>Список отображаемых элементов после фильтрации/сортировки/пагинации.</summary>
+    protected List<T> DisplayItems { get; private set; } = [];
+
+    /// <summary>Данные загружаются.</summary>
     protected bool IsDataLoading { get; private set; }
+
+    /// <summary>Ошибка последней загрузки.</summary>
     protected Exception? DataError { get; private set; }
+
+    /// <summary>Текущая страница (1-based).</summary>
     protected int CurrentPage { get; private set; } = 1;
+
+    /// <summary>Общее количество элементов (до пагинации).</summary>
     protected int TotalCount { get; private set; }
+
+    /// <summary>Текущий дескриптор сортировки.</summary>
     protected SgSortDescriptor? CurrentSort { get; private set; }
+
+    /// <summary>Текущие фильтры.</summary>
     protected List<SgFilterDescriptor> CurrentFilters { get; private set; } = [];
 
+    /// <summary>true если есть хоть один элемент для отображения.</summary>
     protected bool HasItems => DisplayItems.Count > 0;
+
+    /// <summary>true если загрузка завершена, нет ошибки, и данных нет.</summary>
     protected bool IsEmpty => !IsDataLoading && DataError == null && !HasItems;
 
+    /// <summary>Общее количество страниц.</summary>
     protected int TotalPages => PageSize > 0
         ? Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize))
         : 1;
 
-    private volatile int _loadingVersion;
-    private IEnumerable<TItem>? _lastItems;
-    private int _lastPageSize;
-    // ИСПРАВЛЕНО: отслеживаем смену DataSource
-    private Func<SgDataRequest, CancellationToken, ValueTask<SgDataResult<TItem>>>? _lastDataSource;
+    // ── Приватное состояние ──────────────────────────────────────────────────────
 
-    // ── Загрузка данных ─────────────────────────────────────────────────────────
+    private volatile int _loadingVersion;
+    private IEnumerable<T>? _lastItems;
+    private int _lastPageSize;
+    private Func<SgDataRequest, CancellationToken, Task<SgDataResult<T>>>? _lastDataSource;
+
+    // ── Загрузка данных ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Загрузить/перезагрузить данные с учётом текущих параметров сортировки/фильтрации/пагинации.
+    /// Версионирование предотвращает race condition при частых вызовах.
+    /// </summary>
     protected async Task LoadDataAsync()
     {
         var version = Interlocked.Increment(ref _loadingVersion);
@@ -57,7 +114,7 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
 
         try
         {
-            List<TItem> result;
+            List<T> result;
             int totalCount;
 
             if (DataSource != null)
@@ -69,19 +126,33 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
                     Sort = CurrentSort,
                     Filters = CurrentFilters
                 };
+
                 var dataResult = await DataSource(request, ComponentToken);
                 if (version != _loadingVersion) return;
+
                 result = [.. dataResult.Items];
                 totalCount = dataResult.TotalCount;
             }
             else if (Items != null)
             {
                 var query = Items.AsQueryable();
-                query = ApplyFilters(query);
-                query = ApplySort(query);
 
+                // УЛУЧШЕНИЕ: базовая in-memory реализация фильтрации
+                if (EnableFiltering && CurrentFilters.Count > 0)
+                    query = ApplyFilters(query);
+
+                // УЛУЧШЕНИЕ: базовая in-memory реализация сортировки
+                if (EnableSorting && CurrentSort is not null)
+                    query = ApplySort(query);
+
+                // УЛУЧШЕНИЕ: TryGetNonEnumeratedCount + ICollection fallback
                 if (!query.TryGetNonEnumeratedCount(out totalCount))
-                    totalCount = query.Count();
+                {
+                    if (Items is ICollection<T> collection)
+                        totalCount = collection.Count;
+                    else
+                        totalCount = query.Count();
+                }
 
                 if (EnablePaging && PageSize > 0)
                     query = query.Skip((CurrentPage - 1) * PageSize).Take(PageSize);
@@ -95,10 +166,11 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
             }
 
             if (version != _loadingVersion) return;
+
             DisplayItems = result;
             TotalCount = totalCount;
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException) { /* Нормальная отмена */ }
         catch (Exception ex)
         {
             if (version != _loadingVersion) return;
@@ -115,20 +187,28 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
         }
     }
 
-    // ── Sorting / Filtering / Paging ──────────────────────────────────────────
+    // ── Сортировка / Фильтрация / Пагинация ──────────────────────────────────────
+
+    /// <summary>Переключить сортировку по полю: None → Ascending → Descending → None.</summary>
     protected async Task SortByAsync(string field)
     {
+        if (IsDisposed) return;
+
+        // ИСПРАВЛЕНИЕ CS0117: Asc/Desc → Ascending/Descending
         CurrentSort = CurrentSort?.Field == field
-            ? (CurrentSort.Direction == SgSortDirection.Asc
-                ? CurrentSort with { Direction = SgSortDirection.Desc }
-                : null)
-            : new SgSortDescriptor(field, SgSortDirection.Asc);
+            ? CurrentSort.Direction == SgSortDirection.Ascending
+                ? CurrentSort with { Direction = SgSortDirection.Descending }
+                : null
+            : new SgSortDescriptor(field, SgSortDirection.Ascending);
+
         CurrentPage = 1;
         await LoadDataAsync();
     }
 
+    /// <summary>Применить фильтр по полю. Пустое значение — сброс фильтра.</summary>
     protected async Task FilterAsync(SgFilterDescriptor filter)
     {
+        if (IsDisposed) return;
         CurrentFilters.RemoveAll(f => f.Field == filter.Field);
         if (filter.Value?.ToString() is { Length: > 0 })
             CurrentFilters.Add(filter);
@@ -136,24 +216,147 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
         await LoadDataAsync();
     }
 
+    /// <summary>Перейти на указанную страницу.</summary>
     protected async Task GoToPageAsync(int page)
     {
+        if (IsDisposed) return;
         CurrentPage = Math.Max(1, Math.Min(page, TotalPages));
         await LoadDataAsync();
     }
 
-    protected virtual IQueryable<TItem> ApplyFilters(IQueryable<TItem> query) => query;
-    protected virtual IQueryable<TItem> ApplySort(IQueryable<TItem> query) => query;
+    /// <summary>
+    /// Публичный метод принудительной перезагрузки данных.
+    /// Полезен при изменении данных вне компонента.
+    /// </summary>
+    public Task ReloadAsync() => LoadDataAsync();
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    /// <summary>
+    /// Extension point для экспорта данных.
+    /// Переопределите в компонентах для реализации экспорта CSV/Excel/JSON.
+    /// </summary>
+    protected virtual Task ExportAsync(SgExportFormat format) => Task.CompletedTask;
+
+    // ── Базовая in-memory фильтрация ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Применить фильтры к LINQ-запросу.
+    /// УЛУЧШЕНИЕ: базовая реализация для in-memory коллекций.
+    /// Переопределите для кастомной логики или server-side фильтрации.
+    /// </summary>
+    protected virtual IQueryable<T> ApplyFilters(IQueryable<T> query)
+    {
+        foreach (var filter in CurrentFilters)
+        {
+            var filterExpr = BuildFilterExpression(filter);
+            if (filterExpr != null)
+                query = query.Where(filterExpr);
+        }
+        return query;
+    }
+
+    // Строит Expression<Func<T, bool>> для фильтра через Reflection
+    private static Expression<Func<T, bool>>? BuildFilterExpression(SgFilterDescriptor filter)
+    {
+        if (string.IsNullOrEmpty(filter.Field)) return null;
+
+        var prop = typeof(T).GetProperty(filter.Field,
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (prop == null) return null;
+
+        var param = Expression.Parameter(typeof(T), "x");
+        var member = Expression.Property(param, prop);
+        var filterValue = filter.Value;
+
+        try
+        {
+            Expression body = filter.Operator switch
+            {
+                SgFilterOperator.Equals when filterValue is not null =>
+                    Expression.Equal(member,
+                        Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
+
+                SgFilterOperator.NotEquals when filterValue is not null =>
+                    Expression.NotEqual(member,
+                        Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
+
+                SgFilterOperator.Contains when prop.PropertyType == typeof(string) =>
+                    Expression.Call(member,
+                        typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty, typeof(string))),
+
+                SgFilterOperator.StartsWith when prop.PropertyType == typeof(string) =>
+                    Expression.Call(member,
+                        typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty, typeof(string))),
+
+                SgFilterOperator.EndsWith when prop.PropertyType == typeof(string) =>
+                    Expression.Call(member,
+                        typeof(string).GetMethod(nameof(string.EndsWith), [typeof(string)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty, typeof(string))),
+
+                SgFilterOperator.IsNull =>
+                    prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) == null
+                        ? Expression.Constant(false)  // value types never null
+                        : (Expression)Expression.Equal(member, Expression.Constant(null, prop.PropertyType)),
+
+                SgFilterOperator.IsNotNull =>
+                    prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) == null
+                        ? Expression.Constant(true)
+                        : (Expression)Expression.NotEqual(member, Expression.Constant(null, prop.PropertyType)),
+
+                _ => null!
+            };
+
+            if (body == null) return null;
+            return Expression.Lambda<Func<T, bool>>(body, param);
+        }
+        catch
+        {
+            return null; // Некорректный тип — игнорируем фильтр
+        }
+    }
+
+    // ── Базовая in-memory сортировка ─────────────────────────────────────────────
+
+    /// <summary>
+    /// Применить сортировку к LINQ-запросу.
+    /// УЛУЧШЕНИЕ: базовая реализация для in-memory коллекций.
+    /// Переопределите для кастомной логики или server-side сортировки.
+    /// </summary>
+    protected virtual IQueryable<T> ApplySort(IQueryable<T> query)
+    {
+        if (CurrentSort is null || string.IsNullOrEmpty(CurrentSort.Field))
+            return query;
+
+        var prop = typeof(T).GetProperty(CurrentSort.Field,
+            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (prop == null) return query;
+
+        var param = Expression.Parameter(typeof(T), "x");
+        var member = Expression.Property(param, prop);
+        var keySelector = Expression.Lambda(member, param);
+
+        var methodName = CurrentSort.Direction == SgSortDirection.Descending
+            ? nameof(Queryable.OrderByDescending)
+            : nameof(Queryable.OrderBy);
+
+        var method = typeof(Queryable)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .First(m => m.Name == methodName && m.GetParameters().Length == 2)
+            .MakeGenericMethod(typeof(T), prop.PropertyType);
+
+        return (IQueryable<T>)method.Invoke(null, [query, keySelector])!;
+    }
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────────
+
+    /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
-        // ИСПРАВЛЕНО: проверка IsDisposed
         if (IsDisposed) return;
 
-        // ИСПРАВЛЕНО: отслеживаем смену DataSource
         var dataSourceChanged = !ReferenceEquals(DataSource, _lastDataSource);
         if (dataSourceChanged)
         {
@@ -163,13 +366,13 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
             CurrentSort = null;
         }
 
-        var itemsChanged = !ReferenceEquals(Items, _lastItems);
+        var itemsChanged   = !ReferenceEquals(Items, _lastItems);
         var pageSizeChanged = PageSize != _lastPageSize;
 
         if ((itemsChanged || pageSizeChanged || dataSourceChanged)
             && (Items != null || DataSource != null))
         {
-            _lastItems = Items;
+            _lastItems    = Items;
             _lastPageSize = PageSize;
             if (!dataSourceChanged) CurrentPage = 1;
             await LoadDataAsync();

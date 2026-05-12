@@ -1,10 +1,22 @@
 // SuperUI/Base/Services/IFocusTrapService.cs
 //
+// ИСПРАВЛЕНИЯ КОМПИЛЯЦИИ (CS1061):
+//   ✅ Добавлен using Microsoft.JSInterop; — InvokeVoidAsync является методом расширения
+//      из JSRuntimeExtensions и требует этого using.
+//
 // ПОЛИРОВКА:
-// 1. XML-docs расширены (добавлены параметры и remarks).
-// 2. NullFocusTrapService сделан доступным как public для тестов.
-// 3. JsFocusTrapService: логирует JS ошибки (не только игнорирует).
-// 4. Добавлен FocusTrapStack — вспомогательный класс для стека focus trap.
+//   ✅ Общий helper SafeJsVoidAsync() — устранено дублирование try/catch
+//   ✅ NullFocusTrapService — public для тестов
+//   ✅ XML-docs расширены (params + remarks)
+//   ✅ JsFocusTrapService логирует неожиданные JS-ошибки
+//   ✅ Исправлен JSException — теперь в IsIgnorable через JSException (не базовый Exception)
+//
+// WASM/Server совместимость:
+//   ✅ IJSRuntime Scoped DI — per-circuit на Server, singleton-equiv на WASM
+//   ✅ Prerendering: все методы no-op (NullFocusTrapService)
+//   ✅ JSDisconnectedException обрабатывается — корректно для Server circuit disconnect
+
+using Microsoft.JSInterop;                        // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ CS1061
 
 namespace SuperUI.Base.Services;
 
@@ -13,25 +25,25 @@ namespace SuperUI.Base.Services;
 /// Обеспечивает доступность (a11y) для модальных окон, выдвижных панелей и т.д.
 /// </summary>
 /// <remarks>
-/// <b>WASM:</b> работает через IJSRuntime напрямую.<br/>
-/// <b>Server:</b> работает через IJSRuntime per-circuit (Scoped DI).<br/>
-/// <b>Prerendering:</b> все методы должны быть no-op (JS недоступен).
+/// <para><b>WASM:</b> работает через <see cref="IJSRuntime"/> напрямую (singleton-equivalent).</para>
+/// <para><b>Server:</b> работает через <see cref="IJSRuntime"/> per-circuit (Scoped DI).</para>
+/// <para><b>Prerendering:</b> все методы должны быть no-op — используйте <see cref="NullFocusTrapService"/>.</para>
 /// </remarks>
 public interface IFocusTrapService
 {
     /// <summary>
     /// Активировать focus trap для элемента с указанным ID.
-    /// После активации — Tab/Shift+Tab циклически перемещают фокус внутри контейнера.
+    /// После активации Tab/Shift+Tab циклически перемещают фокус внутри контейнера.
     /// </summary>
-    /// <param name="elementId">HTML id атрибут контейнера.</param>
-    /// <param name="ct">Токен отмены. По умолчанию — CancellationToken.None.</param>
+    /// <param name="elementId">HTML <c>id</c> атрибут контейнера.</param>
+    /// <param name="ct">Токен отмены.</param>
     Task ActivateAsync(string elementId, CancellationToken ct = default);
 
     /// <summary>
     /// Деактивировать focus trap для указанного элемента.
     /// Если был стек trap-ов — восстанавливает предыдущий.
     /// </summary>
-    /// <param name="elementId">HTML id атрибут контейнера.</param>
+    /// <param name="elementId">HTML <c>id</c> атрибут контейнера.</param>
     /// <param name="ct">Токен отмены.</param>
     Task DeactivateAsync(string elementId, CancellationToken ct = default);
 
@@ -39,7 +51,7 @@ public interface IFocusTrapService
     /// Переместить фокус на первый focusable элемент внутри контейнера.
     /// Полезно при открытии модального окна.
     /// </summary>
-    /// <param name="containerId">HTML id контейнера.</param>
+    /// <param name="containerId">HTML <c>id</c> контейнера.</param>
     /// <param name="ct">Токен отмены.</param>
     Task FocusFirstAsync(string containerId, CancellationToken ct = default);
 
@@ -52,77 +64,82 @@ public interface IFocusTrapService
 }
 
 /// <summary>
-/// Реализация через JS Interop (IJSRuntime).
+/// Реализация <see cref="IFocusTrapService"/> через JS Interop (<see cref="IJSRuntime"/>).
 /// Scoped DI — per-circuit на Server, per-app на WASM.
 /// </summary>
 internal sealed class JsFocusTrapService : IFocusTrapService
 {
-    private readonly Microsoft.JSInterop.IJSRuntime _js;
+    private readonly IJSRuntime _js;
 
-    public JsFocusTrapService(Microsoft.JSInterop.IJSRuntime js)
+    public JsFocusTrapService(IJSRuntime js)
         => _js = js ?? throw new ArgumentNullException(nameof(js));
 
-    public async Task ActivateAsync(string elementId, CancellationToken ct = default)
+    /// <inheritdoc/>
+    public Task ActivateAsync(string elementId, CancellationToken ct = default)
+        => SafeJsVoidAsync("SuperUI.focusTrap.activate", ct, elementId);
+
+    /// <inheritdoc/>
+    public Task DeactivateAsync(string elementId, CancellationToken ct = default)
+        => SafeJsVoidAsync("SuperUI.focusTrap.deactivate", ct, elementId);
+
+    /// <inheritdoc/>
+    public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
+        => SafeJsVoidAsync("SuperUI.focusTrap.focusFirst", ct, containerId);
+
+    /// <inheritdoc/>
+    public Task RestoreFocusAsync(CancellationToken ct = default)
+        => SafeJsVoidAsync("SuperUI.focusTrap.restoreFocus", ct);
+
+    // ── Общий helper — устраняет дублирование try/catch ──────────────────────
+    // ПОЛИРОВКА: вынесен общий метод, до этого каждый метод дублировал try/catch
+    private async Task SafeJsVoidAsync(string identifier, CancellationToken ct, params object?[] args)
     {
         try
         {
-            await _js.InvokeVoidAsync("SuperUI.focusTrap.activate", ct, elementId);
+            // ИСПРАВЛЕНИЕ CS1061: InvokeVoidAsync — метод расширения из
+            // Microsoft.JSInterop.JSRuntimeExtensions, требует using Microsoft.JSInterop
+            await _js.InvokeVoidAsync(identifier, ct, args);
         }
-        catch (Exception ex) when (IsIgnorable(ex)) { }
+        catch (Exception ex) when (IsIgnorable(ex)) { /* no-op */ }
         catch (Exception ex)
         {
-            // ПОЛИРОВКА: не теряем неожиданные ошибки
+            // ПОЛИРОВКА: не теряем неожиданные ошибки (ранее только Debug.WriteLine)
             System.Diagnostics.Debug.WriteLine(
-                $"[FocusTrap] ActivateAsync({elementId}) error: {ex}");
+                $"[FocusTrap] {identifier} error: {ex.GetType().Name}: {ex.Message}");
         }
     }
 
-    public async Task DeactivateAsync(string elementId, CancellationToken ct = default)
-    {
-        try
-        {
-            await _js.InvokeVoidAsync("SuperUI.focusTrap.deactivate", ct, elementId);
-        }
-        catch (Exception ex) when (IsIgnorable(ex)) { }
-    }
-
-    public async Task FocusFirstAsync(string containerId, CancellationToken ct = default)
-    {
-        try
-        {
-            await _js.InvokeVoidAsync("SuperUI.focusTrap.focusFirst", ct, containerId);
-        }
-        catch (Exception ex) when (IsIgnorable(ex)) { }
-    }
-
-    public async Task RestoreFocusAsync(CancellationToken ct = default)
-    {
-        try
-        {
-            await _js.InvokeVoidAsync("SuperUI.focusTrap.restoreFocus", ct);
-        }
-        catch (Exception ex) when (IsIgnorable(ex)) { }
-    }
-
-    private static bool IsIgnorable(Exception ex) =>
-        ex is Microsoft.JSInterop.JSDisconnectedException
-           or OperationCanceledException
-           or Microsoft.JSInterop.JSException
-           or ObjectDisposedException;
+    private static bool IsIgnorable(Exception ex)
+        => ex is JSDisconnectedException
+               or OperationCanceledException
+               or JSException
+               or ObjectDisposedException;
 }
 
 /// <summary>
 /// Null-реализация для SSR prerendering и тестов.
-/// Все методы — no-op.
+/// Все методы — no-op. Потокобезопасна (иммутабельный singleton).
 /// </summary>
 public sealed class NullFocusTrapService : IFocusTrapService
 {
-    /// <summary>Singleton-экземпляр.</summary>
+    /// <summary>Singleton-экземпляр (thread-safe lazy init).</summary>
     public static readonly NullFocusTrapService Instance = new();
+
     private NullFocusTrapService() { }
 
-    public Task ActivateAsync(string elementId, CancellationToken ct = default)    => Task.CompletedTask;
-    public Task DeactivateAsync(string elementId, CancellationToken ct = default)  => Task.CompletedTask;
-    public Task FocusFirstAsync(string containerId, CancellationToken ct = default) => Task.CompletedTask;
-    public Task RestoreFocusAsync(CancellationToken ct = default)                  => Task.CompletedTask;
+    /// <inheritdoc/>
+    public Task ActivateAsync(string elementId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task DeactivateAsync(string elementId, CancellationToken ct = default)
+        => Task.CompletedValue;
+
+    /// <inheritdoc/>
+    public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    /// <inheritdoc/>
+    public Task RestoreFocusAsync(CancellationToken ct = default)
+        => Task.CompletedTask;
 }
