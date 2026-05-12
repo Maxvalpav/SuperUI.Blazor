@@ -66,8 +66,17 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     protected string? ValidationCssClass => _editContext?.FieldCssClass(_fieldIdentifier);
 
     // ДОРАБОТКА: lazy init с null-check при смене Converter
-    protected ISgConverter<TValue> EffectiveConverter =>
-        Converter ?? (_effectiveConverter ??= SgConverterFactory.Get<TValue>());
+    protected ISgConverter<TValue> EffectiveConverter
+    {
+        get
+        {
+            if (Converter is not null) return Converter;
+            return _effectiveConverter ??= SgConverterFactory.Get<TValue>()
+                ?? throw new InvalidOperationException(
+                    $"No ISgConverter<{typeof(TValue).Name}> registered. " +
+                    $"Register via SgConverterFactory or provide Converter parameter.");
+        }
+    }
 
     protected string? CurrentText  { get; private set; }
     protected string? ConvertError { get; private set; }

@@ -9,7 +9,7 @@
 //   ✅ FocusTrapStack — публичный вспомогательный класс для стека trap-ов
 //   ✅ NullFocusTrapServiceEx — null-реализация для IFocusTrapServiceEx
 
-using Microsoft.JSInterop;                       // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+using Microsoft.JSInterop; // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
 
 namespace SuperUI.Base.Services;
 
@@ -57,7 +57,6 @@ internal sealed class JsFocusTrapServiceEx : IFocusTrapServiceEx
     {
         try
         {
-            // ИСПРАВЛЕНИЕ: InvokeVoidAsync — метод расширения, требует using Microsoft.JSInterop
             await _js.InvokeVoidAsync(
                 "SuperUI.focusTrap.moveFocus",
                 ct,
@@ -65,9 +64,9 @@ internal sealed class JsFocusTrapServiceEx : IFocusTrapServiceEx
                 direction.ToString().ToLowerInvariant());
         }
         catch (Exception ex) when (ex is JSDisconnectedException
-                                       or OperationCanceledException
-                                       or JSException
-                                       or ObjectDisposedException)
+                                   or OperationCanceledException
+                                   or JSException
+                                   or ObjectDisposedException)
         { /* Игнорируемые исключения */ }
     }
 }

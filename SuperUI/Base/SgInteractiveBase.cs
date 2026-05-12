@@ -34,6 +34,12 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     [Parameter] public bool Loading  { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
 
+    /// <summary>Callback при получении фокуса.</summary>
+    [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
+
+    /// <summary>Callback при потере фокуса.</summary>
+    [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
+
     // ── RTL / Culture ─────────────────────────────────────────────────────────
     [CascadingParameter(Name = "RightToLeft")] public bool IsRtl { get; set; }
     [CascadingParameter(Name = "Culture")] public CultureInfo? CascadedCulture { get; set; }
@@ -43,6 +49,29 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         Culture ?? CascadedCulture ?? CultureInfo.CurrentUICulture;
 
     protected virtual bool IsEffectivelyDisabled => Disabled || Loading;
+
+    /// <summary>Компонент имеет фокус.</summary>
+    protected bool IsFocused { get; private set; }
+
+    // ── Focus handlers ──────────────────────────────────────────────────────────
+
+    protected async Task HandleFocusAsync(FocusEventArgs e)
+    {
+        if (IsDisposed) return;
+        IsFocused = true;
+        try { await OnFocus.InvokeAsync(e); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Logger.LogError(ex, "[{Id}] OnFocus error", ComponentId); }
+    }
+
+    protected async Task HandleBlurAsync(FocusEventArgs e)
+    {
+        if (IsDisposed) return;
+        IsFocused = false;
+        try { await OnBlur.InvokeAsync(e); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Logger.LogError(ex, "[{Id}] OnBlur error", ComponentId); }
+    }
 
     // ── ARIA ──────────────────────────────────────────────────────────────────
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()

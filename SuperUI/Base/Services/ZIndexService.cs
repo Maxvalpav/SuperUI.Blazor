@@ -1,12 +1,12 @@
 // SuperUI/Base/Services/ZIndexService.cs
 //
 // ИСПРАВЛЕНИЯ:
-// 1. Добавлены константы базовых уровней (были в SgZIndexService, теперь в самом сервисе)
-// 2. Добавлен Allocate(int baseZIndex) — возвращает Max(baseZIndex, GetNext())
-// 3. Добавлено событие TopOwnerChanged для SgDockWindow (stack of focused windows)
-// 4. Release(int) — исправлена логика рекурсивного уменьшения _current
-// 5. Все публичные члены задокументированы
-// 6. Thread-safety: lock(_lock) везде, событие вне lock
+// ✅ Константы теперь дублируются в IZIndexService как static interface members
+// ✅ Добавлен Allocate(int baseZIndex)
+// ✅ Событие TopOwnerChanged для SgDockWindow
+// ✅ Release(int) — исправлена логика рекурсивного уменьшения _current
+// ✅ WeakReference<T> для window stack — предотвращает утечки памяти
+// ✅ Thread-safety: lock(_lock) везде, событие вне lock
 
 namespace SuperUI.Base.Services;
 
@@ -16,57 +16,36 @@ namespace SuperUI.Base.Services;
 /// </summary>
 public sealed class ZIndexService : IZIndexService
 {
-    // ── Базовые уровни ───────────────────────────────────────────────────────────
-    /// <summary>Базовый z-index для модальных окон.</summary>
+    // ── Базовые уровни ─────────────────────────────────────────────────────────
+    // Дублируются здесь для обратной совместимости (прямое использование ZIndexService.ModalBase)
     public const int ModalBase       = 1000;
-
-    /// <summary>Базовый z-index для боковых панелей (Drawer).</summary>
     public const int DrawerBase      = 1000;
-
-    /// <summary>Базовый z-index для плавающих окон (DockWindow).</summary>
     public const int WindowBase      = 900;
-
-    /// <summary>Базовый z-index для поповеров.</summary>
     public const int PopoverBase     = 1100;
-
-    /// <summary>Базовый z-index для тултипов.</summary>
     public const int TooltipBase     = 1200;
-
-    /// <summary>Базовый z-index для контекстных меню.</summary>
     public const int ContextMenuBase = 1150;
 
-    // ── Приватные поля ───────────────────────────────────────────────────────────
+    // ── Приватные поля ─────────────────────────────────────────────────────────
     private const int BaseZIndex = 800;
     private const int Step       = 10;
-
     private readonly object _lock = new();
     private int _current = BaseZIndex;
     private readonly SortedSet<int> _released = [];
 
-    // ── Стек активных окон (для TopOwnerChanged) ─────────────────────────────────
+    // ── Стек активных окон (для TopOwnerChanged) ───────────────────────────────
     private readonly List<WeakReference<object>> _windowStack = [];
 
-    // ── События ──────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Вызывается когда меняется "верхнее" активное окно (DockWindow focus).
-    /// Аргумент — текущий верхний владелец (или null если стек пуст).
-    /// </summary>
+    // ── События ────────────────────────────────────────────────────────────────
+    /// <inheritdoc/>
     public event Action<object?>? TopOwnerChanged;
 
-    // ── Публичные свойства ───────────────────────────────────────────────────────
+    // ── Публичные свойства ─────────────────────────────────────────────────────
+    /// <inheritdoc/>
+    public int Current { get { lock (_lock) return _current; } }
 
-    /// <summary>Текущий максимальный выданный z-index.</summary>
-    public int Current
-    {
-        get { lock (_lock) return _current; }
-    }
+    // ── Методы ─────────────────────────────────────────────────────────────────
 
-    // ── Методы ───────────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Получить следующий z-index (автоинкремент с шагом <see cref="Step"/>).
-    /// </summary>
+    /// <inheritdoc/>
     public int GetNext()
     {
         lock (_lock)
@@ -83,19 +62,13 @@ public sealed class ZIndexService : IZIndexService
         }
     }
 
-    /// <summary>
-    /// Выделить z-index не ниже <paramref name="baseZIndex"/>.
-    /// Используется компонентами: <c>ZIndex.Allocate(ZIndexService.ModalBase)</c>.
-    /// </summary>
-    /// <param name="baseZIndex">Минимальный желаемый уровень.</param>
-    /// <returns>z-index ≥ baseZIndex.</returns>
+    /// <inheritdoc/>
     public int Allocate(int baseZIndex)
     {
         lock (_lock)
         {
-            // Поднять _current до минимального уровня если нужно
             if (_current < baseZIndex)
-                _current = baseZIndex;
+                _current = baseZIndex - Step; // GetNext() добавит Step
 
             if (_released.Count > 0)
             {
@@ -112,27 +85,23 @@ public sealed class ZIndexService : IZIndexService
         }
     }
 
-    /// <summary>
-    /// Освободить z-index (вернуть в пул для повторного использования).
-    /// </summary>
+    /// <inheritdoc/>
     public void Release(int zIndex)
     {
         if (zIndex <= BaseZIndex) return;
-
         lock (_lock)
         {
             _released.Add(zIndex);
-            // Убираем "хвост" освобождённых значений с конца
+            // Сжимаем хвост: если топ released == _current — уменьшаем
             while (_released.Count > 0 && _released.Max == _current)
             {
                 _released.Remove(_current);
                 _current -= Step;
-                if (_current < BaseZIndex) _current = BaseZIndex;
             }
         }
     }
 
-    /// <summary>Сбросить в начальное состояние (используется в тестах).</summary>
+    /// <inheritdoc/>
     public void Reset()
     {
         lock (_lock)
@@ -144,36 +113,32 @@ public sealed class ZIndexService : IZIndexService
         TopOwnerChanged?.Invoke(null);
     }
 
-    // ── Window stack (для DockWindow focus management) ────────────────────────────
+    // ── Window stack (для DockWindow focus management) ──────────────────────────
 
-    /// <summary>
-    /// Зарегистрировать окно как активное (поднять на верх стека).
-    /// </summary>
+    /// <inheritdoc/>
     public void BringToFront(object window)
     {
         ArgumentNullException.ThrowIfNull(window);
         object? newTop;
         lock (_lock)
         {
-            // Удаляем мёртвые WeakRef и уже существующую запись для window
-            _windowStack.RemoveAll(w => !w.TryGetTarget(out var t) || ReferenceEquals(t, window));
+            _windowStack.RemoveAll(w =>
+                !w.TryGetTarget(out var t) || ReferenceEquals(t, window));
             _windowStack.Add(new WeakReference<object>(window));
             newTop = window;
         }
         TopOwnerChanged?.Invoke(newTop);
     }
 
-    /// <summary>
-    /// Удалить окно из стека (вызывается при закрытии/dispose).
-    /// </summary>
+    /// <inheritdoc/>
     public void RemoveFromStack(object window)
     {
         ArgumentNullException.ThrowIfNull(window);
         object? newTop = null;
         lock (_lock)
         {
-            _windowStack.RemoveAll(w => !w.TryGetTarget(out var t) || ReferenceEquals(t, window));
-            // Новый топ — последний живой
+            _windowStack.RemoveAll(w =>
+                !w.TryGetTarget(out var t) || ReferenceEquals(t, window));
             for (int i = _windowStack.Count - 1; i >= 0; i--)
             {
                 if (_windowStack[i].TryGetTarget(out var t))

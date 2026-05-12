@@ -1,66 +1,88 @@
-// SuperUI/Base/SgSnapshotComponentBase.cs
-//
-// Компонент с оптимизацией рендера через снапшоты параметров.
-// Перерисовывается ТОЛЬКО при реальном изменении параметров (структурное сравнение).
-//
-// Аналог React.PureComponent / React.memo.
-//
-// НОВОЕ:
-// 1. ShouldRender — сравнивает параметры через снапшот.
-// 2. CaptureSnapshot() — вызывается автоматически после OnParametersSet.
-// 3. ParametersChanged() — виртуальный: переопределите для custom-сравнения.
-
 namespace SuperUI.Base;
 
 /// <summary>
-/// Базовый класс с оптимизацией рендера через снапшоты параметров.
+/// Базовый класс для компонентов с поддержкой снимков состояния (undo/redo).
+/// Используется в редакторах (SgDiagramEditor, SgRichTextEditor и т.д.).
 /// </summary>
-/// <remarks>
-/// Перерисовывается только при реальном изменении параметров.
-/// Аналог <c>React.PureComponent</c> / <c>shouldComponentUpdate</c>.
-/// </remarks>
-public abstract class SgSnapshotComponentBase : SgComponentBase
+/// <typeparam name="TState">Тип снимка состояния.</typeparam>
+public abstract class SgSnapshotComponentBase<TState> : SgInteractiveBase
+    where TState : class
 {
-    private IReadOnlyDictionary<string, object>? _snapshot;
-    private bool _firstRender = true;
+    private readonly Stack<TState> _undoStack = new();
+    private readonly Stack<TState> _redoStack = new();
+    private int _maxSnapshots = 50;
 
-    protected override bool ShouldRender()
+    /// <summary>Максимальное количество снимков в истории.</summary>
+    [Parameter]
+    public int MaxSnapshots
     {
-        if (!base.ShouldRender()) return false;
-        if (_firstRender) return true;
-        return ParametersChanged();
+        get => _maxSnapshots;
+        set => _maxSnapshots = Math.Max(1, value);
     }
 
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-        CaptureSnapshot();
-        _firstRender = false;
-    }
+    /// <summary>Можно выполнить Undo.</summary>
+    public bool CanUndo => _undoStack.Count > 0;
+
+    /// <summary>Можно выполнить Redo.</summary>
+    public bool CanRedo => _redoStack.Count > 0;
+
+    /// <summary>Количество снимков в undo-стеке.</summary>
+    public int SnapshotCount => _undoStack.Count;
 
     /// <summary>
-    /// Сравнить текущие параметры со снапшотом.
-    /// Переопределите для custom-сравнения.
+    /// Сохранить текущее состояние для undo.
+    /// Вызывайте ПЕРЕД мутирующей операцией.
     /// </summary>
-    protected virtual bool ParametersChanged()
+    protected void SaveSnapshot(TState snapshot)
     {
-        if (_snapshot is null) return true;
-        if (AdditionalAttributes is null && _snapshot.Count == 0) return false;
-        if (AdditionalAttributes?.Count != _snapshot.Count) return true;
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _redoStack.Clear(); // новое действие сбрасывает redo
 
-        if (AdditionalAttributes is not null)
-            foreach (var kvp in AdditionalAttributes)
-                if (!_snapshot.TryGetValue(kvp.Key, out var old) || !Equals(old, kvp.Value))
-                    return true;
+        // Ограничиваем размер стека
+        while (_undoStack.Count >= _maxSnapshots)
+        {
+            // Stack не поддерживает RemoveLast → конвертируем временно
+            var temp = _undoStack.ToArray();
+            _undoStack.Clear();
+            for (int i = temp.Length - 2; i >= 0; i--) // пропускаем последний (самый старый)
+                _undoStack.Push(temp[i]);
+        }
 
-        return false;
+        _undoStack.Push(snapshot);
     }
 
-    /// <summary>Зафиксировать текущие параметры как снапшот.</summary>
-    protected void CaptureSnapshot()
+    /// <summary>Отменить последнее действие.</summary>
+    public async Task UndoAsync()
     {
-        _snapshot = AdditionalAttributes is null
-            ? new Dictionary<string, object>()
-            : new Dictionary<string, object>(AdditionalAttributes);
+        if (!CanUndo || IsDisposed) return;
+        var current = GetCurrentState();
+        if (current is not null) _redoStack.Push(current);
+        var snapshot = _undoStack.Pop();
+        await ApplySnapshotAsync(snapshot);
+        StateHasChanged();
     }
+
+    /// <summary>Повторить отменённое действие.</summary>
+    public async Task RedoAsync()
+    {
+        if (!CanRedo || IsDisposed) return;
+        var current = GetCurrentState();
+        if (current is not null) _undoStack.Push(current);
+        var snapshot = _redoStack.Pop();
+        await ApplySnapshotAsync(snapshot);
+        StateHasChanged();
+    }
+
+    /// <summary>Очистить историю снимков.</summary>
+    public void ClearHistory()
+    {
+        _undoStack.Clear();
+        _redoStack.Clear();
+    }
+
+    /// <summary>Получить текущее состояние компонента (для сохранения перед undo/redo).</summary>
+    protected abstract TState? GetCurrentState();
+
+    /// <summary>Применить снимок состояния.</summary>
+    protected abstract Task ApplySnapshotAsync(TState snapshot);
 }

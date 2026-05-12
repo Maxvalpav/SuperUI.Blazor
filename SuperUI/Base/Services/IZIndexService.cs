@@ -1,9 +1,12 @@
 // SuperUI/Base/Services/IZIndexService.cs
 //
 // ИСПРАВЛЕНИЯ:
-// 1. Добавлен Allocate(int baseZIndex) — был нужен компонентам
-// 2. Добавлен TopOwnerChanged event — был нужен SgDockWindow
-// 3. Добавлены BringToFront / RemoveFromStack
+// ✅ CS1061: Добавлены static interface members (.NET 8+) — ModalBase, DrawerBase и др.
+//    SgOverlayBase.cs строка 94 обращается к ZIndexService.ModalBase через IZIndexService —
+//    теперь это компилируется: IZIndexService.ModalBase
+// ✅ Добавлен Allocate(int baseZIndex) — был нужен компонентам
+// ✅ Добавлен TopOwnerChanged event — был нужен SgDockWindow
+// ✅ Добавлены BringToFront / RemoveFromStack
 
 namespace SuperUI.Base.Services;
 
@@ -12,8 +15,29 @@ namespace SuperUI.Base.Services;
 /// </summary>
 public interface IZIndexService
 {
-    // ── Константы баз ────────────────────────────────────────────────────────────
-    // Вынесены в ZIndexService как публичные const.
+    // ── Статические константы базовых уровней (.NET 8+ static interface members) ──
+    // ИСПРАВЛЕНИЕ CS1061: SgOverlayBase использует IZIndexService.ModalBase и др.
+    // Ранее эти константы были только в ZIndexService (class), а не в интерфейсе.
+
+    /// <summary>Базовый z-index для модальных окон.</summary>
+    static int ModalBase => 1000;
+
+    /// <summary>Базовый z-index для боковых панелей (Drawer).</summary>
+    static int DrawerBase => 1000;
+
+    /// <summary>Базовый z-index для плавающих окон (DockWindow).</summary>
+    static int WindowBase => 900;
+
+    /// <summary>Базовый z-index для поповеров.</summary>
+    static int PopoverBase => 1100;
+
+    /// <summary>Базовый z-index для тултипов.</summary>
+    static int TooltipBase => 1200;
+
+    /// <summary>Базовый z-index для контекстных меню.</summary>
+    static int ContextMenuBase => 1150;
+
+    // ── Инстанс-члены ──────────────────────────────────────────────────────────
 
     /// <summary>Текущий максимальный выданный z-index.</summary>
     int Current { get; }

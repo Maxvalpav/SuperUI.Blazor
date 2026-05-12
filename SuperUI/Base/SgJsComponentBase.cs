@@ -104,6 +104,8 @@ public abstract class SgJsComponentBase : SgComponentBase
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             ComponentToken, timeoutCts.Token);
 
+        var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
+
         bool semaphoreAcquired = false;
         try
         {
@@ -113,14 +115,12 @@ public abstract class SgJsComponentBase : SgComponentBase
             if (_module is not null) return _module;
             if (IsDisposed || ComponentToken.IsCancellationRequested) return null;
 
-                var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import", ComponentToken, modulePath);
             return _module;
         }
         catch (TaskCanceledException)
         {
-            var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             if (timeoutCts.IsCancellationRequested)
                 Logger.LogWarning("[{Id}] JS module load timed out ({Timeout}s): {Path}",
                     ComponentId, JsModuleLoadTimeout.TotalSeconds, modulePath);
@@ -131,7 +131,6 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { return null; }
         catch (JSException ex)
         {
-            var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             Logger.LogError(ex, "[{Id}] JS module load failed: {Path}", ComponentId, modulePath);
             return null;
         }

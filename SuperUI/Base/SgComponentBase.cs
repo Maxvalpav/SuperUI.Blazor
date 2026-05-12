@@ -93,17 +93,31 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// <summary>
     /// Дополнительные атрибуты без <c>class</c> и <c>style</c>.
     /// Используйте для передачи в корневой элемент компонента.
+    /// Кэшируется между рендерами до смены AdditionalAttributes.
     /// </summary>
     protected IReadOnlyDictionary<string, object>? AdditionalAttributesFiltered
     {
         get
         {
-            if (AdditionalAttributes is null) return null;
+            var gen = Volatile.Read(ref _ariaGeneration);
+            if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
+                return _filteredAttrsCache;
+
+            if (AdditionalAttributes is null)
+            {
+                _filteredAttrsCache = null;
+                _filteredAttrsCacheGen = gen;
+                return null;
+            }
+
             var filtered = AdditionalAttributes
                 .Where(kv => !kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase)
                           && !kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase))
                 .ToDictionary(kv => kv.Key, kv => kv.Value);
-            return filtered.Count == 0 ? null : filtered;
+
+            _filteredAttrsCache = filtered.Count == 0 ? null : filtered;
+            _filteredAttrsCacheGen = gen;
+            return _filteredAttrsCache;
         }
     }
 
@@ -120,6 +134,10 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     private IReadOnlyDictionary<string, object>? _ariaCache;
     private int _ariaCacheGeneration = -2;
     private int _ariaGeneration;
+
+    // AdditionalAttributesFiltered cache
+    private IReadOnlyDictionary<string, object>? _filteredAttrsCache;
+    private int _filteredAttrsCacheGen = -1;
 
 #if DEBUG
     private readonly ComponentDiagnostics _diagnostics;
@@ -201,6 +219,13 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         (_reactiveDisposables ??= []).Add(computed);
         return computed;
     }
+
+    /// <summary>
+    /// Зарегистрировать disposables для авто-освобождения при Dispose компонента.
+    /// Используется фабриками (Signal, Computed, Effect) для централизованной регистрации.
+    /// </summary>
+    protected void RegisterEffectInternal(IDisposable disposable)
+        => (_reactiveDisposables ??= []).Add(disposable);
 
     // ── ShouldRender ─────────────────────────────────────────────────────────────
 

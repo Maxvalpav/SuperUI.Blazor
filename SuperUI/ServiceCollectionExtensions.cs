@@ -1,107 +1,75 @@
-// SuperUI/ServiceCollectionExtensions.cs
-//
-// Extension-метод для регистрации всех сервисов SuperUI в DI.
-// Поддерживает WASM, Server, Web App (Auto), Hybrid.
-//
-// Использование:
-//   builder.Services.AddSuperUI();
-//   builder.Services.AddSuperUI(opts => opts.DefaultTheme = "light");
-
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using SuperUI.Base.Services;
-using SuperUI.Components;
-using System;
 
 namespace SuperUI;
 
-/// <summary>
-/// Расширения для регистрации SuperUI в DI-контейнере.
-/// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
-    /// Зарегистрировать все сервисы SuperUI.
+    /// Регистрирует все сервисы SuperUI.
+    /// Вызывать в Program.cs для обоих хостинг-режимов (WASM и Server).
     /// </summary>
-    /// <param name="services">Коллекция сервисов.</param>
-    /// <param name="configure">Опциональная конфигурация библиотеки.</param>
-    /// <returns>Коллекция сервисов (для чейнинга).</returns>
-    /// <example>
-    /// <code>
-    /// // Минимальная регистрация
-    /// builder.Services.AddSuperUI();
-    ///
-    /// // С конфигурацией
-    /// builder.Services.AddSuperUI(opts =>
-    /// {
-    ///     opts.DefaultTheme          = "light";
-    ///     opts.DefaultCulture        = "ru-RU";
-    ///     opts.DefaultToastDurationMs = 5000;
-    ///
-    ///     opts.Button  = new() { ShowRipple = false };
-    ///     opts.DataGrid = new() { DefaultPageSize = 50 };
-    /// });
-    /// </code>
-    /// </example>
     public static IServiceCollection AddSuperUI(
         this IServiceCollection services,
-        Action<SgLibraryOptions>? configure = null)
+        Action<SgConfig>? configure = null)
     {
-        ArgumentNullException.ThrowIfNull(services);
+        // ── Конфигурация ──────────────────────────────────────────────────────
+        var config = new SgConfig();
+        configure?.Invoke(config);
+        services.AddSingleton(config);
 
-        // Опции библиотеки
-        if (configure is not null)
-            services.Configure<SgLibraryOptions>(configure);
-        else
-            services.TryAddSingleton(
-                Microsoft.Extensions.Options.Options.Create(new SgLibraryOptions()));
+        // ── Prerendering Detector ─────────────────────────────────────────────
+        // ВАЖНО: разные реализации для WASM и Server!
+        // Метод вызывается дважды (Server + Client в Web App) — регистрации
+        // не должны конфликтовать.
+        // Используем TryAdd чтобы не перезаписывать уже зарегистрированный.
 
-        // Основной сервис настроек компонентов
-        services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
+        services.TryAddSingleton<IPrerenderingDetector>(sp =>
+        {
+            // На WASM никогда prerendering в runtime
+            if (OperatingSystem.IsBrowser())
+                return WasmPrerendingDetector.Instance;
 
-        // ── Z-Index (Scoped: per-circuit на Server, per-app на WASM) ─────────────
-        services.AddScoped<ZIndexService>();
-        services.AddScoped<IZIndexService>(sp => sp.GetRequiredService<ZIndexService>());
+            // На Server — определяем по IHttpContextAccessor
+            return new ServerPrerendingDetector(
+                sp.GetRequiredService<IHttpContextAccessor>());
+        });
 
-        // ── Focus Trap ────────────────────────────────────────────────────────────
-        services.TryAddScoped<IFocusTrapService, JsFocusTrapService>();
+        // Обратная совместимость (устаревший интерфейс)
+        services.TryAddSingleton<IPrerendingDetector>(sp =>
+            (IPrerendingDetector)sp.GetRequiredService<IPrerenderingDetector>());
 
-        // ── Keyboard ──────────────────────────────────────────────────────────────
-        services.TryAddScoped<IKeyboardService, KeyboardService>();
+        // ── Z-Index Service ───────────────────────────────────────────────────
+        // Scoped: per-circuit на Server, per-app (singleton-equiv) на WASM
+        services.AddScoped<IZIndexService, ZIndexService>();
 
-        // ── Prerendering Detector ──────────────────────────────────────────────────
-        // WASM: всегда интерактивный (нет SSR)
-        // Server: требует определения контекста
-        RegisterPrerendingDetector(services);
+        // ── Focus Trap Service ────────────────────────────────────────────────
+        // Scoped: per-circuit на Server
+        services.AddScoped<IFocusTrapService, JsFocusTrapService>();
+        services.AddScoped<IFocusTrapServiceEx, JsFocusTrapServiceEx>();
 
-        // ── Session Storage ────────────────────────────────────────────────────────
-        services.TryAddScoped<ISessionStorage, JsSessionStorage>();
+        // ── Keyboard Service ──────────────────────────────────────────────────
+        services.AddScoped<IKeyboardService, KeyboardService>();
 
-        // ── Toast / Confirm / Notification ────────────────────────────────────────
+        // ── Component Options Service ─────────────────────────────────────────
+        services.AddSingleton<IComponentOptionsService, ComponentOptionsService>();
+
+        // ── Session Storage ───────────────────────────────────────────────────
+        services.AddScoped<ISessionStorage, JsSessionStorage>();
+
+        // ── Broadcast Service ─────────────────────────────────────────────────
+        // Singleton — межкомпонентные события (нужен thread-safe impl для Server)
+        services.AddSingleton<ISgBroadcastService, SgBroadcastService>();
+
+        // ── Presence Service ──────────────────────────────────────────────────
+        services.AddScoped<SgPresenceService>();
+
+        // ── Toast / Confirm / Notification ───────────────────────────────────
         services.AddScoped<SgToastService>();
         services.AddScoped<SgConfirmService>();
         services.AddScoped<SgNotificationService>();
 
         return services;
     }
-
-    private static void RegisterPrerendingDetector(IServiceCollection services)
-    {
-        // Проверяем доступность IHttpContextAccessor (только Server)
-        services.TryAddSingleton<IPrerenderingDetector>(sp =>
-        {
-            // На WASM OperatingSystem.IsBrowser() == true
-            if (OperatingSystem.IsBrowser())
-                return WasmPrerenderingDetector.Instance;
-
-            // На Server пробуем получить IHttpContextAccessor
-            var accessor = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
-            return accessor is not null
-                ? new ServerPrerenderingDetector(accessor)
-                : WasmPrerenderingDetector.Instance;
-        });
-    }
 }
-
-

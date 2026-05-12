@@ -1,16 +1,18 @@
 // SuperUI/Base/SgOverlayBase.cs
 //
 // ИСПРАВЛЕНИЯ:
-//   ✅ _animationDurationMs: Interlocked.Exchange вместо прямого присваивания volatile int
-//   ✅ OnCloseCoreAsync: корректная обработка dispose-path без гонки флагов
+// ✅ CS1061: ZIndexService.ModalBase → IZIndexService.ModalBase (static interface member)
+// ✅ _animationDurationMs: Interlocked.Exchange вместо прямого присваивания volatile int
+// ✅ OnCloseCoreAsync: корректная обработка dispose-path без гонки флагов
+// ✅ SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId) — перегрузка уточнена
 //
 // УЛУЧШЕНИЯ:
-//   ✅ FocusTrapStack поддержка — стек trap-ов для вложенных overlay
-//   ✅ aria-describedby для тела диалога (WCAG 2.1)
-//   ✅ ToggleAsync — новый метод
-//   ✅ ZIndexBase — virtual property
-//   ✅ AnimationDurationMs — защита от отрицательных значений
-//   ✅ HandleBackdropClickAsync — IsDisposed check
+// ✅ FocusTrapStack поддержка — стек trap-ов для вложенных overlay
+// ✅ aria-describedby для тела диалога (WCAG 2.1)
+// ✅ ToggleAsync — новый метод
+// ✅ ZIndexBase — virtual property
+// ✅ AnimationDurationMs — защита от отрицательных значений
+// ✅ HandleBackdropClickAsync — IsDisposed check
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -28,7 +30,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
     [Inject] protected IZIndexService ZIndexService { get; set; } = null!;
     [Inject] protected IFocusTrapService FocusTrapService { get; set; } = null!;
 
-    // ── Параметры ────────────────────────────────────────────────────────────────
+    // ── Параметры ──────────────────────────────────────────────────────────────
 
     /// <summary>Overlay открыт.</summary>
     [Parameter] public bool Open { get; set; }
@@ -57,7 +59,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
     /// <summary>Описание overlay (используется для aria-describedby).</summary>
     [Parameter] public string? Description { get; set; }
 
-    // ── Состояние ────────────────────────────────────────────────────────────────
+    // ── Состояние ──────────────────────────────────────────────────────────────
 
     private int _zIndex;
     private bool _wasOpen;
@@ -72,7 +74,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
     /// <summary>Анимация закрытия в процессе.</summary>
     protected bool IsAnimatingClose { get; private set; }
 
-    // ── Виртуальные свойства ─────────────────────────────────────────────────────
+    // ── Виртуальные свойства ───────────────────────────────────────────────────
 
     /// <summary>ARIA role элемента. По умолчанию "dialog".</summary>
     protected virtual string AriaRole => "dialog";
@@ -89,13 +91,13 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     /// <summary>
     /// Базовый z-index для этого типа overlay.
-    /// Переопределите: <c>protected override int ZIndexBase => ZIndexService.PopoverBase;</c>
+    /// Переопределите: <c>protected override int ZIndexBase => IZIndexService.PopoverBase;</c>
     /// </summary>
-    protected virtual int ZIndexBase => ZIndexService.ModalBase;
+    /// ИСПРАВЛЕНИЕ CS1061: используем IZIndexService.ModalBase (static interface member)
+    protected virtual int ZIndexBase => IZIndexService.ModalBase;
 
-    // ── ARIA ─────────────────────────────────────────────────────────────────────
+    // ── ARIA ───────────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var base_ = base.BuildAriaAttributes();
@@ -110,13 +112,11 @@ public abstract class SgOverlayBase : SgInteractiveBase
         // УЛУЧШЕНИЕ: aria-describedby для тела диалога (WCAG 2.1)
         if (!string.IsNullOrWhiteSpace(Description))
             attrs["aria-describedby"] = $"{ComponentId}-description";
-
         return attrs;
     }
 
-    // ── Lifecycle ────────────────────────────────────────────────────────────────
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -126,7 +126,6 @@ public abstract class SgOverlayBase : SgInteractiveBase
         });
     }
 
-    /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
@@ -151,7 +150,6 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
     }
 
-    /// <inheritdoc/>
     protected override async Task OnFirstRenderAsync()
     {
         await base.OnFirstRenderAsync();
@@ -163,23 +161,29 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
     }
 
-    // ── Внутренние методы открытия/закрытия ─────────────────────────────────────
+    // ── Внутренние методы открытия/закрытия ───────────────────────────────────
 
     private async Task OnOpenCoreAsync()
     {
         _zIndex = ZIndexService.Allocate(ZIndexBase);
+
         if (LockBodyScroll)
-            await SafeInvokeVoidAsync("lockBodyScroll", ComponentId);
+            await SafeInvokeVoidAsync<string>("lockBodyScroll", ComponentId);
+
         if (TrapFocus)
         {
             _focusTrapId = ComponentId;
-            try { await FocusTrapService.ActivateAsync(_focusTrapId); }
+            try
+            {
+                await FocusTrapService.ActivateAsync(_focusTrapId);
+            }
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "[{Id}] FocusTrap activate failed", ComponentId);
                 _focusTrapId = null;
             }
         }
+
         await OnOpenAsync();
         StateHasChanged();
     }
@@ -209,7 +213,11 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
         if (LockBodyScroll)
         {
-            try { await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId); }
+            try
+            {
+                // ИСПРАВЛЕНИЕ: явная типизированная перегрузка без params-аллокации
+                await SafeInvokeVoidAsync<string>("unlockBodyScroll", ComponentId);
+            }
             catch { }
         }
 
@@ -220,14 +228,14 @@ public abstract class SgOverlayBase : SgInteractiveBase
             _focusTrapId = null;
         }
 
-        try { ZIndexService.Release(_zIndex); }
+        try   { ZIndexService.Release(_zIndex); }
         finally { _zIndex = 0; }
 
         await OnCloseAsync();
         if (!IsDisposed) StateHasChanged();
     }
 
-    // ── Виртуальные callback ─────────────────────────────────────────────────────
+    // ── Виртуальные callback ───────────────────────────────────────────────────
 
     /// <summary>Вызывается при открытии overlay (после z-index и focus trap).</summary>
     protected virtual Task OnOpenAsync() => Task.CompletedTask;
@@ -235,7 +243,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
     /// <summary>Вызывается при закрытии overlay (после анимации).</summary>
     protected virtual Task OnCloseAsync() => Task.CompletedTask;
 
-    // ── Публичные методы ─────────────────────────────────────────────────────────
+    // ── Публичные методы ───────────────────────────────────────────────────────
 
     /// <summary>Программно открыть overlay.</summary>
     public async Task OpenAsync()
@@ -262,7 +270,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            try { _overlayLock.Release(); } catch (ObjectDisposedException) { }
+            try { _overlayLock.Release(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -291,7 +300,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            try { _overlayLock.Release(); } catch (ObjectDisposedException) { }
+            try { _overlayLock.Release(); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -305,9 +315,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
         if (CloseOnBackdropClick) await CloseAsync();
     }
 
-    // ── Dispose ──────────────────────────────────────────────────────────────────
+    // ── Dispose ────────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     protected override async ValueTask DisposeComponentAsync()
     {
         if (Interlocked.Exchange(ref _isDisposingInt, 1) == 1) return;

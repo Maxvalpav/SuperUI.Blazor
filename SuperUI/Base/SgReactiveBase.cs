@@ -39,6 +39,7 @@ public abstract class SgReactiveBase : SgComponentBase
     {
         var effect = new SgEffect(action, onError);
         effect.Subscribe(this);
+        RegisterEffectInternal(effect);
         return effect;
     }
 
@@ -47,6 +48,7 @@ public abstract class SgReactiveBase : SgComponentBase
     {
         var effect = new SgEffect(action, onError);
         effect.Subscribe(this);
+        RegisterEffectInternal(effect);
         return effect;
     }
 }

@@ -1,7 +1,8 @@
 // SuperUI/Base/Services/IFocusTrapService.cs
 //
-// ИСПРАВЛЕНИЯ КОМПИЛЯЦИИ (CS1061):
-//   ✅ Добавлен using Microsoft.JSInterop; — InvokeVoidAsync является методом расширения
+// ИСПРАВЛЕНИЯ КОМПИЛЯЦИИ:
+//   ✅ CS0117: Task.CompletedValue → Task.CompletedTask (строка 136)
+//   ✅ using Microsoft.JSInterop добавлен — InvokeVoidAsync является методом расширения
 //      из JSRuntimeExtensions и требует этого using.
 //
 // ПОЛИРОВКА:
@@ -9,14 +10,14 @@
 //   ✅ NullFocusTrapService — public для тестов
 //   ✅ XML-docs расширены (params + remarks)
 //   ✅ JsFocusTrapService логирует неожиданные JS-ошибки
-//   ✅ Исправлен JSException — теперь в IsIgnorable через JSException (не базовый Exception)
+//   ✅ JSException — теперь в IsIgnorable через JSException (не базовый Exception)
 //
 // WASM/Server совместимость:
 //   ✅ IJSRuntime Scoped DI — per-circuit на Server, singleton-equiv на WASM
 //   ✅ Prerendering: все методы no-op (NullFocusTrapService)
 //   ✅ JSDisconnectedException обрабатывается — корректно для Server circuit disconnect
 
-using Microsoft.JSInterop;                        // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ CS1061
+using Microsoft.JSInterop; // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ CS1061
 
 namespace SuperUI.Base.Services;
 
@@ -91,19 +92,16 @@ internal sealed class JsFocusTrapService : IFocusTrapService
         => SafeJsVoidAsync("SuperUI.focusTrap.restoreFocus", ct);
 
     // ── Общий helper — устраняет дублирование try/catch ──────────────────────
-    // ПОЛИРОВКА: вынесен общий метод, до этого каждый метод дублировал try/catch
-    private async Task SafeJsVoidAsync(string identifier, CancellationToken ct, params object?[] args)
+    private async Task SafeJsVoidAsync(string identifier, CancellationToken ct,
+        params object?[] args)
     {
         try
         {
-            // ИСПРАВЛЕНИЕ CS1061: InvokeVoidAsync — метод расширения из
-            // Microsoft.JSInterop.JSRuntimeExtensions, требует using Microsoft.JSInterop
             await _js.InvokeVoidAsync(identifier, ct, args);
         }
         catch (Exception ex) when (IsIgnorable(ex)) { /* no-op */ }
         catch (Exception ex)
         {
-            // ПОЛИРОВКА: не теряем неожиданные ошибки (ранее только Debug.WriteLine)
             System.Diagnostics.Debug.WriteLine(
                 $"[FocusTrap] {identifier} error: {ex.GetType().Name}: {ex.Message}");
         }
@@ -111,9 +109,9 @@ internal sealed class JsFocusTrapService : IFocusTrapService
 
     private static bool IsIgnorable(Exception ex)
         => ex is JSDisconnectedException
-               or OperationCanceledException
-               or JSException
-               or ObjectDisposedException;
+            or OperationCanceledException
+            or JSException
+            or ObjectDisposedException;
 }
 
 /// <summary>
@@ -133,7 +131,7 @@ public sealed class NullFocusTrapService : IFocusTrapService
 
     /// <inheritdoc/>
     public Task DeactivateAsync(string elementId, CancellationToken ct = default)
-        => Task.CompletedValue;
+        => Task.CompletedTask; // ✅ ИСПРАВЛЕНО: было Task.CompletedValue (CS0117)
 
     /// <inheritdoc/>
     public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
