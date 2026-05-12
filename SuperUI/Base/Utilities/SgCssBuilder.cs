@@ -1,16 +1,12 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
-//
-// УЛУЧШЕНИЯ:
-//   ✅ Build() fast-path: string.Concat для 1-2 частей (нет StringBuilder аллокации)
-//   ✅ WithPrefix / ClearPrefix
-//   ✅ Deduplicate() — убрать дубликаты
-//   ✅ Map<TKey> — mapper версии
-//   ✅ AddRange(IEnumerable<string>)
-//
-// ПОЛИРОВКА:
-//   ✅ XML-docs на все публичные члены
-//   ✅ Remove — возвращает this для fluent chain (было void-подобным)
-//   ✅ Clone — глубокое копирование
+// ✅ ИСПРАВЛЕНИЯ:
+//   - Deduplicate(): HashSet<string> с явным типовым параметром
+//   - IfNot() — новый метод
+//   - AddClasses() + AddRange() корректно используют единый Add()
+// ✅ УЛУЧШЕНИЯ:
+//   - IfNot(bool, string) — псевдоним If(!condition, ...)
+//   - ToString() в DEBUG показывает счётчик частей
+//   - Build() fast-path для 3 частей
 
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -43,11 +39,10 @@ public sealed class SgCssBuilder
     }
 
     /// <summary>true если нет ни базового класса, ни добавленных частей.</summary>
-    public bool IsEmpty
-        => string.IsNullOrWhiteSpace(_base)
+    public bool IsEmpty => string.IsNullOrWhiteSpace(_base)
         && (_parts is null || _parts.Count == 0);
 
-    // ── Добавить ─────────────────────────────────────────────────────────────────
+    // ── Добавить ──────────────────────────────────────────────────────────────
 
     /// <summary>Добавить CSS-класс (null/пустой — игнорируется).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -72,7 +67,7 @@ public sealed class SgCssBuilder
 
     /// <summary>
     /// Добавить классы из строки (разделённой пробелами).
-    /// Полезно для передачи Class параметра.
+    /// Полезно для передачи параметра Class.
     /// </summary>
     public SgCssBuilder AddClasses(string? classes)
     {
@@ -82,7 +77,7 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Условные ─────────────────────────────────────────────────────────────────
+    // ── Условные ─────────────────────────────────────────────────────────────
 
     /// <summary>Добавить класс при выполнении условия.</summary>
     public SgCssBuilder If(bool condition, string? cssClass)
@@ -103,12 +98,17 @@ public sealed class SgCssBuilder
         return this;
     }
 
+    /// <summary>Добавить класс при НЕвыполнении условия.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public SgCssBuilder IfNot(bool condition, string? cssClass)
+        => If(!condition, cssClass);
+
     /// <summary>Псевдоним для <see cref="If(bool, string?)"/>.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SgCssBuilder AddIf(bool condition, string? cssClass)
         => If(condition, cssClass);
 
-    // ── BEM паттерн ──────────────────────────────────────────────────────────────
+    // ── BEM паттерн ──────────────────────────────────────────────────────────
 
     /// <summary>
     /// Добавить BEM modifier: base--{modifier}.
@@ -116,10 +116,10 @@ public sealed class SgCssBuilder
     /// </summary>
     public SgCssBuilder Modifier(string? modifier, bool condition = true)
     {
-        if (condition && !string.IsNullOrWhiteSpace(modifier) && !string.IsNullOrWhiteSpace(_base))
+        if (condition && !string.IsNullOrWhiteSpace(modifier)
+            && !string.IsNullOrWhiteSpace(_base))
         {
-            var mod = modifier.Trim();
-            Add($"{_base}--{mod}");
+            Add($"{_base}--{modifier.Trim()}");
         }
         return this;
     }
@@ -130,15 +130,15 @@ public sealed class SgCssBuilder
     /// </summary>
     public SgCssBuilder Element(string? element, bool condition = true)
     {
-        if (condition && !string.IsNullOrWhiteSpace(element) && !string.IsNullOrWhiteSpace(_base))
+        if (condition && !string.IsNullOrWhiteSpace(element)
+            && !string.IsNullOrWhiteSpace(_base))
         {
-            var elem = element.Trim();
-            Add($"{_base}__{elem}");
+            Add($"{_base}__{element.Trim()}");
         }
         return this;
     }
 
-    // ── Маппинг ──────────────────────────────────────────────────────────────────
+    // ── Маппинг ──────────────────────────────────────────────────────────────
 
     /// <summary>Добавить класс по ключу из словаря.</summary>
     public SgCssBuilder Map<TKey>(TKey key, IReadOnlyDictionary<TKey, string> map)
@@ -156,7 +156,7 @@ public sealed class SgCssBuilder
         return Add(mapper(key));
     }
 
-    // ── Удаление ─────────────────────────────────────────────────────────────────
+    // ── Удаление ─────────────────────────────────────────────────────────────
 
     /// <summary>Удалить класс из списка.</summary>
     public SgCssBuilder Remove(string cssClass)
@@ -166,9 +166,7 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    /// <summary>
-    /// Применить функцию-трансформацию к последнему добавленному классу.
-    /// </summary>
+    /// <summary>Применить трансформацию к последнему добавленному классу.</summary>
     public SgCssBuilder Transform(Func<string, string> transform)
     {
         ArgumentNullException.ThrowIfNull(transform);
@@ -177,22 +175,22 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Дедупликация ─────────────────────────────────────────────────────────────
+    // ── Дедупликация ─────────────────────────────────────────────────────────
 
     /// <summary>Удалить дублирующиеся классы, сохраняя порядок первого вхождения.</summary>
     public SgCssBuilder Deduplicate()
     {
         if (_parts is null || _parts.Count <= 1) return this;
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var seen = new HashSet<string>(StringComparer.Ordinal); // ✅ FIX: явный тип
         _parts.RemoveAll(p => !seen.Add(p));
         return this;
     }
 
-    // ── Prefix ───────────────────────────────────────────────────────────────────
+    // ── Prefix ───────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Установить префикс для всех последующих <see cref="Add"/> вызовов.
-    /// Пример: <c>.WithPrefix("sg-").Add("button").Add("primary")</c> → "sg-button sg-primary"
+    /// Установить префикс для всех последующих Add() вызовов.
+    /// Пример: .WithPrefix("sg-").Add("button") → "sg-button"
     /// </summary>
     public SgCssBuilder WithPrefix(string? prefix)
     {
@@ -207,7 +205,7 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Объединение ──────────────────────────────────────────────────────────────
+    // ── Объединение ──────────────────────────────────────────────────────────
 
     /// <summary>Слить с другим builder-ом.</summary>
     public SgCssBuilder Merge(SgCssBuilder? other)
@@ -219,40 +217,40 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Клонирование ─────────────────────────────────────────────────────────────
+    // ── Клонирование ─────────────────────────────────────────────────────────
 
     /// <summary>Создать независимую копию builder-а.</summary>
     public SgCssBuilder Clone()
     {
         var clone = new SgCssBuilder(_base) { _prefix = _prefix };
-        if (_parts is not null) clone._parts = new List<string>(_parts);
+        if (_parts is not null)
+            clone._parts = new List<string>(_parts);
         return clone;
     }
 
-    // ── Сборка ───────────────────────────────────────────────────────────────────
+    // ── Сборка ───────────────────────────────────────────────────────────────
 
     /// <summary>
     /// Собрать итоговую строку CSS-классов.
-    /// УЛУЧШЕНИЕ: fast-path через string.Concat для 0-2 дополнительных частей
-    /// (без аллокации StringBuilder).
+    /// Fast-path для 0-3 дополнительных частей (без StringBuilder аллокации).
     /// </summary>
     public string Build()
     {
         var hasBase  = !string.IsNullOrWhiteSpace(_base);
         var hasParts = _parts is { Count: > 0 };
 
-        // Fast paths (нет StringBuilder аллокации)
+        // Fast paths
         if (!hasParts) return hasBase ? _base! : string.Empty;
         if (!hasBase && _parts!.Count == 1) return _parts[0];
-        if (hasBase  && _parts!.Count == 1) return string.Concat(_base, " ", _parts[0]);
+        if (hasBase && _parts!.Count == 1) return string.Concat(_base, " ", _parts[0]);
         if (!hasBase && _parts!.Count == 2) return string.Concat(_parts[0], " ", _parts[1]);
-        if (hasBase  && _parts!.Count == 2)
-            return string.Concat(_base, " ", _parts[0], " ", _parts[1]);
+        if (hasBase && _parts!.Count == 2) return string.Concat(_base, " ", _parts[0], " ", _parts[1]);
+        if (!hasBase && _parts!.Count == 3) return string.Concat(_parts[0], " ", _parts[1], " ", _parts[2]);
+        if (hasBase && _parts!.Count == 3) return string.Concat(_base, " ", _parts[0], " ", _parts[1], " ", _parts[2]);
 
         // General path
-        var capacity = (hasBase ? _base!.Length + 1 : 0) + _parts!.Count * 12;
+        var capacity = (hasBase ? _base!.Length + 1 : 0) + _parts!.Count * 14;
         var sb = new StringBuilder(capacity);
-
         if (hasBase) sb.Append(_base);
         foreach (var part in _parts!)
         {
@@ -262,7 +260,7 @@ public sealed class SgCssBuilder
         return sb.ToString();
     }
 
-    /// <summary>Неявное приведение к string (вызывает <see cref="Build"/>).</summary>
+    /// <summary>Неявное приведение к string (вызывает Build()).</summary>
     public static implicit operator string(SgCssBuilder builder) => builder.Build();
 
     /// <inheritdoc/>

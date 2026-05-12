@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SuperUI.Base;
 using SuperUI.Base.Services;
+using SuperUI.Localization;
 
 namespace SuperUI;
 
@@ -50,6 +51,8 @@ public static class ServiceCollectionExtensions
         {
             services.AddHttpContextAccessor();
         }
+
+        services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
 
         // ── Опции компонентов ─────────────────────────────────────────────────
         services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();

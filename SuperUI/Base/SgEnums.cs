@@ -299,3 +299,42 @@ public enum SgNotificationType
     Warning,
     Error
 }
+
+/// <summary>Позиционирование элемента.</summary>
+public enum SgPosition
+{
+    Static,
+    Relative,
+    Absolute,
+    Fixed,
+    Sticky
+}
+
+/// <summary>Точка останова для responsive дизайна.</summary>
+public enum SgBreakpoint
+{
+    Xs,
+    Sm,
+    Md,
+    Lg,
+    Xl,
+    Xxl
+}
+
+/// <summary>Выравнивание текста.</summary>
+public enum SgTextAlign
+{
+    Left,
+    Center,
+    Right,
+    Justify
+}
+
+/// <summary>Приоритет рендеринга.</summary>
+public enum SgRenderPriority
+{
+    Low,
+    Normal,
+    High,
+    Critical
+}

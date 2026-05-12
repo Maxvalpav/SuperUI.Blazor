@@ -80,7 +80,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected static bool IsServer => !OperatingSystem.IsBrowser();
 
     /// <summary>CancellationToken, отменяемый при DisposeAsync компонента.</summary>
-    protected CancellationToken ComponentToken => _cts.Token;
+    protected virtual CancellationToken ComponentToken => _cts.Token;
 
     /// <summary>
     /// Дополнительные атрибуты без class и style.
@@ -469,16 +469,20 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected Task<TResult> SafeInvokeAsync<TResult>(Func<TResult> func)
     {
         if (IsDisposed) return Task.FromResult(default(TResult)!);
-        // Execute the function synchronously and wrap result in a Task
-        try
+        var tcs = new TaskCompletionSource<TResult>();
+        InvokeAsync(async () =>
         {
-            var result = func();
-            return Task.FromResult(result);
-        }
-        catch (Exception ex)
-        {
-            return Task.FromException<TResult>(ex);
-        }
+            try
+            {
+                var result = func();
+                tcs.SetResult(result);
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+        return tcs.Task;
     }
 
     // ── Service helpers ────────────────────────────────────────────────────────
