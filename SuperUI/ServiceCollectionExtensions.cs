@@ -11,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using SuperUI.Base.Services;
+using SuperUI.Components;
 using System;
 
 namespace SuperUI;
@@ -59,20 +60,28 @@ public static class ServiceCollectionExtensions
         // Основной сервис настроек компонентов
         services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
 
-        // Z-index менеджер
-        // Scoped для Server (per-circuit), Singleton для WASM
-        services.TryAddScoped<IZIndexService, ZIndexService>();
+        // ── Z-Index (Scoped: per-circuit на Server, per-app на WASM) ─────────────
+        services.AddScoped<ZIndexService>();
+        services.AddScoped<IZIndexService>(sp => sp.GetRequiredService<ZIndexService>());
 
-        // Focus trap
+        // ── Focus Trap ────────────────────────────────────────────────────────────
         services.TryAddScoped<IFocusTrapService, JsFocusTrapService>();
 
-        // Keyboard service
+        // ── Keyboard ──────────────────────────────────────────────────────────────
         services.TryAddScoped<IKeyboardService, KeyboardService>();
 
-        // Prerendering detector
-        // На Server — через IHttpContextAccessor
-        // На WASM — всегда false
+        // ── Prerendering Detector ──────────────────────────────────────────────────
+        // WASM: всегда интерактивный (нет SSR)
+        // Server: требует определения контекста
         RegisterPrerendingDetector(services);
+
+        // ── Session Storage ────────────────────────────────────────────────────────
+        services.TryAddScoped<ISessionStorage, JsSessionStorage>();
+
+        // ── Toast / Confirm / Notification ────────────────────────────────────────
+        services.AddScoped<SgToastService>();
+        services.AddScoped<SgConfirmService>();
+        services.AddScoped<SgNotificationService>();
 
         return services;
     }

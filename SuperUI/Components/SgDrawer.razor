@@ -1,123 +1,88 @@
 @namespace SuperUI.Components
+@using SuperUI.Base.Services
 @using SuperUI.Localization
-@using SuperUI.Services
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject ISuperUILocalizer Localizer
-@inject ZIndexService ZIndex
+@inject IZIndexService ZIndex
 
 @if (Visible || _isClosing)
 {
-    <div class="sgc-drawer-backdrop @(_isClosing ? "sgc-closing" : "")" style="z-index: @_backdropZIndex" @onclick="BackdropAsync">
-        <aside class="sgc-drawer sgc-drawer-@PlacementClass @CssClass"
-               style="@SizeStyle"
-               role="complementary"
-               aria-labelledby="@_titleId"
-               tabindex="-1"
-               @ref="_drawerRef"
-               @onclick:stopPropagation="true">
-            <div class="sgc-drawer-header">
-                <span id="@_titleId" class="sgc-drawer-title">@Title</span>
-                @if (ShowClose)
-                {
-                    <button type="button" class="sgc-drawer-x" @onclick="CloseAsync" aria-label="@Localizer["Close"]">×</button>
-                }
+    <div class="sg-drawer-backdrop @(_isClosing ? "sg-drawer-backdrop--closing" : "")"
+         style="z-index:@(_backdropZIndex)"
+         @onclick="BackdropAsync" />
+
+    <div @ref="_drawerRef"
+         class="sg-drawer sg-drawer--@PlacementClass @(_isClosing ? "sg-drawer--closing" : "") @CssClass"
+         style="@SizeStyle"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="@_titleId"
+         tabindex="-1"
+         @onkeydown="HandleKeyDownAsync">
+
+        <div class="sg-drawer__header">
+            <h2 id="@_titleId" class="sg-drawer__title">@Title</h2>
+            @if (ShowClose)
+            {
+                <button class="sg-drawer__close"
+                        aria-label="@Localizer["Close"]"
+                        @onclick="CloseAsync">×</button>
+            }
+        </div>
+
+        @if (Resizable)
+        {
+            <div class="sg-drawer__resize-handle sg-drawer__resize-handle--@PlacementClass" />
+        }
+
+        <div class="sg-drawer__body">
+            @ChildContent
+        </div>
+
+        @if (FooterContent is not null)
+        {
+            <div class="sg-drawer__footer">
+                @FooterContent
             </div>
-            @if (Resizable)
-            {
-                <div class="sgc-drawer-resizer sgc-drawer-resizer-@PlacementClass" role="separator" aria-label="Resize drawer" aria-orientation="@(Placement is SgPlacement.Left or SgPlacement.Right ? "vertical" : "horizontal")"></div>
-            }
-            <div class="sgc-drawer-body">@ChildContent</div>
-            @if (FooterContent is not null)
-            {
-                <div class="sgc-drawer-footer">@FooterContent</div>
-            }
-        </aside>
+        }
     </div>
 }
 
 @code {
+    // ── IDs ──────────────────────────────────────────────────────────────────────
     private readonly string _titleId = "drawer-title-" + Guid.NewGuid().ToString("N")[..8];
+
+    // ── Состояние ────────────────────────────────────────────────────────────────
     private ElementReference _drawerRef;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgDrawer>? _self;
-    private bool _isDisposed;
+    private int  _disposed;   // Interlocked
     private bool _previousVisible;
     private bool _isClosing;
-    private int _zIndex;
-    private int _backdropZIndex;
+    private int  _zIndex;
+    private int  _backdropZIndex;
     private CancellationTokenSource? _closeCts;
     private string _runtimeSize = string.Empty;
 
-    /// <summary>
-    /// Gets or sets whether the drawer is visible.
-    /// </summary>
-    [Parameter] public bool Visible { get; set; }
-
-    /// <summary>
-    /// Callback invoked when <see cref="Visible"/> changes.
-    /// </summary>
+    // ── Параметры ────────────────────────────────────────────────────────────────
+    [Parameter] public bool              Visible         { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
-
-    /// <summary>
-    /// Gets or sets the drawer title text.
-    /// </summary>
-    [Parameter] public string? Title { get; set; }
-
-    /// <summary>
-    /// Gets or sets the drawer body content.
-    /// </summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets the drawer footer content.
-    /// </summary>
-    [Parameter] public RenderFragment? FooterContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets the drawer placement. Default is <see cref="SgPlacement.Right"/>.
-    /// </summary>
-    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.Right;
-
-    /// <summary>
-    /// Gets or sets the drawer size (width for left/right, height for top/bottom). Default is "360px".
-    /// </summary>
-    [Parameter] public string Size { get; set; } = "360px";
-
-    /// <summary>
-    /// Callback invoked when the drawer size is changed via resizing.
-    /// </summary>
+    [Parameter] public string?           Title           { get; set; }
+    [Parameter] public RenderFragment?   ChildContent    { get; set; }
+    [Parameter] public RenderFragment?   FooterContent   { get; set; }
+    [Parameter] public SgPlacement       Placement       { get; set; } = SgPlacement.Right;
+    [Parameter] public string            Size            { get; set; } = "360px";
     [Parameter] public EventCallback<string> SizeChanged { get; set; }
+    [Parameter] public bool              Resizable       { get; set; }
+    [Parameter] public bool              ShowClose       { get; set; } = true;
+    [Parameter] public bool              CloseOnBackdrop { get; set; } = true;
+    [Parameter] public bool              CloseOnEscape   { get; set; } = true;
+    [Parameter] public EventCallback     OnClose         { get; set; }
+    [Parameter] public string?           CssClass        { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the drawer is resizable. Default is false.
-    /// </summary>
-    [Parameter] public bool Resizable { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to show the close button. Default is true.
-    /// </summary>
-    [Parameter] public bool ShowClose { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether clicking the backdrop closes the drawer. Default is true.
-    /// </summary>
-    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether pressing ESC closes the drawer. Default is true.
-    /// </summary>
-    [Parameter] public bool CloseOnEscape { get; set; } = true;
-
-    /// <summary>
-    /// Callback invoked when the drawer is closed.
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional CSS class names for the drawer.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
+    // ── Вспомогательные ──────────────────────────────────────────────────────────
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
     private string PlacementClass => Placement switch
     {
@@ -131,66 +96,69 @@
     {
         get
         {
-            var sz = string.IsNullOrEmpty(_runtimeSize) ? Size : _runtimeSize;
-            var styles = new List<string>();
-            if (_zIndex > 0) styles.Add($"z-index: {_zIndex}");
+            var sz    = string.IsNullOrEmpty(_runtimeSize) ? Size : _runtimeSize;
+            var parts = new List<string>();
+            if (_zIndex > 0) parts.Add($"z-index:{_zIndex}");
             if (Placement is SgPlacement.Left or SgPlacement.Right)
-            { styles.Add($"width:{sz}"); styles.Add("max-width:100vw"); }
+            {
+                parts.Add($"width:{sz}");
+                parts.Add("max-width:100vw");
+            }
             else
-            { styles.Add($"height:{sz}"); styles.Add("max-height:100vh"); }
-            return string.Join("; ", styles) + ";";
+            {
+                parts.Add($"height:{sz}");
+                parts.Add("max-height:100vh");
+            }
+            return string.Join(";", parts) + ";";
         }
     }
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────────────
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
 
         if (Visible && !_previousVisible)
         {
-            // Drawer just opened
-            _zIndex = ZIndex.Allocate(this, SgZIndexService.DrawerBase);
+            // ИСПРАВЛЕНО: Allocate(int) вместо Allocate(this, SgZIndexService.DrawerBase)
+            _zIndex         = ZIndex.Allocate(ZIndexService.DrawerBase);
             _backdropZIndex = _zIndex - 5;
 
             try
             {
-                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-drawer.js");
-                if (_isDisposed) return;
-
+                _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                    "import", "_content/SuperUI/superui-drawer.js");
+                if (IsDisposed) return;
                 _self ??= DotNetObjectReference.Create(this);
                 await _module.InvokeVoidAsync("attach", _drawerRef, _self, CloseOnEscape);
-
                 if (Resizable)
-                {
                     await _module.InvokeVoidAsync("initResize", _drawerRef, _self, PlacementClass);
-                }
             }
             catch (JSException) { }
             catch (TaskCanceledException) { }
+            catch (JSDisconnectedException) { }
         }
         else if (!Visible && _previousVisible)
         {
-            // Drawer just closed
             if (_zIndex > 0)
             {
-                ZIndex.Release(this);
+                // ИСПРАВЛЕНО: Release(_zIndex) вместо Release(this)
+                ZIndex.Release(_zIndex);
                 _zIndex = 0;
             }
-
             if (_module is not null)
             {
-                try
-                {
-                    await _module.InvokeVoidAsync("detach");
-                }
+                try   { await _module.InvokeVoidAsync("detach"); }
                 catch (JSException) { }
                 catch (TaskCanceledException) { }
+                catch (JSDisconnectedException) { }
             }
         }
 
         _previousVisible = Visible;
     }
 
+    // ── JS-invokable ──────────────────────────────────────────────────────────────
     [JSInvokable]
     public Task CloseFromJsAsync() => CloseAsync();
 
@@ -202,9 +170,16 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    // ── Keyboard ──────────────────────────────────────────────────────────────────
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (CloseOnEscape && e.Key == "Escape") await CloseAsync();
+    }
+
+    // ── CloseAsync ────────────────────────────────────────────────────────────────
     public async Task CloseAsync()
     {
-        if (_isDisposed || _isClosing) return;
+        if (IsDisposed || _isClosing) return;
 
         _closeCts?.Cancel();
         _closeCts?.Dispose();
@@ -214,50 +189,46 @@
         _isClosing = true;
         StateHasChanged();
 
-        try { await Task.Delay(300, token); }
+        try   { await Task.Delay(300, token); }
         catch (TaskCanceledException) { return; }
 
         _isClosing = false;
         if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(false);
-        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (OnClose.HasDelegate)        await OnClose.InvokeAsync();
     }
 
     private Task BackdropAsync() => CloseOnBackdrop ? CloseAsync() : Task.CompletedTask;
 
+    // ── IAsyncDisposable ──────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         _closeCts?.Cancel();
         _closeCts?.Dispose();
 
-        if (_zIndex > 0) { ZIndex.Release(this); _zIndex = 0; }
+        if (_zIndex > 0)
+        {
+            ZIndex.Release(_zIndex);
+            _zIndex = 0;
+        }
 
-        // Notify JS to dispose first
         if (_module is not null)
         {
-            try
-            {
-                await _module.InvokeVoidAsync("detach");
-            }
+            try   { await _module.InvokeVoidAsync("detach"); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
+            catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
         }
 
-        // Then dispose DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // Finally dispose JS module
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try   { await _module.DisposeAsync(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }

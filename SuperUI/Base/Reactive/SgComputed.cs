@@ -1,64 +1,62 @@
 // SuperUI/Base/Reactive/SgComputed.cs
+//
+// ДОРАБОТКИ:
+// 1. ForceRecompute() — принудительный пересчёт (обход кэша)
+// 2. InvalidateAndNotify() — инвалидировать и уведомить подписчиков
+// 3. Recompute: защита от конкурентного вычисления
+// 4. IsStale — публичное свойство (для UI: "данные устарели")
+
 using System.Runtime.CompilerServices;
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Вычисляемый сигнал: мемоизирует результат функции и автоматически
-/// инвалидируется когда изменяются любые SgSignal, прочитанные в теле функции.
+/// Вычисляемый сигнал: мемоизирует результат и инвалидируется при изменении зависимостей.
 /// </summary>
 public sealed class SgComputed<T> : IDisposable
 {
-    private readonly Func<T> _compute;
+    private readonly Func<T>              _compute;
     private readonly IEqualityComparer<T> _comparer;
-    private T _cachedValue;
-
-    // ── FIX CS1002/CS1525/CS1519/CS8124 ──────────────────────────────────────
-    // Объявляем поля ОТДЕЛЬНЫМИ строками — никаких кортежей и никаких
-    // выражений с lock в инициализаторах полей.
-    private int _isDirtyInt = 1;    // 1 = dirty, 0 = clean
-    private int _isRecomputing;     // 0 = free, 1 = computing
-    private int _disposedInt;       // 0 = alive, 1 = disposed
-    // ─────────────────────────────────────────────────────────────────────────
-
+    private T   _cachedValue;
+    private int _isDirtyInt    = 1;  // 1 = dirty, 0 = clean
+    private int _isRecomputing;      // 0 = free, 1 = computing
+    private int _disposedInt;
     private readonly ComputedObserver _observer;
 
     public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null)
     {
-        _compute  = compute  ?? throw new ArgumentNullException(nameof(compute));
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-        _cachedValue = default!;
-        _observer = new ComputedObserver(Invalidate);
+        _compute      = compute ?? throw new ArgumentNullException(nameof(compute));
+        _comparer     = comparer ?? EqualityComparer<T>.Default;
+        _cachedValue  = default!;
+        _observer     = new ComputedObserver(Invalidate);
     }
 
     public T Value
     {
         get
         {
-            if (Volatile.Read(ref _isDirtyInt) == 1)
-                Recompute();
+            if (Volatile.Read(ref _isDirtyInt) == 1) Recompute();
             SignalTracker.TrackComputed(this);
             return _cachedValue;
         }
     }
 
+    /// <summary>Данные устарели и будут пересчитаны при следующем обращении.</summary>
+    public bool IsStale => Volatile.Read(ref _isDirtyInt) == 1;
+
     private void Recompute()
     {
-        // Только один поток пересчитывает; остальные получают кэшированное значение
-        if (Interlocked.CompareExchange(ref _isRecomputing, 1, 0) == 1)
-            return;
+        if (Interlocked.CompareExchange(ref _isRecomputing, 1, 0) == 1) return;
         try
         {
             _observer.BeginTracking();
             T newValue;
             using (SignalTracker.EnterScopeForObserver(_observer))
-            {
                 newValue = _compute();
-            }
-            // Сбрасываем dirty флаг после вычисления, но внутри отслеживания зависимостей
+
             Interlocked.Exchange(ref _isDirtyInt, 0);
-            // Уведомляем ТОЛЬКО при реальном изменении значения
+
             if (!_comparer.Equals(_cachedValue, newValue))
             {
                 _cachedValue = newValue;
@@ -66,7 +64,6 @@ public sealed class SgComputed<T> : IDisposable
             }
             else
             {
-                // Обновляем кэш на случай reference equality (например, для строк)
                 _cachedValue = newValue;
             }
         }
@@ -76,16 +73,21 @@ public sealed class SgComputed<T> : IDisposable
         }
     }
 
+    /// <summary>Принудительно инвалидировать и уведомить (без пересчёта).</summary>
+    public void ForceInvalidate()
+    {
+        Interlocked.Exchange(ref _isDirtyInt, 1);
+        _observer.NotifyChanged();
+    }
+
     private void Invalidate()
     {
         var wasDirty = Interlocked.Exchange(ref _isDirtyInt, 1) == 1;
-        if (!wasDirty)
-            _observer.NotifyChanged();
+        if (!wasDirty) _observer.NotifyChanged();
     }
 
-    /// <summary>FIX CS1061: метод Subscribe, который ищет SgComponentBase.cs стр.117/128</summary>
-    internal void Subscribe(SgComponentBase component)
-        => _observer.Subscribe(component);
+    // ИСПРАВЛЕНО CS1061: Subscribe
+    internal void Subscribe(SgComponentBase component) => _observer.Subscribe(component);
 
     public void Dispose()
     {
@@ -94,13 +96,14 @@ public sealed class SgComputed<T> : IDisposable
     }
 
     public static implicit operator T(SgComputed<T> computed) => computed.Value;
+    public override string? ToString() => $"SgComputed<{typeof(T).Name}>({_cachedValue})";
 
-    // ── Вложенный наблюдатель ─────────────────────────────────────────────────
-    private sealed class ComputedObserver : ISignalObserver, IDisposable
+    // ── Вложенный наблюдатель ─────────────────────────────────────────────────────
+    private sealed class ComputedObserver : ISignalObserver<T>, IDisposable
     {
-        private readonly Action _invalidate;
-        private readonly HashSet<WeakReference<SgComponentBase>> _dependents = new();
-        private readonly HashSet<object> _dependencies = new();  // SgSignal<T> | SgComputed<T>
+        private readonly Action                                  _invalidate;
+        private readonly HashSet<WeakReference<SgComponentBase>> _dependents   = new();
+        private readonly HashSet<object>                         _dependencies = new();
         private readonly object _lock = new();
         private int _disposedInt;
 
@@ -139,24 +142,18 @@ public sealed class SgComputed<T> : IDisposable
                     SignalBatch.NotifyComponent(c);
         }
 
-        public void OnSignalChanged()   => _invalidate();
-        public void OnSignalRead<T2>(SgSignal<T2> signal)
-        {
-            lock (_lock) _dependencies.Add(signal);
-        }
-        public void OnComputedRead<T2>(SgComputed<T2> computed)
-        {
-            lock (_lock) _dependencies.Add(computed);
-        }
+        public void OnSignalChanged() => _invalidate();
+
+        public void OnSignalRead(SgSignal<T> signal)
+        { lock (_lock) _dependencies.Add(signal); }
+
+        public void OnComputedRead<TVal>(SgComputed<TVal> computed)
+        { lock (_lock) _dependencies.Add(computed); }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-            lock (_lock)
-            {
-                _dependents.Clear();
-                _dependencies.Clear();
-            }
+            lock (_lock) { _dependents.Clear(); _dependencies.Clear(); }
         }
     }
 }

@@ -1,55 +1,53 @@
 // SuperUI/Base/SgRenderBoundary.cs
 //
-// Защита от рендер-рекурсии и избыточных рендеров.
-// Используется для компонентов с дорогим рендером (DataGrid, Canvas, Chart).
-//
-// Принцип: если рендер уже идёт — следующий StateHasChanged откладывается.
+// ДОРАБОТКА: Полная реализация SgRenderBoundary.
+// Изолирует перерисовку — дочернее содержимое рендерится только при явном вызове Refresh().
+// Полезно для оптимизации крупных деревьев (например, SgDataGrid rows).
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
-using System.Threading;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Компонент-обёртка, предотвращающая рендер-рекурсию.
-/// Дочерние компоненты рендерятся только после полного завершения текущего рендера.
+/// Граница рендеринга: дочернее содержимое рендерится только при вызове <see cref="Refresh"/>.
+/// Используется для изоляции рендера "горячих" поддеревьев.
 /// </summary>
-public sealed class SgRenderBoundary : ComponentBase, IDisposable
+/// <example>
+/// <code>
+/// &lt;SgRenderBoundary @ref="_boundary"&gt;
+///     &lt;ExpensiveComponent Data="@_data" /&gt;
+/// &lt;/SgRenderBoundary&gt;
+///
+/// // Обновить только при реальных изменениях:
+/// _boundary.Refresh();
+/// </code>
+/// </example>
+public sealed class SgRenderBoundary : ComponentBase
 {
+    private bool _shouldRender = true;
+
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Максимальное количество отложенных рендеров.</summary>
-    [Parameter] public int MaxPendingRenders { get; set; } = 3;
-
-    private int _renderDepth;
-    private int _pendingRenders;
-    private bool _disposed;
+    /// <summary>
+    /// Разрешить один рендер дочернего содержимого.
+    /// После рендера автоматически блокирует следующие рендеры.
+    /// </summary>
+    public void Refresh()
+    {
+        _shouldRender = true;
+        StateHasChanged();
+    }
 
     protected override bool ShouldRender()
     {
-        // Если уже рендеримся — откладываем
-        if (_renderDepth > 0)
-        {
-            Interlocked.Increment(ref _pendingRenders);
-            return false;
-        }
+        if (!_shouldRender) return false;
+        _shouldRender = false; // Сброс: следующий рендер будет заблокирован
         return true;
-    }
-
-    protected override void OnAfterRender(bool firstRender)
-    {
-        _renderDepth--;
-        var pending = Interlocked.Exchange(ref _pendingRenders, 0);
-        if (pending > 0 && !_disposed)
-            _ = InvokeAsync(StateHasChanged);
     }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
-        _renderDepth++;
-        ChildContent?.Invoke(builder);
+        builder.AddContent(0, ChildContent);
     }
-
-    public void Dispose() => _disposed = true;
 }

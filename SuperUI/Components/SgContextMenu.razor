@@ -1,119 +1,110 @@
 @namespace SuperUI.Components
+@using SuperUI.Base.Services
 @implements IAsyncDisposable
 @inject IJSRuntime JS
-@inject ZIndexService ZIndex
+@inject IZIndexService ZIndex
 
 @if (_visible)
 {
-    <SgPortal>
-        <div class="sgc-context-menu-overlay" 
-             style="z-index: @_overlayZIndex"
-             @onclick="Close" 
-             @oncontextmenu:preventDefault 
-             @oncontextmenu="Close">
-            <div class="sgc-context-menu" 
-                 style="@_style" 
-                 role="menu"
-                 aria-label="@AriaLabel"
-                 @ref="_menuRef"
-                 @onclick:stopPropagation="true">
-                @ChildContent
-            </div>
-        </div>
-    </SgPortal>
+    <!-- Overlay backdrop для закрытия по клику вне -->
+    <div class="sg-context-menu-overlay"
+         style="z-index:@(_zIndex - 1)"
+         @onclick="Close"
+         @oncontextmenu:preventDefault="true"
+         @oncontextmenu="Close" />
+
+    <div @ref="_menuRef"
+         class="sg-context-menu"
+         style="@_style"
+         role="menu"
+         aria-label="@AriaLabel"
+         @onkeydown="HandleKeyDownAsync">
+        @ChildContent
+    </div>
 }
 
 @code {
+    // ── Состояние ────────────────────────────────────────────────────────────────
     private ElementReference _menuRef;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgContextMenu>? _self;
-    private bool _isDisposed;
+    private int  _disposed;     // Interlocked
     private bool _visible;
     private bool _attached;
-    private string _style = "";
-    private int _zIndex;
-    private int _overlayZIndex;
+    private string _style    = "";
+    private int    _zIndex;
     private ElementReference? _triggerElement;
 
-    /// <summary>
-    /// Gets or sets the menu content.
-    /// </summary>
+    // ── Параметры ────────────────────────────────────────────────────────────────
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string?         AriaLabel    { get; set; }
+    [Parameter] public EventCallback   OnShow       { get; set; }
+    [Parameter] public EventCallback   OnClose      { get; set; }
 
-    /// <summary>
-    /// Gets or sets the ARIA label for the menu.
-    /// </summary>
-    [Parameter] public string? AriaLabel { get; set; }
+    // ── Вспомогательные ──────────────────────────────────────────────────────────
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
-    /// <summary>
-    /// Callback invoked when the menu is shown.
-    /// </summary>
-    [Parameter] public EventCallback OnShow { get; set; }
-
-    /// <summary>
-    /// Callback invoked when the menu is closed.
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
+    // ── Lifecycle ────────────────────────────────────────────────────────────────
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed || !_visible || _attached) return;
+        if (IsDisposed || !_visible || _attached) return;
         try
         {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-contextmenu.js");
-            if (_isDisposed) return;
+            _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import", "_content/SuperUI/superui-contextmenu.js");
+            if (IsDisposed) return;
             _self ??= DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync("attach", _menuRef, _self);
             _attached = true;
         }
         catch (JSException) { }
         catch (TaskCanceledException) { }
+        catch (JSDisconnectedException) { }
     }
 
-    /// <summary>
-    /// Opens the context menu at the specified coordinates.
-    /// </summary>
+    // ── API ───────────────────────────────────────────────────────────────────────
+
+    /// <summary>Открыть контекстное меню в точке (x, y).</summary>
     public async Task Open(double x, double y, ElementReference? triggerElement = null)
     {
-        if (_isDisposed) return;
-        
+        if (IsDisposed) return;
         _triggerElement = triggerElement;
-        _zIndex = ZIndex.Allocate(this, SgZIndexService.PopoverBase);
-        _overlayZIndex = _zIndex - 1;
-        _style = $"left: {x}px; top: {y}px; z-index: {_zIndex}";
-        _visible = true;
+
+        // ИСПРАВЛЕНО: Allocate(int) вместо Allocate(this, SgZIndexService.PopoverBase)
+        _zIndex = ZIndex.Allocate(ZIndexService.ContextMenuBase);
+        _style  = $"left:{x}px;top:{y}px;z-index:{_zIndex}";
+        _visible  = true;
         _attached = false;
+
         if (OnShow.HasDelegate) await OnShow.InvokeAsync();
         StateHasChanged();
     }
 
-    /// <summary>
-    /// Opens the context menu at the mouse event position.
-    /// </summary>
-    public Task Show(MouseEventArgs e, ElementReference? triggerElement = null) => Open(e.ClientX, e.ClientY, triggerElement);
+    /// <summary>Открыть на позиции MouseEventArgs.</summary>
+    public Task Show(MouseEventArgs e, ElementReference? triggerElement = null)
+        => Open(e.ClientX, e.ClientY, triggerElement);
 
     [JSInvokable]
     public Task CloseFromJsAsync() => Close();
 
-    /// <summary>
-    /// Closes the context menu.
-    /// </summary>
+    /// <summary>Закрыть контекстное меню.</summary>
     public async Task Close()
     {
-        if (_isDisposed) return;
+        if (IsDisposed || !_visible) return;
         _visible = false;
-        
+
         if (_zIndex > 0)
         {
-            ZIndex.Release(this);
+            // ИСПРАВЛЕНО: Release(_zIndex) вместо Release(this)
+            ZIndex.Release(_zIndex);
             _zIndex = 0;
         }
-        
+
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
-        
+
         if (_module is not null && _attached)
         {
-            try { await _module.InvokeVoidAsync("detach", _menuRef); }
+            try   { await _module.InvokeVoidAsync("detach", _menuRef); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
         }
@@ -121,43 +112,42 @@
         StateHasChanged();
     }
 
+    // ── Keyboard navigation ───────────────────────────────────────────────────────
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") await Close();
+    }
+
+    // ── IAsyncDisposable ──────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         if (_zIndex > 0)
         {
-            ZIndex.Release(this);
+            ZIndex.Release(_zIndex);
             _zIndex = 0;
         }
 
-        // 1. Уведомить JS о dispose
         if (_module is not null && _attached)
         {
-            try { await _module.InvokeVoidAsync("detach", _menuRef); }
+            try   { await _module.InvokeVoidAsync("detach", _menuRef); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch { }
         }
 
-        // 2. Очистить DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // 3. Очистить JS модуль
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try   { await _module.DisposeAsync(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
             _module = null;
         }
-        _attached = false;
     }
 }

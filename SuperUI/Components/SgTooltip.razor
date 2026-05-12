@@ -1,101 +1,53 @@
 @namespace SuperUI.Components
+@using SuperUI.Base.Services
 @implements IAsyncDisposable
 @inject IJSRuntime JS
-@inject SgZIndexService ZIndex
+@inject IZIndexService ZIndex
 
-<span class="sgc-tt-wrap @CssClass"
-      @ref="_triggerRef"
+<span @ref="_triggerRef"
+      class="sg-tooltip-trigger @CssClass"
       @onmouseenter="OnMouseEnterAsync"
       @onmouseleave="OnMouseLeaveAsync"
       @onfocus="OnFocusAsync"
       @onblur="OnBlurAsync"
       @onclick="OnClickAsync">
     @ChildContent
-    @if (_visible)
-    {
-        <span class="sgc-tt" 
-              @ref="_tooltipRef" 
-              role="tooltip"
-              aria-hidden="@(!_visible)"
-              style="@_tooltipStyle">
-            @Text
-        </span>
-    }
 </span>
 
+@if (_visible)
+{
+    <div @ref="_tooltipRef"
+         class="sg-tooltip sg-tooltip--@PlacementString"
+         style="@_tooltipStyle"
+         role="tooltip">
+        @Text
+    </div>
+}
+
 @code {
+    // ── Состояние ────────────────────────────────────────────────────────────────
     private ElementReference _triggerRef;
     private ElementReference _tooltipRef;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgTooltip>? _self;
-    private bool _isDisposed;
+    private int  _disposed;    // Interlocked
     private bool _visible;
     private string _tooltipStyle = "";
-    private int _zIndex;
-
-    /// <summary>
-    /// Gets or sets the tooltip text to display. Required.
-    /// </summary>
-    [Parameter, EditorRequired] public string Text { get; set; } = default!;
-    
-    /// <summary>
-    /// Gets or sets the content that triggers the tooltip on hover.
-    /// </summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the preferred placement of the tooltip. Default is <see cref="SgPlacement.Top"/>.
-    /// </summary>
-    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.Top;
-
-    /// <summary>
-    /// Gets or sets the trigger behavior for the tooltip. Default is <see cref="SgTrigger.Hover"/>.
-    /// </summary>
-    [Parameter] public SgTrigger Trigger { get; set; } = SgTrigger.Hover;
-
-    /// <summary>
-    /// Gets or sets the delay in milliseconds before showing the tooltip.
-    /// Default is 0 (no delay).
-    /// </summary>
-    [Parameter] public int OpenDelay { get; set; }
-
-    /// <summary>
-    /// Gets or sets the delay in milliseconds before hiding the tooltip.
-    /// Default is 0 (no delay).
-    /// </summary>
-    [Parameter] public int CloseDelay { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether the tooltip is disabled.
-    /// Default is false.
-    /// </summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
-
+    private int    _zIndex;
     private CancellationTokenSource? _delayCts;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (_isDisposed) return;
+    // ── Параметры ────────────────────────────────────────────────────────────────
+    [Parameter, EditorRequired] public string Text { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public SgPlacement     Placement    { get; set; } = SgPlacement.Top;
+    [Parameter] public SgTrigger       Trigger      { get; set; } = SgTrigger.Hover;
+    [Parameter] public int             OpenDelay    { get; set; }
+    [Parameter] public int             CloseDelay   { get; set; }
+    [Parameter] public bool            Disabled     { get; set; }
+    [Parameter] public string?         CssClass     { get; set; }
 
-        if (firstRender)
-        {
-            try
-            {
-                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-tooltip.js");
-                if (_isDisposed) return;
-
-                _self ??= DotNetObjectReference.Create(this);
-                await _module.InvokeVoidAsync("attach", _triggerRef, _tooltipRef, PlacementString, _self);
-            }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-        }
-    }
+    // ── Вспомогательные ──────────────────────────────────────────────────────────
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
     private string PlacementString => Placement switch
     {
@@ -105,26 +57,44 @@
         _                  => "top"
     };
 
-    private async Task OnMouseEnterAsync() => await HandleTriggerAsync(SgTrigger.Hover, true);
-    private async Task OnMouseLeaveAsync() => await HandleTriggerAsync(SgTrigger.Hover, false);
-    private async Task OnFocusAsync() => await HandleTriggerAsync(SgTrigger.Focus, true);
-    private async Task OnBlurAsync() => await HandleTriggerAsync(SgTrigger.Focus, false);
-    private async Task OnClickAsync() => await HandleTriggerAsync(SgTrigger.Click, !_visible);
-
-    private async Task HandleTriggerAsync(SgTrigger triggerType, bool show)
+    // ── Lifecycle ─────────────────────────────────────────────────────────────────
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Trigger != triggerType) return;
-        if (show) await ShowAsync();
-        else await HideAsync();
+        if (IsDisposed) return;
+        if (!firstRender) return;
+
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import", "_content/SuperUI/superui-tooltip.js");
+            if (IsDisposed) return;
+            _self ??= DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("attach", _triggerRef, _tooltipRef, PlacementString, _self);
+        }
+        catch (JSException) { }
+        catch (TaskCanceledException) { }
+        catch (JSDisconnectedException) { }
     }
 
-    /// <summary>
-    /// Manually shows the tooltip. For use when Trigger is "manual".
-    /// </summary>
+    // ── Trigger handlers ──────────────────────────────────────────────────────────
+    private Task OnMouseEnterAsync() => HandleTriggerAsync(SgTrigger.Hover, true);
+    private Task OnMouseLeaveAsync() => HandleTriggerAsync(SgTrigger.Hover, false);
+    private Task OnFocusAsync()      => HandleTriggerAsync(SgTrigger.Focus, true);
+    private Task OnBlurAsync()       => HandleTriggerAsync(SgTrigger.Focus, false);
+    private Task OnClickAsync()      => HandleTriggerAsync(SgTrigger.Click, !_visible);
+
+    private Task HandleTriggerAsync(SgTrigger triggerType, bool show)
+    {
+        if (Trigger != triggerType) return Task.CompletedTask;
+        return show ? ShowAsync() : HideAsync();
+    }
+
+    // ── ShowAsync ─────────────────────────────────────────────────────────────────
     public async Task ShowAsync()
     {
-        if (_isDisposed || _visible || Disabled) return;
+        if (IsDisposed || _visible || Disabled) return;
         CancelDelay();
+
         if (OpenDelay > 0)
         {
             _delayCts = new CancellationTokenSource();
@@ -143,39 +113,28 @@
     private async Task DoShowAsync()
     {
         _visible = true;
-        _zIndex = ZIndex.Allocate(this, SgZIndexService.TooltipBase);
-        _tooltipStyle = $"position: fixed; pointer-events: none; z-index: {_zIndex}; opacity: 0; transition: opacity 0.15s;";
-
+        // ИСПРАВЛЕНО: Allocate(int) вместо Allocate(this, SgZIndexService.TooltipBase)
+        _zIndex = ZIndex.Allocate(ZIndexService.TooltipBase);
+        _tooltipStyle = $"position:fixed;pointer-events:none;z-index:{_zIndex};opacity:0;transition:opacity 0.15s;";
         StateHasChanged();
 
-        // Wait for render to complete so _tooltipRef is populated
-        await Task.Yield();
-
+        await Task.Yield(); // Дождаться рендера _tooltipRef
         try
         {
             if (_module is not null)
-            {
                 await _module.InvokeVoidAsync("show", _triggerRef, _tooltipRef, PlacementString);
-            }
         }
         catch (JSException) { }
         catch (TaskCanceledException) { }
+        catch (JSDisconnectedException) { }
     }
 
-    private void CancelDelay()
-    {
-        _delayCts?.Cancel();
-        _delayCts?.Dispose();
-        _delayCts = null;
-    }
-
-    /// <summary>
-    /// Manually hides the tooltip. For use when Trigger is "manual".
-    /// </summary>
+    // ── HideAsync ─────────────────────────────────────────────────────────────────
     public async Task HideAsync()
     {
-        if (_isDisposed || !_visible) return;
+        if (IsDisposed || !_visible) return;
         CancelDelay();
+
         if (CloseDelay > 0)
         {
             _delayCts = new CancellationTokenSource();
@@ -194,66 +153,62 @@
     private async Task DoHideAsync()
     {
         _visible = false;
-
         if (_zIndex > 0)
         {
-            ZIndex.Release(this);
+            // ИСПРАВЛЕНО: Release(_zIndex) вместо Release(this)
+            ZIndex.Release(_zIndex);
             _zIndex = 0;
         }
-
         try
         {
             if (_module is not null)
-            {
                 await _module.InvokeVoidAsync("hide", _tooltipRef);
-            }
         }
         catch (JSException) { }
         catch (TaskCanceledException) { }
+        catch (JSDisconnectedException) { }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void CancelDelay()
+    {
+        _delayCts?.Cancel();
+        _delayCts?.Dispose();
+        _delayCts = null;
     }
 
     [JSInvokable]
     public Task HideFromJsAsync() => HideAsync();
 
+    // ── IAsyncDisposable ──────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         CancelDelay();
-
         if (_zIndex > 0)
         {
-            ZIndex.Release(this);
+            ZIndex.Release(_zIndex);
             _zIndex = 0;
         }
 
-        // Notify JS to dispose first
         if (_module is not null)
         {
-            try
-            {
-                await _module.InvokeVoidAsync("detach");
-            }
+            try   { await _module.InvokeVoidAsync("detach"); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
+            catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
         }
 
-        // Then dispose DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // Finally dispose JS module
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try   { await _module.DisposeAsync(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }

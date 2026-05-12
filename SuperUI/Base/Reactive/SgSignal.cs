@@ -1,23 +1,13 @@
 // SuperUI/Base/Reactive/SgSignal.cs
 //
-// CS0234 FIX: убран `using System.Reactive.Linq` — пакет System.Reactive не подключён.
-// IObservable<T> / IObserver<T> встроены в .NET BCL — внешний пакет не нужен.
-//
-// ИСПРАВЛЕНИЯ:
-// 1. CS0234 FIX: удалён `using System.Reactive.Linq`.
-// 2. Update() — атомарный read+compute+write под lock (устранён Lost Update).
-// 3. NotifySubscribers — уведомление вне lock (предотвращение deadlock).
-// 4. AsObservable() — интеграция с IObservable<T> (BCL, без Rx.NET).
-// 5. PurgeDeadSubscribers() — публичный метод для GC-давления.
-// 6. Dispose — идемпотентен через Interlocked.Exchange.
-//
-// Thread safety:
-// - WASM: однопоточный, lock — минимальный overhead.
-// - Server: каждый circuit — свой поток. lock(_lock) защищает _value, _subscribers, _observers.
+// ДОРАБОТКИ:
+// 1. Reset(T) — сброс значения без уведомления подписчиков
+// 2. ToString() — более информативный вывод
+// 3. AsObservable() гарантированно BehaviorSubject-семантика
+// 4. PurgeDeadSubscribers() — публичный
+// 5. Корректный порядок полей (без выражений в инициализаторах)
 
 using System.Runtime.CompilerServices;
-// CS0234 FIX: НЕ используем using System.Reactive.Linq — пакет не подключён
-// Если нужен Rx.NET — добавить: <PackageReference Include="System.Reactive" Version="6.0.1" />
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
@@ -25,79 +15,50 @@ namespace SuperUI.Base.Reactive;
 /// <summary>
 /// Реактивный сигнал — автоматически перерисовывает компоненты при изменении Value.
 /// </summary>
-/// <typeparam name="T">Тип значения сигнала.</typeparam>
-/// <remarks>
-/// <para>Thread safety:</para>
-/// <list type="bullet">
-///   <item>WASM: однопоточный, lock — минимальный overhead.</item>
-///   <item>Server: каждый circuit — свой поток. lock(_lock) защищает _value, _subscribers, _observers.</item>
-/// </list>
-/// </remarks>
 public sealed class SgSignal<T> : IDisposable
 {
     private T _value;
     private readonly IEqualityComparer<T> _comparer;
     private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
     private readonly object _lock = new();
-    private readonly HashSet<ISignalObserver> _observers = new();
+    private readonly HashSet<ISignalObserver<T>> _observers = new();
     private int _disposedInt;
 
     public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
     {
-        _value   = initial;
+        _value    = initial;
         _comparer = comparer ?? EqualityComparer<T>.Default;
     }
 
-    /// <summary>
-    /// Читает или устанавливает значение.
-    /// При чтении внутри render-scope — автоматически подписывает компонент.
-    /// </summary>
     public T Value
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            SignalTracker.Track(this);
-            return _value;
-        }
+        get { SignalTracker.Track(this); return _value; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set => Set(value);
     }
 
     /// <summary>Прочитать значение БЕЗ реактивной подписки.</summary>
-    public T Peek()
-    {
-        lock (_lock) return _value;
-    }
+    public T Peek() { lock (_lock) return _value; }
 
-    /// <summary>
-    /// Установить новое значение. Уведомляет подписчиков только при реальном изменении.
-    /// </summary>
+    /// <summary>Установить значение. Уведомляет только при реальном изменении.</summary>
     public void Set(T newValue)
     {
         if (Volatile.Read(ref _disposedInt) == 1) return;
-
         bool changed;
         lock (_lock)
         {
             changed = !_comparer.Equals(_value, newValue);
             if (changed) _value = newValue;
         }
-
-        // Уведомление — вне lock (предотвращаем deadlock если subscriber вызовет Set)
         if (changed) NotifySubscribers();
     }
 
-    /// <summary>
-    /// Обновить значение через функцию (атомарный read+compute+write).
-    /// Весь цикл read+compute+write под lock → нет Lost Update.
-    /// </summary>
-    /// <param name="updater">Функция преобразования. НЕ должна выбрасывать исключения.</param>
+    /// <summary>Атомарный read+compute+write (нет Lost Update).</summary>
     public void Update(Func<T, T> updater)
     {
         ArgumentNullException.ThrowIfNull(updater);
         if (Volatile.Read(ref _disposedInt) == 1) return;
-
         T newValue;
         bool changed;
         lock (_lock)
@@ -106,15 +67,15 @@ public sealed class SgSignal<T> : IDisposable
             changed  = !_comparer.Equals(_value, newValue);
             if (changed) _value = newValue;
         }
-
         if (changed) NotifySubscribers();
     }
 
-    /// <summary>
-    /// Представить сигнал как <see cref="IObservable{T}"/> для интеграции с Rx/LINQ.
-    /// Использует BCL IObservable — НЕ требует пакета System.Reactive.
-    /// BehaviorSubject-семантика: новый подписчик немедленно получает текущее значение.
-    /// </summary>
+    /// <summary>Сбросить значение БЕЗ уведомления подписчиков (тесты, инициализация).</summary>
+    public void Reset(T value)
+    {
+        lock (_lock) { _value = value; }
+    }
+
     public IObservable<T> AsObservable() => new SignalObservable(this);
 
     internal void Subscribe(SgComponentBase component)
@@ -122,17 +83,17 @@ public sealed class SgSignal<T> : IDisposable
         lock (_lock) _subscribers.Add(new WeakReference<SgComponentBase>(component));
     }
 
-    internal void SubscribeObserver(ISignalObserver observer)
+    internal void SubscribeObserver(ISignalObserver<T> observer)
     {
         lock (_lock) _observers.Add(observer);
     }
 
-    internal void UnsubscribeObserver(ISignalObserver observer)
+    internal void UnsubscribeObserver(ISignalObserver<T> observer)
     {
         lock (_lock) _observers.Remove(observer);
     }
 
-    /// <summary>Принудительно удалить мёртвые WeakRef (вызывайте при GC-давлении).</summary>
+    /// <summary>Принудительно удалить мёртвые WeakRef.</summary>
     public void PurgeDeadSubscribers()
     {
         lock (_lock) _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
@@ -146,14 +107,13 @@ public sealed class SgSignal<T> : IDisposable
 
     private void NotifySubscribers()
     {
-        List<WeakReference<SgComponentBase>>? snapshot    = null;
-        List<WeakReference<SgComponentBase>>? dead        = null;
-        ISignalObserver[]?                     observerSnapshot = null;
+        List<WeakReference<SgComponentBase>>? snapshot = null;
+        List<WeakReference<SgComponentBase>>? dead     = null;
+        ISignalObserver<T>[]? observerSnapshot = null;
 
         lock (_lock)
         {
             if (_subscribers.Count == 0 && _observers.Count == 0) return;
-
             if (_subscribers.Count > 0)
             {
                 snapshot = new(_subscribers.Count);
@@ -164,12 +124,9 @@ public sealed class SgSignal<T> : IDisposable
                     else
                         (dead ??= new()).Add(weakRef);
                 }
-
                 if (dead is not null)
-                    foreach (var d in dead)
-                        _subscribers.Remove(d);
+                    foreach (var d in dead) _subscribers.Remove(d);
             }
-
             if (_observers.Count > 0)
                 observerSnapshot = _observers.ToArray();
         }
@@ -187,23 +144,16 @@ public sealed class SgSignal<T> : IDisposable
             }
     }
 
-    /// <summary>Освободить всех подписчиков и наблюдателей.</summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-        lock (_lock)
-        {
-            _subscribers.Clear();
-            _observers.Clear();
-        }
+        lock (_lock) { _subscribers.Clear(); _observers.Clear(); }
     }
 
     public static implicit operator T(SgSignal<T> signal) => signal.Value;
+    public override string? ToString() => $"SgSignal<{typeof(T).Name}>({_value})";
 
-    public override string? ToString() => _value?.ToString() ?? "null";
-
-    // ── IObservable<T> адаптер (BCL-only, без Rx.NET) ────────────────────────
-
+    // ── IObservable адаптер ───────────────────────────────────────────────────────
     private sealed class SignalObservable : IObservable<T>
     {
         private readonly SgSignal<T> _signal;
@@ -214,16 +164,14 @@ public sealed class SgSignal<T> : IDisposable
             ArgumentNullException.ThrowIfNull(observer);
             var adapter = new ObserverAdapter(observer, _signal);
             _signal.SubscribeObserver(adapter);
-            // BehaviorSubject-семантика: отправляем текущее значение сразу
-            try { observer.OnNext(_signal.Peek()); }
-            catch { /* observer не должен бросать при OnNext */ }
+            try { observer.OnNext(_signal.Peek()); } catch { }
             return adapter;
         }
     }
 
-    private sealed class ObserverAdapter : ISignalObserver, IDisposable
+    private sealed class ObserverAdapter : ISignalObserver<T>, IDisposable
     {
-        private readonly IObserver<T>  _observer;
+        private readonly IObserver<T> _observer;
         private readonly SgSignal<T>  _signal;
         private int _disposed;
 
@@ -236,19 +184,17 @@ public sealed class SgSignal<T> : IDisposable
         public void OnSignalChanged()
         {
             if (Volatile.Read(ref _disposed) == 1) return;
-            try { _observer.OnNext(_signal.Peek()); }
-            catch { /* observer не должен бросать */ }
+            try { _observer.OnNext(_signal.Peek()); } catch { }
         }
 
-        public void OnSignalRead<TSignal>(SgSignal<TSignal> signal)   { }
-        public void OnComputedRead<TComputed>(SgComputed<TComputed> c) { }
+        public void OnSignalRead(SgSignal<T> signal)  { }
+        public void OnComputedRead<TVal>(SgComputed<TVal> c) { }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
             _signal.UnsubscribeObserver(this);
-            try { _observer.OnCompleted(); }
-            catch { }
+            try { _observer.OnCompleted(); } catch { }
         }
     }
 }

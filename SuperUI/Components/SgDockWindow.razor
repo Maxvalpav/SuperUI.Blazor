@@ -1,59 +1,66 @@
 @namespace SuperUI.Components
-@using SuperUI.Services
+@using SuperUI.Base.Services
 @using SuperUI.Localization
+@inject IZIndexService ZIndex
 @inject ISuperUILocalizer Localizer
 @implements IAsyncDisposable
-@inject IJSRuntime JS
-@inject ZIndexService ZIndex
 
 @if (Visible)
 {
-    <div class="sgc-win @(_maximized ? "sgc-win-maximized" : "") @(_minimized ? "sgc-win-minimized" : "") @(_isFocused ? "sgc-win-focus" : "") @CssClass"
+    <div @ref="_el"
+         class="sg-dock-window @(_isFocused ? "sg-dock-window--focused" : "") @(_maximized ? "sg-dock-window--maximized" : "") @(_minimized ? "sg-dock-window--minimized" : "") @CssClass"
          style="@ComputedStyle"
-         role="dialog"
-         aria-label="@(Title ?? "Window")"
-         aria-modal="false"
-         @ref="_el"
-         @attributes="AdditionalAttributes">
-        <div class="sgc-win-header">
-            <span class="sgc-win-title">@Title</span>
-            <div class="sgc-win-actions">
+         @attributes="AdditionalAttributes"
+         tabindex="0">
+
+        <!-- Заголовок / drag-handle -->
+        <div class="sg-dock-window__header">
+            <span class="sg-dock-window__title">@Title</span>
+            <div class="sg-dock-window__controls">
                 @if (ShowMinimize)
                 {
-                    <button type="button" class="sgc-win-btn"
-                            title="@(_minimized ? Localizer["Restore"] : Localizer["Minimize"])"
-                            aria-label="@(_minimized ? Localizer["Restore"] : Localizer["Minimize"])"
-                            @onclick="MinimizeAsync">@(_minimized ? "▣" : "—")</button>
+                    <button class="sg-dock-window__btn sg-dock-window__btn--minimize"
+                            title="@Localizer["Minimize"]"
+                            @onclick="MinimizeAsync">
+                        @(_minimized ? "▣" : "—")
+                    </button>
                 }
                 @if (ShowMaximize)
                 {
-                    <button type="button" class="sgc-win-btn"
-                            title="@(_maximized ? Localizer["Restore"] : Localizer["Maximize"])"
-                            aria-label="@(_maximized ? Localizer["Restore"] : Localizer["Maximize"])"
-                            @onclick="ToggleMaximizeAsync">@(_maximized ? "❐" : "▢")</button>
+                    <button class="sg-dock-window__btn sg-dock-window__btn--maximize"
+                            title="@Localizer["Maximize"]"
+                            @onclick="ToggleMaximizeAsync">
+                        @(_maximized ? "❐" : "▢")
+                    </button>
                 }
                 @if (ShowClose)
                 {
-                    <button type="button" class="sgc-win-btn sgc-win-close"
+                    <button class="sg-dock-window__btn sg-dock-window__btn--close"
                             title="@Localizer["Close"]"
-                            aria-label="@Localizer["Close"]"
-                            @onclick="CloseAsync">×</button>
+                            @onclick="CloseAsync">
+                        ×
+                    </button>
                 }
             </div>
         </div>
+
         @if (!_minimized)
         {
-            <div class="sgc-win-body">@ChildContent</div>
+            <div class="sg-dock-window__body">
+                @ChildContent
+            </div>
             @if (FooterContent is not null)
             {
-                <div class="sgc-win-footer">@FooterContent</div>
+                <div class="sg-dock-window__footer">
+                    @FooterContent
+                </div>
             }
-            <div class="sgc-win-resize"></div>
         }
     </div>
 }
 
 @code {
+    // ── Состояние ────────────────────────────────────────────────────────────────
     private ElementReference _el;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgDockWindow>? _self;
@@ -61,77 +68,88 @@
     private bool _maximized;
     private bool _minimized;
     private bool _isFocused;
-    private bool _isDisposed;
-    private int _zIndex;
+    private int  _disposed;       // Interlocked: 0 = alive, 1 = disposed
+    private int  _zIndex;
+
+    // Сохранённые границы для restore из maximized
     private double _savedLeft;
     private double _savedTop;
     private double _savedWidth;
     private double _savedHeight;
-    private double _lastParentLeft = double.NaN;
-    private double _lastParentTop = double.NaN;
-    private double _lastParentWidth = double.NaN;
+
+    // Отслеживаем последние значения от родителя (предотвращаем перезапись drag-результата)
+    private double _lastParentLeft   = double.NaN;
+    private double _lastParentTop    = double.NaN;
+    private double _lastParentWidth  = double.NaN;
     private double _lastParentHeight = double.NaN;
 
-    [Parameter] public bool Visible { get; set; } = true;
+    // JS-driven runtime значения (null = ещё не двигали)
+    private double? _runtimeLeft;
+    private double? _runtimeTop;
+    private double? _runtimeWidth;
+    private double? _runtimeHeight;
+
+    // ── Параметры ────────────────────────────────────────────────────────────────
+    [Parameter] public bool             Visible         { get; set; } = true;
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
-    [Parameter] public string? Title { get; set; }
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public RenderFragment? FooterContent { get; set; }
-    [Parameter] public double Left { get; set; } = 80;
-    [Parameter] public double Top { get; set; } = 80;
-    [Parameter] public double Width { get; set; } = 420;
-    [Parameter] public double Height { get; set; } = 300;
-    [Parameter] public bool ShowClose { get; set; } = true;
-    [Parameter] public bool ShowMaximize { get; set; } = true;
-    [Parameter] public bool ShowMinimize { get; set; } = true;
-    [Parameter] public string? CssClass { get; set; }
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    [Parameter] public EventCallback<double> LeftChanged { get; set; }
-    [Parameter] public EventCallback<double> TopChanged { get; set; }
-    [Parameter] public EventCallback<double> WidthChanged { get; set; }
+    [Parameter] public string?          Title           { get; set; }
+    [Parameter] public RenderFragment?  ChildContent    { get; set; }
+    [Parameter] public RenderFragment?  FooterContent   { get; set; }
+    [Parameter] public double           Left            { get; set; } = 80;
+    [Parameter] public double           Top             { get; set; } = 80;
+    [Parameter] public double           Width           { get; set; } = 420;
+    [Parameter] public double           Height          { get; set; } = 300;
+    [Parameter] public bool             ShowClose       { get; set; } = true;
+    [Parameter] public bool             ShowMaximize    { get; set; } = true;
+    [Parameter] public bool             ShowMinimize    { get; set; } = true;
+    [Parameter] public string?          CssClass        { get; set; }
+    [Parameter] public EventCallback    OnClose         { get; set; }
+    [Parameter] public EventCallback<double> LeftChanged   { get; set; }
+    [Parameter] public EventCallback<double> TopChanged    { get; set; }
+    [Parameter] public EventCallback<double> WidthChanged  { get; set; }
     [Parameter] public EventCallback<double> HeightChanged { get; set; }
-    /// <summary>Fired once after drag/resize ends with all four updated bounds.</summary>
     [Parameter] public EventCallback<WindowBounds> BoundsChanged { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    // ── Вычисляемые свойства ─────────────────────────────────────────────────────
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
     private string ComputedStyle
     {
         get
         {
-            var styles = new List<string>();
-            if (_zIndex > 0) styles.Add($"z-index: {_zIndex}");
-
+            var ci = System.Globalization.CultureInfo.InvariantCulture;
+            var parts = new System.Text.StringBuilder();
+            if (_zIndex > 0) parts.Append($"z-index:{_zIndex};");
             if (_maximized)
             {
-                styles.Add("left:0;top:0;right:0;bottom:0;width:auto;height:auto;");
+                parts.Append("left:0;top:0;right:0;bottom:0;width:auto;height:auto;");
             }
             else
             {
-                var ci = System.Globalization.CultureInfo.InvariantCulture;
                 var h = _minimized ? "auto" : Height.ToString(ci) + "px";
-                styles.Add($"left:{Left.ToString(ci)}px");
-                styles.Add($"top:{Top.ToString(ci)}px");
-                styles.Add($"width:{Width.ToString(ci)}px");
-                styles.Add($"height:{h}");
+                parts.Append($"left:{Left.ToString(ci)}px;");
+                parts.Append($"top:{Top.ToString(ci)}px;");
+                parts.Append($"width:{Width.ToString(ci)}px;");
+                parts.Append($"height:{h};");
             }
-            return string.Join("; ", styles);
+            return parts.ToString();
         }
     }
 
+    // ── Lifecycle ────────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
+        // ИСПРАВЛЕНО: подписка через IZIndexService.TopOwnerChanged (не SgZIndexService)
         ZIndex.TopOwnerChanged += HandleTopOwnerChanged;
-        _lastParentLeft = Left;
-        _lastParentTop = Top;
-        _lastParentWidth = Width;
+
+        _lastParentLeft   = Left;
+        _lastParentTop    = Top;
+        _lastParentWidth  = Width;
         _lastParentHeight = Height;
     }
 
-    // Track parent-supplied parameter values separately from JS-driven runtime state.
-    // Without this, any parent re-render (e.g. typing in an unrelated input) resets
-    // Left/Top back to the literal values supplied in markup, undoing user drag/resize.
     protected override void OnParametersSet()
     {
         var leftChangedByParent   = !double.IsNaN(_lastParentLeft)   && Left   != _lastParentLeft;
@@ -139,47 +157,34 @@
         var widthChangedByParent  = !double.IsNaN(_lastParentWidth)  && Width  != _lastParentWidth;
         var heightChangedByParent = !double.IsNaN(_lastParentHeight) && Height != _lastParentHeight;
 
-        // Snapshot what the parent actually sent before we overwrite the properties.
         var parentLeft   = Left;
         var parentTop    = Top;
         var parentWidth  = Width;
         var parentHeight = Height;
 
+        // Восстанавливаем runtime-значения если родитель их не менял
         if (!leftChangedByParent   && _runtimeLeft   is { } rl) Left   = rl;
         if (!topChangedByParent    && _runtimeTop    is { } rt) Top    = rt;
         if (!widthChangedByParent  && _runtimeWidth  is { } rw) Width  = rw;
         if (!heightChangedByParent && _runtimeHeight is { } rh) Height = rh;
 
-        // Always track the parent-supplied value, not the runtime-overridden one.
         _lastParentLeft   = parentLeft;
         _lastParentTop    = parentTop;
         _lastParentWidth  = parentWidth;
         _lastParentHeight = parentHeight;
     }
 
-    private double? _runtimeLeft;
-    private double? _runtimeTop;
-    private double? _runtimeWidth;
-    private double? _runtimeHeight;
-
-    private void HandleTopOwnerChanged(object? topOwner)
-    {
-        var isTop = ReferenceEquals(topOwner, this);
-        if (_isFocused != isTop)
-        {
-            _isFocused = isTop;
-            InvokeAsync(StateHasChanged);
-        }
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
+
         if (!Visible)
         {
             if (_zIndex > 0)
             {
-                ZIndex.Release(this);
+                // ИСПРАВЛЕНО: Release(int) — передаём _zIndex, а не this
+                ZIndex.Release(_zIndex);
+                ZIndex.RemoveFromStack(this);
                 _zIndex = 0;
                 _isFocused = false;
             }
@@ -189,15 +194,18 @@
 
         if (_zIndex == 0)
         {
-            _zIndex = ZIndex.Allocate(this, SgZIndexService.WindowBase);
+            // ИСПРАВЛЕНО: Allocate(int baseZIndex) — вместо Allocate(this, SgZIndexService.WindowBase)
+            _zIndex = ZIndex.Allocate(ZIndexService.WindowBase);
+            ZIndex.BringToFront(this);
         }
 
         if (_attached) return;
+
         try
         {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-window.js");
-            if (_isDisposed) return;
-            
+            _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import", "_content/SuperUI/superui-window.js");
+            if (IsDisposed) return;
             _self ??= DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync("attach", _el, _self);
             _attached = true;
@@ -206,13 +214,16 @@
         catch (TaskCanceledException) { }
     }
 
+    // ── JS-invokable методы ───────────────────────────────────────────────────────
     [JSInvokable]
-    public async Task FocusAsync()
+    public Task FocusAsync()
     {
-        if (_isDisposed || _isFocused) return;
-        _zIndex = ZIndex.Allocate(this, ZIndexService.WindowBase);
+        if (IsDisposed || _isFocused) return Task.CompletedTask;
+        // ИСПРАВЛЕНО: Allocate(int) + BringToFront (не Allocate(this, ZIndexService.WindowBase))
+        _zIndex    = ZIndex.Allocate(ZIndexService.WindowBase);
         _isFocused = true;
-        await InvokeAsync(StateHasChanged);
+        ZIndex.BringToFront(this);
+        return InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -228,16 +239,16 @@
     {
         if (!_maximized)
         {
-            _savedLeft = Left;
-            _savedTop = Top;
-            _savedWidth = Width;
+            _savedLeft   = Left;
+            _savedTop    = Top;
+            _savedWidth  = Width;
             _savedHeight = Height;
         }
         else
         {
-            Left = _savedLeft;
-            Top = _savedTop;
-            Width = _savedWidth;
+            Left   = _savedLeft;
+            Top    = _savedTop;
+            Width  = _savedWidth;
             Height = _savedHeight;
         }
         _maximized = !_maximized;
@@ -247,17 +258,19 @@
     [JSInvokable]
     public async Task UpdateBoundsAsync(double left, double top, double width, double height)
     {
-        Left = left;
-        Top = top;
-        Width = width;
+        Left   = left;
+        Top    = top;
+        Width  = width;
         Height = height;
-        _runtimeLeft = left;
-        _runtimeTop = top;
-        _runtimeWidth = width;
+
+        _runtimeLeft   = left;
+        _runtimeTop    = top;
+        _runtimeWidth  = width;
         _runtimeHeight = height;
-        if (LeftChanged.HasDelegate) await LeftChanged.InvokeAsync(left);
-        if (TopChanged.HasDelegate) await TopChanged.InvokeAsync(top);
-        if (WidthChanged.HasDelegate) await WidthChanged.InvokeAsync(width);
+
+        if (LeftChanged.HasDelegate)   await LeftChanged.InvokeAsync(left);
+        if (TopChanged.HasDelegate)    await TopChanged.InvokeAsync(top);
+        if (WidthChanged.HasDelegate)  await WidthChanged.InvokeAsync(width);
         if (HeightChanged.HasDelegate) await HeightChanged.InvokeAsync(height);
         if (BoundsChanged.HasDelegate) await BoundsChanged.InvokeAsync(new WindowBounds(left, top, width, height));
     }
@@ -266,50 +279,66 @@
     public async Task CloseAsync()
     {
         _attached = false;
-        if (_zIndex > 0) { ZIndex.Release(this); _zIndex = 0; }
+        if (_zIndex > 0)
+        {
+            // ИСПРАВЛЕНО: Release(_zIndex) не Release(this)
+            ZIndex.Release(_zIndex);
+            ZIndex.RemoveFromStack(this);
+            _zIndex = 0;
+        }
         if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(false);
-        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (OnClose.HasDelegate)        await OnClose.InvokeAsync();
     }
 
+    // ── Обработчик события TopOwnerChanged ───────────────────────────────────────
+    private void HandleTopOwnerChanged(object? topOwner)
+    {
+        // ИСПРАВЛЕНО: событие теперь в IZIndexService, параметр object? (не SgDockWindow)
+        var isTop = ReferenceEquals(topOwner, this);
+        if (_isFocused != isTop)
+        {
+            _isFocused = isTop;
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ── IAsyncDisposable ──────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-        _attached = false;
+        // ИСПРАВЛЕНО: Interlocked.Exchange — идемпотентный Dispose (устраняет двойной dispose)
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
+        _attached = false;
         ZIndex.TopOwnerChanged -= HandleTopOwnerChanged;
 
         if (_zIndex > 0)
         {
-            ZIndex.Release(this);
+            ZIndex.Release(_zIndex);
+            ZIndex.RemoveFromStack(this);
             _zIndex = 0;
         }
 
-        // 1. Уведомить JS о dispose
-        if (_module is not null && _attached)
+        if (_module is not null)
         {
-            try { await _module.InvokeVoidAsync("detach", _el); }
+            try   { await _module.InvokeVoidAsync("detach", _el); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
-            catch { }
+            catch (JSDisconnectedException) { }
         }
 
-        // 2. Очистить DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // 3. Очистить JS модуль
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try   { await _module.DisposeAsync(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
             _module = null;
         }
     }
+
+    [Inject] private IJSRuntime JS { get; set; } = null!;
 }

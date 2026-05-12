@@ -6,6 +6,11 @@
 // 4. SafeInvokeAsync<TResult,T1> — 1-arg без params-аллокации
 // 5. TryDisposeModuleAsync — fire-and-forget с защитой от UnhandledTaskException
 // 6. DisposeComponentAsync — ValueTask (консистентно)
+//
+// ДОРАБОТКИ:
+// 7. GetModuleAsync: modulePath объявлена до try-блока (устраняет CS0165 в catch)
+// 8. SafeInvokeAsync<TResult, T1, T2> — 2-arg overload без params-аллокации
+// 9. TryDisposeModuleAsync — улучшен error logging (не static, использует Logger)
 
 using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
@@ -108,13 +113,14 @@ public abstract class SgJsComponentBase : SgComponentBase
             if (_module is not null) return _module;
             if (IsDisposed || ComponentToken.IsCancellationRequested) return null;
 
-            var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
+                var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import", ComponentToken, modulePath);
             return _module;
         }
         catch (TaskCanceledException)
         {
+            var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             if (timeoutCts.IsCancellationRequested)
                 Logger.LogWarning("[{Id}] JS module load timed out ({Timeout}s): {Path}",
                     ComponentId, JsModuleLoadTimeout.TotalSeconds, modulePath);
@@ -125,6 +131,7 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { return null; }
         catch (JSException ex)
         {
+            var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             Logger.LogError(ex, "[{Id}] JS module load failed: {Path}", ComponentId, modulePath);
             return null;
         }
@@ -361,6 +368,30 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
+    /// <summary>ДОРАБОТКА: 2-arg generic без params-аллокации.</summary>
+    protected async ValueTask<TResult> SafeInvokeAsync<TResult, T1, T2>(
+        string identifier, T1 arg1, T2 arg2)
+    {
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
+            return default!;
+        try
+        {
+            var module = await GetModuleAsync();
+            if (module is null) return default!;
+            return await module.InvokeAsync<TResult>(identifier, ComponentToken, arg1, arg2);
+        }
+        catch (TaskCanceledException) { return default!; }
+        catch (OperationCanceledException) { return default!; }
+        catch (JSDisconnectedException) { return default!; }
+        catch (ObjectDisposedException) { return default!; }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[{ComponentId}] JS call '{Identifier}' failed",
+                ComponentId, identifier);
+            return default!;
+        }
+    }
+
     // ── SafeGlobalInvokeVoidAsync ───────────────────────────────────────────────────
     protected async ValueTask SafeGlobalInvokeVoidAsync(string identifier, params object?[] args)
     {
@@ -373,13 +404,17 @@ public abstract class SgJsComponentBase : SgComponentBase
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────────
-    // ИСПРАВЛЕНО: защита от UnhandledTaskException в fire-and-forget
-    private static Task TryDisposeModuleAsync(IJSObjectReference module)
+    // ДОРАБОТКА: улучшен error logging (не static, использует Logger)
+    private Task TryDisposeModuleAsync(IJSObjectReference module)
     {
         var vt = module.DisposeAsync();
         if (vt.IsCompletedSuccessfully) return Task.CompletedTask;
         return vt.AsTask().ContinueWith(
-            static t => { /* ignore all errors */ },
+            t =>
+            {
+                if (t.IsFaulted)
+                    Logger.LogDebug(t.Exception, "[{Id}] JS module dispose error", ComponentId);
+            },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Current);

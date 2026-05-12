@@ -90,7 +90,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         => DebounceAsync(key, () => { action(); return Task.CompletedTask; }, delay);
 
     /// <summary>Явно отменить все pending debounce-операции.</summary>
-    protected void ClearDebouncers()
+    public void ClearDebouncers()
     {
         lock (_debounceLock)
         {
@@ -332,13 +332,19 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     protected async Task HandleMouseEnterAsync(MouseEventArgs e)
     {
         if (IsDisposed) return;
-        await OnMouseEnter.InvokeAsync(e);
+        try   { await OnMouseEnter.InvokeAsync(e); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        { Logger.LogError(ex, "[{Id}] OnMouseEnter handler error", ComponentId); }
     }
 
     protected async Task HandleMouseLeaveAsync(MouseEventArgs e)
     {
         if (IsDisposed) return;
-        await OnMouseLeave.InvokeAsync(e);
+        try   { await OnMouseLeave.InvokeAsync(e); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        { Logger.LogError(ex, "[{Id}] OnMouseLeave handler error", ComponentId); }
     }
 
     // ── Dispose ───────────────────────────────────────────────────────────────

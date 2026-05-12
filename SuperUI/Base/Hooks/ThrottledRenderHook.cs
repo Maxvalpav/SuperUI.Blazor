@@ -1,7 +1,10 @@
 // SuperUI/Base/Hooks/ThrottledRenderHook.cs
-// ИСПРАВЛЕНО:
-// 1. DateTime.UtcNow → Stopwatch.GetTimestamp() (точнее, без аллокаций)
-// 2. _lastRenderTicks: long + Interlocked.Read/Exchange (thread-safe, ARM-safe)
+//
+// ДОРАБОТКИ:
+// 1. Reset() — сброс таймера (для тестов)
+// 2. LastRenderTime — публичное свойство для диагностики
+// 3. Документация ⚠️ особенностей
+
 using System.Diagnostics;
 using SuperUI.Base;
 
@@ -9,43 +12,45 @@ namespace SuperUI.Base.Hooks;
 
 /// <summary>
 /// Хук для ограничения частоты рендеринга (throttle).
-/// Пропускает рендер если с последнего прошло меньше <see cref="MinInterval"/>.
+/// Первый рендер всегда проходит.
 /// </summary>
 /// <remarks>
-/// ⚠️ Blazor вызывает ShouldRender() несколько раз при изменении параметров.
+/// ⚠️ Blazor может вызывать ShouldRender() несколько раз при изменении параметров.
 /// ThrottledRenderHook гарантирует не более одного рендера за MinInterval.
-/// Первый рендер всегда проходит (_lastRenderTicks = 0).
 /// При minInterval ≤ 16ms подходит для анимаций (~60fps).
 /// </remarks>
-public sealed class ThrottledRenderHook : IRenderHook
+public sealed class ThrottledRenderHook : IRenderHook, IComponentHook
 {
     private readonly long _minIntervalTicks;
     private long _lastRenderTicks;
 
-    /// <summary>Минимальный интервал между рендерами.</summary>
     public TimeSpan MinInterval { get; }
 
     public ThrottledRenderHook(TimeSpan minInterval)
     {
         if (minInterval <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(minInterval), "Must be positive.");
-
-        MinInterval = minInterval;
+        MinInterval       = minInterval;
         _minIntervalTicks = (long)(minInterval.TotalSeconds * Stopwatch.Frequency);
     }
 
-    // IRenderHook
     public bool ShouldRender(SgComponentBase c)
     {
-        var now = Stopwatch.GetTimestamp();
+        var now  = Stopwatch.GetTimestamp();
         var last = Interlocked.Read(ref _lastRenderTicks);
         if (now - last < _minIntervalTicks) return false;
-        // ИСПРАВЛЕНО: CompareExchange — атомарно обновляем только если last не изменился
         return Interlocked.CompareExchange(ref _lastRenderTicks, now, last) == last;
     }
 
-    // IComponentHook — default-реализации (методы не нужны)
-    public void OnInitialized(SgComponentBase c) { }
-    public void OnParametersSet(SgComponentBase c) { }
-    public void OnAfterRender(SgComponentBase c, bool firstRender) { }
+    /// <summary>Сброс таймера (для тестов или принудительного рендера).</summary>
+    public void Reset() => Interlocked.Exchange(ref _lastRenderTicks, 0);
+
+    /// <summary>Время последнего рендера (для диагностики).</summary>
+    public TimeSpan TimeSinceLastRender =>
+        Stopwatch.GetElapsedTime(Interlocked.Read(ref _lastRenderTicks));
+
+    // IComponentHook default-реализации
+    public void OnInitialized(SgComponentBase c)             { }
+    public void OnParametersSet(SgComponentBase c)           { }
+    public void OnAfterRender(SgComponentBase c, bool first) { }
 }

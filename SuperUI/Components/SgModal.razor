@@ -1,124 +1,90 @@
 @namespace SuperUI.Components
+@using SuperUI.Base.Services
 @using SuperUI.Localization
-@using SuperUI.Services
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject ISuperUILocalizer Localizer
-@inject ZIndexService ZIndex
+@inject IZIndexService ZIndex
 
 @if (Visible || _isClosing)
 {
-    <div class="sgc-modal-backdrop @(_isClosing ? "sgc-closing" : "")" style="z-index: @_backdropZIndex" @onclick="BackdropClickAsync">
-        <div class="sgc-modal sgc-modal-anim-@AnimationClass @CssClass" 
-             style="@GetStyle()" 
-             role="dialog" 
-             aria-modal="true" 
-             aria-labelledby="@_titleId"
-             aria-describedby="@_bodyId"
-             tabindex="-1"
-             @ref="_modalRef"
-             @onclick:stopPropagation="true">
-            <div class="sgc-modal-header" @ref="_headerRef">
-                <span id="@_titleId" class="sgc-modal-title">@Title</span>
-                @if (ShowClose)
-                {
-                    <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Close"]">×</button>
-                }
-            </div>
-            <div id="@_bodyId" class="sgc-modal-body">
-                @ChildContent
-            </div>
-            @if (FooterContent is not null)
+    <!-- Backdrop -->
+    <div class="sg-modal-backdrop @(_isClosing ? "sg-modal-backdrop--closing" : "")"
+         style="z-index:@(_backdropZIndex)"
+         @onclick="BackdropClickAsync" />
+
+    <!-- Modal -->
+    <div @ref="_modalRef"
+         class="sg-modal sg-modal--@AnimationClass @(_isClosing ? "sg-modal--closing" : "") @CssClass"
+         style="@GetStyle()"
+         role="dialog"
+         aria-modal="true"
+         aria-labelledby="@_titleId"
+         aria-describedby="@_bodyId"
+         tabindex="-1"
+         @onkeydown="HandleKeyDownAsync">
+
+        <!-- Header -->
+        <div @ref="_headerRef" class="sg-modal__header">
+            <h2 id="@_titleId" class="sg-modal__title">@Title</h2>
+            @if (ShowClose)
             {
-                <div class="sgc-modal-footer">@FooterContent</div>
+                <button class="sg-modal__close"
+                        aria-label="@Localizer["Close"]"
+                        @onclick="CloseAsync">×</button>
             }
         </div>
+
+        <!-- Body -->
+        <div id="@_bodyId" class="sg-modal__body">
+            @ChildContent
+        </div>
+
+        <!-- Footer -->
+        @if (FooterContent is not null)
+        {
+            <div class="sg-modal__footer">
+                @FooterContent
+            </div>
+        }
     </div>
 }
 
 @code {
+    // ── IDs ──────────────────────────────────────────────────────────────────────
     private readonly string _titleId = "modal-title-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _bodyId = "modal-body-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _bodyId  = "modal-body-"  + Guid.NewGuid().ToString("N")[..8];
+
+    // ── Состояние ────────────────────────────────────────────────────────────────
     private ElementReference _modalRef;
     private ElementReference _headerRef;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgModal>? _self;
-    private bool _isDisposed;
+    private int  _disposed;   // Interlocked
     private bool _previousVisible;
     private bool _isClosing;
-    private int _zIndex;
-    private int _backdropZIndex;
+    private int  _zIndex;
+    private int  _backdropZIndex;
     private CancellationTokenSource? _closeCts;
 
-    /// <summary>
-    /// Gets or sets whether the modal is visible.
-    /// </summary>
-    [Parameter] public bool Visible { get; set; }
-
-    /// <summary>
-    /// Callback invoked when <see cref="Visible"/> changes.
-    /// </summary>
+    // ── Параметры ────────────────────────────────────────────────────────────────
+    [Parameter] public bool              Visible        { get; set; }
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    [Parameter] public string?           Title          { get; set; }
+    [Parameter] public RenderFragment?   ChildContent   { get; set; }
+    [Parameter] public RenderFragment?   FooterContent  { get; set; }
+    [Parameter] public bool              ShowClose      { get; set; } = true;
+    [Parameter] public bool              CloseOnBackdrop{ get; set; } = true;
+    [Parameter] public bool              CloseOnEscape  { get; set; } = true;
+    [Parameter] public SgModalAnimation  Animation      { get; set; } = SgModalAnimation.Scale;
+    [Parameter] public bool              Draggable      { get; set; }
+    [Parameter] public string?           CssClass       { get; set; }
+    [Parameter] public string?           Style          { get; set; }
+    [Parameter] public string?           Width          { get; set; }
+    [Parameter] public EventCallback     OnClose        { get; set; }
 
-    /// <summary>
-    /// Gets or sets the modal title text.
-    /// </summary>
-    [Parameter] public string? Title { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal body content.
-    /// </summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal footer content.
-    /// </summary>
-    [Parameter] public RenderFragment? FooterContent { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether to show the close button in the header. Default is true.
-    /// </summary>
-    [Parameter] public bool ShowClose { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether clicking the backdrop closes the modal. Default is true.
-    /// </summary>
-    [Parameter] public bool CloseOnBackdrop { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets whether pressing ESC closes the modal. Default is true.
-    /// </summary>
-    [Parameter] public bool CloseOnEscape { get; set; } = true;
-
-    /// <summary>
-    /// Gets or sets the modal animation type. Default is <see cref="SgModalAnimation.Scale"/>.
-    /// </summary>
-    [Parameter] public SgModalAnimation Animation { get; set; } = SgModalAnimation.Scale;
-
-    /// <summary>
-    /// Gets or sets whether the modal is draggable by its header.
-    /// </summary>
-    [Parameter] public bool Draggable { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional CSS class names for the modal.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets inline styles for the modal.
-    /// </summary>
-    [Parameter] public string? Style { get; set; }
-
-    /// <summary>
-    /// Gets or sets the modal width (e.g., "600px", "50%").
-    /// </summary>
-    [Parameter] public string? Width { get; set; }
-
-    /// <summary>
-    /// Callback invoked when the modal is closed.
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
+    // ── Вспомогательные ──────────────────────────────────────────────────────────
+    private bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
     private string AnimationClass => Animation switch
     {
@@ -127,61 +93,65 @@
         _                      => "scale"
     };
 
+    // ── Lifecycle ─────────────────────────────────────────────────────────────────
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
 
         if (Visible && !_previousVisible)
         {
-            // Modal just opened
-            _zIndex = ZIndex.Allocate(this, SgZIndexService.ModalBase);
+            // ИСПРАВЛЕНО: Allocate(int) вместо Allocate(this, SgZIndexService.ModalBase)
+            _zIndex         = ZIndex.Allocate(ZIndexService.ModalBase);
             _backdropZIndex = _zIndex - 5;
-            
+
             try
             {
-                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-modal.js");
-                if (_isDisposed) return;
-
+                _module ??= await JS.InvokeAsync<IJSObjectReference>(
+                    "import", "_content/SuperUI/superui-modal.js");
+                if (IsDisposed) return;
                 _self ??= DotNetObjectReference.Create(this);
                 await _module.InvokeVoidAsync("attach", _modalRef, _self, CloseOnEscape);
-
                 if (Draggable)
-                {
                     await _module.InvokeVoidAsync("initDrag", _modalRef, _headerRef);
-                }
             }
             catch (JSException) { }
             catch (TaskCanceledException) { }
+            catch (JSDisconnectedException) { }
         }
         else if (!Visible && _previousVisible)
         {
-            // Modal just closed
             if (_zIndex > 0)
             {
-                ZIndex.Release(this);
+                // ИСПРАВЛЕНО: Release(_zIndex) вместо Release(this)
+                ZIndex.Release(_zIndex);
                 _zIndex = 0;
             }
-            
             if (_module is not null)
             {
-                try
-                {
-                    await _module.InvokeVoidAsync("detach");
-                }
+                try   { await _module.InvokeVoidAsync("detach"); }
                 catch (JSException) { }
                 catch (TaskCanceledException) { }
+                catch (JSDisconnectedException) { }
             }
         }
 
         _previousVisible = Visible;
     }
 
+    // ── JS-invokable ─────────────────────────────────────────────────────────────
     [JSInvokable]
     public Task CloseFromJsAsync() => CloseAsync();
 
+    // ── Keyboard ──────────────────────────────────────────────────────────────────
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (CloseOnEscape && e.Key == "Escape") await CloseAsync();
+    }
+
+    // ── CloseAsync ────────────────────────────────────────────────────────────────
     public async Task CloseAsync()
     {
-        if (_isDisposed || _isClosing) return;
+        if (IsDisposed || _isClosing) return;
 
         _closeCts?.Cancel();
         _closeCts?.Dispose();
@@ -191,59 +161,60 @@
         _isClosing = true;
         StateHasChanged();
 
-        try { await Task.Delay(200, token); }
+        try
+        {
+            await Task.Delay(200, token);
+        }
         catch (TaskCanceledException) { return; }
 
         _isClosing = false;
         if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(false);
-        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+        if (OnClose.HasDelegate)        await OnClose.InvokeAsync();
     }
 
+    // ── Style ─────────────────────────────────────────────────────────────────────
     private string GetStyle()
     {
-        var styles = new List<string>();
-        if (_zIndex > 0) styles.Add($"z-index: {_zIndex}");
-        if (!string.IsNullOrEmpty(Width)) styles.Add($"width: {Width}");
-        if (!string.IsNullOrEmpty(Style)) styles.Add(Style);
-        return string.Join("; ", styles);
+        var parts = new List<string>();
+        if (_zIndex > 0)                     parts.Add($"z-index:{_zIndex}");
+        if (!string.IsNullOrEmpty(Width))    parts.Add($"width:{Width}");
+        if (!string.IsNullOrEmpty(Style))    parts.Add(Style!);
+        return string.Join(";", parts);
     }
 
+    // ── Backdrop ──────────────────────────────────────────────────────────────────
     private Task BackdropClickAsync() => CloseOnBackdrop ? CloseAsync() : Task.CompletedTask;
 
+    // ── IAsyncDisposable ──────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         _closeCts?.Cancel();
         _closeCts?.Dispose();
 
-        if (_zIndex > 0) { ZIndex.Release(this); _zIndex = 0; }
+        if (_zIndex > 0)
+        {
+            ZIndex.Release(_zIndex);
+            _zIndex = 0;
+        }
 
-        // Notify JS to dispose first
         if (_module is not null)
         {
-            try
-            {
-                await _module.InvokeVoidAsync("detach");
-            }
+            try   { await _module.InvokeVoidAsync("detach"); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
+            catch (JSDisconnectedException) { }
             catch (ObjectDisposedException) { }
         }
 
-        // Then dispose DotNetObjectReference
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // Finally dispose JS module
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try   { await _module.DisposeAsync(); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }

@@ -8,7 +8,9 @@
 // 5. BuildAriaAttributes: добавлен aria-labelledby если есть Title параметр.
 // 6. AnimationDurationMs: защита от отрицательных значений.
 //
-// (Изменённые члены — полный список)
+// ДОРАБОТКИ:
+// 7. ZIndexBase — virtual property для переопределения базового z-index в подклассах.
+// 8. OnOpenCoreAsync: Allocate(ZIndexBase) вместо GetNext().
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -42,11 +44,14 @@ public abstract class SgOverlayBase : SgInteractiveBase
     protected bool IsAnimatingClose   { get; private set; }
     protected virtual string AriaRole => "dialog";
 
-    // УЛУЧШЕНО: защита от отрицательных значений
+    // ДОРАБОТКА: защита от отрицательных значений
     protected virtual int AnimationDurationMs =>
         Math.Max(0, _animationDurationMs);
 
     protected virtual bool HasAriaModal => true;
+
+    /// <summary>Базовый z-index для этого типа overlay. Переопределите в подклассе.</summary>
+    protected virtual int ZIndexBase => Services.ZIndexService.ModalBase;
 
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
@@ -105,7 +110,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     private async Task OnOpenCoreAsync()
     {
-        _zIndex = ZIndexService.GetNext();
+        // ДОРАБОТКА: Allocate(ZIndexBase) вместо GetNext()
+        _zIndex = ZIndexService.Allocate(ZIndexBase);
         if (LockBodyScroll)
             await SafeInvokeVoidAsync("lockBodyScroll", null, ComponentId);
         if (TrapFocus)
