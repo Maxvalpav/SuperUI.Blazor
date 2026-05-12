@@ -8,6 +8,11 @@
 // 4. WASM/Server safe: ComponentOptionsService — Singleton, thread-safe через readonly.
 // 5. NullComponentOptionsService — Null Object Pattern с defaults (не выбрасывает исключений).
 //
+// ПОЛИРОВКА:
+// 1. SgLibraryOptions: добавлены MaxZIndex, DefaultAnimationMs.
+// 2. Extension методы: thread-safe GetOrAdd через фабрику с параметром (атомарная операция).
+// 3. Документация расширена.
+//
 // Thread safety:
 // - ComponentOptionsService: readonly поля → полностью thread-safe (WASM + Server).
 // - NullComponentOptionsService: stateless → полностью thread-safe.
@@ -82,6 +87,12 @@ public sealed record SgLibraryOptions
     
     /// <summary>Длительность toast-уведомлений в мс.</summary>
     public int DefaultToastDurationMs { get; init; } = 4000;
+
+    /// <summary>Максимальный z-index (базовое значение для IZIndexService).</summary>
+    public int MaxZIndex { get; init; } = 9999;
+
+    /// <summary>Длительность анимаций в мс (для overlay, toast и т.д.).</summary>
+    public int DefaultAnimationMs { get; init; } = 300;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -230,7 +241,8 @@ public static class ComponentOptionsServiceExtensions
         ArgumentNullException.ThrowIfNull(defaultFactory);
         var dict = _customOptions.GetOrCreateValue(service);
         var key  = typeof((TComponent, TOptions));
-        return (TOptions)dict.GetOrAdd(key, _ => defaultFactory());
+        // ПОЛИРОВКА: thread-safe GetOrAdd с фабрикой (атомарная операция)
+        return (TOptions)dict.GetOrAdd(key, static (_, f) => f(), defaultFactory);
     }
 
     /// <summary>

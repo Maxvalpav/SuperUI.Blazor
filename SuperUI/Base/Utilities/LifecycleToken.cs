@@ -1,25 +1,37 @@
 // SuperUI/Base/Utilities/LifecycleToken.cs
 //
-// Отменяемый CancellationToken привязанный к жизненному циклу компонента.
-// Используется в SgJsComponentBase для отмены JS-вызовов при Dispose.
-//
-// Thread-safe: CancellationTokenSource внутри потокобезопасен.
+// НОВЫЙ: CancellationToken привязанный к жизненному циклу компонента.
+// Отменяется при OnInitialized (переинициализация) и DisposeAsync.
+// Используется для отмены JS interop вызовов при навигации/dispose.
 
 namespace SuperUI.Base.Utilities;
 
 /// <summary>
-/// Управляемый токен отмены для жизненного цикла компонента.
-/// Отменяется при Dispose или при явном вызове Cancel().
+/// CancellationToken, привязанный к жизненному циклу компонента.
+/// Создаётся в <c>OnInitialized</c>, отменяется при dispose или переинициализации.
 /// </summary>
+/// <remarks>
+/// Thread safety: CancellationTokenSource — thread-safe.
+/// WASM: работает корректно.
+/// Server: каждый circuit — свой экземпляр (Scoped/per-component).
+/// </remarks>
 public sealed class LifecycleToken : IDisposable
 {
-    private CancellationTokenSource _cts = new();
+    private readonly CancellationTokenSource _cts;
     private int _disposed;
 
-    /// <summary>Токен отмены компонента.</summary>
+    public LifecycleToken()
+    {
+        _cts = new CancellationTokenSource();
+    }
+
+    /// <summary>CancellationToken жизненного цикла компонента.</summary>
     public CancellationToken Token => _cts.Token;
 
-    /// <summary>Отменить все ожидающие операции.</summary>
+    /// <summary>Token отменён (компонент задиспожен или переинициализирован).</summary>
+    public bool IsCancellationRequested => _cts.IsCancellationRequested;
+
+    /// <summary>Запросить отмену (вызывается при OnInitialized/DisposeAsync).</summary>
     public void Cancel()
     {
         if (Volatile.Read(ref _disposed) == 1) return;
@@ -27,16 +39,11 @@ public sealed class LifecycleToken : IDisposable
         catch (ObjectDisposedException) { }
     }
 
-    /// <summary>Сбросить токен (создать новый CTS).</summary>
-    public void Reset()
+    /// <summary>Запросить отмену с задержкой.</summary>
+    public void CancelAfter(TimeSpan delay)
     {
         if (Volatile.Read(ref _disposed) == 1) return;
-        var old = Interlocked.Exchange(ref _cts, new CancellationTokenSource());
-        try
-        {
-            old.Cancel();
-            old.Dispose();
-        }
+        try { _cts.CancelAfter(delay); }
         catch (ObjectDisposedException) { }
     }
 

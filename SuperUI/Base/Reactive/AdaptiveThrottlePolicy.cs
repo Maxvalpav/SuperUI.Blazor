@@ -6,7 +6,7 @@
 // При 30fps: интервал = 33ms (один кадр)
 // При высокой нагрузке CPU: интервал увеличивается автоматически
 //
-// Аналогов в MudBlazor / Radzen / Telerik / DevExpress нет.
+
 namespace SuperUI.Base.Reactive;
 
 /// <summary>

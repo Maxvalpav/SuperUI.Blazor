@@ -11,6 +11,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SuperUI.Base.Diagnostics;
 using SuperUI.Base.Hooks;
@@ -37,6 +38,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     // ── Инъекции ──────────────────────────────────────────────────────────────────
     [Inject] protected ILogger<SgComponentBase> Logger { get; set; } = null!;
     [Inject] protected IComponentOptionsService OptionsService { get; set; } = null!;
+    [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
 
     // ── Каскадные параметры ───────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
@@ -74,7 +76,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     // ИСПРАВЛЕНО: lock для атомарного обновления пары (_ariaCache, _ariaCacheGeneration)
     private readonly object _ariaCacheLock = new();
     private IReadOnlyDictionary<string, object>? _ariaCache;
-    private int _ariaCacheGeneration = -1;
+    private int _ariaCacheGeneration = -2;
     private int _ariaGeneration;
 
 #if DEBUG
@@ -254,18 +256,19 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 #if DEBUG
         _renderStartTick = Stopwatch.GetTimestamp();
 #endif
+        await base.OnAfterRenderAsync(firstRender);
+
         if (firstRender)
         {
             await OnFirstRenderAsync();
-            // Уведомляем хуки о первом рендере
             foreach (var hook in _hooks)
                 if (hook is IAsyncComponentHook ah)
                     await ah.OnFirstRenderAsync(this);
         }
+
         foreach (var hook in _hooks)
             if (hook is IAsyncComponentHook ah)
                 await ah.OnAfterRenderAsync(this, firstRender);
-        await base.OnAfterRenderAsync(firstRender);
     }
 
     /// <summary>
@@ -336,6 +339,12 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(() => { action(); StateHasChanged(); });
     }
 
+    public Task RefreshAsync(Func<Task> action)
+    {
+        if (IsDisposed) return Task.CompletedTask;
+        return InvokeAsync(async () => { await action(); StateHasChanged(); });
+    }
+
     protected Task SafeInvokeAsync(Func<Task> action)
     {
         if (IsDisposed) return Task.CompletedTask;
@@ -346,6 +355,15 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     {
         if (IsDisposed) return Task.CompletedTask;
         return InvokeAsync(action);
+    }
+
+    protected T? TryGetService<T>() where T : class
+        => ServiceProvider.GetService<T>();
+
+    protected void ThrowIfDisposed()
+    {
+        if (IsDisposed)
+            throw new ObjectDisposedException(ComponentId, $"Component {ComponentId} is disposed.");
     }
 
     // ── IsBrowser helpers ────────────────────────────────────────────────────────────

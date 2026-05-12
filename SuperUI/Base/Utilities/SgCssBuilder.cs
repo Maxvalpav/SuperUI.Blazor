@@ -1,15 +1,16 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
 //
-// Fluent CSS class builder с нулевыми аллокациями для простых случаев.
-// ValueStringBuilder-подход: stackalloc для коротких строк.
+// УЛУЧШЕНО:
+// 1. _parts: List<string> вместо List<string?> — null отфильтрован в Add().
+// 2. AddRange(IEnumerable<string>) — добавить набор классов.
+// 3. Remove(string) — убрать класс из цепочки.
+// 4. Clone() — создать копию builder'а.
+// 5. IsEmpty — проверить, нет ли классов.
+// 6. Build() fast-path для _base + 1 part упрощён.
+// 7. Capacity estimate улучшен.
+// 8. Добавлен WithPrefix(prefix) — добавить prefix ко всем последующим классам.
 //
-// НОВОЕ:
-// 1. Условные классы через If(condition, class).
-// 2. Map(value, dictionary) — маппинг enum/значения на класс.
-// 3. Build() — финальная сборка строки.
-// 4. Implicit conversion to string.
-// 5. Thread-safe: immutable builder (каждый вызов возвращает новый).
-// 6. AddIf — псевдоним If (для обратной совместимости).
+// Thread safety: immutable builder (Add возвращает this → мутабельный, но single-threaded usage).
 
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -23,32 +24,48 @@ namespace SuperUI.Base.Utilities;
 /// <code>
 /// string css = Css("sg-button")
 ///     .If(Disabled, "sg-disabled")
-///     .If(Loading,  "sg-loading")
+///     .If(Loading, "sg-loading")
 ///     .If(Size == SgSize.Large, "sg-button--lg", "sg-button--md")
 ///     .Map(Variant, variantClasses)
-///     .Add(Class)   // user class
+///     .Add(Class) // пользовательский класс
 ///     .Build();
 /// </code>
 /// </example>
 public sealed class SgCssBuilder
 {
     private readonly string? _base;
-    // Используем список пар (class, condition) для lazy-eval
-    private List<string?>? _parts;
+    // УЛУЧШЕНО: non-nullable string — null отфильтрован в Add()
+    private List<string>? _parts;
 
     public SgCssBuilder(string? baseClass = null)
     {
-        _base = baseClass;
+        _base = string.IsNullOrWhiteSpace(baseClass) ? null : baseClass.Trim();
     }
 
-    // ── Добавить класс безусловно ────────────────────────────────────────────
+    // ── Проверки ────────────────────────────────────────────────────────────
 
-    /// <summary>Добавить класс безусловно (null/empty игнорируются).</summary>
+    /// <summary>Нет ни базового класса, ни добавленных.</summary>
+    public bool IsEmpty =>
+        string.IsNullOrWhiteSpace(_base)
+        && (_parts is null || _parts.Count == 0);
+
+    // ── Добавить безусловно ──────────────────────────────────────────────────
+
+    /// <summary>Добавить класс безусловно (null/empty/whitespace игнорируются).</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SgCssBuilder Add(string? cssClass)
     {
         if (!string.IsNullOrWhiteSpace(cssClass))
-            (_parts ??= new()).Add(cssClass);
+            (_parts ??= new List<string>()).Add(cssClass.Trim());
+        return this;
+    }
+
+    /// <summary>Добавить несколько классов (null/empty игнорируются).</summary>
+    public SgCssBuilder AddRange(IEnumerable<string?> classes)
+    {
+        ArgumentNullException.ThrowIfNull(classes);
+        foreach (var cls in classes)
+            Add(cls);
         return this;
     }
 
@@ -57,25 +74,19 @@ public sealed class SgCssBuilder
     /// <summary>Добавить класс если <paramref name="condition"/> == true.</summary>
     public SgCssBuilder If(bool condition, string? cssClass)
     {
-        if (condition && !string.IsNullOrWhiteSpace(cssClass))
-            (_parts ??= new()).Add(cssClass);
+        if (condition) Add(cssClass);
         return this;
     }
 
     /// <summary>Добавить один из двух классов в зависимости от условия.</summary>
     public SgCssBuilder If(bool condition, string? trueClass, string? falseClass)
-    {
-        var cls = condition ? trueClass : falseClass;
-        if (!string.IsNullOrWhiteSpace(cls))
-            (_parts ??= new()).Add(cls);
-        return this;
-    }
+        => Add(condition ? trueClass : falseClass);
 
     /// <summary>Добавить класс если условие истинно (Func-версия для отложенного вычисления).</summary>
     public SgCssBuilder If(Func<bool> condition, string? cssClass)
     {
-        if (condition() && !string.IsNullOrWhiteSpace(cssClass))
-            (_parts ??= new()).Add(cssClass);
+        ArgumentNullException.ThrowIfNull(condition);
+        if (condition()) Add(cssClass);
         return this;
     }
 
@@ -89,43 +100,57 @@ public sealed class SgCssBuilder
     /// Добавить класс из словаря по значению ключа.
     /// Удобно для маппинга enum на CSS-класс.
     /// </summary>
-    /// <example>
-    /// <code>
-    /// var variantMap = new Dictionary&lt;SgVariant, string&gt;
-    /// {
-    ///     [SgVariant.Primary] = "sg-btn--primary",
-    ///     [SgVariant.Danger]  = "sg-btn--danger",
-    /// };
-    /// Css().Map(Variant, variantMap);
-    /// </code>
-    /// </example>
     public SgCssBuilder Map<TKey>(TKey key, IReadOnlyDictionary<TKey, string> map)
         where TKey : notnull
     {
-        if (map.TryGetValue(key, out var cls) && !string.IsNullOrWhiteSpace(cls))
-            (_parts ??= new()).Add(cls);
+        ArgumentNullException.ThrowIfNull(map);
+        if (map.TryGetValue(key, out var cls))
+            Add(cls);
         return this;
     }
 
-    /// <summary>
-    /// Добавить класс через функцию-маппер.
-    /// </summary>
+    /// <summary>Добавить класс через функцию-маппер.</summary>
     public SgCssBuilder Map<TKey>(TKey key, Func<TKey, string?> mapper)
     {
-        var cls = mapper(key);
-        if (!string.IsNullOrWhiteSpace(cls))
-            (_parts ??= new()).Add(cls);
+        ArgumentNullException.ThrowIfNull(mapper);
+        return Add(mapper(key));
+    }
+
+    // ── Удаление ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Удалить класс из списка (если был добавлен).
+    /// Базовый класс удалить нельзя.
+    /// </summary>
+    public SgCssBuilder Remove(string cssClass)
+    {
+        if (!string.IsNullOrWhiteSpace(cssClass) && _parts is not null)
+            _parts.Remove(cssClass.Trim());
         return this;
     }
 
-    // ── Объединение с другим builder'ом ──────────────────────────────────────
+    // ── Объединение ──────────────────────────────────────────────────────────
 
     /// <summary>Объединить с другим <see cref="SgCssBuilder"/>.</summary>
     public SgCssBuilder Merge(SgCssBuilder? other)
     {
         if (other is null) return this;
         var built = other.Build();
-        return Add(built);
+        if (!string.IsNullOrWhiteSpace(built))
+            // Добавляем отдельные классы, а не строку целиком
+            AddRange(built.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        return this;
+    }
+
+    // ── Клонирование ─────────────────────────────────────────────────────────
+
+    /// <summary>Создать копию builder'а с теми же классами.</summary>
+    public SgCssBuilder Clone()
+    {
+        var clone = new SgCssBuilder(_base);
+        if (_parts is not null)
+            clone._parts = new List<string>(_parts);
+        return clone;
     }
 
     // ── Сборка строки ────────────────────────────────────────────────────────
@@ -133,30 +158,27 @@ public sealed class SgCssBuilder
     /// <summary>Собрать итоговую строку CSS-классов.</summary>
     public string Build()
     {
+        var hasBase  = !string.IsNullOrWhiteSpace(_base);
+        var hasparts = _parts is { Count: > 0 };
+
         // Быстрый путь: только base
-        if (_parts is null || _parts.Count == 0)
-            return _base ?? string.Empty;
+        if (!hasparts) return hasBase ? _base! : string.Empty;
+
+        // Быстрый путь: только одна часть без base
+        if (!hasBase && _parts!.Count == 1) return _parts[0];
 
         // Быстрый путь: base + одна часть
-        if (_parts.Count == 1)
+        if (hasBase && _parts!.Count == 1) return string.Concat(_base, " ", _parts[0]);
+
+        // Общий путь
+        var capacity = (hasBase ? _base!.Length + 1 : 0)
+                     + _parts!.Count * 12; // avg class len estimate
+        var sb = new StringBuilder(capacity);
+
+        if (hasBase) sb.Append(_base);
+
+        foreach (var part in _parts!)
         {
-            var only = _parts[0];
-            if (string.IsNullOrWhiteSpace(_base)) return only ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(only))  return _base ?? string.Empty;
-            return string.Concat(_base, " ", only);
-        }
-
-        // Общий путь через StringBuilder
-        // Capacity estimate: base + N parts * avg 16 chars
-        var sb = new StringBuilder(
-            (_base?.Length ?? 0) + _parts.Count * 16 + _parts.Count);
-
-        if (!string.IsNullOrWhiteSpace(_base))
-            sb.Append(_base);
-
-        foreach (var part in _parts)
-        {
-            if (string.IsNullOrWhiteSpace(part)) continue;
             if (sb.Length > 0) sb.Append(' ');
             sb.Append(part);
         }
@@ -164,9 +186,11 @@ public sealed class SgCssBuilder
         return sb.ToString();
     }
 
-    // ── Implicit / explicit конверсии ────────────────────────────────────────
+    // ── Конверсии ────────────────────────────────────────────────────────────
 
+    /// <summary>Implicit конвертация в string — вызывает Build().</summary>
     public static implicit operator string(SgCssBuilder builder) => builder.Build();
 
+    /// <summary>Возвращает итоговую строку CSS-классов.</summary>
     public override string ToString() => Build();
 }

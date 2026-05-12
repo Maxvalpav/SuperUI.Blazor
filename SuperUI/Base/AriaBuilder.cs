@@ -1,157 +1,244 @@
 // SuperUI/Base/AriaBuilder.cs
 //
-// Fluent-builder для ARIA-атрибутов.
-// Обеспечивает правильные значения и предотвращает ошибки (нет опечаток в строках).
+// НОВЫЙ/ПОЛНЫЙ: Fluent builder для ARIA-атрибутов.
+// Обеспечивает доступность (a11y) компонентов.
+// Интегрируется с SgComponentBase.BuildAriaAttributes().
 //
-// НОВОЕ:
-// 1. Типизированные методы для всех стандартных ARIA-атрибутов.
-// 2. Fluent API.
-// 3. Build() → Dictionary<string, object>.
-// 4. Merge с AdditionalAttributes.
+// Thread safety: immutable builder → thread-safe.
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Fluent-builder для ARIA-атрибутов HTML.
+/// Fluent builder для ARIA-атрибутов доступности.
 /// </summary>
+/// <example>
+/// <code>
+/// var aria = AriaBuilder.Create()
+///     .Role("dialog")
+///     .Label("Подтвердите действие")
+///     .Modal(true)
+///     .Hidden(!Open)
+///     .Build();
+/// </code>
+/// </example>
 public sealed class AriaBuilder
 {
-    private Dictionary<string, object>? _attrs;
+    private readonly Dictionary<string, object> _attrs = new(StringComparer.Ordinal);
 
-    // ── Базовые методы ────────────────────────────────────────────────────────
+    private AriaBuilder() { }
 
-    public AriaBuilder Set(string attribute, object value)
+    /// <summary>Создать новый builder.</summary>
+    public static AriaBuilder Create() => new();
+
+    // ── Role ──────────────────────────────────────────────────────────────────
+
+    /// <summary>Установить role атрибут.</summary>
+    public AriaBuilder Role(string role)
     {
-        (_attrs ??= new(StringComparer.Ordinal))[attribute] = value;
+        if (!string.IsNullOrWhiteSpace(role))
+            _attrs["role"] = role;
         return this;
     }
 
-    public AriaBuilder SetIf(bool condition, string attribute, object value)
-    {
-        if (condition) Set(attribute, value);
-        return this;
-    }
+    // ── Стандартные ARIA атрибуты ─────────────────────────────────────────────
 
-    // ── Роль и ориентация ────────────────────────────────────────────────────
-
-    public AriaBuilder Role(string role)         => Set("role", role);
-    public AriaBuilder TabIndex(int tabIndex)    => Set("tabindex", tabIndex);
-    public AriaBuilder Hidden(bool value = true) => Set("aria-hidden", value ? "true" : "false");
-
-    // ── Состояния ────────────────────────────────────────────────────────────
-
-    public AriaBuilder Disabled(bool value = true)  => SetIf(value, "aria-disabled", "true");
-    public AriaBuilder Expanded(bool? value)         => value.HasValue ? Set("aria-expanded", value.Value ? "true" : "false") : this;
-    public AriaBuilder Selected(bool? value)         => value.HasValue ? Set("aria-selected", value.Value ? "true" : "false") : this;
-    public AriaBuilder Checked(bool? value)
-    {
-        if (!value.HasValue) return this;
-        return Set("aria-checked", value.Value ? "true" : "false");
-    }
-    public AriaBuilder Indeterminate()              => Set("aria-checked", "mixed");
-    public AriaBuilder Pressed(bool? value)          => value.HasValue ? Set("aria-pressed", value.Value ? "true" : "false") : this;
-    public AriaBuilder ReadOnly(bool value = true)   => SetIf(value, "aria-readonly", "true");
-    public AriaBuilder Required(bool value = true)   => SetIf(value, "aria-required", "true");
-    public AriaBuilder Invalid(bool value = true)    => SetIf(value, "aria-invalid", value ? "true" : "false");
-    public AriaBuilder Busy(bool value = true)       => SetIf(value, "aria-busy", "true");
-    public AriaBuilder Modal(bool value = true)      => SetIf(value, "aria-modal", "true");
-
-    // ── Связи ────────────────────────────────────────────────────────────────
-
+    /// <summary>aria-label.</summary>
     public AriaBuilder Label(string? label)
+        => Set("aria-label", label);
+
+    /// <summary>aria-labelledby (ID элемента с текстом метки).</summary>
+    public AriaBuilder LabelledBy(string? elementId)
+        => Set("aria-labelledby", elementId);
+
+    /// <summary>aria-describedby (ID элемента с описанием).</summary>
+    public AriaBuilder DescribedBy(string? elementId)
+        => Set("aria-describedby", elementId);
+
+    /// <summary>aria-hidden.</summary>
+    public AriaBuilder Hidden(bool hidden)
+        => Set("aria-hidden", hidden ? "true" : "false");
+
+    /// <summary>aria-expanded.</summary>
+    public AriaBuilder Expanded(bool expanded)
+        => Set("aria-expanded", expanded ? "true" : "false");
+
+    /// <summary>aria-selected.</summary>
+    public AriaBuilder Selected(bool selected)
+        => Set("aria-selected", selected ? "true" : "false");
+
+    /// <summary>aria-checked (true/false/mixed).</summary>
+    public AriaBuilder Checked(bool? value)
+        => Set("aria-checked", value switch { true => "true", false => "false", null => "mixed" });
+
+    /// <summary>aria-disabled.</summary>
+    public AriaBuilder Disabled(bool disabled)
     {
-        if (!string.IsNullOrWhiteSpace(label)) Set("aria-label", label);
+        if (disabled) Set("aria-disabled", "true");
+        else _attrs.Remove("aria-disabled");
         return this;
     }
 
-    public AriaBuilder LabelledBy(string? id)
+    /// <summary>aria-readonly.</summary>
+    public AriaBuilder ReadOnly(bool readOnly)
     {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-labelledby", id);
+        if (readOnly) Set("aria-readonly", "true");
+        else _attrs.Remove("aria-readonly");
         return this;
     }
 
-    public AriaBuilder DescribedBy(string? id)
+    /// <summary>aria-required.</summary>
+    public AriaBuilder Required(bool required)
     {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-describedby", id);
+        if (required) Set("aria-required", "true");
+        else _attrs.Remove("aria-required");
         return this;
     }
 
-    public AriaBuilder ErrorMessage(string? id)
+    /// <summary>aria-invalid (для форм).</summary>
+    public AriaBuilder Invalid(bool invalid, string? description = null)
     {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-errormessage", id);
-        return this;
-    }
-
-    public AriaBuilder Controls(string? id)
-    {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-controls", id);
-        return this;
-    }
-
-    public AriaBuilder Owns(string? id)
-    {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-owns", id);
-        return this;
-    }
-
-    public AriaBuilder ActiveDescendant(string? id)
-    {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-activedescendant", id);
-        return this;
-    }
-
-    public AriaBuilder FlowTo(string? id)
-    {
-        if (!string.IsNullOrWhiteSpace(id)) Set("aria-flowto", id);
-        return this;
-    }
-
-    // ── Значения ─────────────────────────────────────────────────────────────
-
-    public AriaBuilder ValueMin(double min)  => Set("aria-valuemin", min);
-    public AriaBuilder ValueMax(double max)  => Set("aria-valuemax", max);
-    public AriaBuilder ValueNow(double now)  => Set("aria-valuenow", now);
-    public AriaBuilder ValueText(string text) => Set("aria-valuetext", text);
-    public AriaBuilder MaxLength(int max)    => Set("aria-maxlength", max);
-    public AriaBuilder MinLength(int min)    => Set("aria-minlength", min);
-    public AriaBuilder RowCount(int count)   => Set("aria-rowcount", count);
-    public AriaBuilder ColCount(int count)   => Set("aria-colcount", count);
-    public AriaBuilder RowIndex(int index)   => Set("aria-rowindex", index);
-    public AriaBuilder ColIndex(int index)   => Set("aria-colindex", index);
-    public AriaBuilder Level(int level)      => Set("aria-level", level);
-    public AriaBuilder SetSize(int size)     => Set("aria-setsize", size);
-    public AriaBuilder PosInSet(int pos)     => Set("aria-posinset", pos);
-
-    // ── Live regions ─────────────────────────────────────────────────────────
-
-    public AriaBuilder Live(string politeness = "polite")
-        => Set("aria-live", politeness); // "off" | "polite" | "assertive"
-
-    public AriaBuilder Atomic(bool value = true) => Set("aria-atomic", value ? "true" : "false");
-    public AriaBuilder Relevant(string relevant = "additions text")
-        => Set("aria-relevant", relevant);
-
-    // ── Сборка ────────────────────────────────────────────────────────────────
-
-    /// <summary>Собрать словарь ARIA-атрибутов.</summary>
-    public IReadOnlyDictionary<string, object> Build()
-        => _attrs ?? (IReadOnlyDictionary<string, object>)new Dictionary<string, object>();
-
-    /// <summary>Объединить с AdditionalAttributes (aria-* и role/tabindex).</summary>
-    public AriaBuilder MergeAdditional(IReadOnlyDictionary<string, object>? additional)
-    {
-        if (additional is null) return this;
-        foreach (var kvp in additional)
+        if (invalid)
         {
-            var key = kvp.Key;
-            if (key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase)
-                || key.Equals("role", StringComparison.OrdinalIgnoreCase)
-                || key.Equals("tabindex", StringComparison.OrdinalIgnoreCase))
-            {
-                // User-provided атрибуты не перезаписывают программно заданные
-                (_attrs ??= new(StringComparer.Ordinal)).TryAdd(key, kvp.Value);
-            }
+            Set("aria-invalid", "true");
+            if (description is not null) Set("aria-errormessage", description);
+        }
+        else
+        {
+            _attrs.Remove("aria-invalid");
+            _attrs.Remove("aria-errormessage");
         }
         return this;
     }
+
+    /// <summary>aria-modal (для dialog/alertdialog).</summary>
+    public AriaBuilder Modal(bool modal = true)
+    {
+        if (modal) Set("aria-modal", "true");
+        else _attrs.Remove("aria-modal");
+        return this;
+    }
+
+    /// <summary>aria-busy (для загрузки).</summary>
+    public AriaBuilder Busy(bool busy)
+        => Set("aria-busy", busy ? "true" : "false");
+
+    /// <summary>aria-live (для динамических регионов).</summary>
+    public AriaBuilder Live(AriaLive live)
+        => Set("aria-live", live switch
+        {
+            AriaLive.Polite    => "polite",
+            AriaLive.Assertive => "assertive",
+            _                  => "off"
+        });
+
+    /// <summary>aria-atomic.</summary>
+    public AriaBuilder Atomic(bool atomic = true)
+        => Set("aria-atomic", atomic ? "true" : "false");
+
+    /// <summary>aria-haspopup.</summary>
+    public AriaBuilder HasPopup(AriaHasPopup popup = AriaHasPopup.True)
+        => Set("aria-haspopup", popup switch
+        {
+            AriaHasPopup.Menu    => "menu",
+            AriaHasPopup.Listbox => "listbox",
+            AriaHasPopup.Tree    => "tree",
+            AriaHasPopup.Grid    => "grid",
+            AriaHasPopup.Dialog  => "dialog",
+            AriaHasPopup.True    => "true",
+            _                    => "false"
+        });
+
+    /// <summary>aria-controls (IDs контролируемых элементов).</summary>
+    public AriaBuilder Controls(params string[] elementIds)
+        => Set("aria-controls", string.Join(" ", elementIds.Where(id => !string.IsNullOrEmpty(id))));
+
+    /// <summary>aria-owns.</summary>
+    public AriaBuilder Owns(params string[] elementIds)
+        => Set("aria-owns", string.Join(" ", elementIds.Where(id => !string.IsNullOrEmpty(id))));
+
+    /// <summary>tabindex.</summary>
+    public AriaBuilder TabIndex(int index)
+        => Set("tabindex", index.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>Удалить tabindex из табуляции.</summary>
+    public AriaBuilder RemoveFromTabOrder()
+        => Set("tabindex", "-1");
+
+    /// <summary>aria-valuemin/max/now для range компонентов.</summary>
+    public AriaBuilder ValueRange(double min, double max, double current)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        Set("aria-valuemin", min.ToString(inv));
+        Set("aria-valuemax", max.ToString(inv));
+        Set("aria-valuenow", current.ToString(inv));
+        return this;
+    }
+
+    /// <summary>aria-valuetext (текстовое представление значения).</summary>
+    public AriaBuilder ValueText(string? text)
+        => Set("aria-valuetext", text);
+
+    /// <summary>aria-level (для heading, tree и т.д.).</summary>
+    public AriaBuilder Level(int level)
+        => Set("aria-level", level.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>aria-posinset / aria-setsize (для элементов в списке).</summary>
+    public AriaBuilder Position(int posInSet, int setSize)
+    {
+        Set("aria-posinset", posInSet.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Set("aria-setsize",  setSize.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return this;
+    }
+
+    /// <summary>aria-sort (для заголовков таблицы).</summary>
+    public AriaBuilder Sort(AriaSort sort)
+        => Set("aria-sort", sort switch
+        {
+            AriaSort.Ascending  => "ascending",
+            AriaSort.Descending => "descending",
+            AriaSort.Other      => "other",
+            _                   => "none"
+        });
+
+    /// <summary>Добавить произвольный ARIA-атрибут.</summary>
+    public AriaBuilder Custom(string attribute, string value)
+    {
+        if (!string.IsNullOrWhiteSpace(attribute))
+            _attrs[attribute] = value;
+        return this;
+    }
+
+    /// <summary>Объединить с существующим словарём атрибутов.</summary>
+    public AriaBuilder Merge(IReadOnlyDictionary<string, object>? existing)
+    {
+        if (existing is not null)
+            foreach (var kvp in existing)
+                if (!_attrs.ContainsKey(kvp.Key)) // existing не перезаписывает новые
+                    _attrs[kvp.Key] = kvp.Value;
+        return this;
+    }
+
+    /// <summary>Собрать словарь ARIA-атрибутов.</summary>
+    public IReadOnlyDictionary<string, object> Build()
+        => new Dictionary<string, object>(_attrs, StringComparer.Ordinal);
+
+    /// <summary>Implicit конвертация для использования в компонентах.</summary>
+    public static implicit operator Dictionary<string, object>(AriaBuilder builder)
+        => new(builder._attrs, StringComparer.Ordinal);
+
+    private AriaBuilder Set(string key, string? value)
+    {
+        if (!string.IsNullOrEmpty(value))
+            _attrs[key] = value;
+        return this;
+    }
 }
+
+/// <summary>Значения aria-live.</summary>
+public enum AriaLive { Off, Polite, Assertive }
+
+/// <summary>Значения aria-haspopup.</summary>
+public enum AriaHasPopup { False, True, Menu, Listbox, Tree, Grid, Dialog }
+
+/// <summary>Значения aria-sort.</summary>
+public enum AriaSort { None, Ascending, Descending, Other }

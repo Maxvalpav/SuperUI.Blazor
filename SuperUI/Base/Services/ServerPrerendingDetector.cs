@@ -1,28 +1,20 @@
+// SuperUI/Base/Services/ServerPrerendingDetector.cs
+
 using Microsoft.AspNetCore.Http;
 
 namespace SuperUI.Base.Services;
 
-/// <summary>
-/// Реализация для Blazor Server / Web App.
-/// Определяет prerendering по наличию активного HTTP-запроса (не WebSocket).
-///
-/// ИСПРАВЛЕНО: переименован из ServerPrerendingDetector (опечатка устранена).
-/// </summary>
-public sealed class ServerPrerenderingDetector : IPrerendingDetector, IPrerenderingDetector
+public sealed class ServerPrerenderingDetector : IPrerenderingDetector, IPrerendingDetector
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IHttpContextAccessor _accessor;
 
-    public ServerPrerenderingDetector(IHttpContextAccessor httpContextAccessor)
-        => _httpContextAccessor = httpContextAccessor
-            ?? throw new ArgumentNullException(nameof(httpContextAccessor));
+    public ServerPrerenderingDetector(IHttpContextAccessor accessor)
+        => _accessor = accessor ?? throw new ArgumentNullException(nameof(accessor));
 
-    /// <summary>
-    /// true — активный HTTP-запрос без WebSocket = prerendering.
-    /// false — WebSocket (интерактивный SignalR) или нет контекста (WASM).
-    /// </summary>
-    public bool IsPrerendering
-        => _httpContextAccessor.HttpContext is { } ctx
-           && !ctx.WebSockets.IsWebSocketRequest;
+    public bool IsPrerendering =>
+        _accessor.HttpContext is { } ctx
+        && !ctx.WebSockets.IsWebSocketRequest
+        && !ctx.Request.Path.StartsWithSegments("/_blazor");
 
     public bool IsInteractive => !IsPrerendering;
 }

@@ -11,4 +11,7 @@ public interface ISessionStorage
     Task<T?> GetItemAsync<T>(string key);
     Task SetItemAsync<T>(string key, T value);
     Task RemoveItemAsync(string key);
+    Task<bool> ContainsKeyAsync(string key);
+    Task<T?> GetOrSetAsync<T>(string key, Func<Task<T>> factory);
+    Task ClearAsync();
 }

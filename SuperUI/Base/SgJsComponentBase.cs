@@ -24,7 +24,7 @@ public abstract class SgJsComponentBase : SgComponentBase
 {
     // ── Инъекции ───────────────────────────────────────────────────────────────────
     [Inject] protected IJSRuntime JS { get; set; } = null!;
-    [Inject] protected IPrerendingDetector PrerendingDetector { get; set; } = null!;
+    [Inject] protected IPrerenderingDetector PrerendingDetector { get; set; } = null!;
 
     // ── JS Module ───────────────────────────────────────────────────────────────────
     private readonly SemaphoreSlim _moduleLock = new(1, 1);
@@ -42,6 +42,9 @@ public abstract class SgJsComponentBase : SgComponentBase
         OperatingSystem.IsBrowser()
             ? TimeSpan.FromSeconds(10)
             : TimeSpan.FromSeconds(30);
+
+    /// <summary>JS-модуль успешно загружен.</summary>
+    protected bool HasJsModule => _module is not null;
 
     // ── DotNetRef ───────────────────────────────────────────────────────────────────
     private DotNetObjectReference<SgJsComponentBase>? _dotNetRef;
@@ -105,16 +108,16 @@ public abstract class SgJsComponentBase : SgComponentBase
             if (_module is not null) return _module;
             if (IsDisposed || ComponentToken.IsCancellationRequested) return null;
 
-            var path = JsModulePath ?? "_content/SuperUI/superui.js";
+            var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
             _module = await JS.InvokeAsync<IJSObjectReference>(
-                "import", ComponentToken, path);
+                "import", ComponentToken, modulePath);
             return _module;
         }
         catch (TaskCanceledException)
         {
             if (timeoutCts.IsCancellationRequested)
                 Logger.LogWarning("[{Id}] JS module load timed out ({Timeout}s): {Path}",
-                    ComponentId, JsModuleLoadTimeout.TotalSeconds, JsModulePath);
+                    ComponentId, JsModuleLoadTimeout.TotalSeconds, modulePath);
             return null;
         }
         catch (OperationCanceledException) { return null; }
@@ -122,7 +125,7 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (ObjectDisposedException) { return null; }
         catch (JSException ex)
         {
-            Logger.LogError(ex, "[{Id}] JS module load failed: {Path}", ComponentId, JsModulePath);
+            Logger.LogError(ex, "[{Id}] JS module load failed: {Path}", ComponentId, modulePath);
             return null;
         }
         finally
@@ -260,6 +263,28 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
+    /// <summary>4-arg generic overload без params-аллокации.</summary>
+    protected async ValueTask SafeInvokeVoidAsync<T1, T2, T3, T4>(
+        string identifier, T1 arg1, T2 arg2, T3 arg3, T4 arg4)
+    {
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
+        try
+        {
+            var module = await GetModuleAsync();
+            if (module is null) return;
+            await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2, arg3, arg4);
+        }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[{ComponentId}] JS void call '{Identifier}' failed",
+                ComponentId, identifier);
+        }
+    }
+
     // ── SafeInvokeAsync ─────────────────────────────────────────────────────────────
     /// <summary>Вызов JS с возвращаемым значением. Zero-arg (zero-allocation).</summary>
     protected async ValueTask<T> SafeInvokeAsync<T>(string identifier)
@@ -350,13 +375,15 @@ public abstract class SgJsComponentBase : SgComponentBase
     // ── Helpers ─────────────────────────────────────────────────────────────────────
     // ИСПРАВЛЕНО: защита от UnhandledTaskException в fire-and-forget
     private static Task TryDisposeModuleAsync(IJSObjectReference module)
-        => module.DisposeAsync()
-            .AsTask()
-            .ContinueWith(
-                t => { /* ignore all errors — JS runtime may be unavailable */ },
-                CancellationToken.None,
-                TaskContinuationOptions.None,
-                TaskScheduler.Default);
+    {
+        var vt = module.DisposeAsync();
+        if (vt.IsCompletedSuccessfully) return Task.CompletedTask;
+        return vt.AsTask().ContinueWith(
+            static t => { /* ignore all errors */ },
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Current);
+    }
 
     // ── Dispose ─────────────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()

@@ -80,28 +80,19 @@ public static class ServiceCollectionExtensions
     private static void RegisterPrerendingDetector(IServiceCollection services)
     {
         // Проверяем доступность IHttpContextAccessor (только Server)
-        services.TryAddSingleton<IPrerendingDetector>(sp =>
+        services.TryAddSingleton<IPrerenderingDetector>(sp =>
         {
             // На WASM OperatingSystem.IsBrowser() == true
             if (OperatingSystem.IsBrowser())
-                return WasmPrerendingDetector.Instance;
+                return WasmPrerenderingDetector.Instance;
 
             // На Server пробуем получить IHttpContextAccessor
             var accessor = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
             return accessor is not null
                 ? new ServerPrerenderingDetector(accessor)
-                : WasmPrerendingDetector.Instance;
+                : WasmPrerenderingDetector.Instance;
         });
     }
 }
 
-// Делаем WasmPrerendingDetector доступным как статический синглтон
-file sealed class WasmDetectorSingleton { }
 
-internal sealed class WasmPrerendingDetector : IPrerendingDetector
-{
-    public static readonly WasmPrerendingDetector Instance = new();
-    private WasmPrerendingDetector() { }
-    public bool IsPrerendering => false;
-    public bool IsInteractive => true;
-}

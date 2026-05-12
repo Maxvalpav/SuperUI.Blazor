@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Components;
 
-namespace SuperUI.State;
+namespace SuperUI.Base.State;
 
 /// <summary>
 /// Типизированное состояние параметра компонента с change-tracking и fluent API.

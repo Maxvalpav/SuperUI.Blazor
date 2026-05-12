@@ -1,84 +1,63 @@
-using System.Collections.Concurrent;
+// SuperUI/Base/Services/FocusTrapService.cs
+
 using Microsoft.JSInterop;
-using SuperUI.Base.Interop;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Реализация сервиса управления ловушкой фокуса.
-/// Поддерживает стек вложенных оверлеев.
-///
-/// ИСПРАВЛЕНО:
-/// 1. Prerendering guard — пропускает JS вызовы при SSR.
-/// 2. _trapStack — ConcurrentStack для thread-safety на Server.
-/// 3. Push выполняется ПОСЛЕ успешного JS вызова (атомарность стека).
-/// 4. module null-check.
+/// Направление перемещения фокуса внутри focus-trap контейнера.
 /// </summary>
-public sealed class FocusTrapService : IFocusTrapService, IAsyncDisposable
+public enum FocusDirection
 {
-    private readonly SgJsInterop _jsInterop;
-    private readonly IPrerenderingDetector _prerenderingDetector;
+    Forward,
+    Backward,
+    First,
+    Last
+}
 
-    // ИСПРАВЛЕНО: ConcurrentStack для thread-safety на Server
-    private readonly ConcurrentStack<string> _trapStack = new();
+/// <summary>
+/// Расширенный интерфейс с навигацией по фокусу (MoveFocusAsync).
+/// </summary>
+public interface IFocusTrapServiceEx : IFocusTrapService
+{
+    Task MoveFocusAsync(string containerId, FocusDirection direction, CancellationToken ct = default);
+}
 
-    public FocusTrapService(SgJsInterop jsInterop, IPrerenderingDetector prerenderingDetector)
+/// <summary>
+/// Реализация IFocusTrapServiceEx через JS Interop.
+/// </summary>
+internal sealed class JsFocusTrapServiceEx : IFocusTrapServiceEx
+{
+    private readonly JsFocusTrapService _inner;
+    private readonly IJSRuntime _js;
+
+    public JsFocusTrapServiceEx(IJSRuntime js)
     {
-        _jsInterop = jsInterop ?? throw new ArgumentNullException(nameof(jsInterop));
-        _prerenderingDetector = prerenderingDetector ?? throw new ArgumentNullException(nameof(prerenderingDetector));
+        _js = js ?? throw new ArgumentNullException(nameof(js));
+        _inner = new JsFocusTrapService(js);
     }
 
-    public async Task ActivateAsync(string containerId)
+    public Task ActivateAsync(string elementId, CancellationToken ct = default)
+        => _inner.ActivateAsync(elementId, ct);
+
+    public Task DeactivateAsync(string elementId, CancellationToken ct = default)
+        => _inner.DeactivateAsync(elementId, ct);
+
+    public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
+        => _inner.FocusFirstAsync(containerId, ct);
+
+    public Task RestoreFocusAsync(CancellationToken ct = default)
+        => _inner.RestoreFocusAsync(ct);
+
+    public async Task MoveFocusAsync(string containerId, FocusDirection direction, CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
-
-        // ИСПРАВЛЕНО: guard — не вызываем JS при prerendering
-        if (_prerenderingDetector.IsPrerendering) return;
-
-        var module = await _jsInterop.GetModuleAsync("_content/SuperUI/focustrap.js");
-
-        // ИСПРАВЛЕНО: null-check вместо null-forgiving !
-        if (module is null) return;
-
-        await module.InvokeVoidAsync("activate", containerId);
-
-        // ИСПРАВЛЕНО: Push ПОСЛЕ успешного JS (стек согласован при ошибке)
-        _trapStack.Push(containerId);
-    }
-
-    public async Task DeactivateAsync(string containerId)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(containerId);
-
-        if (_prerenderingDetector.IsPrerendering) return;
-
-        // Снимаем с вершины если это наш ID
-        if (_trapStack.TryPeek(out var top) && top == containerId)
-            _trapStack.TryPop(out _);
-
-        var module = await _jsInterop.GetModuleAsync("_content/SuperUI/focustrap.js");
-        if (module is null) return;
-
-        await module.InvokeVoidAsync("deactivate", containerId);
-
-        // Восстанавливаем предыдущий trap если был стек
-        if (_trapStack.TryPeek(out var previous))
-            await module.InvokeVoidAsync("activate", previous);
-    }
-
-    public async Task MoveFocusAsync(string containerId, FocusDirection direction)
-    {
-        if (_prerenderingDetector.IsPrerendering) return;
-
-        var module = await _jsInterop.GetModuleAsync("_content/SuperUI/focustrap.js");
-        if (module is null) return;
-
-        await module.InvokeVoidAsync("moveFocus", containerId, direction.ToString().ToLowerInvariant());
-    }
-
-    public ValueTask DisposeAsync()
-    {
-        _trapStack.Clear();
-        return ValueTask.CompletedTask;
+        try
+        {
+            await _js.InvokeVoidAsync(
+                "SuperUI.focusTrap.moveFocus", ct,
+                containerId, direction.ToString().ToLowerInvariant());
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException
+                                      or JSException or ObjectDisposedException) { }
     }
 }

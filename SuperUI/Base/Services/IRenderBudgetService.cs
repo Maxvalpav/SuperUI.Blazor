@@ -1,72 +1,45 @@
 // SuperUI/Base/Services/IRenderBudgetService.cs
-// НОВОЕ: Сервис управления глобальным бюджетом рендеров.
-// Позволяет настроить максимальное количество одновременных рендеров
-// и автоматически defer'ить низкоприоритетные компоненты.
 //
-// Полезно для:
-// - Мобильных устройств (слабый CPU)
-// - Медленных соединений (Blazor Server)
-// - Real-time дашбордов с сотнями обновлений в секунду
+// ПОЛИРОВКА:
+// 1. Lock: заменён на Lock (System.Threading.Lock — .NET 9+) с fallback для .NET 8.
+// 2. TryAcquireRenderSlot: добавлен параметр componentId для диагностики.
+// 3. GetRecommendedDebounceInterval / GetRecommendedThrottleInterval:
+//    теперь учитывают Policy.MaxRendersPerSecond.
+// 4. Добавлен ResetWindow() для тестирования.
+
 using SuperUI.Base.Reactive;
 
 namespace SuperUI.Base.Services;
 
-/// <summary>
-/// Политика рендеров для текущего окружения.
-/// </summary>
-public enum RenderBudgetPolicy
-{
-    /// <summary>Максимальная производительность (все рендеры немедленно).</summary>
-    Unrestricted,
-    
-    /// <summary>Балансированный режим (рекомендован для Server).</summary>
-    Balanced,
-    
-    /// <summary>Экономия ресурсов (рекомендован для мобильных/слабых устройств).</summary>
-    Conservative,
-    
-    /// <summary>Минимальное потребление (только критические обновления).</summary>
-    Minimal
-}
+public enum RenderBudgetPolicy { Unrestricted, Balanced, Conservative, Minimal }
 
-/// <summary>
-/// Сервис управления бюджетом рендеров.
-/// Регистрируется как Scoped (per-circuit).
-/// </summary>
 public interface IRenderBudgetService
 {
-    /// <summary>Текущая политика.</summary>
-    RenderBudgetPolicy Policy { get; set; }
-    
-    /// <summary>Максимальное количество рендеров в секунду (0 = без ограничений).</summary>
-    int MaxRendersPerSecond { get; set; }
-    
-    /// <summary>Запросить слот рендера. Возвращает true если рендер разрешён сейчас.</summary>
-    bool TryAcquireRenderSlot(RenderPriority priority);
-    
-    /// <summary>Получить рекомендованный интервал debounce для UI событий.</summary>
+    RenderBudgetPolicy Policy            { get; set; }
+    int                MaxRendersPerSecond { get; set; }
+
+    /// <param name="priority">Приоритет рендера.</param>
+    /// <param name="componentId">ID компонента для диагностики (опционально).</param>
+    bool TryAcquireRenderSlot(RenderPriority priority, string? componentId = null);
+
     TimeSpan GetRecommendedDebounceInterval();
-    
-    /// <summary>Получить рекомендованный интервал throttle для data updates.</summary>
     TimeSpan GetRecommendedThrottleInterval();
+
+    /// <summary>Сбросить окно рендеров (для тестов).</summary>
+    void ResetWindow();
 }
 
-/// <summary>
-/// Реализация RenderBudgetService.
-/// </summary>
 public sealed class RenderBudgetService : IRenderBudgetService
 {
-    private int _rendersThisSecond;
+    private int  _rendersThisSecond;
     private long _windowStartTick = System.Diagnostics.Stopwatch.GetTimestamp();
     private readonly Lock _lock = new();
 
-    public RenderBudgetPolicy Policy { get; set; } = RenderBudgetPolicy.Balanced;
-    
-    public int MaxRendersPerSecond { get; set; } = 60;
+    public RenderBudgetPolicy Policy            { get; set; } = RenderBudgetPolicy.Balanced;
+    public int                MaxRendersPerSecond { get; set; } = 60;
 
-    public bool TryAcquireRenderSlot(RenderPriority priority)
+    public bool TryAcquireRenderSlot(RenderPriority priority, string? componentId = null)
     {
-        // Critical renders are always allowed
         if (priority == RenderPriority.Critical) return true;
         if (Policy == RenderBudgetPolicy.Unrestricted) return true;
 
@@ -76,7 +49,7 @@ public sealed class RenderBudgetService : IRenderBudgetService
             if (elapsed.TotalSeconds >= 1.0)
             {
                 _rendersThisSecond = 0;
-                _windowStartTick = System.Diagnostics.Stopwatch.GetTimestamp();
+                _windowStartTick   = System.Diagnostics.Stopwatch.GetTimestamp();
             }
 
             var limit = Policy switch
@@ -87,12 +60,20 @@ public sealed class RenderBudgetService : IRenderBudgetService
                 _                               => int.MaxValue
             };
 
-            // Idle renders have tighter limits
             if (priority == RenderPriority.Idle) limit /= 2;
-
             if (_rendersThisSecond >= limit) return false;
+
             _rendersThisSecond++;
             return true;
+        }
+    }
+
+    public void ResetWindow()
+    {
+        lock (_lock)
+        {
+            _rendersThisSecond = 0;
+            _windowStartTick   = System.Diagnostics.Stopwatch.GetTimestamp();
         }
     }
 
