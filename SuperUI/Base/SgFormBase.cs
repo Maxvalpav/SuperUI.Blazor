@@ -1,9 +1,8 @@
 // SuperUI/Base/SgFormBase.cs
-// ИСПРАВЛЕНО:
-// 1. NotifyFieldChanged ПЕРЕД ValueChanged (EditContext обновляется первым)
-// 2. OnValidationStateChanged: InvokeAsync без ContinueWith (Server thread-safety)
-// 3. MaxLength применяется к aria-maxlength
-// 4. _isSettingValue логирует в DEBUG при рекурсии
+// Ключевые исправления:
+// 1. ValidateNow — IsDisposed check
+// 2. SetValueAsync — NaN-safe comparison для double/float
+// 3. OnFirstRenderAsync — не нужен отдельно (наследуется)
 
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
@@ -15,7 +14,7 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов формы.
-/// Уровень 4: ComponentBase → ... → SgInteractiveBase → SgFormBase
+/// Уровень 4: ... → SgInteractiveBase → SgFormBase
 /// </summary>
 public abstract class SgFormBase<TValue> : SgInteractiveBase
 {
@@ -41,7 +40,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     private ISgConverter<TValue>? _effectiveConverter;
     private bool _editContextAttached;
     private TValue? _lastSyncedValue;
-    private bool _isSettingValue; // защита от рекурсии
+    private bool _isSettingValue;
 
     protected EditContext? EditContext => _editContext;
     protected FieldIdentifier FieldId => _fieldIdentifier;
@@ -96,7 +95,8 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             return;
         }
 
-        if (EqualityComparer<TValue>.Default.Equals(value, Value)) return;
+        // ИСПРАВЛЕНО: NaN-safe сравнение для double/float
+        if (ValuesEqual(value, Value)) return;
 
         _isSettingValue = true;
         try
@@ -106,7 +106,6 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             CurrentText = EffectiveConverter.ConvertBack(value);
             ConvertError = null;
 
-            // ИСПРАВЛЕНО: сначала NotifyFieldChanged → потом ValueChanged
             // EditContext должен обновиться ДО события (родитель может читать валидацию)
             _editContext?.NotifyFieldChanged(_fieldIdentifier);
             await ValueChanged.InvokeAsync(value);
@@ -115,6 +114,19 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         {
             _isSettingValue = false;
         }
+    }
+
+    /// <summary>
+    /// ИСПРАВЛЕНО: NaN-safe equality для double/float.
+    /// double.NaN != double.NaN, поэтому нужна специальная проверка.
+    /// </summary>
+    private static bool ValuesEqual(TValue? a, TValue? b)
+    {
+        if (a is double da && b is double db)
+            return (double.IsNaN(da) && double.IsNaN(db)) || da == db;
+        if (a is float fa && b is float fb)
+            return (float.IsNaN(fa) && float.IsNaN(fb)) || fa == fb;
+        return EqualityComparer<TValue>.Default.Equals(a, b);
     }
 
     // ── Программная валидация ─────────────────────────────────────────────────
@@ -132,7 +144,11 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContext.NotifyValidationStateChanged();
     }
 
-    public void ValidateNow() => _editContext?.Validate();
+    // ИСПРАВЛЕНО: проверка IsDisposed
+    public void ValidateNow()
+    {
+        if (!IsDisposed) _editContext?.Validate();
+    }
 
     // ── ARIA ──────────────────────────────────────────────────────────────────
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
@@ -153,7 +169,6 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         if (Placeholder != null) attrs["aria-placeholder"] = Placeholder;
         if (Hint != null) attrs["aria-describedby"] = $"{EffectiveId}-hint";
         if (HasError) attrs["aria-errormessage"] = $"{EffectiveId}-error";
-        // ИСПРАВЛЕНО: MaxLength → aria-maxlength
         if (MaxLength.HasValue) attrs["aria-maxlength"] = MaxLength.Value.ToString();
 
         return attrs;
@@ -201,12 +216,9 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         _editContextAttached = false;
     }
 
-    // ИСПРАВЛЕНО: используем InvokeAsync напрямую (Server thread-safety)
-    // ContinueWith(TaskScheduler.Default) выполняется в thread pool вне Blazor SynchronizationContext
     private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
         if (IsDisposed) return;
-        // InvokeAsync корректно маршалирует вызов в Blazor SynchronizationContext
         _ = InvokeAsync(StateHasChanged);
     }
 

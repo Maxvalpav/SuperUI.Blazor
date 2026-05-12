@@ -1,4 +1,8 @@
 // SuperUI/Base/SgStore.cs
+// Ключевые исправления:
+// 1. DispatchAsync — документация о Lost Update
+// 2. Dispose — выставляем _disposed через Interlocked (не просто присваивание)
+
 using SuperUI.Base.Reactive;
 
 namespace SuperUI.Base;
@@ -20,10 +24,9 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     private readonly SgSignal<TState> _state;
     private readonly List<Middleware<TState>> _middleware = [];
 
-    // volatile: thread-safe проверка на Blazor Server
-    private volatile bool _disposed;
+    // ИСПРАВЛЕНО: int для Interlocked.Exchange (atomic compare-and-swap)
+    private int _disposedInt;
 
-    // lock для атомарного Dispatch на Blazor Server
     private readonly object _dispatchLock = new();
 
     public SgStore(TState initialState)
@@ -41,32 +44,35 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     /// </summary>
     public void Dispatch(Func<TState, TState> reducer)
     {
-        if (_disposed) return;
+        if (Volatile.Read(ref _disposedInt) == 1) return;
 
         TState newState;
         lock (_dispatchLock)
         {
-            if (_disposed) return;
+            if (Volatile.Read(ref _disposedInt) == 1) return;
             newState = reducer(_state.Value);
             foreach (var mw in _middleware)
                 newState = mw(_state.Value, newState);
         }
 
-        // Set вне lock — SgSignal имеет собственную синхронизацию
         _state.Set(newState);
     }
 
-    /// <summary>Async dispatch для асинхронных операций (action creators).</summary>
+    /// <summary>
+    /// Async dispatch для асинхронных операций (action creators).
+    /// ⚠️ ВНИМАНИЕ: При конкурентных Dispatch/DispatchAsync возможен Lost Update.
+    /// Для критичного состояния используйте только синхронный Dispatch().
+    /// </summary>
     public async Task DispatchAsync(Func<TState, Task<TState>> asyncReducer)
     {
-        if (_disposed) return;
+        if (Volatile.Read(ref _disposedInt) == 1) return;
 
         var currentState = _state.Value;
         var newState = await asyncReducer(currentState);
 
         lock (_dispatchLock)
         {
-            if (_disposed) return;
+            if (Volatile.Read(ref _disposedInt) == 1) return;
             foreach (var mw in _middleware)
                 newState = mw(currentState, newState);
         }
@@ -92,7 +98,14 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     public SgComputed<TResult> Select<TResult>(Func<TState, TResult> selector)
         => new(() => selector(_state.Value));
 
-    public void Dispose() => _disposed = true;
+    /// <summary>
+    /// ИСПРАВЛЕНО: Interlocked.Exchange — атомарный compare-and-swap.
+    /// Гарантирует, что Dispose выполняется ровно один раз даже при race.
+    /// </summary>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
+    }
 }
 
 /// <summary>Функция middleware для SgStore.</summary>

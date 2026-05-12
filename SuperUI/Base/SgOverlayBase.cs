@@ -1,11 +1,9 @@
 // SuperUI/Base/SgOverlayBase.cs
-// ИСПРАВЛЕНО:
-// 1. unlockBodyScroll вызывается ПЕРВЫМ в OnCloseCoreAsync
-// 2. isDisposePath=true → пропускаем анимацию, используем CancellationToken.None для JS
-// 3. _overlayLock: SemaphoreSlim (async-safe, в отличие от volatile bool)
-// 4. DisposeComponentAsync: cleanup CTS с таймаутом 5с
-// 5. FocusTrapService.ActivateAsync защищена try/catch (prerendering)
-// 6. OpenAsync/CloseAsync: защита ObjectDisposedException
+// Ключевые исправления относительно версии до 20.5:
+// 1. OpenAsync/CloseAsync — добавлен IsDisposed check
+// 2. ZIndexService.Release — в try/finally (_zIndex = 0 всегда)
+// 3. BuildAriaAttributes — HasAriaModal виртуальное свойство
+// 4. HasAriaModal = false для Tooltip/Popover (переопределять в дочерних)
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -16,7 +14,7 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для overlay компонентов (Dialog, Drawer, Tooltip, Popover).
-/// Уровень 5: ... → SgInteractiveBase → SgOverlayBase
+/// Уровень 5: SgInteractiveBase → SgOverlayBase
 /// </summary>
 public abstract class SgOverlayBase : SgInteractiveBase
 {
@@ -36,8 +34,6 @@ public abstract class SgOverlayBase : SgInteractiveBase
     private string? _focusTrapId;
     private volatile bool _isDisposing;
 
-    // ИСПРАВЛЕНО: SemaphoreSlim вместо volatile bool
-    // async/await не совместим с volatile bool для sync primitives
     private readonly SemaphoreSlim _overlayLock = new(1, 1);
 
     protected int EffectiveZIndex => _zIndex;
@@ -46,15 +42,21 @@ public abstract class SgOverlayBase : SgInteractiveBase
     protected virtual string AriaRole => "dialog";
     protected virtual int AnimationDurationMs => 300;
 
+    /// <summary>
+    /// Добавлять aria-modal="true" в BuildAriaAttributes.
+    /// Tooltip/Popover переопределяют на false.
+    /// </summary>
+    protected virtual bool HasAriaModal => true;
+
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var base_ = base.BuildAriaAttributes();
         var attrs = new Dictionary<string, object>(base_, StringComparer.Ordinal)
         {
             ["role"] = AriaRole,
-            ["aria-modal"] = "true",
             ["aria-hidden"] = Open ? "false" : "true"
         };
+        if (HasAriaModal) attrs["aria-modal"] = "true";
         return attrs;
     }
 
@@ -72,7 +74,6 @@ public abstract class SgOverlayBase : SgInteractiveBase
         await base.OnParametersSetAsync();
         if (_isDisposing) return;
 
-        // WaitAsync(0) — не блокируем если операция уже выполняется
         if (!await _overlayLock.WaitAsync(0)) return;
         try
         {
@@ -100,7 +101,6 @@ public abstract class SgOverlayBase : SgInteractiveBase
         if (LockBodyScroll)
             await SafeInvokeVoidAsync("lockBodyScroll", null, ComponentId);
 
-        // ИСПРАВЛЕНО: FocusTrap защищён try/catch (может упасть при prerendering)
         if (TrapFocus)
         {
             _focusTrapId = ComponentId;
@@ -121,7 +121,6 @@ public abstract class SgOverlayBase : SgInteractiveBase
         CancellationToken? overrideToken = null,
         bool isDisposePath = false)
     {
-        // Анимация (пропускаем при dispose)
         if (animate && !isDisposePath)
         {
             IsAnimatingClose = true;
@@ -134,17 +133,14 @@ public abstract class SgOverlayBase : SgInteractiveBase
             IsAnimatingClose = false;
         }
 
-        // При isDisposePath ComponentToken уже отменён → используем CancellationToken.None
         var ct = overrideToken ?? (isDisposePath ? CancellationToken.None : ComponentToken);
 
-        // ИСПРАВЛЕНО: 1. СНАЧАЛА unlockBodyScroll — критично для UX
         if (LockBodyScroll)
         {
             try { await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId); }
-            catch { /* JS runtime может быть недоступен */ }
+            catch { }
         }
 
-        // 2. Деактивируем focus trap
         if (TrapFocus && _focusTrapId != null)
         {
             try { await FocusTrapService.DeactivateAsync(_focusTrapId); }
@@ -152,9 +148,9 @@ public abstract class SgOverlayBase : SgInteractiveBase
             _focusTrapId = null;
         }
 
-        // 3. Освобождаем z-index
-        ZIndexService.Release(_zIndex);
-        _zIndex = 0;
+        // ИСПРАВЛЕНО: Release в try/finally — _zIndex=0 всегда
+        try { ZIndexService.Release(_zIndex); }
+        finally { _zIndex = 0; }
 
         await OnCloseAsync();
         if (!IsDisposed) StateHasChanged();
@@ -165,7 +161,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     public async Task OpenAsync()
     {
-        if (Open || _isDisposing) return;
+        // ИСПРАВЛЕНО: проверка IsDisposed
+        if (Open || _isDisposing || IsDisposed) return;
 
         bool acquired;
         try { acquired = await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5)); }
@@ -174,7 +171,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
         if (!acquired) return;
         try
         {
-            if (Open) return; // double-check
+            if (Open) return;
             Open = true;
             _wasOpen = true;
             await OpenChanged.InvokeAsync(true);
@@ -198,7 +195,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
         if (!acquired) return;
         try
         {
-            if (!Open) return; // double-check
+            if (!Open) return;
             Open = false;
             _wasOpen = false;
             await OpenChanged.InvokeAsync(false);

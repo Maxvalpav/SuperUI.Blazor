@@ -12,6 +12,10 @@ namespace SuperUI.Base.Reactive;
 /// Reactive side-effect: выполняет функцию при изменении зависимых сигналов.
 /// Автоматически отслеживает SgSignal, прочитанные во время выполнения.
 /// </summary>
+/// <remarks>
+/// ⚠️ SgEffect НЕ отписывается от сигналов при Dispose.
+/// Отписка происходит автоматически при Dispose компонента-подписчика (SgComponentBase).
+/// </remarks>
 public sealed class SgEffect : IDisposable
 {
     private readonly Func<Task> _action;

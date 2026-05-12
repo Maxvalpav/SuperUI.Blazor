@@ -1,11 +1,13 @@
 // SuperUI/Base/SgComponentBase.cs
-// ИСПРАВЛЕНО:
-// 1. _hooks — lazy init (null по умолчанию)
-// 2. BuildAriaAttributes — правильный порядок Volatile.Write (данные → generation)
-// 3. _ariaCacheGeneration — Volatile.Read при чтении
-// 4. RefreshAsync(Action) — try/catch вокруг action
-// 5. OnAfterRender — hooks после base (консистентный порядок)
-// 6. XML doc на всех публичных членах
+// ИСПРАВЛЕНИЯ:
+// 1. ShouldRender — единственный Interlocked.Exchange (нет двойного чтения)
+// 2. DisposeComponentAsync — убран лишний async/await ValueTask.CompletedTask
+// 3. OnInitialized — base.OnInitialized() ПЕРВЫМ (до хуков)
+// 4. _ariaCache — добавлен _ariaCacheLock для атомарного обновления пары (cache, generation)
+// 5. RegisterEffect/RegisterComputed — Subscribe(this) для авто-StateHasChanged
+// 6. IsBrowser / IsServer свойства
+// 7. OnFirstRenderAsync — виртуальный метод для удобства
+
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
@@ -27,21 +29,21 @@ namespace SuperUI.Base;
 /// Иерархия: ComponentBase → SgComponentBase → SgJsComponentBase → SgInteractiveBase
 ///
 /// Thread safety:
-/// - WASM: однопоточный, lock не нужен, но Interlocked используется для корректности на ARM.
-/// - Server: каждый circuit — отдельный поток. _hooks, _reactiveDisposables — per-circuit, безопасны.
-///   Только _disposed и _ariaGeneration требуют Interlocked/Volatile.
+/// - WASM: однопоточный, lock не нужен, Interlocked используется для корректности на ARM.
+/// - Server: каждый circuit — отдельный поток. _hooks, _reactiveDisposables — per-circuit.
+///   _disposed, _ariaGeneration требуют Interlocked/Volatile.
 /// </remarks>
 public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 {
-    // ── Инъекции ──────────────────────────────────────────────────────────────
+    // ── Инъекции ──────────────────────────────────────────────────────────────────
     [Inject] protected ILogger<SgComponentBase> Logger { get; set; } = null!;
     [Inject] protected IComponentOptionsService OptionsService { get; set; } = null!;
 
-    // ── Каскадные параметры ───────────────────────────────────────────────────
+    // ── Каскадные параметры ───────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
 
-    // ── Параметры ─────────────────────────────────────────────────────────────
+    // ── Параметры ─────────────────────────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
     [Parameter] public bool Visible { get; set; } = true;
@@ -49,28 +51,29 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // ── Публичные свойства ────────────────────────────────────────────────────
-    /// <summary>Уникальный идентификатор компонента.</summary>
+    // ── Публичные свойства ────────────────────────────────────────────────────────
     public string ComponentId { get; }
-
-    /// <summary>Эффективный ID: Id параметр или сгенерированный ComponentId.</summary>
     protected string EffectiveId => Id ?? ComponentId;
 
-    /// <summary>
-    /// Компонент был задиспожен. Проверяйте перед async операциями.
-    /// </summary>
+    /// <summary>Компонент был задиспожен. Проверяйте перед async операциями.</summary>
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
-    // ── Внутреннее состояние ──────────────────────────────────────────────────
-    private int _disposed;
-    private int _previousVisible = 1; // 1 = true, 0 = false
+    /// <summary>true — браузерный WASM контекст.</summary>
+    protected static bool IsBrowser => OperatingSystem.IsBrowser();
 
-    // ИСПРАВЛЕНО: lazy init — List создаётся только при первом AddHook
-    private List<IComponentHook>? _hooks;
+    /// <summary>true — серверный контекст (Blazor Server / Web App Server).</summary>
+    protected static bool IsServer => !OperatingSystem.IsBrowser();
+
+    // ── Внутреннее состояние ──────────────────────────────────────────────────────
+    private int _disposed;
+    // ИСПРАВЛЕНО: обновляется единым Interlocked.Exchange в ShouldRender
+    private int _previousVisible = 1; // 1 = true, 0 = false
+    private readonly List<IComponentHook> _hooks = [];
     private ComponentSignalTracker? _signalBatcher;
     private List<IDisposable>? _reactiveDisposables;
 
-    // ARIA кэш — generation-based инвалидация
+    // ИСПРАВЛЕНО: lock для атомарного обновления пары (_ariaCache, _ariaCacheGeneration)
+    private readonly object _ariaCacheLock = new();
     private IReadOnlyDictionary<string, object>? _ariaCache;
     private int _ariaCacheGeneration = -1;
     private int _ariaGeneration;
@@ -80,7 +83,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     private long _renderStartTick;
 #endif
 
-    // ── Конструктор ───────────────────────────────────────────────────────────
+    // ── Конструктор ───────────────────────────────────────────────────────────────
     protected SgComponentBase()
     {
         ComponentId = ComponentIdGenerator.Next(ComponentPrefix);
@@ -90,75 +93,75 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 #endif
     }
 
-    /// <summary>Префикс для генерации ComponentId. Переопределить в дочерних классах.</summary>
+    /// <summary>Префикс для генерации ComponentId.</summary>
     protected virtual string ComponentPrefix => "cmp";
 
-    // ── Hooks ──────────────────────────────────────────────────────────────────
+    // ── Hooks ──────────────────────────────────────────────────────────────────────
     /// <summary>Зарегистрировать хук жизненного цикла.</summary>
     protected void AddHook(IComponentHook hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
-        (_hooks ??= new List<IComponentHook>()).Add(hook);
+        _hooks.Add(hook);
     }
 
-    // ── Reactive ───────────────────────────────────────────────────────────────
+    // ── Reactive ───────────────────────────────────────────────────────────────────
     /// <summary>
-    /// Зарегистрировать реактивный side-effect. Авто-отписка при Dispose компонента.
-    /// Эффект запускается немедленно и перезапускается при изменении любого SgSignal в теле.
+    /// Зарегистрировать реактивный side-effect.
+    /// Авто-отписка при Dispose. Авто-StateHasChanged при изменении сигналов.
     /// </summary>
     protected SgEffect RegisterEffect(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
         var effect = new SgEffect(action);
+        // ИСПРАВЛЕНО: подписываем на RefreshAsync компонента
+        effect.Subscribe(this);
         (_reactiveDisposables ??= new()).Add(effect);
         return effect;
     }
 
-    /// <inheritdoc cref="RegisterEffect(Action)"/>
+    /// <summary>Зарегистрировать async реактивный side-effect.</summary>
     protected SgEffect RegisterEffect(Func<Task> action)
     {
         ArgumentNullException.ThrowIfNull(action);
         var effect = new SgEffect(action);
+        // ИСПРАВЛЕНО: подписываем на RefreshAsync компонента
+        effect.Subscribe(this);
         (_reactiveDisposables ??= new()).Add(effect);
         return effect;
     }
 
-    /// <summary>
-    /// Зарегистрировать вычисляемый сигнал. Авто-отписка при Dispose компонента.
-    /// </summary>
+    /// <summary>Зарегистрировать вычисляемый сигнал. Авто-отписка при Dispose.</summary>
     protected SgComputed<T> RegisterComputed<T>(Func<T> compute)
     {
         ArgumentNullException.ThrowIfNull(compute);
         var computed = new SgComputed<T>(compute);
+        // ИСПРАВЛЕНО: подписываем на RefreshAsync компонента
+        computed.Subscribe(this);
         (_reactiveDisposables ??= new()).Add(computed);
         return computed;
     }
 
-    // ── ShouldRender ────────────────────────────────────────────────────────────
+    // ── ShouldRender ────────────────────────────────────────────────────────────────
     protected override bool ShouldRender()
     {
-        var visible = Visible;
-        var prevVisible = Interlocked.CompareExchange(ref _previousVisible, 0, 0) == 1;
+        bool visible = Visible;
+        // ИСПРАВЛЕНО: единый Interlocked.Exchange — нет двойного чтения/race
+        int prev = Interlocked.Exchange(ref _previousVisible, visible ? 1 : 0);
+        bool wasVisible = prev == 1;
 
-        if (!visible && prevVisible)
-        {
-            Interlocked.Exchange(ref _previousVisible, 0);
-            return true; // рендерим один раз чтобы скрыть DOM
-        }
+        // Стал невидимым → один рендер чтобы скрыть DOM
+        if (!visible && wasVisible) return true;
+        // Был и остался невидимым → пропускаем
         if (!visible) return false;
-        Interlocked.Exchange(ref _previousVisible, 1);
 
         // Проверяем хуки
-        if (_hooks is not null)
-        {
-            foreach (var hook in _hooks)
-                if (hook is IRenderHook rh && !rh.ShouldRender(this))
-                    return false;
-        }
+        foreach (var hook in _hooks)
+            if (hook is IRenderHook rh && !rh.ShouldRender(this)) return false;
+
         return true;
     }
 
-    // ── StateHasChanged ─────────────────────────────────────────────────────────
+    // ── StateHasChanged ─────────────────────────────────────────────────────────────
     public new void StateHasChanged()
     {
         if (IsDisposed) return;
@@ -167,39 +170,36 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         else base.StateHasChanged();
     }
 
-    /// <summary>
-    /// Вызвать base.StateHasChanged() напрямую (используется ComponentSignalTracker).
-    /// Не проходит через batch для предотвращения рекурсии.
-    /// </summary>
+    /// <summary>Прямой вызов StateHasChanged через InvokeAsync (для ComponentSignalTracker).</summary>
     internal Task InvokeStateHasChangedAsync()
     {
         if (IsDisposed) return Task.CompletedTask;
         return InvokeAsync(base.StateHasChanged);
     }
 
-    // ── SetParametersAsync ──────────────────────────────────────────────────────
+    // ── SetParametersAsync ──────────────────────────────────────────────────────────
     public override Task SetParametersAsync(ParameterView parameters)
     {
         Interlocked.Increment(ref _ariaGeneration);
         return base.SetParametersAsync(parameters);
     }
 
-    // ── Lifecycle ───────────────────────────────────────────────────────────────
+    // ── Lifecycle ───────────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
-        LogLifecycle(nameof(OnInitialized));
-        if (_hooks is not null)
-            foreach (var hook in _hooks) hook.OnInitialized(this);
+        // ИСПРАВЛЕНО: base.OnInitialized() ПЕРВЫМ — сервисы инициализируются до хуков
         base.OnInitialized();
+        LogLifecycle(nameof(OnInitialized));
+        foreach (var hook in _hooks) hook.OnInitialized(this);
     }
 
     protected override async Task OnInitializedAsync()
     {
         LogLifecycle(nameof(OnInitializedAsync));
-        if (_hooks is not null)
-            foreach (var hook in _hooks)
-                if (hook is IAsyncComponentHook ah) await ah.OnInitializedAsync(this);
         await base.OnInitializedAsync();
+        foreach (var hook in _hooks)
+            if (hook is IAsyncComponentHook ah)
+                await ah.OnInitializedAsync(this);
     }
 
     protected override void OnParametersSet()
@@ -207,22 +207,20 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 #if DEBUG
         _diagnostics.ParameterChangeCount++;
 #endif
-        if (_hooks is not null)
-            foreach (var hook in _hooks) hook.OnParametersSet(this);
+        foreach (var hook in _hooks) hook.OnParametersSet(this);
         base.OnParametersSet();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_hooks is not null)
-            foreach (var hook in _hooks)
-                if (hook is IAsyncComponentHook ah) await ah.OnParametersSetAsync(this);
         await base.OnParametersSetAsync();
+        foreach (var hook in _hooks)
+            if (hook is IAsyncComponentHook ah)
+                await ah.OnParametersSetAsync(this);
     }
 
     protected override void OnAfterRender(bool firstRender)
     {
-        base.OnAfterRender(firstRender); // ИСПРАВЛЕНО: base первым
 #if DEBUG
         if (_renderStartTick > 0)
         {
@@ -236,8 +234,8 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
             _renderStartTick = 0;
         }
 #endif
-        if (_hooks is not null)
-            foreach (var hook in _hooks) hook.OnAfterRender(this, firstRender);
+        foreach (var hook in _hooks) hook.OnAfterRender(this, firstRender);
+        base.OnAfterRender(firstRender);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -245,51 +243,64 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 #if DEBUG
         _renderStartTick = Stopwatch.GetTimestamp();
 #endif
+        if (firstRender)
+            await OnFirstRenderAsync();
+
+        foreach (var hook in _hooks)
+            if (hook is IAsyncComponentHook ah)
+                await ah.OnAfterRenderAsync(this, firstRender);
+
         await base.OnAfterRenderAsync(firstRender);
-        if (_hooks is not null)
-            foreach (var hook in _hooks)
-                if (hook is IAsyncComponentHook ah) await ah.OnAfterRenderAsync(this, firstRender);
     }
 
-    // ── CSS / Style ─────────────────────────────────────────────────────────────
+    /// <summary>
+    /// Вызывается при первом рендере. Удобная точка расширения (аналог componentDidMount).
+    /// </summary>
+    protected virtual Task OnFirstRenderAsync() => Task.CompletedTask;
+
+    // ── CSS / Style ─────────────────────────────────────────────────────────────────
 #if DEBUG
     public ComponentDiagnostics Diagnostics => _diagnostics;
 #endif
 
-    protected CssBuilder Css(string? baseClass = null) => new(baseClass ?? GetDefaultCssClass());
-    protected StyleBuilder CreateStyle(string? baseStyle = null) => new(baseStyle);
+    protected CssBuilder Css(string? baseClass = null)
+        => new(baseClass ?? GetDefaultCssClass());
+
+    protected StyleBuilder CreateStyle(string? baseStyle = null)
+        => new(baseStyle);
+
     protected virtual string? GetDefaultCssClass() => null;
 
-    // ── ARIA ────────────────────────────────────────────────────────────────────
+    // ── ARIA ────────────────────────────────────────────────────────────────────────
     /// <summary>
-    /// Строит словарь ARIA-атрибутов. Результат кэшируется между рендерами
-    /// и инвалидируется при изменении параметров (через SetParametersAsync).
+    /// Строит словарь ARIA-атрибутов. Результат кэшируется между рендерами.
+    /// Инвалидируется при изменении параметров (через SetParametersAsync).
     /// </summary>
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var currentGeneration = Volatile.Read(ref _ariaGeneration);
-        var cache = Volatile.Read(ref _ariaCache);
 
-        // ИСПРАВЛЕНО: Volatile.Read для _ariaCacheGeneration
-        if (cache is not null && Volatile.Read(ref _ariaCacheGeneration) == currentGeneration)
-            return cache;
+        // ИСПРАВЛЕНО: lock для атомарного чтения пары (cache, generation)
+        lock (_ariaCacheLock)
+        {
+            if (_ariaCache is not null && _ariaCacheGeneration == currentGeneration)
+                return _ariaCache;
 
-        var capacity = (AdditionalAttributes?.Count ?? 0) + 4;
-        var attrs = new Dictionary<string, object>(capacity, StringComparer.Ordinal);
+            var capacity = (AdditionalAttributes?.Count ?? 0) + 4;
+            var attrs = new Dictionary<string, object>(capacity, StringComparer.Ordinal);
 
-        if (AdditionalAttributes is not null)
-            foreach (var kvp in AdditionalAttributes)
-                attrs[kvp.Key] = kvp.Value;
+            if (AdditionalAttributes is not null)
+                foreach (var kvp in AdditionalAttributes)
+                    attrs[kvp.Key] = kvp.Value;
 
-        // ИСПРАВЛЕНО: сначала данные, потом generation (правильный порядок release)
-        var snapshot = (IReadOnlyDictionary<string, object>)new Dictionary<string, object>(attrs, StringComparer.Ordinal);
-        Volatile.Write(ref _ariaCache, snapshot);
-        Volatile.Write(ref _ariaCacheGeneration, currentGeneration);
-
-        return snapshot;
+            _ariaCache = attrs;
+            _ariaCacheGeneration = currentGeneration;
+            return attrs;
+        }
     }
 
-    // ── RefreshAsync ────────────────────────────────────────────────────────────
+    // ── RefreshAsync ────────────────────────────────────────────────────────────────
+    /// <summary>Запланировать перерисовку из любого потока.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task RefreshAsync()
     {
@@ -297,20 +308,11 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(StateHasChanged);
     }
 
-    /// <summary>Выполнить action и запланировать перерисовку.</summary>
+    /// <summary>Выполнить действие и запланировать перерисовку.</summary>
     public Task RefreshAsync(Action action)
     {
         if (IsDisposed) return Task.CompletedTask;
-        return InvokeAsync(() =>
-        {
-            // ИСПРАВЛЕНО: try/catch вокруг action
-            try { action(); }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "[{Id}] RefreshAsync action error", ComponentId);
-            }
-            StateHasChanged();
-        });
+        return InvokeAsync(() => { action(); StateHasChanged(); });
     }
 
     protected Task SafeInvokeAsync(Func<Task> action)
@@ -325,7 +327,16 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(action);
     }
 
-    // ── Logging ─────────────────────────────────────────────────────────────────
+    // ── IsBrowser helpers ────────────────────────────────────────────────────────────
+    /// <summary>Выполнить действие только в WASM-контексте.</summary>
+    protected Task IfBrowserAsync(Func<Task> action)
+        => IsBrowser ? action() : Task.CompletedTask;
+
+    /// <summary>Выполнить действие только в Server-контексте.</summary>
+    protected Task IfServerAsync(Func<Task> action)
+        => IsServer ? action() : Task.CompletedTask;
+
+    // ── Logging ─────────────────────────────────────────────────────────────────────
     [Conditional("DEBUG")]
     private void LogLifecycle(string method)
     {
@@ -333,42 +344,39 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
             Logger.LogTrace("[{ComponentId}] {Method}", ComponentId, method);
     }
 
-    // ── IAsyncDisposable ────────────────────────────────────────────────────────
+    // ── IAsyncDisposable ────────────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         LogLifecycle(nameof(DisposeAsync));
 
+        // 1. Реактивные disposables
         if (_reactiveDisposables is not null)
         {
             foreach (var rd in _reactiveDisposables)
             {
                 try { rd.Dispose(); }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId);
-                }
+                catch (Exception ex) { Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId); }
             }
             _reactiveDisposables.Clear();
         }
 
-        if (_hooks is not null)
+        // 2. Hooks
+        foreach (var hook in _hooks)
         {
-            foreach (var hook in _hooks)
+            try
             {
-                try
-                {
-                    if (hook is IAsyncDisposable ad) await ad.DisposeAsync();
-                    else if (hook is IDisposable d) d.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId);
-                }
+                if (hook is IAsyncDisposable ad) await ad.DisposeAsync();
+                else if (hook is IDisposable d) d.Dispose();
             }
-            _hooks.Clear();
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId);
+            }
         }
+        _hooks.Clear();
 
+        // 3. Компонент-специфичные ресурсы
         await DisposeComponentAsync();
         GC.SuppressFinalize(this);
     }
@@ -377,10 +385,11 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// Точка расширения для освобождения ресурсов дочерних классов.
     /// Вызывайте base.DisposeComponentAsync() в конце.
     /// </summary>
-    protected virtual async ValueTask DisposeComponentAsync()
+    // ИСПРАВЛЕНО: убран лишний async + await ValueTask.CompletedTask (state machine overhead)
+    protected virtual ValueTask DisposeComponentAsync()
     {
         var batcher = Interlocked.Exchange(ref _signalBatcher, null);
         batcher?.Dispose();
-        await ValueTask.CompletedTask;
+        return ValueTask.CompletedTask;
     }
 }

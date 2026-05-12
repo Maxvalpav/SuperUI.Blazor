@@ -33,11 +33,9 @@ public sealed class ThrottledRenderHook : IRenderHook
     {
         var now = Stopwatch.GetTimestamp();
         var last = Interlocked.Read(ref _lastRenderTicks);
-
         if (now - last < _minIntervalTicks) return false;
-
-        Interlocked.Exchange(ref _lastRenderTicks, now);
-        return true;
+        // ИСПРАВЛЕНО: CompareExchange — атомарно обновляем только если last не изменился
+        return Interlocked.CompareExchange(ref _lastRenderTicks, now, last) == last;
     }
 
     // IComponentHook — default-реализации (методы не нужны)

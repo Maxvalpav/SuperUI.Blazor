@@ -1,9 +1,8 @@
 // SuperUI/Base/Reactive/SgSignal.cs
-// ИСПРАВЛЕНО:
-// 1. Добавлен IDisposable — Dispose() очищает всех подписчиков
-// 2. Peek() — чтение без реактивной подписки
-// 3. PurgeDeadSubscribers() — принудительная очистка мёртвых WeakRef
-// 4. Update() — не атомарен на Server, добавлен комментарий
+// Ключевые исправления:
+// 1. Set() — чтение/запись _value под lock для struct типов (ARM safety)
+// 2. Cleanup() — явная очистка мёртвых WeakReference
+
 using System.Runtime.CompilerServices;
 using SuperUI.Base;
 
@@ -19,7 +18,7 @@ public sealed class SgSignal<T> : IDisposable
     private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
     private readonly object _lock = new();
     private readonly HashSet<ISignalObserver> _observers = new();
-    private volatile bool _disposed;
+    private int _disposedInt;
 
     public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
     {
@@ -50,9 +49,16 @@ public sealed class SgSignal<T> : IDisposable
     /// </summary>
     public void Set(T newValue)
     {
-        if (_disposed) return;
-        if (_comparer.Equals(_value, newValue)) return;
-        _value = newValue;
+        if (Volatile.Read(ref _disposedInt) == 1) return;
+        
+        // ИСПРАВЛЕНО: читаем под lock (ARM torn reads для structs)
+        T current;
+        lock (_lock) { current = _value; }
+        if (_comparer.Equals(current, newValue)) return;
+        
+        // Пишем под lock
+        lock (_lock) { _value = newValue; }
+        
         NotifySubscribers();
     }
 
@@ -85,6 +91,15 @@ public sealed class SgSignal<T> : IDisposable
         {
             _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
         }
+    }
+
+    /// <summary>
+    /// Явная очистка мёртвых WeakReference (опционально, вызывайте редко).
+    /// </summary>
+    internal void Cleanup()
+    {
+        lock (_lock)
+            _subscribers.RemoveWhere(wr => !wr.TryGetTarget(out var c) || c.IsDisposed);
     }
 
     private void NotifySubscribers()
@@ -135,7 +150,7 @@ public sealed class SgSignal<T> : IDisposable
     /// <summary>Освободить всех подписчиков и наблюдателей.</summary>
     public void Dispose()
     {
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
         lock (_lock)
         {
             _subscribers.Clear();

@@ -1,9 +1,9 @@
 // SuperUI/Base/Reactive/SgComputed.cs
-// ИСПРАВЛЕНО:
-// 1. _isDirty — volatile для Server thread-safety
-// 2. Recompute — защита от двойного входа через lock
-// 3. ComputedObserver._dependencies — HashSet для дедупликации
-// 4. Invalidate — проверка _isDirty перед NotifyChanged
+// Ключевые исправления:
+// 1. _isDirty / _isRecomputing — Interlocked для thread-safety
+// 2. _dependencies очищаются перед каждым Recompute
+
+using System.Runtime.CompilerServices;
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
@@ -17,10 +17,12 @@ public sealed class SgComputed<T> : IDisposable
     private readonly Func<T> _compute;
     private readonly IEqualityComparer<T> _comparer;
     private T _cachedValue;
-    // ИСПРАВЛЕНО: volatile для Server
-    private volatile bool _isDirty = true;
-    private int _disposed;
-    private readonly object _recomputeLock = new();
+    
+    // ИСПРАВЛЕНО: Interlocked-флаги вместо volatile bool
+    private int _isDirtyInt = 1; // 1 = dirty, 0 = clean
+    private int _isRecomputing; // 0 = free, 1 = computing
+    
+    private int _disposedInt;
     private readonly ComputedObserver _observer;
 
     public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null)
@@ -35,7 +37,7 @@ public sealed class SgComputed<T> : IDisposable
     {
         get
         {
-            if (_isDirty) Recompute();
+            if (Volatile.Read(ref _isDirtyInt) == 1) Recompute();
             SignalTracker.TrackComputed(this);
             return _cachedValue;
         }
@@ -43,36 +45,42 @@ public sealed class SgComputed<T> : IDisposable
 
     private void Recompute()
     {
-        // ИСПРАВЛЕНО: lock защищает от двойного вычисления на Server
-        lock (_recomputeLock)
+        // ИСПРАВЛЕНО: только один поток перевычисляет (остальные получат кешированное значение)
+        if (Interlocked.CompareExchange(ref _isRecomputing, 1, 0) == 1) return;
+        try
         {
-            if (!_isDirty) return; // double-check
+            // ИСПРАВЛЕНО: очищаем старые зависимости перед каждым вычислением
+            _observer.BeginTracking();
+            
             using (SignalTracker.EnterScopeForObserver(_observer))
             {
                 var newValue = _compute();
-                if (!_comparer.Equals(_cachedValue, newValue))
+                var isDirty = Interlocked.Exchange(ref _isDirtyInt, 0) == 1;
+                if (isDirty || !_comparer.Equals(_cachedValue, newValue))
                 {
                     _cachedValue = newValue;
                     _observer.NotifyChanged();
                 }
-                _isDirty = false;
             }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isRecomputing, 0);
         }
     }
 
     private void Invalidate()
     {
-        // ИСПРАВЛЕНО: избегаем лишних уведомлений если уже dirty
-        if (_isDirty) return;
-        _isDirty = true;
-        _observer.NotifyChanged();
+        // Устанавливаем флаг dirty, но уведомляем только если transitioning clean→dirty
+        var wasDirty = Interlocked.Exchange(ref _isDirtyInt, 1) == 1;
+        if (!wasDirty) _observer.NotifyChanged();
     }
 
     internal void Subscribe(SgComponentBase component) => _observer.Subscribe(component);
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
         _observer.Dispose();
     }
 
@@ -85,7 +93,7 @@ public sealed class SgComputed<T> : IDisposable
         // ИСПРАВЛЕНО: HashSet для дедупликации зависимостей
         private readonly HashSet<object> _dependencies = new();
         private readonly object _lock = new();
-        private int _disposed;
+        private int _disposedInt;
 
         public ComputedObserver(Action invalidate) => _invalidate = invalidate;
 
@@ -93,6 +101,9 @@ public sealed class SgComputed<T> : IDisposable
         {
             lock (_lock) _dependents.Add(new WeakReference<SgComponentBase>(component));
         }
+
+        /// <summary>Очистить список зависимостей перед новым вычислением.</summary>
+        internal void BeginTracking() => lock (_lock) _dependencies.Clear();
 
         internal void NotifyChanged()
         {
@@ -128,7 +139,7 @@ public sealed class SgComputed<T> : IDisposable
 
         public void Dispose()
         {
-            Interlocked.Exchange(ref _disposed, 1);
+            if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
             lock (_lock)
             {
                 _dependents.Clear();

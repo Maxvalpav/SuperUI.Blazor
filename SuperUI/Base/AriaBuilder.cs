@@ -4,7 +4,8 @@
 // - BuildInto() для zero-allocation слияния в существующий словарь
 // - Merge() корректно: только читает из other, не мутирует возвращаемый результат
 // - Has() и Count — удобные методы
-namespace SuperUI.Base;
+using System.Collections.Frozen;
+using System.Globalization;
 
 /// <summary>
 /// Fluent builder для ARIA атрибутов. WAI-ARIA 1.2.
@@ -97,6 +98,7 @@ public sealed class AriaBuilder
     public AriaBuilder Label(string text) => Set("aria-label", text);
     public AriaBuilder LabelledBy(string id) => Set("aria-labelledby", id);
     public AriaBuilder DescribedBy(string id) => Set("aria-describedby", id);
+    public AriaBuilder DescribedBy(params string[] ids) => Set("aria-describedby", string.Join(" ", ids));
     public AriaBuilder Details(string id) => Set("aria-details", id);
     public AriaBuilder Controls(string id) => Set("aria-controls", id);
     public AriaBuilder Owns(string id) => Set("aria-owns", id);
@@ -116,9 +118,9 @@ public sealed class AriaBuilder
     public AriaBuilder Relevant(string value = "additions text") => Set("aria-relevant", value);
 
     // ── Числовые атрибуты ─────────────────────────────────────────────────────
-    public AriaBuilder ValueMin(double min) => Set("aria-valuemin", min);
-    public AriaBuilder ValueMax(double max) => Set("aria-valuemax", max);
-    public AriaBuilder ValueNow(double now) => Set("aria-valuenow", now);
+    public AriaBuilder ValueMin(double min) => Set("aria-valuemin", min.ToString("G", CultureInfo.InvariantCulture));
+    public AriaBuilder ValueMax(double max) => Set("aria-valuemax", max.ToString("G", CultureInfo.InvariantCulture));
+    public AriaBuilder ValueNow(double now) => Set("aria-valuenow", now.ToString("G", CultureInfo.InvariantCulture));
     public AriaBuilder ValueText(string text) => Set("aria-valuetext", text);
     public AriaBuilder Level(int level) => Set("aria-level", level);
     public AriaBuilder SetSize(int size) => Set("aria-setsize", size);
@@ -138,7 +140,10 @@ public sealed class AriaBuilder
     // ── Сборка ────────────────────────────────────────────────────────────────
     private AriaBuilder Set(string key, object? value)
     {
-        if (value is not null) Attrs[key] = value;
+        if (value is not null)
+            Attrs[key] = value;
+        else
+            _attrs?.Remove(key);
         return this;
     }
 
@@ -178,7 +183,7 @@ public sealed class AriaBuilder
     }
 
     private static readonly IReadOnlyDictionary<string, object> EmptyReadOnly =
-        new Dictionary<string, object>(0, StringComparer.Ordinal);
+        FrozenDictionary<string, object>.Empty;
 
     /// <summary>Сбросить все атрибуты (переиспользование builder'а).</summary>
     public AriaBuilder Clear() { _attrs?.Clear(); return this; }

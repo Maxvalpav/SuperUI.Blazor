@@ -1,9 +1,11 @@
 // SuperUI/Base/Reactive/ComponentSignalTracker.cs
-// ИСПРАВЛЕНО:
-// 1. _scheduled сбрасывается ДО рендера (drain-loop подход)
-// 2. _isFlushing предотвращает запуск двух параллельных FlushAsync
-// 3. Финальная проверка в finally: вдруг сигнал пришёл между проверкой и сбросом _isFlushing
-// 4. Volatile.Read для _scheduled в конце цикла (ARM memory model)
+// Ключевые исправления:
+// 1. FlushAsync — try/catch для ObjectDisposedException / OperationCanceledException
+// 2. InvokeStateHasChangedAsync — изолирован от circuit disconnection exceptions
+
+using System.Runtime.CompilerServices;
+using SuperUI.Base;
+
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
@@ -24,12 +26,13 @@ public sealed class ComponentSignalTracker : IDisposable
     private readonly SgComponentBase _component;
 
     // 0 = нет запланированной задачи, 1 = задача запланирована
-    private int _scheduled;  // ИСПРАВЛЕНО: убран volatile (Interlocked достаточен)
+    private int _scheduled;
 
     // 0 = не в процессе флаша, 1 = FlushAsync выполняется
-    private int _isFlushing; // ИСПРАВЛЕНО: убран volatile
+    private int _isFlushing;
 
-    private volatile bool _disposed;
+    // ИСПРАВЛЕНО: int для Interlocked.Exchange (atomic compare-and-swap)
+    private int _disposedInt;
 
     public ComponentSignalTracker(SgComponentBase component)
     {
@@ -42,7 +45,7 @@ public sealed class ComponentSignalTracker : IDisposable
     /// </summary>
     public void ScheduleRender()
     {
-        if (_disposed || _component.IsDisposed) return;
+        if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
 
         // Атомарно устанавливаем флаг: если уже 1 — задача уже запланирована, выходим
         if (Interlocked.Exchange(ref _scheduled, 1) == 0)
@@ -66,21 +69,24 @@ public sealed class ComponentSignalTracker : IDisposable
                 // Ждём следующего микротаска — позволяем другим сигналам накопиться за тик
                 await Task.Yield();
 
-                if (_disposed || _component.IsDisposed)
+                if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed)
                 {
                     Interlocked.Exchange(ref _scheduled, 0);
                     return;
                 }
 
-                // ИСПРАВЛЕНО: сбрасываем _scheduled ДО рендера
+                // Сбрасываем _scheduled ДО рендера
                 // Если во время рендера придёт новый сигнал → _scheduled снова станет 1
                 // → цикл продолжится, и мы не пропустим обновление
                 Interlocked.Exchange(ref _scheduled, 0);
 
-                await _component.InvokeStateHasChangedAsync();
+                // ИСПРАВЛЕНО: catch disconnect-related exceptions
+                try { await _component.InvokeStateHasChangedAsync(); }
+                catch (ObjectDisposedException) { return; }
+                catch (OperationCanceledException) { return; }
 
                 // После рендера: если новый сигнал пришёл во время рендера — продолжаем
-                // ИСПРАВЛЕНО: используем Volatile.Read для корректности на ARM
+                // Используем Volatile.Read для корректности на ARM
                 if (Volatile.Read(ref _scheduled) == 0) break;
             }
         }
@@ -91,7 +97,9 @@ public sealed class ComponentSignalTracker : IDisposable
 
             // ИСПРАВЛЕНО: финальная проверка race window
             // Сигнал мог прийти между последней проверкой _scheduled и сбросом _isFlushing
-            if (Volatile.Read(ref _scheduled) == 1 && !_disposed && !_component.IsDisposed)
+            if (Volatile.Read(ref _scheduled) == 1 && 
+                Volatile.Read(ref _disposedInt) == 0 && 
+                !_component.IsDisposed)
             {
                 if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
                 {
@@ -101,9 +109,12 @@ public sealed class ComponentSignalTracker : IDisposable
         }
     }
 
+    /// <summary>
+    /// ИСПРАВЛЕНО: Interlocked.Exchange — атомарный compare-and-swap.
+    /// Гарантирует, что Dispose выполняется ровно один раз даже при race.
+    /// </summary>
     public void Dispose()
     {
-        _disposed = true;
-        Interlocked.Exchange(ref _scheduled, 0);
+        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
     }
 }

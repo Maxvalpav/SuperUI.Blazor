@@ -1,9 +1,7 @@
 // SuperUI/Base/SgDataBase.cs
-// ИСПРАВЛЕНО:
-// 1. Items.Count() — TryGetNonEnumeratedCount для O(1) при IList/ICollection
-// 2. TotalPages — Math.Max(1, ...) чтобы не возвращать 0
-// 3. LoadDataAsync — IQueryable<T> правильно применяет пагинацию без двойного прохода
-// 4. ApplyFilters/ApplySort — возвращают IQueryable для правильного chaining
+// Ключевые исправления:
+// 1. OnParametersSetAsync — IsDisposed check
+// 2. OnParametersSetAsync — отслеживание смены DataSource
 
 using System.Collections;
 using Microsoft.AspNetCore.Components;
@@ -39,7 +37,6 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
     protected bool HasItems => DisplayItems.Count > 0;
     protected bool IsEmpty => !IsDataLoading && DataError == null && !HasItems;
 
-    // ИСПРАВЛЕНО: Math.Max(1, ...) — никогда не возвращает 0
     protected int TotalPages => PageSize > 0
         ? Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize))
         : 1;
@@ -47,8 +44,10 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
     private volatile int _loadingVersion;
     private IEnumerable<TItem>? _lastItems;
     private int _lastPageSize;
+    // ИСПРАВЛЕНО: отслеживаем смену DataSource
+    private Func<SgDataRequest, CancellationToken, ValueTask<SgDataResult<TItem>>>? _lastDataSource;
 
-    // ── Загрузка данных — ИСПРАВЛЕНО ─────────────────────────────────────────
+    // ── Загрузка данных ─────────────────────────────────────────────────────────
     protected async Task LoadDataAsync()
     {
         var version = Interlocked.Increment(ref _loadingVersion);
@@ -81,7 +80,6 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
                 query = ApplyFilters(query);
                 query = ApplySort(query);
 
-                // ИСПРАВЛЕНО: TryGetNonEnumeratedCount — O(1) для IList/ICollection
                 if (!query.TryGetNonEnumeratedCount(out totalCount))
                     totalCount = query.Count();
 
@@ -152,14 +150,28 @@ public abstract class SgDataBase<TItem> : SgInteractiveBase
     {
         await base.OnParametersSetAsync();
 
+        // ИСПРАВЛЕНО: проверка IsDisposed
+        if (IsDisposed) return;
+
+        // ИСПРАВЛЕНО: отслеживаем смену DataSource
+        var dataSourceChanged = !ReferenceEquals(DataSource, _lastDataSource);
+        if (dataSourceChanged)
+        {
+            _lastDataSource = DataSource;
+            CurrentPage = 1;
+            CurrentFilters.Clear();
+            CurrentSort = null;
+        }
+
         var itemsChanged = !ReferenceEquals(Items, _lastItems);
         var pageSizeChanged = PageSize != _lastPageSize;
 
-        if ((itemsChanged || pageSizeChanged) && Items != null && DataSource == null)
+        if ((itemsChanged || pageSizeChanged || dataSourceChanged)
+            && (Items != null || DataSource != null))
         {
             _lastItems = Items;
             _lastPageSize = PageSize;
-            CurrentPage = 1; // сбрасываем страницу при смене Items
+            if (!dataSourceChanged) CurrentPage = 1;
             await LoadDataAsync();
         }
     }
