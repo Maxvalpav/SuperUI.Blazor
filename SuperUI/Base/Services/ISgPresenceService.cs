@@ -3,30 +3,43 @@
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Сервис присутствия пользователей (online/offline).
-/// Scoped: per-user на Server, per-tab на WASM.
+/// Сервис присутствия пользователей (online/offline/status).
+/// Scoped: per-user на Blazor Server, per-tab на WASM.
+///
+/// Для реального multi-user real-time: реализуйте через SignalR Hub.
 /// </summary>
 public interface ISgPresenceService : IAsyncDisposable
 {
-    /// <summary>Текущий пользователь онлайн.</summary>
+    /// <summary>Текущий пользователь находится онлайн.</summary>
     bool IsOnline { get; }
 
-    /// <summary>Статус пользователя.</summary>
+    /// <summary>Статус текущего пользователя (null = не установлен).</summary>
     string? Status { get; }
 
-    /// <summary>Список онлайн пользователей (для collaboration).</summary>
+    /// <summary>
+    /// Список известных онлайн-пользователей.
+    /// На WASM обычно содержит только текущего пользователя.
+    /// </summary>
     IReadOnlyList<SgPresenceUser> OnlineUsers { get; }
 
-    /// <summary>Событие изменения присутствия.</summary>
+    /// <summary>
+    /// Событие изменения присутствия любого пользователя.
+    /// Вызывается при SetOnlineAsync / SetOfflineAsync / UpdateStatusAsync.
+    /// </summary>
     event Action<SgPresenceUser>? PresenceChanged;
 
     /// <summary>Обновить статус текущего пользователя.</summary>
     Task UpdateStatusAsync(string status, CancellationToken ct = default);
 
-    /// <summary>Установить пользователя как онлайн.</summary>
+    /// <summary>
+    /// Установить текущего пользователя как онлайн.
+    /// </summary>
+    /// <param name="userId">Идентификатор пользователя.</param>
+    /// <param name="displayName">Отображаемое имя (необязательно).</param>
+    /// <param name="ct">Токен отмены.</param>
     Task SetOnlineAsync(string userId, string? displayName = null, CancellationToken ct = default);
 
-    /// <summary>Установить пользователя как оффлайн.</summary>
+    /// <summary>Установить текущего пользователя как оффлайн.</summary>
     Task SetOfflineAsync(CancellationToken ct = default);
 }
 

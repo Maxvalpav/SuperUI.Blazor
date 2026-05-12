@@ -1,101 +1,98 @@
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;   // ← FIX CS1061
-using Microsoft.Extensions.Options;
-using SuperUI.Base.Services;
+// SuperUI/ServiceCollectionExtensions.cs
 
-// НЕ добавляем: using Microsoft.AspNetCore.Components.WebAssembly.Hosting  ← FIX CS0234
-// НЕ добавляем: using Microsoft.AspNetCore.Http  — условно через reflection
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using SuperUI.Base;              // ✅ FIX CS0246: SgLibraryOptions находится здесь
+using SuperUI.Base.Services;
 
 namespace SuperUI;
 
+/// <summary>
+/// Методы расширения для регистрации сервисов SuperUI в DI-контейнере.
+/// </summary>
 public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Регистрирует все сервисы SuperUI.
-    /// Вызывать в Program.cs для WASM, Server и Web App (оба проекта).
+    /// Универсальный метод: работает на WASM, Blazor Server и Web App (auto-detect).
     /// </summary>
     /// <param name="services">Коллекция сервисов.</param>
     /// <param name="configure">Опциональная конфигурация <see cref="SgLibraryOptions"/>.</param>
-    public static IServiceCollection AddSuperUI(
-        this IServiceCollection services,
+    public static IServiceCollection AddSuperUI(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
-        // ── Конфигурация ──────────────────────────────────────────────────────────
+        // ── Конфигурация ─────────────────────────────────────────────────────
         services.Configure<SgLibraryOptions>(configure ?? (_ => { }));
 
-        // ── Prerendering Detector ─────────────────────────────────────────────────
-        // ВАЖНО: class-library не знает о режиме хостинга.
-        // Определяем через OperatingSystem.IsBrowser() — это работает и на WASM и на Server.
-        // На WASM: всегда false (нет prerendering в runtime).
-        // На Server: используем IHttpContextAccessor если он зарегистрирован.
+        // ── Prerendering Detector ─────────────────────────────────────────────
+        // Определяем хост-среду через OperatingSystem.IsBrowser() — безопасно для AOT.
+        // Не используем WebAssemblyHostBuilder (CS0234 на Server).
         services.TryAddSingleton<IPrerenderingDetector>(sp =>
         {
-            // FIX CS0234: НЕ используем WebAssemblyHostBuilder
             if (OperatingSystem.IsBrowser())
                 return WasmPrerenderingDetector.Instance;
 
-            // Server-side: пытаемся получить IHttpContextAccessor
-            // Если не зарегистрирован (например, чистый WASM проект) — fallback
             var accessor = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
-            if (accessor is null)
-                return WasmPrerenderingDetector.Instance;
-
-            return new ServerPrerenderingDetector(accessor);
+            return accessor is not null
+                ? new ServerPrerenderingDetector(accessor)
+                : (IPrerenderingDetector)WasmPrerenderingDetector.Instance;
         });
 
-        // Обратная совместимость с устаревшим интерфейсом (опечатка в имени)
-        services.TryAddSingleton<IPrerendingDetector>(
-            sp => (IPrerendingDetector)sp.GetRequiredService<IPrerenderingDetector>());
+        // Обратная совместимость (опечатка в старом имени интерфейса)
+        services.TryAddSingleton<IPrerendingDetector>(sp =>
+            (IPrerendingDetector)sp.GetRequiredService<IPrerenderingDetector>());
 
-        // ── IHttpContextAccessor (только Server / Web App Server проект) ──────────
-        // TryAdd — не дублировать если уже добавлен.
-        // На WASM этот тип недоступен, но TryAdd безопасен.
+        // ── IHttpContextAccessor (только Server) ──────────────────────────────
         if (!OperatingSystem.IsBrowser())
         {
             services.AddHttpContextAccessor();
         }
 
-        // ── Component Options ─────────────────────────────────────────────────────
+        // ── Опции компонентов ─────────────────────────────────────────────────
         services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
 
-        // ── Z-Index Service ───────────────────────────────────────────────────────
+        // ── Z-Index Service ───────────────────────────────────────────────────
         services.AddScoped<IZIndexService, ZIndexService>();
 
-        // ── Focus Trap ────────────────────────────────────────────────────────────
-        services.AddScoped<IFocusTrapService, JsFocusTrapService>();
-        services.AddScoped<IFocusTrapServiceEx, JsFocusTrapServiceEx>();
+        // ── Focus Trap ────────────────────────────────────────────────────────
+        services.AddScoped<IFocusTrapService, FocusTrapService>();
         services.AddScoped<FocusTrapStack>();
 
-        // ── Keyboard Service ──────────────────────────────────────────────────────
+        // ── Keyboard Service ──────────────────────────────────────────────────
         services.AddScoped<IKeyboardService, KeyboardService>();
 
-        // ── Session Storage ───────────────────────────────────────────────────────
+        // ── Session Storage ───────────────────────────────────────────────────
         services.AddScoped<ISessionStorage, JsSessionStorage>();
 
-        // ── Broadcast Service ─────────────────────────────────────────────────────
+        // ── Broadcast Service (Singleton: in-process event bus) ───────────────
+        // ✅ FIX: зарегистрирован как ISgBroadcastService → SgBroadcastService
         services.TryAddSingleton<ISgBroadcastService, SgBroadcastService>();
 
-        // ── Presence Service ──────────────────────────────────────────────────────
+        // ── Presence Service (Scoped: per-circuit / per-user) ─────────────────
+        // ✅ FIX: ISgPresenceService → SgPresenceServiceImpl (полная реализация)
         services.AddScoped<ISgPresenceService, SgPresenceServiceImpl>();
 
-        // ── Toast / Confirm / Notification ────────────────────────────────────────
-        services.AddScoped<SgToastService>();
-        services.AddScoped<SgConfirmService>();
-        services.AddScoped<SgNotificationService>();
+        // ── Toast Service ─────────────────────────────────────────────────────
+        services.AddScoped<ISgToastService, SgToastService>();
+
+        // ── Confirm Service ───────────────────────────────────────────────────
+        services.AddScoped<ISgConfirmService, SgConfirmService>();
+
+        // ── Notification Service ──────────────────────────────────────────────
+        services.AddScoped<ISgNotificationService, SgNotificationService>();
 
         return services;
     }
 
     /// <summary>
-    /// AddSuperUI для Blazor Server / Web App Server.
-    /// Автоматически добавляет IHttpContextAccessor.
+    /// AddSuperUI для Blazor Server / Web App Server-проекта.
+    /// Явно добавляет IHttpContextAccessor.
     /// </summary>
-    public static IServiceCollection AddSuperUIServer(
-        this IServiceCollection services,
+    public static IServiceCollection AddSuperUIServer(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
-        services.AddHttpContextAccessor(); // нужен для ServerPrerenderingDetector
+        services.AddHttpContextAccessor();
         return services.AddSuperUI(configure);
     }
 
@@ -103,8 +100,7 @@ public static class ServiceCollectionExtensions
     /// AddSuperUI для Blazor WebAssembly.
     /// IHttpContextAccessor не нужен.
     /// </summary>
-    public static IServiceCollection AddSuperUIWasm(
-        this IServiceCollection services,
+    public static IServiceCollection AddSuperUIWasm(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
         return services.AddSuperUI(configure);

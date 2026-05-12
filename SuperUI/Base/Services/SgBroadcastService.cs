@@ -1,83 +1,141 @@
-using System;
+// SuperUI/Base/Services/SgBroadcastService.cs
+
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// In-process реализация ISgBroadcastService через System.Threading.Channels.
-/// Thread-safe: ConcurrentDictionary + поддержка async-обработчиков.
+/// In-process реализация ISgBroadcastService.
+/// Type-based pub/sub через ConcurrentDictionary.
 ///
-/// WASM: работает корректно (однопоточный, но Channel поддерживает async).
-/// Server: работает per-server-process (не cross-server).
-/// Для cross-server: переопределите на SignalR Hub или Redis pub/sub.
+/// Thread safety:
+///   WASM: однопоточный — lock не нужен, но безопасен.
+///   Server: per-circuit (Scoped) или Singleton — ConcurrentDictionary + lock для списков.
+///
+/// Для cross-server (multi-instance): переопределите с SignalR Hub или Redis Pub/Sub.
 /// </summary>
 public sealed class SgBroadcastService : ISgBroadcastService
 {
-    // Ключ: channel name → список обработчиков (type-erased)
-    private readonly ConcurrentDictionary<string, List<Func<object, Task>>> _handlers = new();
-    private readonly Lock _handlersLock = new();
+    // Type → список type-erased async-обработчиков
+    private readonly ConcurrentDictionary<Type, List<Func<object, Task>>> _handlers = new();
+    private readonly Lock _lock = new();
     private volatile bool _disposed;
 
-    /// <inheritdoc/>
-    public async Task PublishAsync<T>(string channel, T message) where T : notnull
+    /// <inheritdoc />
+    public IDisposable Subscribe<T>(Action<T> handler) where T : notnull
     {
-        if (_disposed) return;
-        ArgumentNullException.ThrowIfNull(channel);
-
-        if (!_handlers.TryGetValue(channel, out var handlers)) return;
-
-        Func<object, Task>[] snapshot;
-        lock (_handlersLock)
-            snapshot = [.. handlers];
-
-        foreach (var handler in snapshot)
-        {
-            try { await handler(message); }
-            catch { /* не прерываем остальных подписчиков */ }
-        }
-    }
-
-    /// <inheritdoc/>
-    public IAsyncDisposable Subscribe<T>(string channel, Func<T, Task> handler) where T : notnull
-    {
-        ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(handler);
-
-        Func<object, Task> wrapper = msg =>
-            msg is T typed ? handler(typed) : Task.CompletedTask;
-
-        var list = _handlers.GetOrAdd(channel, _ => []);
-        lock (_handlersLock)
-            list.Add(wrapper);
-
-        return new AsyncSubscription(() =>
+        return SubscribeCore<T>(msg =>
         {
-            lock (_handlersLock)
-                list.Remove(wrapper);
-            return ValueTask.CompletedTask;
+            handler(msg);
+            return Task.CompletedTask;
         });
     }
 
-    /// <inheritdoc/>
-    public IAsyncDisposable Subscribe<T>(string channel, Action<T> handler) where T : notnull
-        => Subscribe<T>(channel, msg => { handler(msg); return Task.CompletedTask; });
+    /// <inheritdoc />
+    public IDisposable Subscribe<T>(Func<T, Task> handler) where T : notnull
+    {
+        ArgumentNullException.ThrowIfNull(handler);
+        return SubscribeCore<T>(handler);
+    }
 
-    /// <inheritdoc/>
+    private IDisposable SubscribeCore<T>(Func<T, Task> handler) where T : notnull
+    {
+        ThrowIfDisposed();
+
+        // Оборачиваем в type-erased Func<object, Task>
+        Func<object, Task> wrapper = msg =>
+            msg is T typed ? handler(typed) : Task.CompletedTask;
+
+        var list = _handlers.GetOrAdd(typeof(T), _ => []);
+        lock (_lock) list.Add(wrapper);
+
+        return new Subscription(() =>
+        {
+            lock (_lock) list.Remove(wrapper);
+        });
+    }
+
+    /// <inheritdoc />
+    public async Task PublishAsync<T>(T message, CancellationToken ct = default) where T : notnull
+    {
+        if (_disposed) return;
+        ArgumentNullException.ThrowIfNull(message);
+
+        if (!_handlers.TryGetValue(typeof(T), out var list)) return;
+
+        Func<object, Task>[] snapshot;
+        lock (_lock) snapshot = [.. list];
+
+        foreach (var handler in snapshot)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                await handler(message).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch
+            {
+                // Ошибка одного подписчика не прерывает остальных
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void Publish<T>(T message) where T : notnull
+    {
+        if (_disposed) return;
+        ArgumentNullException.ThrowIfNull(message);
+
+        if (!_handlers.TryGetValue(typeof(T), out var list)) return;
+
+        Func<object, Task>[] snapshot;
+        lock (_lock) snapshot = [.. list];
+
+        // Fire-and-forget: async-обработчики запускаем через Task.Run
+        foreach (var handler in snapshot)
+        {
+            var h = handler;
+            Task.Run(() => h(message));
+        }
+    }
+
+    /// <inheritdoc />
+    public int GetSubscriberCount<T>() where T : notnull
+    {
+        if (!_handlers.TryGetValue(typeof(T), out var list)) return 0;
+        lock (_lock) return list.Count;
+    }
+
+    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
+        if (_disposed) return ValueTask.CompletedTask;
         _disposed = true;
         _handlers.Clear();
         return ValueTask.CompletedTask;
     }
 
-    private sealed class AsyncSubscription : IAsyncDisposable
+    private void ThrowIfDisposed()
+        => ObjectDisposedException.ThrowIf(_disposed, nameof(SgBroadcastService));
+
+    // ── Вспомогательный класс для отписки ────────────────────────────────────
+
+    private sealed class Subscription : IDisposable
     {
-        private readonly Func<ValueTask> _dispose;
-        public AsyncSubscription(Func<ValueTask> dispose) => _dispose = dispose;
-        public ValueTask DisposeAsync() => _dispose();
+        private readonly Action _unsubscribe;
+        private int _disposed;
+
+        public Subscription(Action unsubscribe) => _unsubscribe = unsubscribe;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                _unsubscribe();
+        }
     }
 }

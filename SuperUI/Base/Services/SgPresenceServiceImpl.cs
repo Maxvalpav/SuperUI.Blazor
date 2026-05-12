@@ -1,86 +1,117 @@
+// SuperUI/Base/Services/SgPresenceServiceImpl.cs
+
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Threading;
-using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
 /// In-memory реализация ISgPresenceService.
-/// Работает на WASM (single user) и Blazor Server (per-circuit).
-/// Для multi-user real-time: переопределите с SignalR Hub.
+///
+/// WASM: один пользователь per-tab. Presence = локальное состояние.
+/// Server: per-circuit. Каждый circuit = один пользователь.
+/// Multi-user collaboration: переопределите через SignalR Hub.
 /// </summary>
-public sealed class SgPresenceServiceImpl : ISgPresenceService, IDisposable
+public sealed class SgPresenceServiceImpl : ISgPresenceService
 {
-    private readonly ConcurrentDictionary<string, List<SgPresenceUser>> _presence = new();
-    private readonly SgSubject<SgPresenceChangedEvent> _subject = new();
-    private bool _disposed;
+    private readonly ConcurrentDictionary<string, SgPresenceUser> _onlineUsers = new();
+    private string? _currentUserId;
+    private string? _currentStatus;
+    private volatile bool _disposed;
 
-    // entityKey = $"{entityType}:{entityId}"
-    private static string Key(string type, string id) => $"{type}:{id}";
+    // ── ISgPresenceService ───────────────────────────────────────────────────
 
-    /// <inheritdoc/>
-    public Task<IReadOnlyList<SgPresenceUser>> GetPresenceAsync(string entityType, string entityId)
+    /// <inheritdoc />
+    public bool IsOnline => _currentUserId is not null && !_disposed;
+
+    /// <inheritdoc />
+    public string? Status => _currentStatus;
+
+    /// <inheritdoc />
+    public IReadOnlyList<SgPresenceUser> OnlineUsers
+        => _onlineUsers.Values.Where(u => u.IsOnline).ToList().AsReadOnly();
+
+    /// <inheritdoc />
+    public event Action<SgPresenceUser>? PresenceChanged;
+
+    /// <inheritdoc />
+    public Task UpdateStatusAsync(string status, CancellationToken ct = default)
     {
-        var key = Key(entityType, entityId);
-        var users = _presence.TryGetValue(key, out var list)
-            ? (IReadOnlyList<SgPresenceUser>)list.AsReadOnly()
-            : [];
-        return Task.FromResult(users);
-    }
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(status);
 
-    /// <inheritdoc/>
-    public Task ClaimEditAsync(string entityType, string entityId)
-    {
-        // В реальной реализации: получить userId из AuthState
-        var key = Key(entityType, entityId);
-        _presence.GetOrAdd(key, _ => []);
-        // TODO: добавить реального пользователя
+        _currentStatus = status;
+
+        if (_currentUserId is not null && _onlineUsers.TryGetValue(_currentUserId, out var existing))
+        {
+            var updated = existing with { Status = status, LastSeen = DateTimeOffset.UtcNow };
+            _onlineUsers[_currentUserId] = updated;
+            PresenceChanged?.Invoke(updated);
+        }
+
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
-    public Task ReleaseEditAsync(string entityType, string entityId)
+    /// <inheritdoc />
+    public Task SetOnlineAsync(string userId, string? displayName = null,
+        CancellationToken ct = default)
     {
-        var key = Key(entityType, entityId);
-        _presence.TryRemove(key, out _);
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(userId);
+
+        _currentUserId = userId;
+
+        var user = new SgPresenceUser(
+            UserId: userId,
+            DisplayName: displayName,
+            AvatarUrl: null,
+            Status: _currentStatus,
+            LastSeen: DateTimeOffset.UtcNow,
+            IsOnline: true);
+
+        _onlineUsers[userId] = user;
+        PresenceChanged?.Invoke(user);
+
         return Task.CompletedTask;
     }
 
-    /// <inheritdoc/>
-    public IObservable<SgPresenceChangedEvent> PresenceChanged => _subject;
-
-    /// <inheritdoc/>
-    public async IAsyncEnumerable<SgPresenceChangedEvent> StreamPresenceChangesAsync(
-        string entityType,
-        string entityId,
-        [EnumeratorCancellation] CancellationToken ct = default)
+    /// <inheritdoc />
+    public Task SetOfflineAsync(CancellationToken ct = default)
     {
-        var channel = Channel.CreateUnbounded<SgPresenceChangedEvent>();
-        var sub = _subject.Subscribe(e =>
-        {
-            if (e.EntityType == entityType && e.EntityId == entityId)
-                channel.Writer.TryWrite(e);
-        });
+        if (_disposed || _currentUserId is null) return Task.CompletedTask;
 
-        try
+        if (_onlineUsers.TryGetValue(_currentUserId, out var existing))
         {
-            await foreach (var evt in channel.Reader.ReadAllAsync(ct))
-                yield return evt;
+            var offline = existing with { IsOnline = false, LastSeen = DateTimeOffset.UtcNow };
+            _onlineUsers[_currentUserId] = offline;
+            PresenceChanged?.Invoke(offline);
         }
-        finally
-        {
-            sub.Dispose();
-        }
+
+        _currentUserId = null;
+        _currentStatus = null;
+
+        return Task.CompletedTask;
     }
 
-    public void Dispose()
+    // ── IAsyncDisposable ─────────────────────────────────────────────────────
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
         _disposed = true;
-        _subject.Dispose();
-        _presence.Clear();
+
+        // Помечаем пользователя офлайн перед очисткой
+        await SetOfflineAsync().ConfigureAwait(false);
+        _onlineUsers.Clear();
+        PresenceChanged = null;
     }
+
+    // ── Вспомогательные методы ───────────────────────────────────────────────
+
+    private void ThrowIfDisposed()
+        => ObjectDisposedException.ThrowIf(_disposed, nameof(SgPresenceServiceImpl));
+
+    /// <summary>Получить пользователя по userId или null.</summary>
+    public SgPresenceUser? GetUser(string userId)
+        => _onlineUsers.TryGetValue(userId, out var u) ? u : null;
 }

@@ -77,6 +77,12 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected static bool IsServer => !OperatingSystem.IsBrowser();
 
     /// <summary>
+    /// CancellationToken, отменяемый при DisposeAsync компонента.
+    /// Используйте в async-операциях для автоматической отмены.
+    /// </summary>
+    protected CancellationToken ComponentToken => _cts.Token;
+
+    /// <summary>
     /// Дополнительные атрибуты без class и style.
     /// Thread-safe кэш. ИСПРАВЛЕНО: lock для Server-side.
     /// </summary>
@@ -122,6 +128,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     private readonly List<IComponentHook> _hooks = [];
     private ComponentSignalTracker? _signalBatcher;
     private List<IDisposable>? _reactiveDisposables;
+    private readonly CancellationTokenSource _cts = new();
 
     // ARIA cache (shared lock для и AriaAttributes, и FilteredAttrs)
     private readonly object _ariaCacheLock = new();
@@ -390,6 +397,10 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected StyleBuilder CreateStyle(string? baseStyle = null)
         => new(baseStyle);
 
+    /// <summary>Создать StyleBuilder.</summary>
+    protected StyleBuilder CreateStyle(string? baseStyle = null)
+        => new(baseStyle);
+
     /// <summary>CSS-класс по умолчанию. Переопределите: <c>protected override string? GetDefaultCssClass() =&gt; "sg-button";</c></summary>
     protected virtual string? GetDefaultCssClass() => null;
 
@@ -516,7 +527,11 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 
         LogLifecycle(nameof(DisposeAsync));
 
-        // 1. Реактивные ресурсы
+        // 1. Отменяем ComponentToken
+        try { await _cts.CancelAsync(); } catch { /* ignored */ }
+        _cts.Dispose();
+
+        // 2. Реактивные ресурсы
         if (_reactiveDisposables is not null)
         {
             foreach (var rd in _reactiveDisposables)
@@ -527,7 +542,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
             _reactiveDisposables.Clear();
         }
 
-        // 2. Хуки
+        // 3. Хуки
         foreach (var hook in _hooks)
         {
             try
@@ -539,7 +554,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         }
         _hooks.Clear();
 
-        // 3. Дочерние ресурсы
+        // 4. Дочерние ресурсы
         await DisposeComponentAsync();
 
         GC.SuppressFinalize(this);

@@ -5,23 +5,23 @@ using System.Runtime.CompilerServices;
 namespace SuperUI.Base.Utilities;
 
 /// <summary>
-/// Генератор уникальных ID для компонентов SuperUI.
-/// Thread-safe: Interlocked.Increment.
-/// WASM-safe: однопоточный, но Interlocked корректен на ARM.
+/// Генератор уникальных ID компонентов.
+/// Thread-safe. Формат: "{prefix}-{counter}".
 /// </summary>
 public static class ComponentIdGenerator
 {
-    private static int _counter = 0;
+    private static int _counter;
 
     /// <summary>
-    /// Сгенерировать уникальный ID вида "prefix-N".
+    /// Сгенерировать уникальный ID.
     /// </summary>
-    /// <param name="prefix">Префикс компонента (напр. "btn", "inp", "cmp").</param>
+    /// <param name="prefix">Префикс (например "btn", "input").</param>
+    /// <returns>Строка вида "btn-42".</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string Next(string prefix = "cmp")
+    public static string Next(string prefix = "sg")
     {
         var id = Interlocked.Increment(ref _counter);
-        return string.Concat(prefix, "-", id.ToString());
+        return $"{prefix}-{id}";
     }
 
     /// <summary>Сброс счётчика (только для тестов!).</summary>
