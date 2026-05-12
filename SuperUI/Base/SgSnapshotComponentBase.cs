@@ -1,11 +1,3 @@
-// SuperUI/Base/SgSnapshotComponentBase.cs
-// ИСПРАВЛЕНО:
-// 1. ISessionStorage — используется JsSessionStorage (CS0246 устранён)
-// 2. SaveSnapshotAsync() — добавлен метод сохранения
-// 3. OnInitializedAsync — base.OnInitializedAsync() вызывается ПЕРВЫМ
-// 4. RestoreSnapshot — защита от JsonElement при JSON-десериализации
-// 5. AutoSave — опциональное автосохранение при изменении параметров
-// 6. JSDisconnectedException в GetItemAsync/SetItemAsync — уже обработан в JsSessionStorage
 using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
@@ -41,6 +33,7 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
 {
     // Кэш reflection — per-Type, статический (hot-reload безопасен через .NET 9 MetadataUpdateHandler)
     private static readonly ConcurrentDictionary<Type, SnapshotPropertyInfo[]> _cache = new();
+    private static readonly JsonSerializerOptions _jsonOptions = new(JsonSerializerDefaults.Web);
 
     [Inject] private ISessionStorage SessionStorage { get; set; } = null!;
 
@@ -134,14 +127,14 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
             if (!snapshot.TryGetValue(info.Property.Name, out var value)) continue;
             try
             {
-                // ИСПРАВЛЕНО: JsonElement конвертация (при десериализации из sessionStorage
-                // через System.Text.Json числа/строки приходят как JsonElement)
+                // ИСПРАВЛЕНО: JsonElement конвертация с передачей JsonSerializerOptions
                 var converted = ConvertFromJson(value, info.Property.PropertyType, info);
                 info.Property.SetValue(this, converted);
             }
             catch (Exception ex)
             {
-                Logger.LogDebug(ex, "[{Id}] Snapshot restore skipped for {Prop}", ComponentId, info.Property.Name);
+                Logger.LogDebug(ex, "[{Id}] Snapshot restore skipped for {Prop}",
+                    ComponentId, info.Property.Name);
             }
         }
     }
@@ -153,18 +146,21 @@ public abstract class SgSnapshotComponentBase : SgInteractiveBase, ISnapshotable
         if (value is null)
             return info.IsValueType ? info.DefaultValue : null;
 
-        // Если уже нужного типа — возвращаем
-        if (targetType.IsInstanceOfType(value))
-            return value;
+        if (targetType.IsInstanceOfType(value)) return value;
 
-        // JsonElement — конвертируем через System.Text.Json
         if (value is JsonElement element)
         {
-            try { return element.Deserialize(targetType); }
-            catch { return info.IsValueType ? info.DefaultValue : null; }
+            try
+            {
+                // ИСПРАВЛЕНО: передаём JsonSerializerOptions с Web-настройками
+                return element.Deserialize(targetType, _jsonOptions);
+            }
+            catch
+            {
+                return info.IsValueType ? info.DefaultValue : null;
+            }
         }
 
-        // Примитивные конвертации
         try { return Convert.ChangeType(value, Nullable.GetUnderlyingType(targetType) ?? targetType); }
         catch { return info.IsValueType ? info.DefaultValue : null; }
     }

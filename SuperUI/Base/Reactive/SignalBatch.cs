@@ -42,15 +42,29 @@ public static class SignalBatch
 
     private sealed class BatchScope : IDisposable
     {
+        private bool _disposed;
+
         public void Dispose()
         {
-            if (--_depth == 0 && _pending is { Count: > 0 })
+            if (_disposed) return;
+            _disposed = true;
+
+            if (--_depth > 0) return; // вложенный scope — не флашим
+
+            if (_pending is not { Count: > 0 }) return;
+
+            var snapshot = new List<SgComponentBase>(_pending);
+            _pending.Clear();
+
+            // ИСПРАВЛЕНО: исключение в одном компоненте не блокирует остальных
+            foreach (var c in snapshot)
             {
-                var snapshot = new List<SgComponentBase>(_pending);
-                _pending.Clear();
-                foreach (var c in snapshot)
-                    if (!c.IsDisposed)
-                        _ = c.RefreshAsync();
+                if (c.IsDisposed) continue;
+                try { _ = c.RefreshAsync(); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SignalBatch] RefreshAsync error: {ex}");
+                }
             }
         }
     }

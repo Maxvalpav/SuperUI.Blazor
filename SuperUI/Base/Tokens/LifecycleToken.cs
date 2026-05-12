@@ -1,45 +1,41 @@
-// SuperUI/Base/Tokens/LifecycleToken.cs
-// ИСПРАВЛЕНО:
-// 1. Убрана излишняя проверка IsCancellationRequested в Cancel() — CTS.Cancel() идемпотентен
-// 2. volatile int _disposed (убран volatile — Interlocked достаточен)
-// 3. Добавлен IsCancelled property для удобства
 namespace SuperUI.Base.Tokens;
 
 /// <summary>
 /// CancellationTokenSource с lifecycle семантикой для Blazor компонента.
 /// Создаётся при OnInitialized, отменяется при Dispose.
-/// Thread-safe: Cancel() идемпотентен, Dispose() защищён от повторного вызова.
+///
+/// ИСПРАВЛЕНО:
+/// 1. Cancel() — Volatile.Read (ARM-safe, предотвращает устаревшее чтение _disposed).
+/// 2. Dispose() — Interlocked.Exchange (идемпотентен, thread-safe).
+/// 3. IsCancelled — удобное свойство.
 /// </summary>
 public sealed class LifecycleToken : IDisposable
 {
     private readonly CancellationTokenSource _cts = new();
-    // ИСПРАВЛЕНО: убран volatile — Interlocked.Exchange обеспечивает необходимые memory barriers
     private int _disposed;
 
     public CancellationToken Token => _cts.Token;
 
-    /// <summary>Удобный доступ — аналог Token.IsCancellationRequested</summary>
+    /// <summary>Удобный доступ — аналог Token.IsCancellationRequested.</summary>
     public bool IsCancelled => _cts.IsCancellationRequested;
 
     /// <summary>
     /// Отменить токен. Идемпотентен — безопасен для повторного вызова.
+    /// Использует Volatile.Read для ARM-safety.
     /// </summary>
     public void Cancel()
     {
-        if (_disposed == 1) return;
-        try
-        {
-            // ИСПРАВЛЕНО: CancellationTokenSource.Cancel() является no-op при повторном вызове.
-            // Убрана проверка IsCancellationRequested — она создавала TOCTOU race window.
-            _cts.Cancel();
-        }
-        catch (ObjectDisposedException) { /* уже задиспожен — нормально */ }
+        // ИСПРАВЛЕНО: Volatile.Read вместо обычного чтения
+        if (Volatile.Read(ref _disposed) == 1) return;
+        try { _cts.Cancel(); }
+        catch (ObjectDisposedException) { }
     }
 
     public void Dispose()
     {
+        // ИСПРАВЛЕНО: Interlocked.Exchange — атомарный compare-and-swap
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        try { _cts.Cancel(); } catch { /* ignore */ }
+        try { _cts.Cancel(); } catch { }
         _cts.Dispose();
     }
 }

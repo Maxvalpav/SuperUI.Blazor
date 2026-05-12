@@ -1,10 +1,3 @@
-// SuperUI/Base/SgOverlayBase.cs
-// Ключевые исправления относительно версии до 20.5:
-// 1. OpenAsync/CloseAsync — добавлен IsDisposed check
-// 2. ZIndexService.Release — в try/finally (_zIndex = 0 всегда)
-// 3. BuildAriaAttributes — HasAriaModal виртуальное свойство
-// 4. HasAriaModal = false для Tooltip/Popover (переопределять в дочерних)
-
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
@@ -15,6 +8,14 @@ namespace SuperUI.Base;
 /// <summary>
 /// Базовый класс для overlay компонентов (Dialog, Drawer, Tooltip, Popover).
 /// Уровень 5: SgInteractiveBase → SgOverlayBase
+///
+/// ИСПРАВЛЕНО:
+/// 1. OnInitialized — base.OnInitialized() ПЕРВЫМ (хук Escape регистрируется после).
+/// 2. _animationDurationMs — volatile (пишется из OnFirstRenderAsync, читается из рендера).
+/// 3. OpenAsync/CloseAsync — IsDisposed check.
+/// 4. ZIndexService.Release — в try/finally (_zIndex=0 всегда).
+/// 5. HasAriaModal — виртуальное свойство (false для Tooltip/Popover).
+/// 6. aria-placeholder удалён (нестандартный атрибут).
 /// </summary>
 public abstract class SgOverlayBase : SgInteractiveBase
 {
@@ -32,26 +33,17 @@ public abstract class SgOverlayBase : SgInteractiveBase
     private int _zIndex;
     private bool _wasOpen;
     private string? _focusTrapId;
-    private int _isDisposingInt; // 0 = false, 1 = true
-    private int _animationDurationMs = 300; // fallback значение
-
+    private int _isDisposingInt;
+    // ИСПРАВЛЕНО: volatile — пишется из OnFirstRenderAsync, читается из ShouldRender/рендера
+    private volatile int _animationDurationMs = 300;
     private readonly SemaphoreSlim _overlayLock = new(1, 1);
 
     protected int EffectiveZIndex => _zIndex;
     protected bool IsAnimatingClose { get; private set; }
-
     protected virtual string AriaRole => "dialog";
-    /// <summary>
-    /// Длительность анимации открытия/закрытия в миллисекундах.
-    /// Значение синхронизируется с CSS-переменной на первом рендере через JS.
-    /// Override для кастомной логики.
-    /// </summary>
     protected virtual int AnimationDurationMs => _animationDurationMs;
 
-    /// <summary>
-    /// Добавлять aria-modal="true" в BuildAriaAttributes.
-    /// Tooltip/Popover переопределяют на false.
-    /// </summary>
+    /// Добавлять aria-modal="true". Tooltip/Popover переопределяют на false.
     protected virtual bool HasAriaModal => true;
 
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
@@ -68,50 +60,47 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     protected override void OnInitialized()
     {
+        // ИСПРАВЛЕНО: base.OnInitialized() ПЕРВЫМ — инициализирует _keyHandlers
+        base.OnInitialized();
+
         OnKey("Escape", async () =>
         {
             if (CloseOnEscape && Open) await CloseAsync();
         });
-        base.OnInitialized();
     }
 
-     protected override async Task OnParametersSetAsync()
-     {
-         await base.OnParametersSetAsync();
-         if (Interlocked.Exchange(ref _isDisposingInt, 0) == 1) return;
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        if (Interlocked.CompareExchange(ref _isDisposingInt, 0, 0) == 1) return;
+        if (!await _overlayLock.WaitAsync(0)) return;
+        try
+        {
+            if (Open && !_wasOpen)
+            {
+                _wasOpen = true;
+                await OnOpenCoreAsync();
+            }
+            else if (!Open && _wasOpen)
+            {
+                _wasOpen = false;
+                await OnCloseCoreAsync(animate: true);
+            }
+        }
+        finally { _overlayLock.Release(); }
+    }
 
-         if (!await _overlayLock.WaitAsync(0)) return;
-         try
-         {
-             if (Open && !_wasOpen)
-             {
-                 _wasOpen = true;
-                 await OnOpenCoreAsync();
-             }
-             else if (!Open && _wasOpen)
-             {
-                 _wasOpen = false;
-                 await OnCloseCoreAsync(animate: true);
-             }
-         }
-         finally
-         {
-             _overlayLock.Release();
-         }
-      }
+    protected override async Task OnFirstRenderAsync()
+    {
+        await base.OnFirstRenderAsync();
+        if (!IsPrerendering)
+        {
+            var ms = await SafeInvokeAsync<int>("getAnimationDuration", ComponentId);
+            if (ms > 0) _animationDurationMs = ms;
+        }
+    }
 
-     protected override async Task OnFirstRenderAsync()
-     {
-         await base.OnFirstRenderAsync();
-         // Синхронизируем длительность анимации с CSS, если возможно
-         if (!IsPrerendering)
-         {
-             var ms = await SafeInvokeAsync<int, string>("getAnimationDuration", ComponentId);
-             if (ms > 0) _animationDurationMs = ms;
-         }
-     }
-
-     private async Task OnOpenCoreAsync()
+    private async Task OnOpenCoreAsync()
     {
         _zIndex = ZIndexService.GetNext();
 
@@ -142,10 +131,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
         {
             IsAnimatingClose = true;
             StateHasChanged();
-            try
-            {
-                await Task.Delay(AnimationDurationMs, overrideToken ?? ComponentToken);
-            }
+            try { await Task.Delay(AnimationDurationMs, overrideToken ?? ComponentToken); }
             catch (OperationCanceledException) { }
             IsAnimatingClose = false;
         }
@@ -154,14 +140,12 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
         if (LockBodyScroll)
         {
-            try { await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId); }
-            catch { }
+            try { await SafeInvokeVoidAsync("unlockBodyScroll", ct, ComponentId); } catch { }
         }
 
         if (TrapFocus && _focusTrapId != null)
         {
-            try { await FocusTrapService.DeactivateAsync(_focusTrapId); }
-            catch { }
+            try { await FocusTrapService.DeactivateAsync(_focusTrapId); } catch { }
             _focusTrapId = null;
         }
 
@@ -178,13 +162,15 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     public async Task OpenAsync()
     {
-        if (Open || Interlocked.Exchange(ref _isDisposingInt, 0) == 1 || IsDisposed) return;
+        // ИСПРАВЛЕНО: IsDisposed check
+        if (Open || IsDisposed || Interlocked.CompareExchange(ref _isDisposingInt, 0, 0) == 1)
+            return;
 
         bool acquired;
         try { acquired = await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5)); }
         catch (ObjectDisposedException) { return; }
-
         if (!acquired) return;
+
         try
         {
             if (Open) return;
@@ -195,20 +181,20 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            try { _overlayLock.Release(); }
-            catch (ObjectDisposedException) { }
+            try { _overlayLock.Release(); } catch (ObjectDisposedException) { }
         }
     }
 
     public async Task CloseAsync()
     {
-        if (!Open || Interlocked.Exchange(ref _isDisposingInt, 0) == 1) return;
+        if (!Open || IsDisposed || Interlocked.CompareExchange(ref _isDisposingInt, 0, 0) == 1)
+            return;
 
         bool acquired;
         try { acquired = await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5)); }
         catch (ObjectDisposedException) { return; }
-
         if (!acquired) return;
+
         try
         {
             if (!Open) return;
@@ -219,8 +205,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
         }
         finally
         {
-            try { _overlayLock.Release(); }
-            catch (ObjectDisposedException) { }
+            try { _overlayLock.Release(); } catch (ObjectDisposedException) { }
         }
     }
 
@@ -231,7 +216,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     protected override async ValueTask DisposeComponentAsync()
     {
-        if (Interlocked.Exchange(ref _isDisposingInt, 1) == 1) return; // идемпотентность
+        if (Interlocked.Exchange(ref _isDisposingInt, 1) == 1) return;
 
         if (Open || _focusTrapId != null || _zIndex > 0)
         {

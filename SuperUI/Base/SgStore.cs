@@ -1,8 +1,3 @@
-// SuperUI/Base/SgStore.cs
-// Ключевые исправления:
-// 1. DispatchAsync — документация о Lost Update
-// 2. Dispose — выставляем _disposed через Interlocked (не просто присваивание)
-
 using SuperUI.Base.Reactive;
 
 namespace SuperUI.Base;
@@ -10,23 +5,16 @@ namespace SuperUI.Base;
 /// <summary>
 /// Реактивное хранилище состояния в стиле Redux/Zustand.
 /// Thread-safe для Blazor Server (multi-circuit).
+///
+/// ИСПРАВЛЕНО:
+/// 1. DispatchAsync — await Task.Yield() между попытками (WASM-совместимость).
+/// 2. Dispose — Interlocked.Exchange (атомарный compare-and-swap) + _state.Dispose().
 /// </summary>
-/// <typeparam name="TState">Тип состояния. Рекомендуется использовать record (иммутабельность).</typeparam>
-/// <example>
-/// <code>
-/// record CounterState(int Count = 0);
-/// var store = new SgStore&lt;CounterState&gt;(new CounterState());
-/// store.Dispatch(s => s with { Count = s.Count + 1 });
-/// </code>
-/// </example>
 public sealed class SgStore<TState> : IDisposable where TState : notnull
 {
     private readonly SgSignal<TState> _state;
     private readonly List<Middleware<TState>> _middleware = [];
-
-    // ИСПРАВЛЕНО: int для Interlocked.Exchange (atomic compare-and-swap)
     private int _disposedInt;
-
     private readonly object _dispatchLock = new();
 
     public SgStore(TState initialState)
@@ -36,7 +24,7 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     public SgSignal<TState> State => _state;
 
     /// <summary>Текущее состояние без реактивной подписки.</summary>
-    public TState Current => _state.Value;
+    public TState Current => _state.Peek();
 
     /// <summary>
     /// Изменить состояние через функцию-reducer.
@@ -50,11 +38,9 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
         lock (_dispatchLock)
         {
             if (Volatile.Read(ref _disposedInt) == 1) return;
-            newState = reducer(_state.Value);
-            foreach (var mw in _middleware)
-                newState = mw(_state.Value, newState);
+            newState = reducer(_state.Peek());
+            foreach (var mw in _middleware) newState = mw(_state.Peek(), newState);
         }
-
         _state.Set(newState);
     }
 
@@ -69,13 +55,14 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
 
         const int maxRetries = 5;
         int retries = 0;
+
         while (true)
         {
             TState snapshot;
             lock (_dispatchLock)
             {
                 if (Volatile.Read(ref _disposedInt) == 1) return;
-                snapshot = _state.Value;
+                snapshot = _state.Peek();
             }
 
             TState newState = await asyncReducer(snapshot);
@@ -83,29 +70,25 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
             lock (_dispatchLock)
             {
                 if (Volatile.Read(ref _disposedInt) == 1) return;
-                if (EqualityComparer<TState>.Default.Equals(_state.Value, snapshot))
+
+                if (EqualityComparer<TState>.Default.Equals(_state.Peek(), snapshot))
                 {
-                    // Нет конкурентного обновления, применяем наше изменение
-                    foreach (var mw in _middleware)
-                        newState = mw(snapshot, newState);
+                    foreach (var mw in _middleware) newState = mw(snapshot, newState);
                     _state.Set(newState);
                     return;
                 }
-                // Обнаружено конкурентное обновление — повторяем операцию
             }
 
             retries++;
             if (retries >= maxRetries)
-            {
                 throw new InvalidOperationException(
-                    $"Слишком много попыток в SgStore.DispatchAsync из-за конкурентных обновлений. " +
-                    $"Максимальное количество попыток: {maxRetries}.");
-            }
-            // Повторяем немедленно без задержки (простая реализация)
+                    $"SgStore.DispatchAsync: too many retries ({maxRetries}) due to concurrent updates.");
+
+            // ИСПРАВЛЕНО: даём другим задачам выполниться (WASM-совместимо)
+            await Task.Yield();
         }
     }
 
-    /// <summary>Добавить middleware (логирование, DevTools, persistence).</summary>
     public SgStore<TState> Use(Middleware<TState> middleware)
     {
         ArgumentNullException.ThrowIfNull(middleware);
@@ -113,22 +96,17 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
         return this;
     }
 
-    /// <summary>Сбросить состояние.</summary>
     public void Reset(TState initialState) => _state.Set(initialState);
 
     /// <summary>
-    /// Создать middleware для хроники состояний (time-travel debugging).
-    /// Поддерживает ограниченную историю и опциональный callback при изменении состояния.
+    /// Middleware для хроники состояний (time-travel debugging).
     /// </summary>
-    /// <param name="maxHistory">Максимальное количество записей в истории (по умолчанию 50).</param>
-    /// <param name="onStateChange">Опциональный callback, вызываемый при каждом изменении состояния (передаётся новое состояние).</param>
-    /// <returns>Middleware, который добавляет состояние в историю.</returns>
     public static Middleware<TState> CreateHistoryMiddleware(
-        int maxHistory = 50,
-        Action<TState>? onStateChange = null)
+        int maxHistory = 50, Action<TState>? onStateChange = null)
     {
-        if (maxHistory <= 0) throw new ArgumentOutOfRangeException(nameof(maxHistory));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxHistory);
         var history = new Queue<TState>(maxHistory + 1);
+
         return (prev, next) =>
         {
             if (history.Count >= maxHistory) history.Dequeue();
@@ -140,10 +118,10 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
 
     /// <summary>
     /// Создать вычисляемый selector.
-    /// ⚠️ Caller отвечает за Dispose возвращённого SgComputed.
+    /// ⚠️ Caller отвечает за Dispose возвращённого SgComputed[TResult].
     /// </summary>
     public SgComputed<TResult> Select<TResult>(Func<TState, TResult> selector)
-        => new(() => selector(_state.Value));
+        => new(() => selector(_state.Peek()));
 
     /// <summary>
     /// ИСПРАВЛЕНО: Interlocked.Exchange — атомарный compare-and-swap.
@@ -152,6 +130,7 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
+        _state.Dispose();
     }
 }
 

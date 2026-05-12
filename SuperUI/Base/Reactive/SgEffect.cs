@@ -27,7 +27,7 @@ public sealed class SgEffect : IDisposable
         _action  = () => { action(); return Task.CompletedTask; };
         _onError = onError;
         _observer = new EffectObserver(RunAsync);
-        _ = RunAsync();
+        ScheduleRun();
     }
 
     public SgEffect(Func<Task> action, Action<Exception>? onError = null)
@@ -35,7 +35,7 @@ public sealed class SgEffect : IDisposable
         _action  = action ?? throw new ArgumentNullException(nameof(action));
         _onError = onError;
         _observer = new EffectObserver(RunAsync);
-        _ = RunAsync();
+        ScheduleRun();
     }
 
     /// <summary>Приостановить выполнение эффекта.</summary>
@@ -48,7 +48,16 @@ public sealed class SgEffect : IDisposable
     public void Resume()
     {
         if (Interlocked.Exchange(ref _paused, 0) == 1)
-            _ = RunAsync();
+            ScheduleRun();
+    }
+
+    private void ScheduleRun()
+    {
+        _ = RunAsync().ContinueWith(
+            t => System.Diagnostics.Debug.WriteLine($"[SgEffect] Unhandled: {t.Exception}"),
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted,
+            TaskScheduler.Default);
     }
 
     private async Task RunAsync()
@@ -104,7 +113,13 @@ public sealed class SgEffect : IDisposable
         public void OnSignalChanged()
         {
             if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
-            _ = _invalidate();
+
+            _ = _invalidate().ContinueWith(
+                t => System.Diagnostics.Debug.WriteLine($"[EffectObserver] Invalidate error: {t.Exception}"),
+                CancellationToken.None,
+                TaskContinuationOptions.OnlyOnFaulted,
+                TaskScheduler.Default);
+
             NotifyComponents();
         }
 

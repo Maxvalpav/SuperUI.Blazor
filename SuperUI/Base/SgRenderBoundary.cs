@@ -1,4 +1,3 @@
-// SuperUI/Base/SgRenderBoundary.cs
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 
@@ -34,8 +33,8 @@ public sealed class SgRenderBoundary : ComponentBase
     /// <summary>Принудительно разрешить следующий рендер (игнорирует Dependencies).</summary>
     [Parameter] public bool ForceRender { get; set; }
 
+    // ИСПРАВЛЕНО: хранит КОПИЮ массива (не ссылку на мутабельный массив от родителя)
     private object?[]? _prevDependencies;
-    // Отдельный флаг: ShouldRender может вызываться несколько раз до OnAfterRender
     private bool _renderOccurred;
 
     protected override bool ShouldRender()
@@ -61,15 +60,17 @@ public sealed class SgRenderBoundary : ComponentBase
             }
         }
 
-        _renderOccurred = false;
         return false;
     }
 
     protected override void OnAfterRender(bool firstRender)
     {
-        // Обновляем snapshot только если реально был рендер
-        if (_renderOccurred && Dependencies is not null)
-            _prevDependencies = (object?[])Dependencies.Clone();
+        if (_renderOccurred)
+        {
+            // ИСПРАВЛЕНО: копируем массив, не храним ссылку
+            _prevDependencies = Dependencies?.ToArray();
+            _renderOccurred = false;
+        }
     }
 
     protected override void BuildRenderTree(RenderTreeBuilder builder)

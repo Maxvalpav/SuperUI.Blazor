@@ -1,7 +1,10 @@
 // SuperUI/Base/Reactive/ComponentSignalTracker.cs
 // Ключевые исправления:
-// 1. FlushAsync — try/catch для ObjectDisposedException / OperationCanceledException
+// 1. FlushAsync — try/catch для ObjectDisposedException / OperationCanceledException + общий catch
 // 2. InvokeStateHasChangedAsync — изолирован от circuit disconnection exceptions
+// 3. _isFlushing сбрасывается в finally (гарантировано при любом исходе)
+// 4. Race-window check после сброса _isFlushing
+// 5. Dispose — идемпотентен через Interlocked.Exchange
 
 using System.Runtime.CompilerServices;
 using SuperUI.Base;
@@ -34,10 +37,6 @@ public sealed class ComponentSignalTracker : IDisposable
     // ИСПРАВЛЕНО: int для Interlocked.Exchange (atomic compare-and-swap)
     private int _disposedInt;
 
-    // ИСПРАВЛЕНИЕ: логгер для незамеченных исключений в FlushAsync
-    private static readonly Action<Task> _logFlushError = t =>
-        System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] FlushAsync faulted: {t.Exception}");
-
     public ComponentSignalTracker(SgComponentBase component)
     {
         _component = component ?? throw new ArgumentNullException(nameof(component));
@@ -47,34 +46,33 @@ public sealed class ComponentSignalTracker : IDisposable
      /// Запланировать рендер в следующий микротаск.
      /// Несколько вызовов за один тик = один рендер (batching).
      /// </summary>
-     public void ScheduleRender()
-     {
-         if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
+      public void ScheduleRender()
+      {
+          if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
 
-         // Атомарно устанавливаем флаг: если уже 1 — задача уже запланирована, выходим
-         if (Interlocked.Exchange(ref _scheduled, 1) == 0)
-         {
-             // Запускаем FlushAsync только если не выполняется сейчас
-             // Если FlushAsync выполняется — он увидит _scheduled=1 в drain loop
-             if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
-             {
-                 var t = FlushAsync();
-                 t.ContinueWith(_logFlushError,
-                     CancellationToken.None,
-                     TaskContinuationOptions.OnlyOnFaulted,
-                     TaskScheduler.Default);
-             }
-         }
-     }
+          // Атомарно устанавливаем флаг: если уже 1 — задача уже запланирована, выходим
+          if (Interlocked.Exchange(ref _scheduled, 1) == 0)
+          {
+              // Запускаем FlushAsync только если не выполняется сейчас
+              // Если FlushAsync выполняется — он увидит _scheduled=1 в drain loop
+              if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
+              {
+                  // ИСПРАВЛЕНО: ContinueWith для логирования необработанных исключений
+                  _ = FlushAsync().ContinueWith(
+                      static t => System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] FlushAsync faulted: {t.Exception}"),
+                      CancellationToken.None,
+                      TaskContinuationOptions.OnlyOnFaulted,
+                      TaskScheduler.Default);
+              }
+          }
+      }
 
     private async Task FlushAsync()
     {
         try
         {
-            // Drain loop: рендерим пока есть накопленные сигналы
             while (true)
             {
-                // Ждём следующего микротаска — позволяем другим сигналам накопиться за тик
                 await Task.Yield();
 
                 if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed)
@@ -83,35 +81,40 @@ public sealed class ComponentSignalTracker : IDisposable
                     return;
                 }
 
-                // Сбрасываем _scheduled ДО рендера
-                // Если во время рендера придёт новый сигнал → _scheduled снова станет 1
-                // → цикл продолжится, и мы не пропустим обновление
                 Interlocked.Exchange(ref _scheduled, 0);
 
-                // ИСПРАВЛЕНО: catch disconnect-related exceptions
-                try { await _component.InvokeStateHasChangedAsync(); }
+                try
+                {
+                    await _component.InvokeStateHasChangedAsync();
+                }
                 catch (ObjectDisposedException) { return; }
                 catch (OperationCanceledException) { return; }
+                catch (Exception ex)
+                {
+                    // Логируем, но не останавливаем drain loop
+                    System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] StateHasChanged error: {ex}");
+                }
 
-                // После рендера: если новый сигнал пришёл во время рендера — продолжаем
-                // Используем Volatile.Read для корректности на ARM
                 if (Volatile.Read(ref _scheduled) == 0) break;
             }
         }
         finally
         {
-            // Освобождаем флаг выполнения
+            // ИСПРАВЛЕНО: _isFlushing сбрасывается в finally → гарантировано при любом исходе
             Interlocked.Exchange(ref _isFlushing, 0);
 
-            // ИСПРАВЛЕНО: финальная проверка race window
-            // Сигнал мог прийти между последней проверкой _scheduled и сбросом _isFlushing
-            if (Volatile.Read(ref _scheduled) == 1 && 
-                Volatile.Read(ref _disposedInt) == 0 && 
-                !_component.IsDisposed)
+            // Race-window: сигнал пришёл между выходом из while и сбросом _isFlushing
+            if (Volatile.Read(ref _scheduled) == 1
+                && Volatile.Read(ref _disposedInt) == 0
+                && !_component.IsDisposed)
             {
                 if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
                 {
-                    _ = FlushAsync();
+                    _ = FlushAsync().ContinueWith(
+                        static t => System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] FlushAsync faulted (race): {t.Exception}"),
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Default);
                 }
             }
         }

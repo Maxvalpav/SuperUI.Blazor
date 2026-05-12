@@ -1,9 +1,3 @@
-// SuperUI/Base/SgFormBase.cs
-// Ключевые исправления:
-// 1. ValidateNow — IsDisposed check
-// 2. SetValueAsync — NaN-safe comparison для double/float
-// 3. OnFirstRenderAsync — не нужен отдельно (наследуется)
-
 using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -15,13 +9,17 @@ namespace SuperUI.Base;
 /// <summary>
 /// Базовый класс для компонентов формы.
 /// Уровень 4: ... → SgInteractiveBase → SgFormBase
+///
+/// ИСПРАВЛЕНО:
+/// 1. DetachEditContext — вызывает NotifyValidationStateChanged() после Clear() (UI обновляется).
+/// 2. NaN-safe ValuesEqual для double/float.
+/// 3. ValidateNow — IsDisposed check.
+/// 4. aria-placeholder удалён (нестандартный ARIA-атрибут).
 /// </summary>
 public abstract class SgFormBase<TValue> : SgInteractiveBase
 {
-    // ── Каскадный EditContext ─────────────────────────────────────────────────
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
-    // ── Параметры ─────────────────────────────────────────────────────────────
     [Parameter] public TValue? Value { get; set; }
     [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
     [Parameter] public Expression<Func<TValue>>? ValueExpression { get; set; }
@@ -33,7 +31,6 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public int? MaxLength { get; set; }
 
-    // ── Внутреннее состояние ──────────────────────────────────────────────────
     private EditContext? _editContext;
     private FieldIdentifier _fieldIdentifier;
     private ValidationMessageStore? _messageStore;
@@ -52,23 +49,20 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         {
             if (!string.IsNullOrEmpty(ErrorText)) return true;
             if (!string.IsNullOrEmpty(ConvertError)) return true;
-            if (_editContext != null &&
-                _editContext.GetValidationMessages(_fieldIdentifier).Any()) return true;
+            if (_editContext != null && _editContext.GetValidationMessages(_fieldIdentifier).Any()) return true;
             return false;
         }
     }
 
-    protected IEnumerable<string> ValidationMessages =>
-        _editContext?.GetValidationMessages(_fieldIdentifier)
-        ?? (ErrorText != null ? [ErrorText] : []);
+    protected IEnumerable<string> ValidationMessages
+        => _editContext?.GetValidationMessages(_fieldIdentifier)
+           ?? (ErrorText != null ? [ErrorText] : []);
 
     protected string? ValidationCssClass => _editContext?.FieldCssClass(_fieldIdentifier);
 
-    // ── Конвертер ─────────────────────────────────────────────────────────────
-    protected ISgConverter<TValue> EffectiveConverter =>
-        Converter ?? (_effectiveConverter ??= SgConverterFactory.Get<TValue>());
+    protected ISgConverter<TValue> EffectiveConverter
+        => Converter ?? (_effectiveConverter ??= SgConverterFactory.Get<TValue>());
 
-    // ── Text/Value синхронизация ───────────────────────────────────────────────
     protected string? CurrentText { get; private set; }
     protected string? ConvertError { get; private set; }
 
@@ -91,7 +85,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         if (_isSettingValue)
         {
 #if DEBUG
-            Logger.LogDebug("[{Id}] SetValueAsync: рекурсивный вызов проигнорирован", ComponentId);
+            Logger.LogDebug("[{Id}] SetValueAsync: recursive call ignored", ComponentId);
 #endif
             return;
         }
@@ -130,7 +124,6 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         return EqualityComparer<TValue>.Default.Equals(a, b);
     }
 
-    // ── Программная валидация ─────────────────────────────────────────────────
     public void AddValidationError(string message)
     {
         if (_messageStore is null || _editContext is null) return;
@@ -142,6 +135,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     {
         if (_messageStore is null || _editContext is null) return;
         _messageStore.Clear(_fieldIdentifier);
+        // ИСПРАВЛЕНО: уведомляем UI после очистки
         _editContext.NotifyValidationStateChanged();
     }
 
@@ -152,11 +146,12 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     }
 
     // ── ARIA ──────────────────────────────────────────────────────────────────
+
     protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var baseAttrs = base.BuildAriaAttributes();
         bool needsExtra = Required || HasError || Label != null
-                          || Placeholder != null || MaxLength.HasValue;
+                          || MaxLength.HasValue || Hint != null;
         if (!needsExtra) return baseAttrs;
 
         var attrs = new Dictionary<string, object>(baseAttrs, StringComparer.Ordinal)
@@ -167,7 +162,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
         if (Required) attrs["aria-required"] = "true";
         if (HasError) attrs["aria-invalid"] = "true";
         if (Label != null) attrs["aria-label"] = Label;
-        if (Placeholder != null) attrs["aria-placeholder"] = Placeholder;
+        // ИСПРАВЛЕНО: aria-placeholder нестандартный — убран
         if (Hint != null) attrs["aria-describedby"] = $"{EffectiveId}-hint";
         if (HasError) attrs["aria-errormessage"] = $"{EffectiveId}-error";
         if (MaxLength.HasValue) attrs["aria-maxlength"] = MaxLength.Value.ToString();
@@ -176,10 +171,11 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
+
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        // Сбрасываем кэш если конвертер изменился
+
         if (!ReferenceEquals(Converter, _previousConverter))
         {
             _previousConverter = Converter;
@@ -196,9 +192,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
             AttachEditContext();
         }
 
-        // Синхронизируем CurrentText только при реальном внешнем изменении
-        if (!_isSettingValue &&
-            !EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
+        if (!_isSettingValue && !EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
         {
             _lastSyncedValue = Value;
             CurrentText = EffectiveConverter.ConvertBack(Value);
@@ -218,7 +212,9 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     {
         if (_editContext is null || !_editContextAttached) return;
         _editContext.OnValidationStateChanged -= OnValidationStateChanged;
-        _messageStore?.Clear();
+        _messageStore?.Clear(_fieldIdentifier);
+        // ИСПРАВЛЕНО: уведомляем UI после очистки
+        _editContext.NotifyValidationStateChanged();
         _messageStore = null;
         _editContextAttached = false;
     }
