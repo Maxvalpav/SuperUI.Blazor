@@ -19,6 +19,12 @@ namespace SuperUI.Base.Utilities;
 /// Кэш параметров для структурного сравнения.
 /// Позволяет определить изменились ли параметры между рендерами.
 /// </summary>
+/// <remarks>
+/// Per-instance — безопасно на WASM и Server (per-circuit изоляция).
+/// Не thread-safe; предполагается вызов из Blazor lifecycle/dispatcher.
+/// Внимание: <c>params</c>-перегрузка аллоцирует массив на каждый вызов;
+/// для hot-path используйте <see cref="SingleParameterDetector{T}"/>.
+/// </remarks>
 public sealed class ParameterChangeDetector
 {
     private object?[]? _previous;
@@ -28,25 +34,31 @@ public sealed class ParameterChangeDetector
     /// Проверить изменились ли параметры. Если да — обновляет кэш и возвращает true.
     /// </summary>
     public bool HasChanged(params object?[] currentValues)
+        => HasChanged((ReadOnlySpan<object?>)currentValues);
+
+    /// <summary>
+    /// Allocation-free перегрузка для hot-path.
+    /// </summary>
+    public bool HasChanged(ReadOnlySpan<object?> currentValues)
     {
         if (_previous is null || _previous.Length != currentValues.Length)
         {
-            _previous = (object?[])currentValues.Clone();
+            _previous = currentValues.ToArray();
             _version++;
             return true;
         }
 
+        var changed = false;
         for (int i = 0; i < currentValues.Length; i++)
         {
-            if (!Equals(_previous[i], currentValues[i]))
-            {
-                currentValues.CopyTo(_previous, 0);
-                _version++;
-                return true;
-            }
+            if (!Equals(_previous[i], currentValues[i])) { changed = true; break; }
         }
 
-        return false;
+        if (!changed) return false;
+
+        currentValues.CopyTo(_previous);
+        _version++;
+        return true;
     }
 
     /// <summary>Текущая версия параметров (для отладки).</summary>

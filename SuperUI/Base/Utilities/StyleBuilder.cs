@@ -1,40 +1,40 @@
 // SuperUI/Base/Utilities/StyleBuilder.cs
+using System.Text;
+
 namespace SuperUI.Base.Utilities;
 
 /// <summary>
 /// Fluent inline-style builder.
-/// 
-/// ИСПРАВЛЕНИЯ:
-/// - Убран readonly struct с List внутри (семантическая ошибка)
-/// - Заменён на sealed class с pooled StringBuilder
-/// - Clone заменён на правильный fluent паттерн (возврат this)
-/// - AddUserStyle корректно обрабатывает malformed input
 /// </summary>
+/// <remarks>
+/// Mutable by design (как <see cref="SgCssBuilder"/>): каждый <c>Add</c> возвращает
+/// тот же экземпляр — fluent-цепочка не аллоцирует промежуточные builders.
+/// Не thread-safe; предполагается локальное использование внутри одного рендера.
+/// Совместим с WASM и Server.
+/// </remarks>
 public sealed class StyleBuilder
 {
     private readonly List<(string Prop, string Value)> _styles = [];
-
-    private StyleBuilder(List<(string, string)> styles) => _styles = styles;
+    private string? _cached;
 
     public StyleBuilder() { }
 
-    public StyleBuilder(string? baseStyle) : this()
+    public StyleBuilder(string? baseStyle)
     {
         AddUserStyle(baseStyle);
     }
 
     public StyleBuilder Add(string property, string? value, bool condition = true)
     {
-        if (!condition || string.IsNullOrWhiteSpace(value) || string.IsNullOrWhiteSpace(property))
+        if (!condition || string.IsNullOrWhiteSpace(property) || string.IsNullOrWhiteSpace(value))
             return this;
-        // Создаём новый экземпляр для immutable fluent chain
-        var next = Clone();
-        next._styles.Add((property.Trim(), value.Trim()));
-        return next;
+        _cached = null;
+        _styles.Add((property.Trim(), value!.Trim()));
+        return this;
     }
 
     public StyleBuilder Add(string property, string? value, Func<bool> condition)
-        => Add(property, value, condition());
+        => condition() ? Add(property, value) : this;
 
     public StyleBuilder AddIf(string property, string? value, Func<bool> condition)
         => condition() ? Add(property, value) : this;
@@ -43,58 +43,52 @@ public sealed class StyleBuilder
         => Add($"--{cssVar}", value, condition);
 
     /// <summary>
-    /// Добавить пользовательский Style параметр.
-    /// ИСПРАВЛЕНО: защита от malformed input, trim whitespace.
+    /// Добавить произвольную style-строку пользователя ("prop: val; prop2: val2").
+    /// Безопасно обрабатывает malformed input — пропускает невалидные сегменты.
     /// </summary>
     public StyleBuilder AddUserStyle(string? userStyle)
     {
         if (string.IsNullOrWhiteSpace(userStyle)) return this;
-        var next = Clone();
-        // Разбить на пары prop:value безопасно
-        var parts = userStyle.AsSpan();
+
+        var span = userStyle.AsSpan();
         var start = 0;
-        while (start < parts.Length)
+        while (start < span.Length)
         {
-            var semicolon = parts[start..].IndexOf(';');
-            var segment = semicolon < 0
-                ? parts[start..].ToString()
-                : parts[start..(start + semicolon)].ToString();
-            start += semicolon < 0 ? parts.Length - start : semicolon + 1;
+            var rest = span[start..];
+            var semi = rest.IndexOf(';');
+            var segment = semi < 0 ? rest : rest[..semi];
+            start += semi < 0 ? rest.Length : semi + 1;
 
             var colon = segment.IndexOf(':');
-            if (colon > 0)
-            {
-                var prop = segment[..colon].Trim();
-                var val = segment[(colon + 1)..].Trim();
-                if (!string.IsNullOrEmpty(prop) && !string.IsNullOrEmpty(val))
-                    next._styles.Add((prop, val));
-            }
+            if (colon <= 0) continue;
+
+            var prop = segment[..colon].Trim();
+            var val = segment[(colon + 1)..].Trim();
+            if (prop.IsEmpty || val.IsEmpty) continue;
+
+            _cached = null;
+            _styles.Add((prop.ToString(), val.ToString()));
         }
-        return next;
+        return this;
     }
 
     public string? Build()
     {
-        if (_styles.Count == 0) return null;
+        if (_cached is not null) return _cached;
+        if (_styles.Count == 0) return _cached = null;
 
-        // Оценить размер для оптимального StringBuilder capacity
-        var capacity = _styles.Sum(s => s.Prop.Length + s.Value.Length + 4);
-        var sb = new System.Text.StringBuilder(capacity);
+        var capacity = 0;
+        for (var i = 0; i < _styles.Count; i++)
+            capacity += _styles[i].Prop.Length + _styles[i].Value.Length + 4;
 
+        var sb = new StringBuilder(capacity);
         for (var i = 0; i < _styles.Count; i++)
         {
             if (i > 0) sb.Append("; ");
             sb.Append(_styles[i].Prop).Append(": ").Append(_styles[i].Value);
         }
 
-        return sb.ToString();
-    }
-
-    private StyleBuilder Clone()
-    {
-        var copy = new List<(string, string)>(_styles.Count + 1);
-        copy.AddRange(_styles);
-        return new StyleBuilder(copy);
+        return _cached = sb.ToString();
     }
 
     public static implicit operator string?(StyleBuilder builder) => builder.Build();

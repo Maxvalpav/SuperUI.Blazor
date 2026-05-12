@@ -144,13 +144,15 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         }
         finally
         {
-            _ = ResetThrottleAfterDelayAsync(entry, interval);
+            _ = ResetThrottleAfterDelayAsync(entry, interval, ComponentToken);
         }
     }
 
-    private static async Task ResetThrottleAfterDelayAsync(ThrottleEntry entry, TimeSpan interval)
+    private static async Task ResetThrottleAfterDelayAsync(
+        ThrottleEntry entry, TimeSpan interval, CancellationToken ct)
     {
-        try { await Task.Delay(interval); }
+        try { await Task.Delay(interval, ct); }
+        catch (OperationCanceledException) { }
         finally { Interlocked.Exchange(ref entry.IsThrottled, 0); }
     }
 
@@ -167,11 +169,19 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         _timerMode = TimerMode.Legacy;
         _internalTimer = new Timer(async _ =>
         {
-            if (IsDisposed || ComponentToken.IsCancellationRequested) return;
-            try { await InvokeAsync(callback); }
+            // Полностью изолируем async-void callback: ни одно исключение
+            // (включая ObjectDisposedException от InvokeAsync) не должно пройти наружу.
+            try
+            {
+                if (IsDisposed || ComponentToken.IsCancellationRequested) return;
+                await InvokeAsync(callback);
+            }
+            catch (OperationCanceledException) { }
+            catch (ObjectDisposedException) { }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "[{Id}] Timer error", ComponentId);
+                try { Logger.LogError(ex, "[{Id}] Timer error", ComponentId); }
+                catch { /* logger тоже мог быть задиспожен */ }
             }
         }, null, dueTime ?? period, period);
     }

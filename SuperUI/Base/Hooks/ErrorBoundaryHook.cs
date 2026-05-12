@@ -37,7 +37,15 @@ public sealed class ErrorBoundaryHook : IAsyncComponentHook
     private async Task SafeExecute(Func<Task> action)
     {
         try { await action(); }
-        catch (Exception ex) { _onError(ex); }
+        catch (Exception ex)
+        {
+            try { _onError(ex); }
+            catch (Exception handlerEx)
+            {
+                // _onError сам бросил — последний рубеж, не даём пройти дальше.
+                System.Diagnostics.Debug.WriteLine($"[ErrorBoundaryHook] onError threw: {handlerEx}");
+            }
+        }
     }
 
     /// <summary>Выполнить произвольное async-действие с перехватом исключений.</summary>

@@ -45,25 +45,15 @@ public abstract class SgJsComponentBase : SgComponentBase
     {
         get
         {
-            if (_dotNetRef is not null) return _dotNetRef;
+            var existing = Volatile.Read(ref _dotNetRef);
+            if (existing is not null) return existing;
 
-            // ИСПРАВЛЕНО: создаём вне lock, используем CAS
-            DotNetObjectReference<SgJsComponentBase> newRef;
-            try
+            var newRef = DotNetObjectReference.Create<SgJsComponentBase>(this);
+            var prior = Interlocked.CompareExchange(ref _dotNetRef, newRef, null);
+            if (prior is not null)
             {
-                newRef = DotNetObjectReference.Create<SgJsComponentBase>(this);
-            }
-            catch
-            {
-                // DotNetObjectReference.Create не должна бросать, но на случай ООМ
-                throw;
-            }
-
-            var existing = Interlocked.CompareExchange(ref _dotNetRef, newRef, null);
-            if (existing is not null)
-            {
-                newRef.Dispose(); // проиграли гонку — диспозим
-                return existing;
+                newRef.Dispose(); // проиграли гонку — диспозим свой
+                return prior;
             }
             return newRef;
         }
@@ -303,10 +293,11 @@ public abstract class SgJsComponentBase : SgComponentBase
             catch { /* JS runtime может быть уже недоступен */ }
         }
 
-        // 3. Диспозим семафор
-        _moduleLockDisposed = true;
+        // 3. Диспозим семафор. Флаг выставляем ПОСЛЕ Dispose,
+        // чтобы GetModuleAsync не увидел disposed=false при уже задиспоженом семафоре.
         try { _moduleLock.Dispose(); }
         catch (ObjectDisposedException) { }
+        finally { _moduleLockDisposed = true; }
 
         // 4. Диспозим DotNetRef
         var dotNetRef = Interlocked.Exchange(ref _dotNetRef, null);

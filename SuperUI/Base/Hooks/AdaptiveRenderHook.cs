@@ -25,8 +25,13 @@ public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
 
     /// <param name="minInterval">Минимальный интервал между рендерами. По умолчанию 16 мс (≈ 60 fps).</param>
     public AdaptiveRenderHook(TimeSpan? minInterval = null)
-        => _minIntervalTicks = (minInterval ?? TimeSpan.FromMilliseconds(16)).Ticks
-                               * Stopwatch.Frequency / TimeSpan.TicksPerSecond;
+    {
+        var interval = minInterval ?? TimeSpan.FromMilliseconds(16);
+        if (interval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(minInterval), "Must be positive.");
+        // TotalSeconds * Frequency корректен и для больших интервалов (Ticks * Frequency может переполниться).
+        _minIntervalTicks = (long)(interval.TotalSeconds * Stopwatch.Frequency);
+    }
 
     // IRenderHook
     public bool ShouldRender(SgComponentBase c)

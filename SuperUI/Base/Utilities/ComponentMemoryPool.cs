@@ -37,16 +37,19 @@ public static class ComponentDictionaryPool
 
     /// <summary>Вернуть Dictionary в пул. Автоматически очищается.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Return(Dictionary<string, object> dict)
+    public static void Return(Dictionary<string, object>? dict)
     {
+        if (dict is null) return;
         // Не возвращаем слишком большие словари (защита от bloat)
         if (dict.Count > 32) return;
-        
-        // Не превышаем максимальный размер пула
-        if (Interlocked.Increment(ref _poolSize) > MaxPoolSize)
+
+        // CAS-резервирование слота: не превышаем MaxPoolSize даже при гонке.
+        while (true)
         {
-            Interlocked.Decrement(ref _poolSize);
-            return;
+            var current = Volatile.Read(ref _poolSize);
+            if (current >= MaxPoolSize) return;
+            if (Interlocked.CompareExchange(ref _poolSize, current + 1, current) == current)
+                break;
         }
 
         dict.Clear();
@@ -66,7 +69,7 @@ public static class ComponentDictionaryPool
 
     public readonly struct PoolHandle : IDisposable
     {
-        private readonly Dictionary<string, object> _dict;
+        private readonly Dictionary<string, object>? _dict;
         internal PoolHandle(Dictionary<string, object> dict) => _dict = dict;
         public void Dispose() => Return(_dict);
     }

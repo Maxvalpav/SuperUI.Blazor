@@ -276,11 +276,12 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// </summary>
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
-        // ИСПРАВЛЕНО: Interlocked.CompareExchange вместо Volatile (полный barrier на ARM)
-        var currentGeneration = Interlocked.CompareExchange(ref _ariaGeneration, 0, 0);
+        // Volatile.Read достаточен — Interlocked.Increment в SetParametersAsync уже даёт release-barrier.
+        var currentGeneration = Volatile.Read(ref _ariaGeneration);
+        var cache = Volatile.Read(ref _ariaCache);
 
-        if (_ariaCacheGeneration == currentGeneration && _ariaCache is not null)
-            return _ariaCache;
+        if (cache is not null && _ariaCacheGeneration == currentGeneration)
+            return cache;
 
         var capacity = (AdditionalAttributes?.Count ?? 0) + 4;
         var attrs = new Dictionary<string, object>(capacity, StringComparer.Ordinal);
@@ -289,9 +290,10 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
             foreach (var kvp in AdditionalAttributes)
                 attrs[kvp.Key] = kvp.Value;
 
-        // Publish pattern: данные → generation (не наоборот!)
-        _ariaCache = attrs;
-        Interlocked.Exchange(ref _ariaCacheGeneration, currentGeneration);
+        // Publish: сначала ПОЛНОСТЬЮ записываем данные, затем generation —
+        // читатель, увидевший новый generation, гарантированно видит новый словарь.
+        Volatile.Write(ref _ariaCache, attrs);
+        Volatile.Write(ref _ariaCacheGeneration, currentGeneration);
         return attrs;
     }
 

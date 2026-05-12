@@ -18,13 +18,21 @@ namespace SuperUI.Base.Hooks;
 /// </remarks>
 public sealed class PerformanceHook : IAsyncComponentHook, IRenderHook
 {
+    private static readonly Action<string> DefaultOutput = msg => Debug.WriteLine(msg);
+
     private long _renderStart;
     private readonly double _thresholdMs;
+    private readonly Action<string> _output;
 
-    /// <summary>Функция вывода. По умолчанию — Debug.WriteLine (нет Console в production).</summary>
-    public Action<string> Output { get; set; } = msg => Debug.WriteLine(msg);
+    /// <summary>Функция вывода. Конфигурируется через конструктор; не мутируется после создания.</summary>
+    public Action<string> Output => _output;
 
-    public PerformanceHook(double thresholdMs = 16.0) => _thresholdMs = thresholdMs;
+    public PerformanceHook(double thresholdMs = 16.0, Action<string>? output = null)
+    {
+        if (thresholdMs < 0) throw new ArgumentOutOfRangeException(nameof(thresholdMs));
+        _thresholdMs = thresholdMs;
+        _output = output ?? DefaultOutput;
+    }
 
     // IRenderHook — начало замера
     public bool ShouldRender(SgComponentBase c)
@@ -44,7 +52,7 @@ public sealed class PerformanceHook : IAsyncComponentHook, IRenderHook
 
         var elapsed = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         if (elapsed > _thresholdMs)
-            Output($"[PERF] {c.ComponentId}: {elapsed:F1}ms");
+            _output($"[PERF] {c.ComponentId}: {elapsed:F1}ms");
     }
 
     // IAsyncComponentHook — default-реализации

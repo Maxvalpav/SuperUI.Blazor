@@ -1,24 +1,22 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
-using System.Text;
-
 namespace SuperUI.Base.Utilities;
 
 /// <summary>
-/// Zero-allocation Fluent CSS class builder.
-/// 
-/// ИСПРАВЛЕНИЯ vs текущего:
-/// - Использует ValueStringBuilder паттерн через StringBuilder pooling
-/// - Кэширует результат после Build() — повторные вызовы бесплатны
-/// - Принимает ReadOnlySpan<char> для hot-path без allocation
-/// - Условные классы через Func<bool> ленивая оценка
+/// Fluent CSS class builder с пулом буферов и кэшем результата.
 /// </summary>
+/// <remarks>
+/// - Кэширует результат <see cref="Build"/> — повторные вызовы бесплатны.
+/// - Использует <see cref="System.Buffers.ArrayPool{T}"/> для composition строк.
+/// - Условие <see cref="Add(string, Func{bool})"/> вычисляется немедленно (eager).
+/// - Не thread-safe; рассчитан на локальное использование внутри одного рендера.
+/// - Совместим с WASM и Server.
+/// </remarks>
 public sealed class SgCssBuilder
 {
-    // Пул StringBuilder — снижение GC pressure
     private static readonly System.Buffers.ArrayPool<char> Pool = System.Buffers.ArrayPool<char>.Shared;
 
     private readonly List<(string Class, bool Condition)> _classes = [];
-    private string? _cached; // кэш результата
+    private string? _cached;
 
     public SgCssBuilder(string? baseClass = null)
     {
