@@ -1,8 +1,9 @@
 // SuperUI/Base/Reactive/SgEffect.cs
-// НОВЫЙ: реактивные side-effect с автоматическим отслеживанием зависимостей.
-// Аналог effect() из Solid.js / watchEffect() из Vue 3
-// Автоматически перезапускается при изменении любых SgSignal внутри функции.
-
+// ИСПРАВЛЕНО:
+// 1. RunAsync — отслеживает зависимости через SignalTracker.EnterScopeForObserver
+// 2. _disposed — Interlocked для Server thread-safety
+// 3. Console.Error → ILogger (через callback)
+// 4. EffectObserver._dependents — убрано (не используется)
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
@@ -11,75 +12,74 @@ namespace SuperUI.Base.Reactive;
 /// Reactive side-effect: выполняет функцию при изменении зависимых сигналов.
 /// Автоматически отслеживает SgSignal, прочитанные во время выполнения.
 /// </summary>
-/// <example>
-/// var count = new SgSignal<int>(0);
-/// var effect = new SgEffect(() => Console.WriteLine($"Count changed: {count.Value}"));
-/// // При count.Set(5) effect автоматически перезапустится
-/// </example>
 public sealed class SgEffect : IDisposable
 {
     private readonly Func<Task> _action;
+    private readonly Action<Exception>? _onError;
     private readonly EffectObserver _observer;
-    private bool _disposed;
+    private int _disposed; // ИСПРАВЛЕНО: Interlocked для Server
 
-    public SgEffect(Action action)
+    public SgEffect(Action action, Action<Exception>? onError = null)
     {
         _action = () => { action(); return Task.CompletedTask; };
+        _onError = onError;
         _observer = new EffectObserver(RunAsync);
-        _ = RunAsync(); // Запускаем сразу при создании
+        _ = RunAsync();
     }
 
-    public SgEffect(Func<Task> action)
+    public SgEffect(Func<Task> action, Action<Exception>? onError = null)
     {
         _action = action;
+        _onError = onError;
         _observer = new EffectObserver(RunAsync);
-        _ = RunAsync(); // Запускаем сразу при создании
+        _ = RunAsync();
     }
 
     private async Task RunAsync()
     {
-        if (_disposed) return;
+        // ИСПРАВЛЕНО: Interlocked.Read
+        if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
+
         try
         {
-            await _action();
+            // ИСПРАВЛЕНО: отслеживаем зависимости через scope
+            using (SignalTracker.EnterScopeForObserver(_observer))
+            {
+                await _action();
+            }
         }
         catch (Exception ex)
         {
-            // Effect не должен молча падать — логируем
-            Console.Error.WriteLine($"SgEffect error: {ex}");
+            // ИСПРАВЛЕНО: callback вместо Console.Error
+            if (_onError is not null)
+                _onError(ex);
+            else
+                System.Diagnostics.Debug.WriteLine($"SgEffect error: {ex}");
         }
     }
 
-    internal void Subscribe(SgComponentBase component) => _observer.Subscribe(component);
-
     public void Dispose()
     {
-        if (_disposed) return;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _observer.Dispose();
     }
 
     private sealed class EffectObserver : ISignalObserver, IDisposable
     {
         private readonly Func<Task> _invalidate;
-        private readonly HashSet<WeakReference<SgComponentBase>> _dependents = new();
-        private readonly object _lock = new();
-        private bool _disposed;
+        private int _disposed;
 
         public EffectObserver(Func<Task> invalidate) => _invalidate = invalidate;
 
-        internal void Subscribe(SgComponentBase component)
+        public void OnSignalChanged()
         {
-            lock (_lock)
-                _dependents.Add(new WeakReference<SgComponentBase>(component));
+            if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
+            _ = _invalidate();
         }
 
-        public void OnSignalChanged() => _ = _invalidate();
-
         public void OnSignalRead<T>(SgSignal<T> signal) { }
-
         public void OnComputedRead<T>(SgComputed<T> computed) { }
 
-        public void Dispose() { _disposed = true; _dependents.Clear(); }
+        public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
     }
 }

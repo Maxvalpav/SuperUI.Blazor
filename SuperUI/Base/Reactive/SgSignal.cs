@@ -1,12 +1,9 @@
 // SuperUI/Base/Reactive/SgSignal.cs
 // ИСПРАВЛЕНО:
-// 1. Lock освобождается ДО вызова RefreshAsync (предотвращение deadlock)
-// 2. Снимаем копию _subscribers перед итерацией (минимальное время удержания lock)
-// 3. Поддержка IEqualityComparer<T> как в Signal<T>
-// 4. Оператор implicit для удобного присвоения
-// 5. ToString() для отладки
-// 6. SubscribeObserver для поддержки SgComputed / SgEffect
-
+// 1. Добавлен IDisposable — Dispose() очищает всех подписчиков
+// 2. Peek() — чтение без реактивной подписки
+// 3. PurgeDeadSubscribers() — принудительная очистка мёртвых WeakRef
+// 4. Update() — не атомарен на Server, добавлен комментарий
 using System.Runtime.CompilerServices;
 using SuperUI.Base;
 
@@ -14,25 +11,15 @@ namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Реактивный сигнал — автоматически перерисовывает компоненты при изменении Value.
-/// Вдохновлён Solid.js signals, адаптирован под Blazor threading model.
 /// </summary>
-/// <remarks>
-/// Thread safety:
-/// - WASM: однопоточный — lock является no-op overhead, но безопасен.
-/// - Server: SignalR callbacks могут приходить из разных потоков → lock обязателен.
-/// DEADLOCK FIX: lock освобождается ДО вызова RefreshAsync.
-/// </remarks>
-public sealed class SgSignal<T>
+public sealed class SgSignal<T> : IDisposable
 {
     private T _value;
     private readonly IEqualityComparer<T> _comparer;
-
-    // WeakReference<SgComponentBase> — компоненты не удерживаются от GC
     private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
     private readonly object _lock = new();
-
-    // Наблюдатели (computed / effect) — сильные ссылки, живут пока жив сигнал
     private readonly HashSet<ISignalObserver> _observers = new();
+    private volatile bool _disposed;
 
     public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
     {
@@ -48,7 +35,6 @@ public sealed class SgSignal<T>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            // Автоподписка при чтении в scope рендера
             SignalTracker.Track(this);
             return _value;
         }
@@ -56,46 +42,53 @@ public sealed class SgSignal<T>
         set => Set(value);
     }
 
+    /// <summary>Прочитать значение БЕЗ реактивной подписки.</summary>
+    public T Peek() => _value;
+
     /// <summary>
     /// Установить новое значение. Уведомляет подписчиков только при реальном изменении.
     /// </summary>
     public void Set(T newValue)
     {
+        if (_disposed) return;
         if (_comparer.Equals(_value, newValue)) return;
         _value = newValue;
         NotifySubscribers();
     }
 
     /// <summary>
-    /// Обновить значение через функцию (атомарно для читателей).
+    /// Обновить значение через функцию.
+    /// ⚠️ Не атомарен относительно concurrent Set() на Blazor Server.
+    /// Для атомарных операций используйте SgStore.Dispatch().
     /// </summary>
-    public void Update(Func<T, T> updater)
-    {
-        Set(updater(_value));
-    }
+    public void Update(Func<T, T> updater) => Set(updater(_value));
 
-    /// <summary>
-    /// Подписать компонент. Вызывается SignalTracker автоматически.
-    /// </summary>
     internal void Subscribe(SgComponentBase component)
     {
-        lock (_lock)
-            _subscribers.Add(new WeakReference<SgComponentBase>(component));
+        lock (_lock) _subscribers.Add(new WeakReference<SgComponentBase>(component));
     }
 
-    /// <summary>
-    /// Подписать наблюдателя (SgComputed / SgEffect).
-    /// </summary>
     internal void SubscribeObserver(ISignalObserver observer)
     {
+        lock (_lock) _observers.Add(observer);
+    }
+
+    internal void UnsubscribeObserver(ISignalObserver observer)
+    {
+        lock (_lock) _observers.Remove(observer);
+    }
+
+    /// <summary>Принудительно удалить мёртвые WeakRef (вызывайте при GC давлении).</summary>
+    public void PurgeDeadSubscribers()
+    {
         lock (_lock)
-            _observers.Add(observer);
+        {
+            _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
+        }
     }
 
     private void NotifySubscribers()
     {
-        // ИСПРАВЛЕНО: копируем список и освобождаем lock ДО вызова RefreshAsync
-        // Это предотвращает deadlock: RefreshAsync → Set → NotifySubscribers → lock (занят)
         List<WeakReference<SgComponentBase>>? snapshot = null;
         List<WeakReference<SgComponentBase>>? dead = null;
         ISignalObserver[]? observerSnapshot = null;
@@ -122,17 +115,13 @@ public sealed class SgSignal<T>
                 observerSnapshot = _observers.ToArray();
         }
 
-        // Уведомляем компоненты ПОСЛЕ освобождения lock
         if (snapshot is not null)
         {
             foreach (var weakRef in snapshot)
-            {
                 if (weakRef.TryGetTarget(out var comp) && !comp.IsDisposed)
                     _ = comp.RefreshAsync();
-            }
         }
 
-        // Уведомляем наблюдателей (computed / effect) ПОСЛЕ освобождения lock
         if (observerSnapshot is not null)
         {
             foreach (var observer in observerSnapshot)
@@ -143,8 +132,17 @@ public sealed class SgSignal<T>
         }
     }
 
-    // Удобный implicit для: SgSignal<int> count = 0;
-    public static implicit operator T(SgSignal<T> signal) => signal.Value;
+    /// <summary>Освободить всех подписчиков и наблюдателей.</summary>
+    public void Dispose()
+    {
+        _disposed = true;
+        lock (_lock)
+        {
+            _subscribers.Clear();
+            _observers.Clear();
+        }
+    }
 
+    public static implicit operator T(SgSignal<T> signal) => signal.Value;
     public override string ToString() => _value?.ToString() ?? "null";
 }
