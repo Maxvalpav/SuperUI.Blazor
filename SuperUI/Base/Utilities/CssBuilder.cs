@@ -1,13 +1,17 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
 namespace SuperUI.Base.Utilities;
 
+using System;
+using System.Collections.Generic;
+using System.Text;
+
 /// <summary>
 /// Fluent CSS class builder с пулом буферов и кэшем результата.
 /// </summary>
 /// <remarks>
 /// - Кэширует результат <see cref="Build"/> — повторные вызовы бесплатны.
 /// - Использует <see cref="System.Buffers.ArrayPool{T}"/> для composition строк.
-/// - Условие <see cref="Add(string, Func{bool})"/> вычисляется немедленно (eager).
+/// - Условие <see cref="Add(string, bool)"/> вычисляется немедленно (eager).
 /// - Не thread-safe; рассчитан на локальное использование внутри одного рендера.
 /// - Совместим с WASM и Server.
 /// </remarks>
@@ -15,13 +19,15 @@ public sealed class SgCssBuilder
 {
     private static readonly System.Buffers.ArrayPool<char> Pool = System.Buffers.ArrayPool<char>.Shared;
 
-    private readonly List<(string Class, bool Condition)> _classes = [];
+    private List<string>? _classes;
     private string? _cached;
 
     public SgCssBuilder(string? baseClass = null)
     {
         if (!string.IsNullOrWhiteSpace(baseClass))
-            _classes.Add((baseClass, true));
+        {
+            _classes = new List<string> { baseClass };
+        }
     }
 
     /// Добавить класс безусловно.
@@ -29,8 +35,8 @@ public sealed class SgCssBuilder
     {
         if (!string.IsNullOrWhiteSpace(cssClass))
         {
-            _cached = null; // инвалидируем кэш
-            _classes.Add((cssClass, true));
+            _cached = null;
+            (_classes ??= new()).Add(cssClass);
         }
         return this;
     }
@@ -38,17 +44,21 @@ public sealed class SgCssBuilder
     /// Добавить класс с условием.
     public SgCssBuilder Add(string? cssClass, bool condition)
     {
-        if (!string.IsNullOrWhiteSpace(cssClass))
+        if (condition && !string.IsNullOrWhiteSpace(cssClass))
         {
             _cached = null;
-            _classes.Add((cssClass, condition));
+            (_classes ??= new()).Add(cssClass);
         }
         return this;
     }
 
-    /// Добавить класс с ленивым условием (Func вычисляется при Build()).
+    /// Добавить класс с ленивым условием (Func вычисляется при вызове).
     public SgCssBuilder Add(string? cssClass, Func<bool> condition)
-        => Add(cssClass, condition());
+        => condition() ? Add(cssClass, true) : this;
+
+    /// Добавить класс если условие истинно (альтернативный синтаксис).
+    public SgCssBuilder AddIf(bool condition, string cssClass)
+        => Add(cssClass, condition);
 
     /// Добавить несколько классов из строки (разделённых пробелом).
     public SgCssBuilder AddRange(string? classes)
@@ -66,20 +76,34 @@ public sealed class SgCssBuilder
     public SgCssBuilder AddBem(string block, string? modifier, bool condition = true)
         => condition && modifier != null ? Add($"{block}--{modifier}") : this;
 
+    /// Добавить класс из атрибутов.
+    public SgCssBuilder AddFromAttributes(IReadOnlyDictionary<string, object>? attrs)
+    {
+        if (attrs is not null && attrs.TryGetValue("class", out var cls))
+            Add(cls?.ToString());
+        return this;
+    }
+
     /// Построить строку CSS классов. Кэшируется.
+    /// <returns>null если нет классов (не рендерит пустой атрибут)</returns>
     public string? Build()
     {
         if (_cached is not null) return _cached;
+        if (_classes is null || _classes.Count == 0) return _cached = null;
 
         // Подсчёт нужных символов для оптимального размера буфера
         var totalLength = 0;
         var count = 0;
-        foreach (var (cls, cond) in _classes)
+        foreach (var cls in _classes)
         {
-            if (cond) { totalLength += cls.Length + 1; count++; }
+            totalLength += cls.Length + 1; // +1 for space
+            count++;
         }
 
         if (count == 0) return _cached = null;
+
+        // Убираем последний лишний пробел
+        totalLength -= 1;
 
         // Аренда буфера из пула
         var buffer = Pool.Rent(totalLength);
@@ -87,9 +111,8 @@ public sealed class SgCssBuilder
         var pos = 0;
         var first = true;
 
-        foreach (var (cls, cond) in _classes)
+        foreach (var cls in _classes)
         {
-            if (!cond) continue;
             if (!first) span[pos++] = ' ';
             cls.AsSpan().CopyTo(span[pos..]);
             pos += cls.Length;

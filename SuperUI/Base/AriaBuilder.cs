@@ -122,18 +122,18 @@ public sealed class AriaBuilder
     public AriaBuilder ValueMax(double max) => Set("aria-valuemax", max.ToString("G", CultureInfo.InvariantCulture));
     public AriaBuilder ValueNow(double now) => Set("aria-valuenow", now.ToString("G", CultureInfo.InvariantCulture));
     public AriaBuilder ValueText(string text) => Set("aria-valuetext", text);
-    public AriaBuilder Level(int level) => Set("aria-level", level);
-    public AriaBuilder SetSize(int size) => Set("aria-setsize", size);
-    public AriaBuilder PosInSet(int pos) => Set("aria-posinset", pos);
-    public AriaBuilder ColCount(int count) => Set("aria-colcount", count);
-    public AriaBuilder ColIndex(int index) => Set("aria-colindex", index);
-    public AriaBuilder ColSpan(int span) => Set("aria-colspan", span);
-    public AriaBuilder RowCount(int count) => Set("aria-rowcount", count);
-    public AriaBuilder RowIndex(int index) => Set("aria-rowindex", index);
-    public AriaBuilder RowSpan(int span) => Set("aria-rowspan", span);
+    public AriaBuilder Level(int level) => Set("aria-level", level.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder SetSize(int size) => Set("aria-setsize", size.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder PosInSet(int pos) => Set("aria-posinset", pos.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder ColCount(int count) => Set("aria-colcount", count.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder ColIndex(int index) => Set("aria-colindex", index.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder ColSpan(int span) => Set("aria-colspan", span.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder RowCount(int count) => Set("aria-rowcount", count.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder RowIndex(int index) => Set("aria-rowindex", index.ToString(CultureInfo.InvariantCulture));
+    public AriaBuilder RowSpan(int span) => Set("aria-rowspan", span.ToString(CultureInfo.InvariantCulture));
 
     // ── Keyboard ──────────────────────────────────────────────────────────────
-    public AriaBuilder TabIndex(int index) => Set("tabindex", index);
+    public AriaBuilder TabIndex(int index) => Set("tabindex", index.ToString(CultureInfo.InvariantCulture));
     public AriaBuilder TabStop() => TabIndex(0);
     public AriaBuilder NoTabStop() => TabIndex(-1);
 

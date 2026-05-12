@@ -38,6 +38,7 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     private FieldIdentifier _fieldIdentifier;
     private ValidationMessageStore? _messageStore;
     private ISgConverter<TValue>? _effectiveConverter;
+    private ISgConverter<TValue>? _previousConverter;
     private bool _editContextAttached;
     private TValue? _lastSyncedValue;
     private bool _isSettingValue;
@@ -178,6 +179,12 @@ public abstract class SgFormBase<TValue> : SgInteractiveBase
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
+        // Сбрасываем кэш если конвертер изменился
+        if (!ReferenceEquals(Converter, _previousConverter))
+        {
+            _previousConverter = Converter;
+            _effectiveConverter = null;
+        }
 
         if (ValueExpression != null)
             _fieldIdentifier = FieldIdentifier.Create(ValueExpression);

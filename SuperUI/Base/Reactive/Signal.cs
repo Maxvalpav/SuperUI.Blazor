@@ -52,7 +52,7 @@ public sealed class Signal<T>
         foreach (var weakRef in snapshot)
         {
             if (weakRef.TryGetTarget(out var component) && !component.IsDisposed)
-                _ = component.RefreshAsync();
+                SignalBatch.NotifyComponent(component);
             else
                 toRemove.Add(weakRef);
         }

@@ -32,7 +32,8 @@ public abstract class SgOverlayBase : SgInteractiveBase
     private int _zIndex;
     private bool _wasOpen;
     private string? _focusTrapId;
-    private volatile bool _isDisposing;
+    private int _isDisposingInt; // 0 = false, 1 = true
+    private int _animationDurationMs = 300; // fallback значение
 
     private readonly SemaphoreSlim _overlayLock = new(1, 1);
 
@@ -40,7 +41,12 @@ public abstract class SgOverlayBase : SgInteractiveBase
     protected bool IsAnimatingClose { get; private set; }
 
     protected virtual string AriaRole => "dialog";
-    protected virtual int AnimationDurationMs => 300;
+    /// <summary>
+    /// Длительность анимации открытия/закрытия в миллисекундах.
+    /// Значение синхронизируется с CSS-переменной на первом рендере через JS.
+    /// Override для кастомной логики.
+    /// </summary>
+    protected virtual int AnimationDurationMs => _animationDurationMs;
 
     /// <summary>
     /// Добавлять aria-modal="true" в BuildAriaAttributes.
@@ -69,32 +75,43 @@ public abstract class SgOverlayBase : SgInteractiveBase
         base.OnInitialized();
     }
 
-    protected override async Task OnParametersSetAsync()
-    {
-        await base.OnParametersSetAsync();
-        if (_isDisposing) return;
+     protected override async Task OnParametersSetAsync()
+     {
+         await base.OnParametersSetAsync();
+         if (Interlocked.Exchange(ref _isDisposingInt, 0) == 1) return;
 
-        if (!await _overlayLock.WaitAsync(0)) return;
-        try
-        {
-            if (Open && !_wasOpen)
-            {
-                _wasOpen = true;
-                await OnOpenCoreAsync();
-            }
-            else if (!Open && _wasOpen)
-            {
-                _wasOpen = false;
-                await OnCloseCoreAsync(animate: true);
-            }
-        }
-        finally
-        {
-            _overlayLock.Release();
-        }
-    }
+         if (!await _overlayLock.WaitAsync(0)) return;
+         try
+         {
+             if (Open && !_wasOpen)
+             {
+                 _wasOpen = true;
+                 await OnOpenCoreAsync();
+             }
+             else if (!Open && _wasOpen)
+             {
+                 _wasOpen = false;
+                 await OnCloseCoreAsync(animate: true);
+             }
+         }
+         finally
+         {
+             _overlayLock.Release();
+         }
+      }
 
-    private async Task OnOpenCoreAsync()
+     protected override async Task OnFirstRenderAsync()
+     {
+         await base.OnFirstRenderAsync();
+         // Синхронизируем длительность анимации с CSS, если возможно
+         if (!IsPrerendering)
+         {
+             var ms = await SafeInvokeAsync<int, string>("getAnimationDuration", ComponentId);
+             if (ms > 0) _animationDurationMs = ms;
+         }
+     }
+
+     private async Task OnOpenCoreAsync()
     {
         _zIndex = ZIndexService.GetNext();
 
@@ -161,8 +178,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     public async Task OpenAsync()
     {
-        // ИСПРАВЛЕНО: проверка IsDisposed
-        if (Open || _isDisposing || IsDisposed) return;
+        if (Open || Interlocked.Exchange(ref _isDisposingInt, 0) == 1 || IsDisposed) return;
 
         bool acquired;
         try { acquired = await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5)); }
@@ -186,7 +202,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     public async Task CloseAsync()
     {
-        if (!Open || _isDisposing) return;
+        if (!Open || Interlocked.Exchange(ref _isDisposingInt, 0) == 1) return;
 
         bool acquired;
         try { acquired = await _overlayLock.WaitAsync(TimeSpan.FromSeconds(5)); }
@@ -215,7 +231,7 @@ public abstract class SgOverlayBase : SgInteractiveBase
 
     protected override async ValueTask DisposeComponentAsync()
     {
-        _isDisposing = true;
+        if (Interlocked.Exchange(ref _isDisposingInt, 1) == 1) return; // идемпотентность
 
         if (Open || _focusTrapId != null || _zIndex > 0)
         {

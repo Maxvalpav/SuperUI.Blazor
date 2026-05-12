@@ -11,6 +11,12 @@ namespace SuperUI.Base.Hooks;
 /// Хук для ограничения частоты рендеринга (throttle).
 /// Пропускает рендер если с последнего прошло меньше <see cref="MinInterval"/>.
 /// </summary>
+/// <remarks>
+/// ⚠️ Blazor вызывает ShouldRender() несколько раз при изменении параметров.
+/// ThrottledRenderHook гарантирует не более одного рендера за MinInterval.
+/// Первый рендер всегда проходит (_lastRenderTicks = 0).
+/// При minInterval ≤ 16ms подходит для анимаций (~60fps).
+/// </remarks>
 public sealed class ThrottledRenderHook : IRenderHook
 {
     private readonly long _minIntervalTicks;

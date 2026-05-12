@@ -1,5 +1,6 @@
 // SuperUI/Base/Hooks/ServiceChangeHook.cs
 using SuperUI.Base;
+using System.Diagnostics;
 
 namespace SuperUI.Base.Hooks;
 
@@ -61,4 +62,13 @@ public sealed class ServiceChangeHook<TService> : IAsyncComponentHook, IDisposab
             _service.Changed -= OnServiceChanged;
         _component = null;
     }
+
+#if DEBUG
+    ~ServiceChangeHook()
+    {
+        if (Volatile.Read(ref _subscribed) == 1)
+            System.Diagnostics.Debug.WriteLine(
+                $"[LEAK] ServiceChangeHook<{typeof(TService).Name}> was not disposed!");
+    }
+#endif
 }

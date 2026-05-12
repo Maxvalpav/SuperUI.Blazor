@@ -150,6 +150,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         try { await Task.Delay(interval, ct); }
         catch (OperationCanceledException) { }
         finally { Interlocked.Exchange(ref entry.IsThrottled, 0); }
+        // Не обращаемся к _throttlers — только к entry
     }
 
     // ── Timer ───────────────────────────────────────────────────────────────────────
@@ -329,6 +330,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
             _debouncers.Clear();
         }
 
+        // Отменяем все pending throttle через ComponentToken (уже реализовано через Cancel)
         _throttlers.Clear();
 
         foreach (var sub in _subscriptions) sub.Dispose();

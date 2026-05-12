@@ -60,24 +60,49 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
 
     /// <summary>
     /// Async dispatch для асинхронных операций (action creators).
-    /// ⚠️ ВНИМАНИЕ: При конкурентных Dispatch/DispatchAsync возможен Lost Update.
-    /// Для критичного состояния используйте только синхронный Dispatch().
+    /// Thread-safe: использует оптимистичную конкуренцию с повторными попытками чтобы избежать Lost Update.
+    /// При превышении максимального количества повторов (5) генерирует InvalidOperationException.
     /// </summary>
     public async Task DispatchAsync(Func<TState, Task<TState>> asyncReducer)
     {
         if (Volatile.Read(ref _disposedInt) == 1) return;
 
-        var currentState = _state.Value;
-        var newState = await asyncReducer(currentState);
-
-        lock (_dispatchLock)
+        const int maxRetries = 5;
+        int retries = 0;
+        while (true)
         {
-            if (Volatile.Read(ref _disposedInt) == 1) return;
-            foreach (var mw in _middleware)
-                newState = mw(currentState, newState);
-        }
+            TState snapshot;
+            lock (_dispatchLock)
+            {
+                if (Volatile.Read(ref _disposedInt) == 1) return;
+                snapshot = _state.Value;
+            }
 
-        _state.Set(newState);
+            TState newState = await asyncReducer(snapshot);
+
+            lock (_dispatchLock)
+            {
+                if (Volatile.Read(ref _disposedInt) == 1) return;
+                if (EqualityComparer<TState>.Default.Equals(_state.Value, snapshot))
+                {
+                    // Нет конкурентного обновления, применяем наше изменение
+                    foreach (var mw in _middleware)
+                        newState = mw(snapshot, newState);
+                    _state.Set(newState);
+                    return;
+                }
+                // Обнаружено конкурентное обновление — повторяем операцию
+            }
+
+            retries++;
+            if (retries >= maxRetries)
+            {
+                throw new InvalidOperationException(
+                    $"Слишком много попыток в SgStore.DispatchAsync из-за конкурентных обновлений. " +
+                    $"Максимальное количество попыток: {maxRetries}.");
+            }
+            // Повторяем немедленно без задержки (простая реализация)
+        }
     }
 
     /// <summary>Добавить middleware (логирование, DevTools, persistence).</summary>
@@ -90,6 +115,28 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
 
     /// <summary>Сбросить состояние.</summary>
     public void Reset(TState initialState) => _state.Set(initialState);
+
+    /// <summary>
+    /// Создать middleware для хроники состояний (time-travel debugging).
+    /// Поддерживает ограниченную историю и опциональный callback при изменении состояния.
+    /// </summary>
+    /// <param name="maxHistory">Максимальное количество записей в истории (по умолчанию 50).</param>
+    /// <param name="onStateChange">Опциональный callback, вызываемый при каждом изменении состояния (передаётся новое состояние).</param>
+    /// <returns>Middleware, который добавляет состояние в историю.</returns>
+    public static Middleware<TState> CreateHistoryMiddleware(
+        int maxHistory = 50,
+        Action<TState>? onStateChange = null)
+    {
+        if (maxHistory <= 0) throw new ArgumentOutOfRangeException(nameof(maxHistory));
+        var history = new Queue<TState>(maxHistory + 1);
+        return (prev, next) =>
+        {
+            if (history.Count >= maxHistory) history.Dequeue();
+            history.Enqueue(prev);
+            onStateChange?.Invoke(next);
+            return next;
+        };
+    }
 
     /// <summary>
     /// Создать вычисляемый selector.

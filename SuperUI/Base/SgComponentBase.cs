@@ -162,6 +162,17 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     }
 
     // ── StateHasChanged ─────────────────────────────────────────────────────────────
+    // ПРИМЕЧАНИЕ: используем 'new' вместо 'override' чтобы контролировать batching
+    // через ComponentSignalTracker. Приведение к ComponentBase даст доступ к оригиналу.
+    // CS0108 suppress intentional — documented in XML remarks.
+#pragma warning disable CS0108 // Member hides inherited member; use new keyword
+    /// <summary>
+    /// Запланировать перерисовку компонента. Использует batch-рендеринг через
+    /// <see cref="ComponentSignalTracker"/>. Этот метод скрывает (<c>new</c>)
+    /// <see cref="ComponentBase.StateHasChanged"/> — при приведении к <see cref="ComponentBase"/>
+    /// будет вызван оригинальный метод, что может привести к двойному или пропущенному рендеру.
+    /// ⚠️ Не приводите <see cref="SgComponentBase"/> к <see cref="ComponentBase"/>.
+    /// </summary>
     public new void StateHasChanged()
     {
         if (IsDisposed) return;
@@ -169,6 +180,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         if (batcher is not null) batcher.ScheduleRender();
         else base.StateHasChanged();
     }
+#pragma warning restore CS0108
 
     /// <summary>Прямой вызов StateHasChanged через InvokeAsync (для ComponentSignalTracker).</summary>
     internal Task InvokeStateHasChangedAsync()
@@ -244,12 +256,16 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         _renderStartTick = Stopwatch.GetTimestamp();
 #endif
         if (firstRender)
+        {
             await OnFirstRenderAsync();
-
+            // Уведомляем хуки о первом рендере
+            foreach (var hook in _hooks)
+                if (hook is IAsyncComponentHook ah)
+                    await ah.OnFirstRenderAsync(this);
+        }
         foreach (var hook in _hooks)
             if (hook is IAsyncComponentHook ah)
                 await ah.OnAfterRenderAsync(this, firstRender);
-
         await base.OnAfterRenderAsync(firstRender);
     }
 
@@ -275,29 +291,35 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// <summary>
     /// Строит словарь ARIA-атрибутов. Результат кэшируется между рендерами.
     /// Инвалидируется при изменении параметров (через SetParametersAsync).
+    /// Фильтрует AdditionalAttributes, оставляя только aria-*, role, tabindex.
     /// </summary>
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var currentGeneration = Volatile.Read(ref _ariaGeneration);
-
-        // ИСПРАВЛЕНО: lock для атомарного чтения пары (cache, generation)
         lock (_ariaCacheLock)
         {
             if (_ariaCache is not null && _ariaCacheGeneration == currentGeneration)
                 return _ariaCache;
 
-            var capacity = (AdditionalAttributes?.Count ?? 0) + 4;
+            // Фильтруем: только aria-*, role, tabindex
+            var capacity = 4;
             var attrs = new Dictionary<string, object>(capacity, StringComparer.Ordinal);
 
             if (AdditionalAttributes is not null)
                 foreach (var kvp in AdditionalAttributes)
-                    attrs[kvp.Key] = kvp.Value;
+                    if (IsAriaAttribute(kvp.Key))
+                        attrs[kvp.Key] = kvp.Value;
 
             _ariaCache = attrs;
             _ariaCacheGeneration = currentGeneration;
             return attrs;
         }
     }
+
+    private static bool IsAriaAttribute(string key)
+        => key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("role", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
 
     // ── RefreshAsync ────────────────────────────────────────────────────────────────
     /// <summary>Запланировать перерисовку из любого потока.</summary>

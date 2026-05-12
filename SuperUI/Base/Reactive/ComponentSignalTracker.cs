@@ -34,30 +34,38 @@ public sealed class ComponentSignalTracker : IDisposable
     // ИСПРАВЛЕНО: int для Interlocked.Exchange (atomic compare-and-swap)
     private int _disposedInt;
 
+    // ИСПРАВЛЕНИЕ: логгер для незамеченных исключений в FlushAsync
+    private static readonly Action<Task> _logFlushError = t =>
+        System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] FlushAsync faulted: {t.Exception}");
+
     public ComponentSignalTracker(SgComponentBase component)
     {
         _component = component ?? throw new ArgumentNullException(nameof(component));
     }
 
-    /// <summary>
-    /// Запланировать рендер в следующий микротаск.
-    /// Несколько вызовов за один тик = один рендер (batching).
-    /// </summary>
-    public void ScheduleRender()
-    {
-        if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
+     /// <summary>
+     /// Запланировать рендер в следующий микротаск.
+     /// Несколько вызовов за один тик = один рендер (batching).
+     /// </summary>
+     public void ScheduleRender()
+     {
+         if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
 
-        // Атомарно устанавливаем флаг: если уже 1 — задача уже запланирована, выходим
-        if (Interlocked.Exchange(ref _scheduled, 1) == 0)
-        {
-            // Запускаем FlushAsync только если не выполняется сейчас
-            // Если FlushAsync выполняется — он увидит _scheduled=1 в drain loop
-            if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
-            {
-                _ = FlushAsync();
-            }
-        }
-    }
+         // Атомарно устанавливаем флаг: если уже 1 — задача уже запланирована, выходим
+         if (Interlocked.Exchange(ref _scheduled, 1) == 0)
+         {
+             // Запускаем FlushAsync только если не выполняется сейчас
+             // Если FlushAsync выполняется — он увидит _scheduled=1 в drain loop
+             if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
+             {
+                 var t = FlushAsync();
+                 t.ContinueWith(_logFlushError,
+                     CancellationToken.None,
+                     TaskContinuationOptions.OnlyOnFaulted,
+                     TaskScheduler.Default);
+             }
+         }
+     }
 
     private async Task FlushAsync()
     {

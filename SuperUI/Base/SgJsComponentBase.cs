@@ -73,13 +73,15 @@ public abstract class SgJsComponentBase : SgComponentBase
 
     protected override void OnInitialized()
     {
+        // 1. Сначала базовая инициализация (сервисы, хуки)
+        base.OnInitialized();
+
+        // 2. Потом сбрасываем JS-специфичное состояние
         var old = Interlocked.Exchange(ref _lifecycleToken, new LifecycleToken());
         old.Cancel();
         old.Dispose();
         var oldModule = Interlocked.Exchange(ref _module, null);
-        if (oldModule is not null)
-            _ = TryDisposeModuleAsync(oldModule);
-        base.OnInitialized();
+        if (oldModule is not null) _ = TryDisposeModuleAsync(oldModule);
     }
 
     // ── GetModuleAsync ──────────────────────────────────────────────────────────────
@@ -224,6 +226,28 @@ public abstract class SgJsComponentBase : SgComponentBase
             var module = await GetModuleAsync();
             if (module is null) return;
             await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2);
+        }
+        catch (TaskCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "[{ComponentId}] JS void call '{Identifier}' failed",
+                ComponentId, identifier);
+        }
+    }
+
+    /// <summary>3-arg generic overload без params-аллокации.</summary>
+    protected async ValueTask SafeInvokeVoidAsync<T1, T2, T3>(
+        string identifier, T1 arg1, T2 arg2, T3 arg3)
+    {
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
+        try
+        {
+            var module = await GetModuleAsync();
+            if (module is null) return;
+            await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2, arg3);
         }
         catch (TaskCanceledException) { }
         catch (OperationCanceledException) { }

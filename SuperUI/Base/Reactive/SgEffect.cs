@@ -1,9 +1,11 @@
 // SuperUI/Base/Reactive/SgEffect.cs
-// ИСПРАВЛЕНО:
-// 1. RunAsync — отслеживает зависимости через SignalTracker.EnterScopeForObserver
-// 2. _disposed — Interlocked для Server thread-safety
-// 3. Console.Error → ILogger (через callback)
-// 4. EffectObserver._dependents — убрано (не используется)
+// ИСПРАВЛЕНИЯ:
+// 1. [CS1061 FIX] Subscribe(SgComponentBase) — метод добавлен
+// 2. RunAsync — EnterScopeForObserver для отслеживания зависимостей
+// 3. _disposed — Interlocked для Server thread-safety
+// 4. EffectObserver теперь уведомляет компоненты-подписчики (RefreshAsync)
+// 5. onError callback вместо Console.Error
+
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
@@ -12,20 +14,17 @@ namespace SuperUI.Base.Reactive;
 /// Reactive side-effect: выполняет функцию при изменении зависимых сигналов.
 /// Автоматически отслеживает SgSignal, прочитанные во время выполнения.
 /// </summary>
-/// <remarks>
-/// ⚠️ SgEffect НЕ отписывается от сигналов при Dispose.
-/// Отписка происходит автоматически при Dispose компонента-подписчика (SgComponentBase).
-/// </remarks>
 public sealed class SgEffect : IDisposable
 {
     private readonly Func<Task> _action;
     private readonly Action<Exception>? _onError;
     private readonly EffectObserver _observer;
-    private int _disposed; // ИСПРАВЛЕНО: Interlocked для Server
+    private int _disposed;
+    private int _paused; // 0 = active, 1 = paused
 
     public SgEffect(Action action, Action<Exception>? onError = null)
     {
-        _action = () => { action(); return Task.CompletedTask; };
+        _action  = () => { action(); return Task.CompletedTask; };
         _onError = onError;
         _observer = new EffectObserver(RunAsync);
         _ = RunAsync();
@@ -33,20 +32,31 @@ public sealed class SgEffect : IDisposable
 
     public SgEffect(Func<Task> action, Action<Exception>? onError = null)
     {
-        _action = action;
+        _action  = action ?? throw new ArgumentNullException(nameof(action));
         _onError = onError;
         _observer = new EffectObserver(RunAsync);
         _ = RunAsync();
     }
 
+    /// <summary>Приостановить выполнение эффекта.</summary>
+    public void Pause() => Interlocked.Exchange(ref _paused, 1);
+
+    /// <summary>
+    /// Возобновить выполнение эффекта после паузы.
+    /// Если эффект был приостановлен — перезапускает выполнение.
+    /// </summary>
+    public void Resume()
+    {
+        if (Interlocked.Exchange(ref _paused, 0) == 1)
+            _ = RunAsync();
+    }
+
     private async Task RunAsync()
     {
-        // ИСПРАВЛЕНО: Interlocked.Read
         if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
-
+        if (Interlocked.CompareExchange(ref _paused,   0, 0) == 1) return; // пропускаем при паузе
         try
         {
-            // ИСПРАВЛЕНО: отслеживаем зависимости через scope
             using (SignalTracker.EnterScopeForObserver(_observer))
             {
                 await _action();
@@ -54,7 +64,6 @@ public sealed class SgEffect : IDisposable
         }
         catch (Exception ex)
         {
-            // ИСПРАВЛЕНО: callback вместо Console.Error
             if (_onError is not null)
                 _onError(ex);
             else
@@ -62,28 +71,73 @@ public sealed class SgEffect : IDisposable
         }
     }
 
+    // ── FIX CS1061 ───────────────────────────────────────────────────────────
+    /// <summary>
+    /// Подписать компонент: при изменении зависимых сигналов компонент
+    /// автоматически получит RefreshAsync() → StateHasChanged().
+    /// </summary>
+    internal void Subscribe(SgComponentBase component)
+        => _observer.Subscribe(component);
+    // ─────────────────────────────────────────────────────────────────────────
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         _observer.Dispose();
     }
 
+    // ── Вложенный наблюдатель ─────────────────────────────────────────────────
     private sealed class EffectObserver : ISignalObserver, IDisposable
     {
         private readonly Func<Task> _invalidate;
+        private readonly HashSet<WeakReference<SgComponentBase>> _dependents = new();
+        private readonly object _lock = new();
         private int _disposed;
 
         public EffectObserver(Func<Task> invalidate) => _invalidate = invalidate;
+
+        internal void Subscribe(SgComponentBase component)
+        {
+            lock (_lock) _dependents.Add(new WeakReference<SgComponentBase>(component));
+        }
 
         public void OnSignalChanged()
         {
             if (Interlocked.CompareExchange(ref _disposed, 0, 0) == 1) return;
             _ = _invalidate();
+            NotifyComponents();
         }
 
-        public void OnSignalRead<T>(SgSignal<T> signal) { }
-        public void OnComputedRead<T>(SgComputed<T> computed) { }
+        private void NotifyComponents()
+        {
+            List<WeakReference<SgComponentBase>>? snapshot;
+            List<WeakReference<SgComponentBase>>? dead = null;
+            lock (_lock)
+            {
+                if (_dependents.Count == 0) return;
+                snapshot = new(_dependents.Count);
+                foreach (var r in _dependents)
+                {
+                    if (r.TryGetTarget(out var c) && !c.IsDisposed)
+                        snapshot.Add(r);
+                    else
+                        (dead ??= new()).Add(r);
+                }
+                if (dead is not null)
+                    foreach (var d in dead) _dependents.Remove(d);
+            }
+            foreach (var r in snapshot)
+                if (r.TryGetTarget(out var c) && !c.IsDisposed)
+                    SignalBatch.NotifyComponent(c);
+        }
 
-        public void Dispose() => Interlocked.Exchange(ref _disposed, 1);
+        public void OnSignalRead<T>(SgSignal<T> signal)   { /* tracking done via EnterScopeForObserver */ }
+        public void OnComputedRead<T>(SgComputed<T> c)    { }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _disposed, 1);
+            lock (_lock) _dependents.Clear();
+        }
     }
 }

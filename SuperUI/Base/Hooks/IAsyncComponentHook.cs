@@ -21,6 +21,9 @@ public interface IAsyncComponentHook : IComponentHook
     /// <summary>Вызывается после OnParametersSetAsync компонента.</summary>
     Task OnParametersSetAsync(SgComponentBase component) => Task.CompletedTask;
 
+    /// <summary>Вызывается после первого вызова OnAfterRenderAsync (firstRender=true).</summary>
+    Task OnFirstRenderAsync(SgComponentBase component) => Task.CompletedTask;
+
     /// <summary>Вызывается после OnAfterRenderAsync компонента.</summary>
     Task OnAfterRenderAsync(SgComponentBase component, bool firstRender) => Task.CompletedTask;
 }

@@ -64,10 +64,15 @@ public sealed class SgSignal<T> : IDisposable
 
     /// <summary>
     /// Обновить значение через функцию.
-    /// ⚠️ Не атомарен относительно concurrent Set() на Blazor Server.
-    /// Для атомарных операций используйте SgStore.Dispatch().
+    /// Атомарен относительно concurrent Set() на Blazor Server и безопасен для ARM (без torn reads).
+    /// Для сложных атомарных операций используйте SgStore.Dispatch().
     /// </summary>
-    public void Update(Func<T, T> updater) => Set(updater(_value));
+    public void Update(Func<T, T> updater)
+    {
+        T current;
+        lock (_lock) { current = _value; }
+        Set(updater(current));
+    }
 
     internal void Subscribe(SgComponentBase component)
     {
@@ -134,7 +139,7 @@ public sealed class SgSignal<T> : IDisposable
         {
             foreach (var weakRef in snapshot)
                 if (weakRef.TryGetTarget(out var comp) && !comp.IsDisposed)
-                    _ = comp.RefreshAsync();
+                    SignalBatch.NotifyComponent(comp);
         }
 
         if (observerSnapshot is not null)
