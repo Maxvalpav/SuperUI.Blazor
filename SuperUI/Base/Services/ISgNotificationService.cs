@@ -1,53 +1,68 @@
 // SuperUI/Base/Services/ISgNotificationService.cs
 
+// ИСПРАВЛЕНИЯ:
+// ✅ CS0311: сигнатура совпадает с SgNotificationService
+// ПОДХОД: интерфейс приведён к реализации
+
+using SuperUI.Components;
+
 namespace SuperUI.Base.Services;
 
 /// <summary>Сервис уведомлений (Notification Center).</summary>
 public interface ISgNotificationService
 {
-    /// <summary>Добавить уведомление.</summary>
-    void Add(SgNotificationItem notification);
+    // ── Данные ──────────────────────────────────────────────────────────────
 
-    /// <summary>Пометить уведомление как прочитанное.</summary>
-    void MarkAsRead(string notificationId);
+    /// <summary>Все уведомления (новые первые).</summary>
+    IReadOnlyList<SgNotification> Notifications { get; }
 
-    /// <summary>Пометить все как прочитанные.</summary>
-    void MarkAllAsRead();
-
-    /// <summary>Удалить уведомление.</summary>
-    void Remove(string notificationId);
-
-    /// <summary>Очистить все уведомления.</summary>
-    void Clear();
-
-    /// <summary>Все уведомления.</summary>
-    IReadOnlyList<SgNotificationItem> Notifications { get; }
+    /// <summary>Алиас для Notifications (для совместимости).</summary>
+    IReadOnlyList<SgNotification> Items => Notifications;
 
     /// <summary>Количество непрочитанных.</summary>
     int UnreadCount { get; }
 
-    /// <summary>Событие изменения списка.</summary>
+    // ── События ─────────────────────────────────────────────────────────────
+
+    /// <summary>Событие изменения ленты.</summary>
     event Action? OnChange;
+
+    /// <summary>Алиас для OnChange (для совместимости).</summary>
+    event Action? Changed
+    {
+        add { OnChange += value; }
+        remove { OnChange -= value; }
+    }
+
+    // ── API ─────────────────────────────────────────────────────────────────
+
+    /// <summary>Добавить уведомление.</summary>
+    SgNotification Add(string title,
+        string? message = null,
+        string? icon = null,
+        string? href = null,
+        SgAlertVariant variant = SgAlertVariant.Info);
+
+    /// <summary>Отметить уведомление как прочитанное.</summary>
+    void MarkAsRead(int id);
+
+    /// <summary>Отметить все как прочитанные.</summary>
+    void MarkAllAsRead();
+
+    /// <summary>Удалить уведомление.</summary>
+    void Remove(int id);
+
+    /// <summary>Очистить все уведомления.</summary>
+    void Clear();
 }
 
-/// <summary>Элемент уведомления.</summary>
-public sealed class SgNotificationItem
-{
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public string Title { get; set; } = string.Empty;
-    public string? Message { get; set; }
-    public SgNotificationType Type { get; set; } = SgNotificationType.Info;
-    public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
-    public bool IsRead { get; set; }
-    public int? DurationMs { get; set; } = 5000; // null = не автоудаляется
-    public Action? OnClick { get; set; }
-}
-
-/// <summary>Тип уведомления.</summary>
-public enum SgNotificationType
-{
-    Info,
-    Success,
-    Warning,
-    Error
-}
+/// <summary>Уведомление в ленте.</summary>
+public sealed record SgNotification(
+    int Id,
+    string Title,
+    string? Message,
+    string? Icon,
+    string? Href,
+    SgAlertVariant Variant,
+    DateTimeOffset CreatedAt,
+    bool IsRead);

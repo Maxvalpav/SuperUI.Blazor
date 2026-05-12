@@ -1,8 +1,9 @@
 ﻿@page "/notification-panel-demo"
 @using SuperUI.Components
+@using SuperUI.Base.Services
 @implements IDisposable
-@inject SgToastService Toasts
-@inject SgNotificationService Notifications
+@inject ISgToastService Toasts
+@inject ISgNotificationService Notifications
 
 <PageTitle>Панель уведомлений - SUI</PageTitle>
 
@@ -22,7 +23,7 @@
     </div>
 
     <div style="margin-top: 24px; display: grid; grid-template-columns: minmax(360px, 420px) 1fr; gap: 24px; align-items: flex-start;">
-        <SgNotificationPanel Items="Notifications.Items"
+        <SgNotificationPanel Items="ConvertNotifications(Notifications.Notifications)"
                              OnItemClick="HandleItemClick"
                              OnReadToggle="HandleReadToggle"
                              OnDismiss="HandleDismiss"
@@ -97,12 +98,12 @@
 
     protected override void OnInitialized()
     {
-        Notifications.Changed += OnChanged;
-        if (Notifications.Items.Count == 0)
+        Notifications.OnChange += OnChanged;
+        if (Notifications.Notifications.Count == 0)
         {
-            Notifications.Push("Новый комментарий", "Иван Петров ответил на ваш комментарий в задаче #142.", SgBadgeVariant.Info, "Сообщения", "5 мин назад");
-            Notifications.Push("Деплой завершён", "Сборка v1.2.0 успешно задеплоена на production.", SgBadgeVariant.Success, "Система", "30 мин назад");
-            Notifications.Push("Высокая нагрузка на API", "Превышен порог 80% по CPU на сервере api-2.", SgBadgeVariant.Warn, "Система", "1 ч назад");
+            Notifications.Add("Новый комментарий", "Иван Петров ответил на ваш комментарий в задаче #142.", variant: SgAlertVariant.Info);
+            Notifications.Add("Деплой завершён", "Сборка v1.2.0 успешно задеплоена на production.", variant: SgAlertVariant.Success);
+            Notifications.Add("Высокая нагрузка на API", "Превышен порог 80% по CPU на сервере api-2.", variant: SgAlertVariant.Warn);
         }
     }
 
@@ -118,29 +119,34 @@
             SgBadgeVariant.Danger  => ("Ошибка", $"Сбой при обработке №{_counter}"),
             _                      => ("Информация", $"Информационное событие №{_counter}")
         };
-        Notifications.Push(title, message, variant, "Демо", "только что");
-        var toastVariant = variant switch
+        var alertVariant = variant switch
         {
-            SgBadgeVariant.Success => SgToastVariant.Success,
-            SgBadgeVariant.Warn    => SgToastVariant.Warn,
-            SgBadgeVariant.Danger  => SgToastVariant.Danger,
-            _                      => SgToastVariant.Default
+            SgBadgeVariant.Success => SgAlertVariant.Success,
+            SgBadgeVariant.Warn    => SgAlertVariant.Warn,
+            SgBadgeVariant.Danger  => SgAlertVariant.Danger,
+            _                      => SgAlertVariant.Info
         };
-        Toasts.Show($"Уведомление отправлено в шапку (#{_counter})", "Готово", toastVariant);
+        Notifications.Add(title, message, variant: alertVariant);
+        var toastType = variant switch
+        {
+            SgBadgeVariant.Success => SgToastType.Success,
+            SgBadgeVariant.Warn    => SgToastType.Warning,
+            SgBadgeVariant.Danger  => SgToastType.Error,
+            _                      => SgToastType.Info
+        };
+        Toasts.Show($"Уведомление отправлено в шапку (#{_counter})", toastType);
     }
 
     private void HandleItemClick(NotificationItem item)
     {
-        Notifications.MarkAsRead(item.Id);
-        Toasts.Info($"Открыто: {item.Title}", "Уведомление");
+        Toasts.Info($"Открыто: {item.Title}");
     }
 
-    private void HandleReadToggle(NotificationItem item) => Notifications.MarkAsRead(item.Id);
+    private void HandleReadToggle(NotificationItem item) { }
 
     private void HandleDismiss(NotificationItem item)
     {
-        Notifications.Remove(item.Id);
-        Toasts.Show($"Удалено: {item.Title}", "Уведомление", SgToastVariant.Default);
+        Toasts.Show($"Удалено: {item.Title}", SgToastType.Info);
     }
 
     private void HandleMarkAllRead()
@@ -152,10 +158,28 @@
     private void HandleClearAll()
     {
         Notifications.Clear();
-        Toasts.Show("Список уведомлений очищен", "Уведомление", SgToastVariant.Default);
+        Toasts.Show("Список уведомлений очищен", SgToastType.Info);
     }
 
-    private void HandleViewAll() => Toasts.Info("Переход на страницу всех уведомлений", "Навигация");
+    private void HandleViewAll() => Toasts.Info("Переход на страницу всех уведомлений");
 
-    public void Dispose() => Notifications.Changed -= OnChanged;
+    public void Dispose() => Notifications.OnChange -= OnChanged;
+
+    private IEnumerable<NotificationItem> ConvertNotifications(IReadOnlyList<SgNotification> notifications)
+    {
+        return notifications.Select(n => new NotificationItem
+        {
+            Id = n.Id.ToString(),
+            Title = n.Title,
+            Message = n.Message,
+            Variant = n.Variant switch
+            {
+                SgAlertVariant.Success => SgBadgeVariant.Success,
+                SgAlertVariant.Warn => SgBadgeVariant.Warn,
+                SgAlertVariant.Danger => SgBadgeVariant.Danger,
+                _ => SgBadgeVariant.Default
+            },
+            IsRead = n.IsRead
+        });
+    }
 }

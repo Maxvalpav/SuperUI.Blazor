@@ -1,4 +1,5 @@
 @using System.Threading.Tasks
+@using Microsoft.AspNetCore.Components.Web
 @inherits Microsoft.AspNetCore.Components.Web.ErrorBoundary
 
 @* Компонент Error Boundary для изоляции ошибок отдельного компонента *@
@@ -16,14 +17,22 @@ else
     else
     {
         <div class="sg-error-boundary" role="alert">
-            <div class="sg-error-boundary__message">
-                ⚠️ Ошибка компонента: @_error.Message
+            <div class="sg-error-boundary__icon">⚠️</div>
+            <div class="sg-error-boundary__body">
+                <h4 class="sg-error-boundary__title">@(Title ?? "Произошла ошибка")</h4>
+                @if (ShowDetails)
+                {
+                    <p class="sg-error-boundary__message">@_error.Message</p>
+                }
+                @if (AllowRecover)
+                {
+                    <button class="sg-btn sg-btn--primary sg-btn--sm"
+                            type="button"
+                            @onclick="RecoverAsync">
+                        @(RecoverText ?? "Повторить")
+                    </button>
+                }
             </div>
-            <button class="sg-btn sg-btn--sm sg-btn--secondary"
-                    type="button"
-                    @onclick="ResetAsync">
-                Повторить
-            </button>
         </div>
     }
 }
@@ -31,6 +40,10 @@ else
 @code {
     [Parameter] public RenderFragment?             ChildContent    { get; set; }
     [Parameter] public RenderFragment<Exception>?  FallbackContent { get; set; }
+    [Parameter] public string?                     Title           { get; set; }
+    [Parameter] public bool                        ShowDetails     { get; set; } = false;
+    [Parameter] public bool                        AllowRecover    { get; set; } = true;
+    [Parameter] public string?                     RecoverText     { get; set; }
     [Parameter] public EventCallback<Exception>    OnError         { get; set; }
 
     private Exception? _error;
@@ -59,7 +72,7 @@ else
             await OnError.InvokeAsync(exception);
     }
 
-    private async Task ResetAsync()
+    private async Task RecoverAsync()
     {
         _error = null;
         Recover(); // встроенный метод ErrorBoundary для сброса состояния

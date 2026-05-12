@@ -1,46 +1,46 @@
 // SuperUI/Base/Services/ISgConfirmService.cs
 
-using Microsoft.AspNetCore.Components;
+// ИСПРАВЛЕНИЯ:
+// ✅ CS0311: сигнатура совпадает с SgConfirmService
+// ПОДХОД: интерфейс приведён к реализации
+
+using SuperUI.Components;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>Сервис диалогов подтверждения.</summary>
 public interface ISgConfirmService
 {
-    /// <summary>Показать диалог подтверждения и ждать ответа.</summary>
-    Task<bool> ConfirmAsync(SgConfirmOptions options, CancellationToken ct = default);
+    // ── Основной API ────────────────────────────────────────────────────────
 
-    /// <summary>Удобный метод с минимальными параметрами.</summary>
+    /// <summary>Показать диалог подтверждения и ждать ответа.</summary>
     Task<bool> ConfirmAsync(string message,
         string? title = null,
-        SgConfirmVariant variant = SgConfirmVariant.Default,
-        CancellationToken ct = default);
+        string confirmText = "OK",
+        string cancelText = "Cancel",
+        SgAlertVariant variant = SgAlertVariant.Info);
 
-    /// <summary>Событие для SgConfirmHost.</summary>
-    event Action<SgConfirmOptions>? OnConfirmRequested;
+    // ── Для SgConfirmHost ────────────────────────────────────────────────────
+
+    /// <summary>Текущие запросы (для SgConfirmHost).</summary>
+    IReadOnlyList<SgConfirmRequest> PendingRequests { get; }
+
+    /// <summary>Событие появления нового запроса (для SgConfirmHost).</summary>
+    event Action? OnChange;
+
+    /// <summary>Событие запроса подтверждения (для SgConfirmHost).</summary>
+    event Func<SgConfirmRequest, Task<bool>>? Requested;
+
+    /// <summary>Ответить на запрос (вызывается из SgConfirmHost).</summary>
+    void Respond(Guid id, bool confirmed);
 }
 
-/// <summary>Параметры диалога подтверждения.</summary>
-public sealed class SgConfirmOptions
-{
-    public string Id { get; init; } = Guid.NewGuid().ToString("N");
-    public string Message { get; set; } = string.Empty;
-    public string? Title { get; set; }
-    public SgConfirmVariant Variant { get; set; } = SgConfirmVariant.Default;
-    public string OkText { get; set; } = "OK";
-    public string CancelText { get; set; } = "Отмена";
-    public bool ShowCancel { get; set; } = true;
-    public RenderFragment? Content { get; set; }
-
-    // Internal: TaskCompletionSource для await
-    internal TaskCompletionSource<bool> Tcs { get; } = new();
-}
-
-/// <summary>Вариант диалога подтверждения.</summary>
-public enum SgConfirmVariant
-{
-    Default,
-    Warning,
-    Danger,
-    Info
-}
+/// <summary>Запрос подтверждения.</summary>
+public sealed record SgConfirmRequest(
+    Guid Id,
+    string Message,
+    string? Title,
+    string ConfirmText,
+    string CancelText,
+    SgAlertVariant Variant,
+    TaskCompletionSource<bool> Result);

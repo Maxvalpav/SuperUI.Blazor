@@ -1,9 +1,15 @@
 // SuperUI/ServiceCollectionExtensions.cs
 
+// ИСПРАВЛЕНИЯ:
+// ✅ CS0246: FocusTrapService → правильный using + namespace
+// ✅ CS0311: SgConfirmService → ISgConfirmService (реализует интерфейс)
+// ✅ CS0311: SgNotificationService → ISgNotificationService (реализует интерфейс)
+// ✅ ISgToastService → SgToastService
+// ✅ ISgPresenceService → SgPresenceServiceImpl
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
-using SuperUI.Base;              // ✅ FIX CS0246: SgLibraryOptions находится здесь
+using SuperUI.Base;
 using SuperUI.Base.Services;
 
 namespace SuperUI;
@@ -15,10 +21,8 @@ public static class ServiceCollectionExtensions
 {
     /// <summary>
     /// Регистрирует все сервисы SuperUI.
-    /// Универсальный метод: работает на WASM, Blazor Server и Web App (auto-detect).
+    /// Работает на WASM, Blazor Server и Web App.
     /// </summary>
-    /// <param name="services">Коллекция сервисов.</param>
-    /// <param name="configure">Опциональная конфигурация <see cref="SgLibraryOptions"/>.</param>
     public static IServiceCollection AddSuperUI(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
@@ -26,8 +30,6 @@ public static class ServiceCollectionExtensions
         services.Configure<SgLibraryOptions>(configure ?? (_ => { }));
 
         // ── Prerendering Detector ─────────────────────────────────────────────
-        // Определяем хост-среду через OperatingSystem.IsBrowser() — безопасно для AOT.
-        // Не используем WebAssemblyHostBuilder (CS0234 на Server).
         services.TryAddSingleton<IPrerenderingDetector>(sp =>
         {
             if (OperatingSystem.IsBrowser())
@@ -39,7 +41,7 @@ public static class ServiceCollectionExtensions
                 : (IPrerenderingDetector)WasmPrerenderingDetector.Instance;
         });
 
-        // Обратная совместимость (опечатка в старом имени интерфейса)
+        // Обратная совместимость (опечатка в старом имени)
         services.TryAddSingleton<IPrerendingDetector>(sp =>
             (IPrerendingDetector)sp.GetRequiredService<IPrerenderingDetector>());
 
@@ -56,8 +58,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IZIndexService, ZIndexService>();
 
         // ── Focus Trap ────────────────────────────────────────────────────────
-        services.AddScoped<IFocusTrapService, FocusTrapService>();
-        services.AddScoped<FocusTrapStack>();
+        services.AddScoped<IFocusTrapService, JsFocusTrapService>();
 
         // ── Keyboard Service ──────────────────────────────────────────────────
         services.AddScoped<IKeyboardService, KeyboardService>();
@@ -65,30 +66,29 @@ public static class ServiceCollectionExtensions
         // ── Session Storage ───────────────────────────────────────────────────
         services.AddScoped<ISessionStorage, JsSessionStorage>();
 
-        // ── Broadcast Service (Singleton: in-process event bus) ───────────────
-        // ✅ FIX: зарегистрирован как ISgBroadcastService → SgBroadcastService
+        // ── Broadcast Service ─────────────────────────────────────────────────
         services.TryAddSingleton<ISgBroadcastService, SgBroadcastService>();
 
-        // ── Presence Service (Scoped: per-circuit / per-user) ─────────────────
-        // ✅ FIX: ISgPresenceService → SgPresenceServiceImpl (полная реализация)
+        // ── Presence Service ──────────────────────────────────────────────────
+        // ✅ FIX: SgPresenceServiceImpl реализует ISgPresenceService
         services.AddScoped<ISgPresenceService, SgPresenceServiceImpl>();
 
         // ── Toast Service ─────────────────────────────────────────────────────
+        // ✅ FIX CS0535: SgToastService реализует ISgToastService
         services.AddScoped<ISgToastService, SgToastService>();
 
         // ── Confirm Service ───────────────────────────────────────────────────
+        // ✅ FIX CS0311: SgConfirmService реализует ISgConfirmService
         services.AddScoped<ISgConfirmService, SgConfirmService>();
 
         // ── Notification Service ──────────────────────────────────────────────
+        // ✅ FIX CS0311: SgNotificationService реализует ISgNotificationService
         services.AddScoped<ISgNotificationService, SgNotificationService>();
 
         return services;
     }
 
-    /// <summary>
-    /// AddSuperUI для Blazor Server / Web App Server-проекта.
-    /// Явно добавляет IHttpContextAccessor.
-    /// </summary>
+    /// <summary>AddSuperUI для Blazor Server / Web App Server.</summary>
     public static IServiceCollection AddSuperUIServer(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
@@ -96,13 +96,8 @@ public static class ServiceCollectionExtensions
         return services.AddSuperUI(configure);
     }
 
-    /// <summary>
-    /// AddSuperUI для Blazor WebAssembly.
-    /// IHttpContextAccessor не нужен.
-    /// </summary>
+    /// <summary>AddSuperUI для Blazor WebAssembly.</summary>
     public static IServiceCollection AddSuperUIWasm(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
-    {
-        return services.AddSuperUI(configure);
-    }
+        => services.AddSuperUI(configure);
 }

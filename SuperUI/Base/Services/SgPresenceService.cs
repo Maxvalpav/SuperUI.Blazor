@@ -1,106 +1,104 @@
 // SuperUI/Base/Services/SgPresenceService.cs
-// ИСПРАВЛЕНО:
-// 1. Убран using System.Reactive.Subjects (CS0234 — пакет не подключён)
-// 2. Заменён IObservable<T> на IAsyncEnumerable<T> (Channel-based, без зависимостей)
-// 3. Добавлен минимальный IObservable<T> через собственный Subject<T> без внешних зависимостей
-// Примечание: если System.Reactive нужен — добавьте NuGet: System.Reactive
+
+using System.Collections.Concurrent;
+
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Сервис для real-time присутствия — показывает кто сейчас редактирует что.
-/// Интеграция с Blazor Server SignalR для мультипользовательских сценариев.
-/// На WASM: работает через HTTP polling или WebSocket напрямую.
+/// Реализация сервиса присутствия пользователей.
+/// Scoped: per-circuit (Server), per-user (WASM).
+/// 
+/// Для реального multi-user real-time: переопределите через SignalR Hub.
 /// </summary>
-public interface ISgPresenceService
+public sealed class SgPresenceService : ISgPresenceService
 {
-    /// <summary>Получить список пользователей, просматривающих/редактирующих объект.</summary>
-    Task<IReadOnlyList<SgPresenceUser>> GetPresenceAsync(string entityType, string entityId);
+    private readonly ConcurrentDictionary<string, SgPresenceUser> _onlineUsers = new();
+    private volatile bool _disposed;
+    private string? _currentUserId;
+    private string? _currentStatus;
 
-    /// <summary>Заявить о редактировании объекта.</summary>
-    Task ClaimEditAsync(string entityType, string entityId);
+    /// <summary>Текущий пользователь находится онлайн.</summary>
+    public bool IsOnline => _currentUserId != null;
 
-    /// <summary>Освободить объект.</summary>
-    Task ReleaseEditAsync(string entityType, string entityId);
+    /// <summary>Статус текущего пользователя (null = не установлен).</summary>
+    public string? Status => _currentStatus;
 
-    /// <summary>
-    /// Подписка на изменения присутствия.
-    /// ИСПРАВЛЕНО: собственный IObservable без зависимости от System.Reactive.
-    /// </summary>
-    IObservable<SgPresenceChangedEvent> PresenceChanged { get; }
-
-    /// <summary>
-    /// AsyncEnumerable вариант для Blazor Server (SignalR streaming).
-    /// </summary>
-    IAsyncEnumerable<SgPresenceChangedEvent> StreamPresenceChangesAsync(
-        string entityType, string entityId, CancellationToken ct = default);
-}
-
-public record SgPresenceUser(
-    string UserId,
-    string DisplayName,
-    string? AvatarUrl,
-    bool IsEditing);
-
-public record SgPresenceChangedEvent(
-    string EntityType,
-    string EntityId,
-    IReadOnlyList<SgPresenceUser> Users);
-
-/// <summary>
-/// Минимальная реализация Subject без внешних зависимостей.
-/// Для полноценного Rx — добавьте NuGet: System.Reactive
-/// </summary>
-public sealed class SgSubject<T> : IObservable<T>, IDisposable
-{
-    private readonly List<IObserver<T>> _observers = new();
-    private readonly Lock _lock = new();
-    private bool _completed;
-
-    public IDisposable Subscribe(IObserver<T> observer)
+    /// <summary>Список известных онлайн-пользователей.</summary>
+    public IReadOnlyList<SgPresenceUser> OnlineUsers
     {
-        lock (_lock)
+        get
         {
-            if (!_completed)
-                _observers.Add(observer);
-        }
-        return new Subscription(this, observer);
-    }
-
-    public void OnNext(T value)
-    {
-        IObserver<T>[] snapshot;
-        lock (_lock) { snapshot = _observers.ToArray(); }
-        foreach (var o in snapshot)
-        {
-            try { o.OnNext(value); }
-            catch { /* observer не должен бросать */ }
+            if (_disposed) return [];
+            return _onlineUsers.Values.ToList();
         }
     }
 
-    public void OnCompleted()
+    /// <summary>Событие изменения присутствия любого пользователя.</summary>
+    public event Action<SgPresenceUser>? PresenceChanged;
+
+    /// <summary>Обновить статус текущего пользователя.</summary>
+    public Task UpdateStatusAsync(string status, CancellationToken ct = default)
     {
-        IObserver<T>[] snapshot;
-        lock (_lock) { _completed = true; snapshot = _observers.ToArray(); _observers.Clear(); }
-        foreach (var o in snapshot) { try { o.OnCompleted(); } catch { } }
+        if (_disposed) return Task.CompletedTask;
+        ArgumentNullException.ThrowIfNull(status);
+
+        _currentStatus = status;
+
+        if (_currentUserId != null && _onlineUsers.TryGetValue(_currentUserId, out var user))
+        {
+            var updated = user with { Status = status };
+            _onlineUsers[_currentUserId] = updated;
+            PresenceChanged?.Invoke(updated);
+        }
+
+        return Task.CompletedTask;
     }
 
-    public void Dispose() => OnCompleted();
-
-    private sealed class Subscription : IDisposable
+    /// <summary>Установить текущего пользователя как онлайн.</summary>
+    public Task SetOnlineAsync(string userId, string? displayName = null, CancellationToken ct = default)
     {
-        private readonly SgSubject<T> _subject;
-        private readonly IObserver<T> _observer;
+        if (_disposed) return Task.CompletedTask;
+        ArgumentNullException.ThrowIfNull(userId);
 
-        public Subscription(SgSubject<T> subject, IObserver<T> observer)
+        _currentUserId = userId;
+        var user = new SgPresenceUser(
+            UserId: userId,
+            DisplayName: displayName ?? userId,
+            AvatarUrl: null,
+            Status: null,
+            LastSeen: DateTimeOffset.UtcNow,
+            IsOnline: true);
+
+        _onlineUsers[userId] = user;
+        PresenceChanged?.Invoke(user);
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Установить текущего пользователя как оффлайн.</summary>
+    public Task SetOfflineAsync(CancellationToken ct = default)
+    {
+        if (_disposed) return Task.CompletedTask;
+
+        if (_currentUserId != null && _onlineUsers.TryRemove(_currentUserId, out var user))
         {
-            _subject = subject;
-            _observer = observer;
+            var offline = user with { IsOnline = false, LastSeen = DateTimeOffset.UtcNow };
+            PresenceChanged?.Invoke(offline);
         }
 
-        public void Dispose()
-        {
-            lock (_subject._lock)
-                _subject._observers.Remove(_observer);
-        }
+        _currentUserId = null;
+        _currentStatus = null;
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Dispose implementation.</summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        await SetOfflineAsync();
+        _onlineUsers.Clear();
     }
 }

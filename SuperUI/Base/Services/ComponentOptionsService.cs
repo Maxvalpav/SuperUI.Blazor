@@ -1,11 +1,13 @@
 // SuperUI/Base/Services/ComponentOptionsService.cs
 
 using Microsoft.Extensions.Options;
+using SuperUI.Components;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Реализация IComponentOptionsService.
+/// Предоставляет доступ к глобальным опциям библиотеки.
 /// </summary>
 public sealed class ComponentOptionsService : IComponentOptionsService
 {
@@ -13,8 +15,16 @@ public sealed class ComponentOptionsService : IComponentOptionsService
 
     public ComponentOptionsService(IOptions<SgLibraryOptions> options)
     {
-        _options = options.Value;
+        _options = options.Value ?? throw new ArgumentNullException(nameof(options));
     }
+
+    public SgSize DefaultSize => _options.DefaultSize;
+    public bool EnableAnimations => _options.AnimationsEnabled;
+    public bool EnableAria => _options.EnableAria;
+    public string Locale => _options.Locale;
+    public int BaseZIndex => _options.BaseZIndex;
+    public int ZIndexStep => _options.ZIndexStep;
+    public string CssPrefix => _options.CssPrefix;
 
     public SgLibraryOptions LibraryOptions => _options;
 

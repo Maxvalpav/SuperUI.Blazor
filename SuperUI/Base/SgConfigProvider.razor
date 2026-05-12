@@ -4,11 +4,13 @@
     Оборачивает дочерние компоненты в каскадные параметры.
     
     Использование:
-    <SgConfigProvider Theme="dark" Culture="ru-RU">
+    <SgConfigProvider Theme="dark" Locale="ru-RU">
         <SgToastHost />
         @Body
     </SgConfigProvider>
 *@
+@using Microsoft.Extensions.Options
+@inject IOptions<SgLibraryOptions> LibraryOptions
 
 <CascadingValue Value="_config" IsFixed="false">
     <CascadingValue Value="_theme" IsFixed="false">
@@ -20,32 +22,41 @@
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     [Parameter] public string Theme   { get; set; } = "auto";
-    [Parameter] public string Culture { get; set; } = "en-US";
-    [Parameter] public bool   Compact { get; set; } = false;
+    [Parameter] public string Locale { get; set; } = "en-US";
     [Parameter] public bool   IsRtl   { get; set; } = false;
     [Parameter] public bool   AnimationsEnabled { get; set; } = true;
+    [Parameter] public SgSize DefaultSize { get; set; } = SgSize.Md;
+    [Parameter] public Dictionary<string, string>? ThemeVariables { get; set; }
 
     private SgConfigContext _config  = new();
     private SgThemeContext  _theme   = new();
 
     protected override void OnParametersSet()
     {
+        var opts = LibraryOptions.Value;
+        
         var isDark = Theme == "dark" ||
                      (Theme == "auto" && IsSystemDark());
 
         _config = new SgConfigContext
         {
-            Theme             = Theme,
-            Culture           = Culture,
-            IsRtl             = IsRtl,
-            Compact           = Compact,
-            AnimationsEnabled = AnimationsEnabled,
+            DefaultSize = DefaultSize,
+            AnimationsEnabled = AnimationsEnabled && opts.AnimationsEnabled,
+            AnimationDurationMs = opts.AnimationDurationMs,
+            EnableAria = opts.EnableAria,
+            Locale = !string.IsNullOrWhiteSpace(Locale) ? Locale : opts.Locale,
+            BaseZIndex = opts.BaseZIndex,
+            ZIndexStep = opts.ZIndexStep,
+            CssPrefix = opts.CssPrefix
         };
 
         _theme = new SgThemeContext
         {
-            ThemeName = isDark ? "dark" : "light",
-            IsDark    = isDark,
+            Theme = isDark ? SgTheme.Dark : SgTheme.Light,
+            IsRtl = IsRtl || opts.RightToLeft,
+            Variables = ThemeVariables?.Count > 0 
+                ? new Dictionary<string, string>(ThemeVariables, StringComparer.Ordinal)
+                : new Dictionary<string, string>(opts.ThemeVariables, StringComparer.Ordinal)
         };
     }
 

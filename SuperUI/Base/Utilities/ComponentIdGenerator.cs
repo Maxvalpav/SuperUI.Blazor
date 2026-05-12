@@ -26,4 +26,7 @@ public static class ComponentIdGenerator
 
     /// <summary>Сброс счётчика (только для тестов!).</summary>
     internal static void Reset() => _counter = 0;
+
+    /// <summary>Текущее значение счётчика (для диагностики).</summary>
+    public static int CurrentCount => Volatile.Read(ref _counter);
 }

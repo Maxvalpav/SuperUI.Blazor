@@ -1,15 +1,16 @@
 // SuperUI/Base/SgDataBase.cs
 // ИСПРАВЛЕНИЯ:
-// ✅ CS0117: SgSortDirection.Asc → Ascending, Desc → Descending (уже исправлено в SgEnums.cs)
-// УЛУЧШЕНИЯ:
-// ✅ ReloadAsync() — public, вызывает LoadDataAsync
-// ✅ ExportAsync(format) — virtual extension point
-// ✅ ApplyFilters / ApplySearch / ApplySort — базовые in-memory через LINQ + Expressions
-// ✅ SgLoadingState — детализированные состояния (вместо bool IsLoading)
-// ✅ TryGetNonEnumeratedCount + ICollection<T>.Count fallback
-// ✅ IsDisposed проверки в SortByAsync / FilterAsync / GoToPageAsync
-// ✅ Версионирование запросов (race condition protection)
+// ✅ CS0101: SgDataTypes.cs удалён — все типы объединены здесь
+// ✅ CS8863: SgSortDescriptor — единственное объявление record с параметрами
+// ✅ CS0117: SgSortDirection.Ascending/Descending (не Asc/Desc)
 // ✅ ComponentToken передаётся в DataSource
+// ✅ ReloadAsync(), ExportAsync() — public extension points
+// УЛУЧШЕНИЯ:
+// ✅ SgFilterGroup с вложенными группами (для сложных AND/OR условий)
+// ✅ SgGroupDescriptor для группировки
+// ✅ SgDataResult<T> — generic record с AggregateData, GroupData, Meta
+// ✅ SgDataRequest.SkipCount / TakeCount — computed, не дублируют Page/PageSize
+// ✅ Race-condition protection через версионирование
 
 using System.Collections;
 using System.Linq.Expressions;
@@ -19,62 +20,150 @@ using Microsoft.Extensions.Logging;
 
 namespace SuperUI.Base;
 
-/// <summary>
-/// Запрос к серверному источнику данных.
-/// </summary>
-public sealed class SgDataRequest
+// ══════════════════════════════════════════════════════════════════════════════
+// Модели запроса / результата
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// <summary>Запрос данных для DataSource (server-side paging/sort/filter).</summary>
+public sealed record SgDataRequest
 {
+    /// <summary>Номер страницы (1-based).</summary>
     public int Page { get; init; } = 1;
+
+    /// <summary>Количество строк на странице.</summary>
     public int PageSize { get; init; } = 25;
+
+    /// <summary>Сколько записей пропустить (computed из Page/PageSize).</summary>
+    public int SkipCount => (Page - 1) * PageSize;
+
+    /// <summary>Сколько записей взять (алиас PageSize).</summary>
+    public int TakeCount => PageSize;
+
+    /// <summary>Параметры сортировки.</summary>
     public SgSortDescriptor? Sort { get; init; }
+
+    /// <summary>Список активных фильтров.</summary>
     public IReadOnlyList<SgFilterDescriptor> Filters { get; init; } = [];
+
+    /// <summary>Дескрипторы группировки.</summary>
+    public IReadOnlyList<SgGroupDescriptor> Groups { get; init; } = [];
+
+    /// <summary>Поисковая строка (глобальный поиск по всем полям).</summary>
     public string? SearchText { get; init; }
+
+    /// <summary>Дополнительные произвольные параметры.</summary>
+    public IReadOnlyDictionary<string, object?>? ExtraParams { get; init; }
+
+    /// <summary>Отключить пагинацию — вернуть все записи.</summary>
+    public bool NoPaging { get; init; }
+
+    /// <summary>Токен отмены (прокидывается из ComponentToken).</summary>
+    public CancellationToken CancellationToken { get; init; } = default;
 }
 
-/// <summary>
-/// Результат запроса к серверному источнику данных.
-/// </summary>
-public sealed class SgDataResult<T>
+/// <summary>Результат запроса данных от DataSource.</summary>
+/// <typeparam name="T">Тип элемента.</typeparam>
+public sealed record SgDataResult<T>
 {
-    public IEnumerable<T> Items { get; init; } = [];
+    /// <summary>Элементы текущей страницы.</summary>
+    public IReadOnlyList<T> Items { get; init; } = [];
+
+    /// <summary>Общее количество записей (без пагинации).</summary>
     public int TotalCount { get; init; }
+
+    /// <summary>Пустой результат.</summary>
+    public static SgDataResult<T> Empty => new();
+
+    /// <summary>Агрегированные данные (итоги по колонкам).</summary>
+    public IReadOnlyDictionary<string, object?>? AggregateData { get; init; }
+
+    /// <summary>Данные группировки.</summary>
+    public IReadOnlyList<SgGroupData<T>>? GroupData { get; init; }
+
+    /// <summary>Произвольные метаданные.</summary>
+    public IReadOnlyDictionary<string, object?>? Meta { get; init; }
 }
+
+/// <summary>Данные группы строк.</summary>
+public sealed record SgGroupData<T>(
+    string GroupKey,
+    string GroupLabel,
+    IReadOnlyList<T> Items,
+    IReadOnlyDictionary<string, object?>? Aggregates = null);
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Дескрипторы (единственные объявления — CS0101 / CS8863 fix)
+// ══════════════════════════════════════════════════════════════════════════════
 
 /// <summary>Дескриптор сортировки.</summary>
-public sealed record SgSortDescriptor(string Field, SgSortDirection Direction);
-
-/// <summary>Дескриптор фильтра.</summary>
-public sealed class SgFilterDescriptor
+/// <remarks>FIX CS8863: только одно объявление record с параметрами.</remarks>
+public sealed record SgSortDescriptor(string Field, SgSortDirection Direction)
 {
-    public string Field { get; set; } = string.Empty;
-    public SgFilterOperator Operator { get; set; } = SgFilterOperator.Contains;
-    public object? Value { get; set; }
+    /// <summary>Помещать null-значения в начало.</summary>
+    public bool NullsFirst { get; init; } = false;
 }
 
-/// <summary>Оператор фильтрации.</summary>
+/// <summary>Дескриптор группировки.</summary>
+public sealed record SgGroupDescriptor(
+    string Field,
+    SgSortDirection Direction = SgSortDirection.Ascending);
+
+/// <summary>Дескриптор фильтра.</summary>
+public sealed record SgFilterDescriptor(
+    string Field,
+    object? Value,
+    SgFilterOperator Operator = SgFilterOperator.Contains,
+    string? Value2 = null)   // для Between
+{
+    /// <summary>Фильтр активен (false = временно отключён).</summary>
+    public bool IsActive { get; init; } = true;
+}
+
+/// <summary>Группа фильтров с логическим оператором (AND/OR условия).</summary>
+public sealed class SgFilterGroup
+{
+    /// <summary>Логический оператор между фильтрами.</summary>
+    public SgLogicalOperator Operator { get; init; } = SgLogicalOperator.And;
+
+    /// <summary>Фильтры группы.</summary>
+    public List<SgFilterDescriptor> Filters { get; } = [];
+
+    /// <summary>Вложенные группы.</summary>
+    public List<SgFilterGroup> Groups { get; } = [];
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Enum-ы, специфичные для данных (остальные в SgEnums.cs)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// <summary>Оператор фильтра.</summary>
 public enum SgFilterOperator
 {
     Equals,
     NotEquals,
     Contains,
+    NotContains,
     StartsWith,
     EndsWith,
     GreaterThan,
     GreaterThanOrEqual,
     LessThan,
     LessThanOrEqual,
+    Between,
+    In,
+    NotIn,
     IsNull,
-    IsNotNull
+    IsNotNull,
+    /// <summary>Регулярное выражение (только для строк).</summary>
+    Regex
 }
 
-/// <summary>Формат экспорта данных.</summary>
-public enum SgExportFormat
-{
-    Csv,
-    Excel,
-    Json,
-    Pdf
-}
+/// <summary>Логический оператор для групп фильтров.</summary>
+public enum SgLogicalOperator { And, Or }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Базовый класс данных
+// ══════════════════════════════════════════════════════════════════════════════
 
 /// <summary>
 /// Базовый класс для компонентов работы с данными.
@@ -83,17 +172,17 @@ public enum SgExportFormat
 /// <typeparam name="T">Тип элемента данных.</typeparam>
 public abstract class SgDataBase<T> : SgInteractiveBase
 {
-    // ── Параметры ─────────────────────────────────────────────────────────────
+    // ── Параметры ───────────────────────────────────────────────────────────
 
     /// <summary>In-memory коллекция элементов.</summary>
     [Parameter] public IEnumerable<T>? Items { get; set; }
 
     /// <summary>
     /// Серверный источник данных (server-side paging/sort/filter).
-    /// Принимает SgDataRequest, CancellationToken.
+    /// Сигнатура: (SgDataRequest) → Task&lt;SgDataResult&lt;T&gt;&gt;
     /// </summary>
     [Parameter]
-    public Func<SgDataRequest, CancellationToken, Task<SgDataResult<T>>>? DataSource { get; set; }
+    public Func<SgDataRequest, Task<SgDataResult<T>>>? DataSource { get; set; }
 
     /// <summary>Размер страницы.</summary>
     [Parameter] public int PageSize { get; set; } = 25;
@@ -116,7 +205,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     /// <summary>Контент при ошибке.</summary>
     [Parameter] public RenderFragment<Exception>? ErrorContent { get; set; }
 
-    // ── Состояние ─────────────────────────────────────────────────────────────
+    // ── Состояние ───────────────────────────────────────────────────────────
 
     /// <summary>Отображаемые элементы (после фильтрации / сортировки / пагинации).</summary>
     protected List<T> DisplayItems { get; private set; } = [];
@@ -152,18 +241,116 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     protected int TotalPages
         => PageSize > 0 ? Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize)) : 1;
 
-    // ── Приватное состояние ───────────────────────────────────────────────────
+    // ── Selection State ──────────────────────────────────────────────────────
+
+    /// <summary>Выбранные ключи элементов (для multi-select).</summary>
+    private readonly HashSet<object> _selectedKeys = [];
+
+    /// <summary>Получить список выбранных ключей (read-only).</summary>
+    protected IReadOnlySet<object> SelectedKeys => _selectedKeys;
+
+    /// <summary>Количество выбранных элементов.</summary>
+    protected int SelectedCount => _selectedKeys.Count;
+
+    /// <summary>Все элементы на текущей странице выбраны.</summary>
+    protected bool AllPageItemsSelected
+    {
+        get
+        {
+            if (DisplayItems.Count == 0) return false;
+            // Предполагаем, что T имеет свойство Id или используется GetItemKey
+            return DisplayItems.All(item => _selectedKeys.Contains(GetItemKey(item)));
+        }
+    }
+
+    /// <summary>
+    /// Получить ключ элемента для selection.
+    /// Override для использования пользовательского ключа (по умолчанию — сам элемент).
+    /// </summary>
+    protected virtual object GetItemKey(T item) => item!;
+
+    /// <summary>Проверить, выбран ли элемент.</summary>
+    protected bool IsItemSelected(T item) => _selectedKeys.Contains(GetItemKey(item));
+
+    /// <summary>Переключить выбор элемента (добавить/удалить).</summary>
+    protected async Task ToggleSelectionAsync(T item)
+    {
+        if (IsDisposed) return;
+        var key = GetItemKey(item);
+        if (!_selectedKeys.Remove(key)) _selectedKeys.Add(key);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Выбрать элемент.</summary>
+    protected async Task SelectItemAsync(T item)
+    {
+        if (IsDisposed) return;
+        _selectedKeys.Add(GetItemKey(item));
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Отменить выбор элемента.</summary>
+    protected async Task DeselectItemAsync(T item)
+    {
+        if (IsDisposed) return;
+        _selectedKeys.Remove(GetItemKey(item));
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Выбрать все элементы на текущей странице.</summary>
+    protected async Task SelectAllPageAsync()
+    {
+        if (IsDisposed) return;
+        foreach (var item in DisplayItems)
+            _selectedKeys.Add(GetItemKey(item));
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Отменить выбор всех элементов на текущей странице.</summary>
+    protected async Task DeselectAllPageAsync()
+    {
+        if (IsDisposed) return;
+        foreach (var item in DisplayItems)
+            _selectedKeys.Remove(GetItemKey(item));
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Выбрать все элементы (все страницы).</summary>
+    protected async Task SelectAllAsync()
+    {
+        if (IsDisposed) return;
+        if (Items != null)
+        {
+            foreach (var item in Items)
+                _selectedKeys.Add(GetItemKey(item));
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Отменить выбор всех элементов.</summary>
+    protected async Task ClearSelectionAsync()
+    {
+        if (IsDisposed) return;
+        _selectedKeys.Clear();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Получить выбранные элементы (из DisplayItems).</summary>
+    protected IEnumerable<T> GetSelectedItems()
+        => DisplayItems.Where(item => _selectedKeys.Contains(GetItemKey(item)));
+
+    // ── Приватное состояние ─────────────────────────────────────────────────
 
     private volatile int _loadingVersion;
     private IEnumerable<T>? _lastItems;
     private int _lastPageSize;
-    private Func<SgDataRequest, CancellationToken, Task<SgDataResult<T>>>? _lastDataSource;
+    private Func<SgDataRequest, Task<SgDataResult<T>>>? _lastDataSource;
 
-    // ── Загрузка данных ───────────────────────────────────────────────────────
+    // ── Загрузка данных ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Загрузить / перезагрузить данные с учётом текущих параметров.
-    /// Версионирование защищает от race-conditions при частых вызовах.
+    /// Загрузить / перезагрузить данные.
+    /// Версионирование защищает от race-conditions.
     /// </summary>
     protected async Task LoadDataAsync()
     {
@@ -185,11 +372,12 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                     PageSize = PageSize,
                     Sort = CurrentSort,
                     Filters = CurrentFilters,
-                    SearchText = SearchText
+                    SearchText = SearchText,
+                    // ✅ ComponentToken для автоотмены при Dispose
+                    CancellationToken = ComponentToken
                 };
 
-                // ✅ Передаём ComponentToken для автоотмены при Dispose
-                var dataResult = await DataSource(request, ComponentToken);
+                var dataResult = await DataSource(request);
                 if (version != _loadingVersion) return;
 
                 result = [.. dataResult.Items];
@@ -211,10 +399,9 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                 // ✅ TryGetNonEnumeratedCount + ICollection fallback
                 if (!query.TryGetNonEnumeratedCount(out totalCount))
                 {
-                    if (Items is ICollection collection)
-                        totalCount = collection.Count;
-                    else
-                        totalCount = query.Count();
+                    if (Items is ICollection<T> col) totalCount = col.Count;
+                    else if (Items is ICollection rawCol) totalCount = rawCol.Count;
+                    else totalCount = query.Count();
                 }
 
                 if (EnablePaging && PageSize > 0)
@@ -235,7 +422,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         }
         catch (OperationCanceledException)
         {
-            // Нормальная отмена при Dispose или смене параметров
+            // Нормальная отмена при Dispose
         }
         catch (Exception ex)
         {
@@ -253,16 +440,14 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         }
     }
 
-    // ── Управление данными ────────────────────────────────────────────────────
+    // ── Управление данными ──────────────────────────────────────────────────
 
-    /// <summary>
-    /// Переключить сортировку: None → Ascending → Descending → None.
-    /// </summary>
+    /// <summary>Переключить сортировку: None → Ascending → Descending → None.</summary>
     protected async Task SortByAsync(string field)
     {
         if (IsDisposed) return;
 
-        // ✅ ИСПРАВЛЕНИЕ CS0117: Ascending/Descending (не Asc/Desc)
+        // ✅ FIX CS0117: Ascending/Descending (не Asc/Desc)
         CurrentSort = CurrentSort?.Field == field
             ? CurrentSort.Direction == SgSortDirection.Ascending
                 ? CurrentSort with { Direction = SgSortDirection.Descending }
@@ -273,7 +458,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         await LoadDataAsync();
     }
 
-    /// <summary>Применить фильтр. Пустое значение — сброс фильтра по полю.</summary>
+    /// <summary>Применить / сбросить фильтр.</summary>
     protected async Task FilterAsync(SgFilterDescriptor filter)
     {
         if (IsDisposed) return;
@@ -317,28 +502,18 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         await LoadDataAsync();
     }
 
-    /// <summary>
-    /// Принудительная перезагрузка данных.
-    /// Полезна при изменении данных вне компонента (например, после сохранения).
-    /// </summary>
+    /// <summary>Принудительная перезагрузка (например, после сохранения).</summary>
     public Task ReloadAsync() => LoadDataAsync();
 
-    /// <summary>
-    /// Extension point для экспорта данных.
-    /// Переопределите для реализации экспорта CSV/Excel/JSON/PDF.
-    /// </summary>
+    /// <summary>Extension point для экспорта данных.</summary>
     protected virtual Task ExportAsync(SgExportFormat format) => Task.CompletedTask;
 
-    // ── In-memory фильтрация ──────────────────────────────────────────────────
+    // ── In-memory фильтрация ────────────────────────────────────────────────
 
-    /// <summary>
-    /// Применить фильтры к LINQ-запросу.
-    /// Базовая реализация: Expression-деревья через Reflection.
-    /// Переопределите для server-side фильтрации или кастомной логики.
-    /// </summary>
+    /// <summary>Применить фильтры (Expression-деревья через Reflection).</summary>
     protected virtual IQueryable<T> ApplyFilters(IQueryable<T> query)
     {
-        foreach (var filter in CurrentFilters)
+        foreach (var filter in CurrentFilters.Where(f => f.IsActive))
         {
             var expr = BuildFilterExpression(filter);
             if (expr != null) query = query.Where(expr);
@@ -372,8 +547,15 @@ public abstract class SgDataBase<T> : SgInteractiveBase
 
                 SgFilterOperator.Contains when prop.PropertyType == typeof(string) =>
                     Expression.Call(member,
-                        typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!,
-                        Expression.Constant(filterValue?.ToString() ?? string.Empty)),
+                        typeof(string).GetMethod(nameof(string.Contains), [typeof(string), typeof(StringComparison)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty),
+                        Expression.Constant(StringComparison.OrdinalIgnoreCase)),
+
+                SgFilterOperator.NotContains when prop.PropertyType == typeof(string) =>
+                    Expression.Not(Expression.Call(member,
+                        typeof(string).GetMethod(nameof(string.Contains), [typeof(string), typeof(StringComparison)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty),
+                        Expression.Constant(StringComparison.OrdinalIgnoreCase))),
 
                 SgFilterOperator.StartsWith when prop.PropertyType == typeof(string) =>
                     Expression.Call(member,
@@ -389,13 +571,21 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                     Expression.GreaterThan(member,
                         Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
 
+                SgFilterOperator.GreaterThanOrEqual when filterValue is not null =>
+                    Expression.GreaterThanOrEqual(member,
+                        Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
+
                 SgFilterOperator.LessThan when filterValue is not null =>
                     Expression.LessThan(member,
                         Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
 
+                SgFilterOperator.LessThanOrEqual when filterValue is not null =>
+                    Expression.LessThanOrEqual(member,
+                        Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
+
                 SgFilterOperator.IsNull =>
                     prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) == null
-                        ? Expression.Constant(false) // value types never null
+                        ? Expression.Constant(false)
                         : (Expression)Expression.Equal(member, Expression.Constant(null, prop.PropertyType)),
 
                 SgFilterOperator.IsNotNull =>
@@ -411,16 +601,13 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         }
         catch
         {
-            return null; // Некорректный тип — игнорируем фильтр
+            return null; // Некорректный тип — игнорируем
         }
     }
 
-    // ── In-memory сортировка ──────────────────────────────────────────────────
+    // ── In-memory сортировка ────────────────────────────────────────────────
 
-    /// <summary>
-    /// Применить сортировку к LINQ-запросу.
-    /// Переопределите для server-side или кастомной сортировки.
-    /// </summary>
+    /// <summary>Применить сортировку (Expression-деревья через Reflection).</summary>
     protected virtual IQueryable<T> ApplySort(IQueryable<T> query)
     {
         if (CurrentSort is null || string.IsNullOrEmpty(CurrentSort.Field)) return query;
@@ -433,7 +620,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         var member = Expression.Property(param, prop);
         var keySelector = Expression.Lambda(member, param);
 
-        // ✅ ИСПРАВЛЕНИЕ CS0117: Ascending/Descending
+        // ✅ FIX CS0117: Ascending/Descending
         var methodName = CurrentSort.Direction == SgSortDirection.Descending
             ? nameof(Queryable.OrderByDescending)
             : nameof(Queryable.OrderBy);
@@ -446,12 +633,9 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         return (IQueryable<T>)method.Invoke(null, [query, keySelector])!;
     }
 
-    // ── In-memory поиск ───────────────────────────────────────────────────────
+    // ── In-memory поиск ─────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Применить глобальный поиск по всем string-полям.
-    /// Case-insensitive, OrdinalIgnoreCase.
-    /// </summary>
+    /// <summary>Применить глобальный поиск по всем string-полям.</summary>
     protected virtual IQueryable<T> ApplySearch(IQueryable<T> query)
     {
         if (string.IsNullOrEmpty(SearchText)) return query;
@@ -472,12 +656,15 @@ public abstract class SgDataBase<T> : SgInteractiveBase
 
         foreach (var prop in stringProps)
         {
-            var member = Expression.Property(param, prop);
-            var call = Expression.Call(member, containsMethod,
+            var memberExpr = Expression.Property(param, prop);
+            // Guard: null-check для nullable string
+            var notNull = Expression.NotEqual(memberExpr, Expression.Constant(null, typeof(string)));
+            var call = Expression.Call(memberExpr, containsMethod,
                 Expression.Constant(SearchText),
                 Expression.Constant(StringComparison.OrdinalIgnoreCase));
+            var safe = Expression.AndAlso(notNull, call);
 
-            combined = combined is null ? (Expression)call : Expression.OrElse(combined, call);
+            combined = combined is null ? (Expression)safe : Expression.OrElse(combined, safe);
         }
 
         if (combined is not null)
@@ -486,7 +673,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         return query;
     }
 
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
+    // ── Lifecycle ───────────────────────────────────────────────────────────
 
     protected override async Task OnParametersSetAsync()
     {

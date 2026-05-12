@@ -1,39 +1,37 @@
 @* SuperUI/Components/SgToastHost.razor *@
-@* ИСПРАВЛЕНО: *@
-@* ✅ CS0246: SgToast → SgToastMessage *@
-@* ✅ CS1061: .Added и .Removed теперь существуют в SgToastService *@
-@* ✅ CS1061: DisposeAsync — теперь SgToastService реализует IAsyncDisposable *@
-@* ✅ WASM + Server совместимость: InvokeAsync для thread-safety *@
+@* ИСПРАВЛЕНИЯ:                                                         *@
+@* ✅ CS0117: SgPlacement.TopRight — теперь существует в SgEnums.cs    *@
+@* ✅ CS0019: сравнение enum через == (работает после добавления TopRight) *@
+@* ✅ CS0535: ISgToastService — используем интерфейс вместо класса      *@
 
+@using SuperUI.Base
 @using SuperUI.Base.Services
 @implements IAsyncDisposable
-@inject SgToastService ToastService
+@inject ISgToastService ToastService
 
-<div class="sg-toast-host sg-toast-host--@Placement.ToString().ToLower()"
-     aria-live="polite"
-     aria-atomic="false"
-     role="log">
-
+<div class="sg-toast-host @GetPositionClass()" role="region" aria-live="polite" aria-label="Уведомления">
     @foreach (var toast in _toasts)
     {
-        var tLocal = toast; @* Захват переменной для лямбды *@
-        <div @key="tLocal.Id"
-             class="sg-toast sg-toast--@tLocal.Type.ToString().ToLower() @(tLocal.IsClosable ? "sg-toast--closable" : "")"
+        var tLocal = toast;
+        <div class="sg-toast sg-toast--@tLocal.Type.ToString().ToLowerInvariant() @(tLocal.IsClosable ? "sg-toast--closable" : "")"
              role="alert"
-             aria-live="@(tLocal.Type == SgToastType.Error ? "assertive" : "polite")">
+             aria-live="assertive"
+             aria-atomic="true">
 
             @* Иконка *@
-            @if (!string.IsNullOrEmpty(tLocal.Icon))
-            {
-                <span class="sg-toast__icon">@tLocal.Icon</span>
-            }
-            else
-            {
-                <span class="sg-toast__icon sg-toast__icon--auto"></span>
-            }
+            <span class="sg-toast__icon">
+                @if (!string.IsNullOrEmpty(tLocal.Icon))
+                {
+                    @tLocal.Icon
+                }
+                else
+                {
+                    <span>@GetDefaultIcon(tLocal.Type)</span>
+                }
+            </span>
 
             @* Контент *@
-            <div class="sg-toast__content">
+            <div class="sg-toast__body">
                 @if (!string.IsNullOrEmpty(tLocal.Title))
                 {
                     <div class="sg-toast__title">@tLocal.Title</div>
@@ -50,6 +48,13 @@
                     ×
                 </button>
             }
+
+            @* Progress bar *@
+            @if (tLocal.DurationMs.HasValue && tLocal.DurationMs > 0)
+            {
+                <div class="sg-toast__progress"
+                     style="animation-duration: @(tLocal.DurationMs)ms"></div>
+            }
         </div>
     }
 </div>
@@ -58,25 +63,25 @@
     /// <summary>Позиция отображения toast на экране.</summary>
     [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.TopRight;
 
-    // FIX CS0246: SgToastMessage вместо SgToast
+    // ✅ FIX CS0246: SgToastMessage (не SgToast)
     private List<SgToastMessage> _toasts = [];
     private bool _disposed;
 
     protected override void OnInitialized()
     {
-        // FIX CS1061: Added и Removed теперь существуют
-        ToastService.Added   += OnToastAdded;    // ← было: ToastService.Added (не существовало)
-        ToastService.Removed += OnToastRemoved;  // ← было: ToastService.Removed (не существовало)
+        // ✅ FIX CS0535: Added / Removed теперь в ISgToastService
+        ToastService.Added   += OnToastAdded;
+        ToastService.Removed += OnToastRemoved;
         _toasts = [.. ToastService.Toasts];
     }
 
-    // FIX CS0246: SgToastMessage вместо SgToast
+    // ✅ FIX CS0246: SgToastMessage
     private void OnToastAdded(SgToastMessage toast)
     {
         if (_disposed) return;
         _ = InvokeAsync(() =>
         {
-            // Фильтруем по Placement если нужно
+            // ✅ FIX CS0117: SgPlacement.TopRight теперь существует
             if (toast.Placement == Placement || Placement == SgPlacement.TopRight)
             {
                 _toasts = [.. ToastService.Toasts];
@@ -85,7 +90,7 @@
         });
     }
 
-    // FIX CS0246: SgToastMessage вместо SgToast
+    // ✅ FIX CS0246: SgToastMessage
     private void OnToastRemoved(SgToastMessage toast)
     {
         if (_disposed) return;
@@ -96,15 +101,33 @@
         });
     }
 
-    // FIX CS1061: DisposeAsync — теперь SgToastService реализует IAsyncDisposable
+    // ✅ FIX CS0019: enum сравнение корректно
+    private string GetPositionClass() => Placement switch
+    {
+        SgPlacement.TopRight     => "sg-toast-host--top-right",
+        SgPlacement.TopLeft      => "sg-toast-host--top-left",
+        SgPlacement.TopCenter    => "sg-toast-host--top-center",
+        SgPlacement.BottomRight  => "sg-toast-host--bottom-right",
+        SgPlacement.BottomLeft   => "sg-toast-host--bottom-left",
+        SgPlacement.BottomCenter => "sg-toast-host--bottom-center",
+        _                        => "sg-toast-host--top-right"
+    };
+
+    private static string GetDefaultIcon(SgToastType type) => type switch
+    {
+        SgToastType.Success => "✓",
+        SgToastType.Error   => "✕",
+        SgToastType.Warning => "⚠",
+        SgToastType.Info    => "ℹ",
+        SgToastType.Loading => "⟳",
+        _                   => "🔔"
+    };
+
     public async ValueTask DisposeAsync()
     {
         _disposed = true;
-        ToastService.Added   -= OnToastAdded;    // ← отписываемся
-        ToastService.Removed -= OnToastRemoved;  // ← отписываемся
-
-        // FIX CS1061: DisposeAsync теперь существует (SgToastService : IAsyncDisposable)
-        // НЕ диспозим сервис здесь — он управляется DI контейнером
+        ToastService.Added   -= OnToastAdded;
+        ToastService.Removed -= OnToastRemoved;
         await ValueTask.CompletedTask;
     }
 }

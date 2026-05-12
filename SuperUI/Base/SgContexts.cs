@@ -1,17 +1,15 @@
 // SuperUI/Base/SgContexts.cs
 //
 // ИСПРАВЛЕНИЯ:
-// ✅ CS0101: убраны дублирующиеся SgThemeContext / SgConfigContext
-//    (определены ТОЛЬКО здесь, удалить из других файлов проекта)
-// ✅ IRenderHook убран — определён в Base/Hooks/IRenderHook.cs
+// ✅ CS0101: SgThemeContext, SgConfigContext определены ТОЛЬКО здесь.
+//    Если они дублировались в другом файле — тот файл нужно очистить.
 // УЛУЧШЕНИЯ:
-// ✅ SgThemeContext: добавлены CssVariables, Direction
-// ✅ SgConfigContext: добавлены ZIndex-параметры
-// ✅ SgDataGridContext: добавлены SortDescriptor, SelectionMode
-// ✅ SgDataFormContext: добавлены LabelWidth, Colon
-// ✅ SgVirtualContext: добавлены OverscanCount, ItemWidth
+// ✅ SgDataGridContext: SelectionMode, CurrentSort, SelectedKeys
+// ✅ SgDataFormContext: LabelWidth, Colon
+// ✅ SgVirtualContext: OverscanCount, ItemWidth
 
 using Microsoft.AspNetCore.Components.Forms;
+using SuperUI.Components;
 
 namespace SuperUI.Base;
 
@@ -55,7 +53,7 @@ public sealed class SgThemeContext
 public sealed class SgConfigContext
 {
     /// <summary>Размер компонентов по умолчанию.</summary>
-    public SgSize DefaultSize { get; init; } = SgSize.Medium;
+    public SgSize DefaultSize { get; init; } = SgSize.Md;
 
     /// <summary>Анимации включены.</summary>
     public bool AnimationsEnabled { get; init; } = true;

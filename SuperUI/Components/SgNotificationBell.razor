@@ -1,6 +1,6 @@
 @namespace SuperUI.Components
 @implements IDisposable
-@inject SgNotificationService Notifications
+@inject ISgNotificationService Notifications
 
 <SgPopover Placement="SgPlacement.BottomEnd" Trigger="SgTrigger.Click" CssClass="sgc-notification-bell">
     <TriggerContent>
@@ -26,7 +26,7 @@
     </TriggerContent>
     <ChildContent>
         <div class="sgc-notification-bell-pop">
-            <SgNotificationPanel Items="Notifications.Items"
+            <SgNotificationPanel Items="@ConvertNotifications(Notifications.Notifications)"
                                  Title="@Title"
                                  MaxHeight="@MaxHeight"
                                  OnItemClick="HandleItemClick"
@@ -77,24 +77,56 @@
 
     protected override void OnInitialized()
     {
-        Notifications.Changed += OnChanged;
+        Notifications.OnChange += OnChanged;
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
 
+    private IEnumerable<NotificationItem> ConvertNotifications(IReadOnlyList<SgNotification> notifications)
+    {
+        return notifications.Select(n => new NotificationItem
+        {
+            Id = n.Id.ToString(),
+            Title = n.Title,
+            Message = n.Message,
+            Timestamp = n.CreatedAt,
+            IsRead = n.IsRead,
+            Variant = n.Variant switch
+            {
+                SgAlertVariant.Success => SgBadgeVariant.Success,
+                SgAlertVariant.Warn => SgBadgeVariant.Warn,
+                SgAlertVariant.Danger => SgBadgeVariant.Danger,
+                SgAlertVariant.Info => SgBadgeVariant.Info,
+                _ => SgBadgeVariant.Default
+            }
+        });
+    }
+
     private async Task HandleItemClick(NotificationItem item)
     {
-        Notifications.MarkAsRead(item.Id);
+        if (int.TryParse(item.Id, out var id))
+        {
+            Notifications.MarkAsRead(id);
+        }
         if (OnItemClick.HasDelegate) await OnItemClick.InvokeAsync(item);
     }
 
     private void HandleReadToggle(NotificationItem item)
     {
         // SgNotificationPanel already toggled IsRead; just notify subscribers.
-        Notifications.MarkAsRead(item.Id);
+        if (int.TryParse(item.Id, out var id))
+        {
+            Notifications.MarkAsRead(id);
+        }
     }
 
-    private void HandleDismiss(NotificationItem item) => Notifications.Remove(item.Id);
+    private void HandleDismiss(NotificationItem item)
+    {
+        if (int.TryParse(item.Id, out var id))
+        {
+            Notifications.Remove(id);
+        }
+    }
 
     private void HandleMarkAllRead() => Notifications.MarkAllAsRead();
 
@@ -102,6 +134,6 @@
 
     public void Dispose()
     {
-        Notifications.Changed -= OnChanged;
+        Notifications.OnChange -= OnChanged;
     }
 }

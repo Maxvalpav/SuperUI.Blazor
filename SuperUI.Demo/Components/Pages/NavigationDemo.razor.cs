@@ -1,4 +1,6 @@
 using SuperUI.Components;
+using SuperUI.Base;
+using SuperUI.Base.Services;
 using SuperUI.Demo.Models;
 using Microsoft.AspNetCore.Components;
 
@@ -116,7 +118,7 @@ public partial class NavigationDemo
     private void OnPageChanged(int page)
     {
         _currentPage = page;
-        Toasts.Show($"Переход на страницу {page}", "Навигация", SgToastVariant.Default);
+        Toasts.Show($"Переход на страницу {page}", SgToastType.Info);
     }
 
     private void HandleTabTitleChanged(string value)

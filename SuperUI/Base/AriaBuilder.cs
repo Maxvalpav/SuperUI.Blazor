@@ -218,6 +218,13 @@ public sealed class AriaBuilder
         return this;
     }
 
+    /// <summary>Условное применение конфигурации (fluent helper).</summary>
+    public AriaBuilder If(bool condition, Func<AriaBuilder, AriaBuilder> configure)
+    {
+        if (condition) configure(this);
+        return this;
+    }
+
     /// <summary>Собрать словарь ARIA-атрибутов.</summary>
     public IReadOnlyDictionary<string, object> Build()
         => new Dictionary<string, object>(_attrs, StringComparer.Ordinal);

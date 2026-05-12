@@ -1,38 +1,41 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
+// SuperUI/Base/Services/SgNotificationService.cs
+
+// ИСПРАВЛЕНИЯ:
+// ✅ CS0311: реализует ISgNotificationService (все члены)
+
+using SuperUI.Components;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Сервис управления лентой уведомлений (notification feed).
+/// Сервис управления лентой уведомлений (Notification Center).
 /// Scoped: per-circuit (Server), per-app (WASM).
 /// </summary>
-public sealed class SgNotificationService
+public sealed class SgNotificationService : ISgNotificationService
 {
     private readonly List<SgNotification> _notifications = [];
     private readonly Lock _lock = new();
     private int _nextId;
 
-    /// <summary>Все уведомления (snapshot, новые первые).</summary>
+    // ── ISgNotificationService ───────────────────────────────────────────────
+
+    /// <inheritdoc/>
     public IReadOnlyList<SgNotification> Notifications
     {
         get { lock (_lock) return [.. _notifications]; }
     }
 
-    /// <summary>Количество непрочитанных уведомлений.</summary>
+    /// <inheritdoc/>
     public int UnreadCount
     {
         get { lock (_lock) return _notifications.Count(n => !n.IsRead); }
     }
 
-    /// <summary>Событие изменения ленты.</summary>
+    /// <inheritdoc/>
     public event Action? OnChange;
 
-    /// <summary>Добавить уведомление.</summary>
-    public SgNotification Add(
-        string title,
+    /// <inheritdoc/>
+    public SgNotification Add(string title,
         string? message = null,
         string? icon = null,
         string? href = null,
@@ -50,8 +53,7 @@ public sealed class SgNotificationService
 
         lock (_lock)
         {
-            _notifications.Insert(0, notification); // новые первые
-            // Ограничение: максимум 200 уведомлений
+            _notifications.Insert(0, notification);
             if (_notifications.Count > 200)
                 _notifications.RemoveAt(_notifications.Count - 1);
         }
@@ -60,10 +62,11 @@ public sealed class SgNotificationService
         return notification;
     }
 
-    /// <summary>Отметить уведомление как прочитанное.</summary>
+    /// <inheritdoc/>
     public void MarkAsRead(int id)
     {
         bool changed = false;
+
         lock (_lock)
         {
             var idx = _notifications.FindIndex(n => n.Id == id);
@@ -73,42 +76,36 @@ public sealed class SgNotificationService
                 changed = true;
             }
         }
+
         if (changed) OnChange?.Invoke();
     }
 
-    /// <summary>Отметить все как прочитанные.</summary>
+    /// <inheritdoc/>
     public void MarkAllAsRead()
     {
         lock (_lock)
             for (int i = 0; i < _notifications.Count; i++)
                 if (!_notifications[i].IsRead)
                     _notifications[i] = _notifications[i] with { IsRead = true };
+
         OnChange?.Invoke();
     }
 
-    /// <summary>Удалить уведомление.</summary>
+    /// <inheritdoc/>
     public void Remove(int id)
     {
         bool removed;
+
         lock (_lock) removed = _notifications.RemoveAll(n => n.Id == id) > 0;
+
         if (removed) OnChange?.Invoke();
     }
 
-    /// <summary>Очистить все уведомления.</summary>
+    /// <inheritdoc/>
     public void Clear()
     {
         lock (_lock) _notifications.Clear();
+
         OnChange?.Invoke();
     }
 }
-
-/// <summary>Уведомление в ленте.</summary>
-public sealed record SgNotification(
-    int Id,
-    string Title,
-    string? Message,
-    string? Icon,
-    string? Href,
-    SgAlertVariant Variant,
-    DateTimeOffset CreatedAt,
-    bool IsRead);

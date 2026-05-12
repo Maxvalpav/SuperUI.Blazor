@@ -90,10 +90,3 @@ public sealed class NullFocusTrapServiceEx : IFocusTrapServiceEx
     public Task MoveFocusAsync(string containerId, FocusDirection direction,
         CancellationToken ct = default) => Task.CompletedTask;
 }
-
-/// <summary>
-/// Вспомогательный класс для управления стеком активных focus trap-ов.
-/// Используется в <see cref="SgOverlayBase"/> для корректного восстановления фокуса
-/// при наличии нескольких одновременно открытых overlay.
-/// </summary>
-

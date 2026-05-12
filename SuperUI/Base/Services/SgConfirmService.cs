@@ -1,7 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+// SuperUI/Base/Services/SgConfirmService.cs
+
+// ИСПРАВЛЕНИЯ:
+// ✅ CS0311: реализует ISgConfirmService (все члены)
+
+using SuperUI.Components;
 
 namespace SuperUI.Base.Services;
 
@@ -9,34 +11,31 @@ namespace SuperUI.Base.Services;
 /// Сервис подтверждающих диалогов.
 /// Scoped: per-circuit (Server), per-app (WASM).
 /// </summary>
-public sealed class SgConfirmService
+public sealed class SgConfirmService : ISgConfirmService
 {
     private readonly List<SgConfirmRequest> _pendingRequests = [];
     private readonly Lock _lock = new();
 
-    /// <summary>Событие появления нового запроса подтверждения (для SgConfirmHost).</summary>
-    public event Action? OnChange;
+    // ── ISgConfirmService ────────────────────────────────────────────────────
 
-    /// <summary>Текущие запросы (snapshot).</summary>
+    /// <inheritdoc/>
     public IReadOnlyList<SgConfirmRequest> PendingRequests
     {
         get { lock (_lock) return [.. _pendingRequests]; }
     }
 
-    /// <summary>
-    /// Показать диалог подтверждения и ожидать ответа пользователя.
-    /// </summary>
-    /// <param name="message">Текст вопроса.</param>
-    /// <param name="title">Заголовок диалога (опционально).</param>
-    /// <param name="confirmText">Текст кнопки подтверждения.</param>
-    /// <param name="cancelText">Текст кнопки отмены.</param>
-    /// <param name="variant">Визуальный вариант.</param>
-    public Task<bool> ConfirmAsync(
-        string message,
+    /// <inheritdoc/>
+    public event Action? OnChange;
+
+    /// <inheritdoc/>
+    public event Func<SgConfirmRequest, Task<bool>>? Requested;
+
+    /// <inheritdoc/>
+    public Task<bool> ConfirmAsync(string message,
         string? title = null,
         string confirmText = "OK",
         string cancelText = "Cancel",
-        SgAlertVariant variant = SgAlertVariant.Default)
+        SgAlertVariant variant = SgAlertVariant.Info)
     {
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         var request = new SgConfirmRequest(
@@ -50,14 +49,21 @@ public sealed class SgConfirmService
 
         lock (_lock) _pendingRequests.Add(request);
         OnChange?.Invoke();
+        
+        // Вызвать обработчик Requested если подписан
+        if (Requested is not null)
+        {
+            _ = Requested.Invoke(request);
+        }
 
         return tcs.Task;
     }
 
-    /// <summary>Ответить на запрос подтверждения (вызывается из SgConfirmHost).</summary>
+    /// <inheritdoc/>
     public void Respond(Guid id, bool confirmed)
     {
         SgConfirmRequest? request = null;
+
         lock (_lock)
         {
             var idx = _pendingRequests.FindIndex(r => r.Id == id);
@@ -67,17 +73,8 @@ public sealed class SgConfirmService
                 _pendingRequests.RemoveAt(idx);
             }
         }
+
         request?.Result.TrySetResult(confirmed);
         if (request is not null) OnChange?.Invoke();
     }
 }
-
-/// <summary>Запрос подтверждения.</summary>
-public sealed record SgConfirmRequest(
-    Guid Id,
-    string Message,
-    string? Title,
-    string ConfirmText,
-    string CancelText,
-    SgAlertVariant Variant,
-    TaskCompletionSource<bool> Result);

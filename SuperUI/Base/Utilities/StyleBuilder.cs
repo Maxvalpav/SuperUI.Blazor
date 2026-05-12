@@ -81,6 +81,23 @@ public sealed class StyleBuilder
     public StyleBuilder Transition(string properties = "all", int durationMs = 300, string easing = "ease")
         => Property("transition", $"{properties} {durationMs}ms {easing}");
 
+    /// <summary>
+    /// Добавить CSS custom property (var()) ссылку.
+    /// Пример: .UseVariable("color", "primary-color") → "color: var(--primary-color)"
+    /// </summary>
+    public StyleBuilder UseVariable(string property, string varName, string? fallback = null)
+    {
+        if (string.IsNullOrWhiteSpace(property) || string.IsNullOrWhiteSpace(varName))
+            return this;
+
+        var cleanVarName = varName.TrimStart('-');
+        var val = fallback is not null
+            ? $"var(--{cleanVarName}, {fallback})"
+            : $"var(--{cleanVarName})";
+
+        return Property(property, val);
+    }
+
     // ── Удаление ─────────────────────────────────────────────────────────────────
     public StyleBuilder Remove(string property)
     {

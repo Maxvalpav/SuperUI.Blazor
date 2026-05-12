@@ -1,5 +1,7 @@
 // SuperUI/Base/SgLibraryOptions.cs
 
+using SuperUI.Components;
+
 namespace SuperUI.Base;
 
 /// <summary>
@@ -23,7 +25,7 @@ public sealed class SgLibraryOptions
     // ── Компоненты ────────────────────────────────────────────────────────────
 
     /// <summary>Размер компонентов по умолчанию.</summary>
-    public SgSize DefaultSize { get; set; } = SgSize.Medium;
+    public SgSize DefaultSize { get; set; } = SgSize.Md;
 
     /// <summary>Анимации включены.</summary>
     public bool AnimationsEnabled { get; set; } = true;
@@ -71,6 +73,11 @@ public sealed class SgLibraryOptions
     /// Автоматически false в Production.
     /// </summary>
     public bool EnableDiagnostics { get; set; }
+
+    // ── Дополнительные CSS-переменные темы ──────────────────────────────────
+
+    /// <summary>Дополнительные CSS-переменные для темы (--var-name: value).</summary>
+    public Dictionary<string, string> ThemeVariables { get; } = [];
 
     // ── DataGrid ──────────────────────────────────────────────────────────────
 

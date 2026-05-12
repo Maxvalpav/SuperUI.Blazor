@@ -1,4 +1,11 @@
 // SuperUI/Base/Services/ISgPresenceService.cs
+//
+// ИСПРАВЛЕНИЯ:
+// ✅ CS0535: удалены GetPresenceAsync, ClaimEditAsync, ReleaseEditAsync,
+//           StreamPresenceChangesAsync из интерфейса — они не нужны для in-memory impl.
+//           Если нужна real-time коллаборация — вынести в ISgCollaborationService.
+// УЛУЧШЕНИЯ:
+// ✅ Разделение: ISgPresenceService (базовый) + ISgCollaborationService (SignalR)
 
 namespace SuperUI.Base.Services;
 
@@ -41,6 +48,29 @@ public interface ISgPresenceService : IAsyncDisposable
 
     /// <summary>Установить текущего пользователя как оффлайн.</summary>
     Task SetOfflineAsync(CancellationToken ct = default);
+}
+
+/// <summary>
+/// Расширенный интерфейс для real-time коллаборации (требует SignalR Hub).
+/// Отделён от ISgPresenceService для чистоты in-memory реализации.
+/// </summary>
+public interface ISgCollaborationService
+{
+    /// <summary>Получить информацию о присутствии пользователя для документа.</summary>
+    Task<SgPresenceUser?> GetPresenceAsync(string documentId, string userId,
+        CancellationToken ct = default);
+
+    /// <summary>Захватить право редактирования документа.</summary>
+    Task<bool> ClaimEditAsync(string documentId, string userId,
+        CancellationToken ct = default);
+
+    /// <summary>Освободить право редактирования документа.</summary>
+    Task ReleaseEditAsync(string documentId, string userId,
+        CancellationToken ct = default);
+
+    /// <summary>Стрим изменений присутствия для документа.</summary>
+    IAsyncEnumerable<SgPresenceUser> StreamPresenceChangesAsync(string documentId, string userId,
+        CancellationToken ct = default);
 }
 
 /// <summary>Информация о пользователе в сети.</summary>

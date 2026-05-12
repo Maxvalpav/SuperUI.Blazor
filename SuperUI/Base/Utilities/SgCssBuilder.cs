@@ -108,6 +108,36 @@ public sealed class SgCssBuilder
     public SgCssBuilder AddIf(bool condition, string? cssClass)
         => If(condition, cssClass);
 
+    // ── BEM паттерн ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Добавить BEM modifier: base--{modifier}.
+    /// Пример: .Modifier("primary") на базе "sg-button" → "sg-button--primary"
+    /// </summary>
+    public SgCssBuilder Modifier(string? modifier, bool condition = true)
+    {
+        if (condition && !string.IsNullOrWhiteSpace(modifier) && !string.IsNullOrWhiteSpace(_base))
+        {
+            var mod = modifier.Trim();
+            Add($"{_base}--{mod}");
+        }
+        return this;
+    }
+
+    /// <summary>
+    /// Добавить BEM element: base__element.
+    /// Пример: .Element("title") на базе "sg-button" → "sg-button__title"
+    /// </summary>
+    public SgCssBuilder Element(string? element, bool condition = true)
+    {
+        if (condition && !string.IsNullOrWhiteSpace(element) && !string.IsNullOrWhiteSpace(_base))
+        {
+            var elem = element.Trim();
+            Add($"{_base}__{elem}");
+        }
+        return this;
+    }
+
     // ── Маппинг ──────────────────────────────────────────────────────────────────
 
     /// <summary>Добавить класс по ключу из словаря.</summary>
