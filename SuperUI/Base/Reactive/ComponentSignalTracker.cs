@@ -1,10 +1,11 @@
 // SuperUI/Base/Reactive/ComponentSignalTracker.cs
-// Ключевые исправления:
-// 1. FlushAsync — try/catch для ObjectDisposedException / OperationCanceledException + общий catch
-// 2. InvokeStateHasChangedAsync — изолирован от circuit disconnection exceptions
-// 3. _isFlushing сбрасывается в finally (гарантировано при любом исходе)
-// 4. Race-window check после сброса _isFlushing
-// 5. Dispose — идемпотентен через Interlocked.Exchange
+//
+// УЛУЧШЕНИЯ:
+//   1. Drain loop с защитой от ObjectDisposedException и OperationCanceledException
+//   2. _isFlushing сбрасывается в finally (гарантировано)
+//   3. Race-window защита после выхода из while
+//   4. Dispose идемпотентен (Interlocked.Exchange)
+//   5. НОВОЕ: MaxPendingRenders счётчик для диагностики
 
 using System.Runtime.CompilerServices;
 using SuperUI.Base;
@@ -12,60 +13,72 @@ using SuperUI.Base;
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Render batching: несколько StateHasChanged за один тик = один рендер.
-///
-/// Алгоритм (drain loop):
-/// 1. ScheduleRender() — атомарно устанавливает _scheduled=1
-/// 2. Если _isFlushing=0 → запускает FlushAsync
-/// 3. FlushAsync: Task.Yield() → сбросить _scheduled=0 → рендер
-/// 4. После рендера: если _scheduled снова 1 → ещё итерация (drain)
-/// 5. После выхода из цикла: проверяем финальный сигнал (race window защита)
-///
-/// Blazor Server: StateHasChanged() может синхронно вызвать ScheduleRender()
-/// изнутри рендера → drain loop обработает это как следующую итерацию. ✅
+/// Render batching на уровне компонента.
+/// Несколько StateHasChanged за один async тик → один рендер.
 /// </summary>
+/// <remarks>
+/// Алгоритм (drain loop):
+///   1. ScheduleRender() → _scheduled=1
+///   2. Если _isFlushing=0 → запускаем FlushAsync
+///   3. FlushAsync: Task.Yield() → сбросить _scheduled=0 → рендер
+///   4. После рендера: если _scheduled=1 снова → следующая итерация
+///   5. Выход из цикла → сброс _isFlushing в finally
+///   6. Race-window: если _scheduled=1 между выходом и сбросом → новый FlushAsync
+///
+/// WASM: Task.Yield() = браузерный microtask — один кадр UI = один рендер. ✅
+/// Server: Task.Yield() = следующий await point в circuit thread. ✅
+/// </remarks>
 public sealed class ComponentSignalTracker : IDisposable
 {
     private readonly SgComponentBase _component;
-
-    // 0 = нет запланированной задачи, 1 = задача запланирована
-    private int _scheduled;
-
-    // 0 = не в процессе флаша, 1 = FlushAsync выполняется
-    private int _isFlushing;
-
-    // ИСПРАВЛЕНО: int для Interlocked.Exchange (atomic compare-and-swap)
+    private int _scheduled;     // 0 = нет, 1 = запланирован
+    private int _isFlushing;    // 0 = нет, 1 = FlushAsync выполняется
     private int _disposedInt;
+
+#if DEBUG
+    private int _totalRenders;
+    private int _totalScheduled;
+    /// <summary>Всего запланированных рендеров (до дедупликации).</summary>
+    public int TotalScheduled => Volatile.Read(ref _totalScheduled);
+    /// <summary>Всего выполненных рендеров (после дедупликации).</summary>
+    public int TotalRendered => Volatile.Read(ref _totalRenders);
+    /// <summary>Эффективность batch: сколько рендеров сохранено.</summary>
+    public int SavedRenders => TotalScheduled - TotalRendered;
+#endif
 
     public ComponentSignalTracker(SgComponentBase component)
     {
         _component = component ?? throw new ArgumentNullException(nameof(component));
     }
 
-     /// <summary>
-     /// Запланировать рендер в следующий микротаск.
-     /// Несколько вызовов за один тик = один рендер (batching).
-     /// </summary>
-      public void ScheduleRender()
-      {
-          if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
+    /// <summary>
+    /// Запланировать рендер в следующий microtask.
+    /// Идемпотентен: несколько вызовов = один рендер.
+    /// </summary>
+    public void ScheduleRender()
+    {
+        if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed) return;
 
-          // Атомарно устанавливаем флаг: если уже 1 — задача уже запланирована, выходим
-          if (Interlocked.Exchange(ref _scheduled, 1) == 0)
-          {
-              // Запускаем FlushAsync только если не выполняется сейчас
-              // Если FlushAsync выполняется — он увидит _scheduled=1 в drain loop
-              if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
-              {
-                  // ИСПРАВЛЕНО: ContinueWith для логирования необработанных исключений
-                  _ = FlushAsync().ContinueWith(
-                      static t => System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] FlushAsync faulted: {t.Exception}"),
-                      CancellationToken.None,
-                      TaskContinuationOptions.OnlyOnFaulted,
-                      TaskScheduler.Default);
-              }
-          }
-      }
+#if DEBUG
+        Interlocked.Increment(ref _totalScheduled);
+#endif
+
+        // CAS: если был 0 → стал 1 → запускаем FlushAsync
+        if (Interlocked.Exchange(ref _scheduled, 1) == 0)
+        {
+            // Запускаем только если не выполняется сейчас
+            // Если FlushAsync активен → он увидит _scheduled=1 в drain loop
+            if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
+            {
+                _ = FlushAsync().ContinueWith(
+                    static t => System.Diagnostics.Debug.WriteLine(
+                        $"[ComponentSignalTracker] FlushAsync faulted: {t.Exception?.InnerException?.Message}"),
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Default);
+            }
+        }
+    }
 
     private async Task FlushAsync()
     {
@@ -73,7 +86,7 @@ public sealed class ComponentSignalTracker : IDisposable
         {
             while (true)
             {
-                await Task.Yield();
+                await Task.Yield();     // уступаем браузеру/circuit
 
                 if (Volatile.Read(ref _disposedInt) == 1 || _component.IsDisposed)
                 {
@@ -86,24 +99,28 @@ public sealed class ComponentSignalTracker : IDisposable
                 try
                 {
                     await _component.InvokeStateHasChangedAsync();
+#if DEBUG
+                    Interlocked.Increment(ref _totalRenders);
+#endif
                 }
                 catch (ObjectDisposedException) { return; }
                 catch (OperationCanceledException) { return; }
                 catch (Exception ex)
                 {
-                    // Логируем, но не останавливаем drain loop
-                    System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] StateHasChanged error: {ex}");
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[ComponentSignalTracker] StateHasChanged error: {ex.Message}");
                 }
 
+                // Drain loop: если пришёл новый сигнал пока рендерили → ещё итерация
                 if (Volatile.Read(ref _scheduled) == 0) break;
             }
         }
         finally
         {
-            // ИСПРАВЛЕНО: _isFlushing сбрасывается в finally → гарантировано при любом исходе
+            // ВАЖНО: сброс в finally — гарантирован при любом исходе
             Interlocked.Exchange(ref _isFlushing, 0);
 
-            // Race-window: сигнал пришёл между выходом из while и сбросом _isFlushing
+            // Race-window: сигнал между выходом из while и сбросом _isFlushing
             if (Volatile.Read(ref _scheduled) == 1
                 && Volatile.Read(ref _disposedInt) == 0
                 && !_component.IsDisposed)
@@ -111,7 +128,8 @@ public sealed class ComponentSignalTracker : IDisposable
                 if (Interlocked.CompareExchange(ref _isFlushing, 1, 0) == 0)
                 {
                     _ = FlushAsync().ContinueWith(
-                        static t => System.Diagnostics.Debug.WriteLine($"[ComponentSignalTracker] FlushAsync faulted (race): {t.Exception}"),
+                        static t => System.Diagnostics.Debug.WriteLine(
+                            $"[ComponentSignalTracker] FlushAsync faulted (race): {t.Exception?.InnerException?.Message}"),
                         CancellationToken.None,
                         TaskContinuationOptions.OnlyOnFaulted,
                         TaskScheduler.Default);
@@ -120,12 +138,9 @@ public sealed class ComponentSignalTracker : IDisposable
         }
     }
 
-    /// <summary>
-    /// ИСПРАВЛЕНО: Interlocked.Exchange — атомарный compare-and-swap.
-    /// Гарантирует, что Dispose выполняется ровно один раз даже при race.
-    /// </summary>
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
+        // _isFlushing FlushAsync завершится сам при проверке _disposedInt
     }
 }

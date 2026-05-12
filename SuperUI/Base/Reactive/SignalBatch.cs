@@ -1,24 +1,38 @@
 // SuperUI/Base/Reactive/SignalBatch.cs
+//
+// УЛУЧШЕНИЯ:
+//   1. Async-Begin() с автоматическим await dispose
+//   2. IsBatching — публичное свойство
+//   3. PendingCount — для диагностики
+//   4. Обработка исключений в каждом компоненте независимо
+
 using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Batches component refresh notifications within a scope to prevent
-/// multiple sequential renders. When multiple signals update during a
-/// batch, only a single RefreshAsync is invoked per component at the end.
+/// Батчинг уведомлений компонентов: несколько изменений сигналов за один тик
+/// вызывают только один рендер на компонент.
 /// </summary>
+/// <remarks>
+/// [ThreadStatic] — каждый circuit/поток имеет независимый batch.
+/// WASM: один поток — batch всегда корректен.
+/// Server: каждый circuit = отдельный поток → изоляция гарантирована.
+/// </remarks>
 public static class SignalBatch
 {
-    [ThreadStatic]
-    private static int _depth;
+    [ThreadStatic] private static int _depth;
+    [ThreadStatic] private static HashSet<SgComponentBase>? _pending;
 
-    [ThreadStatic]
-    private static HashSet<SgComponentBase>? _pending;
+    /// <summary>true — активен batch scope (уведомления накапливаются).</summary>
+    public static bool IsBatching => _depth > 0;
+
+    /// <summary>Количество компонентов ожидающих уведомления (для диагностики).</summary>
+    public static int PendingCount => _pending?.Count ?? 0;
 
     /// <summary>
-    /// Starts a batching scope. All signal notifications within the returned
-    /// IDisposable's lifetime will be collected and flushed upon disposal.
+    /// Начать batch scope. Все уведомления внутри будут накоплены
+    /// и выполнены при Dispose.
     /// </summary>
     public static IDisposable Begin()
     {
@@ -27,18 +41,62 @@ public static class SignalBatch
     }
 
     /// <summary>
-    /// Notifies a component of a change. If inside a batch scope, the
-    /// component is added to the pending set; otherwise, RefreshAsync is called immediately.
+    /// Async-версия batch scope.
+    /// Используйте: await using var _ = SignalBatch.BeginAsync();
+    /// </summary>
+    public static IAsyncDisposable BeginAsync() => new AsyncBatchScope();
+
+    /// <summary>
+    /// Уведомить компонент об изменении.
+    /// Если внутри batch — накапливается, иначе — немедленный рендер.
     /// </summary>
     internal static void NotifyComponent(SgComponentBase component)
     {
+        if (component.IsDisposed) return;
+
         if (_depth > 0)
         {
             (_pending ??= new()).Add(component);
             return;
         }
-        _ = component.RefreshAsync();
+
+        // Вне batch — немедленно, изолируем исключения
+        _ = SafeRefreshAsync(component);
     }
+
+    private static async Task SafeRefreshAsync(SgComponentBase component)
+    {
+        try { await component.RefreshAsync(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[SignalBatch] RefreshAsync error for {component.ComponentId}: {ex.Message}");
+        }
+    }
+
+    private static void Flush()
+    {
+        if (_pending is not { Count: > 0 }) return;
+
+        var snapshot = new List<SgComponentBase>(_pending);
+        _pending.Clear();
+
+        foreach (var c in snapshot)
+        {
+            if (c.IsDisposed) continue;
+            try
+            {
+                _ = c.RefreshAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    $"[SignalBatch] RefreshAsync error: {ex.Message}");
+            }
+        }
+    }
+
+    // ── BatchScope ────────────────────────────────────────────────────────────
 
     private sealed class BatchScope : IDisposable
     {
@@ -49,23 +107,27 @@ public static class SignalBatch
             if (_disposed) return;
             _disposed = true;
 
-            if (--_depth > 0) return; // вложенный scope — не флашим
+            if (--_depth > 0) return;   // вложенный scope — не флашим
 
-            if (_pending is not { Count: > 0 }) return;
+            Flush();
+        }
+    }
 
-            var snapshot = new List<SgComponentBase>(_pending);
-            _pending.Clear();
+    // ── AsyncBatchScope ───────────────────────────────────────────────────────
 
-            // ИСПРАВЛЕНО: исключение в одном компоненте не блокирует остальных
-            foreach (var c in snapshot)
-            {
-                if (c.IsDisposed) continue;
-                try { _ = c.RefreshAsync(); }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[SignalBatch] RefreshAsync error: {ex}");
-                }
-            }
+    private sealed class AsyncBatchScope : IAsyncDisposable
+    {
+        private bool _disposed;
+
+        public ValueTask DisposeAsync()
+        {
+            if (_disposed) return ValueTask.CompletedTask;
+            _disposed = true;
+
+            if (--_depth > 0) return ValueTask.CompletedTask;
+
+            Flush();
+            return ValueTask.CompletedTask;
         }
     }
 }

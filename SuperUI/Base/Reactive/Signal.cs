@@ -1,17 +1,19 @@
 // SuperUI/Base/Reactive/Signal.cs
 //
 // Legacy-обёртка для обратной совместимости.
-// Используйте SgSignal<T> для нового кода.
-// Signal<T> делегирует все операции SgSignal<T>.
-//
-// [Obsolete] помечен для migration warning в IntelliSense.
+// Полностью делегирует SgSignal<T>.
+// [Obsolete] — migration warning в IntelliSense.
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Legacy реактивный сигнал. Используйте <see cref="SgSignal{T}"/> для нового кода.
+/// Legacy реактивный сигнал. Используйте SgSignal&lt;T&gt; для нового кода.
 /// </summary>
-[Obsolete("Use SgSignal<T> instead. Signal<T> will be removed in a future version.")]
+/// <remarks>
+/// Signal&lt;T&gt; будет удалён в следующей мажорной версии.
+/// Замените: var s = new Signal&lt;int&gt;(0) → var s = new SgSignal&lt;int&gt;(0)
+/// </remarks>
+[Obsolete("Use SgSignal<T> instead. Signal<T> will be removed in a future version.", error: false)]
 public sealed class Signal<T> : IDisposable
 {
     private readonly SgSignal<T> _inner;
@@ -25,15 +27,18 @@ public sealed class Signal<T> : IDisposable
         set => _inner.Set(value);
     }
 
-    public T Peek()  => _inner.Peek();
+    public T Peek() => _inner.Peek();
     public void Set(T value) => _inner.Set(value);
     public void Update(Func<T, T> updater) => _inner.Update(updater);
+    public void Reset(T value) => _inner.Reset(value);
+    public void ForceNotify() => _inner.ForceNotify();
     public IObservable<T> AsObservable() => _inner.AsObservable();
 
-    internal void Subscribe(SgComponentBase component) => _inner.Subscribe(component);
+    internal void Subscribe(SgComponentBase component)
+        => _inner.Subscribe(component);
 
     public void Dispose() => _inner.Dispose();
 
     public static implicit operator T(Signal<T> s) => s.Value;
-    public override string? ToString() => _inner.ToString();
+    public override string ToString() => _inner.ToString()!;
 }

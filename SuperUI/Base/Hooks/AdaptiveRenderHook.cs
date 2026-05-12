@@ -1,10 +1,8 @@
 // SuperUI/Base/Hooks/AdaptiveRenderHook.cs
-// ИСПРАВЛЕНО:
-// 1. Убран лишний using Microsoft.JSInterop
-// 2. Убраны дублирующие using SuperUI.Base / SuperUI.Base.Hooks
-// 3. Throttle через Stopwatch.GetTimestamp() вместо DateTime.UtcNow (точнее, нет аллокаций)
-// 4. Убраны пустые методы — используются default-реализации IAsyncComponentHook
-// 5. SetVisible документирован
+//
+// Адаптивный рендеринг: throttle по времени + управление видимостью.
+// WASM и Server совместим.
+
 using System.Diagnostics;
 
 namespace SuperUI.Base.Hooks;
@@ -14,8 +12,8 @@ namespace SuperUI.Base.Hooks;
 /// Комбинирует throttle по времени и управление видимостью.
 /// </summary>
 /// <remarks>
-/// Совместим с WASM и Server.
-/// На Server: _lastRenderTicks и _isVisible — per-instance поля, изолированы per-circuit.
+/// Server: _lastRenderTicks и _isVisible — per-instance поля, изолированы per-circuit.
+/// WASM: однопоточный — volatile не нужен логически, но помогает JIT-оптимизатору.
 /// </remarks>
 public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
 {
@@ -23,33 +21,41 @@ public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
     private long _lastRenderTicks;
     private readonly long _minIntervalTicks;
 
-    /// <param name="minInterval">Минимальный интервал между рендерами. По умолчанию 16 мс (≈ 60 fps).</param>
+    /// <summary>Минимальный интервал между рендерами. По умолчанию 16 мс (≈ 60fps).</summary>
     public AdaptiveRenderHook(TimeSpan? minInterval = null)
     {
         var interval = minInterval ?? TimeSpan.FromMilliseconds(16);
-        if (interval <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(minInterval), "Must be positive.");
-        // TotalSeconds * Frequency корректен и для больших интервалов (Ticks * Frequency может переполниться).
+        if (interval < TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(minInterval));
         _minIntervalTicks = (long)(interval.TotalSeconds * Stopwatch.Frequency);
     }
 
-    // IRenderHook
-    public bool ShouldRender(SgComponentBase c)
+    public bool ShouldRender(SgComponentBase component)
     {
         if (!_isVisible) return false;
 
         var now = Stopwatch.GetTimestamp();
-        // Interlocked.Read для 64-bit на 32-bit платформах (WASM x86, ARM)
         var last = Interlocked.Read(ref _lastRenderTicks);
-        if (now - last < _minIntervalTicks) return false;
+        if (last != 0 && now - last < _minIntervalTicks) return false;
 
         Interlocked.Exchange(ref _lastRenderTicks, now);
         return true;
     }
 
-    /// <summary>Управляет видимостью компонента. При <see langword="false"/> рендеры пропускаются.</summary>
+    /// <summary>
+    /// Управляет видимостью компонента.
+    /// При isVisible=false — рендеры пропускаются.
+    /// </summary>
     public void SetVisible(bool isVisible) => _isVisible = isVisible;
 
-    // IComponentHook — default-реализации используются (методы не нужно объявлять)
-    // IAsyncComponentHook — default-реализации используются
+    // IComponentHook default-реализации (используются из интерфейса)
+    public void OnInitialized(SgComponentBase c) { }
+    public void OnParametersSet(SgComponentBase c) { }
+    public void OnAfterRender(SgComponentBase c, bool first) { }
+
+    // IAsyncComponentHook default-реализации
+    public Task OnInitializedAsync(SgComponentBase c) => Task.CompletedTask;
+    public Task OnParametersSetAsync(SgComponentBase c) => Task.CompletedTask;
+    public Task OnAfterRenderAsync(SgComponentBase c, bool firstRender) => Task.CompletedTask;
+    public Task OnFirstRenderAsync(SgComponentBase c) => Task.CompletedTask;
 }

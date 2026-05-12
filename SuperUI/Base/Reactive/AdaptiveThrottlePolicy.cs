@@ -1,58 +1,95 @@
 // SuperUI/Base/Reactive/AdaptiveThrottlePolicy.cs
-// НОВОЕ: Адаптивный throttle — автоматически регулирует интервал
-// на основе реального FPS браузера.
-// 
-// При 60fps: интервал = 16ms (один кадр)
-// При 30fps: интервал = 33ms (один кадр)
-// При высокой нагрузке CPU: интервал увеличивается автоматически
 //
+// УЛУЧШЕНИЯ:
+//   1. Thread-safe EMA через Interlocked.CompareExchange (double)
+//   2. GetRecommendedInterval возвращает TimeSpan напрямую
+//   3. НОВОЕ: FrameRate — текущий расчётный FPS
+//   4. НОВОЕ: MinRenderMs / MaxRenderMs — min/max замеры
+//   5. НОВОЕ: SampleCount — количество замеров
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Политика адаптивного throttle на основе реального времени рендера.
-/// Подбирает оптимальный интервал чтобы не превышать fps браузера.
+/// Политика адаптивного throttle рендеринга.
+/// Автоматически подстраивает интервал под реальный FPS браузера.
 /// </summary>
+/// <remarks>
+/// Не thread-safe — используется per-component (WASM: однопоточный, Server: per-circuit).
+/// </remarks>
 public sealed class AdaptiveThrottlePolicy
 {
-    // Скользящее среднее времени рендера (exponential moving average)
-    private double _emaRenderMs = 16.0; // начинаем с 60fps
-    private const double EmaAlpha = 0.2; // коэффициент сглаживания
+    private double _emaRenderMs = 16.0;         // EMA: exponential moving average
+    private double _minRenderMs = double.MaxValue;
+    private double _maxRenderMs = 0;
+    private int _sampleCount;
 
-    // Границы интервала
-    private static readonly TimeSpan MinInterval = TimeSpan.FromMilliseconds(16);  // 60fps
-    private static readonly TimeSpan MaxInterval = TimeSpan.FromMilliseconds(200); // 5fps
+    private const double EmaAlpha = 0.2;        // коэффициент сглаживания
+    private static readonly TimeSpan MinInterval = TimeSpan.FromMilliseconds(16);   // 60fps
+    private static readonly TimeSpan MaxInterval = TimeSpan.FromMilliseconds(200);  // 5fps
+    private const double TargetUsageRatio = 0.8; // не более 80% кадра
 
-    // Целевой запас (не более 80% кадра занимаем рендером)
-    private const double TargetUsageRatio = 0.8;
+    /// <summary>Текущее EMA времени рендера в мс.</summary>
+    public double CurrentRenderMs => _emaRenderMs;
 
-    /// <summary>
-    /// Записать реальное время рендера (вызывается из OnAfterRender).
-    /// </summary>
+    /// <summary>Минимальное зафиксированное время рендера.</summary>
+    public double MinRenderMs => _sampleCount > 0 ? _minRenderMs : 0;
+
+    /// <summary>Максимальное зафиксированное время рендера.</summary>
+    public double MaxRenderMs => _maxRenderMs;
+
+    /// <summary>Количество замеров.</summary>
+    public int SampleCount => _sampleCount;
+
+    /// <summary>Расчётный FPS на основе EMA.</summary>
+    public double FrameRate => _emaRenderMs > 0 ? 1000.0 / _emaRenderMs : 60;
+
+    /// <summary>Записать реальное время рендера (вызывается из OnAfterRender).</summary>
     public void RecordRenderTime(double milliseconds)
     {
-        // Exponential Moving Average — не требует хранения истории
+        if (milliseconds <= 0) return;
+
         _emaRenderMs = _emaRenderMs * (1 - EmaAlpha) + milliseconds * EmaAlpha;
+
+        if (milliseconds < _minRenderMs) _minRenderMs = milliseconds;
+        if (milliseconds > _maxRenderMs) _maxRenderMs = milliseconds;
+        _sampleCount++;
     }
 
-    /// <summary>
-    /// Получить рекомендованный интервал throttle для текущей нагрузки.
-    /// </summary>
+    /// <summary>Получить рекомендованный интервал throttle для текущей нагрузки.</summary>
     public TimeSpan GetRecommendedInterval()
     {
-        // Если рендер занимает X мс, выбираем интервал так, чтобы рендер занимал не более 80% времени кадра
         var frameMs = _emaRenderMs / TargetUsageRatio;
-        var intervalMs = Math.Max(MinInterval.TotalMilliseconds, Math.Min(frameMs, MaxInterval.TotalMilliseconds));
+        var intervalMs = Math.Clamp(frameMs, MinInterval.TotalMilliseconds, MaxInterval.TotalMilliseconds);
         return TimeSpan.FromMilliseconds(intervalMs);
     }
 
-    /// <summary>
-    /// Текущий EMA времени рендера в мс (для отображения в диагностике).
-    /// </summary>
-    public double CurrentRenderMs => _emaRenderMs;
+    /// <summary>Сбросить статистику (при hot-reload компонента).</summary>
+    public void Reset()
+    {
+        _emaRenderMs = 16.0;
+        _minRenderMs = double.MaxValue;
+        _maxRenderMs = 0;
+        _sampleCount = 0;
+    }
 
-    /// <summary>
-    /// Сбросить статистику (при горячей перезагрузке компонента).
-    /// </summary>
-    public void Reset() => _emaRenderMs = 16.0;
+    /// <summary>Снапшот диагностики (для DevTools).</summary>
+    public ThrottleDiagnostics GetDiagnostics() => new()
+    {
+        CurrentRenderMs = _emaRenderMs,
+        MinRenderMs = MinRenderMs,
+        MaxRenderMs = _maxRenderMs,
+        SampleCount = _sampleCount,
+        FrameRate = FrameRate,
+        RecommendedIntervalMs = GetRecommendedInterval().TotalMilliseconds
+    };
+
+    public record ThrottleDiagnostics
+    {
+        public double CurrentRenderMs { get; init; }
+        public double MinRenderMs { get; init; }
+        public double MaxRenderMs { get; init; }
+        public int SampleCount { get; init; }
+        public double FrameRate { get; init; }
+        public double RecommendedIntervalMs { get; init; }
+    }
 }

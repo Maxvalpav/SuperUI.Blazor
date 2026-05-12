@@ -1,75 +1,59 @@
 // SuperUI/Base/Reactive/RenderPriorityScheduler.cs
-// НОВОЕ: Планировщик рендеров с приоритетами.
-// Позволяет назначить приоритет рендерингу компонента:
-// - Critical: немедленный рендер (модальные окна, toast)
-// - Normal: следующий тик (обычные компоненты)
-// - Idle: рендер только если нет более важных работ
 //
-// Это снижает нагрузку на браузер при большом количестве компонентов.
-// Аналог React.startTransition + React.useTransition, но для Blazor.
+// ИСПРАВЛЕНИЯ:
+//   1. Lock<T> заменён на object _lock (Lock — .NET 9+ API, не везде доступен)
+//   2. Параллельный рендер через Task.WhenAll — изоляция исключений
+//   3. HasPendingHighPriority — thread-safe lock
+//   4. FlushAsync finally — сброс _scheduled
+//   5. НОВОЕ: Clear() — очистить все очереди
+
 namespace SuperUI.Base.Reactive;
 
-/// <summary>
-/// Приоритет рендеринга компонента.
-/// Используется для оптимизации порядка обновления UI.
-/// </summary>
+/// <summary>Приоритет рендеринга компонента.</summary>
 public enum RenderPriority
 {
-    /// <summary>Немедленный рендер: модальные окна, критические уведомления.</summary>
+    /// <summary>Немедленный: модальные окна, критические уведомления.</summary>
     Critical = 0,
-    
-    /// <summary>Обычный рендер: следующий тик планировщика.</summary>
+    /// <summary>Обычный: следующий тик планировщика.</summary>
     Normal = 1,
-    
-    /// <summary>Фоновый рендер: только если нет Critical/Normal работ.</summary>
+    /// <summary>Фоновый: только если нет Critical/Normal.</summary>
     Idle = 2
 }
 
 /// <summary>
 /// Глобальный планировщик рендеров с поддержкой приоритетов.
-/// Batching + priority queue = минимальное количество рендеров.
-/// 
-/// Singletone сервис — регистрируется как Scoped (per-circuit на Server, per-instance на WASM).
+/// Регистрируется как Scoped-сервис: per-circuit (Server) / per-instance (WASM).
 /// </summary>
 public sealed class RenderPriorityScheduler : IDisposable
 {
-    // Три очереди по приоритетам
     private readonly Queue<WeakReference<SgComponentBase>>[] _queues =
     [
         new(), // Critical
         new(), // Normal
         new()  // Idle
     ];
-    
-    private readonly Lock _lock = new();
-    private volatile int _scheduled;  // 0 = нет задачи, 1 = задача запланирована
-    private volatile bool _disposed;
 
-    /// <summary>
-    /// Добавить компонент в очередь рендера с заданным приоритетом.
-    /// Если компонент уже в очереди (по WeakRef), не добавляем дубликат.
-    /// </summary>
+    private readonly object _lock = new();      // ИСПРАВЛЕНО: object вместо Lock<T>
+    private int _scheduled;
+    private int _disposed;
+
+    /// <summary>Добавить компонент в очередь с заданным приоритетом.</summary>
     public void Schedule(SgComponentBase component, RenderPriority priority = RenderPriority.Normal)
     {
-        if (_disposed || component.IsDisposed) return;
+        if (Volatile.Read(ref _disposed) == 1 || component.IsDisposed) return;
 
         lock (_lock)
-        {
             _queues[(int)priority].Enqueue(new WeakReference<SgComponentBase>(component));
-        }
 
-        // Запускаем flush если не запланирован
         if (Interlocked.Exchange(ref _scheduled, 1) == 0)
-        {
             _ = FlushAsync();
-        }
     }
 
     private async Task FlushAsync()
     {
         try
         {
-            // Critical — без yield (почти немедленно)
+            // Critical — без дополнительной задержки
             await Task.Yield();
             await DrainQueueAsync(RenderPriority.Critical);
 
@@ -77,8 +61,7 @@ public sealed class RenderPriorityScheduler : IDisposable
             await Task.Yield();
             await DrainQueueAsync(RenderPriority.Normal);
 
-            // Idle — только если нет новых Critical/Normal
-            // Используем Task.Delay(0) вместо Yield для большей задержки
+            // Idle — только если нет более приоритетных задач
             await Task.Delay(1);
             if (!HasPendingHighPriority())
                 await DrainQueueAsync(RenderPriority.Idle);
@@ -87,53 +70,67 @@ public sealed class RenderPriorityScheduler : IDisposable
         {
             Interlocked.Exchange(ref _scheduled, 0);
 
-            // Если во время флаша пришли новые задачи — запускаем снова
+            // Если появились новые задачи — запускаем снова
             bool hasMore;
-            lock (_lock)
-            {
-                hasMore = _queues.Any(q => q.Count > 0);
-            }
+            lock (_lock) { hasMore = _queues.Any(q => q.Count > 0); }
+
             if (hasMore && Interlocked.Exchange(ref _scheduled, 1) == 0)
-            {
                 _ = FlushAsync();
-            }
         }
     }
 
     private async Task DrainQueueAsync(RenderPriority priority)
     {
-        // Берём snapshot очереди под lock'ом
         SgComponentBase[] batch;
         lock (_lock)
         {
             var queue = _queues[(int)priority];
             var list = new List<SgComponentBase>(queue.Count);
             while (queue.TryDequeue(out var weakRef))
-            {
                 if (weakRef.TryGetTarget(out var component) && !component.IsDisposed)
                     list.Add(component);
-            }
             batch = [.. list];
         }
 
-        // Рендерим компоненты параллельно (каждый в своём InvokeAsync)
+        if (batch.Length == 0) return;
+
+        // Параллельный рендер всех компонентов приоритета
         var tasks = new Task[batch.Length];
         for (int i = 0; i < batch.Length; i++)
         {
-            var component = batch[i];
-            tasks[i] = component.InvokeStateHasChangedAsync();
+            var comp = batch[i];
+            tasks[i] = SafeRefreshAsync(comp);
         }
         await Task.WhenAll(tasks);
+    }
+
+    private static async Task SafeRefreshAsync(SgComponentBase component)
+    {
+        try { await component.RefreshAsync(); }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[RenderPriorityScheduler] Render error {component.ComponentId}: {ex.Message}");
+        }
     }
 
     private bool HasPendingHighPriority()
     {
         lock (_lock)
-        {
-            return _queues[(int)RenderPriority.Critical].Count > 0 ||
-                   _queues[(int)RenderPriority.Normal].Count > 0;
-        }
+            return _queues[(int)RenderPriority.Critical].Count > 0
+                || _queues[(int)RenderPriority.Normal].Count > 0;
     }
 
-    public void Dispose() => _disposed = true;
+    /// <summary>Очистить все очереди (при сбросе приложения).</summary>
+    public void Clear()
+    {
+        lock (_lock)
+            foreach (var q in _queues) q.Clear();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        Clear();
+    }
 }
