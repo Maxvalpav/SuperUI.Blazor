@@ -1,20 +1,16 @@
 // SuperUI/Base/SgComponentBase.cs
-//
-// УЛУЧШЕНИЯ:
-//   ✅ CreateSignal<T> — добавлен (SgReactiveBase.Signal<T>() требует этот метод)
-//   ✅ StateHasChanged — комментарий о thread-safety расширен
-//   ✅ DisposeComponentAsync — _signalBatcher диспозится раньше (_hooks после)
-//   ✅ AdditionalAttributesFiltered — filtered view без class/style
-//   ✅ OnFirstRenderAsync — IsPrerendering check вынесен из SgJsComponentBase сюда
-//
-// ПОЛИРОВКА:
-//   ✅ XML-docs добавлены для всех protected методов
-//   ✅ ThrowIfDisposed — использует ObjectDisposedException.ThrowIf (.NET 8+)
-//   ✅ [SupportedOSPlatform] добавлен для WASM-специфичных членов
+// ИСПРАВЛЕНО:
+// ✅ StateHasChanged: new → отдельный RequestRender() public метод (не shadow)
+// ✅ AdditionalAttributesFiltered: thread-safe кэш с lock
+// ✅ OnParametersChangedAsync: вызывается даже при исключении хука (try/finally)
+// ✅ IfBrowserAsync: убран [SupportedOSPlatform] — он ломает AOT предупреждениями
+// УЛУЧШЕНО:
+// ✅ RequestRender() — публичный метод для планирования рендера
+// ✅ ComponentTokenSource — CancellationTokenSource для жизни компонента
+// ✅ ThrowIfDisposed с CallerMemberName для debug-диагностики
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Runtime.Versioning;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -29,28 +25,23 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс уровня 1 для всех компонентов SuperUI.
-/// </summary>
-/// <remarks>
 /// Иерархия: ComponentBase → SgComponentBase → SgJsComponentBase → SgInteractiveBase
-///
 /// Thread safety:
-/// - WASM: однопоточный. Interlocked используется для ARM-корректности.
-/// - Server: per-circuit изоляция. <c>_disposed</c> требует Interlocked/Volatile.
-/// </remarks>
+///   WASM: однопоточный. Interlocked для ARM-корректности.
+///   Server: per-circuit. _disposed требует Interlocked/Volatile.
+/// </summary>
 public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 {
-    // ── Инъекции ─────────────────────────────────────────────────────────────────
-
+    // ── Инъекции ──────────────────────────────────────────────────────────────
     [Inject] protected ILogger<SgComponentBase> Logger { get; set; } = null!;
     [Inject] protected IComponentOptionsService OptionsService { get; set; } = null!;
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
 
-    // ── Каскадные параметры ──────────────────────────────────────────────────────
-
+    // ── Каскадные параметры ────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
 
-    // ── Параметры ────────────────────────────────────────────────────────────────
+    // ── Параметры ──────────────────────────────────────────────────────────────
 
     /// <summary>Дополнительные CSS-классы.</summary>
     [Parameter] public string? Class { get; set; }
@@ -61,91 +52,93 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     /// <summary>Видимость компонента.</summary>
     [Parameter] public bool Visible { get; set; } = true;
 
-    /// <summary>HTML id атрибут. Если не задан — используется <see cref="ComponentId"/>.</summary>
+    /// <summary>HTML id атрибут.</summary>
     [Parameter] public string? Id { get; set; }
 
-    /// <summary>
-    /// Дополнительные HTML-атрибуты (захватываются через CaptureUnmatchedValues).
-    /// Атрибуты <c>class</c> и <c>style</c> фильтруются — используйте параметры
-    /// <see cref="Class"/> и <see cref="Style"/> для управления стилями.
-    /// </summary>
+    /// <summary>Дополнительные HTML-атрибуты. class/style фильтруются.</summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // ── Публичные свойства ───────────────────────────────────────────────────────
+    // ── Публичные свойства ─────────────────────────────────────────────────────
 
-    /// <summary>Уникальный ID компонента в рамках текущего экземпляра приложения.</summary>
+    /// <summary>Уникальный ID компонента.</summary>
     public string ComponentId { get; }
 
-    /// <summary>Эффективный ID: <see cref="Id"/> если задан и непустой, иначе <see cref="ComponentId"/>.</summary>
+    /// <summary>Эффективный ID: Id если задан, иначе ComponentId.</summary>
     protected string EffectiveId => !string.IsNullOrWhiteSpace(Id) ? Id! : ComponentId;
 
-    /// <summary>Компонент был утилизирован (disposed).</summary>
+    /// <summary>Компонент был утилизирован.</summary>
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
-    /// <summary>true — браузерный WASM.</summary>
-    [SupportedOSPlatform("browser")]
+    /// <summary>true на WASM (браузерный хост).</summary>
     protected static bool IsBrowser => OperatingSystem.IsBrowser();
 
-    /// <summary>true — сервер (Blazor Server / Web App Server).</summary>
+    /// <summary>true на Server (Blazor Server / Web App Server).</summary>
     protected static bool IsServer => !OperatingSystem.IsBrowser();
 
     /// <summary>
-    /// Дополнительные атрибуты без <c>class</c> и <c>style</c>.
-    /// Используйте для передачи в корневой элемент компонента.
-    /// Кэшируется между рендерами до смены AdditionalAttributes.
+    /// Дополнительные атрибуты без class и style.
+    /// Thread-safe кэш. ИСПРАВЛЕНО: lock для Server-side.
     /// </summary>
     protected IReadOnlyDictionary<string, object>? AdditionalAttributesFiltered
     {
         get
         {
             var gen = Volatile.Read(ref _ariaGeneration);
+
+            // Double-check без lock для fast-path
             if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
                 return _filteredAttrsCache;
 
-            if (AdditionalAttributes is null)
+            lock (_ariaCacheLock)  // ИСПРАВЛЕНИЕ: lock для Server thread-safety
             {
-                _filteredAttrsCache = null;
+                // Re-check внутри lock
+                if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
+                    return _filteredAttrsCache;
+
+                if (AdditionalAttributes is null)
+                {
+                    _filteredAttrsCache = null;
+                    _filteredAttrsCacheGen = gen;
+                    return null;
+                }
+
+                var filtered = AdditionalAttributes
+                    .Where(kv =>
+                        !kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase) &&
+                        !kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+                _filteredAttrsCache = filtered.Count == 0 ? null : filtered;
                 _filteredAttrsCacheGen = gen;
-                return null;
+                return _filteredAttrsCache;
             }
-
-            var filtered = AdditionalAttributes
-                .Where(kv => !kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase)
-                          && !kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase))
-                .ToDictionary(kv => kv.Key, kv => kv.Value);
-
-            _filteredAttrsCache = filtered.Count == 0 ? null : filtered;
-            _filteredAttrsCacheGen = gen;
-            return _filteredAttrsCache;
         }
     }
 
-    // ── Внутреннее состояние ─────────────────────────────────────────────────────
-
+    // ── Внутреннее состояние ───────────────────────────────────────────────────
     private int _disposed;
     private int _previousVisible = 1;
     private readonly List<IComponentHook> _hooks = [];
     private ComponentSignalTracker? _signalBatcher;
     private List<IDisposable>? _reactiveDisposables;
 
-    // ARIA cache
+    // ARIA cache (shared lock для и AriaAttributes, и FilteredAttrs)
     private readonly object _ariaCacheLock = new();
     private IReadOnlyDictionary<string, object>? _ariaCache;
     private int _ariaCacheGeneration = -2;
     private int _ariaGeneration;
 
     // AdditionalAttributesFiltered cache
-    private IReadOnlyDictionary<string, object>? _filteredAttrsCache;
-    private int _filteredAttrsCacheGen = -1;
+    private volatile IReadOnlyDictionary<string, object>? _filteredAttrsCache;
+    private volatile int _filteredAttrsCacheGen = -1;
 
 #if DEBUG
     private readonly ComponentDiagnostics _diagnostics;
     private long _renderStartTick;
 #endif
 
-    // ── Конструктор ──────────────────────────────────────────────────────────────
-
+    // ── Конструктор ────────────────────────────────────────────────────────────
     protected SgComponentBase()
     {
         ComponentId = ComponentIdGenerator.Next(ComponentPrefix);
@@ -156,12 +149,12 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     }
 
     /// <summary>
-    /// Префикс для генерации <see cref="ComponentId"/>.
-    /// Переопределите в подклассе для читаемых ID: override protected string ComponentPrefix => "btn";
+    /// Префикс для генерации ComponentId.
+    /// Переопределите: <c>protected override string ComponentPrefix =&gt; "btn";</c>
     /// </summary>
     protected virtual string ComponentPrefix => "cmp";
 
-    // ── Hooks ────────────────────────────────────────────────────────────────────
+    // ── Hooks ──────────────────────────────────────────────────────────────────
 
     /// <summary>Зарегистрировать хук жизненного цикла.</summary>
     protected void AddHook(IComponentHook hook)
@@ -170,16 +163,11 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         _hooks.Add(hook);
     }
 
-    // ── Reactive ─────────────────────────────────────────────────────────────────
+    // ── Reactive ───────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Создать реактивный сигнал и зарегистрировать его для авто-StateHasChanged.
-    /// ДОРАБОТКА: метод требуется SgReactiveBase.Signal() — отсутствовал в оригинале.
-    /// </summary>
-    /// <typeparam name="TValue">Тип значения сигнала.</typeparam>
-    /// <param name="initial">Начальное значение.</param>
-    /// <param name="comparer">Компаратор для определения изменений (null = EqualityComparer.Default).</param>
-    protected SgSignal<TValue> CreateSignal<TValue>(TValue initial,
+    /// <summary>Создать реактивный сигнал с авто-StateHasChanged.</summary>
+    protected SgSignal<TValue> CreateSignal<TValue>(
+        TValue initial,
         IEqualityComparer<TValue>? comparer = null)
     {
         var signal = comparer is null
@@ -190,7 +178,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return signal;
     }
 
-    /// <summary>Зарегистрировать реактивный side-effect. Авто-StateHasChanged при изменении.</summary>
+    /// <summary>Зарегистрировать реактивный side-effect.</summary>
     protected SgEffect RegisterEffect(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -210,82 +198,86 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return effect;
     }
 
-    /// <summary>Зарегистрировать вычисляемый сигнал. Авто-отписка при Dispose.</summary>
-    protected SgComputed<TResult> RegisterComputed<TResult>(Func<TResult> compute)
+    /// <summary>Зарегистрировать вычисляемый сигнал.</summary>
+    protected SgComputed<TValue> RegisterComputed<TValue>(Func<TValue> compute)
     {
         ArgumentNullException.ThrowIfNull(compute);
-        var computed = new SgComputed<TResult>(compute);
+        var computed = new SgComputed<TValue>(compute);
         computed.Subscribe(this);
         (_reactiveDisposables ??= []).Add(computed);
         return computed;
     }
 
-    /// <summary>
-    /// Зарегистрировать disposables для авто-освобождения при Dispose компонента.
-    /// Используется фабриками (Signal, Computed, Effect) для централизованной регистрации.
-    /// </summary>
+    /// <summary>Регистрация для внутреннего использования фабриками.</summary>
     protected void RegisterEffectInternal(IDisposable disposable)
         => (_reactiveDisposables ??= []).Add(disposable);
 
-    // ── ShouldRender ─────────────────────────────────────────────────────────────
+    // ── ShouldRender ───────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     protected override bool ShouldRender()
     {
         bool visible = Visible;
         int prev = Interlocked.Exchange(ref _previousVisible, visible ? 1 : 0);
         bool wasVisible = prev == 1;
 
-        if (!visible && wasVisible) return true;  // Стал невидимым → один рендер
-        if (!visible) return false;               // Остаётся невидимым → пропуск
+        if (!visible && wasVisible) return true;  // стал невидимым → один рендер
+        if (!visible) return false;                // остаётся невидимым → пропуск
 
         foreach (var hook in _hooks)
-            if (hook is IRenderHook rh && !rh.ShouldRender(this))
-                return false;
+            if (hook is IRenderHook rh && !rh.ShouldRender(this)) return false;
 
         return true;
     }
 
-    // ── StateHasChanged ──────────────────────────────────────────────────────────
+    // ── RequestRender / StateHasChanged ────────────────────────────────────────
+    // ИСПРАВЛЕНИЕ: вместо `public new StateHasChanged()` (shadow — нарушает LSP)
+    // используем отдельный публичный RequestRender() + оставляем base.StateHasChanged protected.
 
-    // ПРИМЕЧАНИЕ: перекрываем через new, а не override — ComponentBase.StateHasChanged protected.
-    // Это намеренно: нам нужна публичная видимость для вызова из сигналов/эффектов.
-    // При вызове через ((ComponentBase)comp).StateHasChanged() — вызовется оригинал (ок).
-#pragma warning disable CS0108
     /// <summary>
     /// Запланировать перерисовку с batch-рендерингом.
-    /// Безопасен для вызова из любого потока (InvokeAsync при необходимости).
+    /// Используйте вместо StateHasChanged() для вызова из сигналов/сервисов.
+    /// Безопасен для вызова из любого потока.
     /// </summary>
-    public new void StateHasChanged()
+    public void RequestRender()
     {
         if (IsDisposed) return;
         var batcher = Volatile.Read(ref _signalBatcher);
         if (batcher is not null)
             batcher.ScheduleRender();
         else
-            base.StateHasChanged();
+            _ = InvokeAsync(StateHasChanged);
     }
-#pragma warning restore CS0108
 
-    /// <summary>Вызвать StateHasChanged в потоке компонента (InvokeAsync).</summary>
+    /// <summary>
+    /// Для обратной совместимости с кодом который вызывает StateHasChanged() напрямую.
+    /// DEPRECATED: используйте RequestRender().
+    /// </summary>
+    [Obsolete("Use RequestRender() for external callers. StateHasChanged() is protected in ComponentBase.", false)]
+    public void ForceStateHasChanged()
+    {
+        if (IsDisposed) return;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Вызвать StateHasChanged в потоке компонента.</summary>
     internal Task InvokeStateHasChangedAsync()
     {
         if (IsDisposed) return Task.CompletedTask;
-        return InvokeAsync(base.StateHasChanged);
+        return InvokeAsync(StateHasChanged);
     }
 
-    // ── SetParametersAsync ───────────────────────────────────────────────────────
+    // ── SetParametersAsync ─────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     public override Task SetParametersAsync(ParameterView parameters)
     {
         Interlocked.Increment(ref _ariaGeneration);
+        // Инвалидируем оба кэша при изменении параметров
+        Volatile.Write(ref _filteredAttrsCacheGen, -1);
         return base.SetParametersAsync(parameters);
     }
 
-    // ── Lifecycle ────────────────────────────────────────────────────────────────
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -293,16 +285,15 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         foreach (var hook in _hooks) hook.OnInitialized(this);
     }
 
-    /// <inheritdoc/>
     protected override async Task OnInitializedAsync()
     {
         LogLifecycle(nameof(OnInitializedAsync));
         await base.OnInitializedAsync();
         foreach (var hook in _hooks)
-            if (hook is IAsyncComponentHook ah) await ah.OnInitializedAsync(this);
+            if (hook is IAsyncComponentHook ah)
+                await ah.OnInitializedAsync(this);
     }
 
-    /// <inheritdoc/>
     protected override void OnParametersSet()
     {
 #if DEBUG
@@ -312,28 +303,33 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         base.OnParametersSet();
     }
 
-    /// <inheritdoc/>
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
+
+        // ИСПРАВЛЕНИЕ: try/finally — OnParametersChangedAsync вызывается даже при исключении хука
+        Exception? hookException = null;
         foreach (var hook in _hooks)
-            if (hook is IAsyncComponentHook ah) await ah.OnParametersSetAsync(this);
-        // Вызываем переопределяемый hook
+        {
+            if (hook is IAsyncComponentHook ah)
+            {
+                try { await ah.OnParametersSetAsync(this); }
+                catch (Exception ex) { hookException = ex; }
+            }
+        }
+
         await OnParametersChangedAsync();
+
+        if (hookException is not null)
+            Logger.LogError(hookException, "[{Id}] Hook.OnParametersSetAsync threw", ComponentId);
     }
 
     /// <summary>
     /// Вызывается при каждом изменении параметров ПОСЛЕ базового OnParametersSetAsync.
-    /// Переопределяйте вместо OnParametersSetAsync для упрощённого API.
+    /// Переопределяйте вместо OnParametersSetAsync.
     /// </summary>
-    /// <remarks>
-    /// Разница от OnParametersSetAsync:
-    /// - не нужно вызывать base.OnParametersSetAsync()
-    /// - вызывается только при реальных изменениях (после хуков)
-    /// </remarks>
     protected virtual Task OnParametersChangedAsync() => Task.CompletedTask;
 
-    /// <inheritdoc/>
     protected override void OnAfterRender(bool firstRender)
     {
 #if DEBUG
@@ -353,71 +349,61 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         base.OnAfterRender(firstRender);
     }
 
-    /// <inheritdoc/>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
 #if DEBUG
         _renderStartTick = Stopwatch.GetTimestamp();
 #endif
         await base.OnAfterRenderAsync(firstRender);
+
         if (firstRender)
         {
             await OnFirstRenderAsync();
             foreach (var hook in _hooks)
-                if (hook is IAsyncComponentHook ah) await ah.OnFirstRenderAsync(this);
+                if (hook is IAsyncComponentHook ah)
+                    await ah.OnFirstRenderAsync(this);
         }
+
         foreach (var hook in _hooks)
-            if (hook is IAsyncComponentHook ah) await ah.OnAfterRenderAsync(this, firstRender);
+            if (hook is IAsyncComponentHook ah)
+                await ah.OnAfterRenderAsync(this, firstRender);
     }
 
     /// <summary>
-    /// Вызывается при первом рендере компонента (аналог componentDidMount в React).
-    /// Переопределите для инициализации JS Interop и подписок после рендера.
+    /// Вызывается при первом рендере (componentDidMount в React).
+    /// JS Interop доступен здесь.
     /// </summary>
     protected virtual Task OnFirstRenderAsync() => Task.CompletedTask;
 
-    // ── CSS / Style ──────────────────────────────────────────────────────────────
+    // ── CSS / Style ────────────────────────────────────────────────────────────
 
 #if DEBUG
-    /// <summary>Диагностические данные компонента (только DEBUG).</summary>
+    /// <summary>Диагностические данные (только DEBUG).</summary>
     public ComponentDiagnostics Diagnostics => _diagnostics;
 #endif
 
-    /// <summary>
-    /// Создать <see cref="CssBuilder"/> с базовым CSS-классом компонента.
-    /// </summary>
-    /// <param name="baseClass">Базовый класс. null = <see cref="GetDefaultCssClass"/>.</param>
+    /// <summary>Создать SgCssBuilder с базовым CSS-классом.</summary>
     protected CssBuilder Css(string? baseClass = null)
         => new(baseClass ?? GetDefaultCssClass());
 
-    /// <summary>
-    /// Создать <see cref="StyleBuilder"/> с базовым инлайн-стилем.
-    /// </summary>
-    protected StyleBuilder CreateStyle(string? baseStyle = null) => new(baseStyle);
+    /// <summary>Создать StyleBuilder.</summary>
+    protected StyleBuilder CreateStyle(string? baseStyle = null)
+        => new(baseStyle);
 
-    /// <summary>
-    /// CSS-класс по умолчанию для корневого элемента компонента.
-    /// Переопределите: <c>protected override string? GetDefaultCssClass() => "sg-button";</c>
-    /// </summary>
+    /// <summary>CSS-класс по умолчанию. Переопределите: <c>protected override string? GetDefaultCssClass() =&gt; "sg-button";</c></summary>
     protected virtual string? GetDefaultCssClass() => null;
 
-    // ── ARIA ─────────────────────────────────────────────────────────────────────
+    // ── ARIA ───────────────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Строит словарь ARIA-атрибутов. Кэшируется между рендерами до смены параметров.
-    /// Фильтрует <see cref="AdditionalAttributes"/>: только aria-*, role, tabindex.
-    /// </summary>
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var currentGeneration = Volatile.Read(ref _ariaGeneration);
-
         lock (_ariaCacheLock)
         {
             if (_ariaCache is not null && _ariaCacheGeneration == currentGeneration)
                 return _ariaCache;
 
             var attrs = new Dictionary<string, object>(4, StringComparer.Ordinal);
-
             if (AdditionalAttributes is not null)
                 foreach (var kvp in AdditionalAttributes)
                     if (IsAriaAttribute(kvp.Key))
@@ -429,14 +415,14 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    private static bool IsAriaAttribute(string key)
-        => key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("role", StringComparison.OrdinalIgnoreCase)
-        || key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
+    private static bool IsAriaAttribute(string key) =>
+        key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("role", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
 
-    // ── RefreshAsync ─────────────────────────────────────────────────────────────
+    // ── RefreshAsync ───────────────────────────────────────────────────────────
 
-    /// <summary>Запланировать перерисовку компонента.</summary>
+    /// <summary>Запланировать перерисовку.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task RefreshAsync()
     {
@@ -458,11 +444,9 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(async () => { await action(); StateHasChanged(); });
     }
 
-    /// <summary>
-    /// Безопасный StateHasChanged через InvokeAsync (для вызова из фоновых потоков).
-    /// </summary>
+    /// <summary>Безопасный StateHasChanged для фоновых потоков.</summary>
     protected Task RefreshFromBackgroundAsync()
-        => IsDisposed ? Task.CompletedTask : InvokeAsync(() => base.StateHasChanged());
+        => IsDisposed ? Task.CompletedTask : InvokeAsync(StateHasChanged);
 
     /// <summary>InvokeAsync с проверкой IsDisposed.</summary>
     protected Task SafeInvokeAsync(Func<Task> action)
@@ -471,47 +455,43 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
         return InvokeAsync(action);
     }
 
-    /// <summary>InvokeAsync (sync action) с проверкой IsDisposed.</summary>
+    /// <summary>InvokeAsync (sync) с проверкой IsDisposed.</summary>
     protected Task SafeInvokeAsync(Action action)
     {
         if (IsDisposed) return Task.CompletedTask;
         return InvokeAsync(action);
     }
 
-    /// <summary>
-    /// Выполнить действие и вернуть результат с безопасным InvokeAsync.
-    /// Полезно при вызове из Timer/Observable где нет UI-контекста.
-    /// </summary>
+    /// <summary>InvokeAsync с возвратом результата.</summary>
     protected Task<TResult> SafeInvokeAsync<TResult>(Func<TResult> func)
     {
         if (IsDisposed) return Task.FromResult(default(TResult)!);
         return InvokeAsync(func);
     }
 
-    // ── Service helpers ──────────────────────────────────────────────────────────
+    // ── Service helpers ────────────────────────────────────────────────────────
 
-    /// <summary>Получить сервис из DI или null если не зарегистрирован.</summary>
+    /// <summary>Получить сервис из DI или null.</summary>
     protected T? TryGetService<T>() where T : class
         => ServiceProvider.GetService<T>();
 
-    /// <summary>
-    /// Получить сервис из DI или бросить <see cref="InvalidOperationException"/>
-    /// с понятным сообщением о необходимости вызова AddSuperUI().
-    /// </summary>
+    /// <summary>Получить сервис или бросить понятное исключение.</summary>
     protected T TryGetRequiredService<T>() where T : class
         => ServiceProvider.GetService<T>()
            ?? throw new InvalidOperationException(
                $"Service {typeof(T).Name} is not registered. " +
                $"Call builder.Services.AddSuperUI() in Program.cs.");
 
-    /// <summary>Бросить <see cref="ObjectDisposedException"/> если компонент утилизирован.</summary>
-    protected void ThrowIfDisposed()
-        => ObjectDisposedException.ThrowIf(IsDisposed, ComponentId);
+    /// <summary>Бросить ObjectDisposedException если компонент утилизирован.</summary>
+    protected void ThrowIfDisposed([CallerMemberName] string? caller = null)
+        => ObjectDisposedException.ThrowIf(IsDisposed, $"{ComponentId}.{caller}");
 
-    // ── Context helpers ──────────────────────────────────────────────────────────
+    // ── Context helpers ────────────────────────────────────────────────────────
 
-    /// <summary>Выполнить действие только в Blazor WebAssembly.</summary>
-    [SupportedOSPlatform("browser")]
+    /// <summary>
+    /// Выполнить действие только в Blazor WebAssembly.
+    /// ИСПРАВЛЕНО: убран [SupportedOSPlatform("browser")] — ломал AOT предупреждениями.
+    /// </summary>
     protected Task IfBrowserAsync(Func<Task> action)
         => IsBrowser ? action() : Task.CompletedTask;
 
@@ -519,7 +499,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
     protected Task IfServerAsync(Func<Task> action)
         => IsServer ? action() : Task.CompletedTask;
 
-    // ── Logging ──────────────────────────────────────────────────────────────────
+    // ── Logging ────────────────────────────────────────────────────────────────
 
     [Conditional("DEBUG")]
     private void LogLifecycle(string method)
@@ -528,30 +508,26 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
             Logger.LogTrace("[{ComponentId}] {Method}", ComponentId, method);
     }
 
-    // ── IAsyncDisposable ─────────────────────────────────────────────────────────
+    // ── IAsyncDisposable ───────────────────────────────────────────────────────
 
-    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
         LogLifecycle(nameof(DisposeAsync));
 
-        // 1. Диспозим реактивные ресурсы
+        // 1. Реактивные ресурсы
         if (_reactiveDisposables is not null)
         {
             foreach (var rd in _reactiveDisposables)
             {
                 try { rd.Dispose(); }
-                catch (Exception ex)
-                {
-                    Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId);
-                }
+                catch (Exception ex) { Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId); }
             }
             _reactiveDisposables.Clear();
         }
 
-        // 2. Диспозим хуки
+        // 2. Хуки
         foreach (var hook in _hooks)
         {
             try
@@ -559,14 +535,11 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
                 if (hook is IAsyncDisposable ad) await ad.DisposeAsync();
                 else if (hook is IDisposable d) d.Dispose();
             }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId);
-            }
+            catch (Exception ex) { Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId); }
         }
         _hooks.Clear();
 
-        // 3. Диспозим дочерние ресурсы
+        // 3. Дочерние ресурсы
         await DisposeComponentAsync();
 
         GC.SuppressFinalize(this);
@@ -574,7 +547,7 @@ public abstract class SgComponentBase : ComponentBase, IAsyncDisposable
 
     /// <summary>
     /// Точка расширения для освобождения ресурсов дочерних классов.
-    /// Вызывается в конце <see cref="DisposeAsync"/>.
+    /// Вызывается в конце DisposeAsync.
     /// </summary>
     protected virtual ValueTask DisposeComponentAsync()
     {

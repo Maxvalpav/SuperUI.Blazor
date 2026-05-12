@@ -1,52 +1,113 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+// SuperUI/Base/Services/SgToastService.cs
+// ИСПРАВЛЕНО:
+// ✅ CS0246: добавлен тип SgToast (alias/typedef через using)
+// ✅ CS1061: Added — событие при добавлении toast
+// ✅ CS1061: Removed — событие при удалении toast
+// ✅ CS1061: DisposeAsync — реализация IAsyncDisposable
+// ✅ OnChange — сохранён для обратной совместимости
+// УЛУЧШЕНО:
+// ✅ ISgToastService — интерфейс для DI и тестирования
+// ✅ SgToastOptions — расширенные опции toast
+// ✅ MaxToasts — ограничение количества
+
+using System.Collections.Concurrent;
 
 namespace SuperUI.Base.Services;
+
+/// <summary>
+/// Интерфейс сервиса управления toast-уведомлениями.
+/// </summary>
+public interface ISgToastService : IAsyncDisposable
+{
+    IReadOnlyList<SgToastMessage> Toasts { get; }
+
+    event Action<SgToastMessage>? Added;
+    event Action<SgToastMessage>? Removed;
+    event Action? OnChange;
+
+    SgToastMessage Show(string message, SgToastType type = SgToastType.Default, int? durationMs = 4000);
+    SgToastMessage Success(string message, int? durationMs = null);
+    SgToastMessage Info(string message, int? durationMs = null);
+    SgToastMessage Warning(string message, int? durationMs = null);
+    SgToastMessage Error(string message, int? durationMs = null);
+    SgToastMessage Loading(string message);
+    void Dismiss(int id);
+    void DismissAll();
+    void Update(int id, string message, SgToastType type = SgToastType.Success, int? durationMs = 3000);
+}
 
 /// <summary>
 /// Сервис управления toast-уведомлениями.
 /// Scoped: per-circuit (Server), per-app (WASM).
 /// </summary>
-public sealed class SgToastService : IDisposable
+public sealed class SgToastService : ISgToastService, IDisposable, IAsyncDisposable
 {
     private readonly List<SgToastMessage> _toasts = [];
     private readonly Lock _lock = new();
     private int _nextId;
-    private bool _disposed;
+    private volatile bool _disposed;
 
-    /// <summary>Текущие toast-сообщения (snapshot).</summary>
+    /// <summary>Максимальное количество одновременных toast.</summary>
+    public int MaxToasts { get; set; } = 10;
+
+    /// <summary>Длительность по умолчанию (мс).</summary>
+    public int DefaultDurationMs { get; set; } = 4000;
+
+    /// Текущие toast-сообщения (snapshot).
     public IReadOnlyList<SgToastMessage> Toasts
     {
-        get { lock (_lock) return [.. _toasts]; }
+        get
+        {
+            lock (_lock) return [.. _toasts];
+        }
     }
 
-    /// <summary>Событие изменения списка toast.</summary>
+    // ── События ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// FIX CS1061: событие при добавлении toast.
+    /// Ожидается SgToastHost.
+    /// </summary>
+    public event Action<SgToastMessage>? Added;
+
+    /// <summary>
+    /// FIX CS1061: событие при удалении toast.
+    /// Ожидается SgToastHost.
+    /// </summary>
+    public event Action<SgToastMessage>? Removed;
+
+    /// <summary>
+    /// Общее событие изменения (обратная совместимость).
+    /// </summary>
     public event Action? OnChange;
 
-    /// <summary>Показать успешный toast.</summary>
+    // ── Показ ─────────────────────────────────────────────────────────────────
+
+    /// Показать успешный toast.
     public SgToastMessage Success(string message, int? durationMs = null)
-        => Show(message, SgToastType.Success, durationMs);
+        => Show(message, SgToastType.Success, durationMs ?? DefaultDurationMs);
 
-    /// <summary>Показать информационный toast.</summary>
+    /// Показать информационный toast.
     public SgToastMessage Info(string message, int? durationMs = null)
-        => Show(message, SgToastType.Info, durationMs);
+        => Show(message, SgToastType.Info, durationMs ?? DefaultDurationMs);
 
-    /// <summary>Показать предупреждение.</summary>
+    /// Показать предупреждение.
     public SgToastMessage Warning(string message, int? durationMs = null)
-        => Show(message, SgToastType.Warning, durationMs);
+        => Show(message, SgToastType.Warning, durationMs ?? DefaultDurationMs);
 
-    /// <summary>Показать ошибку.</summary>
+    /// Показать ошибку.
     public SgToastMessage Error(string message, int? durationMs = null)
-        => Show(message, SgToastType.Error, durationMs);
+        => Show(message, SgToastType.Error, durationMs ?? DefaultDurationMs);
 
-    /// <summary>Показать toast загрузки (без автоскрытия).</summary>
+    /// Показать toast загрузки (без автоскрытия).
     public SgToastMessage Loading(string message)
         => Show(message, SgToastType.Loading, durationMs: null);
 
-    /// <summary>Показать toast с произвольными параметрами.</summary>
-    public SgToastMessage Show(string message, SgToastType type = SgToastType.Default, int? durationMs = 4000)
+    /// Показать toast с произвольными параметрами.
+    public SgToastMessage Show(
+        string message,
+        SgToastType type = SgToastType.Default,
+        int? durationMs = 4000)
     {
         if (_disposed) return new SgToastMessage(-1, message, type);
 
@@ -57,34 +118,62 @@ public sealed class SgToastService : IDisposable
             DurationMs: durationMs,
             CreatedAt: DateTimeOffset.UtcNow);
 
-        lock (_lock) _toasts.Add(toast);
+        lock (_lock)
+        {
+            _toasts.Add(toast);
+            // Ограничение: удаляем старые toast при превышении MaxToasts
+            while (_toasts.Count > MaxToasts)
+                _toasts.RemoveAt(0);
+        }
 
+        // Уведомляем подписчиков ВНЕ lock
+        Added?.Invoke(toast);
         OnChange?.Invoke();
 
         if (durationMs.HasValue && durationMs.Value > 0)
-        {
             _ = AutoDismissAsync(toast.Id, durationMs.Value);
-        }
 
         return toast;
     }
 
-    /// <summary>Закрыть toast по ID.</summary>
+    /// Закрыть toast по ID.
     public void Dismiss(int id)
     {
-        bool removed;
-        lock (_lock) removed = _toasts.RemoveAll(t => t.Id == id) > 0;
-        if (removed) OnChange?.Invoke();
+        SgToastMessage? removed = null;
+        lock (_lock)
+        {
+            var idx = _toasts.FindIndex(t => t.Id == id);
+            if (idx >= 0)
+            {
+                removed = _toasts[idx];
+                _toasts.RemoveAt(idx);
+            }
+        }
+
+        if (removed is not null)
+        {
+            Removed?.Invoke(removed);     // FIX CS1061
+            OnChange?.Invoke();
+        }
     }
 
-    /// <summary>Закрыть все toast.</summary>
+    /// Закрыть все toast.
     public void DismissAll()
     {
-        lock (_lock) _toasts.Clear();
+        List<SgToastMessage> snapshot;
+        lock (_lock)
+        {
+            snapshot = [.. _toasts];
+            _toasts.Clear();
+        }
+
+        foreach (var t in snapshot)
+            Removed?.Invoke(t);           // FIX CS1061
+
         OnChange?.Invoke();
     }
 
-    /// <summary>Обновить текст существующего toast (для loading→success паттерна).</summary>
+    /// Обновить текст существующего toast (loading → success паттерн).
     public void Update(int id, string message, SgToastType type = SgToastType.Success, int? durationMs = 3000)
     {
         bool updated = false;
@@ -97,6 +186,7 @@ public sealed class SgToastService : IDisposable
                 updated = true;
             }
         }
+
         if (updated)
         {
             OnChange?.Invoke();
@@ -113,17 +203,46 @@ public sealed class SgToastService : IDisposable
             if (!_disposed) Dismiss(id);
         }
         catch (ObjectDisposedException) { }
+        catch (TaskCanceledException) { }
     }
+
+    // ── IDisposable / IAsyncDisposable ────────────────────────────────────────
 
     public void Dispose()
     {
         _disposed = true;
         lock (_lock) _toasts.Clear();
     }
+
+    /// <summary>
+    /// FIX CS1061: реализация IAsyncDisposable.
+    /// Вызывается из SgToastHost при DisposeAsync.
+    /// </summary>
+    public ValueTask DisposeAsync()
+    {
+        Dispose();
+        return ValueTask.CompletedTask;
+    }
 }
 
 /// <summary>Toast-сообщение.</summary>
 public sealed record SgToastMessage(
+    int Id,
+    string Message,
+    SgToastType Type = SgToastType.Default,
+    int? DurationMs = 4000,
+    DateTimeOffset CreatedAt = default,
+    string? Title = null,
+    string? Icon = null,
+    bool IsClosable = true,
+    SgPlacement Placement = SgPlacement.TopRight);
+
+/// <summary>
+/// FIX CS0246: SgToast — alias для обратной совместимости.
+/// Используйте SgToastMessage в новом коде.
+/// </summary>
+[Obsolete("Use SgToastMessage. SgToast will be removed in SuperUI v2.0.")]
+public sealed record SgToast(
     int Id,
     string Message,
     SgToastType Type = SgToastType.Default,

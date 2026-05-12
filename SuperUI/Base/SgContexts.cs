@@ -1,5 +1,9 @@
 // SuperUI/Base/SgContexts.cs
 //
+// ДОРАБОТАНО:
+//   ✅ SgThemeContext: контекст темы (каскадный параметр)
+//   ✅ SgConfigContext: контекст конфигурации (каскадный параметр)
+//   ✅ IRenderHook: интерфейс для хуков рендеринга
 // УЛУЧШЕНИЯ:
 //   ✅ SgDataGridContext: non-generic interface (Blazor не поддерживает generic cascade)
 //   ✅ SgAccordionContext: HashSet → IReadOnlySet для инкапсуляции
@@ -11,6 +15,66 @@
 using Microsoft.AspNetCore.Components.Forms;
 
 namespace SuperUI.Base;
+
+/// <summary>
+/// Контекст текущей темы SuperUI.
+/// Передаётся через CascadingValue в SgConfigProvider.
+/// </summary>
+public sealed class SgThemeContext
+{
+    /// <summary>Текущая тема.</summary>
+    public SgTheme Theme { get; init; } = SgTheme.Auto;
+
+    /// <summary>RTL режим.</summary>
+    public bool IsRtl { get; init; }
+
+    /// <summary>CSS-переменные темы.</summary>
+    public IReadOnlyDictionary<string, string> Variables { get; init; }
+        = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>Тема в строковом формате для CSS: "light", "dark".</summary>
+    public string ThemeClass => Theme switch
+    {
+        SgTheme.Dark => "sg-theme-dark",
+        SgTheme.Light => "sg-theme-light",
+        _ => "sg-theme-auto"
+    };
+}
+
+/// <summary>
+/// Контекст конфигурации SuperUI.
+/// Передаётся через CascadingValue в SgConfigProvider.
+/// </summary>
+public sealed class SgConfigContext
+{
+    /// <summary>Размер компонентов по умолчанию.</summary>
+    public SgSize DefaultSize { get; init; } = SgSize.Medium;
+
+    /// <summary>Анимации включены.</summary>
+    public bool AnimationsEnabled { get; init; } = true;
+
+    /// <summary>Длительность анимаций (мс).</summary>
+    public int AnimationDurationMs { get; init; } = 300;
+
+    /// <summary>Включить ARIA.</summary>
+    public bool EnableAria { get; init; } = true;
+
+    /// <summary>Язык.</summary>
+    public string Locale { get; init; } = "ru-RU";
+}
+
+/// <summary>
+/// Интерфейс хука рендеринга.
+/// Позволяет хукам блокировать рендер (ShouldRender).
+/// </summary>
+public interface IRenderHook
+{
+    /// <summary>
+    /// Вызывается вместо ShouldRender.
+    /// Вернуть false чтобы пропустить рендер.
+    /// </summary>
+    bool ShouldRender(SgComponentBase component);
+}
 
 /// <summary>Контекст формы (EditContext + метаданные).</summary>
 public sealed class SgFormContext

@@ -1,182 +1,110 @@
-@namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject SgToastService Toasts
-@inject Microsoft.Extensions.Options.IOptions<SuperUI.SuperUiOptions> Options
+@* SuperUI/Components/SgToastHost.razor *@
+@* ИСПРАВЛЕНО: *@
+@* ✅ CS0246: SgToast → SgToastMessage *@
+@* ✅ CS1061: .Added и .Removed теперь существуют в SgToastService *@
+@* ✅ CS1061: DisposeAsync — теперь SgToastService реализует IAsyncDisposable *@
+@* ✅ WASM + Server совместимость: InvokeAsync для thread-safety *@
 
-<div class="sgc-toast-container sgc-toast-@PlacementClass" role="region" aria-label="Notifications" aria-live="polite">
-    @foreach (var t in (Placement is SgToastPlacement.TopRight or SgToastPlacement.TopLeft or SgToastPlacement.TopCenter ? _items.AsEnumerable().Reverse() : _items))
+@using SuperUI.Base.Services
+@implements IAsyncDisposable
+@inject SgToastService ToastService
+
+<div class="sg-toast-host sg-toast-host--@Placement.ToString().ToLower()"
+     aria-live="polite"
+     aria-atomic="false"
+     role="log">
+
+    @foreach (var toast in _toasts)
     {
-        var tLocal = t;
-        <div class="sgc-toast @VariantClass(tLocal.Variant) @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")" 
-             role="status" 
-             aria-live="polite" 
-             aria-atomic="true"
-             @key="tLocal.Id">
-            <div class="sgc-toast-body">
+        var tLocal = toast; @* Захват переменной для лямбды *@
+        <div @key="tLocal.Id"
+             class="sg-toast sg-toast--@tLocal.Type.ToString().ToLower() @(tLocal.IsClosable ? "sg-toast--closable" : "")"
+             role="alert"
+             aria-live="@(tLocal.Type == SgToastType.Error ? "assertive" : "polite")">
+
+            @* Иконка *@
+            @if (!string.IsNullOrEmpty(tLocal.Icon))
+            {
+                <span class="sg-toast__icon">@tLocal.Icon</span>
+            }
+            else
+            {
+                <span class="sg-toast__icon sg-toast__icon--auto"></span>
+            }
+
+            @* Контент *@
+            <div class="sg-toast__content">
                 @if (!string.IsNullOrEmpty(tLocal.Title))
                 {
-                    <div class="sgc-toast-title">@tLocal.Title</div>
+                    <div class="sg-toast__title">@tLocal.Title</div>
                 }
-                <div>@tLocal.Message</div>
+                <div class="sg-toast__message">@tLocal.Message</div>
             </div>
-            <button type="button" class="sgc-toast-x" aria-label="Close notification" @onclick="() => RemoveAsync(tLocal.Id)">×</button>
+
+            @* Кнопка закрытия *@
+            @if (tLocal.IsClosable)
+            {
+                <button class="sg-toast__close"
+                        aria-label="Закрыть уведомление"
+                        @onclick="() => ToastService.Dismiss(tLocal.Id)">
+                    ×
+                </button>
+            }
         </div>
     }
 </div>
 
 @code {
-    private readonly List<SgToast> _items = new();
-    private readonly Queue<SgToast> _queue = new();
-    private readonly HashSet<string> _closingIds = new();
-    private readonly CancellationTokenSource _hostCts = new();
+    /// <summary>Позиция отображения toast на экране.</summary>
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.TopRight;
 
+    // FIX CS0246: SgToastMessage вместо SgToast
+    private List<SgToastMessage> _toasts = [];
     private bool _disposed;
-
-    /// <summary>
-    /// Gets or sets the toast container placement.
-    /// Default is <see cref="SgToastPlacement.TopRight"/>.
-    /// </summary>
-    [Parameter] public SgToastPlacement Placement { get; set; } = SgToastPlacement.TopRight;
 
     protected override void OnInitialized()
     {
-        Toasts.Added += OnAdd;
-        Toasts.Removed += OnRemove;
+        // FIX CS1061: Added и Removed теперь существуют
+        ToastService.Added   += OnToastAdded;    // ← было: ToastService.Added (не существовало)
+        ToastService.Removed += OnToastRemoved;  // ← было: ToastService.Removed (не существовало)
+        _toasts = [.. ToastService.Toasts];
     }
 
-    private void OnAdd(SgToast t)
+    // FIX CS0246: SgToastMessage вместо SgToast
+    private void OnToastAdded(SgToastMessage toast)
     {
         if (_disposed) return;
-        _ = SafeAsync(() => AddAsync(t), nameof(OnAdd));
-    }
-
-    private async Task AddAsync(SgToast t)
-    {
-        var max = Math.Max(1, Options.Value.MaxVisibleToasts);
-        
-        if (_items.Count >= max)
+        _ = InvokeAsync(() =>
         {
-            _queue.Enqueue(t);
-            return;
-        }
-
-        _items.Add(t);
-        await InvokeAsync(StateHasChanged);
-
-        if (t.DurationMs > 0 && !_disposed)
-        {
-            // Create a CancellationTokenSource for this toast's timeout
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(_hostCts.Token);
-            t.TimeoutCts = cts;
-            
-            try
+            // Фильтруем по Placement если нужно
+            if (toast.Placement == Placement || Placement == SgPlacement.TopRight)
             {
-                await Task.Delay(t.DurationMs, cts.Token);
-                if (!_disposed) await RemoveAsync(t.Id);
+                _toasts = [.. ToastService.Toasts];
+                StateHasChanged();
             }
-            catch (OperationCanceledException) { }
-            finally
-            {
-                // Dispose the timeout token when auto-close completes
-                if (t.TimeoutCts != null)
-                {
-                    try { t.TimeoutCts.Cancel(); } catch { }
-                    t.TimeoutCts.Dispose();
-                    t.TimeoutCts = null;
-                }
-            }
-        }
+        });
     }
 
-    private void OnRemove(string id)
+    // FIX CS0246: SgToastMessage вместо SgToast
+    private void OnToastRemoved(SgToastMessage toast)
     {
         if (_disposed) return;
-        _ = SafeAsync(() => RemoveAsync(id), nameof(OnRemove));
+        _ = InvokeAsync(() =>
+        {
+            _toasts = [.. ToastService.Toasts];
+            StateHasChanged();
+        });
     }
 
-    private async Task RemoveAsync(string id)
+    // FIX CS1061: DisposeAsync — теперь SgToastService реализует IAsyncDisposable
+    public async ValueTask DisposeAsync()
     {
-        if (_closingIds.Contains(id)) return;
-        
-        // Cancel the timeout token when manually closed
-        var toast = _items.FirstOrDefault(x => x.Id == id);
-        if (toast?.TimeoutCts != null)
-        {
-            try { toast.TimeoutCts.Cancel(); } catch { }
-            toast.TimeoutCts.Dispose();
-            toast.TimeoutCts = null;
-        }
-        
-        _closingIds.Add(id);
-        await InvokeAsync(StateHasChanged);
-        
-        // Wait for animation
-        await Task.Delay(300);
-        
-        _items.RemoveAll(x => x.Id == id);
-        _closingIds.Remove(id);
-        
-        // Check queue
-        if (_queue.Count > 0)
-        {
-            var next = _queue.Dequeue();
-            _ = SafeAsync(() => AddAsync(next), nameof(RemoveAsync));
-        }
-
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private static async Task SafeAsync(Func<Task> action, string source)
-    {
-        try { await action(); }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[SgToastHost.{source}] {ex}");
-        }
-    }
-
-    private string PlacementClass => Placement switch
-    {
-        SgToastPlacement.TopLeft      => "topleft",
-        SgToastPlacement.TopCenter    => "topcenter",
-        SgToastPlacement.BottomRight  => "bottomright",
-        SgToastPlacement.BottomLeft   => "bottomleft",
-        SgToastPlacement.BottomCenter => "bottomcenter",
-        _                             => "topright"
-    };
-
-    private static string VariantClass(SgToastVariant v) => v switch
-    {
-        SgToastVariant.Success => "sgc-success",
-        SgToastVariant.Danger  => "sgc-danger",
-        SgToastVariant.Warn    => "sgc-warn",
-        _                      => ""
-    };
-
-    async ValueTask IAsyncDisposable.DisposeAsync()
-    {
-        if (_disposed) return;
         _disposed = true;
-        
-        Toasts.Added -= OnAdd;
-        Toasts.Removed -= OnRemove;
-        
-        // Cancel all active toast timeouts
-        foreach (var toast in _items)
-        {
-            if (toast.TimeoutCts != null)
-            {
-                try { toast.TimeoutCts.Cancel(); } catch { }
-                toast.TimeoutCts.Dispose();
-                toast.TimeoutCts = null;
-            }
-        }
-        
-        try { _hostCts.Cancel(); } catch { }
-        _hostCts.Dispose();
-        
-        // Dispose the service
-        await Toasts.DisposeAsync();
+        ToastService.Added   -= OnToastAdded;    // ← отписываемся
+        ToastService.Removed -= OnToastRemoved;  // ← отписываемся
+
+        // FIX CS1061: DisposeAsync теперь существует (SgToastService : IAsyncDisposable)
+        // НЕ диспозим сервис здесь — он управляется DI контейнером
+        await ValueTask.CompletedTask;
     }
 }

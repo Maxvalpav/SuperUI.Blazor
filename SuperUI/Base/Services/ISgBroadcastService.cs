@@ -1,20 +1,26 @@
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Широковещательный сервис для межкомпонентной коммуникации.
-/// In-process реализация через Channel (WASM: single-tab, Server: cross-circuit).
-/// Для cross-tab/cross-server требуется внешний транспорт (SignalR/Redis).
+/// Сервис широковещательных сообщений между компонентами.
+/// Singleton, thread-safe (ConcurrentDictionary + lock).
+/// Аналог EventBus / MessageBus.
 /// </summary>
-public interface ISgBroadcastService : IAsyncDisposable
+public interface ISgBroadcastService
 {
-    /// <summary>Опубликовать сообщение всем подписчикам того же канала.</summary>
-    Task PublishAsync<T>(string channel, T message) where T : notnull;
+    /// <summary>Подписаться на сообщения типа T.</summary>
+    IDisposable Subscribe<T>(Action<T> handler);
 
-    /// <summary>Подписаться на канал (async handler).</summary>
-    IAsyncDisposable Subscribe<T>(string channel, Func<T, Task> handler) where T : notnull;
+    /// <summary>Подписаться на сообщения типа T (async).</summary>
+    IDisposable Subscribe<T>(Func<T, Task> handler);
 
-    /// <summary>Подписаться на канал (sync handler).</summary>
-    IAsyncDisposable Subscribe<T>(string channel, Action<T> handler) where T : notnull;
+    /// <summary>Опубликовать сообщение всем подписчикам.</summary>
+    Task PublishAsync<T>(T message, CancellationToken ct = default);
+
+    /// <summary>Синхронная публикация (fire-and-forget).</summary>
+    void Publish<T>(T message);
+
+    /// <summary>Количество подписчиков для типа T (диагностика).</summary>
+    int GetSubscriberCount<T>();
 }
 
 /// <summary>Сообщение о присутствии пользователя в поле формы.</summary>
