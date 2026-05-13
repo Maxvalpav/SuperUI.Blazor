@@ -245,12 +245,25 @@ public enum SgTreeNodeState
 
 // ── Render ───────────────────────────────────────────────────────────────────
 
-/// <summary>Режим рендеринга (оптимизация).</summary>
+/// <summary>
+/// Режимы рендеринга, поддерживаемые SuperUI компонентами.
+/// </summary>
 public enum SgRenderMode
 {
-    Auto,
-    Force,
-    Manual
+    /// <summary>Static Server-Side Rendering — без интерактивности.</summary>
+    StaticSSR = 0,
+
+    /// <summary>Interactive Server (SignalR circuit).</summary>
+    InteractiveServer = 1,
+
+    /// <summary>Interactive WebAssembly (client-side).</summary>
+    InteractiveWebAssembly = 2,
+
+    /// <summary>Auto: начинается на Server, переключается на WebAssembly.</summary>
+    InteractiveAuto = 3,
+
+    /// <summary>Режим неизвестен (до первого рендера).</summary>
+    Unknown = -1
 }
 // ── DataGrid Row ─────────────────────────────────────────────────────────────
 

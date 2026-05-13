@@ -48,13 +48,20 @@ namespace SuperUI.Base.Configuration;
  
          // Render mode detector 
          services.TryAddScoped<ISgRenderModeDetector, SgRenderModeDetector>(); 
+         services.TryAddScoped<SgRenderModeResolver>(); 
  
+         // Store & Registry
+         services.TryAddScoped<SgStore>();
+         services.TryAddScoped<SgComponentRegistry>();
+         services.TryAddScoped<SgComponentFactory>();
+
          // Z-index service 
          services.TryAddScoped<IZIndexService, ZIndexService>(); 
  
          // Focus trap 
          services.TryAddScoped<IFocusTrapService, FocusTrapService>(); 
          services.TryAddScoped<FocusTrapStack>(); 
+         services.TryAddScoped<IKeyboardService, KeyboardService>();
  
          // Toast / Notification / Confirm 
          services.TryAddScoped<ISgToastService, SgToastService>(); 
@@ -64,6 +71,13 @@ namespace SuperUI.Base.Configuration;
          // Theme 
          services.TryAddScoped<SgThemeService>(); 
  
+         // Localization
+         services.TryAddScoped<ISuperUILocalizer, SuperUILocalizer>();
+
+         // Diagnostics
+         services.TryAddScoped<ComponentDiagnostics>();
+         services.TryAddScoped<PerformanceBudget>();
+
          // Broadcast (для Server — используем SgBroadcastService с Channel<T>) 
          services.TryAddScoped<ISgBroadcastService, SgBroadcastService>(); 
  

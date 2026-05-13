@@ -19,7 +19,7 @@ namespace SuperUI.Base;
 public abstract class SgCircuitAwareComponent : SgComponentBase 
 { 
     private bool _circuitConnected; 
-    private SgRenderMode _previousRenderMode = SgRenderMode.StaticServer; 
+    private SgRenderMode _previousRenderMode = SgRenderMode.StaticSSR; 
  
     [Inject] private ISgRenderModeDetector RenderModeDetector { get; set; } = default!; 
  

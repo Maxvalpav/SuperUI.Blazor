@@ -7,34 +7,11 @@
 // - Логирование режима при старте 
  
 using System; 
+using System.Reflection;
 using Microsoft.AspNetCore.Components; 
 using Microsoft.AspNetCore.Components.Web; 
  
 namespace SuperUI.Base.Services; 
- 
-/// <summary> 
-/// Перечисление режимов рендеринга SuperUI. 
-/// </summary> 
-public enum SgRenderMode 
-{ 
-    /// <summary>Статичный SSR (нет интерактивности).</summary> 
-    StaticServer, 
- 
-    /// <summary>SSR с потоковым рендерингом ([StreamRendering]).</summary> 
-    StreamingServer, 
- 
-    /// <summary>Prerendering для интерактивных режимов.</summary> 
-    Prerendering, 
- 
-    /// <summary>InteractiveServer (SignalR circuit).</summary> 
-    InteractiveServer, 
- 
-    /// <summary>InteractiveWebAssembly (браузер).</summary> 
-    InteractiveWebAssembly, 
- 
-    /// <summary>InteractiveAuto (Server → WebAssembly).</summary> 
-    InteractiveAuto, 
-} 
  
 /// <summary> 
 /// Сервис определения текущего режима рендеринга. 
@@ -43,7 +20,15 @@ public enum SgRenderMode
 public sealed class SgRenderModeDetector : ISgRenderModeDetector 
 { 
     private readonly IServiceProvider _services; 
- 
+    private static readonly PropertyInfo? s_rendererInfoProperty;
+    private static readonly PropertyInfo? s_assignedRenderModeProperty;
+
+    static SgRenderModeDetector()
+    {
+        s_rendererInfoProperty = typeof(ComponentBase).GetProperty("RendererInfo", BindingFlags.NonPublic | BindingFlags.Instance);
+        s_assignedRenderModeProperty = typeof(ComponentBase).GetProperty("AssignedRenderMode", BindingFlags.NonPublic | BindingFlags.Instance);
+    }
+
     public SgRenderModeDetector(IServiceProvider services) 
     { 
         _services = services; 
@@ -59,28 +44,28 @@ public sealed class SgRenderModeDetector : ISgRenderModeDetector
             return SgRenderMode.InteractiveWebAssembly; 
  
  #if NET9_0_OR_GREATER 
-        // 2. .NET 9+ — используем официальный API 
-        var rendererInfo = component.RendererInfo; 
-        var assignedMode = component.AssignedRenderMode; 
+        // 2. .NET 9+ — используем официальный API через рефлексию (т.к. protected)
+        var rendererInfo = (RendererInfo)s_rendererInfoProperty?.GetValue(component)!; 
+        var assignedMode = (IComponentRenderMode?)s_assignedRenderModeProperty?.GetValue(component); 
  
         return (rendererInfo.IsInteractive, rendererInfo.Name, assignedMode) switch 
         { 
-            (false, "Static", _) => SgRenderMode.StaticServer, 
-            (false, "Server", _) => SgRenderMode.Prerendering, 
+            (false, "Static", _) => SgRenderMode.StaticSSR, 
+            (false, "Server", _) => SgRenderMode.StaticSSR, 
             (true, "Server", InteractiveAutoRenderMode) => SgRenderMode.InteractiveAuto, 
             (true, "Server", _) => SgRenderMode.InteractiveServer, 
-            _ => SgRenderMode.StaticServer 
+            _ => SgRenderMode.StaticSSR 
         }; 
  #elif NET8_0_OR_GREATER 
-        // 3. .NET 8 — используем AssignedRenderMode 
-        var assignedMode = component.AssignedRenderMode; 
+        // 3. .NET 8 — используем AssignedRenderMode через рефлексию
+        var assignedMode = (IComponentRenderMode?)s_assignedRenderModeProperty?.GetValue(component); 
         return assignedMode switch 
         { 
             InteractiveServerRenderMode => SgRenderMode.InteractiveServer, 
             InteractiveWebAssemblyRenderMode => SgRenderMode.InteractiveWebAssembly, 
             InteractiveAutoRenderMode => SgRenderMode.InteractiveAuto, 
-            null => SgRenderMode.StaticServer, 
-            _ => SgRenderMode.StaticServer 
+            null => SgRenderMode.StaticSSR, 
+            _ => SgRenderMode.StaticSSR 
         }; 
  #else 
         return SgRenderMode.InteractiveServer; 

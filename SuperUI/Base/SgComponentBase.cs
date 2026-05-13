@@ -45,6 +45,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     /// </summary>
     [Inject] protected PersistentComponentState? PersistentComponentState { get; set; }
 
+    /// <summary>Алиас для PersistentComponentState.</summary>
+    protected PersistentComponentState? PersistentState => PersistentComponentState;
+
     // ── Каскадные параметры ────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
@@ -76,7 +79,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     /// Определяет, является ли текущий рендер фазой prerendering (SSR без интерактивности).
     /// Работает на .NET 8+.
     /// </summary>
-    protected bool IsPrerendering => _isPrerendering;
+    public bool IsPrerendering => _isPrerendering;
 
     /// <summary>Режим InteractiveServer (SignalR).</summary>
     protected bool IsInteractiveServer => RenderMode is InteractiveServerRenderMode;
@@ -105,6 +108,49 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     // ── Публичные свойства ─────────────────────────────────────────────────────
     public string ComponentId { get; }
+    public SgRenderMode CurrentRenderMode => RenderMode switch
+    {
+        InteractiveServerRenderMode => SgRenderMode.InteractiveServer,
+        InteractiveWebAssemblyRenderMode => SgRenderMode.InteractiveWebAssembly,
+        InteractiveAutoRenderMode => SgRenderMode.InteractiveAuto,
+        null => SgRenderMode.StaticSSR,
+        _ => SgRenderMode.Unknown
+    };
+    public bool IsInitialized => _isInitialized;
+    public bool HasRendered => !_isFirstRender;
+    public int RenderCount => _renderCount;
+    public string? CssClass => Css().Build();
+    public string? CssStyle => CreateStyle().Build();
+
+    public virtual void OnRenderModeChanged(SgRenderMode newMode)
+    {
+        // Базовая реализация пустая
+    }
+
+    public void Subscribe(IComponentHook hook)
+    {
+        if (hook == null) return;
+        lock (_hooks)
+        {
+            if (_hooksSet.Add(hook))
+            {
+                _hooks.Add(hook);
+            }
+        }
+    }
+
+    public void Unsubscribe(IComponentHook hook)
+    {
+        if (hook == null) return;
+        lock (_hooks)
+        {
+            if (_hooksSet.Remove(hook))
+            {
+                _hooks.Remove(hook);
+            }
+        }
+    }
+
     protected string EffectiveId => !string.IsNullOrWhiteSpace(Id) ? Id! : ComponentId;
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
     protected static bool IsBrowser => OperatingSystem.IsBrowser();
@@ -112,6 +158,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     /// <summary>BUG-1 FIX: единая точка ComponentToken, переопределяется SgJsComponentBase.</summary>
     protected internal virtual CancellationToken ComponentToken => _cts.Token;
+
+    /// <summary>Алиас для ComponentToken.</summary>
+    protected CancellationToken LifecycleToken => ComponentToken;
 
     // ── PERF: AdditionalAttributesFiltered ─────────────────────────────────────
     protected IReadOnlyDictionary<string, object>? AdditionalAttributesFiltered
@@ -158,12 +207,14 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     private int _previousVisible = 1;
     private bool _isFirstRender = true;
     private bool _isPrerendering;
+    private bool _isInitialized;
+    private int _renderCount;
     // FIX: используем HashSet для гарантии уникальности хуков
     private readonly HashSet<IComponentHook> _hooksSet = new(ReferenceEqualityComparer.Instance);
     private readonly List<IComponentHook> _hooks = [];
     private readonly SgCompositeDisposable _disposables = new();
     private ComponentSignalTracker? _signalBatcher;
-    private List<IDisposable>? _reactiveDisposables;
+    protected List<IDisposable>? _reactiveDisposables;
     private readonly CancellationTokenSource _cts = new();
     private readonly object _ariaCacheLock = new();
     private IReadOnlyDictionary<string, object>? _ariaCache;
@@ -202,9 +253,6 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             _hooks.Add(hook);
     }
 
-    protected void AddDisposable(IDisposable disposable) => _disposables.Add(disposable);
-    protected void AddDisposable(IAsyncDisposable disposable) => _disposables.Add(disposable);
-
     private void RunHooks(Action<IComponentHook> action)
     {
         foreach (var hook in _hooks)
@@ -223,48 +271,8 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         }
     }
 
-    // ── Reactive ───────────────────────────────────────────────────────────────
-    protected SgSignal<TValue> CreateSignal<TValue>(
-        TValue initial,
-        IEqualityComparer<TValue>? comparer = null)
-    {
-        var signal = comparer is null
-            ? new SgSignal<TValue>(initial)
-            : new SgSignal<TValue>(initial, comparer);
-        signal.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(signal);
-        return signal;
-    }
-
-    protected SgEffect RegisterEffect(Action action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-        var effect = new SgEffect(action);
-        effect.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(effect);
-        return effect;
-    }
-
-    protected SgEffect RegisterEffect(Func<Task> action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-        var effect = new SgEffect(action);
-        effect.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(effect);
-        return effect;
-    }
-
-    protected SgComputed<TValue> RegisterComputed<TValue>(Func<TValue> compute)
-    {
-        ArgumentNullException.ThrowIfNull(compute);
-        var computed = new SgComputed<TValue>(compute);
-        computed.Subscribe(this);
-        (_reactiveDisposables ??= []).Add(computed);
-        return computed;
-    }
-
-    protected void RegisterEffectInternal(IDisposable disposable)
-        => (_reactiveDisposables ??= []).Add(disposable);
+    protected void AddDisposable(IDisposable disposable) => _disposables.Add(disposable);
+    protected void AddDisposable(IAsyncDisposable disposable) => _disposables.Add(disposable);
 
     // ── ShouldRender ───────────────────────────────────────────────────────────
     protected override bool ShouldRender()
@@ -366,8 +374,16 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     {
         LogLifecycle(nameof(OnInitializedAsync));
         await base.OnInitializedAsync();
+        await OnInitializeAsync();
         await RunHooksAsync(h => h.OnInitializedAsync(this));
+        _isInitialized = true;
     }
+
+    /// <summary>
+    /// Асинхронная инициализация. Вызывается из OnInitializedAsync.
+    /// Переопределите для выполнения асинхронных задач при создании компонента.
+    /// </summary>
+    protected virtual Task OnInitializeAsync() => Task.CompletedTask;
 
     protected override void OnParametersSet()
     {
@@ -394,6 +410,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             _isPrerendering = false;
             _isFirstRender = false;
         }
+        
+        _renderCount++;
+
 #if DEBUG
         if (_renderStartTick > 0)
         {
@@ -530,7 +549,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task RefreshAsync()
     {
-        if (IsDisposed) return Task.CompletedTask;
+        if (IsDisposed || IsStaticSSR) return Task.CompletedTask;
         return InvokeAsync(StateHasChanged);
     }
 
@@ -658,6 +677,44 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     }
 
     // ── IAsyncDisposable ───────────────────────────────────────────────────────
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        
+        try { _cts.Cancel(); } catch { /* ignored */ }
+        _cts.Dispose();
+        
+        _disposables.Dispose();
+        
+        if (_reactiveDisposables is not null)
+        {
+            foreach (var rd in _reactiveDisposables)
+            {
+                try { rd.Dispose(); }
+                catch (Exception ex)
+                { Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId); }
+            }
+            _reactiveDisposables.Clear();
+        }
+
+        foreach (var hook in _hooks)
+        {
+            try { if (hook is IDisposable d) d.Dispose(); }
+            catch (Exception ex)
+            { Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId); }
+        }
+
+        _hooks.Clear();
+        _hooksSet.Clear();
+        
+        // Синхронная очистка батчера
+        var batcher = Interlocked.Exchange(ref _signalBatcher, null);
+        batcher?.Dispose();
+
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;

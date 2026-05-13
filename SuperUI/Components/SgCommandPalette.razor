@@ -2,10 +2,10 @@
 @* Cmd+K / Ctrl+K command palette — нет ни в одной Blazor библиотеке *@
 @inherits SgOverlayBase
 
-@if (Open)
+@if (Visible)
 {
-    <div class="sg-command-palette-backdrop" @onclick="CloseAsync"></div>
-    <div class="sg-command-palette" role="dialog" aria-label="Command palette">
+    <div class="sg-command-palette-backdrop" @onclick="HideAsync"></div>
+    <div id="@_elementId" class="sg-command-palette" role="dialog" aria-label="Command palette">
         <div class="sg-command-palette-search">
             <input @ref="_searchRef"
                    type="text"
@@ -46,6 +46,7 @@
     private string _query = "";
     private int _selectedIndex = 0;
     private ElementReference _searchRef;
+    private string _elementId = Utilities.ComponentIdGenerator.Generate("cp");
 
     private IEnumerable<SgCommand> FilteredCommands =>
         string.IsNullOrWhiteSpace(_query)
@@ -56,7 +57,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (Open)
+        if (Visible)
         {
             try { await _searchRef.FocusAsync(); } catch { }
         }
@@ -79,17 +80,26 @@
                     await ExecuteCommand(filtered[_selectedIndex]);
                 break;
             case "Escape":
-                await CloseAsync();
+                await HideAsync();
                 break;
         }
     }
 
     private async Task ExecuteCommand(SgCommand cmd)
     {
-        await CloseAsync();
+        await HideAsync();
         await OnCommandExecuted.InvokeAsync(cmd);
         await cmd.ExecuteAsync();
         _query = "";
         _selectedIndex = 0;
     }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Реализация SgOverlayBase
+    // ──────────────────────────────────────────────────────────────────────
+
+    protected override Task InitializeJsAsync(DotNetObjectReference<SgOverlayBase> dotNetRef) => Task.CompletedTask;
+    protected override Task ShowJsAsync(int zIndex) => Task.CompletedTask;
+    protected override Task HideJsAsync() => Task.CompletedTask;
+    protected override string GetOverlayElementId() => _elementId;
 }

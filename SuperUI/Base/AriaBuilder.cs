@@ -1,232 +1,211 @@
-// SuperUI/Base/AriaBuilder.cs 
-// Улучшения: 
-// - Поддержка ARIA 1.2: aria-description, aria-details, aria-errormessage 
-// - Fluent API 
-// - Возвращает IReadOnlyDictionary для splatting 
-// - Валидация значений в Debug режиме 
+// AriaBuilder.cs — Fluent Builder для ARIA атрибутов 
+// Обеспечивает корректные ARIA атрибуты и их валидацию 
  
-using System.Collections.Generic; 
-using System.Diagnostics; 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices; 
  
 namespace SuperUI.Base; 
  
 /// <summary> 
-/// Fluent builder для ARIA атрибутов (WAI-ARIA 1.2). 
-/// Использование: var aria = new AriaBuilder().Role("dialog").Label("Окно").Build(); 
+/// Fluent API для построения ARIA атрибутов. 
+/// Помогает избежать ошибок accessibility. 
+/// 
+/// Пример: 
+/// <code> 
+/// var aria = new AriaBuilder() 
+///     .Label("Close dialog") 
+///     .DescribedBy("dialog-desc") 
+///     .Expanded(isOpen) 
+///     .Disabled(isDisabled) 
+///     .Build(); 
+/// </code> 
 /// </summary> 
 public sealed class AriaBuilder 
 { 
-    private readonly Dictionary<string, object> _attributes = new(); 
+    private readonly Dictionary<string, object?> _attributes = new(StringComparer.OrdinalIgnoreCase); 
  
-    /// <summary>Создать новый builder.</summary> 
-    public static AriaBuilder Create() => new();
-
-    // ────────────────────────────────────────────────────────────────────── 
-    // ARIA 1.1 — основные атрибуты 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    public AriaBuilder Role(string role) 
+    /// <summary>aria-label</summary> 
+    public AriaBuilder Label(string? label, bool condition = true) 
     { 
-        _attributes["role"] = role; 
+        if (condition && !string.IsNullOrWhiteSpace(label)) 
+            _attributes["aria-label"] = label; 
         return this; 
     } 
  
-    public AriaBuilder Label(string label) 
+    /// <summary>aria-labelledby</summary> 
+    public AriaBuilder LabelledBy(string? id, bool condition = true) 
     { 
-        _attributes["aria-label"] = label; 
+        if (condition && !string.IsNullOrWhiteSpace(id)) 
+            _attributes["aria-labelledby"] = id; 
         return this; 
     } 
  
-    public AriaBuilder LabelledBy(string id) 
+    /// <summary>aria-describedby</summary> 
+    public AriaBuilder DescribedBy(string? id, bool condition = true) 
     { 
-        _attributes["aria-labelledby"] = id; 
+        if (condition && !string.IsNullOrWhiteSpace(id)) 
+            _attributes["aria-describedby"] = id; 
         return this; 
     } 
  
-    public AriaBuilder DescribedBy(string id) 
+    /// <summary>aria-expanded</summary> 
+    public AriaBuilder Expanded(bool expanded) 
     { 
-        _attributes["aria-describedby"] = id; 
+        _attributes["aria-expanded"] = expanded.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
+    /// <summary>aria-hidden</summary> 
     public AriaBuilder Hidden(bool hidden = true) 
     { 
         _attributes["aria-hidden"] = hidden.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder Expanded(bool? expanded) 
-    { 
-        _attributes["aria-expanded"] = expanded.HasValue 
-            ? expanded.Value.ToString().ToLowerInvariant() 
-            : "undefined"; 
-        return this; 
-    } 
- 
-    public AriaBuilder Selected(bool selected) 
-    { 
-        _attributes["aria-selected"] = selected.ToString().ToLowerInvariant(); 
-        return this; 
-    } 
- 
-    public AriaBuilder Checked(bool? @checked) 
-    { 
-        _attributes["aria-checked"] = @checked.HasValue 
-            ? @checked.Value.ToString().ToLowerInvariant() 
-            : "mixed"; 
-        return this; 
-    } 
- 
+    /// <summary>aria-disabled</summary> 
     public AriaBuilder Disabled(bool disabled = true) 
     { 
         _attributes["aria-disabled"] = disabled.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder Required(bool required = true) 
+    /// <summary>aria-selected</summary> 
+    public AriaBuilder Selected(bool selected = true) 
     { 
-        _attributes["aria-required"] = required.ToString().ToLowerInvariant(); 
+        _attributes["aria-selected"] = selected.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder Invalid(string? value = "true") 
+    /// <summary>aria-checked</summary> 
+    public AriaBuilder Checked(bool? isChecked) 
     { 
-        _attributes["aria-invalid"] = value ?? "true"; 
+        _attributes["aria-checked"] = isChecked switch 
+        { 
+            true => "true", 
+            false => "false", 
+            null => "mixed" 
+        }; 
         return this; 
     } 
  
-    public AriaBuilder Live(string politeness = "polite") 
+    /// <summary>aria-haspopup</summary> 
+    public AriaBuilder HasPopup(string? popupType = "true") 
     { 
-        Debug.Assert(politeness is "polite" or "assertive" or "off", 
-            "aria-live must be 'polite', 'assertive', or 'off'"); 
-        _attributes["aria-live"] = politeness; 
+        _attributes["aria-haspopup"] = popupType ?? "true"; 
         return this; 
     } 
  
+    /// <summary>aria-controls</summary> 
+    public AriaBuilder Controls(string? id, bool condition = true) 
+    { 
+        if (condition && !string.IsNullOrWhiteSpace(id)) 
+            _attributes["aria-controls"] = id; 
+        return this; 
+    } 
+ 
+    /// <summary>aria-live</summary> 
+    public AriaBuilder Live(string? politeness = "polite") 
+    { 
+        _attributes["aria-live"] = politeness ?? "off"; 
+        return this; 
+    } 
+ 
+    /// <summary>aria-atomic</summary> 
     public AriaBuilder Atomic(bool atomic = true) 
     { 
         _attributes["aria-atomic"] = atomic.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder HasPopup(string type = "true") 
+    /// <summary>aria-busy</summary> 
+    public AriaBuilder Busy(bool busy = true) 
     { 
-        _attributes["aria-haspopup"] = type; 
+        _attributes["aria-busy"] = busy.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder Controls(string id) 
+    /// <summary>aria-current</summary> 
+    public AriaBuilder Current(string? value = "true") 
     { 
-        _attributes["aria-controls"] = id; 
+        _attributes["aria-current"] = value ?? "true"; 
         return this; 
     } 
  
-    public AriaBuilder Owns(string id) 
+    /// <summary>aria-required</summary> 
+    public AriaBuilder Required(bool required = true) 
     { 
-        _attributes["aria-owns"] = id; 
+        _attributes["aria-required"] = required.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder SetSize(int size) 
+    /// <summary>aria-invalid</summary> 
+    public AriaBuilder Invalid(bool invalid = true) 
     { 
-        _attributes["aria-setsize"] = size; 
+        _attributes["aria-invalid"] = invalid.ToString().ToLowerInvariant(); 
         return this; 
     } 
  
-    public AriaBuilder PosInSet(int position) 
+    /// <summary>aria-errormessage</summary> 
+    public AriaBuilder ErrorMessage(string? id, bool condition = true) 
     { 
-        _attributes["aria-posinset"] = position; 
+        if (condition && !string.IsNullOrWhiteSpace(id)) 
+            _attributes["aria-errormessage"] = id; 
         return this; 
     } 
  
-    public AriaBuilder Level(int level) 
+    /// <summary>role</summary> 
+    public AriaBuilder Role(string? role, bool condition = true) 
     { 
-        _attributes["aria-level"] = level; 
+        if (condition && !string.IsNullOrWhiteSpace(role)) 
+            _attributes["role"] = role; 
         return this; 
     } 
  
-    public AriaBuilder ValueMin(double min) 
-    { 
-        _attributes["aria-valuemin"] = min; 
-        return this; 
-    } 
+    /// <summary>role (сокращение для alert)</summary> 
+    public AriaBuilder Alert() => Role("alert"); 
  
-    public AriaBuilder ValueMax(double max) 
-    { 
-        _attributes["aria-valuemax"] = max; 
-        return this; 
-    } 
+    /// <summary>role (сокращение для status)</summary> 
+    public AriaBuilder Status() => Role("status"); 
  
-    public AriaBuilder ValueNow(double now) 
-    { 
-        _attributes["aria-valuenow"] = now; 
-        return this; 
-    } 
+    /// <summary>role (сокращение для dialog)</summary> 
+    public AriaBuilder Dialog() => Role("dialog"); 
  
-    public AriaBuilder ValueText(string text) 
-    { 
-        _attributes["aria-valuetext"] = text; 
-        return this; 
-    } 
+    /// <summary>role (сокращение для button)</summary> 
+    public AriaBuilder ButtonRole() => Role("button"); 
  
-    // ────────────────────────────────────────────────────────────────────── 
-    // ARIA 1.2 — новые атрибуты 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    /// <summary> 
-    /// [ARIA 1.2] Прямое текстовое описание элемента. 
-    /// Используйте вместо aria-describedby когда нет отдельного элемента. 
-    /// </summary> 
-    public AriaBuilder Description(string description) 
+    /// <summary>Произвольный aria-* атрибут.</summary> 
+    public AriaBuilder Add(string attribute, string? value, bool condition = true) 
     { 
-        _attributes["aria-description"] = description; 
+        if (condition && !string.IsNullOrWhiteSpace(value)) 
+        { 
+            var key = attribute.StartsWith("aria-", StringComparison.OrdinalIgnoreCase) 
+                ? attribute 
+                : $"aria-{attribute}"; 
+            _attributes[key] = value; 
+        } 
         return this; 
     } 
  
     /// <summary> 
-    /// [ARIA 1.2] Ссылка на детальное описание (расширение aria-describedby). 
+    /// Построить словарь атрибутов. 
     /// </summary> 
-    public AriaBuilder Details(string id) 
+    public IReadOnlyDictionary<string, object?> Build() 
     { 
-        _attributes["aria-details"] = id; 
-        return this; 
+        return new Dictionary<string, object?>(_attributes); 
     } 
  
     /// <summary> 
-    /// [ARIA 1.2] Ссылка на элемент с сообщением об ошибке. 
-    /// Используется вместе с aria-invalid. 
+    /// Получить значение атрибута. 
     /// </summary> 
-    public AriaBuilder ErrorMessage(string id) 
+    public string? Get(string attribute) 
     { 
-        _attributes["aria-errormessage"] = id; 
-        return this; 
+        return _attributes.TryGetValue(attribute, out var value) ? value?.ToString() : null; 
     } 
  
-    // ────────────────────────────────────────────────────────────────────── 
-    // Кастомный атрибут 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    public AriaBuilder Set(string attribute, object value) 
-    { 
-        _attributes[attribute] = value; 
-        return this; 
-    } 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Построение 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    public IReadOnlyDictionary<string, object> Build() => _attributes; 
- 
-    /// <summary>Слияние с дополнительными атрибутами (для @attributes splatting).</summary> 
-    public IReadOnlyDictionary<string, object> BuildWith( 
-        IReadOnlyDictionary<string, object>? additional) 
-    { 
-        if (additional == null || additional.Count == 0) return _attributes; 
- 
-        var merged = new Dictionary<string, object>(_attributes); 
-        foreach (var kv in additional) 
-            merged[kv.Key] = kv.Value; 
-        return merged; 
-    } 
+    /// <summary> 
+    /// Пустой builder. 
+    /// </summary> 
+    public static AriaBuilder Empty => new(); 
 } 

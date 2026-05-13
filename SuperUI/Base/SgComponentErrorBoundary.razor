@@ -1,81 +1,36 @@
-@using System.Threading.Tasks
-@using Microsoft.AspNetCore.Components.Web
+@namespace SuperUI.Base
 @inherits Microsoft.AspNetCore.Components.Web.ErrorBoundary
 
-@* Компонент Error Boundary для изоляции ошибок отдельного компонента *@
-
-@if (_error is null)
+@if (CurrentException == null)
 {
     @ChildContent
 }
 else
 {
-    @if (FallbackContent is not null)
-    {
-        @FallbackContent(_error)
-    }
-    else
-    {
-        <div class="sg-error-boundary" role="alert">
-            <div class="sg-error-boundary__icon">⚠️</div>
-            <div class="sg-error-boundary__body">
-                <h4 class="sg-error-boundary__title">@(Title ?? "Произошла ошибка")</h4>
-                @if (ShowDetails)
-                {
-                    <p class="sg-error-boundary__message">@_error.Message</p>
-                }
-                @if (AllowRecover)
-                {
-                    <button class="sg-btn sg-btn--primary sg-btn--sm"
-                            type="button"
-                            @onclick="RecoverAsync">
-                        @(RecoverText ?? "Повторить")
-                    </button>
-                }
-            </div>
-        </div>
-    }
-}
+    <div class="sg-error-boundary @ErrorClass" role="alert" aria-live="assertive">
+        <h3 class="sg-error-boundary__title">@ErrorTitle</h3>
+        <p class="sg-error-boundary__description">@ErrorDescription</p>
 
-@code {
-    [Parameter] public RenderFragment?             ChildContent    { get; set; }
-    [Parameter] public RenderFragment<Exception>?  FallbackContent { get; set; }
-    [Parameter] public string?                     Title           { get; set; }
-    [Parameter] public bool                        ShowDetails     { get; set; } = false;
-    [Parameter] public bool                        AllowRecover    { get; set; } = true;
-    [Parameter] public string?                     RecoverText     { get; set; }
-    [Parameter] public EventCallback<Exception>    OnError         { get; set; }
+        @if (ShowTechnicalDetails)
+        {
+            <details class="sg-error-boundary__details">
+                <summary>Technical Details</summary>
+                <pre class="sg-error-boundary__stacktrace">@CurrentException.ToString()</pre>
+            </details>
+        }
 
-    private Exception? _error;
-
-    protected override void OnParametersSet()
-    {
-        // Сброс ошибки при смене параметров — позволяет восстановление извне
-        _error = null;
-    }
-
-    /// <summary>
-    /// ✅ ИСПРАВЛЕНИЕ CS0508:
-    /// Было:   protected override async ValueTask OnErrorAsync(Exception exception)
-    ///         → CS0508: возвращаемый тип должен быть Task
-    /// Стало:  protected override async Task OnErrorAsync(Exception exception)
-    ///
-    /// В Blazor 8+ сигнатура ErrorBoundary.OnErrorAsync вернулась к Task (не ValueTask).
-    /// Контракт: Microsoft.AspNetCore.Components.Web.ErrorBoundary.OnErrorAsync(Exception)
-    /// </summary>
-    protected override async Task OnErrorAsync(Exception exception)
-    {
-        _error = exception;
-
-        // Уведомляем внешних подписчиков об ошибке
-        if (OnError.HasDelegate)
-            await OnError.InvokeAsync(exception);
-    }
-
-    private async Task RecoverAsync()
-    {
-        _error = null;
-        Recover(); // встроенный метод ErrorBoundary для сброса состояния
-        await Task.CompletedTask;
-    }
+        @if (_retryCount < MaxRetryAttempts)
+        {
+            <button class="sg-error-boundary__retry-btn" 
+                    @onclick="RecoverAsync" 
+                    disabled="@_isRecovering">
+                @(_isRecovering ? "Recovering..." : RetryText)
+            </button>
+            <span class="sg-error-boundary__attempts">Attempt @_retryCount of @MaxRetryAttempts</span>
+        }
+        else
+        {
+            <p class="sg-error-boundary__max-attempts">Maximum retry attempts reached. Please refresh the page.</p>
+        }
+    </div>
 }

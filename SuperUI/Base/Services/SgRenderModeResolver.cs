@@ -1,117 +1,126 @@
-// SuperUI/Base/Services/SgRenderModeResolver.cs
-// NEW: Определение режима рендеринга через сервис (не только CascadingParameter)
-// Аналог: FluentUI использует HttpContext для определения среды
+// SgRenderModeResolver.cs — Сервис разрешения RenderMode для InteractiveAuto и глобальных настроек 
+ 
+using Microsoft.AspNetCore.Components; 
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options; 
+ 
+namespace SuperUI.Base.Services; 
+ 
+/// <summary> 
+/// Разрешает конкретный RenderMode на основе конфигурации и окружения. 
+/// Используется SgRenderModeDetector'ом. 
+/// </summary> 
+public class SgRenderModeResolver 
+{ 
+    private readonly IOptions<SgLibraryOptions> _options; 
+    private readonly IServiceProvider _serviceProvider; 
+    private static readonly Type? s_circuitHandlerType;
 
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
-using Microsoft.JSInterop;
-
-namespace SuperUI.Base.Services;
-
-/// <summary>
-/// Интерфейс для определения текущего режима рендеринга компонента.
-/// </summary>
-public interface ISgRenderModeResolver
-{
-    /// <summary>true — работаем в браузере (WASM или Blazor Server с JS).</summary>
-    bool IsBrowser { get; }
-
-    /// <summary>true — сервер (Server-side или SSR).</summary>
-    bool IsServer { get; }
-
-    /// <summary>true — статический SSR (нет интерактивности).</summary>
-    bool IsStaticSSR { get; }
-
-    /// <summary>true — InteractiveServer (SignalR).</summary>
-    bool IsInteractiveServer { get; }
-
-    /// <summary>true — InteractiveWebAssembly.</summary>
-    bool IsInteractiveWebAssembly { get; }
-
-    /// <summary>true — InteractiveAuto.</summary>
-    bool IsInteractiveAuto { get; }
-
-    /// <summary>true — идёт prerendering.</summary>
-    bool IsPrerendering { get; }
-
-    /// <summary>true — включён Streaming Rendering.</summary>
-    bool IsStreamingRendering { get; }
-
-    /// <summary>Имя текущего режима для логов/диагностики.</summary>
-    string ModeName { get; }
-}
-
-/// <summary>
-/// Реализация для WebAssembly.
-/// Регистрируется в Program.cs на клиенте.
-/// </summary>
-public sealed class WasmRenderModeResolver : ISgRenderModeResolver
-{
-    public bool IsBrowser => true;
-    public bool IsServer => false;
-    public bool IsStaticSSR => false;
-    public bool IsInteractiveServer => false;
-    public bool IsInteractiveWebAssembly => true;
-    public bool IsInteractiveAuto => false;
-    public bool IsPrerendering => false;
-    public bool IsStreamingRendering => false;
-    public string ModeName => "InteractiveWebAssembly";
-}
-
-/// <summary>
-/// Реализация для Server-side (определяет prerendering через HttpContext).
-/// </summary>
-public sealed class ServerRenderModeResolver : ISgRenderModeResolver
-{
-    private readonly IPrerenderingDetector _prerenderingDetector;
-    private readonly IStreamingRenderingService? _streamingService;
-
-    public ServerRenderModeResolver(
-        IPrerenderingDetector prerenderingDetector,
-        IStreamingRenderingService? streamingService = null)
+    static SgRenderModeResolver()
     {
-        _prerenderingDetector = prerenderingDetector;
-        _streamingService = streamingService;
+        // Пытаемся найти тип CircuitHandler без жесткой зависимости
+        try
+        {
+            s_circuitHandlerType = Type.GetType("Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, Microsoft.AspNetCore.Components.Server");
+        }
+        catch { }
     }
 
-    public bool IsBrowser => false;
-    public bool IsServer => true;
-    public bool IsStaticSSR => !IsPrerendering && _streamingService?.IsStreaming != true;
-    public bool IsInteractiveServer => !IsPrerendering;
-    public bool IsInteractiveWebAssembly => false;
-    public bool IsInteractiveAuto => false;
-    public bool IsPrerendering => _prerenderingDetector.IsPrerendering;
-    public bool IsStreamingRendering => _streamingService?.IsStreaming ?? false;
-    public string ModeName => IsPrerendering ? "Prerendering"
-        : IsStreamingRendering ? "StreamingSSR"
-        : "InteractiveServer";
-}
-
-/// <summary>
-/// Реализация для InteractiveAuto (определяет среду динамически).
-/// </summary>
-public sealed class AutoRenderModeResolver : ISgRenderModeResolver
-{
-    private readonly IPrerenderingDetector _prerenderingDetector;
-
-    public AutoRenderModeResolver(IPrerenderingDetector prerenderingDetector)
-        => _prerenderingDetector = prerenderingDetector;
-
-    public bool IsBrowser => OperatingSystem.IsBrowser();
-    public bool IsServer => !IsBrowser;
-    public bool IsStaticSSR => false;
-    public bool IsInteractiveServer => IsServer && !IsPrerendering;
-    public bool IsInteractiveWebAssembly => IsBrowser;
-    public bool IsInteractiveAuto => true;
-    public bool IsPrerendering => _prerenderingDetector.IsPrerendering;
-    public bool IsStreamingRendering => false;
-    public string ModeName => IsBrowser ? "InteractiveAuto(WASM)" : "InteractiveAuto(Server)";
-}
-
-/// <summary>
-/// Вспомогательный интерфейс для Streaming Rendering.
-/// </summary>
-public interface IStreamingRenderingService
-{
-    bool IsStreaming { get; }
-}
+    public SgRenderModeResolver( 
+        IOptions<SgLibraryOptions> options, 
+        IServiceProvider serviceProvider) 
+    { 
+        _options = options; 
+        _serviceProvider = serviceProvider; 
+    } 
+ 
+    /// <summary> 
+    /// Разрешает текущий RenderMode. 
+    /// </summary> 
+    public SgRenderMode ResolveRenderMode() 
+    { 
+        var options = _options.Value; 
+ 
+        // Если явно указан режим в опциях — используем его 
+        if (options.DefaultRenderMode != SgRenderMode.Unknown) 
+            return options.DefaultRenderMode; 
+ 
+        // Определяем по окружению 
+        var isWasm = OperatingSystem.IsBrowser(); 
+        var hasHttpContext = _serviceProvider.GetService<IHttpContextAccessor>()?.HttpContext != null; 
+ 
+        if (isWasm) 
+        { 
+            return SgRenderMode.InteractiveWebAssembly; 
+        } 
+ 
+        if (hasHttpContext) 
+        { 
+            // Проверяем, установлен ли SignalR circuit через рефлексию
+            if (s_circuitHandlerType != null)
+            {
+                var circuitHandler = _serviceProvider.GetService(s_circuitHandlerType); 
+                if (circuitHandler != null) 
+                    return SgRenderMode.InteractiveServer; 
+            }
+ 
+            return SgRenderMode.StaticSSR; 
+        } 
+ 
+        return SgRenderMode.InteractiveServer; // По умолчанию 
+    } 
+} 
+ 
+/// <summary> 
+/// Методы расширения для RenderHandle. 
+/// </summary> 
+public static class RenderHandleExtensions 
+{ 
+    private static readonly System.Reflection.FieldInfo? s_isRenderingInteractiveField; 
+ 
+    static RenderHandleExtensions() 
+    { 
+        // Пытаемся получить доступ к внутреннему полю RenderHandle 
+        try 
+        { 
+             s_isRenderingInteractiveField = typeof(RenderHandle) 
+                 .GetField("_isRenderingInteractive", 
+                     System.Reflection.BindingFlags.NonPublic | 
+                     System.Reflection.BindingFlags.Instance); 
+        } 
+        catch 
+        { 
+            // В некоторых версиях может не работать 
+        } 
+    } 
+ 
+    /// <summary> 
+    /// Определяет, находится ли компонент в интерактивном режиме рендеринга. 
+    /// </summary> 
+    public static bool IsRenderingInteractive(this RenderHandle handle) 
+    { 
+        if (s_isRenderingInteractiveField != null) 
+        { 
+            try 
+            { 
+                return (bool)s_isRenderingInteractiveField.GetValue(handle)!; 
+            } 
+            catch 
+            { 
+                // Fallback 
+            } 
+        } 
+ 
+        // Fallback: проверяем Dispatcher 
+        try 
+        { 
+            var dispatcher = handle.Dispatcher; 
+            return dispatcher != null; 
+        } 
+        catch 
+        { 
+            return false; 
+        } 
+    } 
+} 

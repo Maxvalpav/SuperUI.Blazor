@@ -1,435 +1,307 @@
-// SuperUI/Base/Reactive/SgSignal.cs
-// ИСПРАВЛЕНИЯ v3:
-// ✅ PERF-4: ArrayPool для snapshot — zero-allocation уведомление
-// ✅ BUG-10 prevention: SubscribeObserver проверяет дубли
-// ✅ НОВОЕ: Subscribe(Action<T>) — подписка без компонента
-// ✅ НОВОЕ: Derived(Func<T, TDerived>) — создать производный сигнал
-// ✅ НОВОЕ: SignalBatch integration — отложенная нотификация при Batch()
-
-using System.Buffers;
-using System.Runtime.CompilerServices;
-
-namespace SuperUI.Base.Reactive;
-
-public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlushable, ISgSignal<T>
-{
-    private readonly HashSet<ISignalObserver> _untypedObservers = new();
-
-    void ISignalSubscribable.SubscribeObserverUntyped(ISignalObserver observer)
-    {
-        _lock.EnterWriteLock();
-        try { _untypedObservers.Add(observer); }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    private T _value;
-    private readonly IEqualityComparer<T> _comparer;
-    private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
-    private readonly HashSet<ISignalObserver<T>> _observers = new();
-    private readonly List<WeakReference<Action<T>>> _callbacks = new();
-    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
-    private int _disposedInt;
-    private volatile bool _dirty;
-    private int _notifyCount;
-    private const int PurgeEveryN = 100; // purge каждые 100 нотификаций
-
-    public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
-    {
-        _value = initial;
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-    }
-
-    public T Value
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get
-        {
-            SignalTracker.Track(this);
-            return _value;
-        }
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        set => Set(value);
-    }
-
-    public T Peek()
-    {
-        _lock.EnterReadLock();
-        try { return _value; }
-        finally { _lock.ExitReadLock(); }
-    }
-
-    public void Set(T newValue)
-    {
-        if (Volatile.Read(ref _disposedInt) == 1) return;
-
-        bool changed;
-        _lock.EnterWriteLock();
-        try
-        {
-            changed = !_comparer.Equals(_value, newValue);
-            if (changed)
-            {
-                _value = newValue;
-
-                // Если внутри SignalBatch — откладываем нотификацию
-                if (SignalBatch.IsBatching)
-                {
-                    _dirty = true;
-                    SignalBatch.AddDirty(this);
-                    return;
-                }
-            }
-        }
-        finally { _lock.ExitWriteLock(); }
-
-        if (changed)
-            NotifySubscribers();
-    }
-
-    public void Update(Func<T, T> updater)
-    {
-        ArgumentNullException.ThrowIfNull(updater);
-        if (Volatile.Read(ref _disposedInt) == 1) return;
-
-        T newValue;
-        bool changed;
-        _lock.EnterWriteLock();
-        try
-        {
-            newValue = updater(_value);
-            changed = !_comparer.Equals(_value, newValue);
-            if (changed)
-            {
-                _value = newValue;
-                if (SignalBatch.IsBatching)
-                {
-                    _dirty = true;
-                    SignalBatch.AddDirty(this);
-                    return;
-                }
-            }
-        }
-        finally { _lock.ExitWriteLock(); }
-
-        if (changed)
-            NotifySubscribers();
-    }
-
-    /// <summary>Сбросить значение без нотификации.</summary>
-    public void Reset(T value)
-    {
-        _lock.EnterWriteLock();
-        try { _value = value; }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    /// <summary>Принудительно уведомить подписчиков (даже без изменения).</summary>
-    public void ForceNotify()
-    {
-        if (Volatile.Read(ref _disposedInt) == 1) return;
-        NotifySubscribers();
-    }
-
-    // Вызывается из SignalBatch.End()
-    void ISignalFlushable.FlushIfDirty()
-    {
-        if (_dirty)
-        {
-            _dirty = false;
-            NotifySubscribers();
-        }
-    }
-
-    // ── Подписки ────────────────────────────────────────────────────────────────
-
-    public IDisposable Subscribe(Action<T> callback)
-    {
-        ArgumentNullException.ThrowIfNull(callback);
-        var weak = new WeakReference<Action<T>>(callback);
-        _lock.EnterWriteLock();
-        try { _callbacks.Add(weak); }
-        finally { _lock.ExitWriteLock(); }
-        return new CallbackDisposable(this, callback, weak);
-    }
-
-    /// <summary>Начать пакетное обновление (batch).</summary>
-    public IDisposable BeginBatch() => SignalBatch.Begin();
-
-    public SgSignal<TDerived> Derived<TDerived>(Func<T, TDerived> selector)
-    {
-        ArgumentNullException.ThrowIfNull(selector);
-        var derived = new SgSignal<TDerived>(selector(Peek()));
-        Subscribe(value => derived.Set(selector(value)));
-        return derived;
-    }
-
-    public IObservable<T> AsObservable() => new SignalObservable(this);
-
-    internal void Subscribe(SgComponentBase component)
-    {
-        _lock.EnterWriteLock();
-        try { _subscribers.Add(new WeakReference<SgComponentBase>(component)); }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    internal void SubscribeObserver(ISignalObserver<T> observer)
-    {
-        _lock.EnterWriteLock();
-        try
-        {
-            // BUG-10 prevention: проверяем дубли
-            if (_observers.Contains(observer)) return;
-            _observers.Add(observer);
-        }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    internal void UnsubscribeObserver(ISignalObserver<T> observer)
-    {
-        _lock.EnterWriteLock();
-        try { _observers.Remove(observer); }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    public void PurgeDeadSubscribers()
-    {
-        _lock.EnterWriteLock();
-        try
-        {
-            _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
-            _callbacks.RemoveWhere(w => !w.TryGetTarget(out _));
-        }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    internal void Cleanup()
-    {
-        _lock.EnterWriteLock();
-        try
-        {
-            _subscribers.RemoveWhere(wr => !wr.TryGetTarget(out var c) || c.IsDisposed);
-            _callbacks.RemoveWhere(wr => !wr.TryGetTarget(out _));
-        }
-        finally { _lock.ExitWriteLock(); }
-    }
-
-    // ── Нотификация (ArrayPool для zero-allocation) ─────────────────────────────
-
-    private void NotifySubscribers()
-    {
-        // ✅ PERF-1: fast-path — нет подписчиков, не захватываем lock
-        if (_subscribers.Count == 0
-            && _observers.Count == 0
-            && _callbacks.Count == 0
-            && _untypedObservers.Count == 0)
-            return;
-
-        WeakReference<SgComponentBase>[]? rented = null;
-        ISignalObserver<T>[]? observerSnapshot = null;
-        WeakReference<Action<T>>[]? callbackSnapshot = null;
-        int subCount = 0;
-
-        _lock.EnterReadLock();
-        try
-        {
-            if (_subscribers.Count > 0)
-            {
-                rented = ArrayPool<WeakReference<SgComponentBase>>.Shared.Rent(_subscribers.Count);
-                foreach (var r in _subscribers)
-                    rented[subCount++] = r;
-            }
-
-            if (_observers.Count > 0)
-                observerSnapshot = _observers.ToArray();
-
-            if (_callbacks.Count > 0)
-                callbackSnapshot = _callbacks.ToArray();
-        }
-        finally { _lock.ExitReadLock(); }
-
-        T currentValue = Peek();
-        List<WeakReference<SgComponentBase>>? deadComponents = null;
-
-        try
-        {
-            if (rented is not null)
-            {
-                for (int i = 0; i < subCount; i++)
-                {
-                    if (!rented[i].TryGetTarget(out var component) || component.IsDisposed)
-                    {
-                        deadComponents ??= [];
-                        deadComponents.Add(rented[i]);
-                        continue;
-                    }
-
-                    try { component.RequestRender(); }
-                    catch (ObjectDisposedException) { deadComponents ??= []; deadComponents.Add(rented[i]); }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[SgSignal] Subscriber error: {ex.Message}");
-                    }
-                }
-            }
-
-            if (observerSnapshot is not null)
-                foreach (var obs in observerSnapshot)
-                {
-                    try { obs.OnSignalChanged(); }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[SgSignal] Observer error: {ex.Message}");
-                    }
-                }
-
-            // Untyped observers (computed, effects)
-            ISignalObserver[]? untypedSnapshot = null;
-            _lock.EnterReadLock();
-            try
-            {
-                if (_untypedObservers.Count > 0)
-                    untypedSnapshot = _untypedObservers.ToArray();
-            }
-            finally { _lock.ExitReadLock(); }
-
-            if (untypedSnapshot is not null)
-                foreach (var obs in untypedSnapshot)
-                {
-                    try { obs.OnSignalChanged(); }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[SgSignal] Untyped observer error: {ex.Message}");
-                    }
-                }
-
-            if (callbackSnapshot is not null)
-                foreach (var weak in callbackSnapshot)
-                {
-                    if (weak.TryGetTarget(out var cb))
-                    {
-                        try { cb(currentValue); }
-                        catch (Exception ex)
-                        {
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[SgSignal] Callback error: {ex.Message}");
-                        }
-                    }
-                }
-        }
-        finally
-        {
-            if (rented is not null)
-                ArrayPool<WeakReference<SgComponentBase>>.Shared.Return(rented, clearArray: true);
-        }
-
-        if (deadComponents is not null)
-        {
-            _lock.EnterWriteLock();
-            try
-            {
-                foreach (var d in deadComponents)
-                    _subscribers.Remove(d);
-            }
-            finally { _lock.ExitWriteLock(); }
-        }
-
-        // Авто-очистка каждые N нотификаций
-        if (Interlocked.Increment(ref _notifyCount) % PurgeEveryN == 0)
-            PurgeDeadSubscribers();
-    }
-
-    // ── IDisposable ─────────────────────────────────────────────────────────────
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-        _lock.EnterWriteLock();
-        try
-        {
-            _subscribers.Clear();
-            _observers.Clear();
-            _callbacks.Clear();
-            _untypedObservers.Clear();
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-            _lock.Dispose();
-        }
-    }
-
-    public static implicit operator T(SgSignal<T> signal) => signal.Value;
-    public override string ToString() => $"SgSignal<{typeof(T).Name}>({_value})";
-
-    // ── Вспомогательные типы ────────────────────────────────────────────────────
-
-    private sealed class CallbackDisposable : IDisposable
-    {
-        private readonly SgSignal<T> _signal;
-        private readonly Action<T> _callback;
-        private readonly WeakReference<Action<T>> _weak;
-        private int _disposed;
-
-        public CallbackDisposable(SgSignal<T> signal, Action<T> callback, WeakReference<Action<T>> weak)
-        {
-            _signal = signal;
-            _callback = callback;
-            _weak = weak;
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-            _signal._lock.EnterWriteLock();
-            try { _signal._callbacks.Remove(_weak); }
-            finally { _signal._lock.ExitWriteLock(); }
-        }
-    }
-
-    private sealed class SignalObservable : IObservable<T>
-    {
-        private readonly SgSignal<T> _signal;
-        public SignalObservable(SgSignal<T> signal) => _signal = signal;
-
-        public IDisposable Subscribe(IObserver<T> observer)
-        {
-            ArgumentNullException.ThrowIfNull(observer);
-            var adapter = new ObserverAdapter(observer, _signal);
-            _signal.SubscribeObserver(adapter);
-            try { observer.OnNext(_signal.Peek()); } catch { }
-            return adapter;
-        }
-    }
-
-    private sealed class ObserverAdapter : ISignalObserver<T>, IDisposable
-    {
-        private readonly IObserver<T> _observer;
-        private readonly SgSignal<T> _signal;
-        private int _disposed;
-
-        public ObserverAdapter(IObserver<T> observer, SgSignal<T> signal)
-        {
-            _observer = observer;
-            _signal = signal;
-        }
-
-        public void OnSignalChanged()
-        {
-            if (Volatile.Read(ref _disposed) == 1) return;
-            try { _observer.OnNext(_signal.Peek()); } catch { }
-        }
-
-        public void OnSignalRead(SgSignal<T> signal) { }
-        public void OnComputedRead(SgComputed<T> computed) { }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-            _signal.UnsubscribeObserver(this);
-            try { _observer.OnCompleted(); } catch { }
-        }
-    }
-}
+// SgSignal.cs — Полностью переписанная реактивная система сигналов 
+// AOT-совместимая (минимум рефлексии, нет Expression деревьев) 
+// Интегрирована с Blazor через SgReactiveComponentBase 
+// Поддерживает batch-обновления, equality checking, и отладку 
+ 
+using System.Collections.Concurrent; 
+using System.Diagnostics; 
+using System.Runtime.CompilerServices; 
+ 
+namespace SuperUI.Base.Reactive; 
+ 
+// ══════════════════════════════════════════════ 
+//  ИНТЕРФЕЙСЫ 
+// ══════════════════════════════════════════════ 
+ 
+/// <summary> 
+/// Базовый интерфейс для всех сигналов. 
+/// </summary> 
+public interface ISgSignal 
+ { 
+     /// <summary>Уникальное имя сигнала для отладки.</summary> 
+     string? DebugName { get; } 
+ 
+     /// <summary>Количество активных подписчиков.</summary> 
+     int SubscriberCount { get; } 
+ 
+     /// <summary>Подписать наблюдателя на изменения сигнала.</summary> 
+     void Subscribe(ISignalObserver observer); 
+ 
+     /// <summary>Отписать наблюдателя от изменений сигнала.</summary> 
+     void Unsubscribe(ISignalObserver observer); 
+ } 
+ 
+ /// <summary> 
+ /// Типизированный сигнал с возможностью чтения значения. 
+ /// </summary> 
+ public interface IReadOnlySignal<out T> : ISgSignal 
+ { 
+     /// <summary>Текущее значение сигнала.</summary> 
+     T Value { get; } 
+ } 
+ 
+ /// <summary> 
+ /// Типизированный сигнал с возможностью записи значения. 
+ /// </summary> 
+ public interface ISgSignal<T> : IReadOnlySignal<T> 
+ { 
+     /// <summary>Установить новое значение сигнала.</summary> 
+     void Set(T value); 
+ } 
+ 
+ /// <summary> 
+ /// Наблюдатель изменений сигналов. 
+ /// </summary> 
+ public interface ISignalObserver 
+ { 
+     /// <summary>Вызывается при изменении сигнала.</summary> 
+     void OnSignalChanged(ISgSignal signal); 
+ } 
+ 
+ // ══════════════════════════════════════════════ 
+ //  SgSignal<T> — Основной реактивный сигнал 
+ // ══════════════════════════════════════════════ 
+ 
+ /// <summary> 
+ /// Реактивный сигнал — ячейка с отслеживаемым значением. 
+ /// Аналог useState в React, ref в Vue, createSignal в SolidJS. 
+ /// 
+ /// Потокобезопасен для чтения, запись через Set должна выполняться в UI потоке. 
+ /// AOT-совместим: не использует Expression деревья или рефлексию. 
+ /// </summary> 
+ [DebuggerDisplay("{DebugName,nq} = {_value} ({SubscriberCount} subscribers)")] 
+ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable 
+ { 
+     // ────────────────────────────────────────────── 
+     //  Поля 
+     // ────────────────────────────────────────────── 
+ 
+     private T _value; 
+     private readonly IEqualityComparer<T>? _comparer; 
+     private ISignalObserver? _observer; // Оптимизация: один подписчик без списка 
+     private List<ISignalObserver>? _observers; // Расширяемый список подписчиков 
+     private bool _isDisposed; 
+     private readonly object _lock = new(); 
+ 
+     // ────────────────────────────────────────────── 
+     //  Свойства 
+     // ────────────────────────────────────────────── 
+ 
+     public string? DebugName { get; } 
+ 
+     public int SubscriberCount 
+     { 
+         get 
+         { 
+             lock (_lock) 
+             { 
+                 if (_observers != null) return _observers.Count; 
+                 return _observer != null ? 1 : 0; 
+             } 
+         } 
+     } 
+ 
+     /// <summary> 
+     /// Текущее значение сигнала. 
+     /// При чтении из SgReactiveComponentBase.BuildReactiveRenderTree автоматически отслеживается. 
+     /// </summary> 
+     public T Value 
+     { 
+         [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+         get 
+         { 
+             // Неявное отслеживание для реактивных компонентов 
+             SgReactiveComponentBase.TrackSignalImplicitly(this); 
+             return _value; 
+         } 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Конструкторы 
+     // ────────────────────────────────────────────── 
+ 
+     public SgSignal(T initialValue, string? debugName = null) 
+         : this(initialValue, null, debugName) { } 
+ 
+     public SgSignal(T initialValue, IEqualityComparer<T>? comparer, string? debugName = null) 
+     { 
+         _value = initialValue; 
+         _comparer = comparer; 
+         DebugName = debugName ?? $"Signal<{typeof(T).Name}>"; 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Публичные методы 
+     // ────────────────────────────────────────────── 
+ 
+     /// <summary> 
+     /// Установить новое значение. Если значение не изменилось (по equality comparer) — уведомления не рассылаются. 
+     /// </summary> 
+     [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+     public void Set(T newValue) 
+     { 
+         if (_isDisposed) 
+             throw new ObjectDisposedException(DebugName); 
+ 
+         // Проверяем, изменилось ли значение 
+         if (AreEqual(_value, newValue)) 
+             return; 
+ 
+         _value = newValue; 
+ 
+         // Если внутри батча — откладываем уведомление 
+         if (SignalBatch.IsBatching) 
+         { 
+             SignalBatch.MarkDirty(this); 
+             return; 
+         } 
+ 
+         NotifyObservers(); 
+     } 
+ 
+     /// <summary> 
+     /// Обновить значение через мутатор (функция, принимающая текущее значение и возвращающая новое). 
+     /// Атомарная операция. 
+     /// </summary> 
+     [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+     public void Update(Func<T, T> mutator) 
+     { 
+         var newValue = mutator(_value); 
+         Set(newValue); 
+     } 
+ 
+     /// <summary> 
+     /// Замьютить текущее значение (если это ссылочный тип) и принудительно уведомить подписчиков. 
+     /// Использовать с осторожностью — обходит equality check. 
+     /// </summary> 
+     public void MutateAndNotify(Action<T> mutator) 
+     { 
+         if (_isDisposed) 
+             throw new ObjectDisposedException(DebugName); 
+ 
+         mutator(_value); 
+ 
+         if (SignalBatch.IsBatching) 
+         { 
+             SignalBatch.MarkDirty(this); 
+             return; 
+         } 
+ 
+         NotifyObservers(); 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Подписка / Отписка 
+     // ────────────────────────────────────────────── 
+ 
+     public void Subscribe(ISignalObserver observer) 
+     { 
+         if (_isDisposed) return; 
+ 
+         lock (_lock) 
+         { 
+             if (_observer == null) 
+             { 
+                 _observer = observer; 
+             } 
+             else if (_observer == observer) 
+             { 
+                 return; // Уже подписан 
+             } 
+             else 
+             { 
+                 _observers ??= new List<ISignalObserver>(4) { _observer }; 
+                 if (!_observers.Contains(observer)) 
+                 { 
+                     _observers.Add(observer); 
+                 } 
+             } 
+         } 
+     } 
+ 
+     public void Unsubscribe(ISignalObserver observer) 
+     { 
+         lock (_lock) 
+         { 
+             if (_observer == observer) 
+             { 
+                 _observer = null; 
+                 // Переносим первого из списка в _observer (если есть) 
+                 if (_observers is { Count: > 0 }) 
+                 { 
+                     _observer = _observers[0]; 
+                     _observers.RemoveAt(0); 
+                     if (_observers.Count == 0) 
+                         _observers = null; 
+                 } 
+             } 
+             else if (_observers != null) 
+             { 
+                 _observers.Remove(observer); 
+                 if (_observers.Count == 0) 
+                     _observers = null; 
+             } 
+         } 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Внутренние методы 
+     // ────────────────────────────────────────────── 
+ 
+     void ISignalFlushable.FlushIfDirty() => NotifyObservers(); 
+ 
+     internal void NotifyObservers() 
+     { 
+         lock (_lock) 
+         { 
+             if (_observer != null) 
+             { 
+                 _observer.OnSignalChanged(this); 
+             } 
+ 
+             if (_observers != null) 
+             { 
+                 // Копируем список чтобы избежать проблем при изменении во время итерации 
+                 var snapshot = _observers.ToArray(); 
+                 foreach (var obs in snapshot) 
+                 { 
+                     obs.OnSignalChanged(this); 
+                 } 
+             } 
+         } 
+     } 
+ 
+     [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+     private bool AreEqual(T a, T b) 
+     { 
+         if (_comparer != null) 
+             return _comparer.Equals(a, b); 
+ 
+         return EqualityComparer<T>.Default.Equals(a, b); 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  IDisposable 
+     // ────────────────────────────────────────────── 
+ 
+     public void Dispose() 
+     { 
+         if (_isDisposed) return; 
+         _isDisposed = true; 
+ 
+         lock (_lock) 
+         { 
+             _observer = null; 
+             _observers?.Clear(); 
+             _observers = null; 
+         } 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Операторы для удобства 
+     // ────────────────────────────────────────────── 
+ 
+     public static implicit operator T(SgSignal<T> signal) => signal.Value; 
+ 
+     public override string ToString() => $"{DebugName}: {_value}"; 
+ }

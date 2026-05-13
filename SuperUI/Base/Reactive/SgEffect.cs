@@ -10,38 +10,28 @@ namespace SuperUI.Base.Reactive;
 /// <summary>
 /// Side-effect, реактивно реагирующий на изменения отслеживаемых сигналов.
 /// </summary>
-public sealed class SgEffect : ISignalObserver, IDisposable
+public sealed class SgEffect : ISignalTrackingObserver, IDisposable, ISignalFlushable
 {
     private readonly Action? _sync;
     private readonly Func<Task>? _async;
     private readonly Action<Exception>? _onError;
 
-    private readonly ConcurrentQueue<object> _queue = new();
     private int _disposed;
     private int _isRunning;
     private int _paused;
+    private readonly HashSet<ISgSignal> _dependencies = new();
+    private readonly object _lock = new();
 
-    // Лимитированная очередь — максимум 1 задача, drops лишние
-    private const int MaxQueueSize = 1;
-    private int _droppedCount;
-
-    /// <summary>true, если эффект уже dispose'нут.</summary>
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
-
-    /// <summary>true, если эффект на паузе (Pause).</summary>
     public bool IsPaused => Volatile.Read(ref _paused) == 1;
-
-    /// <summary>Эффект сейчас в очереди на исполнение или исполняется.</summary>
     public bool IsRunning => Volatile.Read(ref _isRunning) == 1;
-
-    /// <summary>Сколько уведомлений было отброшено из-за переполнения очереди.</summary>
-    public int DroppedCount => _droppedCount;
 
     public SgEffect(Action action, Action<Exception>? onError = null)
     {
         ArgumentNullException.ThrowIfNull(action);
         _sync = action;
         _onError = onError;
+        Run(); // Initial run to track dependencies
     }
 
     public SgEffect(Func<Task> action, Action<Exception>? onError = null)
@@ -49,49 +39,38 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         ArgumentNullException.ThrowIfNull(action);
         _async = action;
         _onError = onError;
+        Run(); // Initial run to track dependencies
     }
 
-    // ── Subscribe to component lifecycle (auto-dispose on component dispose) ──
-    /// <summary>
-    /// Привязать эффект к компоненту — при изменениях вызывает RequestRender.
-    /// (Сами сигналы подписываются на компонент через SignalTracker.)
-    /// </summary>
-    public void Subscribe(SgComponentBase component)
-    {
-        // Поведение совместимое: эффект сам по себе не требует компонента,
-        // но для жизненного цикла мы храним ссылку, чтобы dispose'нуть.
-        // Здесь — фактически no-op; компонент сам владеет эффектом через _reactiveDisposables.
-        _ = component;
-    }
-
-    // ── Pause / Resume ────────────────────────────────────────────────────────
     public void Pause() => Volatile.Write(ref _paused, 1);
 
     public void Resume()
     {
-        if (Interlocked.Exchange(ref _paused, 0) == 1 && _queue.Count > 0)
+        if (Interlocked.Exchange(ref _paused, 0) == 1)
             Schedule();
     }
 
-    // ── Enqueue ───────────────────────────────────────────────────────────────
-    public void Enqueue()
+    public void OnSignalRead(ISgSignal signal)
     {
-        if (IsDisposed) return;
-
-        if (_queue.Count >= MaxQueueSize)
+        lock (_lock)
         {
-            Interlocked.Increment(ref _droppedCount);
-            return;
+            if (_dependencies.Add(signal))
+            {
+                signal.Subscribe(this);
+            }
         }
-
-        _queue.Enqueue(this);
-        if (!IsPaused) Schedule();
     }
 
-    // ── ISignalObserver ───────────────────────────────────────────────────────
-    public void OnSignalChanged() => Enqueue();
+    public void OnSignalChanged(ISgSignal signal)
+    {
+        Schedule();
+    }
 
-    // ── Schedule ──────────────────────────────────────────────────────────────
+    void ISignalFlushable.FlushIfDirty()
+    {
+        Run();
+    }
+
     private void Schedule()
     {
         if (IsDisposed || IsPaused) return;
@@ -99,12 +78,19 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         if (Interlocked.CompareExchange(ref _isRunning, 1, 0) == 1)
             return;
 
-        SignalBatch.EnqueueEffect(this);
+        if (SignalBatch.IsBatching)
+        {
+            SignalBatch.MarkDirty(this);
+        }
+        else
+        {
+            SignalBatch.EnqueueEffect(this);
+        }
     }
 
     public void Run()
     {
-        if (IsDisposed || IsPaused || !_queue.TryDequeue(out _))
+        if (IsDisposed || IsPaused)
         {
             Volatile.Write(ref _isRunning, 0);
             return;
@@ -112,27 +98,35 @@ public sealed class SgEffect : ISignalObserver, IDisposable
 
         try
         {
-            if (_sync is not null)
+            lock (_lock)
             {
-                _sync();
+                foreach (var dep in _dependencies) dep.Unsubscribe(this);
+                _dependencies.Clear();
             }
-            else if (_async is not null)
+
+            using (SgReactiveComponentBase.EnterScope(this))
             {
-                // ✅ BUG-9 FIX: наблюдаем за Task — логируем unhandled exceptions
-                var task = RunAsync();
-                _ = task.ContinueWith(
-                    t =>
-                    {
-                        var ex = t.Exception!.GetBaseException();
-                        if (_onError is not null)
-                            try { _onError(ex); } catch { }
-                        else
-                            System.Diagnostics.Debug.WriteLine(
-                                $"[SgEffect] Unobserved async exception: {ex.Message}");
-                    },
-                    CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnFaulted,
-                    TaskScheduler.Current);
+                if (_sync is not null)
+                {
+                    _sync();
+                }
+                else if (_async is not null)
+                {
+                    var task = RunAsync();
+                    _ = task.ContinueWith(
+                        t =>
+                        {
+                            var ex = t.Exception!.GetBaseException();
+                            if (_onError is not null)
+                                try { _onError(ex); } catch { }
+                            else
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"[SgEffect] Unobserved async exception: {ex.Message}");
+                        },
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Current);
+                }
             }
         }
         catch (Exception ex)
@@ -142,10 +136,7 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         }
         finally
         {
-            if (_queue.TryPeek(out _))
-                SignalBatch.EnqueueEffect(this);
-            else
-                Volatile.Write(ref _isRunning, 0);
+            Volatile.Write(ref _isRunning, 0);
         }
     }
 
@@ -159,18 +150,14 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         }
     }
 
-    // ── IDisposable ───────────────────────────────────────────────────────────
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        _registeredSignals.Clear();
+        lock (_lock)
+        {
+            foreach (var dep in _dependencies) dep.Unsubscribe(this);
+            _dependencies.Clear();
+        }
         Volatile.Write(ref _isRunning, 0);
-        while (_queue.TryDequeue(out _)) { }
     }
-
-    // ── Вспомогательное ───────────────────────────────────────────────────────
-    private readonly HashSet<object> _registeredSignals = new();
-
-    internal void RegisterSignal(object signal)
-        => _registeredSignals.Add(signal);
 }

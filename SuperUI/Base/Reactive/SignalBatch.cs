@@ -31,7 +31,7 @@ internal static class SignalBatch
 
     // AsyncLocal корректно работает с async/await (в отличие от [ThreadStatic])
     private static readonly AsyncLocal<int> _batchDepth = new();
-    private static readonly ConcurrentDictionary<ISignalFlushable, bool> _dirtySignals = new();
+    private static readonly ConcurrentDictionary<object, bool> _dirtySignals = new();
 
     public static bool IsBatching => _batchDepth.Value > 0;
 
@@ -54,7 +54,11 @@ internal static class SignalBatch
             {
                 if (_dirtySignals.TryRemove(key, out _))
                 {
-                    try { key.FlushIfDirty(); }
+                    try
+                    {
+                        if (key is ISignalFlushable flushable)
+                            flushable.FlushIfDirty();
+                    }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine($"[SignalBatch.End] Flush error: {ex.Message}");
@@ -63,6 +67,9 @@ internal static class SignalBatch
             }
         }
     }
+
+    internal static void MarkDirty(object signal)
+        => _dirtySignals[signal] = true;
 
     internal static void AddDirty(ISignalFlushable signal)
         => _dirtySignals[signal] = true;

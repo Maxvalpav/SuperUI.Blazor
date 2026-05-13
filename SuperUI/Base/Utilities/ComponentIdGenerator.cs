@@ -1,68 +1,108 @@
-// SuperUI/Base/Utilities/ComponentIdGenerator.cs
-// ✅ УЛУЧШЕНИЯ:
-//   - NextFor<T>() — читаемые имена по типу компонента
-//   - Reset() помечен [Conditional("TESTING")] для тестов
+// ComponentIdGenerator.cs — Генератор уникальных ID для компонентов 
+// Компактный (для WASM), уникальный, human-readable 
+ 
+using System;
+using System.Runtime.CompilerServices; 
+using System.Security.Cryptography; 
+using System.Threading;
 
-using System.Diagnostics;
-using System.Runtime.CompilerServices;
+namespace SuperUI.Base.Utilities; 
+ 
+/// <summary> 
+/// Генерирует уникальные идентификаторы для компонентов SuperUI. 
+/// Формат: "sg-[тип]-[short-guid]" 
+/// Пример: "sg-button-a3f2c1" 
+/// </summary> 
+public static class ComponentIdGenerator 
+{ 
+    private static readonly char[] s_base32Chars = "abcdefghijklmnopqrstuvwxyz012345".ToCharArray(); 
+    private static int s_counter; 
+ 
+    /// <summary> 
+    /// Генерирует ID на основе типа компонента. 
+    /// </summary> 
+    public static string Generate(Type componentType) 
+    { 
+        var typeName = GetShortTypeName(componentType); 
+        var uniquePart = GenerateShortId(); 
+        return $"sg-{typeName}-{uniquePart}"; 
+    } 
+ 
+    /// <summary> 
+    /// Генерирует ID с указанным префиксом. 
+    /// </summary> 
+    public static string Generate(string prefix) 
+    { 
+        var uniquePart = GenerateShortId(); 
+        return $"{prefix}-{uniquePart}"; 
+    } 
+ 
+    /// <summary> 
+    /// Генерирует ID с указанным префиксом (алиас для Generate). 
+    /// </summary> 
+    public static string Next(string prefix) => Generate(prefix);
 
-namespace SuperUI.Base.Utilities;
-
-/// <summary>
-/// Генератор уникальных ID компонентов SuperUI.
-/// Thread-safe. Формат: "{prefix}-{counter}".
-/// </summary>
-public static class ComponentIdGenerator
-{
-    private static int _counter;
-
-    /// <summary>
-    /// Сгенерировать уникальный ID.
-    /// </summary>
-    /// <param name="prefix">Префикс (например "btn", "input").</param>
-    /// <returns>Строка вида "btn-42".</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string Next(string prefix = "sg")
-    {
-        var id = Interlocked.Increment(ref _counter);
-        return $"{prefix}-{id}";
-    }
-
-    /// <summary>
-    /// Сгенерировать ID по типу компонента.
-    /// Пример: NextFor&lt;SgButton&gt;() → "button-5"
-    /// </summary>
-    /// <typeparam name="T">Тип компонента.</typeparam>
-    /// <param name="prefix">Явный префикс. Если null — выводится из имени типа.</param>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string NextFor<T>(string? prefix = null)
-    {
-        var p = prefix ?? DerivePrefix(typeof(T).Name);
-        return Next(p);
-    }
-
-    /// <summary>
-    /// Сгенерировать ID по имени типа (runtime).
-    /// </summary>
-    public static string NextFor(Type type, string? prefix = null)
-    {
-        var p = prefix ?? DerivePrefix(type.Name);
-        return Next(p);
-    }
-
-    // "SgButton" → "button", "SgDataGrid" → "datagrid"
-    private static string DerivePrefix(string typeName)
-    {
-        var name = typeName.AsSpan();
-        if (name.StartsWith("Sg", StringComparison.Ordinal))
-            name = name[2..];
-        return name.ToString().ToLowerInvariant();
-    }
-
-    /// <summary>Сброс счётчика. Только для тестов!</summary>
-    [Conditional("TESTING")]
-    internal static void Reset() => Interlocked.Exchange(ref _counter, 0);
-
-    /// <summary>Текущее значение счётчика (для диагностики).</summary>
-    public static int CurrentCount => Volatile.Read(ref _counter);
-}
+    /// <summary> 
+    /// Генерирует ID для ARIA атрибутов. 
+    /// </summary> 
+    public static string GenerateAriaId(string prefix) 
+    { 
+        return $"{prefix}-{GenerateShortId()}"; 
+    } 
+ 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] 
+    private static string GenerateShortId() 
+    { 
+        // Используем комбинацию счётчика и случайного числа для компактности 
+        var counter = Interlocked.Increment(ref s_counter); 
+        var random = RandomNumberGenerator.GetInt32(0, 32 * 32 * 32); 
+ 
+        // 6-символьный base32 ID (32^6 = ~1 млрд комбинаций) 
+        Span<char> id = stackalloc char[6]; 
+        id[0] = s_base32Chars[(counter >> 0) & 31]; 
+        id[1] = s_base32Chars[(random >> 5) & 31]; 
+        id[2] = s_base32Chars[(random >> 10) & 31]; 
+        id[3] = s_base32Chars[(random >> 15) & 31]; 
+        id[4] = s_base32Chars[(counter >> 5) & 31]; 
+        id[5] = s_base32Chars[(random >> 20) & 31]; 
+ 
+        return new string(id); 
+    } 
+ 
+    private static string GetShortTypeName(Type type) 
+    { 
+        var name = type.Name; 
+ 
+        // Убираем суффиксы компонентов 
+        if (name.EndsWith("Component", StringComparison.Ordinal)) 
+            name = name[..^9]; 
+        else if (name.EndsWith("Base", StringComparison.Ordinal)) 
+            name = name[..^4]; 
+ 
+        // Убираем префиксы 
+        if (name.StartsWith("Sg", StringComparison.Ordinal)) 
+            name = name[2..]; 
+ 
+        // CamelCase → kebab-case 
+        return ToKebabCase(name); 
+    } 
+ 
+    private static string ToKebabCase(string name) 
+    { 
+        if (string.IsNullOrEmpty(name)) return name; 
+ 
+        Span<char> result = stackalloc char[name.Length * 2]; 
+        var index = 0; 
+ 
+        for (var i = 0; i < name.Length; i++) 
+        { 
+            if (i > 0 && char.IsUpper(name[i])) 
+            { 
+                result[index++] = '-'; 
+            } 
+            result[index++] = char.ToLowerInvariant(name[i]); 
+        } 
+ 
+        return new string(result[..index]); 
+    } 
+} 

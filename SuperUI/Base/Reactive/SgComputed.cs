@@ -9,57 +9,39 @@ namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Вычисляемое реактивное значение с дедупликацией зависимостей.
-/// Dependencies — ConcurrentDictionary вместо ConcurrentBag, поэтому
-/// каждая зависимость (сигнал/компьют) добавляется только один раз.
 /// </summary>
-public sealed class SgComputed<T> : ISignalObserver<T>, ISignalSubscribable, IDisposable
+public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver, IDisposable, ISignalFlushable
 {
     private readonly Func<T> _compute;
-    private readonly IEqualityComparer<T> _comparer;
-    private T _cachedValue;
+    private readonly IEqualityComparer<T>? _comparer;
+    private T _cachedValue = default!;
+    private bool _isDirty = true;
     private int _disposed;
-    private int _subscribed;
     private readonly object _lock = new();
-    private readonly HashSet<WeakReference<SgComponentBase>> _componentSubscribers = new();
-    private readonly HashSet<ISignalObserver> _untypedObservers = new();
+    private ISignalObserver? _observer;
+    private List<ISignalObserver>? _observers;
+    private readonly HashSet<ISgSignal> _dependencies = new();
 
-    // Исправлено: ConcurrentDictionary<object, byte> дедуплицирует ключи автоматически
-    public ConcurrentDictionary<object, byte> Dependencies { get; } = new();
+    public string? DebugName { get; }
 
-    private static readonly AsyncLocal<int> _computeDepth = new();
-    private const int MaxComputeDepth = 50;
+    public int SubscriberCount
+    {
+        get
+        {
+            lock (_lock)
+            {
+                if (_observers != null) return _observers.Count;
+                return _observer != null ? 1 : 0;
+            }
+        }
+    }
 
-    public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null)
+    public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null, string? debugName = null)
     {
         ArgumentNullException.ThrowIfNull(compute);
         _compute = compute;
-        _comparer = comparer ?? EqualityComparer<T>.Default;
-        _cachedValue = ComputeWithGuard();
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private T ComputeInternal()
-    {
-        using var scope = SignalTracker.EnterScopeForObserver(this);
-        return _compute();
-    }
-
-    private T ComputeWithGuard()
-    {
-        _computeDepth.Value++;
-        try
-        {
-            if (_computeDepth.Value > MaxComputeDepth)
-                throw new InvalidOperationException(
-                    $"SgComputed<{typeof(T).Name}>: cyclic dependency detected. " +
-                    $"Compute depth exceeded {MaxComputeDepth}. Check your signal graph.");
-
-            return ComputeInternal();
-        }
-        finally
-        {
-            _computeDepth.Value--;
-        }
+        _comparer = comparer;
+        DebugName = debugName ?? $"Computed<{typeof(T).Name}>";
     }
 
     public T Value
@@ -67,142 +49,140 @@ public sealed class SgComputed<T> : ISignalObserver<T>, ISignalSubscribable, IDi
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            SignalTracker.TrackComputed(this);
-
-            if (Interlocked.CompareExchange(ref _subscribed, 1, 0) == 0)
+            SgReactiveComponentBase.TrackSignalImplicitly(this);
+            if (_isDirty)
             {
-                _computeDepth.Value++;
-                try
-                {
-                    if (_computeDepth.Value > MaxComputeDepth)
-                        throw new InvalidOperationException(
-                            $"SgComputed<{typeof(T).Name}>: cyclic dependency detected " +
-                            $"in lazy subscription.");
-
-                    using var scope = SignalTracker.EnterScopeForObserver(this);
-                    _cachedValue = _compute();
-                    SignalTracker.SubscribeToTracked(this);
-                }
-                finally
-                {
-                    _computeDepth.Value--;
-                }
+                Recompute();
             }
-
             return _cachedValue;
         }
     }
 
-    public T Peek() => _cachedValue;
-
-    public void Subscribe(SgComponentBase component)
+    private void Recompute()
     {
-        lock (_lock) _componentSubscribers.Add(new WeakReference<SgComponentBase>(component));
+        lock (_lock)
+        {
+            if (!_isDirty) return;
+
+            // Отписываемся от старых зависимостей
+            foreach (var dep in _dependencies)
+            {
+                dep.Unsubscribe(this);
+            }
+            _dependencies.Clear();
+
+            using (SgReactiveComponentBase.EnterScope(this))
+            {
+                var newValue = _compute();
+                _cachedValue = newValue;
+                _isDirty = false;
+            }
+        }
     }
 
-    void ISignalSubscribable.SubscribeObserverUntyped(ISignalObserver observer)
+    // ISignalTrackingObserver implementation
+    public void OnSignalRead(ISgSignal signal)
     {
-        lock (_lock) _untypedObservers.Add(observer);
+        if (_dependencies.Add(signal))
+        {
+            signal.Subscribe(this);
+        }
     }
 
-    // ── ISignalObserver<T> ────────────────────────────────────────────────────
-
-    public void OnSignalChanged()
+    public void OnSignalChanged(ISgSignal signal)
     {
         if (Volatile.Read(ref _disposed) == 1) return;
 
-        // Guard при перевычислении из нотификации
-        _computeDepth.Value++;
-        try
+        bool changed = false;
+        lock (_lock)
         {
-            if (_computeDepth.Value > MaxComputeDepth)
-            {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[SgComputed<{typeof(T).Name}>] Cyclic dependency suspected, keeping stale value");
-                return;
-            }
-
-            var newValue = ComputeInternal();
-            bool changed;
-            lock (_lock)
-            {
-                if (_disposed == 1) return;
-                changed = !_comparer.Equals(_cachedValue, newValue);
-                if (changed)
-                {
-                    _cachedValue = newValue;
-                }
-            }
-
-            if (changed) NotifySubscribers();
+            if (_isDirty) return;
+            _isDirty = true;
+            changed = true;
         }
-        finally
+
+        if (changed)
         {
-            _computeDepth.Value--;
+            if (SignalBatch.IsBatching)
+            {
+                SignalBatch.MarkDirty(this);
+            }
+            else
+            {
+                NotifyObservers();
+            }
         }
     }
 
-    public void OnSignalRead(SgSignal<T> signal)
+    void ISignalFlushable.FlushIfDirty()
     {
-        // Дедупликация через ConcurrentDictionary: TryAdd возвращает false если ключ уже есть
-        Dependencies.TryAdd(signal, 0);
+        NotifyObservers();
     }
 
-    public void OnComputedRead(SgComputed<T> computed)
+    public void Subscribe(ISignalObserver observer)
     {
-        Dependencies.TryAdd(computed, 0);
-    }
-
-    private void NotifySubscribers()
-    {
-        WeakReference<SgComponentBase>[]? compSnapshot;
-        ISignalObserver[]? untypedSnapshot;
+        if (Volatile.Read(ref _disposed) == 1) return;
 
         lock (_lock)
         {
-            compSnapshot = _componentSubscribers.Count > 0
-                ? _componentSubscribers.ToArray() : null;
-            untypedSnapshot = _untypedObservers.Count > 0
-                ? _untypedObservers.ToArray() : null;
-        }
-
-        if (compSnapshot is not null)
-        {
-            List<WeakReference<SgComponentBase>>? dead = null;
-            foreach (var wr in compSnapshot)
+            if (_observer == null) _observer = observer;
+            else if (_observer == observer) return;
+            else
             {
-                if (wr.TryGetTarget(out var comp) && !comp.IsDisposed)
-                    SignalBatch.NotifyComponent(comp);
-                else
-                    (dead ??= []).Add(wr);
+                _observers ??= new List<ISignalObserver>(4) { _observer };
+                if (!_observers.Contains(observer)) _observers.Add(observer);
             }
-            if (dead is not null)
-                lock (_lock)
-                    foreach (var d in dead) _componentSubscribers.Remove(d);
         }
+    }
 
-        if (untypedSnapshot is not null)
-            foreach (var obs in untypedSnapshot)
+    public void Unsubscribe(ISignalObserver observer)
+    {
+        lock (_lock)
+        {
+            if (_observer == observer)
             {
-                try { obs.OnSignalChanged(); }
-                catch (Exception ex)
+                _observer = null;
+                if (_observers is { Count: > 0 })
                 {
-                    System.Diagnostics.Debug.WriteLine($"[SgComputed] Observer error: {ex.Message}");
+                    _observer = _observers[0];
+                    _observers.RemoveAt(0);
+                    if (_observers.Count == 0) _observers = null;
                 }
             }
+            else if (_observers != null)
+            {
+                _observers.Remove(observer);
+                if (_observers.Count == 0) _observers = null;
+            }
+        }
+    }
+
+    private void NotifyObservers()
+    {
+        lock (_lock)
+        {
+            if (_observer != null) _observer.OnSignalChanged(this);
+            if (_observers != null)
+            {
+                var snapshot = _observers.ToArray();
+                foreach (var obs in snapshot) obs.OnSignalChanged(this);
+            }
+        }
     }
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        Dependencies.Clear();
         lock (_lock)
         {
-            _componentSubscribers.Clear();
-            _untypedObservers.Clear();
+            foreach (var dep in _dependencies) dep.Unsubscribe(this);
+            _dependencies.Clear();
+            _observer = null;
+            _observers?.Clear();
+            _observers = null;
         }
     }
 
     public static implicit operator T(SgComputed<T> computed) => computed.Value;
-    public override string ToString() => $"SgComputed<{typeof(T).Name}>({_cachedValue})";
+    public override string ToString() => $"{DebugName}: {_cachedValue}";
 }

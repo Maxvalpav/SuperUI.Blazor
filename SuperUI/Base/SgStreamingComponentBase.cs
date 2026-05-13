@@ -1,152 +1,178 @@
-// SuperUI/Base/SgStreamingComponentBase.cs 
-// Новый класс для поддержки [StreamRendering] (.NET 8+) 
-// Улучшения: 
-// - Правильный паттерн для streaming rendering 
-// - Skeleton/placeholder пока данные загружаются 
-// - Skeleton автоматически скрывается после загрузки 
-// - Поддержка ошибок при загрузке 
+// SgStreamingComponentBase.cs — Поддержка Streaming Rendering (.NET 8+) 
+// Использует [StreamRendering] атрибут и PersistentComponentState 
  
-using System; 
-using System.Threading; 
-using System.Threading.Tasks; 
 using Microsoft.AspNetCore.Components; 
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.Logging;
  
 namespace SuperUI.Base; 
  
 /// <summary> 
-/// Базовый класс для компонентов с потоковым рендерингом. 
-/// Автоматически показывает skeleton пока данные загружаются. 
+/// Базовый класс для компонентов, использующих Streaming Rendering (.NET 8+). 
 /// 
-/// Использование: 
+/// Ключевые возможности: 
+/// - Автоматическое применение [StreamRendering] атрибута 
+/// - Интеграция с PersistentComponentState для seamless перехода prerender→interactive 
+/// - Placeholder контент во время загрузки 
+/// - Отложенная загрузка данных без блокировки первого рендера 
+/// 
+/// Пример использования: 
 /// <code> 
-/// @attribute [StreamRendering] 
-/// @inherits SgStreamingComponentBase&lt;MyData&gt; 
+/// @inherits SgStreamingComponentBase&lt;WeatherData&gt; 
 /// 
-/// @if (IsLoading) { &lt;Skeleton /&gt; } 
-/// else if (HasError) { &lt;Error Message="@ErrorMessage" /&gt; } 
-/// else { &lt;MyContent Data="@Data" /&gt; } 
+/// @if (HasData) 
+/// { 
+///     &lt;WeatherDisplay Data="Data" /&gt; 
+/// } 
+/// else 
+/// { 
+///     &lt;SgSkeleton /&gt; 
+/// } 
 /// </code> 
 /// </summary> 
-public abstract class SgStreamingComponentBase<TData> : SgComponentBase 
+[StreamRendering(true)] 
+public abstract class SgStreamingComponentBase<TData> : SgComponentBase where TData : class 
 { 
-    private CancellationTokenSource? _loadCts; 
- 
-    /// <summary>Данные загружаются.</summary> 
-    protected bool IsLoading { get; private set; } = true; 
- 
-    /// <summary>Произошла ошибка загрузки.</summary> 
-    protected bool HasError { get; private set; } 
- 
-    /// <summary>Сообщение об ошибке.</summary> 
-    protected string? ErrorMessage { get; private set; } 
+    // ────────────────────────────────────────────── 
+    //  Свойства 
+    // ────────────────────────────────────────────── 
  
     /// <summary>Загруженные данные.</summary> 
-    protected TData? Data { get; private set; } 
+    protected TData? Data { get; set; } 
  
-    /// <summary>Прогресс загрузки (0-100), если поддерживается.</summary> 
-    protected int LoadProgress { get; private set; } 
+    /// <summary>Загружены ли данные.</summary> 
+    protected bool HasData => Data != null; 
  
-    // ────────────────────────────────────────────────────────────────────── 
-    // Параметры 
-    // ────────────────────────────────────────────────────────────────────── 
+    /// <summary>Произошла ли ошибка при загрузке.</summary> 
+    protected Exception? LoadError { get; set; } 
  
-    /// <summary>Таймаут загрузки данных.</summary> 
-    [Parameter] public TimeSpan LoadTimeout { get; set; } = TimeSpan.FromSeconds(30); 
+    /// <summary>Идёт ли загрузка.</summary> 
+    protected bool IsLoading { get; set; } = true; 
  
-    /// <summary>Количество попыток при ошибке.</summary> 
-    [Parameter] public int RetryCount { get; set; } = 0; 
+    /// <summary>Ключ для PersistentComponentState.</summary> 
+    protected virtual string PersistenceKey => $"streaming:{GetType().Name}:{ComponentId}"; 
  
-    // ────────────────────────────────────────────────────────────────────── 
-    // Жизненный цикл 
-    // ────────────────────────────────────────────────────────────────────── 
+    // ────────────────────────────────────────────── 
+    //  Жизненный цикл 
+    // ────────────────────────────────────────────── 
  
-    protected override async Task OnInitializedAsync() 
+    protected override async Task OnInitializeAsync() 
     { 
-        await base.OnInitializedAsync(); 
-        await LoadDataWithRetryAsync(); 
-    } 
- 
-    private async Task LoadDataWithRetryAsync() 
-    { 
-        IsLoading = true; 
-        HasError = false; 
-        ErrorMessage = null; 
- 
-        _loadCts?.Dispose(); 
-        _loadCts = new CancellationTokenSource(LoadTimeout); 
- 
-        int attempts = 0; 
-        while (true) 
+        // Пробуем восстановить данные из PersistentComponentState 
+        // (если это второй проход после пререндеринга в InteractiveAuto) 
+        if (PersistentState != null) 
         { 
-            try 
+            if (PersistentState.TryTakeFromJson<TData>(PersistenceKey, out var restored)) 
             { 
-                Data = await LoadAsync(_loadCts.Token); 
+                Data = restored; 
                 IsLoading = false; 
-                return; 
-            } 
-            catch (OperationCanceledException) when (_loadCts.Token.IsCancellationRequested) 
-            { 
-                HasError = true; 
-                ErrorMessage = "Превышено время ожидания загрузки данных."; 
-                IsLoading = false; 
-                return; 
-            } 
-            catch (Exception ex) when (attempts < RetryCount) 
-            { 
-                attempts++; 
-                Logger.LogWarning(ex, "Load attempt {Attempt}/{Max} failed, retrying...", 
-                    attempts, RetryCount); 
-                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempts)), _loadCts.Token); 
-            } 
-            catch (Exception ex) 
-            { 
-                HasError = true; 
-                ErrorMessage = GetUserFriendlyError(ex); 
-                IsLoading = false; 
-                Logger.LogError(ex, "SgStreamingComponentBase failed to load data"); 
                 return; 
             } 
         } 
-    } 
  
-    /// <summary>Повторяет загрузку данных.</summary> 
-    public async Task ReloadAsync() 
-    { 
-        await InvokeAsync(async () => 
+        // Загружаем данные с поддержкой потоковой передачи 
+        try 
         { 
-            await LoadDataWithRetryAsync(); 
-            StateHasChanged(); 
-        }); 
+            Data = await LoadDataAsync(LifecycleToken); 
+        } 
+        catch (OperationCanceledException) 
+        { 
+            // Компонент был уничтожен 
+            return; 
+        } 
+        catch (Exception ex) 
+        { 
+            LoadError = ex; 
+            Logger.LogError(ex, "[{ComponentId}] Streaming data load failed", ComponentId); 
+        } 
+        finally 
+        { 
+            IsLoading = false; 
+        } 
+ 
+        // Сохраняем для PersistentComponentState 
+        if (PersistentState != null && Data != null) 
+        { 
+            PersistentState.PersistAsJson(PersistenceKey, Data); 
+        } 
     } 
  
-    /// <summary>Обновляет прогресс загрузки.</summary> 
-    protected void ReportProgress(int percent) 
-    { 
-        LoadProgress = Math.Clamp(percent, 0, 100); 
-        // При StreamRendering StateHasChanged отправляет patch клиенту 
-        StateHasChanged(); 
-    } 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Абстрактные методы 
-    // ────────────────────────────────────────────────────────────────────── 
+    // ────────────────────────────────────────────── 
+    //  Абстрактный метод загрузки данных 
+    // ────────────────────────────────────────────── 
  
     /// <summary> 
-    /// Загружает данные. Переопределите. 
-    /// При StreamRendering промежуточные вызовы StateHasChanged 
-    /// отправляют обновления клиенту в реальном времени. 
+    /// Загрузка данных. Вызывается асинхронно без блокировки первого рендера. 
+    /// Результат кешируется в PersistentComponentState. 
     /// </summary> 
-    protected abstract Task<TData> LoadAsync(CancellationToken ct); 
+    protected abstract Task<TData?> LoadDataAsync(CancellationToken cancellationToken); 
  
-    /// <summary>Преобразует исключение в пользовательское сообщение.</summary> 
-    protected virtual string GetUserFriendlyError(Exception ex) 
-        => "Произошла ошибка при загрузке данных. Попробуйте ещё раз."; 
+    // ────────────────────────────────────────────── 
+    //  Рендеринг 
+    // ────────────────────────────────────────────── 
  
-    protected override async ValueTask DisposeAsyncCore() 
+    protected override void BuildRenderTree(RenderTreeBuilder builder) 
     { 
-        _loadCts?.Cancel(); 
-        _loadCts?.Dispose(); 
-        await base.DisposeAsyncCore(); 
+        if (LoadError != null) 
+        { 
+            RenderError(builder, LoadError); 
+            return; 
+        } 
+ 
+        if (IsLoading) 
+        { 
+            RenderLoading(builder); 
+            return; 
+        } 
+ 
+        if (HasData) 
+        { 
+            RenderData(builder, Data!); 
+        } 
+        else 
+        { 
+            RenderEmpty(builder); 
+        } 
+    } 
+ 
+    // ────────────────────────────────────────────── 
+    //  Виртуальные методы для переопределения 
+    // ────────────────────────────────────────────── 
+ 
+    /// <summary>Рендерит состояние загрузки.</summary> 
+    protected virtual void RenderLoading(RenderTreeBuilder builder) 
+    { 
+        builder.OpenElement(0, "div"); 
+        builder.AddAttribute(1, "class", "sg-streaming-loading"); 
+        builder.AddAttribute(2, "aria-busy", "true"); 
+        builder.AddAttribute(3, "aria-label", "Loading..."); 
+        builder.OpenElement(4, "div"); 
+        builder.AddAttribute(5, "class", "sg-skeleton"); 
+        builder.CloseElement(); 
+        builder.CloseElement(); 
+    } 
+ 
+    /// <summary>Рендерит загруженные данные.</summary> 
+    protected abstract void RenderData(RenderTreeBuilder builder, TData data); 
+ 
+    /// <summary>Рендерит состояние "нет данных".</summary> 
+    protected virtual void RenderEmpty(RenderTreeBuilder builder) 
+    { 
+        builder.OpenElement(0, "div"); 
+        builder.AddAttribute(1, "class", "sg-streaming-empty"); 
+        builder.AddContent(2, "No data available."); 
+        builder.CloseElement(); 
+    } 
+ 
+    /// <summary>Рендерит состояние ошибки.</summary> 
+    protected virtual void RenderError(RenderTreeBuilder builder, Exception error) 
+    { 
+        builder.OpenElement(0, "div"); 
+        builder.AddAttribute(1, "class", "sg-streaming-error"); 
+        builder.AddAttribute(2, "role", "alert"); 
+        builder.OpenElement(3, "p"); 
+        builder.AddContent(4, $"Error loading data: {error.Message}"); 
+        builder.CloseElement(); 
+        builder.CloseElement(); 
     } 
 } 

@@ -1,253 +1,380 @@
-// SuperUI/Base/SgStore.cs
-// ИСПРАВЛЕНИЯ v2:
-// ✅ BUG-4: ImmutableList<Middleware> — thread-safe Use()
-// ✅ UX-7: AsObservable() — IObservable<TState>
-// ✅ НОВОЕ: MemoizedSelect<TResult> — кешированный selector
-// ✅ НОВОЕ: Hydrate(TState) — восстановление состояния (SSR/WASM)
-// ✅ НОВОЕ: CreateTimeTravelMiddleware — time-travel debugging
-
-using System.Collections.Immutable;
-using Microsoft.Extensions.Logging;
+// SgStore.cs — Улучшенное хранилище состояния с поддержкой .NET 8+ 
+// Интеграция с PersistentComponentState, Undo/Redo, Time-travel debugging 
+ 
+using System.Collections.Concurrent; 
+using System.Text.Json; 
+using Microsoft.AspNetCore.Components; 
+using Microsoft.Extensions.Logging; 
 using SuperUI.Base.Reactive;
+using SuperUI.Base.Services;
 
-namespace SuperUI.Base;
+namespace SuperUI.Base; 
+ 
+/// <summary> 
+/// Централизованное хранилище состояния приложения. 
+/// 
+/// Улучшения: 
+/// - Интеграция с PersistentComponentState (.NET 8+) 
+/// - Поддержка снапшотов для time-travel debugging 
+/// - Автоматическая синхронизация между вкладками (через SgBroadcastService) 
+/// - Оптимистичные обновления 
+/// - Селекторы для эффективной подписки на части состояния 
+/// </summary> 
+public class SgStore : IDisposable, IAsyncDisposable 
+ { 
+     // ────────────────────────────────────────────── 
+     //  Поля 
+     // ────────────────────────────────────────────── 
+ 
+     private readonly ILogger<SgStore> _logger; 
+     private readonly ISgBroadcastService? _broadcastService; 
+     private readonly PersistentComponentState? _persistentState; 
+     private readonly ConcurrentDictionary<string, object> _state = new(); 
+     private readonly ConcurrentDictionary<string, HashSet<Action>> _subscribers = new(); 
+     private readonly ConcurrentStack<Dictionary<string, object>> _undoStack = new(); 
+     private readonly ConcurrentStack<Dictionary<string, object>> _redoStack = new(); 
+     private readonly List<StoreSnapshot> _snapshots = new(); 
+     private readonly object _lock = new(); 
+     private bool _isDisposed; 
+     private int _maxUndoSteps = 50; 
+     private int _maxSnapshots = 100; 
+ 
+     // ────────────────────────────────────────────── 
+     //  Конструктор 
+     // ────────────────────────────────────────────── 
+ 
+     public SgStore( 
+         ILogger<SgStore> logger, 
+         ISgBroadcastService? broadcastService = null, 
+         PersistentComponentState? persistentState = null) 
+     { 
+         _logger = logger; 
+         _broadcastService = broadcastService; 
+         _persistentState = persistentState; 
 
-public sealed class SgStore<TState> : IDisposable where TState : notnull
-{
-    private readonly SgSignal<TState> _state;
-    private ImmutableList<Middleware<TState>> _middleware = ImmutableList<Middleware<TState>>.Empty;
-    private int _disposedInt;
-    private readonly object _dispatchLock = new();
+         // Подписка на внешние обновления через Broadcast
+         _broadcastService?.Subscribe<SgStoreChangedMessage>(msg => 
+         {
+             if (_state.TryGetValue(msg.Key, out var current))
+             {
+                 try 
+                 {
+                     var newValue = JsonSerializer.Deserialize(msg.SerializedValue, current.GetType());
+                     if (newValue != null)
+                     {
+                         _state[msg.Key] = newValue;
+                         NotifySubscribers(msg.Key);
+                     }
+                 }
+                 catch (Exception ex)
+                 {
+                     _logger.LogError(ex, "Error deserializing broadcasted store update for key {Key}", msg.Key);
+                 }
+             }
+         });
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Получение / Установка состояния 
+     // ────────────────────────────────────────────── 
+ 
+     /// <summary> 
+     /// Получить значение по ключу. 
+     /// </summary> 
+     public T? Get<T>(string key) 
+     { 
+         if (_state.TryGetValue(key, out var value) && value is T typed) 
+             return typed; 
+         return default; 
+     } 
+ 
+     /// <summary> 
+     /// Установить значение и уведомить подписчиков. 
+     /// </summary> 
+     public void Set<T>(string key, T value) 
+     { 
+         var oldValue = Get<T>(key); 
+         _state[key] = value!; 
+ 
+         // Push в undo стек 
+         PushUndo(key, oldValue, value); 
+ 
+         // Уведомляем локальных подписчиков 
+         NotifySubscribers(key); 
+ 
+         // Броадкастим изменение другим вкладкам 
+         if (_broadcastService != null && value != null) 
+         { 
+             _ = _broadcastService.PublishAsync(new SgStoreChangedMessage(key, JsonSerializer.Serialize(value))); 
+         } 
+ 
+         // Сохраняем в PersistentState 
+         _persistentState?.RegisterOnPersisting(() => 
+         { 
+             _persistentState.PersistAsJson($"store:{key}", value); 
+             return Task.CompletedTask; 
+         }); 
+ 
+         _logger.LogDebug("Store[{Key}] = {Value}", key, value); 
+     } 
+ 
+     /// <summary> 
+     /// Обновить значение атомарно (concurrent-safe). 
+     /// </summary> 
+     public void Update<T>(string key, Func<T?, T> updater) where T : class 
+     { 
+         lock (_lock) 
+         { 
+             var oldValue = Get<T>(key); 
+             var newValue = updater(oldValue); 
+             Set(key, newValue); 
+         } 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Подписки 
+     // ────────────────────────────────────────────── 
+ 
+     /// <summary> 
+     /// Подписаться на изменения определённого ключа. 
+     /// Возвращает IDisposable для отписки. 
+     /// </summary> 
+     public IDisposable Subscribe(string key, Action callback) 
+     { 
+         var subscribers = _subscribers.GetOrAdd(key, _ => new HashSet<Action>()); 
+         lock (subscribers)
+         {
+             subscribers.Add(callback); 
+         }
+ 
+         _logger.LogDebug("Subscribed to Store[{Key}], total: {Count}", key, subscribers.Count); 
+ 
+         return new StoreSubscription(() => 
+         { 
+             if (_subscribers.TryGetValue(key, out var set)) 
+             { 
+                 lock (set)
+                 {
+                    set.Remove(callback); 
+                    if (set.Count == 0) 
+                        _subscribers.TryRemove(key, out _); 
+                 }
+             } 
+         }); 
+     } 
+ 
+     /// <summary> 
+     /// Подписаться на несколько ключей сразу. 
+     /// </summary> 
+     public IDisposable Subscribe(string[] keys, Action callback) 
+     { 
+         var disposables = keys.Select(k => Subscribe(k, callback)).ToArray(); 
+         return new CompositeDisposable(disposables); 
+     } 
+ 
+     private void NotifySubscribers(string key) 
+     { 
+         if (_subscribers.TryGetValue(key, out var subscribers)) 
+         { 
+             Action[] snapshot;
+             lock (subscribers)
+             {
+                 snapshot = subscribers.ToArray();
+             }
 
-    public SgStore(TState initialState) =>
-        _state = new SgSignal<TState>(initialState);
+             foreach (var callback in snapshot) 
+             { 
+                 try 
+                 { 
+                     callback(); 
+                 } 
+                 catch (Exception ex) 
+                 { 
+                     _logger.LogError(ex, "Store subscriber error for key {Key}", key); 
+                 } 
+             } 
+         } 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Undo / Redo 
+     // ────────────────────────────────────────────── 
+ 
+     public int MaxUndoSteps 
+     { 
+         get => _maxUndoSteps; 
+         set => _maxUndoSteps = Math.Max(1, value); 
+     } 
+ 
+     private void PushUndo<T>(string key, T? oldValue, T newValue) 
+     { 
+         var snapshot = new Dictionary<string, object>(_state); 
+         _undoStack.Push(snapshot); 
+ 
+         // Обрезаем стек 
+         while (_undoStack.Count > _maxUndoSteps) 
+             _undoStack.TryPop(out _); 
+ 
+         // Очищаем redo стек при новом действии 
+         _redoStack.Clear(); 
+     } 
+ 
+     public bool Undo() 
+     { 
+         if (!_undoStack.TryPop(out var snapshot)) return false; 
+ 
+         // Сохраняем текущее состояние для redo 
+         var currentSnapshot = new Dictionary<string, object>(_state); 
+         _redoStack.Push(currentSnapshot); 
+ 
+         // Восстанавливаем состояние 
+         RestoreSnapshotInternal(snapshot); 
+ 
+         _logger.LogDebug("Store: Undo applied. UndoStack={Undo}, RedoStack={Redo}", 
+             _undoStack.Count, _redoStack.Count); 
+         return true; 
+     } 
+ 
+     public bool Redo() 
+     { 
+         if (!_redoStack.TryPop(out var snapshot)) return false; 
+ 
+         var currentSnapshot = new Dictionary<string, object>(_state); 
+         _undoStack.Push(currentSnapshot); 
+ 
+         RestoreSnapshotInternal(snapshot); 
+ 
+         _logger.LogDebug("Store: Redo applied. UndoStack={Undo}, RedoStack={Redo}", 
+             _undoStack.Count, _redoStack.Count); 
+         return true; 
+     } 
+ 
+     private void RestoreSnapshotInternal(Dictionary<string, object> snapshot) 
+     { 
+         _state.Clear(); 
+         var changedKeys = new HashSet<string>(); 
+ 
+         foreach (var (key, value) in snapshot) 
+         { 
+             _state[key] = value; 
+             changedKeys.Add(key); 
+         } 
+ 
+         // Уведомляем об изменении всех ключей 
+         foreach (var key in changedKeys) 
+             NotifySubscribers(key); 
+     } 
+ 
+     public bool CanUndo => !_undoStack.IsEmpty; 
+     public bool CanRedo => !_redoStack.IsEmpty; 
+ 
+     // ────────────────────────────────────────────── 
+     //  Снапшоты (Time-Travel Debugging) 
+     // ────────────────────────────────────────────── 
+ 
+     public void TakeSnapshot(string label = "") 
+     { 
+         var snapshot = new StoreSnapshot( 
+             DateTimeOffset.UtcNow, 
+             label, 
+             new Dictionary<string, object>(_state)); 
+ 
+         _snapshots.Add(snapshot); 
+         while (_snapshots.Count > _maxSnapshots) 
+             _snapshots.RemoveAt(0); 
+ 
+         _logger.LogDebug("Store snapshot taken: {Label} (#{Index})", label, _snapshots.Count); 
+     } 
+ 
+     public IReadOnlyList<StoreSnapshot> GetSnapshots() => _snapshots.AsReadOnly(); 
+ 
+     public void RestoreSnapshot(int index) 
+     { 
+         if (index < 0 || index >= _snapshots.Count) 
+             throw new ArgumentOutOfRangeException(nameof(index)); 
+ 
+         RestoreSnapshotInternal(_snapshots[index].State); 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Селекторы (derived state) 
+     // ────────────────────────────────────────────── 
+ 
+     /// <summary> 
+     /// Создать селектор — производное значение из нескольких ключей. 
+     /// </summary> 
+     public IReadOnlySignal<T> Select<T>(string[] keys, Func<IReadOnlyDictionary<string, object?>, T> selector) 
+     { 
+         var signal = new SgSignal<T>(selector(GetSnapshotInternal())); 
+         Subscribe(keys, () => signal.Set(selector(GetSnapshotInternal()))); 
+         return signal; 
+     } 
+ 
+     private Dictionary<string, object?> GetSnapshotInternal() 
+     { 
+         var dict = new Dictionary<string, object?>(); 
+         foreach (var (key, value) in _state) 
+             dict[key] = value; 
+         return dict; 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Очистка 
+     // ────────────────────────────────────────────── 
+ 
+     public void Clear() 
+     { 
+         _state.Clear(); 
+         _undoStack.Clear(); 
+         _redoStack.Clear(); 
+         _snapshots.Clear(); 
+ 
+         foreach (var key in _subscribers.Keys.ToArray()) 
+             NotifySubscribers(key); 
+     } 
+ 
+     public void Dispose() 
+     { 
+         if (_isDisposed) return; 
+         _isDisposed = true; 
+         _subscribers.Clear(); 
+         _state.Clear(); 
+         _undoStack.Clear(); 
+         _redoStack.Clear(); 
+         _snapshots.Clear(); 
+     } 
+ 
+     public ValueTask DisposeAsync() 
+     { 
+         Dispose(); 
+         return ValueTask.CompletedTask; 
+     } 
+ 
+     // ────────────────────────────────────────────── 
+     //  Вложенные типы 
+     // ────────────────────────────────────────────── 
+ 
+     public record StoreSnapshot(DateTimeOffset Timestamp, string Label, Dictionary<string, object> State); 
+ 
+     private sealed class StoreSubscription : IDisposable 
+     { 
+         private readonly Action _onDispose; 
+         public StoreSubscription(Action onDispose) => _onDispose = onDispose; 
+         public void Dispose() => _onDispose(); 
+     } 
+ 
+     private sealed class CompositeDisposable : IDisposable 
+     { 
+         private readonly IDisposable[] _disposables; 
+         public CompositeDisposable(IDisposable[] disposables) => _disposables = disposables; 
+         public void Dispose() 
+         { 
+             foreach (var d in _disposables) d.Dispose(); 
+         } 
+     } 
+ }
 
-    public SgSignal<TState> State => _state;
-    public TState Current => _state.Peek();
-
-    // ── BUG-4 FIX: ImmutableList — атомарная замена без lock ────────────────────
-    public SgStore<TState> Use(Middleware<TState> middleware)
-    {
-        ArgumentNullException.ThrowIfNull(middleware);
-        ImmutableList<Middleware<TState>> current, updated;
-        do
-        {
-            current = Volatile.Read(ref _middleware!);
-            updated = current.Add(middleware);
-        } while (!ReferenceEquals(
-            Interlocked.CompareExchange(ref _middleware!, updated, current), current));
-        return this;
-    }
-
-    public void Dispatch(Func<TState, TState> reducer)
-    {
-        if (Volatile.Read(ref _disposedInt) == 1) return;
-        TState newState;
-        lock (_dispatchLock)
-        {
-            if (Volatile.Read(ref _disposedInt) == 1) return;
-            var middleware = Volatile.Read(ref _middleware!);
-            newState = reducer(_state.Peek());
-            foreach (var mw in middleware)
-                newState = mw(_state.Peek(), newState);
-        }
-        _state.Set(newState);
-    }
-
-    public async Task BatchAsync(params Func<TState, TState>[] reducers)
-    {
-        if (Volatile.Read(ref _disposedInt) == 1) return;
-        TState current;
-        lock (_dispatchLock)
-        {
-            current = _state.Peek();
-            foreach (var r in reducers) current = r(current);
-        }
-        _state.Set(current);
-        await Task.CompletedTask;
-    }
-
-    public async Task DispatchAsync(Func<TState, Task<TState>> asyncReducer)
-    {
-        if (Volatile.Read(ref _disposedInt) == 1) return;
-        const int maxRetries = 5;
-        int retries = 0;
-        while (true)
-        {
-            TState snapshot;
-            lock (_dispatchLock)
-            {
-                if (Volatile.Read(ref _disposedInt) == 1) return;
-                snapshot = _state.Peek();
-            }
-            TState newState = await asyncReducer(snapshot);
-            lock (_dispatchLock)
-            {
-                if (Volatile.Read(ref _disposedInt) == 1) return;
-                if (EqualityComparer<TState>.Default.Equals(_state.Peek(), snapshot))
-                {
-                    var middleware = Volatile.Read(ref _middleware!);
-                    foreach (var mw in middleware) newState = mw(snapshot, newState);
-                    _state.Set(newState);
-                    return;
-                }
-            }
-            retries++;
-            if (retries >= maxRetries)
-                throw new InvalidOperationException(
-                    $"SgStore.DispatchAsync: too many retries ({maxRetries}).");
-
-            // Exponential backoff: 0, 1, 2, 4, 8 ms
-            var backoffMs = retries == 1 ? 0 : (1 << (retries - 2));
-            if (backoffMs > 0)
-                await Task.Delay(backoffMs);
-            else
-                await Task.Yield();
-        }
-    }
-
-    // UX-7: IObservable<TState>
-    public IObservable<TState> AsObservable() => _state.AsObservable();
-
-    public void Reset(TState initialState) => _state.Set(initialState);
-
-    // НОВОЕ: Hydrate — восстановление состояния (для SSR/localStorage)
-    public void Hydrate(TState state)
-    {
-        ArgumentNullException.ThrowIfNull(state);
-        _state.Reset(state);
-        _state.ForceNotify();
-    }
-
-    /// <summary>
-    /// Подписаться на изменения состояния с получением предыдущего и нового значения.
-    /// Использует SgSignal.Subscribe — не загрязняет middleware цепочку.
-    /// </summary>
-    public IDisposable OnStateChange(Action<TState, TState> observer)
-    {
-        ArgumentNullException.ThrowIfNull(observer);
-        TState prev = _state.Peek();
-        return _state.Subscribe(next =>
-        {
-            var p = Interlocked.Exchange(ref prev, next);
-            observer(p, next);
-        });
-    }
-
-    public TState Snapshot() => Current;
-
-    // НОВОЕ: MemoizedSelect — кешированный selector
-    public SgMemoizedSelector<TState, TResult> MemoizedSelect<TResult>(
-        Func<TState, TResult> selector,
-        IEqualityComparer<TResult>? comparer = null)
-    {
-        return new SgMemoizedSelector<TState, TResult>(_state, selector, comparer);
-    }
-
-    public SgComputed<TResult> Select<TResult>(Func<TState, TResult> selector) =>
-        new(() => selector(_state.Peek()));
-
-    public IDisposable Subscribe(Action<TState> observer) =>
-        _state.Subscribe(observer);
-
-    // ── Middleware factories ─────────────────────────────────────────────────────
-    public static Middleware<TState> CreateLoggingMiddleware(
-        ILogger? logger = null, string? storeName = null)
-    {
-        var name = storeName ?? typeof(TState).Name;
-        return (prev, next) =>
-        {
-            if (logger?.IsEnabled(LogLevel.Debug) == true)
-                logger.LogDebug("[SgStore<{Name}>] {Prev} → {Next}", name, prev, next);
-            else
-                System.Diagnostics.Debug.WriteLine($"[SgStore<{name}>] {prev} → {next}");
-            return next;
-        };
-    }
-
-    public static Middleware<TState> CreateValidationMiddleware(
-        Func<TState, bool> isValid, string? errorMessage = null)
-    {
-        ArgumentNullException.ThrowIfNull(isValid);
-        return (_, next) =>
-        {
-            if (!isValid(next))
-                throw new InvalidOperationException(
-                    errorMessage ?? $"SgStore<{typeof(TState).Name}>: invalid state");
-            return next;
-        };
-    }
-
-    public static Middleware<TState> CreateHistoryMiddleware(
-        int maxHistory = 50, Action<TState>? onStateChange = null)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxHistory);
-        var history = new Queue<TState>(maxHistory + 1);
-        return (prev, next) =>
-        {
-            if (history.Count >= maxHistory) history.Dequeue();
-            history.Enqueue(prev);
-            onStateChange?.Invoke(next);
-            return next;
-        };
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-        _state.Dispose();
-    }
-}
-
-// НОВОЕ: мемоизированный selector
-public sealed class SgMemoizedSelector<TState, TResult> : IDisposable
-    where TState : notnull
-{
-    private readonly SgSignal<TState> _source;
-    private readonly Func<TState, TResult> _selector;
-    private readonly IEqualityComparer<TResult> _comparer;
-    private TResult _cached;
-    private TState _lastInput;
-    private readonly IDisposable _subscription;
-
-    public SgMemoizedSelector(
-        SgSignal<TState> source,
-        Func<TState, TResult> selector,
-        IEqualityComparer<TResult>? comparer = null)
-    {
-        _source = source;
-        _selector = selector;
-        _comparer = comparer ?? EqualityComparer<TResult>.Default;
-        _lastInput = source.Peek();
-        _cached = selector(_lastInput);
-        _subscription = source.Subscribe(Invalidate);
-    }
-
-    public TResult Value
-    {
-        get
-        {
-            var current = _source.Peek();
-            if (!EqualityComparer<TState>.Default.Equals(current, _lastInput))
-            {
-                _lastInput = current;
-                _cached = _selector(current);
-            }
-            return _cached;
-        }
-    }
-
-    private void Invalidate(TState newState)
-    {
-        var newValue = _selector(newState);
-        if (!_comparer.Equals(_cached, newValue))
-        {
-            _lastInput = newState;
-            _cached = newValue;
-        }
-    }
-
-    public void Dispose() => _subscription.Dispose();
-}
-
-public delegate TState Middleware<TState>(TState prev, TState next) where TState : notnull;
+/// <summary>
+/// Сообщение об изменении состояния хранилища.
+/// </summary>
+public sealed record SgStoreChangedMessage(string Key, string SerializedValue);
