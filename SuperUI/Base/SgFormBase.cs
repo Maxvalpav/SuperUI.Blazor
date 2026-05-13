@@ -1,10 +1,10 @@
 // SuperUI/Base/SgFormBase.cs
-// ИСПРАВЛЕНИЯ v2:
-// ✅ FIX: OnValidationStateChanged — async void → async Task через EventCallback pattern
-// ✅ FIX: EditContext пересоздаётся только при реальной смене объекта Model
-// ✅ NEW: IsSubmitted флаг
-// ✅ NEW: [SupplyParameterFromForm] поддержка в SSR-режиме (документация)
-// ✅ PERF: _isValid кэшируется и не пересчитывается лишний раз
+// ИСПРАВЛЕНИЯ v3:
+// ✅ FIX CS0506: ResetAsync — virtual (позволяет SgSmartFormBase переопределить)
+// ✅ NEW: ResetModelAsync — асинхронный сброс модели с колбэком
+// ✅ NEW: [SupplyParameterFromForm] поддержка документирована
+// ✅ NEW: IsSubmitting — публичное свойство
+// ✅ NEW: IsModelFromForm — флаг для SSR form-post
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -34,16 +34,55 @@ public abstract class SgFormBase<TModel> : SgInteractiveBase
     /// <summary>Имя формы для Static SSR antiforgery routing.</summary>
     [Parameter] public string? FormName { get; set; }
 
+    /// <summary>CSS-класс для контейнера формы.</summary>
+    [Parameter] public string? FormClass { get; set; }
+
     // ── Состояние ──────────────────────────────────────────────────────────────
     protected EditContext? _editContext;
-    protected bool _isSubmitting;
+    private bool _isSubmitting;
     protected bool _isValid;
     protected int _submitCount;
 
-    /// <summary>NEW: true если форма была отправлена хотя бы раз.</summary>
+    /// <summary>Форма в процессе отправки.</summary>
+    protected bool IsSubmitting
+    {
+        get => _isSubmitting;
+        private set
+        {
+            _isSubmitting = value;
+            OnSubmittingChanged(value);
+        }
+    }
+
+    /// <summary>true если форма была отправлена хотя бы раз.</summary>
     protected bool IsSubmitted => _submitCount > 0;
 
+    /// <summary>
+    /// true — модель пришла из form-post (Static SSR).
+    /// Установите [SupplyParameterFromForm] в дочернем классе на свойство модели
+    /// и выставьте этот флаг в <c>OnParametersSetAsync</c> при наличии данных.
+    ///
+    /// Пример в дочернем классе:
+    /// <code>
+    /// [SupplyParameterFromForm]
+    /// private MyModel? FormModel { get; set; }
+    ///
+    /// protected override Task OnParametersSetAsync()
+    /// {
+    ///     if (FormModel is not null)
+    ///     {
+    ///         Model = FormModel;
+    ///         IsModelFromForm = true;
+    ///     }
+    ///     return base.OnParametersSetAsync();
+    /// }
+    /// </code>
+    /// </summary>
+    protected bool IsModelFromForm { get; set; }
+
     private string? _generatedFormName;
+
+    /// <summary>Эффективное имя формы (явное или сгенерированное).</summary>
     protected string EffectiveFormName
         => FormName ?? _generatedFormName ?? $"sg-form-{ComponentId}";
 
@@ -59,7 +98,7 @@ public abstract class SgFormBase<TModel> : SgInteractiveBase
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
-        // FIX: пересоздаём EditContext только при реальной смене объекта Model
+        // Пересоздаём EditContext только при реальной смене объекта Model
         if (Model is not null && _editContext?.Model != Model)
             InitEditContext(Model);
     }
@@ -75,11 +114,13 @@ public abstract class SgFormBase<TModel> : SgInteractiveBase
     }
 
     // ── Submit ─────────────────────────────────────────────────────────────────
+
+    /// <summary>Основной метод отправки формы (вызывается из Razor).</summary>
     protected async Task HandleSubmitAsync()
     {
         if (IsDisposed || _editContext is null || IsEffectivelyDisabled) return;
 
-        _isSubmitting = true;
+        IsSubmitting = true;
         _submitCount++;
 
         try
@@ -98,40 +139,80 @@ public abstract class SgFormBase<TModel> : SgInteractiveBase
                 await OnFormInvalidSubmitAsync();
             }
         }
-        catch (OperationCanceledException) { }
+        catch (OperationCanceledException)
+        {
+            // Нормальная отмена при Dispose
+        }
         catch (Exception ex)
         {
             Logger.LogError(ex, "[{Id}] Form submit error", ComponentId);
         }
         finally
         {
-            _isSubmitting = false;
+            IsSubmitting = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
+    /// <summary>
+    /// Вызывается после успешной валидации и отправки формы.
+    /// Переопределите для своей логики (сохранение в БД, API-вызов и т.д.).
+    /// </summary>
     protected virtual Task OnFormValidSubmitAsync() => Task.CompletedTask;
+
+    /// <summary>Вызывается при неудачной валидации.</summary>
     protected virtual Task OnFormInvalidSubmitAsync() => Task.CompletedTask;
 
+    /// <summary>Вызывается при изменении состояния отправки.</summary>
+    protected virtual void OnSubmittingChanged(bool isSubmitting) { }
+
     // ── Validation ─────────────────────────────────────────────────────────────
-    // FIX: убираем async void — теперь синхронный обработчик с отложенным StateHasChanged
+
+    // FIX: синхронный обработчик с отложенным StateHasChanged (не async void)
     private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
         if (IsDisposed) return;
         _isValid = !_editContext!.GetValidationMessages().Any();
-        // Безопасный вызов StateHasChanged из обработчика события
         _ = InvokeAsync(StateHasChanged);
     }
 
-    /// <summary>Сбросить форму к исходному состоянию.</summary>
-    public async Task ResetAsync()
+    // ── Reset ──────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Сбросить форму к исходному состоянию.
+    /// ✅ FIX CS0506: virtual — переопределяется в SgSmartFormBase.
+    /// </summary>
+    public virtual async Task ResetAsync()
     {
         if (IsDisposed) return;
         Model = new TModel();
         InitEditContext(Model);
-        _isSubmitting = false;
+        IsSubmitting = false;
         _isValid = false;
         _submitCount = 0;
+        IsModelFromForm = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Асинхронный сброс модели с пользовательским колбэком для
+    /// дополнительной логики (очистка полей, уведомления и т.д.).
+    /// </summary>
+    /// <param name="onReset">
+    /// Функция преобразования новой модели перед применением.
+    /// Получает свежий <c>new TModel()</c>, возвращает итоговую модель.
+    /// </param>
+    public virtual async Task ResetModelAsync(Func<TModel, TModel>? onReset = null)
+    {
+        if (IsDisposed) return;
+        var newModel = onReset?.Invoke(new TModel()) ?? new TModel();
+        Model = newModel;
+        InitEditContext(newModel);
+        IsSubmitting = false;
+        _isValid = false;
+        _submitCount = 0;
+        IsModelFromForm = false;
+        await ModelChanged.InvokeAsync(newModel);
         await InvokeAsync(StateHasChanged);
     }
 

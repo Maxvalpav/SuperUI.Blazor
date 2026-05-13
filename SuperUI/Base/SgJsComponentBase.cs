@@ -9,6 +9,7 @@
 
 using System.Diagnostics;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Base.Services;
@@ -66,6 +67,66 @@ public abstract class SgJsComponentBase : SgComponentBase
     }
 
     protected bool IsPrerendering => PrerendingDetector.IsPrerendering;
+
+    // ── InteractiveAuto WASM readiness (.NET 8+) ────────────────────────────────
+
+    /// <summary>
+    /// true — WASM runtime готов к работе (либо мы уже в браузере, либо WASM загружен).
+    /// В режиме InteractiveAuto на сервере до загрузки WASM возвращает false.
+    /// </summary>
+    protected bool IsWasmReady =>
+        OperatingSystem.IsBrowser() ||
+        (RenderMode is InteractiveWebAssemblyRenderMode && !IsPrerendering);
+
+    /// <summary>
+    /// Получить JS модуль с учётом InteractiveAuto режима.
+    /// В Auto-режиме на сервере ожидает активации WASM перед загрузкой модуля.
+    /// Возвращает null если WASM ещё не активирован или модуль недоступен.
+    /// </summary>
+    protected async ValueTask<IJSObjectReference?> GetModuleWhenReadyAsync()
+    {
+        if (RenderMode is InteractiveAutoRenderMode && !OperatingSystem.IsBrowser())
+        {
+            // В Auto-режиме на сервере перед скачиванием WASM — JS модуль может быть недоступен
+            // Ожидаем, пока WASM загрузится (определяется через JS-колбэк)
+            if (!await IsWasmActivatedAsync())
+                return null;
+        }
+
+        return await GetModuleAsync();
+    }
+
+    /// <summary>
+    /// Проверяет, активирован ли WASM runtime в InteractiveAuto режиме.
+    /// Возвращает true если WASM готов, false если ещё загружается.
+    /// В других режимах всегда возвращает true.
+    /// </summary>
+    protected virtual async ValueTask<bool> IsWasmActivatedAsync()
+    {
+        if (OperatingSystem.IsBrowser())
+            return true;
+
+        if (RenderMode is not InteractiveAutoRenderMode)
+            return true;
+
+        try
+        {
+            // Проверяем через глобальный JS-хелпер, доступен ли WASM
+            // (требует соответствующего JS-кода в приложении)
+            var result = await JS.InvokeAsync<bool>(
+                "SuperUI.isWasmActivated", ComponentToken);
+            return result;
+        }
+        catch (JSException)
+        {
+            // Если метод не найден — считаем что WASM ещё не готов
+            return false;
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or JSDisconnectedException)
+        {
+            return false;
+        }
+    }
 
     // ── Lifecycle ───────────────────────────────────────────────────────────────
 

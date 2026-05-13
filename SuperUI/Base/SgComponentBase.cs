@@ -389,7 +389,49 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     protected virtual string? GetDefaultCssClass() => null;
 
-    // ── ARIA ───────────────────────────────────────────────────────────────────
+    // ── Streaming Rendering (.NET 8+) ──────────────────────────────────────────
+
+    /// <summary>
+    /// Дефолтный placeholder для Streaming Rendering — спиннер загрузки.
+    /// Переопределите для кастомного вида.
+    /// </summary>
+    protected virtual RenderFragment DefaultStreamingPlaceholder =>
+        builder => builder.AddMarkupContent(0,
+            "<div class=\"sg-streaming-placeholder\" aria-busy=\"true\" aria-label=\"Loading...\"></div>");
+
+    /// <summary>
+    /// Возвращает RenderFragment, который в режиме Static SSR Streaming показывает
+    /// <paramref name="placeholder"/> (или <see cref="DefaultStreamingPlaceholder"/>),
+    /// а в интерактивном режиме — ничего (контент рендерится напрямую компонентом).
+    ///
+    /// Использование:
+    /// <code>
+    /// @if (IsStreamingRendering &amp;&amp; IsStaticSSR)
+    /// {
+    ///     @StreamingPlaceholder()
+    /// }
+    /// else
+    /// {
+    ///     @* основной контент *@
+    /// }
+    /// </code>
+    /// Или через фабричный метод в коде:
+    /// <code>
+    /// builder.AddContent(0, StreamingPlaceholder(myCustomPlaceholder));
+    /// </code>
+    /// </summary>
+    /// <param name="placeholder">Кастомный placeholder. null = DefaultStreamingPlaceholder.</param>
+    protected RenderFragment StreamingPlaceholder(RenderFragment? placeholder = null) =>
+        builder =>
+        {
+            if (IsStreamingRendering && IsStaticSSR)
+            {
+                // Static SSR Streaming: показываем placeholder пока данные грузятся
+                builder.AddContent(0, placeholder ?? DefaultStreamingPlaceholder);
+                return;
+            }
+            // Интерактивный режим или обычный SSR — placeholder не нужен
+        };
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var currentGeneration = Volatile.Read(ref _ariaGeneration);
