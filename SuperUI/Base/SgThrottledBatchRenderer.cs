@@ -65,14 +65,11 @@ public class SgThrottledBatchRenderer : IDisposable
         _timer = null;
         Interlocked.Exchange(ref _pendingCount, 0);
 
-        // Исправление CS0122: Используем InvokeAsync через публичный метод
-        // ComponentBase.InvokeAsync(Action) — protected, поэтому
-        // используем InvokeAsync(Func<Task>) с пустой лямбдой.
-        _ = _component.InvokeAsync(() =>
+        // Request a render through the component's public API
+        if (_component is SgComponentBase sgComponent)
         {
-            _component.StateHasChanged();
-            return Task.CompletedTask;
-        });
+            sgComponent.RequestRender();
+        }
     }
 
     public void Dispose()

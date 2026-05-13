@@ -8,6 +8,36 @@ namespace SuperUI.Base.Reactive;
 /// </summary>
 public static class SignalTracker
 {
+    [ThreadStatic]
+    private static ISignalObserver? _currentObserver;
+
+    /// <summary>
+    /// Begin tracking signal dependencies for an observer.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void BeginTracking(ISignalObserver observer)
+    {
+        _currentObserver = observer;
+    }
+
+    /// <summary>
+    /// End tracking signal dependencies.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void EndTracking()
+    {
+        _currentObserver = null;
+    }
+
+    /// <summary>
+    /// Get the current observer being tracked.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ISignalObserver? GetCurrentObserver()
+    {
+        return _currentObserver;
+    }
+
     /// <summary>
     /// Регистрация зависимости. 
     /// Теперь просто перенаправляет в SgReactiveComponentBase.

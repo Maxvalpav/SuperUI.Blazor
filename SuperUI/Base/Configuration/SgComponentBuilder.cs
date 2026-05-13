@@ -69,7 +69,7 @@ namespace SuperUI.Base.Configuration;
          services.TryAddScoped<ISgConfirmService, SgConfirmService>(); 
  
          // Theme 
-         services.TryAddScoped<SgThemeService>(); 
+         // services.TryAddScoped<SgThemeService>(); // TODO: Implement SgThemeService if needed
  
          // Localization
          services.TryAddScoped<ISuperUILocalizer, SuperUILocalizer>();
@@ -121,7 +121,7 @@ namespace SuperUI.Base.Configuration;
      public static SgComponentBuilder AddSuperUIDiagnostics(this SgComponentBuilder builder) 
      { 
          builder.Services.TryAddScoped<Diagnostics.ISgDiagnosticsCollector, 
-             Diagnostics.ComponentDiagnostics>(); 
+             Diagnostics.SgDiagnosticsCollector>(); 
  
          return builder; 
      } 

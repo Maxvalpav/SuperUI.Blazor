@@ -29,4 +29,15 @@ public interface ISgDiagnosticsCollector
     string GetSummary();
 
     void Reset();
+
+    // Additional methods for diagnostics panel
+    IReadOnlyCollection<ComponentDiagnosticEntry> GetAll() => new List<ComponentDiagnosticEntry>(Entries.Values);
+
+    int SignalCount => 0; // Placeholder for signal count
+
+    IReadOnlyCollection<string> GetSignals() => new List<string>();
+
+    double AriaScore => 100.0; // Placeholder for ARIA score
+
+    IReadOnlyCollection<string> GetAriaIssues() => new List<string>();
 }

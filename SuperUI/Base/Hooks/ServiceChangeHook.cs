@@ -23,7 +23,7 @@ public interface INotifyChanged
 /// - <see cref="RefreshAsync"/> вызывается через dispatcher компонента — корректно на Server,
 ///   где Changed может прийти с произвольного потока.
 /// </remarks>
-public sealed class ServiceChangeHook<TService> : IAsyncComponentHook, IDisposable
+public sealed class ServiceChangeHook<TService> : IComponentHook, IDisposable
     where TService : INotifyChanged
 {
     private readonly TService _service;

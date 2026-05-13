@@ -1,28 +1,31 @@
-// SuperUI/Base/Localization/ISuperUILocalizer.cs
-using System;
+// ================================================================
+// Файл: SuperUI/Base/Localization/ISuperUILocalizer.cs
+// ДОБАВЛЕНО: метод GetString(string key, string defaultValue)
+// ================================================================
+
 using System.Globalization;
 
 namespace SuperUI.Base.Localization;
 
-/// <summary>
-/// Interface for SuperUI localization. Provides localized strings
-/// for all built-in components. Supports resource-based and
-/// custom localization providers.
-/// </summary>
 public interface ISuperUILocalizer
 {
-    /// <summary>Current culture used for localization.</summary>
     CultureInfo CurrentCulture { get; set; }
 
-    /// <summary>Get a localized string by key.</summary>
     string this[string key] { get; }
 
-    /// <summary>Try to get a localized string.</summary>
+    /// <summary>
+    /// Get a localized string by key with fallback default value.
+    /// </summary>
+    string GetString(string key, string defaultValue);
+
+    /// <summary>
+    /// Get a localized string by key with format parameters.
+    /// </summary>
+    string GetString(string key, params object[] args);
+
     bool TryGetString(string key, out string value);
 
-    /// <summary>Get a localized string with format arguments.</summary>
     string Format(string key, params object[] args);
 
-    /// <summary>Event raised when the culture/locale changes.</summary>
     event Action<CultureInfo>? CultureChanged;
 }

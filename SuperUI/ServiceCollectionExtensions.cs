@@ -1,133 +1,133 @@
-// SuperUI/ServiceCollectionExtensions.cs
+// ================================================================
+// Файл: SuperUI/ServiceCollectionExtensions.cs
+// ИСПРАВЛЕНО:
+// - WasmCircuitAwareness доступен (в том же namespace)
+// - WasmPrerenderingDetector → WasmPrerendingDetector
+// - IComponentRegistry → SgComponentRegistry
+// - IComponentFactory → SgComponentFactory
+// - ICircuitAwareness → SgCircuitAwareness / WasmCircuitAwareness
+// - Добавлена регистрация SgThemeService
+// ================================================================
 
-// ИСПРАВЛЕНИЯ:
-// ✅ CS0246: FocusTrapService → правильный using + namespace
-// ✅ CS0311: SgConfirmService → ISgConfirmService (реализует интерфейс)
-// ✅ CS0311: SgNotificationService → ISgNotificationService (реализует интерфейс)
-// ✅ ISgToastService → SgToastService
-// ✅ ISgPresenceService → SgPresenceServiceImpl
-
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SuperUI.Base;
-using SuperUI.Base.Services;
 using SuperUI.Base.Diagnostics;
+using SuperUI.Base.Services;
+using SuperUI.Services;
 
 namespace SuperUI;
 
-/// <summary>
-/// Методы расширения для регистрации сервисов SuperUI в DI-контейнере.
-/// </summary>
 public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    /// Регистрирует все сервисы SuperUI.
-    /// Работает на WASM, Blazor Server и Web App.
-    /// </summary>
     public static IServiceCollection AddSuperUI(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
-        // ── Конфигурация ─────────────────────────────────────────────────────
-        services.Configure<SgLibraryOptions>(configure ?? (_ => { }));
+        // Конфигурация
+        services.Configure(configure ?? (_ => { }));
 
-        // ── Prerendering Detector ─────────────────────────────────────────────
+        // Prerendering Detector
         services.TryAddSingleton<IPrerenderingDetector>(sp =>
         {
             if (OperatingSystem.IsBrowser())
-                return WasmPrerenderingDetector.Instance;
+                return WasmPrerendingDetector.Instance;
 
-            var accessor = sp.GetService<Microsoft.AspNetCore.Http.IHttpContextAccessor>();
+            var accessor = sp.GetService<IHttpContextAccessor>();
             return accessor is not null
                 ? new ServerPrerenderingDetector(accessor)
-                : (IPrerenderingDetector)WasmPrerenderingDetector.Instance;
+                : (IPrerenderingDetector)WasmPrerendingDetector.Instance;
         });
 
-        // Обратная совместимость (опечатка в старом имени)
+        // Обратная совместимость (опечатка в имени)
         services.TryAddSingleton<IPrerendingDetector>(sp =>
             (IPrerendingDetector)sp.GetRequiredService<IPrerenderingDetector>());
 
-        // ── IHttpContextAccessor (только Server) ──────────────────────────────
+        // HttpContextAccessor (только Server)
         if (!OperatingSystem.IsBrowser())
         {
             services.AddHttpContextAccessor();
         }
 
-        // ── Streaming Rendering Service ───────────────────────────────────────
-        // SSR-3 FIX: HttpContext-based detection вместо нестабильного CascadingParameter
+        // Streaming Rendering Service
         services.TryAddScoped<ISgStreamingRenderingService>(sp =>
-            OperatingSystem.IsBrowser()
-                ? WasmStreamingRenderingService.Instance
-                : new SgStreamingRenderingService(
-                    sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()));
+        {
+            if (OperatingSystem.IsBrowser())
+                return WasmStreamingRenderingService.Instance;
+            return new SgStreamingRenderingService(sp.GetRequiredService<IHttpContextAccessor>());
+        });
+
+        services.TryAddSingleton<SgRenderModeResolver>();
+
+        // Опции компонентов
+        services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
+
+        // Z-Index
+        services.AddScoped<IZIndexService, ZIndexService>();
 
         services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
 
-        // ── Опции компонентов ─────────────────────────────────────────────────
-        services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
+        // Focus Trap
+        services.AddScoped<IFocusTrapService, FocusTrapService>();
 
-        // ── Z-Index Service ───────────────────────────────────────────────────
-        services.AddScoped<IZIndexService, ZIndexService>();
-
-        // ── Focus Trap ────────────────────────────────────────────────────────
-        services.AddScoped<IFocusTrapService, JsFocusTrapService>();
-
-        // ── Keyboard Service ──────────────────────────────────────────────────
+        // Keyboard
         services.AddScoped<IKeyboardService, KeyboardService>();
 
-        // ── Session Storage ───────────────────────────────────────────────────
+        // Session Storage
         services.AddScoped<ISessionStorage, JsSessionStorage>();
 
-        // ── Broadcast Service ─────────────────────────────────────────────────
+        // Broadcast
         services.TryAddSingleton<ISgBroadcastService, SgBroadcastService>();
 
-        // ── Presence Service ──────────────────────────────────────────────────
-        // ✅ FIX: SgPresenceServiceImpl реализует ISgPresenceService
+        // Presence
         services.AddScoped<ISgPresenceService, SgPresenceServiceImpl>();
 
-        // ── Toast Service ─────────────────────────────────────────────────────
-        // ✅ FIX CS0535: SgToastService реализует ISgToastService
+        // Toast
         services.AddScoped<ISgToastService, SgToastService>();
 
-        // ── Confirm Service ───────────────────────────────────────────────────
-        // ✅ FIX CS0311: SgConfirmService реализует ISgConfirmService
+        // Confirm
         services.AddScoped<ISgConfirmService, SgConfirmService>();
 
-        // ── Notification Service ──────────────────────────────────────────────
-        // ✅ FIX CS0311: SgNotificationService реализует ISgNotificationService
+        // Notification
         services.AddScoped<ISgNotificationService, SgNotificationService>();
 
-        // ── Component Registry ───────────────────────────────────────────────────
-        services.AddScoped<IComponentRegistry, ComponentRegistry>();
+        // Component Registry
+        services.AddScoped<IComponentRegistry, SgComponentRegistry>();
 
-        // ── Component Factory ────────────────────────────────────────────────────
-        services.AddScoped<IComponentFactory, ComponentFactory>();
+        // Component Factory
+        services.AddScoped<IComponentFactory, SgComponentFactory>();
 
-        // ── WASM Crypto Optimizer ────────────────────────────────────────────────
+        // WASM Crypto Optimizer
         services.AddScoped<ICryptoOptimizer, WasmCryptoOptimizer>();
 
-        // ── Circuit Awareness ─────────────────────────────────────────────────────
-        // На WASM — always-connected заглушка.
-        // На Server — переопределите через AddScoped<ICircuitAwareness, ServerCircuitAwareness>()
-        services.TryAddScoped<ICircuitAwareness, WasmCircuitAwareness>();
+        // Circuit Awareness (платформо-зависимая)
+        if (OperatingSystem.IsBrowser())
+        {
+            services.TryAddScoped<ICircuitAwareness>(_ => WasmCircuitAwareness.Instance);
+        }
+        else
+        {
+            services.TryAddScoped<ICircuitAwareness, SgCircuitAwareness>();
+        }
 
-        // ── Render Budget Service ─────────────────────────────────────────────────
-        // AdaptiveRenderBudgetService: мониторит CPU на Server и адаптирует бюджет.
-        // На WASM работает как обычный RenderBudgetService без CPU мониторинга.
+        // Render Budget Service
         services.TryAddScoped<IRenderBudgetService, AdaptiveRenderBudgetService>();
 
-        // ── Form Name Generator (Static SSR) ─────────────────────────────────────
+        // Form Name Generator (Static SSR)
         services.AddScoped<IFormNameGenerator, DefaultFormNameGenerator>();
 
-        // ── Memory Pressure Monitor (Blazor Server only) ─────────────────────────
+        // Memory Pressure Monitor (Server only)
         if (!OperatingSystem.IsBrowser())
         {
             services.TryAddSingleton<ISgMemoryPressureMonitor, SgMemoryPressureMonitor>();
         }
 
+        // SgThemeService (transient — создаётся per-circuit на Server, per-app на WASM)
+        services.TryAddTransient<SgThemeService>();
+
         return services;
     }
 
-    /// <summary>AddSuperUI для Blazor Server / Web App Server.</summary>
     public static IServiceCollection AddSuperUIServer(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
@@ -135,7 +135,6 @@ public static class ServiceCollectionExtensions
         return services.AddSuperUI(configure);
     }
 
-    /// <summary>AddSuperUI для Blazor WebAssembly.</summary>
     public static IServiceCollection AddSuperUIWasm(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
         => services.AddSuperUI(configure);

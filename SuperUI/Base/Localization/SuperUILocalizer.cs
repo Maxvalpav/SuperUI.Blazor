@@ -1,17 +1,14 @@
-// SuperUI/Base/Localization/SuperUILocalizer.cs
-using System;
+// ================================================================
+// Файл: SuperUI/Base/Localization/SuperUILocalizer.cs
+// ДОБАВЛЕНО: реализация GetString(string key, string defaultValue)
+// ================================================================
+
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Resources;
-using System.Threading;
 
 namespace SuperUI.Base.Localization;
 
-/// <summary>
-/// Default SuperUI localizer implementation. Supports embedded resources,
-/// custom dictionaries, and fallback chains. Culture-aware.
-/// </summary>
 public class SuperUILocalizer : ISuperUILocalizer, IDisposable
 {
     private readonly Dictionary<string, string> _customStrings = new(StringComparer.OrdinalIgnoreCase);
@@ -44,18 +41,41 @@ public class SuperUILocalizer : ISuperUILocalizer, IDisposable
         {
             if (TryGetString(key, out var value))
                 return value;
-            // Return key as fallback (like Blazor's default behavior)
             return $"[{key}]";
+        }
+    }
+
+    /// <summary>
+    /// Get localized string with a default fallback value.
+    /// </summary>
+    public string GetString(string key, string defaultValue)
+    {
+        if (TryGetString(key, out var value))
+            return value;
+        return defaultValue;
+    }
+
+    /// <summary>
+    /// Get localized string with format parameters.
+    /// </summary>
+    public string GetString(string key, params object[] args)
+    {
+        var format = this[key];
+        try
+        {
+            return string.Format(_culture, format, args);
+        }
+        catch
+        {
+            return format;
         }
     }
 
     public bool TryGetString(string key, out string value)
     {
-        // Check custom strings first
         if (_customStrings.TryGetValue(key, out value!))
             return true;
 
-        // Try resource managers
         foreach (var (_, rm) in _resourceManagers)
         {
             value = rm.GetString(key, _culture);
@@ -73,36 +93,20 @@ public class SuperUILocalizer : ISuperUILocalizer, IDisposable
         return string.Format(_culture, format, args);
     }
 
-    /// <summary>Add a custom localized string.</summary>
     public void AddCustomString(string key, string value)
-    {
-        _customStrings[key] = value;
-    }
+        => _customStrings[key] = value;
 
-    /// <summary>Add multiple custom strings at once.</summary>
     public void AddCustomStrings(IReadOnlyDictionary<string, string> strings)
     {
         foreach (var (k, v) in strings)
             _customStrings[k] = v;
     }
 
-    /// <summary>Register a resource manager as a source.</summary>
     public void AddResourceManager(string name, ResourceManager resourceManager)
-    {
-        _resourceManagers[name] = resourceManager ?? throw new ArgumentNullException(nameof(resourceManager));
-    }
+        => _resourceManagers[name] = resourceManager ?? throw new ArgumentNullException(nameof(resourceManager));
 
-    /// <summary>Get supported cultures from all resource managers.</summary>
     public IEnumerable<CultureInfo> GetSupportedCultures()
     {
-        var cultures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (_, rm) in _resourceManagers)
-        {
-            // ResourceManager doesn't expose cultures directly,
-            // but we can use the known set from registration
-        }
-
-        // Default supported cultures
         yield return new CultureInfo("en");
         yield return new CultureInfo("ru");
         yield return new CultureInfo("de");

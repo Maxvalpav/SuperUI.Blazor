@@ -1,12 +1,24 @@
-// SuperUI/Base/SgAsyncButton.cs
-using System;
-using System.Threading.Tasks;
+// ================================================================
+// Файл: SuperUI/Base/SgAsyncButton.cs
+// ИСПРАВЛЕНО: ButtonType → определён в этом же файле
+// ================================================================
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SuperUI.Base;
+
+/// <summary>
+/// HTML button type enumeration.
+/// </summary>
+public enum ButtonType
+{
+    Button,
+    Submit,
+    Reset
+}
 
 /// <summary>
 /// Button with built-in async operation support,
@@ -22,7 +34,7 @@ public class SgAsyncButton : ComponentBase, IDisposable
     [Parameter] public string? IconCssClass { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public ButtonType Type { get; set; } = ButtonType.Button;
-    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [Parameter] public EventCallback OnClick { get; set; }
     [Parameter] public Func<Task>? OnClickAsync { get; set; }
     [Parameter] public int DebounceMs { get; set; } = 0;
     [Parameter] public int SuccessDisplayMs { get; set; } = 2000;
@@ -50,27 +62,26 @@ public class SgAsyncButton : ComponentBase, IDisposable
     {
         if (_disposed || Disabled || IsLoading) return;
 
-        // Debounce check
         if (DebounceMs > 0)
         {
             var elapsed = (DateTime.UtcNow - _lastClickTime).TotalMilliseconds;
             if (elapsed < DebounceMs) return;
-            _lastClickTime = DateTime.UtcNow;
         }
+
+        _lastClickTime = DateTime.UtcNow;
 
         try
         {
             _state = AsyncOperationState.Loading;
             StateHasChanged();
 
-            await OnClick.InvokeAsync(e);
+            await OnClick.InvokeAsync();
             if (OnClickAsync != null)
                 await OnClickAsync();
 
             _state = AsyncOperationState.Success;
             StateHasChanged();
 
-            // Auto-reset after delay
             if (SuccessDisplayMs > 0)
             {
                 await Task.Delay(SuccessDisplayMs);

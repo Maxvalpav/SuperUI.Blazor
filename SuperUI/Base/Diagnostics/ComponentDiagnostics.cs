@@ -8,11 +8,36 @@ using System.Threading;
 namespace SuperUI.Base.Diagnostics;
 
 /// <summary>
+/// Per-component diagnostics object. Tracks render counts, times, errors, and parameter changes.
+/// Used by SgComponentBase for DEBUG builds.
+/// </summary>
+public class ComponentDiagnostics : IDisposable
+{
+    public string ComponentId { get; set; } = string.Empty;
+    public int RenderCount { get; set; }
+    public double LastRenderMs { get; set; }
+    public double MaxRenderMs { get; set; }
+    public double AverageRenderMs { get; set; }
+    public int ParameterChangeCount { get; set; }
+    public int ErrorCount { get; set; }
+
+    public void RecordError(string componentId, Exception exception)
+    {
+        ErrorCount++;
+    }
+
+    public void Dispose()
+    {
+        GC.SuppressFinalize(this);
+    }
+}
+
+/// <summary>
 /// Collects and exposes component diagnostics data: render counts,
 /// render times, errors, parameter changes. Implements
 /// ISgDiagnosticsCollector for DI registration.
 /// </summary>
-public class ComponentDiagnostics : ISgDiagnosticsCollector, IDisposable
+public class SgDiagnosticsCollector : ISgDiagnosticsCollector, IDisposable
 {
     private readonly ConcurrentDictionary<string, ComponentDiagnosticEntry> _entries = new();
     private readonly ConcurrentQueue<ComponentErrorRecord> _errors = new();

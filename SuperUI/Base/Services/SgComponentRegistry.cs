@@ -1,8 +1,5 @@
 // SuperUI/Base/Services/SgComponentRegistry.cs
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using Microsoft.Extensions.DependencyInjection;
+// FIX CS0425: Добавлен constraint where TComponent : class в метод IsRegistered<T>
 
 namespace SuperUI.Base.Services;
 
@@ -10,7 +7,7 @@ namespace SuperUI.Base.Services;
 /// Central registry for all SuperUI components. Provides lookup, metadata,
 /// and lazy-initialization support. Thread-safe for Server-side concurrent access.
 /// </summary>
-public class SgComponentRegistry
+public class SgComponentRegistry : IComponentRegistry
 {
     private readonly ConcurrentDictionary<string, ComponentRegistration> _components = new();
     private readonly ConcurrentDictionary<Type, string> _typeToName = new();
@@ -37,13 +34,19 @@ public class SgComponentRegistry
     /// <summary>Check if a component name is registered.</summary>
     public bool IsRegistered(string name) => _components.ContainsKey(name);
 
-    /// <summary>Check if a component type is registered.</summary>
-    public bool IsRegistered<TComponent>() => _typeToName.ContainsKey(typeof(TComponent));
+    /// <summary>
+    /// Check if a component type is registered.
+    /// ✅ FIX CS0425: Добавлен where TComponent : class для соответствия IComponentRegistry.
+    /// </summary>
+    public bool IsRegistered<TComponent>() where TComponent : class
+        => _typeToName.ContainsKey(typeof(TComponent));
 
     /// <summary>Get component type by name.</summary>
     public Type? ResolveType(string name)
     {
-        return _components.TryGetValue(name, out var registration) ? registration.ComponentType : null;
+        return _components.TryGetValue(name, out var registration)
+            ? registration.ComponentType
+            : null;
     }
 
     /// <summary>Get all registered component names.</summary>
@@ -52,7 +55,9 @@ public class SgComponentRegistry
     /// <summary>Get metadata for a registered component.</summary>
     public ComponentMetadata? GetMetadata(string name)
     {
-        return _components.TryGetValue(name, out var registration) ? registration.Metadata : null;
+        return _components.TryGetValue(name, out var registration)
+            ? registration.Metadata
+            : null;
     }
 
     /// <summary>Try to create an instance via DI.</summary>
@@ -62,6 +67,10 @@ public class SgComponentRegistry
             throw new InvalidOperationException("ServiceProvider is not set. Cannot resolve components.");
         return _serviceProvider.GetService<TComponent>();
     }
+
+    // --- IComponentRegistry implementation ---
+    void IComponentRegistry.Register<TComponent>(string name, ComponentMetadata? metadata)
+        => Register<TComponent>(name, metadata);
 }
 
 /// <summary>Registration entry for a component.</summary>
@@ -96,4 +105,18 @@ public sealed class ComponentMetadata
         Description = description;
         Category = category;
     }
+}
+
+/// <summary>
+/// Interface for component registry (used for DI and testing).
+/// ✅ Добавлен constraint where T : class для единообразия.
+/// </summary>
+public interface IComponentRegistry
+{
+    void Register<T>(string name, ComponentMetadata? metadata = null) where T : class;
+    bool IsRegistered(string name);
+    bool IsRegistered<T>() where T : class;
+    Type? ResolveType(string name);
+    ComponentMetadata? GetMetadata(string name);
+    IEnumerable<string> GetRegisteredNames();
 }

@@ -1,36 +1,36 @@
-// SuperUI/Base/Services/WasmPrerendingDetector.cs
-using System;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+// ================================================================
+// Файл: SuperUI/Base/Services/WasmPrerendingDetector.cs
+// ИСПРАВЛЕНО:
+// - Убран using Microsoft.AspNetCore.Components.WebAssembly.Hosting
+// - Убран дубликат IPrerenderingDetector
+// - Используется OperatingSystem.IsBrowser() вместо WebAssembly проверок
+// ================================================================
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Detects pre-rendering state in WASM applications.
-/// Pre-rendering in WASM means the component is being rendered
-/// on the server during static site generation or SSR before
-/// the WASM runtime takes over.
+/// В WASM: prerendering = код выполняется НЕ в браузере (статическая генерация).
 /// </summary>
 public class WasmPrerendingDetector : IPrerenderingDetector
 {
     private readonly Lazy<bool> _isPrerendering;
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Singleton instance для WASM (stateless).
+    /// </summary>
+    public static readonly WasmPrerendingDetector Instance = new();
+
     public bool IsPrerendering => _isPrerendering.Value;
 
-    /// <inheritdoc/>
     public bool IsInteractive => !IsPrerendering;
 
     public WasmPrerendingDetector()
     {
-        // In WASM, prerendering is detected by checking if we're running
-        // in the browser context vs the static rendering context.
         _isPrerendering = new Lazy<bool>(() =>
         {
             try
             {
-                // If we can access browser APIs, we're interactive
                 return OperatingSystem.IsBrowser() == false;
             }
             catch
@@ -42,7 +42,7 @@ public class WasmPrerendingDetector : IPrerenderingDetector
 
     /// <summary>
     /// Determines if the application is currently prerendering.
-    /// In .NET 8+, RendererInfo can be used for more accurate detection.
+    /// В .NET 8+ RendererInfo используется для более точного определения.
     /// </summary>
     public static bool DetectPrerendering(RendererInfo? rendererInfo = null)
     {
@@ -58,12 +58,4 @@ public class WasmPrerendingDetector : IPrerenderingDetector
             return true;
         }
     }
-}
-
-/// <summary>Interface for prerendering detection.</summary>
-public interface IPrerenderingDetector
-{
-    bool IsPrerendering { get; }
-
-    bool IsInteractive { get; }
 }

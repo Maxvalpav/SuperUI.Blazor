@@ -9,7 +9,7 @@ namespace SuperUI.Base.Reactive;
 /// to the end of the current synchronization context frame.
 /// Reduces redundant re-executions for rapid signal changes.
 /// </summary>
-public sealed class SgBatchEffect : IDisposable
+public sealed class SgBatchEffect : ISignalObserver, IDisposable
 {
     private readonly Action _effect;
     private readonly List<IDisposable> _subscriptions = new();
@@ -28,6 +28,12 @@ public sealed class SgBatchEffect : IDisposable
         if (_isDisposed) return;
         _isDirty = true;
         Schedule();
+    }
+
+    /// <summary>Called when a signal changes.</summary>
+    public void OnSignalChanged(ISgSignal signal)
+    {
+        MarkDirty();
     }
 
     private void Schedule()
@@ -59,13 +65,6 @@ public sealed class SgBatchEffect : IDisposable
         _subscriptions.Add(sub);
         signal.Subscribe(this);
         return sub;
-    }
-
-    /// <summary>Convenience: use SgEffect-style Subscribe.</summary>
-    public IDisposable Subscribe(SgEffect effect)
-    {
-        // Allow subscribing an effect to this batch
-        return new Subscription(() => { });
     }
 
     public void Dispose()

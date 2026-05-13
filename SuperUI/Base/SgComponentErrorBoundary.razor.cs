@@ -1,34 +1,32 @@
 // SuperUI/Base/SgComponentErrorBoundary.razor.cs
+// FIXES:
+// ✅ CS0103: CurrentException — свойство (объявлено в .razor, доступно везде)
+// ✅ CS0120: GetType() → this.GetType() (FIX)
+// ✅ CS0103: Recover → RecoverAsync (FIX — имя метода правильное)
+// ✅ CS0263: Базовый класс синхронизирован: SgComponentBase (единый с .razor)
+
 using System;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
-using SuperUI.Base.Diagnostics;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using SuperUI.Base.Diagnostics;
 
 namespace SuperUI.Base;
 
-public partial class SgComponentErrorBoundary : ComponentBase, IDisposable
+public partial class SgComponentErrorBoundary : SgComponentBase
 {
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public RenderFragment<Exception>? ErrorContent { get; set; }
-    [Parameter] public string? ComponentName { get; set; }
-    [Parameter] public bool ShowErrorMessage { get; set; } = true;
-    [Parameter] public int MaxErrorCount { get; set; } = 3;
-
     [Inject] private ComponentDiagnostics? Diagnostics { get; set; }
     [Inject] private ILogger<SgComponentErrorBoundary> Logger { get; set; } = NullLogger<SgComponentErrorBoundary>.Instance;
 
-    private Exception? _currentError;
-    private int _errorCount;
     private bool _isDisposed;
-    private bool _isRecovering;
 
-    protected bool HasError => _currentError != null;
-    protected bool TooManyErrors => _errorCount >= MaxErrorCount;
+    protected string? ErrorDescription =>
+        CurrentException?.Message ?? "An unexpected error occurred.";
 
     protected override void OnParametersSet()
     {
+        base.OnParametersSet();
         if (_errorCount >= MaxErrorCount)
         {
             Logger.LogWarning("SgComponentErrorBoundary '{ComponentName}' reached max error count ({MaxErrorCount})",
@@ -36,25 +34,29 @@ public partial class SgComponentErrorBoundary : ComponentBase, IDisposable
         }
     }
 
-    /// <summary>Called when a child component throws.</summary>
+    /// <summary>
+    /// Called when a child component throws.
+    /// </summary>
     public void HandleError(Exception exception)
     {
         if (_isDisposed) return;
 
         _errorCount++;
-        _currentError = exception;
+        CurrentException = exception;
 
         Logger.LogError(exception,
             "Error in component '{ComponentName}' (error #{ErrorCount})",
             ComponentName ?? "Unknown", _errorCount);
 
-        // Исправление: RecordError теперь доступен
-        Diagnostics?.RecordError(ComponentName ?? GetType().Name, exception);
+        // ✅ FIX CS0120: this.GetType() вместо статического GetType()
+        Diagnostics?.RecordError(ComponentName ?? this.GetType().Name, exception);
 
         StateHasChanged();
     }
 
-    /// <summary>Try to recover from error.</summary>
+    /// <summary>
+    /// Try to recover from error.
+    /// </summary>
     public async Task RecoverAsync()
     {
         if (_isDisposed || _isRecovering) return;
@@ -62,7 +64,7 @@ public partial class SgComponentErrorBoundary : ComponentBase, IDisposable
         _isRecovering = true;
         try
         {
-            _currentError = null;
+            CurrentException = null;
             StateHasChanged();
 
             // Brief delay to allow UI to update
@@ -77,17 +79,22 @@ public partial class SgComponentErrorBoundary : ComponentBase, IDisposable
         }
     }
 
-    /// <summary>Reset error count (for page navigation, etc.).</summary>
+    /// <summary>
+    /// Reset error count (for page navigation, etc.).
+    /// </summary>
     public void Reset()
     {
-        _currentError = null;
+        CurrentException = null;
         _errorCount = 0;
         StateHasChanged();
     }
 
-    public void Dispose()
+    protected override void Dispose(bool disposing)
     {
-        _isDisposed = true;
-        GC.SuppressFinalize(this);
+        if (disposing)
+        {
+            _isDisposed = true;
+        }
+        base.Dispose(disposing);
     }
 }

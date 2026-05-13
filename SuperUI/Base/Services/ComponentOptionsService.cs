@@ -18,7 +18,7 @@ public sealed class ComponentOptionsService : IComponentOptionsService
         _options = options.Value ?? throw new ArgumentNullException(nameof(options));
     }
 
-    public SgSize DefaultSize => _options.DefaultSize;
+    public SgSize DefaultSize => ConvertSize(_options.DefaultSize);
     public bool EnableAnimations => _options.AnimationsEnabled;
     public bool EnableAria => _options.EnableAria;
     public string Locale => _options.Locale;
@@ -35,4 +35,14 @@ public sealed class ComponentOptionsService : IComponentOptionsService
         // В расширенной — можно читать из конфигурации per-component.
         return new TOptions();
     }
+
+    private static SgSize ConvertSize(SgComponentSize size) => size switch
+    {
+        SgComponentSize.ExtraSmall => SgSize.Sm,
+        SgComponentSize.Small => SgSize.Sm,
+        SgComponentSize.Medium => SgSize.Md,
+        SgComponentSize.Large => SgSize.Lg,
+        SgComponentSize.ExtraLarge => SgSize.Xl,
+        _ => SgSize.Md
+    };
 }

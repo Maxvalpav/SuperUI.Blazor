@@ -15,7 +15,7 @@ namespace SuperUI.Base.Hooks;
 /// Реализует <see cref="IAsyncComponentHook"/> и <see cref="IRenderHook"/>.
 /// Переопределяйте только нужные методы.
 /// </remarks>
-public abstract class SgComponentInterceptor : IAsyncComponentHook, IRenderHook
+public abstract class SgComponentInterceptor : IComponentHook, IRenderHook
 {
     // IComponentHook
     public virtual void OnInitialized(SgComponentBase component) { }

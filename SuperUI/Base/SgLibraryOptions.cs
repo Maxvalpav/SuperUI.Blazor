@@ -1,7 +1,14 @@
-// SuperUI/Base/SgLibraryOptions.cs
-using System;
-using System.Collections.Generic;
+// ================================================================
+// Файл: SuperUI/Base/SgLibraryOptions.cs
+// ИСПРАВЛЕНО:
+// - SgThemeService → правильный using SuperUI.Services
+// - ComponentRegistry → IComponentRegistry
+// - ComponentFactory → IComponentFactory
+// - Добавлены поля .NET 8+ (DefaultRenderMode, EnableWasmCryptoOptimization)
+// ================================================================
+
 using SuperUI.Base.Services;
+using SuperUI.Services;
 
 namespace SuperUI.Base;
 
@@ -42,18 +49,31 @@ public class SgLibraryOptions
     public bool EnableRenderTracking { get; set; }
 
     // --- Services (lazy-initialized) ---
-    public SgComponentRegistry? ComponentRegistry { get; set; }
-    public SgComponentFactory? ComponentFactory { get; set; }
+    public IComponentRegistry? ComponentRegistry { get; set; }
+    public IComponentFactory? ComponentFactory { get; set; }
     public SgThemeService? ThemeService { get; set; }
-    public FocusTrapService? FocusTrapService { get; set; }
+    public IFocusTrapService? FocusTrapService { get; set; }
 
     // --- Throttling ---
-    public int RenderThrottleMs { get; set; } = 0; // 0 = no throttling
+    public int RenderThrottleMs { get; set; } = 0;
     public int BatchSize { get; set; } = 10;
 
-    // --- SSR ---
+    // --- SSR (.NET 8+) ---
     public bool EnableSsrStreaming { get; set; } = true;
     public int SsrStreamingChunkSizeBytes { get; set; } = 4096;
+
+    // --- Render Mode (.NET 8+) ---
+    /// <summary>
+    /// Default render mode when not specified per-component.
+    /// SgRenderMode.Unknown = auto-detect.
+    /// </summary>
+    public SgRenderMode DefaultRenderMode { get; set; } = SgRenderMode.Unknown;
+
+    /// <summary>
+    /// Forced render mode overrides auto-detection.
+    /// Valid: "Server", "WebAssembly", "Auto", "StaticSSR", null.
+    /// </summary>
+    public string? ForcedRenderMode { get; set; }
 
     // --- Reconnection (Server-side) ---
     public int ReconnectionRetryMs { get; set; } = 2000;
@@ -62,13 +82,17 @@ public class SgLibraryOptions
     // --- WASM ---
     public bool EnableWasmLazyLoading { get; set; } = true;
 
-    // --- New: Render mode aware ---
-    public string? ForcedRenderMode { get; set; }
+    // --- WASM Crypto optimization (.NET 8+) ---
+    public bool EnableWasmCryptoOptimization { get; set; } = true;
 
-    /// <summary>Compute z-index for a given layer (0-based).</summary>
+    /// <summary>
+    /// Compute z-index for a given layer (0-based).
+    /// </summary>
     public int GetZIndex(int layer = 0) => BaseZIndex + (layer * ZIndexStep);
 
-    /// <summary>Clone these options.</summary>
+    /// <summary>
+    /// Clone these options.
+    /// </summary>
     public SgLibraryOptions Clone()
     {
         return new SgLibraryOptions
@@ -93,10 +117,12 @@ public class SgLibraryOptions
             BatchSize = BatchSize,
             EnableSsrStreaming = EnableSsrStreaming,
             SsrStreamingChunkSizeBytes = SsrStreamingChunkSizeBytes,
+            DefaultRenderMode = DefaultRenderMode,
+            ForcedRenderMode = ForcedRenderMode,
             ReconnectionRetryMs = ReconnectionRetryMs,
             ReconnectionMaxRetries = ReconnectionMaxRetries,
             EnableWasmLazyLoading = EnableWasmLazyLoading,
-            ForcedRenderMode = ForcedRenderMode
+            EnableWasmCryptoOptimization = EnableWasmCryptoOptimization
         };
     }
 }

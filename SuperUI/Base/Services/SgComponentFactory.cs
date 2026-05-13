@@ -1,23 +1,35 @@
-// SuperUI/Base/Services/SgComponentFactory.cs
-using System;
-using System.Collections.Concurrent;
-using System.Threading.Tasks;
-using Microsoft.Extensions.DependencyInjection;
+// ================================================================
+// Файл: SuperUI/Base/Services/SgComponentFactory.cs
+// ДОБАВЛЕНО: интерфейс IComponentFactory, класс сделан public
+// ================================================================
 
 namespace SuperUI.Base.Services;
+
+/// <summary>
+/// Интерфейс фабрики компонентов.
+/// </summary>
+public interface IComponentFactory
+{
+    T Create<T>() where T : class;
+    T Create<T>(bool usePooling) where T : class, IPoolableComponent, new();
+    void Return<T>(T component) where T : class, IPoolableComponent;
+    object CreateByName(string name);
+    ValueTask<T> CreateAsync<T>() where T : class;
+}
 
 /// <summary>
 /// Factory for creating component instances with support for
 /// dependency injection, pooling, and async initialization.
 /// Optimized for both WASM (low overhead) and Server-side (circuit-aware).
+/// Implements IComponentFactory for DI registration.
 /// </summary>
-public class SgComponentFactory
+public class SgComponentFactory : IComponentFactory
 {
     private readonly IServiceProvider _serviceProvider;
-    private readonly SgComponentRegistry _registry;
+    private readonly IComponentRegistry _registry;
     private readonly ConcurrentDictionary<Type, ObjectPool> _pools = new();
 
-    public SgComponentFactory(IServiceProvider serviceProvider, SgComponentRegistry registry)
+    public SgComponentFactory(IServiceProvider serviceProvider, IComponentRegistry registry)
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));

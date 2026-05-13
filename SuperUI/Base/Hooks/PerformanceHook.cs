@@ -16,7 +16,7 @@ namespace SuperUI.Base.Hooks;
 /// По умолчанию порог 16 мс (1 кадр @ 60fps).
 /// Для production используйте <see cref="SgPerformanceInterceptor"/> с ILogger.
 /// </remarks>
-public sealed class PerformanceHook : IAsyncComponentHook, IRenderHook
+public sealed class PerformanceHook : IComponentHook, IRenderHook
 {
     private static readonly Action<string> DefaultOutput = msg => Debug.WriteLine(msg);
 

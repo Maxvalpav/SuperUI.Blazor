@@ -14,7 +14,7 @@ namespace SuperUI.Base.Hooks;
 /// <remarks>
 /// Используется совместно с SgComponentErrorBoundary для graceful degradation.
 /// </remarks>
-public sealed class ErrorBoundaryHook : IAsyncComponentHook
+public sealed class ErrorBoundaryHook : IComponentHook
 {
     private readonly Action<Exception> _onError;
 
@@ -27,7 +27,7 @@ public sealed class ErrorBoundaryHook : IAsyncComponentHook
     public void OnParametersSet(SgComponentBase c) { }
     public void OnAfterRender(SgComponentBase c, bool firstRender) { }
 
-    // IAsyncComponentHook — ИСПРАВЛЕНО: все методы обёрнуты
+    // IComponentHook async methods
     public Task OnInitializedAsync(SgComponentBase c) => SafeExecute(() => Task.CompletedTask);
 
     public Task OnParametersSetAsync(SgComponentBase c) => SafeExecute(() => Task.CompletedTask);

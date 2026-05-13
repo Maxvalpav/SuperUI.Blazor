@@ -13,7 +13,7 @@ namespace SuperUI.Base.Hooks;
 /// Хук для структурированного логирования жизненного цикла компонента.
 /// Логирует Initialize и FirstRender с временными метками.
 /// </summary>
-public sealed class StructuredLifecycleHook : IAsyncComponentHook, IRenderHook
+public sealed class StructuredLifecycleHook : IComponentHook, IRenderHook
 {
     private readonly ILogger _logger;
     // ИСПРАВЛЕНО: timestamp вместо Stopwatch (thread-safe)

@@ -366,7 +366,20 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     {
         base.OnInitialized();
         LogLifecycle(nameof(OnInitialized));
-        ComponentRegistry?.Register(this);
+        // Register component type with registry if available
+        if (ComponentRegistry is not null)
+        {
+            var componentType = GetType();
+            var name = componentType.Name;
+            // Use reflection to call the generic Register method
+            var registerMethod = ComponentRegistry.GetType()
+                .GetMethod("Register", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+            if (registerMethod?.IsGenericMethodDefinition == true)
+            {
+                var genericMethod = registerMethod.MakeGenericMethod(componentType);
+                genericMethod.Invoke(ComponentRegistry, new object?[] { name, null });
+            }
+        }
         RunHooks(h => h.OnInitialized(this));
     }
 
@@ -439,17 +452,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         if (firstRender)
         {
             await OnFirstRenderAsync();
-            await RunHooksAsync(h =>
-            {
-                if (h is IAsyncComponentHook ah) return ah.OnFirstRenderAsync(this);
-                return Task.CompletedTask;
-            });
+            await RunHooksAsync(h => h.OnAfterRenderAsync(this, firstRender));
         }
-        await RunHooksAsync(h =>
-        {
-            if (h is IAsyncComponentHook ah) return ah.OnAfterRenderAsync(this, firstRender);
-            return Task.CompletedTask;
-        });
+        await RunHooksAsync(h => h.OnAfterRenderAsync(this, firstRender));
     }
 
     /// <summary>Вызывается после первого рендера.</summary>

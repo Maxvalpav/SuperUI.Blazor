@@ -15,7 +15,7 @@ namespace SuperUI.Base.Hooks;
 /// Server: _lastRenderTicks и _isVisible — per-instance поля, изолированы per-circuit.
 /// WASM: однопоточный — volatile не нужен логически, но помогает JIT-оптимизатору.
 /// </remarks>
-public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
+public sealed class AdaptiveRenderHook : IComponentHook, IRenderHook
 {
     private volatile bool _isVisible = true;
     private long _lastRenderTicks;
@@ -53,9 +53,8 @@ public sealed class AdaptiveRenderHook : IAsyncComponentHook, IRenderHook
     public void OnParametersSet(SgComponentBase c) { }
     public void OnAfterRender(SgComponentBase c, bool first) { }
 
-    // IAsyncComponentHook default-реализации
+    // IComponentHook async default-реализации
     public Task OnInitializedAsync(SgComponentBase c) => Task.CompletedTask;
     public Task OnParametersSetAsync(SgComponentBase c) => Task.CompletedTask;
     public Task OnAfterRenderAsync(SgComponentBase c, bool firstRender) => Task.CompletedTask;
-    public Task OnFirstRenderAsync(SgComponentBase c) => Task.CompletedTask;
 }

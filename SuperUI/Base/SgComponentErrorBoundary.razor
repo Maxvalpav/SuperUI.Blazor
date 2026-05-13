@@ -1,5 +1,8 @@
 @namespace SuperUI.Base
-@inherits Microsoft.AspNetCore.Components.Web.ErrorBoundary
+@inherits SgComponentBase
+
+@* FIX CS0263: наследуемся от SgComponentBase (единый базовый класс с .razor.cs)
+НЕ от Microsoft.AspNetCore.Components.Web.ErrorBoundary — конфликтует с SgErrorBoundary.cs *@
 
 @if (CurrentException == null)
 {
@@ -7,30 +10,57 @@
 }
 else
 {
-    <div class="sg-error-boundary @ErrorClass" role="alert" aria-live="assertive">
-        <h3 class="sg-error-boundary__title">@ErrorTitle</h3>
-        <p class="sg-error-boundary__description">@ErrorDescription</p>
-
+    <div class="sg-error-boundary @(TooManyErrors ? "sg-error-boundary--fatal" : "")" role="alert">
+        <div class="sg-error-boundary__title">
+            <span class="sg-error-boundary__icon">⚠️</span>
+            <span>@ErrorTitle</span>
+        </div>
+        <div class="sg-error-boundary__description">
+            @ErrorDescription
+        </div>
         @if (ShowTechnicalDetails)
         {
-            <details class="sg-error-boundary__details">
-                <summary>Technical Details</summary>
-                <pre class="sg-error-boundary__stacktrace">@CurrentException.ToString()</pre>
-            </details>
+            <div class="sg-error-boundary__details">
+                <pre>@CurrentException.ToString()</pre>
+            </div>
         }
-
-        @if (_retryCount < MaxRetryAttempts)
+        @if (!TooManyErrors)
         {
-            <button class="sg-error-boundary__retry-btn" 
-                    @onclick="RecoverAsync" 
-                    disabled="@_isRecovering">
-                @(_isRecovering ? "Recovering..." : RetryText)
-            </button>
-            <span class="sg-error-boundary__attempts">Attempt @_retryCount of @MaxRetryAttempts</span>
+            <div class="sg-error-boundary__actions">
+                <button class="sg-error-boundary__retry"
+                        @onclick="RecoverAsync"
+                        disabled="@_isRecovering">
+                    @(_isRecovering ? "Recovering..." : RetryText)
+                </button>
+                <span class="sg-error-boundary__retry-count">Attempt @_errorCount of @MaxErrorCount</span>
+            </div>
         }
         else
         {
-            <p class="sg-error-boundary__max-attempts">Maximum retry attempts reached. Please refresh the page.</p>
+            <div class="sg-error-boundary__fatal">Maximum retry attempts reached. Please refresh the page.</div>
         }
     </div>
+}
+
+@code {
+    // Code-behind is in SgComponentErrorBoundary.razor.cs
+    // This block intentionally contains only the minimal necessary for compilation:
+    // FIX: All properties referenced by .razor must be declared here
+    //      as partial properties matched with .razor.cs
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? ErrorContent { get; set; }
+    [Parameter] public string? ComponentName { get; set; }
+    [Parameter] public bool ShowErrorMessage { get; set; } = true;
+    [Parameter] public bool ShowTechnicalDetails { get; set; } = true;
+    [Parameter] public int MaxErrorCount { get; set; } = 3;
+    [Parameter] public string ErrorTitle { get; set; } = "Something went wrong";
+    [Parameter] public string RetryText { get; set; } = "Retry";
+
+    // FIX CS0103: CurrentException is now a property, not a field _currentError
+    protected Exception? CurrentException { get; private set; }
+    protected bool TooManyErrors => _errorCount >= MaxErrorCount;
+    protected bool HasError => CurrentException != null;
+    protected int _errorCount;
+    protected bool _isRecovering;
 }

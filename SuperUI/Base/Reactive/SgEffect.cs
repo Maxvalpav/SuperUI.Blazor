@@ -8,9 +8,10 @@ namespace SuperUI.Base.Reactive;
 /// Represents a reactive side effect. Automatically tracks
 /// signal dependencies and re-executes when they change.
 /// </summary>
-public sealed class SgEffect : IDisposable
+public sealed class SgEffect : ISignalObserver, IDisposable
 {
-    private readonly Action _effect;
+    private readonly Delegate _effect; // Can be Action or Func<Task>
+    private readonly Action<Exception>? _onError;
     private readonly HashSet<ISgSignal> _dependencies = new();
     private bool _isDisposed;
     private bool _isRunning;
@@ -19,9 +20,16 @@ public sealed class SgEffect : IDisposable
     public bool IsRunning => _isRunning;
     public int DependencyCount => _dependencies.Count;
 
-    public SgEffect(Action effect)
+    public SgEffect(Action effect, Action<Exception>? onError = null)
     {
         _effect = effect ?? throw new ArgumentNullException(nameof(effect));
+        _onError = onError;
+    }
+
+    public SgEffect(Func<Task> effect, Action<Exception>? onError = null)
+    {
+        _effect = effect ?? throw new ArgumentNullException(nameof(effect));
+        _onError = onError;
     }
 
     /// <summary>Execute the effect and track dependencies.</summary>
@@ -32,7 +40,18 @@ public sealed class SgEffect : IDisposable
         try
         {
             SignalTracker.BeginTracking(this);
-            _effect();
+            if (_effect is Action action)
+            {
+                action();
+            }
+            else if (_effect is Func<Task> asyncAction)
+            {
+                _ = asyncAction(); // Fire and forget for now
+            }
+        }
+        catch (Exception ex)
+        {
+            _onError?.Invoke(ex);
         }
         finally
         {
@@ -46,6 +65,13 @@ public sealed class SgEffect : IDisposable
     {
         if (!_isDisposed)
             _dependencies.Add(signal);
+    }
+
+    /// <summary>Called when a signal changes.</summary>
+    public void OnSignalChanged(ISgSignal signal)
+    {
+        if (!_isDisposed && !_isRunning)
+            Run();
     }
 
     /// <summary>Subscribe the effect to a signal, returning a disposable.</summary>

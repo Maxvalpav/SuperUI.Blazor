@@ -1,16 +1,19 @@
-// SuperUI/Base/SgSsrFormSupport.cs
-using System;
-using System.Threading.Tasks;
+// ================================================================
+// Файл: SuperUI/Base/SgSsrFormSupport.cs
+// ИСПРАВЛЕНО:
+// - Добавлен using Microsoft.AspNetCore.Http (для HttpContext)
+// - Безопасная проверка HttpContext?.Request.HasFormContentType
+// - Добавлен EnableAntiforgery для .NET 8+
+// ================================================================
+
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
+using Microsoft.AspNetCore.Http;
 
 namespace SuperUI.Base;
 
 /// <summary>
 /// Provides SSR-compatible form support for SuperUI components.
-/// Bridges the gap between traditional form POST handling and
-/// Blazor's EditForm/EditContext model in SSR scenarios.
-/// 
 /// Supports .NET 8+ SSR with enhanced navigation and form handling.
 /// </summary>
 public class SgSsrFormSupport<TModel> : ComponentBase where TModel : class, new()
@@ -18,28 +21,34 @@ public class SgSsrFormSupport<TModel> : ComponentBase where TModel : class, new(
     [Parameter] public TModel? Model { get; set; }
     [Parameter] public bool IsModelFromForm { get; set; }
     [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
-    [Parameter] public EventCallback OnInvalidSubmit { get; set; }
+    [Parameter] public EventCallback<TModel> OnInvalidSubmit { get; set; }
     [Parameter] public Func<TModel, Task>? HandleSubmitAsync { get; set; }
-    [Parameter] public RenderFragment<TModel>? ChildContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string FormMethod { get; set; } = "post";
     [Parameter] public bool EnhancedNavigation { get; set; } = true;
     [Parameter] public bool SupplyFromFormData { get; set; }
 
-    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+    /// <summary>
+    /// Enable antiforgery token (.NET 8+).
+    /// </summary>
+    [Parameter] public bool EnableAntiforgery { get; set; } = true;
+
+    [CascadingParameter]
+    private HttpContext? HttpContext { get; set; }
 
     private EditContext? _editContext;
     private bool _hasInitialized;
 
     protected override void OnInitialized()
     {
-        // Initialize Model if not provided via form data
-        if (SupplyFromFormData && HttpContext?.Request.HasFormContentType == true)
+        if (SupplyFromFormData
+            && HttpContext?.Request.HasFormContentType == true
+            && HttpContext.Request.Form != null)
         {
             Model ??= new TModel();
             var form = HttpContext.Request.Form;
             IsModelFromForm = true;
 
-            // Simple model binding from form data
             var properties = typeof(TModel).GetProperties();
             foreach (var prop in properties)
             {
@@ -72,7 +81,6 @@ public class SgSsrFormSupport<TModel> : ComponentBase where TModel : class, new(
         }
     }
 
-    /// <summary>Handle form submission (SSR-compatible).</summary>
     public async Task HandleSubmit()
     {
         if (Model is null) return;
@@ -82,7 +90,7 @@ public class SgSsrFormSupport<TModel> : ComponentBase where TModel : class, new(
             var isValid = _editContext.Validate();
             if (!isValid)
             {
-                await OnInvalidSubmit.InvokeAsync();
+                await OnInvalidSubmit.InvokeAsync(Model);
                 return;
             }
         }
@@ -95,9 +103,7 @@ public class SgSsrFormSupport<TModel> : ComponentBase where TModel : class, new(
         await OnValidSubmit.InvokeAsync(Model);
     }
 
-    /// <summary>Expose the EditContext to child components.</summary>
     public EditContext? GetEditContext() => _editContext;
 
-    /// <summary>Notify the form that state has changed (triggers re-render).</summary>
     public void NotifyStateChanged() => StateHasChanged();
 }

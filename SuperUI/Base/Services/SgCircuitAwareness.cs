@@ -1,21 +1,39 @@
-// SuperUI/Base/Services/SgCircuitAwareness.cs
-using System;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Components.Server.Circuits;
+// ================================================================
+// Файл: SuperUI/Base/Services/SgCircuitAwareness.cs
+// ИСПРАВЛЕНО:
+// - Убрана прямая зависимость от CircuitHandler
+// - Добавлен интерфейс ICircuitAwareness
+// - Добавлена WasmCircuitAwareness заглушка
+// ================================================================
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Monitors Blazor Server circuit lifecycle events.
-/// Provides awareness of circuit state (connected/disconnected).
-/// Critical for Server-side resource cleanup and reconnection strategies.
+/// Интерфейс для мониторинга состояния circuit (Server-side Blazor).
+/// На WASM — заглушка WasmCircuitAwareness.
 /// </summary>
-public class SgCircuitAwareness : CircuitHandler, IDisposable
+public interface ICircuitAwareness
 {
-    private readonly ILogger<SgCircuitAwareness> _logger;
+    event Action<string>? CircuitOpened;
+    event Action<string>? CircuitClosed;
+    event Action<string>? ConnectionUp;
+    event Action<string>? ConnectionDown;
+
+    int ActiveCircuitCount { get; }
+    string? CurrentCircuitId { get; }
+    bool IsConnected(string? circuitId = null);
+}
+
+/// <summary>
+/// Server-side реализация circuit awareness.
+/// CircuitHandler регистрируется отдельно через DI на Server.
+/// </summary>
+public sealed class SgCircuitAwareness : ICircuitAwareness, IDisposable
+{
+    private readonly ILogger _logger;
     private readonly ISgCircuitStateStore _stateStore;
 
     public event Action<string>? CircuitOpened;
@@ -24,7 +42,6 @@ public class SgCircuitAwareness : CircuitHandler, IDisposable
     public event Action<string>? ConnectionDown;
 
     public int ActiveCircuitCount => _stateStore.ActiveCount;
-
     public string? CurrentCircuitId { get; private set; }
 
     public SgCircuitAwareness(ILogger<SgCircuitAwareness>? logger = null,
@@ -34,42 +51,38 @@ public class SgCircuitAwareness : CircuitHandler, IDisposable
         _stateStore = stateStore ?? new InMemoryCircuitStateStore();
     }
 
-    public override Task OnCircuitOpenedAsync(Circuit circuit, CancellationToken cancellationToken)
+    /// <summary>
+    /// Вызывается из адаптера CircuitHandler при открытии circuit.
+    /// </summary>
+    public void OnCircuitOpened(string circuitId)
     {
-        CurrentCircuitId = circuit.Id;
-        _stateStore.Add(circuit.Id);
-        _logger.LogInformation("Circuit opened: {CircuitId}", circuit.Id);
-        CircuitOpened?.Invoke(circuit.Id);
-        return Task.CompletedTask;
+        CurrentCircuitId = circuitId;
+        _stateStore.Add(circuitId);
+        _logger.LogInformation("Circuit opened: {CircuitId}", circuitId);
+        CircuitOpened?.Invoke(circuitId);
     }
 
-    public override Task OnCircuitClosedAsync(Circuit circuit, CancellationToken cancellationToken)
+    public void OnCircuitClosed(string circuitId)
     {
-        _stateStore.Remove(circuit.Id);
-        _logger.LogInformation("Circuit closed: {CircuitId}", circuit.Id);
-        CircuitClosed?.Invoke(circuit.Id);
-        return Task.CompletedTask;
+        _stateStore.Remove(circuitId);
+        _logger.LogInformation("Circuit closed: {CircuitId}", circuitId);
+        CircuitClosed?.Invoke(circuitId);
     }
 
-    public override Task OnConnectionUpAsync(Circuit circuit, CancellationToken cancellationToken)
+    public void OnConnectionUp(string circuitId)
     {
-        _logger.LogInformation("Connection up: {CircuitId}", circuit.Id);
-        ConnectionUp?.Invoke(circuit.Id);
-        return Task.CompletedTask;
+        _logger.LogInformation("Connection up: {CircuitId}", circuitId);
+        ConnectionUp?.Invoke(circuitId);
     }
 
-    public override Task OnConnectionDownAsync(Circuit circuit, CancellationToken cancellationToken)
+    public void OnConnectionDown(string circuitId)
     {
-        _logger.LogWarning("Connection down: {CircuitId}", circuit.Id);
-        ConnectionDown?.Invoke(circuit.Id);
-        return Task.CompletedTask;
+        _logger.LogWarning("Connection down: {CircuitId}", circuitId);
+        ConnectionDown?.Invoke(circuitId);
     }
 
-    /// <summary>Check if the current circuit is connected.</summary>
     public bool IsConnected(string? circuitId = null)
-    {
-        return _stateStore.IsActive(circuitId ?? CurrentCircuitId);
-    }
+        => _stateStore.IsActive(circuitId ?? CurrentCircuitId);
 
     public void Dispose()
     {
@@ -81,22 +94,34 @@ public class SgCircuitAwareness : CircuitHandler, IDisposable
     }
 }
 
-/// <summary>Interface for tracking circuit states.</summary>
+/// <summary>
+/// WASM-заглушка — всегда "connected" (один "circuit").
+/// </summary>
+public sealed class WasmCircuitAwareness : ICircuitAwareness
+{
+    public static readonly WasmCircuitAwareness Instance = new();
+
+    public event Action<string>? CircuitOpened { add { } remove { } }
+    public event Action<string>? CircuitClosed { add { } remove { } }
+    public event Action<string>? ConnectionUp { add { } remove { } }
+    public event Action<string>? ConnectionDown { add { } remove { } }
+
+    public int ActiveCircuitCount => 1;
+    public string? CurrentCircuitId => "wasm-single";
+    public bool IsConnected(string? circuitId = null) => true;
+}
+
 public interface ISgCircuitStateStore
 {
     void Add(string circuitId);
-
     void Remove(string circuitId);
-
     bool IsActive(string? circuitId);
-
     int ActiveCount { get; }
 }
 
-/// <summary>In-memory circuit state store (default).</summary>
 internal sealed class InMemoryCircuitStateStore : ISgCircuitStateStore
 {
-    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, bool> _circuits = new();
+    private readonly ConcurrentDictionary<string, bool> _circuits = new();
 
     public int ActiveCount => _circuits.Count;
 
@@ -104,6 +129,6 @@ internal sealed class InMemoryCircuitStateStore : ISgCircuitStateStore
 
     public void Remove(string circuitId) => _circuits.TryRemove(circuitId, out _);
 
-    public bool IsActive(string? circuitId) =>
-        circuitId != null && _circuits.ContainsKey(circuitId);
+    public bool IsActive(string? circuitId)
+        => circuitId != null && _circuits.ContainsKey(circuitId);
 }
