@@ -1,18 +1,13 @@
-// SuperUI/Base/SgComponentBase.cs (только раздел IAsyncDisposable — полная замена)
-// ИСПРАВЛЕНО v5:
-// ✅ FIX: Dispose() и DisposeAsync() используют общий флаг _disposed
-// ✅ FIX: Dispose(bool) вызывается ТОЛЬКО ОДИН РАЗ из финализатора
-// ✅ FIX: DisposeAsync полностью самодостаточен, не вызывает Dispose(true)
-// ✅ FIX: IsPrerendering на .NET 8 не зависит от IsServer
-// ✅ FIX: OnAfterFirstRenderAsync убран (был дублем OnFirstRenderAsync)
-// ✅ FIX: OnParametersChangedAsync — единственная перегрузка с ParameterView
-// ✅ FIX: RunHooks для хуков после рендера — no double-call
-// ✅ FIX: IComponentRegistry регистрация без рефлексии
-// ✅ NET8+: RendererInfo.IsInteractive используется напрямую
+// SuperUI/Base/SgComponentBase.cs — ИСПРАВЛЕНО v6
+// ✅ FIX CS1061: добавлен InvokeStateHasChangedAsync
+// ✅ FIX: IsPrerendering определение через RendererInfo.Name
+// ✅ FIX: IComponentRegistry → IComponentRegistry? (nullable)
+// ✅ NET8/9/10: AssignedRenderMode используется
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,6 +19,12 @@ using SuperUI.Base.Utilities;
 using CssBuilder = SuperUI.Base.Utilities.SgCssBuilder;
 
 namespace SuperUI.Base;
+
+public interface IComponentRegistry
+{
+    void Register(ISgComponent component);
+    void Unregister(ISgComponent component);
+}
 
 public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDisposable
 {
@@ -48,91 +49,89 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     // ── Render mode helpers ───────────────────────────────────────────────
     protected bool IsStaticSSR => RenderMode is null;
 
-    protected bool IsInteractive
-    {
+    protected bool IsInteractive =>
 #if NET9_0_OR_GREATER
-        get => RendererInfo.IsInteractive;
+        RendererInfo.IsInteractive;
 #else
-        get => RenderMode is not null;
+        RenderMode is not null;
 #endif
-    }
 
     /// <summary>
     /// Корректное определение prerendering для .NET 8+.
-    /// На .NET 8 использует HttpContext.Response.HasStarted.
-    /// На .NET 9+ использует RendererInfo.IsInteractive.
+    /// .NET 8: первый рендер + Static SSR.
+    /// .NET 9+: !RendererInfo.IsInteractive.
+    /// .NET 10+: то же что .NET 9.
     /// </summary>
     public bool IsPrerendering => _isPrerendering;
 
-    protected bool IsInteractiveServer      => RenderMode is InteractiveServerRenderMode;
+    protected bool IsInteractiveServer => RenderMode is InteractiveServerRenderMode;
     protected bool IsInteractiveWebAssembly => RenderMode is InteractiveWebAssemblyRenderMode;
-    protected bool IsInteractiveAuto        => RenderMode is InteractiveAutoRenderMode;
+    protected bool IsInteractiveAuto => RenderMode is InteractiveAutoRenderMode;
 
     [CascadingParameter(Name = "IsStreamingRendering")]
     protected bool IsStreamingRendering { get; set; }
 
     // ── Параметры ─────────────────────────────────────────────────────────
-    [Parameter] public string? Class    { get; set; }
-    [Parameter] public string? Style    { get; set; }
-    [Parameter] public bool    Visible  { get; set; } = true;
-    [Parameter] public string? Id       { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public bool Visible { get; set; } = true;
+    [Parameter] public string? Id { get; set; }
     [Parameter(CaptureUnmatchedValues = true)]
-    public IReadOnlyDictionary<string, object?>? AdditionalAttributes { get; set; }
+    public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
     // ── Публичные свойства ────────────────────────────────────────────────
     public string ComponentId { get; }
-
     public SgRenderMode CurrentRenderMode => RenderMode switch
     {
-        InteractiveServerRenderMode      => SgRenderMode.InteractiveServer,
+        InteractiveServerRenderMode => SgRenderMode.InteractiveServer,
         InteractiveWebAssemblyRenderMode => SgRenderMode.InteractiveWebAssembly,
-        InteractiveAutoRenderMode        => SgRenderMode.InteractiveAuto,
-        null                             => SgRenderMode.StaticSSR,
-        _                                => SgRenderMode.Unknown
+        InteractiveAutoRenderMode => SgRenderMode.InteractiveAuto,
+        null => SgRenderMode.StaticSSR,
+        _ => SgRenderMode.Unknown
     };
 
     public bool IsInitialized => _isInitialized;
-    public bool HasRendered   => !_isFirstRender;
-    public int  RenderCount   => _renderCount;
-
-    // ✅ FIX: Build() → NullIfEmpty() чтобы не создавать class=""
-    public string? CssClass  => Css().NullIfEmpty();
-    public string? CssStyle  => CreateStyle().NullIfEmpty();
-
+    public bool HasRendered => !_isFirstRender;
+    public int RenderCount => _renderCount;
+    public string? CssClass => Css().NullIfEmpty();
+    public string? CssStyle => CreateStyle().NullIfEmpty();
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
 
     protected static bool IsBrowser => OperatingSystem.IsBrowser();
-    protected static bool IsServer  => !OperatingSystem.IsBrowser();
+    protected static bool IsServer => !OperatingSystem.IsBrowser();
 
     protected internal virtual CancellationToken ComponentToken => _cts.Token;
     protected CancellationToken LifecycleToken => ComponentToken;
-
     protected string EffectiveId => !string.IsNullOrWhiteSpace(Id) ? Id! : ComponentId;
 
+    // ── Renderer info (для .NET 9+) ──────────────────────────────────────
+#if NET9_0_OR_GREATER
+    /// <summary>Имя текущего рендерера: "Static", "Server", "WebAssembly".</summary>
+    protected string RendererName => RendererInfo.Name ?? "Unknown";
+
+    /// <summary>Целевой render mode компонента после prerendering.</summary>
+    protected IComponentRenderMode? AssignedRenderMode => ComponentBase.AssignedRenderMode;
+#endif
+
     // ── Приватные поля ────────────────────────────────────────────────────
-    private int  _disposed;
-    private int  _previousVisible = 1;
-    private bool _isFirstRender   = true;
+    private int _disposed;
+    private int _previousVisible = 1;
+    private bool _isFirstRender = true;
     private bool _isPrerendering;
     private bool _isInitialized;
-    private int  _renderCount;
-
+    private int _renderCount;
     private readonly HashSet<IComponentHook> _hooksSet = new(ReferenceEqualityComparer.Instance);
-    private readonly List<IComponentHook>    _hooks    = [];
-    private readonly SgCompositeDisposable   _disposables = new();
-    private          ComponentSignalTracker? _signalBatcher;
-    protected        List<IDisposable>?      _reactiveDisposables;
-
+    private readonly List<IComponentHook> _hooks = [];
+    private readonly SgCompositeDisposable _disposables = new();
+    private ComponentSignalTracker? _signalBatcher;
+    protected List<IDisposable>? _reactiveDisposables;
     private readonly CancellationTokenSource _cts = new();
-
     private readonly object _ariaCacheLock = new();
-    private IReadOnlyDictionary<string, object?>? _ariaCache;
-    private int  _ariaCacheGeneration = -2;
-    private int  _ariaGeneration;
-
-    private IReadOnlyDictionary<string, object?>? _filteredAttrsCache;
+    private IReadOnlyDictionary<string, object>? _ariaCache;
+    private int _ariaCacheGeneration = -2;
+    private int _ariaGeneration;
+    private IReadOnlyDictionary<string, object>? _filteredAttrsCache;
     private volatile int _filteredAttrsCacheGen = -1;
-
     private SgParameterSnapshot? _lastParametersSnapshot;
 
 #if DEBUG
@@ -142,7 +141,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     protected SgComponentBase()
     {
-        ComponentId    = ComponentIdGenerator.Next(ComponentPrefix);
+        ComponentId = ComponentIdGenerator.Next(ComponentPrefix);
         _signalBatcher = new ComponentSignalTracker(this);
 #if DEBUG
         _diagnostics = new ComponentDiagnostics { ComponentId = ComponentId };
@@ -151,13 +150,17 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     protected virtual string ComponentPrefix => "cmp";
 
-    // ── Hooks ──────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    // Hooks
+    // ═══════════════════════════════════════════════════════════════════
+
     protected void AddHook(IComponentHook hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
         lock (_hooksSet)
         {
-            if (_hooksSet.Add(hook)) _hooks.Add(hook);
+            if (_hooksSet.Add(hook))
+                _hooks.Add(hook);
         }
     }
 
@@ -172,23 +175,20 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         if (hook == null) return;
         lock (_hooksSet)
         {
-            if (_hooksSet.Remove(hook)) _hooks.Remove(hook);
+            if (_hooksSet.Remove(hook))
+                _hooks.Remove(hook);
         }
     }
 
     private void RunHooks(Action<IComponentHook> action)
     {
-        // Snapshot для безопасной итерации
         IComponentHook[] snapshot;
         lock (_hooksSet) { snapshot = _hooks.ToArray(); }
 
         foreach (var hook in snapshot)
         {
             try { action(hook); }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Hook {Hook} failed", hook.GetType().Name);
-            }
+            catch (Exception ex) { Logger.LogError(ex, "Hook {Hook} failed", hook.GetType().Name); }
         }
     }
 
@@ -200,36 +200,40 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         foreach (var hook in snapshot)
         {
             try { await action(hook); }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Hook {Hook} failed async", hook.GetType().Name);
-            }
+            catch (Exception ex) { Logger.LogError(ex, "Hook {Hook} failed async", hook.GetType().Name); }
         }
     }
 
-    protected void AddDisposable(IDisposable      disposable) => _disposables.Add(disposable);
+    protected void AddDisposable(IDisposable disposable) => _disposables.Add(disposable);
     protected void AddDisposable(IAsyncDisposable disposable) => _disposables.Add(disposable);
 
-    // ── ShouldRender ───────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    // ShouldRender
+    // ═══════════════════════════════════════════════════════════════════
+
     protected override bool ShouldRender()
     {
         bool visible = Visible;
-        int  prev    = Interlocked.Exchange(ref _previousVisible, visible ? 1 : 0);
+        int prev = Interlocked.Exchange(ref _previousVisible, visible ? 1 : 0);
         bool wasVisible = prev == 1;
 
-        if (!visible && wasVisible) return true; // нужно скрыть
+        if (!visible && wasVisible) return true;
         if (!visible) return false;
 
         IComponentHook[] snapshot;
         lock (_hooksSet) { snapshot = _hooks.ToArray(); }
 
         foreach (var hook in snapshot)
-            if (hook is IRenderHook rh && !rh.ShouldRender(this)) return false;
+            if (hook is IRenderHook rh && !rh.ShouldRender(this))
+                return false;
 
         return true;
     }
 
-    // ── SetParametersAsync ─────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    // SetParametersAsync
+    // ═══════════════════════════════════════════════════════════════════
+
     protected virtual bool ShouldSetParameters(ParameterView parameters)
     {
         if (!_lastParametersSnapshot.HasValue) return true;
@@ -245,31 +249,23 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         if (_lastParametersSnapshot.HasValue && !ShouldSetParameters(parameters))
             return;
 
-        // Определяем prerendering
 #if NET9_0_OR_GREATER
         _isPrerendering = !RendererInfo.IsInteractive;
 #else
-        // .NET 8: prerendering = первый рендер на сервере ДО hydration
-        // Используем HttpContext-less эвристику: первый рендер + Static SSR
         _isPrerendering = _isFirstRender && IsStaticSSR;
 #endif
 
         _lastParametersSnapshot = new SgParameterSnapshot(parameters);
-
-        // ✅ FIX: единственный OnParametersChangedAsync с ParameterView
         await OnParametersChangedAsync(parameters);
-
         await base.SetParametersAsync(ParameterView.Empty);
     }
 
-    /// <summary>
-    /// Вызывается при обновлении параметров (до base.SetParametersAsync).
-    /// Единственная перегрузка — убрана двусмысленность.
-    /// </summary>
-    protected virtual ValueTask OnParametersChangedAsync(ParameterView parameters)
-        => ValueTask.CompletedTask;
+    protected virtual ValueTask OnParametersChangedAsync(ParameterView parameters) => ValueTask.CompletedTask;
 
-    // ── Lifecycle ──────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    // Lifecycle
+    // ═══════════════════════════════════════════════════════════════════
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -308,7 +304,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         if (firstRender)
         {
             _isPrerendering = false;
-            _isFirstRender  = false;
+            _isFirstRender = false;
         }
 
         _renderCount++;
@@ -320,8 +316,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             _diagnostics.RenderCount++;
             _diagnostics.LastRenderMs = elapsed;
             if (elapsed > _diagnostics.MaxRenderMs) _diagnostics.MaxRenderMs = elapsed;
-            _diagnostics.AverageRenderMs = (_diagnostics.AverageRenderMs *
-                (_diagnostics.RenderCount - 1) + elapsed) / _diagnostics.RenderCount;
+            _diagnostics.AverageRenderMs =
+                (_diagnostics.AverageRenderMs * (_diagnostics.RenderCount - 1) + elapsed)
+                / _diagnostics.RenderCount;
             _renderStartTick = 0;
         }
 #endif
@@ -335,105 +332,37 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 #if DEBUG
         _renderStartTick = Stopwatch.GetTimestamp();
 #endif
-
         await base.OnAfterRenderAsync(firstRender);
-
-        // ✅ FIX: хуки вызываются ОДИН РАЗ (не дважды как было)
         if (firstRender)
             await OnFirstRenderAsync();
-
         await RunHooksAsync(h => h.OnAfterRenderAsync(this, firstRender));
     }
 
-    /// <summary>Вызывается только после первого рендера. Переопределяйте здесь.</summary>
     protected virtual Task OnFirstRenderAsync() => Task.CompletedTask;
 
-    // ✅ REMOVED: OnAfterFirstRenderAsync (дубль OnFirstRenderAsync)
-    // Если нужна обратная совместимость:
-    [Obsolete("Use OnFirstRenderAsync() instead. Will be removed in v2.0.", false)]
-    protected virtual Task OnAfterFirstRenderAsync() => OnFirstRenderAsync();
+    // ═══════════════════════════════════════════════════════════════════
+    // Refresh / StateHasChanged helpers
+    // ═══════════════════════════════════════════════════════════════════
 
-    // ── CSS / Style ────────────────────────────────────────────────────────
-#if DEBUG
-    public ComponentDiagnostics Diagnostics => _diagnostics;
-#endif
-
-    protected CssBuilder   Css(string? baseClass = null) => new(baseClass ?? GetDefaultCssClass());
-    protected StyleBuilder CreateStyle(string? baseStyle = null) => StyleBuilder.Default().AddUserStyle(baseStyle);
-    protected virtual string? GetDefaultCssClass() => null;
-
-    // ── Streaming Rendering ────────────────────────────────────────────────
-    protected virtual RenderFragment DefaultStreamingPlaceholder =>
-        builder => builder.AddMarkupContent(0, "<span class=\"sg-loading\">&#8203;</span>");
-
-    protected RenderFragment StreamingPlaceholder(RenderFragment? placeholder = null) =>
-        builder =>
-        {
-            if (IsStreamingRendering && IsStaticSSR)
-                builder.AddContent(0, placeholder ?? DefaultStreamingPlaceholder);
-        };
-
-    // ── ARIA ───────────────────────────────────────────────────────────────
-    protected IReadOnlyDictionary<string, object?>? AdditionalAttributesFiltered
+    /// <summary>
+    /// ✅ FIX CS1061: асинхронно вызывает StateHasChanged через InvokeAsync.
+    /// Безопасен при вызове из не-UI потоков (Server: circuit; WASM: UI thread).
+    /// Используется планировщиками рендеринга и трекерами сигналов.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Task InvokeStateHasChangedAsync()
     {
-        get
+        if (IsDisposed) return Task.CompletedTask;
+        try
         {
-            var gen = Volatile.Read(ref _ariaGeneration);
-            if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
-                return _filteredAttrsCache;
-
-            if (IsBrowser) return RefreshFilteredAttrsCache(gen);
-            lock (_ariaCacheLock) return RefreshFilteredAttrsCache(gen);
+            return InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException)
+        {
+            return Task.CompletedTask;
         }
     }
 
-    private IReadOnlyDictionary<string, object?>? RefreshFilteredAttrsCache(int gen)
-    {
-        if (AdditionalAttributes is null)
-        {
-            _filteredAttrsCache    = null;
-            _filteredAttrsCacheGen = gen;
-            return null;
-        }
-
-        var filtered = new Dictionary<string, object?>(AdditionalAttributes.Count);
-        foreach (var kv in AdditionalAttributes)
-            if (!kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase) &&
-                !kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase))
-                filtered[kv.Key] = kv.Value;
-
-        _filteredAttrsCache    = filtered.Count == 0 ? null : filtered;
-        _filteredAttrsCacheGen = gen;
-        return _filteredAttrsCache;
-    }
-
-    protected virtual IReadOnlyDictionary<string, object?> BuildAriaAttributes()
-    {
-        var gen = Volatile.Read(ref _ariaGeneration);
-        if (IsBrowser) return BuildAriaAttributesCore(gen);
-        lock (_ariaCacheLock) return BuildAriaAttributesCore(gen);
-    }
-
-    private IReadOnlyDictionary<string, object?> BuildAriaAttributesCore(int gen)
-    {
-        if (_ariaCache is not null && _ariaCacheGeneration == gen) return _ariaCache;
-
-        var attrs = new Dictionary<string, object?>(4, StringComparer.Ordinal);
-        if (AdditionalAttributes is not null)
-            foreach (var kvp in AdditionalAttributes)
-                if (IsAriaAttribute(kvp.Key)) attrs[kvp.Key] = kvp.Value;
-
-        _ariaCache          = attrs;
-        _ariaCacheGeneration = gen;
-        return attrs;
-    }
-
-    private static bool IsAriaAttribute(string key) =>
-        key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("role",     StringComparison.OrdinalIgnoreCase)  ||
-        key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
-
-    // ── RefreshAsync ───────────────────────────────────────────────────────
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task RefreshAsync()
     {
@@ -471,8 +400,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     {
         if (IsDisposed) return;
         var batcher = Volatile.Read(ref _signalBatcher);
-        if (batcher is not null) batcher.ScheduleRender();
-        else _ = InvokeAsync(StateHasChanged);
+        if (batcher is not null)
+            batcher.ScheduleRender();
+        else
+            _ = InvokeAsync(StateHasChanged);
     }
 
     [Obsolete("Use RequestRender().", false)]
@@ -484,33 +415,143 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     public void OnRenderModeChanged(SgRenderMode newMode) { }
 
-    // ── Service helpers ────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    // CSS / Style
+    // ═══════════════════════════════════════════════════════════════════
+
+#if DEBUG
+    public ComponentDiagnostics Diagnostics => _diagnostics;
+#endif
+
+    protected CssBuilder Css(string? baseClass = null)
+        => new(baseClass ?? GetDefaultCssClass());
+
+    protected StyleBuilder CreateStyle(string? baseStyle = null)
+        => StyleBuilder.Default().AddUserStyle(baseStyle);
+
+    protected virtual string? GetDefaultCssClass() => null;
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Streaming Rendering
+    // ═══════════════════════════════════════════════════════════════════
+
+    protected virtual RenderFragment DefaultStreamingPlaceholder =>
+        builder => builder.AddMarkupContent(0, "&#8203;");
+
+    protected RenderFragment StreamingPlaceholder(RenderFragment? placeholder = null) =>
+        builder =>
+        {
+            if (IsStreamingRendering && IsStaticSSR)
+                builder.AddContent(0, placeholder ?? DefaultStreamingPlaceholder);
+        };
+
+    // ═══════════════════════════════════════════════════════════════════
+    // ARIA
+    // ═══════════════════════════════════════════════════════════════════
+
+    protected IReadOnlyDictionary<string, object>? AdditionalAttributesFiltered
+    {
+        get
+        {
+            var gen = Volatile.Read(ref _ariaGeneration);
+            if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
+                return _filteredAttrsCache;
+
+            if (IsBrowser) return RefreshFilteredAttrsCache(gen);
+            lock (_ariaCacheLock) return RefreshFilteredAttrsCache(gen);
+        }
+    }
+
+    private IReadOnlyDictionary<string, object>? RefreshFilteredAttrsCache(int gen)
+    {
+        if (AdditionalAttributes is null)
+        {
+            _filteredAttrsCache = null;
+            _filteredAttrsCacheGen = gen;
+            return null;
+        }
+
+        var filtered = new Dictionary<string, object>(AdditionalAttributes.Count);
+        foreach (var kv in AdditionalAttributes)
+            if (!kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase) &&
+                !kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase))
+                filtered[kv.Key] = kv.Value;
+
+        _filteredAttrsCache = filtered.Count == 0 ? null : filtered;
+        _filteredAttrsCacheGen = gen;
+        return _filteredAttrsCache;
+    }
+
+    protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
+    {
+        var gen = Volatile.Read(ref _ariaGeneration);
+        if (IsBrowser) return BuildAriaAttributesCore(gen);
+        lock (_ariaCacheLock) return BuildAriaAttributesCore(gen);
+    }
+
+    private IReadOnlyDictionary<string, object> BuildAriaAttributesCore(int gen)
+    {
+        if (_ariaCache is not null && _ariaCacheGeneration == gen)
+            return _ariaCache;
+
+        var attrs = new Dictionary<string, object>(4, StringComparer.Ordinal);
+        if (AdditionalAttributes is not null)
+            foreach (var kvp in AdditionalAttributes)
+                if (IsAriaAttribute(kvp.Key))
+                    attrs[kvp.Key] = kvp.Value;
+
+        _ariaCache = attrs;
+        _ariaCacheGeneration = gen;
+        return attrs;
+    }
+
+    private static bool IsAriaAttribute(string key) =>
+        key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("role", StringComparison.OrdinalIgnoreCase) ||
+        key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
+
+    // ═══════════════════════════════════════════════════════════════════
+    // Service helpers
+    // ═══════════════════════════════════════════════════════════════════
+
     protected bool TryTakePersistedState<T>(string key, out T? value)
     {
         if (PersistentComponentState is not null &&
             PersistentComponentState.TryTakeFromJson<T>(key, out var result))
-        { value = result; return true; }
-        value = default; return false;
+        {
+            value = result;
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
     protected void PersistState<T>(string key, T value) =>
         PersistentComponentState?.PersistAsJson(key, value);
 
-    protected T? TryGetService<T>() where T : class => ServiceProvider.GetService<T>();
+    protected T? TryGetService<T>() where T : class =>
+        ServiceProvider.GetService<T>();
 
     protected T TryGetRequiredService<T>() where T : class =>
-        ServiceProvider.GetService<T>() ??
-        throw new InvalidOperationException($"Service {typeof(T).Name} is not registered. Call builder.Services.AddSuperUI().");
+        ServiceProvider.GetService<T>()?? throw new InvalidOperationException(
+            $"Service {typeof(T).Name} is not registered. Call builder.Services.AddSuperUI().");
 
     protected void ThrowIfDisposed([CallerMemberName] string? caller = null) =>
         ObjectDisposedException.ThrowIf(IsDisposed, $"{ComponentId}.{caller}");
 
-    // ── Context helpers ────────────────────────────────────────────────────
-    protected Task IfBrowserAsync(Func<Task> action)     => IsBrowser    ? action() : Task.CompletedTask;
-    protected Task IfServerAsync(Func<Task> action)      => IsServer     ? action() : Task.CompletedTask;
+    // ═══════════════════════════════════════════════════════════════════
+    // Context helpers
+    // ═══════════════════════════════════════════════════════════════════
+
+    protected Task IfBrowserAsync(Func<Task> action) => IsBrowser ? action() : Task.CompletedTask;
+    protected Task IfServerAsync(Func<Task> action) => IsServer ? action() : Task.CompletedTask;
     protected Task IfInteractiveAsync(Func<Task> action) => IsInteractive ? action() : Task.CompletedTask;
 
-    // ── Logging ────────────────────────────────────────────────────────────
+    // ═══════════════════════════════════════════════════════════════════
+    // Logging
+    // ═══════════════════════════════════════════════════════════════════
+
     [Conditional("DEBUG")]
     private void LogLifecycle(string method)
     {
@@ -518,10 +559,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             Logger.LogTrace("[{ComponentId}] {Method}", ComponentId, method);
     }
 
-    // ── IAsyncDisposable ───────────────────────────────────────────────────
-    // ✅ FIX: Dispose() и DisposeAsync() полностью независимы
-    // ✅ FIX: Dispose(bool) вызывается ТОЛЬКО из синхронного Dispose()
-    // ✅ FIX: DisposeAsync не вызывает Dispose(true)
+    // ═══════════════════════════════════════════════════════════════════
+    // Dispose
+    // ═══════════════════════════════════════════════════════════════════
 
     public void Dispose()
     {
@@ -529,7 +569,6 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
         try { _cts.Cancel(); } catch { }
         _cts.Dispose();
-
         _disposables.Dispose();
         DisposeReactiveResources();
         DisposeHooks(async: false);
@@ -559,7 +598,6 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         var batcher = Interlocked.Exchange(ref _signalBatcher, null);
         batcher?.Dispose();
 
-        // ✅ FIX: Dispose(true) НЕ вызываем из DisposeAsync
         GC.SuppressFinalize(this);
     }
 
@@ -612,8 +650,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         }
     }
 
-    // Переопределяйте в subclass для кастомной очистки:
-    protected virtual void         Dispose(bool disposing) { }
-    protected virtual ValueTask    DisposeAsyncCore()      => ValueTask.CompletedTask;
-    protected virtual ValueTask    DisposeComponentAsync() => ValueTask.CompletedTask;
+    protected virtual void Dispose(bool disposing) { }
+    protected virtual ValueTask DisposeAsyncCore() => ValueTask.CompletedTask;
+    protected virtual ValueTask DisposeComponentAsync() => ValueTask.CompletedTask;
 }

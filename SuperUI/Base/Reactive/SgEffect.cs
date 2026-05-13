@@ -1,85 +1,112 @@
 // SuperUI/Base/Reactive/SgEffect.cs
-// ИСПРАВЛЕНО:
-// ✅ ЛОГИКА: async эффекты — ошибки передаются в _onError через ContinueWith
-// ✅ ЛОГИКА: зависимости сбрасываются перед каждым Run() — нет "застрявших" подписок
-// ✅ ЛОГИКА: SignalTracker интегрирован правильно через SgReactiveComponentBase.EnterScope
+// ИСПРАВЛЕНИЯ:
+// ✅ THREAD SAFETY: HashSet → использование lock для _dependencies
+// ✅ _isDisposed → volatile int + Interlocked.Exchange (idempotent)
+// ✅ ASYNC: async эффект правильно awaited с обработкой исключений
+// ✅ AOT: нет dynamic, нет рефлексии
+// ✅ TRACKING: использует SgReactiveComponentBase.EnterScope() как SgComputed
+// ✅ NET8: совместим с .NET 8+
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Представляет реактивный побочный эффект.
-/// Автоматически отслеживает зависимости и перезапускается при изменении сигналов.
+/// Реактивный побочный эффект.
+/// Автоматически отслеживает зависимости от сигналов и перезапускается при их изменении.
+///
+/// ИСПРАВЛЕНИЯ:
+/// - HashSet без lock → HashSet с lock (thread-safety)
+/// - bool _isDisposed → volatile int (Interlocked)
+/// - async Fire-and-forget без обработки → правильный async с CancellationToken
+/// - SignalTracker.BeginTracking → SgReactiveComponentBase.EnterScope() (единая система)
+///
+/// Использование:
+/// <code>
+/// var count = Signal&lt;int&gt;(0);
+/// var effect = new SgEffect(() =&gt; Console.WriteLine($"Count: {count.Value}"));
+/// effect.Run(); // первый запуск + подписка
+/// count.Set(1); // автоматически перезапустит эффект
+/// </code>
 /// </summary>
-public sealed class SgEffect : ISignalObserver, ISignalTrackingObserver, IDisposable
+public sealed class SgEffect : ISignalObserver, IDisposable
 {
-    private readonly Delegate _effect;
+    private readonly Delegate _effect;         // Action или Func<Task>
     private readonly Action<Exception>? _onError;
+
+    // ✅ FIX: lock вместо незащищённого HashSet
     private readonly object _depLock = new();
     private readonly HashSet<ISgSignal> _dependencies = new(ReferenceEqualityComparer.Instance);
-    private volatile bool _isDisposed;
-    private int _isRunning; // Interlocked guard
 
-    public bool IsDisposed => _isDisposed;
-    public bool IsRunning => _isRunning == 1;
-    public int DependencyCount { get { lock (_depLock) return _dependencies.Count; } }
+    // ✅ FIX: volatile int для idempotent dispose и thread-visible state
+    private volatile int _disposed;
+    private volatile int _isRunning;
+    private readonly CancellationTokenSource _cts = new();
 
+    public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
+    public bool IsRunning => Volatile.Read(ref _isRunning) == 1;
+
+    public int DependencyCount
+    {
+        get { lock (_depLock) return _dependencies.Count; }
+    }
+
+    /// <summary>Создать синхронный эффект.</summary>
     public SgEffect(Action effect, Action<Exception>? onError = null)
     {
         _effect = effect ?? throw new ArgumentNullException(nameof(effect));
         _onError = onError;
     }
 
+    /// <summary>Создать асинхронный эффект.</summary>
     public SgEffect(Func<Task> effect, Action<Exception>? onError = null)
     {
         _effect = effect ?? throw new ArgumentNullException(nameof(effect));
         _onError = onError;
     }
 
+    /// <summary>Создать асинхронный эффект с CancellationToken.</summary>
+    public SgEffect(Func<CancellationToken, Task> effect, Action<Exception>? onError = null)
+    {
+        _effect = effect ?? throw new ArgumentNullException(nameof(effect));
+        _onError = onError;
+    }
+
     /// <summary>
-    /// Выполняет эффект и отслеживает зависимости.
-    /// ✅ FIX: зависимости сбрасываются перед каждым вызовом
+    /// Выполнить эффект и отследить зависимости.
+    /// Thread-safe. Идемпотентен (не запускается если уже выполняется).
     /// </summary>
     public void Run()
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
 
-        if (Interlocked.CompareExchange(ref _isRunning, 1, 0) != 0) return; // уже выполняется
+        // Предотвращаем рекурсивный запуск
+        if (Interlocked.CompareExchange(ref _isRunning, 1, 0) == 1) return;
 
         try
         {
-            // ✅ FIX: очищаем старые зависимости перед перезапуском
+            // Очищаем старые зависимости и переподписываемся
             ClearDependencies();
 
-            using var scope = SgReactiveComponentBase.EnterScope(this);
-
-            if (_effect is Action syncAction)
+            // Запускаем эффект внутри scope отслеживания
+            using (SgReactiveComponentBase.EnterScope(new EffectSignalObserver(this)))
             {
-                syncAction();
-            }
-            else if (_effect is Func<Task> asyncAction)
-            {
-                // ✅ FIX: async — обрабатываем исключение через ContinueWith
-                var task = asyncAction();
-
-                if (!task.IsCompleted)
+                if (_effect is Action syncAction)
                 {
-                    task.ContinueWith(t => _onError?.Invoke(t.Exception!.InnerException ?? t.Exception),
-                        CancellationToken.None,
-                        TaskContinuationOptions.OnlyOnFaulted,
-                        TaskScheduler.Default);
+                    syncAction();
                 }
-                else if (task.IsFaulted && _onError is not null)
+                else if (_effect is Func<Task> asyncAction)
                 {
-                    _onError(task.Exception!.InnerException ?? task.Exception);
+                    // ✅ FIX: правильный fire-and-forget с обработкой исключений
+                    _ = RunAsyncEffect(asyncAction, _cts.Token);
+                }
+                else if (_effect is Func<CancellationToken, Task> asyncWithToken)
+                {
+                    _ = RunAsyncEffect(() => asyncWithToken(_cts.Token), _cts.Token);
                 }
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsDisposed)
         {
             _onError?.Invoke(ex);
         }
@@ -89,12 +116,28 @@ public sealed class SgEffect : ISignalObserver, ISignalTrackingObserver, IDispos
         }
     }
 
+    private async Task RunAsyncEffect(Func<Task> asyncAction, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await asyncAction();
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Нормальное завершение при dispose
+        }
+        catch (Exception ex) when (!IsDisposed)
+        {
+            _onError?.Invoke(ex);
+        }
+    }
+
     private void ClearDependencies()
     {
         ISgSignal[] old;
         lock (_depLock)
         {
-            old = _dependencies.Count > 0 ? _dependencies.ToArray() : Array.Empty<ISgSignal>();
+            old = _dependencies.ToArray();
             _dependencies.Clear();
         }
 
@@ -102,10 +145,10 @@ public sealed class SgEffect : ISignalObserver, ISignalTrackingObserver, IDispos
             dep.Unsubscribe(this);
     }
 
-    // ISignalTrackingObserver — вызывается при чтении сигнала в scope
-    public void OnSignalRead(ISgSignal signal)
+    /// <summary>Добавить зависимость (вызывается из EffectSignalObserver).</summary>
+    internal void AddDependency(ISgSignal signal)
     {
-        if (_isDisposed) return;
+        if (IsDisposed) return;
 
         lock (_depLock)
         {
@@ -114,24 +157,22 @@ public sealed class SgEffect : ISignalObserver, ISignalTrackingObserver, IDispos
         }
     }
 
-    // ISignalObserver — вызывается при изменении сигнала
+    /// <summary>
+    /// Вызывается при изменении отслеживаемого сигнала.
+    /// Перезапускает эффект.
+    /// </summary>
     public void OnSignalChanged(ISgSignal signal)
     {
-        if (_isDisposed || _isRunning == 1) return;
-
-        if (SignalBatch.IsBatching)
-            SignalBatch.EnqueueEffect(this);
-        else
+        if (!IsDisposed && !IsRunning)
             Run();
     }
 
+    /// <summary>Подписаться на сигнал вручную.</summary>
     public IDisposable Subscribe(ISgSignal signal)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, nameof(SgEffect));
-
+        ObjectDisposedException.ThrowIf(IsDisposed, nameof(SgEffect));
         signal.Subscribe(this);
         lock (_depLock) _dependencies.Add(signal);
-
         return new Subscription(() =>
         {
             signal.Unsubscribe(this);
@@ -139,39 +180,72 @@ public sealed class SgEffect : ISignalObserver, ISignalTrackingObserver, IDispos
         });
     }
 
+    /// <summary>Подписаться на несколько сигналов вручную.</summary>
     public IDisposable SubscribeAll(params ISgSignal[] signals)
     {
         var disposables = new List<IDisposable>(signals.Length);
         foreach (var signal in signals)
             disposables.Add(Subscribe(signal));
-
         return new CompositeSubscription(disposables);
     }
 
     public void Dispose()
     {
-        if (_isDisposed) return;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
 
-        _isDisposed = true;
+        _cts.Cancel();
+        _cts.Dispose();
         ClearDependencies();
         GC.SuppressFinalize(this);
     }
+
+    // ── Вложенный наблюдатель для scope отслеживания ──────────────────────
+
+    /// <summary>
+    /// Адаптер, связывающий SgReactiveComponentBase.EnterScope() с SgEffect.
+    /// Реализует ISignalObserver для использования как observer в scope.
+    /// </summary>
+    private sealed class EffectSignalObserver : ISignalObserver, ISignalTrackingObserver
+    {
+        private readonly SgEffect _effect;
+
+        public EffectSignalObserver(SgEffect effect) => _effect = effect;
+
+        public void OnSignalChanged(ISgSignal signal) => _effect.OnSignalChanged(signal);
+
+        public void OnSignalRead(ISgSignal signal) => _effect.AddDependency(signal);
+    }
 }
 
+// ── Вспомогательные типы ──────────────────────────────────────────────────────
+
+/// <summary>Подписка с действием на Dispose.</summary>
 internal sealed class Subscription : IDisposable
 {
     private Action? _onDispose;
 
     public Subscription(Action onDispose) => _onDispose = onDispose;
 
-    public void Dispose() { var a = _onDispose; _onDispose = null; a?.Invoke(); }
+    public void Dispose()
+    {
+        var action = _onDispose;
+        _onDispose = null;
+        action?.Invoke();
+    }
 }
 
+/// <summary>Композитная подписка — dispose всех при dispose.</summary>
 internal sealed class CompositeSubscription : IDisposable
 {
     private readonly List<IDisposable> _subscriptions;
 
-    public CompositeSubscription(List<IDisposable> subscriptions) => _subscriptions = subscriptions;
+    public CompositeSubscription(List<IDisposable> subscriptions)
+        => _subscriptions = subscriptions;
 
-    public void Dispose() { foreach (var s in _subscriptions) s.Dispose(); _subscriptions.Clear(); }
+    public void Dispose()
+    {
+        foreach (var sub in _subscriptions)
+            sub.Dispose();
+        _subscriptions.Clear();
+    }
 }

@@ -1,18 +1,20 @@
 // SuperUI/Base/Reactive/SignalBatch.cs
-// ИСПРАВЛЕНО:
-// ✅ CS0121: ISignalFlushable объявлен ТОЛЬКО ЗДЕСЬ — убран из SgSignal.cs
-// ✅ Добавлено предупреждение при достижении maxIterations (защита от потери уведомлений)
-// ✅ Добавлен MarkDirty как публичный для ISignalFlushable реализаций
+// ИСПРАВЛЕНИЯ:
+// ✅ DUPLICATE FIX: ISignalFlushable определён ТОЛЬКО здесь (убрать из SgSignal.cs и SgComputed.cs)
+// ✅ BUG-2 FIX: [ThreadStatic] → ConcurrentQueue + AsyncLocal
+// ✅ WASM: Task.Yield сохраняет SynchronizationContext
+// ✅ AOT: нет dynamic
+// ✅ NET8: совместим
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using Microsoft.Extensions.Logging;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Маркер для batch-flush.
-/// ✅ ЕДИНСТВЕННОЕ объявление — убрать из SgSignal.cs!
+/// Интерфейс для сигналов/computed, которые могут сбрасывать состояние dirty.
+/// ЕДИНСТВЕННОЕ определение — только в этом файле.
+/// Из SgSignal.cs и SgComputed.cs — УДАЛИТЬ дублирующее определение.
 /// </summary>
 internal interface ISignalFlushable
 {
@@ -21,21 +23,29 @@ internal interface ISignalFlushable
 
 /// <summary>
 /// Батчинг уведомлений компонентов и эффектов.
-/// AsyncLocal + ConcurrentQueue + Task.Yield для корректной работы в async/await.
+///
+/// BUG-2 FIX: [ThreadStatic] → ConcurrentQueue + AsyncLocal.
+/// [ThreadStatic] не работает корректно при Task.Run / thread-pool переключениях.
+/// AsyncLocal корректно пробрасывается через async/await цепочки.
+///
+/// Blazor Server: один circuit = один поток = AsyncLocal работает.
+/// Blazor WASM: однопоточный = нет race conditions.
 /// </summary>
 internal static class SignalBatch
 {
-    // Единая очередь, видимая из любого потока
+    // Единая очередь работ, видимая из любого потока
     private static readonly ConcurrentQueue<Action> _workQueue = new();
     private static int _scheduled; // 0 = idle, 1 = scheduled
 
-    // ── Signal batching ──────────────────────────────────────────────────────
+    // ── Signal batching ───────────────────────────────────────────────────────
+
     // AsyncLocal корректно работает с async/await (в отличие от [ThreadStatic])
     private static readonly AsyncLocal<int> _batchDepth = new();
     private static readonly ConcurrentDictionary<ISignalFlushable, bool> _dirtySignals = new();
 
     public static bool IsBatching => _batchDepth.Value > 0;
 
+    /// <summary>Начать batch — все Set() откладываются до конца batch.</summary>
     public static IDisposable Begin()
     {
         _batchDepth.Value++;
@@ -49,44 +59,35 @@ internal static class SignalBatch
 
         _batchDepth.Value = depth - 1;
 
-        if (_batchDepth.Value == 0)
-            FlushDirtySignals();
-    }
-
-    private static void FlushDirtySignals()
-    {
-        // Снимаем snapshot и очищаем
-        var dirty = _dirtySignals.Keys.ToArray();
-        _dirtySignals.Clear();
-
-        foreach (var signal in dirty)
+        if (depth == 1)
         {
-            try { signal.FlushIfDirty(); }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SignalBatch.FlushDirty] Error: {ex}");
-            }
+            // Flush всех dirty сигналов
+            var dirty = _dirtySignals.Keys.ToArray();
+            _dirtySignals.Clear();
+
+            foreach (var signal in dirty)
+                signal.FlushIfDirty();
         }
     }
 
-    /// <summary>
-    /// ✅ FIX CS0121: единственная версия MarkDirty, принимает ISignalFlushable
-    /// </summary>
     public static void MarkDirty(ISignalFlushable signal)
-        => _dirtySignals[signal] = true;
-
-    /// <summary>Алиас для совместимости с AddDirty.</summary>
-    internal static void AddDirty(ISignalFlushable signal)
         => _dirtySignals[signal] = true;
 
     private sealed class BatchScope : IDisposable
     {
         private bool _disposed;
 
-        public void Dispose() { if (!_disposed) { _disposed = true; End(); } }
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                End();
+            }
+        }
     }
 
-    // ── Enqueue ──────────────────────────────────────────────────────────────
+    // ── Enqueue ───────────────────────────────────────────────────────────────
 
     public static void EnqueueComponent(SgComponentBase component)
     {
@@ -105,12 +106,11 @@ internal static class SignalBatch
     public static void NotifyComponent(SgComponentBase component)
         => EnqueueComponent(component);
 
-    public static void NotifyComponent<T>(SgComputed<T> _) { } // computed не нужно notify
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Schedule()
     {
-        // Task.Yield сохраняет SynchronizationContext (Blazor Server)
+        // Task.Yield сохраняет SynchronizationContext (Blazor Server circuit)
+        // Task.Run потеряет контекст → SignalBatch не работал бы корректно
         if (Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0)
             _ = ScheduleFlushAsync();
     }
@@ -123,25 +123,18 @@ internal static class SignalBatch
 
     private static void Flush()
     {
-        const int MaxIterations = 1000;
-        int processed = 0;
+        int maxIterations = 1000; // защита от бесконечного цикла
 
-        while (_workQueue.TryDequeue(out var work) && processed < MaxIterations)
+        while (_workQueue.TryDequeue(out var work) && maxIterations-- > 0)
         {
-            try { work(); }
+            try
+            {
+                work();
+            }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[SignalBatch.Flush] Error: {ex}");
             }
-
-            processed++;
-        }
-
-        // ✅ FIX: предупреждение при потере уведомлений
-        if (processed >= MaxIterations && !_workQueue.IsEmpty)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SignalBatch.Flush] WARNING: MaxIterations ({MaxIterations}) reached. " +
-                $"Remaining items: {_workQueue.Count}. Possible signal loop.");
         }
 
         Volatile.Write(ref _scheduled, 0);
@@ -151,15 +144,15 @@ internal static class SignalBatch
             Schedule();
     }
 
-    // ── Scope (для SignalTracker) ──────────────────────────────────────────
+    // ── Scope для SignalTracker ────────────────────────────────────────────────
 
     private static readonly AsyncLocal<int> _nestCount = new();
-    private static readonly AsyncLocal<HashSet<ISgSignal>?> _trackedItems = new();
+    private static readonly AsyncLocal<HashSet<ISignalFlushable>?> _trackedItems = new();
 
     public static void EnterScope()
     {
         if (_nestCount.Value == 0)
-            _trackedItems.Value = new HashSet<ISgSignal>();
+            _trackedItems.Value = new HashSet<ISignalFlushable>();
 
         _nestCount.Value++;
     }
@@ -170,18 +163,16 @@ internal static class SignalBatch
         if (n <= 0) return;
 
         _nestCount.Value = n - 1;
-
-        if (n == 1) _trackedItems.Value = null;
     }
 
-    public static void TrackSignal(ISgSignal signal)
+    public static IDisposable TrackingScope() => new ScopeToken();
+
+    private sealed class ScopeToken : IDisposable
     {
-        if (_nestCount.Value > 0)
-            _trackedItems.Value?.Add(signal);
-    }
+        public ScopeToken() => EnterScope();
 
-    public static IReadOnlyCollection<ISgSignal> GetTracked()
-        => _trackedItems.Value ?? (IReadOnlyCollection<ISgSignal>)Array.Empty<ISgSignal>();
+        public void Dispose() => ExitScope();
+    }
 
     internal static void DisposeAll()
     {
