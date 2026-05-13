@@ -60,7 +60,7 @@ public sealed class RenderBudgetService : IRenderBudgetService
                 _                               => int.MaxValue
             };
 
-            if (priority == RenderPriority.Idle) limit /= 2;
+            if (priority == SuperUI.Base.Reactive.RenderPriority.Idle) limit /= 2;
             if (_rendersThisSecond >= limit) return false;
 
             _rendersThisSecond++;

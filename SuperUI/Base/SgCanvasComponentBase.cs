@@ -54,7 +54,8 @@ public abstract class SgCanvasComponentBase : SgJsComponentBase
             {
                 _dirtyRects.Clear();
                 // ИСПРАВЛЕНО: передаём масштабированные размеры (HiDPI)
-                await SafeInvokeVoidAsync("clearCanvas", null,
+                await SafeInvokeVoidAsync<ElementReference, double, double>(
+                    "clearCanvas",
                     CanvasElement,
                     Width * DevicePixelRatio,
                     Height * DevicePixelRatio);
@@ -124,7 +125,8 @@ public abstract class SgCanvasComponentBase : SgJsComponentBase
                     DevicePixelRatio = dpr;
             }
         }
-        await SafeInvokeVoidAsync("initCanvas", null,
+        await SafeInvokeVoidAsync<ElementReference, int, int, float, bool>(
+            "initCanvas",
             CanvasElement, Width, Height, DevicePixelRatio, UseOffscreen);
     }
 

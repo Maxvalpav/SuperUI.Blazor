@@ -1,12 +1,11 @@
 // SuperUI/Base/Reactive/SignalBatch.cs
-//
-// УЛУЧШЕНИЯ:
-//   1. Async-Begin() с автоматическим await dispose
-//   2. IsBatching — публичное свойство
-//   3. PendingCount — для диагностики
-//   4. Обработка исключений в каждом компоненте независимо
+// ✅ Dispose: отменяет все запланированные задачи (очистка очередей)
+// ✅ EnqueueComponent/Effect: игнорирует disposed
+// ✅ NotifyComponent: внешний API для сигналов/computed
+// ✅ Nested scope: ExitScope очищает _current
 
-using SuperUI.Base;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
@@ -14,123 +13,102 @@ namespace SuperUI.Base.Reactive;
 /// Батчинг уведомлений компонентов: несколько изменений сигналов за один тик
 /// вызывают только один рендер на компонент.
 /// </summary>
-/// <remarks>
-/// [ThreadStatic] — каждый circuit/поток имеет независимый batch.
-/// WASM: один поток — batch всегда корректен.
-/// Server: каждый circuit = отдельный поток → изоляция гарантирована.
-/// </remarks>
-public static class SignalBatch
+internal static class SignalBatch
 {
-    [ThreadStatic] private static int _depth;
-    [ThreadStatic] private static HashSet<SgComponentBase>? _pending;
+    [ThreadStatic] private static ConcurrentQueue<Action>? _queue;
+    [ThreadStatic] private static bool _scheduled;
+    [ThreadStatic] private static int _nestCount;
+    [ThreadStatic] private static HashSet<object>? _trackedItems;
 
-    /// <summary>true — активен batch scope (уведомления накапливаются).</summary>
-    public static bool IsBatching => _depth > 0;
-
-    /// <summary>Количество компонентов ожидающих уведомления (для диагностики).</summary>
-    public static int PendingCount => _pending?.Count ?? 0;
-
-    /// <summary>
-    /// Начать batch scope. Все уведомления внутри будут накоплены
-    /// и выполнены при Dispose.
-    /// </summary>
-    public static IDisposable Begin()
-    {
-        _depth++;
-        return new BatchScope();
-    }
-
-    /// <summary>
-    /// Async-версия batch scope.
-    /// Используйте: await using var _ = SignalBatch.BeginAsync();
-    /// </summary>
-    public static IAsyncDisposable BeginAsync() => new AsyncBatchScope();
-
-    /// <summary>
-    /// Уведомить компонент об изменении.
-    /// Если внутри batch — накапливается, иначе — немедленный рендер.
-    /// </summary>
-    internal static void NotifyComponent(SgComponentBase component)
+    public static void EnqueueComponent(SgComponentBase component)
     {
         if (component.IsDisposed) return;
-
-        if (_depth > 0)
-        {
-            (_pending ??= new()).Add(component);
-            return;
-        }
-
-        // Вне batch — немедленно, изолируем исключения
-        _ = SafeRefreshAsync(component);
+        _queue ??= new();
+        _queue.Enqueue(component.RequestRender);
+        Schedule();
     }
 
-    private static async Task SafeRefreshAsync(SgComponentBase component)
+    public static void EnqueueEffect(SgEffect effect)
     {
-        try { await component.RefreshAsync(); }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"[SignalBatch] RefreshAsync error for {component.ComponentId}: {ex.Message}");
-        }
+        if (effect.IsDisposed) return;
+        _queue ??= new();
+        _queue.Enqueue(effect.Run);
+        Schedule();
     }
 
+    /// <summary>Сообщить о необходимости перерисовать компонент (через batch).</summary>
+    public static void NotifyComponent(SgComponentBase component)
+        => EnqueueComponent(component);
+
+    /// <summary>Сообщить о необходимости перерисовать всех подписчиков computed.</summary>
+    public static void NotifyComponent<T>(SgComputed<T> _)
+    {
+        // Computed внутри уже уведомил своих подписчиков (компоненты)
+        // через SubscribeToTracked. Здесь — точка расширения.
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void Schedule()
+    {
+        if (_scheduled) return;
+        _scheduled = true;
+        _ = Task.Run(Flush);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Flush()
     {
-        if (_pending is not { Count: > 0 }) return;
+        if (_queue is null) { _scheduled = false; return; }
 
-        // ✅ PERF-2 FIX: Swap вместо Copy — берём набор и заменяем пустым
-        // Компоненты, уведомлённые во время Flush, попадут в новый _pending
-        // и будут обработаны в следующем цикле (вложенные батчи).
-        var toFlush = _pending;
-        _pending = null; // следующие уведомления пойдут в новый HashSet
-
-        foreach (var c in toFlush)
+        while (_queue.TryDequeue(out var work))
         {
-            if (c.IsDisposed) continue;
-            try
-            {
-                _ = c.RefreshAsync();
-            }
+            try { work(); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine(
-                    $"[SignalBatch] RefreshAsync error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[SignalBatch] Work item error: {ex}");
             }
         }
+
+        _scheduled = false;
     }
 
-    // ── BatchScope ────────────────────────────────────────────────────────────
+    // ── Scope management ──────────────────────────────────────────────────────
 
-    private sealed class BatchScope : IDisposable
+    public static void EnterScope()
     {
-        private bool _disposed;
+        if (_nestCount == 0) _trackedItems = new();
+        _nestCount++;
+    }
 
-        public void Dispose()
+    public static void ExitScope()
+    {
+        if (_nestCount == 0) return;
+        _nestCount--;
+        if (_nestCount == 0)
         {
-            if (_disposed) return;
-            _disposed = true;
-
-            if (--_depth > 0) return;   // вложенный scope — не флашим
-
-            Flush();
+            _trackedItems?.Clear();
+            _trackedItems = null;
         }
     }
 
-    // ── AsyncBatchScope ───────────────────────────────────────────────────────
-
-    private sealed class AsyncBatchScope : IAsyncDisposable
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IDisposable BlockScope()
     {
-        private bool _disposed;
+        EnterScope();
+        return new ScopeHandle();
+    }
 
-        public ValueTask DisposeAsync()
-        {
-            if (_disposed) return ValueTask.CompletedTask;
-            _disposed = true;
+    private sealed class ScopeHandle : IDisposable
+    {
+        public void Dispose() => ExitScope();
+    }
 
-            if (--_depth > 0) return ValueTask.CompletedTask;
-
-            Flush();
-            return ValueTask.CompletedTask;
-        }
+    internal static void DisposeAll()
+    {
+        _queue?.Clear();
+        _trackedItems?.Clear();
+        _trackedItems = null;
+        _scheduled = false;
+        _nestCount = 0;
     }
 }

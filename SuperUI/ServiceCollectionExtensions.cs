@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using SuperUI.Base;
 using SuperUI.Base.Services;
 using SuperUI.Localization;
+using SuperUI.Base.Diagnostics;
 
 namespace SuperUI;
 
@@ -87,6 +88,12 @@ public static class ServiceCollectionExtensions
         // ── Notification Service ──────────────────────────────────────────────
         // ✅ FIX CS0311: SgNotificationService реализует ISgNotificationService
         services.AddScoped<ISgNotificationService, SgNotificationService>();
+
+        // ── Memory Pressure Monitor (Blazor Server only) ─────────────────────────
+        if (!OperatingSystem.IsBrowser())
+        {
+            services.TryAddSingleton<ISgMemoryPressureMonitor, SgMemoryPressureMonitor>();
+        }
 
         return services;
     }

@@ -4,7 +4,9 @@
 
 #if DEBUG
 @using SuperUI.Base.Diagnostics
+@using Microsoft.Extensions.DependencyInjection
 @inject ISgDiagnosticsCollector Collector
+@inject IServiceProvider ServiceProvider
 
 <div class="sg-devtools-panel" style="@PanelStyle">
     <div class="sg-devtools-header">
@@ -16,6 +18,7 @@
         <button class="@TabClass("renders")" @onclick="@(() => _tab = "renders")">Renders</button>
         <button class="@TabClass("signals")" @onclick="@(() => _tab = "signals")">Signals</button>
         <button class="@TabClass("aria")"    @onclick="@(() => _tab = "aria")">ARIA</button>
+        <button class="@TabClass("memory")"  @onclick="@(() => _tab = "memory")">Memory</button>
     </div>
 
     @if (_tab == "renders")
@@ -71,12 +74,59 @@
             }
         </div>
     }
+    else if (_tab == "memory")
+    {
+        @if (_memoryMonitor != null)
+        {
+            <div class="sg-memory-panel">
+                <div class="sg-memory-stat">
+                    <span class="label">Memory:</span>
+                    <span class="value">@_memoryMonitor.CurrentMemoryMB.ToString("F1") MB</span>
+                </div>
+                <div class="sg-memory-level">
+                    <span class="label">Level:</span>
+                    <span class="level @_memoryMonitor.CurrentLevel.ToString().ToLower()">@_memoryMonitor.CurrentLevel</span>
+                </div>
+            </div>
+        }
+        else
+        {
+            <p>Memory monitoring is available only on Blazor Server.</p>
+        }
+    }
 </div>
 #endif
 
+@implements IDisposable
 @code {
     private string _tab = "renders";
     private bool _visible = true;
+    private ISgMemoryPressureMonitor? _memoryMonitor;
+
+    protected override void OnInitialized()
+    {
+        if (ServiceProvider != null)
+        {
+            _memoryMonitor = ServiceProvider.GetService<ISgMemoryPressureMonitor>();
+            if (_memoryMonitor != null)
+            {
+                _memoryMonitor.MemoryPressureChanged += OnMemoryPressureChanged;
+            }
+        }
+    }
+
+    private void OnMemoryPressureChanged(MemoryPressureLevel level)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        if (_memoryMonitor != null)
+        {
+            _memoryMonitor.MemoryPressureChanged -= OnMemoryPressureChanged;
+        }
+    }
 
     private string PanelStyle => _visible
         ? "position:fixed;bottom:0;right:0;width:600px;height:300px;background:#1e1e1e;color:#fff;z-index:99999;overflow:auto;font-size:12px;"

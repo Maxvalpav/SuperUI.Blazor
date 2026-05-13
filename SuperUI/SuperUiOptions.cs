@@ -17,17 +17,5 @@ public sealed class SuperUiOptions
     public int MaxVisibleToasts { get; set; } = 5;
 
     /// <summary>
-    /// Default confirmation dialog title used when the caller does not supply one.
-    /// </summary>
-    public string DefaultConfirmTitle { get; set; } = "Подтверждение";
 
-    /// <summary>
-    /// Default confirm-button label.
-    /// </summary>
-    public string DefaultConfirmText { get; set; } = "Подтвердить";
-
-    /// <summary>
-    /// Default cancel-button label.
-    /// </summary>
-    public string DefaultCancelText { get; set; } = "Отмена";
 }

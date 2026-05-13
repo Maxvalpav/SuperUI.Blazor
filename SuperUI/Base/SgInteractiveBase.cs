@@ -376,7 +376,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     /// <summary>Устаревший метод — используйте OnKeyDown() или OnKeyUp() для семантической корректности.</summary>
     [Obsolete("Use OnKeyDown() or OnKeyUp() for semantic correctness.", false)]
     protected void OnKey(string key, Action handler)
-        => OnKeyDown(key, handler);
+        => OnKeyDown(key, () => { handler(); return Task.CompletedTask; });
 
     /// <summary>Устаревший метод — используйте OnKeyDown() или OnKeyUp() для семантической корректности.</summary>
     [Obsolete("Use OnKeyDown() or OnKeyUp() for semantic correctness.", false)]

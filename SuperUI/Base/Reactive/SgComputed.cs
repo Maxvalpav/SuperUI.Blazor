@@ -1,222 +1,137 @@
 // SuperUI/Base/Reactive/SgComputed.cs
-//
-// ИСПРАВЛЕНИЯ:
-//   CS0308: ComputedObserver реализует ISignalObserver<T> (generic) — строка 102
-//
-// УЛУЧШЕНИЯ:
-//   1. ForceInvalidate() — инвалидация без пересчёта
-//   2. IsStale — публичный флаг устаревания
-//   3. Recompute защита от reentrance (_isRecomputing)
-//   4. _dependencies отслеживает все сигналы для DevTools
-//   5. Thread-safe Dispose (idempotent)
-//   6. ToString() информативный
-//   7. НОВОЕ: TryGetCached() — безопасное чтение без пересчёта
+// ✅ Lazy subscription — подписка только при первом чтении Value
+// ✅ Dispose — отмена подписки с сигналов, очистка графа
 
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
-using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
 
-/// <summary>
-/// Вычисляемый сигнал: мемоизирует результат и инвалидируется при изменении зависимостей.
-/// Аналог Vue computed / MobX computed / Angular signal computed.
-/// </summary>
-/// <typeparam name="T">Тип вычисляемого значения.</typeparam>
-/// <remarks>
-/// WASM: однопоточный — _isRecomputing предотвращает рекурсию.
-/// Server: per-circuit — Recompute может вызываться из разных потоков → защита через Interlocked.
-/// </remarks>
-public sealed class SgComputed<T> : IDisposable
+public sealed class SgComputed<T> : ISignalObserver<T>, ISignalSubscribable, IDisposable
 {
     private readonly Func<T> _compute;
     private readonly IEqualityComparer<T> _comparer;
     private T _cachedValue;
-    private int _isDirtyInt = 1;      // 1 = dirty (требует пересчёта), 0 = clean
-    private int _isRecomputing;       // 0 = свободен, 1 = вычисляется (anti-reentrance)
-    private int _disposedInt;
-    private readonly ComputedObserver _observer;
+    private int _disposed;
+    private int _subscribed;
+    private readonly object _lock = new();
+
+    private readonly HashSet<WeakReference<SgComponentBase>> _componentSubscribers = new();
+    private readonly HashSet<ISignalObserver> _untypedObservers = new();
+
+    /// <summary>Граф зависимостей (для отладки/анализа).</summary>
+    public ConcurrentBag<object> Dependencies { get; } = new();
 
     public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null)
     {
-        _compute = compute ?? throw new ArgumentNullException(nameof(compute));
+        ArgumentNullException.ThrowIfNull(compute);
+        _compute = compute;
         _comparer = comparer ?? EqualityComparer<T>.Default;
-        _cachedValue = default!;
-        _observer = new ComputedObserver(Invalidate);
+        _cachedValue = ComputeInternal();
     }
 
-    /// <summary>
-    /// Текущее вычисленное значение. Пересчитывается лениво при изменении зависимостей.
-    /// Регистрирует подписку в SignalTracker (реактивное чтение).
-    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private T ComputeInternal()
+    {
+        using var scope = SignalTracker.EnterScopeForObserver(this);
+        return _compute();
+    }
+
     public T Value
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (Volatile.Read(ref _isDirtyInt) == 1)
-                Recompute();
-
-            // Регистрируем зависимость в родительском computed/effect
+            // Регистрируемся как зависимость текущего scope (если он есть)
             SignalTracker.TrackComputed(this);
+
+            // Ленивая подписка — только при первом чтении
+            if (Interlocked.CompareExchange(ref _subscribed, 1, 0) == 0)
+            {
+                // Пересобираем зависимости + подписываемся
+                using var scope = SignalTracker.EnterScopeForObserver(this);
+                _cachedValue = _compute();
+                SignalTracker.SubscribeToTracked(this);
+            }
             return _cachedValue;
         }
     }
 
-    /// <summary>true — данные устарели и будут пересчитаны при следующем обращении.</summary>
-    public bool IsStale => Volatile.Read(ref _isDirtyInt) == 1;
+    public T Peek() => _cachedValue;
 
-    /// <summary>
-    /// Прочитать кэшированное значение БЕЗ пересчёта и БЕЗ регистрации подписки.
-    /// Возвращает (false, default) если данные устарели.
-    /// </summary>
-    public (bool HasValue, T Value) TryGetCached()
-        => Volatile.Read(ref _isDirtyInt) == 0
-            ? (true, _cachedValue)
-            : (false, default!);
-
-    private void Recompute()
+    /// <summary>Подписать компонент: при изменении computed — RequestRender.</summary>
+    public void Subscribe(SgComponentBase component)
     {
-        // Anti-reentrance: предотвращаем рекурсивный пересчёт
-        if (Interlocked.CompareExchange(ref _isRecomputing, 1, 0) == 1) return;
+        lock (_lock) _componentSubscribers.Add(new WeakReference<SgComponentBase>(component));
+    }
 
-        try
+    void ISignalSubscribable.SubscribeObserverUntyped(ISignalObserver observer)
+    {
+        lock (_lock) _untypedObservers.Add(observer);
+    }
+
+    // ── ISignalObserver<T> ────────────────────────────────────────────────────
+    public void OnSignalChanged()
+    {
+        if (Volatile.Read(ref _disposed) == 1) return;
+        var newValue = ComputeInternal();
+        bool changed;
+        lock (_lock)
         {
-            _observer.BeginTracking();
-            T newValue;
-            using (SignalTracker.EnterScopeForObserver(_observer))
-                newValue = _compute();
+            if (_disposed == 1) return;
+            changed = !_comparer.Equals(_cachedValue, newValue);
+            if (changed) _cachedValue = newValue;
+        }
+        if (changed) NotifySubscribers();
+    }
 
-            Interlocked.Exchange(ref _isDirtyInt, 0);
+    public void OnSignalRead(SgSignal<T> signal) { }
+    public void OnComputedRead(SgComputed<T> computed) { }
 
-            if (!_comparer.Equals(_cachedValue, newValue))
+    private void NotifySubscribers()
+    {
+        WeakReference<SgComponentBase>[]? compSnapshot;
+        ISignalObserver[]? untypedSnapshot;
+        lock (_lock)
+        {
+            compSnapshot = _componentSubscribers.Count > 0 ? _componentSubscribers.ToArray() : null;
+            untypedSnapshot = _untypedObservers.Count > 0 ? _untypedObservers.ToArray() : null;
+        }
+        if (compSnapshot is not null)
+        {
+            List<WeakReference<SgComponentBase>>? dead = null;
+            foreach (var wr in compSnapshot)
             {
-                // ✅ PERF-5 FIX: Volatile.Write для visibility между потоками (Blazor Server)
-                // На WASM это no-op, но безопасно.
-                Volatile.Write(ref _cachedValue!, newValue);
-                _observer.NotifyChanged();  // уведомить зависимые computed/components
+                if (wr.TryGetTarget(out var comp) && !comp.IsDisposed)
+                    SignalBatch.NotifyComponent(comp);
+                else
+                    (dead ??= new()).Add(wr);
             }
-            else
+            if (dead is not null)
+                lock (_lock)
+                    foreach (var d in dead) _componentSubscribers.Remove(d);
+        }
+        if (untypedSnapshot is not null)
+            foreach (var obs in untypedSnapshot)
             {
-                // Обновляем даже если равно (ссылки могут меняться)
-                Volatile.Write(ref _cachedValue!, newValue);
+                try { obs.OnSignalChanged(); }
+                catch (Exception ex)
+                { System.Diagnostics.Debug.WriteLine($"[SgComputed] Observer error: {ex.Message}"); }
             }
-        }
-        catch (Exception ex)
-        {
-            // Сбрасываем dirty чтобы избежать бесконечного retry
-            Interlocked.Exchange(ref _isDirtyInt, 0);
-            System.Diagnostics.Debug.WriteLine(
-                $"[SgComputed<{typeof(T).Name}>] Compute error: {ex.Message}");
-            throw;  // propagate — пусть компонент получит исключение
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _isRecomputing, 0);
-        }
     }
-
-    /// <summary>Принудительно инвалидировать кэш и уведомить подписчиков (без пересчёта).</summary>
-    public void ForceInvalidate()
-    {
-        Interlocked.Exchange(ref _isDirtyInt, 1);
-        _observer.NotifyChanged();
-    }
-
-    private void Invalidate()
-    {
-        // Инвалидируем только если были clean (избегаем лишних уведомлений)
-        var wasDirty = Interlocked.Exchange(ref _isDirtyInt, 1) == 1;
-        if (!wasDirty) _observer.NotifyChanged();
-    }
-
-    // ── Internal API ──────────────────────────────────────────────────────────
-
-    internal void Subscribe(SgComponentBase component)
-        => _observer.Subscribe(component);
 
     // ── IDisposable ───────────────────────────────────────────────────────────
-
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-        _observer.Dispose();
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
+        Dependencies.Clear();
+        lock (_lock)
+        {
+            _componentSubscribers.Clear();
+            _untypedObservers.Clear();
+        }
     }
-
-    // ── Операторы ─────────────────────────────────────────────────────────────
 
     public static implicit operator T(SgComputed<T> computed) => computed.Value;
-
     public override string ToString() => $"SgComputed<{typeof(T).Name}>({_cachedValue})";
-
-    // ── Вложенный наблюдатель ─────────────────────────────────────────────────
-
-    // ИСПРАВЛЕНИЕ CS0308 строка 102: ISignalObserver<T> (generic)
-    private sealed class ComputedObserver : ISignalObserver<T>, IDisposable
-    {
-        private readonly Action _invalidate;
-        private readonly HashSet<WeakReference<SgComponentBase>> _dependents = new();
-        private readonly HashSet<object> _dependencies = new();    // для DevTools
-        private readonly object _lock = new();
-        private int _disposedInt;
-
-        public ComputedObserver(Action invalidate) => _invalidate = invalidate;
-
-        internal void Subscribe(SgComponentBase component)
-        {
-            lock (_lock) _dependents.Add(new WeakReference<SgComponentBase>(component));
-        }
-
-        internal void BeginTracking()
-        {
-            lock (_lock) _dependencies.Clear();
-        }
-
-        internal void NotifyChanged()
-        {
-            List<WeakReference<SgComponentBase>>? snapshot;
-            List<WeakReference<SgComponentBase>>? dead = null;
-
-            lock (_lock)
-            {
-                if (_dependents.Count == 0) return;
-                snapshot = new(_dependents.Count);
-                foreach (var r in _dependents)
-                {
-                    if (r.TryGetTarget(out var c) && !c.IsDisposed)
-                        snapshot.Add(r);
-                    else
-                        (dead ??= new()).Add(r);
-                }
-                if (dead is not null)
-                    foreach (var d in dead) _dependents.Remove(d);
-            }
-
-            foreach (var r in snapshot)
-                if (r.TryGetTarget(out var c) && !c.IsDisposed)
-                    SignalBatch.NotifyComponent(c);
-        }
-
-        // ISignalObserver (non-generic) — изменение зависимости
-        public void OnSignalChanged() => _invalidate();
-
-        // ISignalObserver<T> — typed tracking (для DevTools графа зависимостей)
-        public void OnSignalRead(SgSignal<T> signal)
-        {
-            lock (_lock) _dependencies.Add(signal);
-        }
-
-        public void OnComputedRead(SgComputed<T> computed)
-        {
-            lock (_lock) _dependencies.Add(computed);
-        }
-
-        public void Dispose()
-        {
-            if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-            lock (_lock)
-            {
-                _dependents.Clear();
-                _dependencies.Clear();
-            }
-        }
-    }
 }

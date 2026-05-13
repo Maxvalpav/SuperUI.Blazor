@@ -1,66 +1,46 @@
 // SuperUI/Base/Reactive/SignalTracker.cs
 //
-// ИСПРАВЛЕНИЯ:
-//   1. Track<T> принимает typed ISignalObserver<T> — typed dispatch без boxing
-//   2. TrackComputed<T> аналогично
-//   3. CurrentObserver — typed dispatch через pattern matching
-//   4. EnterScopeForObserver принимает ISignalObserver (non-generic) — корректно
-//
-// УЛУЧШЕНИЯ:
-//   1. IsTracking — публичное свойство (для conditional tracking в компонентах)
-//   2. ThreadStatic комментарии: Server = per-thread (per-circuit), WASM = single thread
-//   3. Защита от null в Track методах
+// Статический трекер реактивных зависимостей.
+// При чтении сигнала/computed в активном scope — автоматически регистрирует подписку.
 
-using SuperUI.Base;
+using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Статический трекер реактивных зависимостей.
-/// При чтении сигнала/computed в активном scope — автоматически регистрирует подписку.
 /// </summary>
 /// <remarks>
 /// [ThreadStatic] обеспечивает изоляцию:
-///   Server: каждый circuit имеет свой поток → per-thread = per-circuit. ✅
-///   WASM:   однопоточный WebAssembly thread → все операции в одном потоке. ✅
+///   Server: каждый circuit имеет свой поток → per-thread = per-circuit.
+///   WASM:   однопоточный WebAssembly thread → все операции в одном потоке.
 /// </remarks>
 public static class SignalTracker
 {
-    [ThreadStatic]
-    private static SgComponentBase? _currentComponent;
+    [ThreadStatic] private static SgComponentBase? _currentComponent;
+    [ThreadStatic] private static ISignalObserver? _currentObserver;
 
-    [ThreadStatic]
-    private static ISignalObserver? _currentObserver;   // non-generic для storage
+    // Список сигналов, прочитанных в текущем scope (для SubscribeToTracked).
+    [ThreadStatic] private static List<object>? _trackedSignals;
 
-    // ── Component scope ───────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Войти в scope компонента. Все чтения сигналов/computed внутри
-    /// автоматически подписывают компонент на уведомления.
-    /// </summary>
+    // ── Component scope ──────────────────────────────────────────────────────
     public static IDisposable EnterScope(SgComponentBase component)
     {
-        var prev = (_currentComponent, _currentObserver);
+        var prev = (_currentComponent, _currentObserver, _trackedSignals);
         _currentComponent = component;
         _currentObserver = null;
-        return new ScopeHandle(prev.Item1, prev.Item2);
+        _trackedSignals = new();
+        return new ScopeHandle(prev.Item1, prev.Item2, prev.Item3);
     }
 
-    // ── Observer scope ────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Войти в scope наблюдателя (computed/effect).
-    /// Принимает non-generic ISignalObserver (не знает T на уровне TrackAPI).
-    /// </summary>
     internal static IDisposable EnterScopeForObserver(ISignalObserver observer)
     {
-        var prev = (_currentComponent, _currentObserver);
+        var prev = (_currentComponent, _currentObserver, _trackedSignals);
         _currentComponent = null;
         _currentObserver = observer;
-        return new ScopeHandle(prev.Item1, prev.Item2);
+        _trackedSignals = new();
+        return new ScopeHandle(prev.Item1, prev.Item2, prev.Item3);
     }
-
-    // ── Свойства ──────────────────────────────────────────────────────────────
 
     internal static SgComponentBase? Current => _currentComponent;
     internal static ISignalObserver? CurrentObserver => _currentObserver;
@@ -68,43 +48,27 @@ public static class SignalTracker
     /// <summary>true — есть активный scope (компонент или наблюдатель).</summary>
     public static bool IsTracking => _currentComponent is not null || _currentObserver is not null;
 
-    // ── Track методы ──────────────────────────────────────────────────────────
+    // ── Track методы ─────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Вызывается при чтении SgSignal&lt;T&gt;.Value.
-    /// Регистрирует зависимость в текущем scope.
-    /// </summary>
+    /// <summary>Вызывается при чтении SgSignal&lt;T&gt;.Value.</summary>
     internal static void Track<T>(SgSignal<T> signal)
     {
         if (_currentComponent is not null)
         {
-            // Компонент напрямую подписывается на сигнал
             signal.Subscribe(_currentComponent);
         }
         else if (_currentObserver is ISignalObserver<T> typedObs)
         {
-            // Typed dispatch — нет boxing, нет dynamic
             typedObs.OnSignalRead(signal);
+            _trackedSignals?.Add(signal);
         }
-        else if (_currentObserver is ISignalObserver obs)
+        else if (_currentObserver is not null)
         {
-            // C7 FIX: кэшированный мост через ConditionalWeakTable
-            // вместо создания нового на каждый Track вызов
-            var bridge = signal.GetOrCreateBridge(obs);
-            // ✅ BUG-9 FIX: регистрируем bridge для dispose
-            // bridge жив пока жив signal (через SubscribeObserver WeakRef)
-            // Дополнительно регистрируем в observer для явного dispose
-            if (obs is IDisposable disposableBridge)
-            {
-                // Bridge будет dispose при dispose observer
-            }
+            _trackedSignals?.Add(signal);
         }
     }
 
-    /// <summary>
-    /// Вызывается при чтении SgComputed&lt;T&gt;.Value.
-    /// Регистрирует зависимость в текущем scope.
-    /// </summary>
+    /// <summary>Вызывается при чтении SgComputed&lt;T&gt;.Value.</summary>
     internal static void TrackComputed<T>(SgComputed<T> computed)
     {
         if (_currentComponent is not null)
@@ -114,30 +78,64 @@ public static class SignalTracker
         else if (_currentObserver is ISignalObserver<T> typedObs)
         {
             typedObs.OnComputedRead(computed);
+            _trackedSignals?.Add(computed);
         }
-        // EffectObserver: computed изменение придёт через цепочку сигналов
+        else if (_currentObserver is not null)
+        {
+            _trackedSignals?.Add(computed);
+        }
     }
 
-    // ── ScopeHandle ───────────────────────────────────────────────────────────
+    /// <summary>
+    /// Подписать наблюдателя на все сигналы, прочитанные в текущем scope.
+    /// Вызывается из SgComputed после первого ComputeInternal.
+    /// </summary>
+    internal static void SubscribeToTracked(ISignalObserver observer)
+    {
+        if (_trackedSignals is null) return;
+        foreach (var s in _trackedSignals)
+        {
+            SubscribeUntyped(s, observer);
+        }
+    }
 
+    private static void SubscribeUntyped(object signal, ISignalObserver observer)
+    {
+        // Используем reflection-free подход через интерфейс ISignalSubscribable, если есть.
+        if (signal is ISignalSubscribable sub)
+            sub.SubscribeObserverUntyped(observer);
+    }
+
+    // ── ScopeHandle ──────────────────────────────────────────────────────────
     private sealed class ScopeHandle : IDisposable
     {
         private readonly SgComponentBase? _prevComponent;
         private readonly ISignalObserver? _prevObserver;
+        private readonly List<object>? _prevTracked;
 
-        public ScopeHandle(SgComponentBase? prevComponent, ISignalObserver? prevObserver)
+        public ScopeHandle(
+            SgComponentBase? prevComponent,
+            ISignalObserver? prevObserver,
+            List<object>? prevTracked)
         {
             _prevComponent = prevComponent;
             _prevObserver = prevObserver;
+            _prevTracked = prevTracked;
         }
 
         public void Dispose()
         {
             _currentComponent = _prevComponent;
             _currentObserver = _prevObserver;
+            _trackedSignals = _prevTracked;
         }
     }
+}
 
-    // ── EffectSignalBridge ────────────────────────────────────────────────────
-    // MOVED TO: SgSignal.cs (кэшируется через ConditionalWeakTable для C7 fix)
+/// <summary>
+/// Маркер для сигналов/computed, поддерживающих non-generic подписку наблюдателя.
+/// </summary>
+internal interface ISignalSubscribable
+{
+    void SubscribeObserverUntyped(ISignalObserver observer);
 }

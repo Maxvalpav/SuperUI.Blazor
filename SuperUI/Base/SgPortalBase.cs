@@ -76,10 +76,9 @@ public abstract class SgPortalBase : SgJsComponentBase
     /// <summary>
     /// Не рендерим ничего на месте — контент идёт через портал.
     /// </summary>
-    protected override Task BuildRenderTree(RenderTreeBuilder builder)
+    protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
         // Portal не рендерит контент в своём месте
-        return Task.CompletedTask;
     }
 
     protected override async ValueTask DisposeComponentAsync()
