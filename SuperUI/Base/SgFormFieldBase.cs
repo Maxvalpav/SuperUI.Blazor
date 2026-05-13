@@ -102,7 +102,7 @@ public abstract class SgFormFieldBase<TValue> : SgInteractiveBase
     }
 
     // ── Методы изменения значения ───────────────────────────────────────────────
-    protected async Task SetTextAsync(string? text)
+    protected virtual async Task SetTextAsync(string? text)
     {
         CurrentText = text;
         FieldState = FormFieldState.Dirty;
@@ -252,13 +252,13 @@ public abstract class SgFormFieldBase<TValue> : SgInteractiveBase
             _editContext = CascadedEditContext;
             AttachEditContext();
         }
-        // BUG-5 FIX: try/catch при ConvertBack во время параметров
         if (!_isSettingValue && !EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
         {
             _lastSyncedValue = Value;
             try
             {
                 CurrentText = EffectiveConverter.ConvertBack(Value);
+                ConvertError = null; // ✅ FIX BUG-5: сброс только при успехе
             }
             catch (Exception ex)
             {
@@ -266,7 +266,6 @@ public abstract class SgFormFieldBase<TValue> : SgInteractiveBase
                 CurrentText = Value?.ToString();
                 ConvertError = ex.Message;
             }
-            ConvertError = null;
         }
     }
 

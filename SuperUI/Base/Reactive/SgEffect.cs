@@ -112,19 +112,41 @@ public sealed class SgEffect : ISignalObserver, IDisposable
 
         try
         {
-            if (_sync is not null) _sync();
-            else if (_async is not null) _ = RunAsync();
+            if (_sync is not null)
+            {
+                _sync();
+            }
+            else if (_async is not null)
+            {
+                // ✅ BUG-9 FIX: наблюдаем за Task — логируем unhandled exceptions
+                var task = RunAsync();
+                _ = task.ContinueWith(
+                    t =>
+                    {
+                        var ex = t.Exception!.GetBaseException();
+                        if (_onError is not null)
+                            try { _onError(ex); } catch { }
+                        else
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[SgEffect] Unobserved async exception: {ex.Message}");
+                    },
+                    CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted,
+                    TaskScheduler.Current);
+            }
         }
         catch (Exception ex)
         {
             if (_onError is not null) try { _onError(ex); } catch { }
             else System.Diagnostics.Debug.WriteLine($"[SgEffect] Unhandled exception: {ex}");
         }
-
-        if (_queue.TryPeek(out _))
-            SignalBatch.EnqueueEffect(this);
-        else
-            Volatile.Write(ref _isRunning, 0);
+        finally
+        {
+            if (_queue.TryPeek(out _))
+                SignalBatch.EnqueueEffect(this);
+            else
+                Volatile.Write(ref _isRunning, 0);
+        }
     }
 
     private async Task RunAsync()

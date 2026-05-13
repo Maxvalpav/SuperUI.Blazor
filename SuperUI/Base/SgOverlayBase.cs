@@ -210,20 +210,20 @@ public abstract class SgOverlayBase : SgInteractiveBase
     // ── Публичные методы ────────────────────────────────────────────────────────
     public async Task OpenAsync()
     {
-        if (Open || IsDisposed ||
-            Interlocked.CompareExchange(ref _isDisposingInt, 0, 0) == 1) return;
+        if (Open || IsDisposed || Volatile.Read(ref _isDisposingInt) == 1) return;
         Open = true;
         await OpenChanged.InvokeAsync(true);
-        await _commandChannel.Writer.WriteAsync(true, ComponentToken);
+        // ✅ FIX BUG-6: TryWrite вместо WriteAsync — не бросает ChannelClosedException
+        _commandChannel.Writer.TryWrite(true);
     }
 
     public async Task CloseAsync()
     {
-        if (!Open || IsDisposed ||
-            Interlocked.CompareExchange(ref _isDisposingInt, 0, 0) == 1) return;
+        if (!Open || IsDisposed || Volatile.Read(ref _isDisposingInt) == 1) return;
         Open = false;
         await OpenChanged.InvokeAsync(false);
-        await _commandChannel.Writer.WriteAsync(false, ComponentToken);
+        // ✅ FIX BUG-6: TryWrite вместо WriteAsync — не бросает ChannelClosedException
+        _commandChannel.Writer.TryWrite(false);
     }
 
     public Task ToggleAsync() => Open ? CloseAsync() : OpenAsync();

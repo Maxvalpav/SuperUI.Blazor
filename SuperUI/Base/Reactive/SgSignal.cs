@@ -184,6 +184,13 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
     private void NotifySubscribers()
     {
+        // ✅ PERF-1: fast-path — нет подписчиков, не захватываем lock
+        if (_subscribers.Count == 0
+            && _observers.Count == 0
+            && _callbacks.Count == 0
+            && _untypedObservers.Count == 0)
+            return;
+
         WeakReference<SgComponentBase>[]? rented = null;
         ISignalObserver<T>[]? observerSnapshot = null;
         Action<T>[]? callbackSnapshot = null;
@@ -191,10 +198,6 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
         lock (_lock)
         {
-            if (_subscribers.Count == 0 && _observers.Count == 0 &&
-                _callbacks.Count == 0 && _untypedObservers.Count == 0)
-                return;
-
             if (_subscribers.Count > 0)
             {
                 rented = ArrayPool<WeakReference<SgComponentBase>>.Shared.Rent(_subscribers.Count);

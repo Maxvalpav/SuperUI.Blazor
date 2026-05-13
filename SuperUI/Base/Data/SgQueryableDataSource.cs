@@ -1,263 +1,241 @@
-// SuperUI/Base/Data/SgQueryableDataSource.cs — НОВЫЙ
-// ✅ Серверный DataSource для IQueryable<T> (EF Core)
-// ✅ Автоматическая компиляция Expression деревьев с кэшированием
-// ✅ Поддержка серверной пагинации, сортировки, фильтрации
-// ✅ Интеграция с SgDataRequest/SgDataResult
-
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
-using SuperUI.Base;
 
 namespace SuperUI.Base.Data;
 
 /// <summary>
-/// Серверный провайдер данных для IQueryable&lt;T&gt;.
-/// Автоматически компилирует Expression-деревья и кэширует их.
-/// Используется с SgDataBase&lt;T&gt;.DataSource.
+/// Абстракция для выполнения async LINQ операций (EF Core и другие ORM).
+/// Позволяет избежать прямой зависимости от EntityFrameworkCore.
+/// </summary>
+public interface IAsyncQueryExecutor
+{
+    Task<int> CountAsync<T>(IQueryable<T> query, CancellationToken ct = default);
+    Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Синхронный fallback для non-EF сценариев.
+/// </summary>
+public sealed class SyncQueryExecutor : IAsyncQueryExecutor
+{
+    public static readonly SyncQueryExecutor Instance = new();
+
+    public Task<int> CountAsync<T>(IQueryable<T> query, CancellationToken ct = default)
+        => Task.FromResult(query.Count());
+
+    public Task<List<T>> ToListAsync<T>(IQueryable<T> query, CancellationToken ct = default)
+        => Task.FromResult(query.ToList());
+}
+
+/// <summary>
+/// Источник данных на основе IQueryable — поддерживает EF Core, LINQ to SQL и in-memory.
+/// Выполняет фильтрацию, сортировку и пагинацию на стороне провайдера (SQL).
 /// </summary>
 public sealed class SgQueryableDataSource<T> where T : class
 {
     private readonly Func<IQueryable<T>> _queryFactory;
-    private static readonly ConcurrentDictionary<string, Delegate> _compiledDelegates = new();
+    private readonly IAsyncQueryExecutor _executor;
 
-    /// <summary>
-    /// Создать DataSource из фабрики IQueryable.
-    /// </summary>
-    /// <param name="queryFactory">Фабрика IQueryable (например, () => dbContext.Products).</param>
-    public SgQueryableDataSource(Func<IQueryable<T>> queryFactory)
+    private static readonly ConcurrentDictionary<string, PropertyInfo?>
+        _propertyCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly ConcurrentDictionary<Type, PropertyInfo[]>
+        _searchPropsCache = new();
+
+    public SgQueryableDataSource(
+        Func<IQueryable<T>> queryFactory,
+        IAsyncQueryExecutor? executor = null)
     {
-        _queryFactory = queryFactory ?? throw new ArgumentNullException(nameof(queryFactory));
+        ArgumentNullException.ThrowIfNull(queryFactory);
+        _queryFactory = queryFactory;
+        _executor = executor ?? SyncQueryExecutor.Instance;
     }
 
-    /// <summary>
-    /// Основной метод: выполнить запрос с пагинацией, сортировкой и фильтрацией.
-    /// </summary>
-    public async Task<SgDataResult<T>> QueryAsync(SgDataRequest request)
+    public async Task<SgDataResult<T>> ExecuteAsync(SgDataRequest request)
     {
-        var query = _queryFactory();
+        ArgumentNullException.ThrowIfNull(request);
 
-        // Фильтрация
+        IQueryable<T> query = _queryFactory();
+
         if (request.Filters is { Count: > 0 })
         {
             foreach (var filter in request.Filters.Where(f => f.IsActive))
             {
-                query = ApplyFilter(query, filter);
+                var predicate = BuildFilterExpression(filter);
+                if (predicate is not null)
+                    query = query.Where(predicate);
             }
         }
 
-        // Глобальный поиск
-        if (!string.IsNullOrEmpty(request.SearchText))
+        if (!string.IsNullOrWhiteSpace(request.SearchText))
         {
-            query = ApplyGlobalSearch(query, request.SearchText);
+            var searchPredicate = BuildSearchExpression(request.SearchText);
+            if (searchPredicate is not null)
+                query = query.Where(searchPredicate);
         }
 
-        // Группировка (если задана)
-        if (request.Groups is { Count: > 0 })
-        {
-            return await QueryWithGroupsAsync(query, request);
-        }
-
-        // Сортировка
         if (request.Sort is not null)
-        {
-            query = ApplySort(query, request.Sort);
-        }
+            query = ApplySortExpression(query, request.Sort);
 
-        // Общее количество (до пагинации)
-        var totalCount = await Task.Run(() => query.Count(), request.CancellationToken);
+        int totalCount = await _executor.CountAsync(query, request.CancellationToken);
 
-        // Пагинация
         if (!request.NoPaging && request.PageSize > 0)
-        {
-            query = query.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize);
-        }
+            query = query.Skip(request.SkipCount).Take(request.TakeCount);
 
-        // Материализация
-        var items = await Task.Run(() => query.ToList(), request.CancellationToken);
+        var items = await _executor.ToListAsync(query, request.CancellationToken);
 
-        return new SgDataResult<T>
-        {
-            Items = items,
-            TotalCount = totalCount
-        };
-    }
-
-    // ── Фильтрация ────────────────────────────────────────────────────────────
-
-    private IQueryable<T> ApplyFilter(IQueryable<T> query, SgFilterDescriptor filter)
-    {
-        if (string.IsNullOrEmpty(filter.Field))
-            return query;
-
-        var cacheKey = $"Filter_{typeof(T).FullName}_{filter.Field}_{filter.Operator}";
-        var expression = GetOrCompileExpression<Func<T, bool>>(cacheKey,
-            () => BuildFilterExpression(filter));
-
-        if (expression is not null)
-        {
-            // Для операторов с переменным значением — перекомпилируем
-            if (filter.Operator is not SgFilterOperator.IsNull and not SgFilterOperator.IsNotNull)
-            {
-                var lambda = BuildFilterExpression(filter);
-                if (lambda is not null)
-                    query = query.Where(lambda);
-            }
-            else
-            {
-                query = query.Where(expression);
-            }
-        }
-
-        return query;
+        return new SgDataResult<T> { Items = items, TotalCount = totalCount };
     }
 
     private static Expression<Func<T, bool>>? BuildFilterExpression(SgFilterDescriptor filter)
     {
-        var prop = typeof(T).GetProperty(filter.Field,
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        if (string.IsNullOrEmpty(filter.Field)) return null;
+
+        var prop = _propertyCache.GetOrAdd(filter.Field,
+            f => typeof(T).GetProperty(f, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase));
+
         if (prop is null) return null;
 
         var param = Expression.Parameter(typeof(T), "x");
         var member = Expression.Property(param, prop);
+        var filterValue = filter.Value;
 
-        Expression? body = filter.Operator switch
+        try
         {
-            SgFilterOperator.Equals when filter.Value is not null =>
-                Expression.Equal(member, Expression.Constant(
-                    Convert.ChangeType(filter.Value, prop.PropertyType), prop.PropertyType)),
+            Expression? body = filter.Operator switch
+            {
+                SgFilterOperator.Equals when filterValue is not null =>
+                    Expression.Equal(member,
+                        Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
 
-            SgFilterOperator.Contains when prop.PropertyType == typeof(string) =>
-                Expression.Call(member,
-                    typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!,
-                    Expression.Constant(filter.Value?.ToString() ?? string.Empty)),
+                SgFilterOperator.NotEquals when filterValue is not null =>
+                    Expression.NotEqual(member,
+                        Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
 
-            SgFilterOperator.StartsWith when prop.PropertyType == typeof(string) =>
-                Expression.Call(member,
-                    typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string)])!,
-                    Expression.Constant(filter.Value?.ToString() ?? string.Empty)),
+                SgFilterOperator.Contains when prop.PropertyType == typeof(string) =>
+                    BuildStringContains(member, filterValue?.ToString() ?? string.Empty),
 
-            SgFilterOperator.GreaterThan when filter.Value is not null =>
-                Expression.GreaterThan(member, Expression.Constant(
-                    Convert.ChangeType(filter.Value, prop.PropertyType), prop.PropertyType)),
+                SgFilterOperator.NotContains when prop.PropertyType == typeof(string) =>
+                    Expression.Not(BuildStringContains(member, filterValue?.ToString() ?? string.Empty)),
 
-            SgFilterOperator.LessThan when filter.Value is not null =>
-                Expression.LessThan(member, Expression.Constant(
-                    Convert.ChangeType(filter.Value, prop.PropertyType), prop.PropertyType)),
+                SgFilterOperator.StartsWith when prop.PropertyType == typeof(string) =>
+                    Expression.Call(member,
+                        typeof(string).GetMethod(nameof(string.StartsWith), [typeof(string)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty)),
 
-            SgFilterOperator.IsNull =>
-                Expression.Equal(member, Expression.Constant(null, prop.PropertyType)),
+                SgFilterOperator.EndsWith when prop.PropertyType == typeof(string) =>
+                    Expression.Call(member,
+                        typeof(string).GetMethod(nameof(string.EndsWith), [typeof(string)])!,
+                        Expression.Constant(filterValue?.ToString() ?? string.Empty)),
 
-            SgFilterOperator.IsNotNull =>
-                Expression.NotEqual(member, Expression.Constant(null, prop.PropertyType)),
+                SgFilterOperator.GreaterThan when filterValue is not null =>
+                    Expression.GreaterThan(member,
+                        Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
 
-            _ => null
-        };
+                SgFilterOperator.GreaterThanOrEqual when filterValue is not null =>
+                    Expression.GreaterThanOrEqual(member,
+                        Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
 
-        return body is not null
-            ? Expression.Lambda<Func<T, bool>>(body, param)
-            : null;
+                SgFilterOperator.LessThan when filterValue is not null =>
+                    Expression.LessThan(member,
+                        Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
+
+                SgFilterOperator.LessThanOrEqual when filterValue is not null =>
+                    Expression.LessThanOrEqual(member,
+                        Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
+
+                SgFilterOperator.Between when filterValue is not null && filter.Value2 is not null =>
+                    Expression.AndAlso(
+                        Expression.GreaterThanOrEqual(member,
+                            Expression.Constant(SafeConvert(filterValue, prop.PropertyType), prop.PropertyType)),
+                        Expression.LessThanOrEqual(member,
+                            Expression.Constant(SafeConvert(filter.Value2, prop.PropertyType), prop.PropertyType))),
+
+                SgFilterOperator.IsNull =>
+                    prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) is null
+                        ? (Expression)Expression.Constant(false)
+                        : Expression.Equal(member, Expression.Constant(null, prop.PropertyType)),
+
+                SgFilterOperator.IsNotNull =>
+                    prop.PropertyType.IsValueType && Nullable.GetUnderlyingType(prop.PropertyType) is null
+                        ? (Expression)Expression.Constant(true)
+                        : Expression.NotEqual(member, Expression.Constant(null, prop.PropertyType)),
+
+                _ => null
+            };
+
+            return body is null ? null : Expression.Lambda<Func<T, bool>>(body, param);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
-    // ── Сортировка ────────────────────────────────────────────────────────────
-
-    private IQueryable<T> ApplySort(IQueryable<T> query, SgSortDescriptor sort)
+    private static Expression BuildStringContains(MemberExpression member, string value)
     {
-        var prop = typeof(T).GetProperty(sort.Field,
-            BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
+        var containsMethod = typeof(string).GetMethod(
+            nameof(string.Contains), [typeof(string), typeof(StringComparison)])!;
+
+        var notNull = Expression.NotEqual(member, Expression.Constant(null, typeof(string)));
+        var call = Expression.Call(member, containsMethod,
+            Expression.Constant(value),
+            Expression.Constant(StringComparison.OrdinalIgnoreCase));
+
+        return Expression.AndAlso(notNull, call);
+    }
+
+    private static Expression<Func<T, bool>>? BuildSearchExpression(string searchText)
+    {
+        var stringProps = _searchPropsCache.GetOrAdd(typeof(T), t =>
+            t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
+             .Where(p => p.PropertyType == typeof(string))
+             .ToArray());
+
+        if (stringProps.Length == 0) return null;
+
+        var param = Expression.Parameter(typeof(T), "x");
+        Expression? combined = null;
+
+        foreach (var prop in stringProps)
+        {
+            var member = Expression.Property(param, prop);
+            var body = BuildStringContains(member, searchText);
+            combined = combined is null ? body : Expression.OrElse(combined, body);
+        }
+
+        return combined is null ? null : Expression.Lambda<Func<T, bool>>(combined, param);
+    }
+
+    private static IQueryable<T> ApplySortExpression(IQueryable<T> query, SgSortDescriptor sort)
+    {
+        if (string.IsNullOrEmpty(sort.Field)) return query;
+
+        var prop = _propertyCache.GetOrAdd(sort.Field,
+            f => typeof(T).GetProperty(f, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase));
+
         if (prop is null) return query;
 
         var param = Expression.Parameter(typeof(T), "x");
-        var member = Expression.Property(param, prop);
-        var keySelector = Expression.Lambda(member, param);
+        var keySelector = Expression.Lambda(Expression.Property(param, prop), param);
 
         var methodName = sort.Direction == SgSortDirection.Descending
             ? nameof(Queryable.OrderByDescending)
             : nameof(Queryable.OrderBy);
 
-        var method = typeof(Queryable).GetMethods()
+        var method = typeof(Queryable)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
             .First(m => m.Name == methodName && m.GetParameters().Length == 2)
             .MakeGenericMethod(typeof(T), prop.PropertyType);
 
         return (IQueryable<T>)method.Invoke(null, [query, keySelector])!;
     }
 
-    // ── Глобальный поиск ─────────────────────────────────────────────────────
-
-    private static readonly ConcurrentDictionary<Type, Expression<Func<T, bool>>?> _searchCache = new();
-
-    private IQueryable<T> ApplyGlobalSearch(IQueryable<T> query, string searchText)
+    private static object? SafeConvert(object? value, Type targetType)
     {
-        var expression = _searchCache.GetOrAdd(typeof(T), _ => BuildGlobalSearchExpression());
-        return expression is not null ? query.Where(expression) : query;
+        if (value is null) return null;
+        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        return Convert.ChangeType(value, underlying);
     }
-
-    private static Expression<Func<T, bool>>? BuildGlobalSearchExpression()
-    {
-        var stringProps = typeof(T).GetProperties()
-            .Where(p => p.PropertyType == typeof(string))
-            .ToArray();
-
-        if (stringProps.Length == 0) return null;
-
-        var param = Expression.Parameter(typeof(T), "x");
-        var searchTextParam = Expression.Parameter(typeof(string), "searchText");
-        var containsMethod = typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!;
-
-        Expression? combined = null;
-        foreach (var prop in stringProps)
-        {
-            var member = Expression.Property(param, prop);
-            var notNull = Expression.NotEqual(member, Expression.Constant(null, typeof(string)));
-            var contains = Expression.Call(member, containsMethod, searchTextParam);
-            var condition = Expression.AndAlso(notNull, contains);
-
-            combined = combined is null ? condition : Expression.OrElse(combined, condition);
-        }
-
-        return combined is not null
-            ? Expression.Lambda<Func<T, bool>>(combined, param)
-            : null;
-    }
-
-    // ── Группировка ───────────────────────────────────────────────────────────
-
-    private async Task<SgDataResult<T>> QueryWithGroupsAsync(
-        IQueryable<T> query, SgDataRequest request)
-    {
-        // Базовая реализация группировки
-        var totalCount = await Task.Run(() => query.Count(), request.CancellationToken);
-        var items = await Task.Run(() => query.ToList(), request.CancellationToken);
-
-        return new SgDataResult<T>
-        {
-            Items = items,
-            TotalCount = totalCount
-        };
-    }
-
-    // ── Кэш Expression ────────────────────────────────────────────────────────
-
-    private static TDelegate? GetOrCompileExpression<TDelegate>(
-        string key, Func<Expression<TDelegate>?> factory) where TDelegate : Delegate
-    {
-        if (_compiledDelegates.TryGetValue(key, out var cached))
-            return cached as TDelegate;
-
-        var expression = factory();
-        if (expression is null)
-        {
-            _compiledDelegates[key] = null!;
-            return null;
-        }
-
-        var compiled = expression.Compile();
-        _compiledDelegates[key] = compiled;
-        return compiled;
-    }
-
-    /// <summary>
-    /// Очистить кэш скомпилированных Expression (при Hot Reload).
-    /// </summary>
-    public static void ClearCache() => _compiledDelegates.Clear();
 }

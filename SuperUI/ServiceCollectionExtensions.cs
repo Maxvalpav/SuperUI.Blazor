@@ -53,6 +53,14 @@ public static class ServiceCollectionExtensions
             services.AddHttpContextAccessor();
         }
 
+        // ── Streaming Rendering Service ───────────────────────────────────────
+        // SSR-3 FIX: HttpContext-based detection вместо нестабильного CascadingParameter
+        services.TryAddScoped<ISgStreamingRenderingService>(sp =>
+            OperatingSystem.IsBrowser()
+                ? WasmStreamingRenderingService.Instance
+                : new SgStreamingRenderingService(
+                    sp.GetRequiredService<Microsoft.AspNetCore.Http.IHttpContextAccessor>()));
+
         services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
 
         // ── Опции компонентов ─────────────────────────────────────────────────

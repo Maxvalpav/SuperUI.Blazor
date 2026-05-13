@@ -1,87 +1,49 @@
 // SuperUI/Base/Services/SgStreamingRenderingService.cs
-// НОВЫЙ: поддержка Streaming Rendering (.NET 8+)
-// 
-// Streaming Rendering позволяет отправлять части страницы клиенту
-// по мере их готовности, не ожидая полного рендеринга.
-// Активируется атрибутом [StreamRendering] на странице.
-//
-// Использование:
-//   В компоненте через CascadingParameter:
-//   [CascadingParameter(Name = "IsStreamingRendering")] bool IsStreaming { get; set; }
+// ✅ SSR-3 FIX: надёжное определение Streaming Rendering через HttpContext
+// ✅ Убрана нестабильная CascadingParameter(Name = "IsStreamingRendering") зависимость
+// ✅ WasmStreamingRenderingService — заглушка для WASM (всегда false)
 
-using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Http;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Сервис для определения и управления Streaming Rendering (.NET 8+).
+/// Сервис для определения режима Streaming Rendering (.NET 8+).
 /// </summary>
 public interface ISgStreamingRenderingService
 {
-    /// <summary>true если страница рендерится в режиме Streaming.</summary>
+    /// <summary>true если текущий запрос выполняется в режиме Streaming Rendering.</summary>
     bool IsStreamingRendering { get; }
-
-    /// <summary>
-    /// Получить RenderFragment с Suspense-подобной обёрткой для Streaming.
-    /// Показывает fallback пока данные загружаются.
-    /// </summary>
-    RenderFragment StreamingFragment(
-        RenderFragment content,
-        RenderFragment? fallback = null);
 }
 
+/// <summary>
+/// Server-side реализация: определяет Streaming через Response.HasStarted.
+/// Ответ уже начат до завершения рендеринга = streaming mode.
+/// </summary>
 public sealed class SgStreamingRenderingService : ISgStreamingRenderingService
 {
-    private bool _isStreaming;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public bool IsStreamingRendering => _isStreaming;
-
-    /// <summary>Устанавливается из HttpContext через Middleware или CascadingValue.</summary>
-    public void SetStreamingRendering(bool value) => _isStreaming = value;
-
-    public RenderFragment StreamingFragment(
-        RenderFragment content,
-        RenderFragment? fallback = null)
+    public SgStreamingRenderingService(IHttpContextAccessor httpContextAccessor)
     {
-        return builder =>
+        _httpContextAccessor = httpContextAccessor;
+    }
+
+    public bool IsStreamingRendering
+    {
+        get
         {
-            if (_isStreaming && fallback is not null)
-            {
-                // В режиме Streaming — сначала fallback, потом заменяется content
-                // через механизм Streaming Rendering Blazor
-                builder.AddContent(0, fallback);
-            }
-            else
-            {
-                builder.AddContent(0, content);
-            }
-        };
+            var ctx = _httpContextAccessor.HttpContext;
+            return ctx is not null && ctx.Response.HasStarted;
+        }
     }
 }
 
 /// <summary>
-/// Хелпер атрибута для Streaming Rendering компонентов.
-/// Используйте на страницах (.razor с @page):
-/// <code>@attribute [StreamRendering(true)]</code>
+/// WASM реализация — никогда не streaming.
 /// </summary>
-public static class StreamingRenderingHelper
+public sealed class WasmStreamingRenderingService : ISgStreamingRenderingService
 {
-    /// <summary>
-    /// Создать CascadingValue для передачи IsStreamingRendering в дочерние компоненты.
-    /// Используется в App.razor или Layout.
-    /// </summary>
-    public static RenderFragment CreateStreamingContext(
-        bool isStreaming,
-        RenderFragment childContent)
-    {
-        return builder =>
-        {
-            builder.OpenComponent<CascadingValue<bool>>(0);
-            builder.AddAttribute(1, "Name", "IsStreamingRendering");
-            builder.AddAttribute(2, "Value", isStreaming);
-            builder.AddAttribute(3, "IsFixed", true); // не меняется — оптимизация
-            builder.AddAttribute(4, "ChildContent", childContent);
-            builder.CloseComponent();
-        };
-    }
+    public static readonly WasmStreamingRenderingService Instance = new();
+    public bool IsStreamingRendering => false;
 }

@@ -577,6 +577,15 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     private static readonly ConcurrentDictionary<(Type, string), PropertyInfo?> _propertyCache = new();
 
     /// <summary>
+    /// ✅ PERF-2: кэш string-свойств типа T — вычисляется один раз на тип.
+    /// </summary>
+    private static readonly PropertyInfo[] _stringProperties =
+        typeof(T)
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Where(p => p.PropertyType == typeof(string))
+            .ToArray();
+
+    /// <summary>
     /// Expression cache для string.Contains (самый частый фильтр).
     /// Ключ: (EntityType, fieldName, lowerValue)
     /// </summary>
@@ -798,17 +807,12 @@ public abstract class SgDataBase<T> : SgInteractiveBase
 
     // ── In-memory поиск ─────────────────────────────────────────────────────
 
-    /// <summary>Применить глобальный поиск по всем string-полям.</summary>
     protected virtual IQueryable<T> ApplySearch(IQueryable<T> query)
     {
         if (string.IsNullOrEmpty(SearchText)) return query;
 
-        var stringProps = typeof(T)
-            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
-            .Where(p => p.PropertyType == typeof(string))
-            .ToArray();
-
-        if (stringProps.Length == 0) return query;
+        // ✅ PERF-2: используем кэшированный массив string-свойств
+        if (_stringProperties.Length == 0) return query;
 
         var param = Expression.Parameter(typeof(T), "x");
         var containsMethod = typeof(string).GetMethod(
@@ -817,10 +821,9 @@ public abstract class SgDataBase<T> : SgInteractiveBase
 
         Expression? combined = null;
 
-        foreach (var prop in stringProps)
+        foreach (var prop in _stringProperties)
         {
             var memberExpr = Expression.Property(param, prop);
-            // Guard: null-check для nullable string
             var notNull = Expression.NotEqual(memberExpr, Expression.Constant(null, typeof(string)));
             var call = Expression.Call(memberExpr, containsMethod,
                 Expression.Constant(SearchText),

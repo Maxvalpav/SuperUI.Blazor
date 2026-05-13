@@ -1,173 +1,157 @@
 // SuperUI/Base/Reactive/SignalBatch.cs
-// ✅ Dispose: отменяет все запланированные задачи (очистка очередей)
-// ✅ EnqueueComponent/Effect: игнорирует disposed
-// ✅ NotifyComponent: внешний API для сигналов/computed
-// ✅ Nested scope: ExitScope очищает _current
-// ✅ Signal batching: Begin/End/IsBatching/AddDirty — атомарное применение изменений
+// ✅ BUG-2 FIX: Убран [ThreadStatic] + Task.Run — ConcurrentQueue + AsyncLocal + Task.Yield
+// ✅ THREAD: ConcurrentQueue + ConcurrentDictionary корректно работают между потоками
+// ✅ PERF: Flush дренирует всю очередь за один проход
+// ✅ Signal batching сохранён через AsyncLocal<int> + ConcurrentDictionary<ISignalFlushable>
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
-/// <summary>Внутренний интерфейс для сигналов, поддерживающих батчинг.</summary>
 internal interface ISignalFlushable
 {
     void FlushIfDirty();
 }
 
 /// <summary>
-/// Батчинг уведомлений компонентов: несколько изменений сигналов за один тик
-/// вызывают только один рендер на компонент.
+/// Батчинг уведомлений компонентов и эффектов.
 ///
-/// Также поддерживает батчинг самих сигналов через Begin()/End():
-/// все изменения внутри блока накапливаются и применяются атомарно в End().
-///
-/// Пример:
-/// <code>
-/// using (SignalBatch.Begin())
-/// {
-///     _count.Value++;
-///     _name.Value = "New";
-///     _items.Value = _items.Value.Add(newItem);
-/// } // здесь произойдёт одна нотификация
-/// </code>
+/// BUG-2 FIX: [ThreadStatic] поля не видны из Task.Run потоков.
+/// Решение: ConcurrentQueue (разделяется между потоками) + AsyncLocal (async/await safe).
+/// Schedule использует Task.Yield вместо Task.Run — сохраняет SynchronizationContext.
 /// </summary>
 internal static class SignalBatch
 {
-    [ThreadStatic] private static ConcurrentQueue<Action>? _queue;
-    [ThreadStatic] private static bool _scheduled;
-    [ThreadStatic] private static int _nestCount;
-    [ThreadStatic] private static HashSet<object>? _trackedItems;
+    // ✅ FIX BUG-2: единая очередь, видимая из любого потока
+    private static readonly ConcurrentQueue<Action> _workQueue = new();
+    private static int _scheduled; // 0 = idle, 1 = scheduled
 
     // ── Signal batching ───────────────────────────────────────────────────────
 
-    [ThreadStatic] private static int _batchDepth;
-    [ThreadStatic] private static HashSet<ISignalFlushable>? _dirtySignals;
+    // AsyncLocal корректно работает с async/await (в отличие от [ThreadStatic])
+    private static readonly AsyncLocal<int> _batchDepth = new();
+    private static readonly ConcurrentDictionary<ISignalFlushable, bool> _dirtySignals = new();
 
-    /// <summary>Находимся ли внутри батча сигналов.</summary>
-    public static bool IsBatching => _batchDepth > 0;
+    public static bool IsBatching => _batchDepth.Value > 0;
 
-    /// <summary>
-    /// Начать батч сигналов. Все изменения накапливаются до End().
-    /// Возвращает IDisposable для using-синтаксиса.
-    /// </summary>
     public static IDisposable Begin()
     {
-        _batchDepth++;
+        _batchDepth.Value++;
         return new BatchScope();
     }
 
-    /// <summary>Завершить батч и применить все накопленные изменения.</summary>
     public static void End()
     {
-        if (_batchDepth <= 0)
-            throw new InvalidOperationException("SignalBatch.End() called without Begin()");
+        var depth = _batchDepth.Value;
+        if (depth <= 0) return;
 
-        _batchDepth--;
+        _batchDepth.Value = depth - 1;
 
-        if (_batchDepth == 0 && _dirtySignals is not null)
+        if (depth - 1 == 0)
         {
-            var signals = _dirtySignals;
-            _dirtySignals = null;
-            foreach (var signal in signals)
-                signal.FlushIfDirty();
-        }
-    }
-
-    /// <summary>Зарегистрировать сигнал как «грязный» внутри батча.</summary>
-    internal static void AddDirty(ISignalFlushable signal)
-    {
-        _dirtySignals ??= new HashSet<ISignalFlushable>();
-        _dirtySignals.Add(signal);
-    }
-
-    private sealed class BatchScope : IDisposable
-    {
-        private bool _disposed;
-
-        public void Dispose()
-        {
-            if (!_disposed)
+            foreach (var key in _dirtySignals.Keys.ToArray())
             {
-                _disposed = true;
-                End();
+                if (_dirtySignals.TryRemove(key, out _))
+                {
+                    try { key.FlushIfDirty(); }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SignalBatch.End] Flush error: {ex.Message}");
+                    }
+                }
             }
         }
     }
 
+    internal static void AddDirty(ISignalFlushable signal)
+        => _dirtySignals[signal] = true;
+
+    private sealed class BatchScope : IDisposable
+    {
+        private bool _disposed;
+        public void Dispose() { if (!_disposed) { _disposed = true; End(); } }
+    }
+
+    // ── Enqueue ───────────────────────────────────────────────────────────────
+
     public static void EnqueueComponent(SgComponentBase component)
     {
         if (component.IsDisposed) return;
-        _queue ??= new();
-        _queue.Enqueue(component.RequestRender);
+        _workQueue.Enqueue(component.RequestRender);
         Schedule();
     }
 
     public static void EnqueueEffect(SgEffect effect)
     {
         if (effect.IsDisposed) return;
-        _queue ??= new();
-        _queue.Enqueue(effect.Run);
+        _workQueue.Enqueue(effect.Run);
         Schedule();
     }
 
-    /// <summary>Сообщить о необходимости перерисовать компонент (через batch).</summary>
     public static void NotifyComponent(SgComponentBase component)
         => EnqueueComponent(component);
 
-    /// <summary>Сообщить о необходимости перерисовать всех подписчиков computed.</summary>
-    public static void NotifyComponent<T>(SgComputed<T> _)
-    {
-        // Computed внутри уже уведомил своих подписчиков (компоненты)
-        // через SubscribeToTracked. Здесь — точка расширения.
-    }
+    public static void NotifyComponent<T>(SgComputed<T> _) { }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Schedule()
     {
-        if (_scheduled) return;
-        _scheduled = true;
-        _ = Task.Run(Flush);
+        // ✅ FIX BUG-2: Task.Yield сохраняет SynchronizationContext (Blazor Server)
+        // Task.Run терял контекст и [ThreadStatic] поля были недоступны
+        if (Interlocked.CompareExchange(ref _scheduled, 1, 0) == 0)
+            _ = ScheduleFlushAsync();
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static async Task ScheduleFlushAsync()
+    {
+        await Task.Yield(); // уступаем текущий стек, затем флашим в том же контексте
+        Flush();
+    }
+
     private static void Flush()
     {
-        if (_queue is null) { _scheduled = false; return; }
-
-        while (_queue.TryDequeue(out var work))
+        int maxIterations = 1000; // защита от бесконечного цикла
+        while (_workQueue.TryDequeue(out var work) && maxIterations-- > 0)
         {
             try { work(); }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"[SignalBatch] Work item error: {ex}");
+                System.Diagnostics.Debug.WriteLine($"[SignalBatch.Flush] Error: {ex}");
             }
         }
 
-        _scheduled = false;
+        Volatile.Write(ref _scheduled, 0);
+
+        // Если во время Flush добавились новые элементы — планируем ещё раз
+        if (!_workQueue.IsEmpty)
+            Schedule();
     }
 
-    // ── Scope management ──────────────────────────────────────────────────────
+    // ── Scope (для SignalTracker) ─────────────────────────────────────────────
+
+    private static readonly AsyncLocal<int> _nestCount = new();
+    private static readonly AsyncLocal<HashSet<object>?> _trackedItems = new();
 
     public static void EnterScope()
     {
-        if (_nestCount == 0) _trackedItems = new();
-        _nestCount++;
+        if (_nestCount.Value == 0)
+            _trackedItems.Value = new HashSet<object>();
+        _nestCount.Value++;
     }
 
     public static void ExitScope()
     {
-        if (_nestCount == 0) return;
-        _nestCount--;
-        if (_nestCount == 0)
+        var n = _nestCount.Value;
+        if (n <= 0) return;
+        _nestCount.Value = n - 1;
+        if (n - 1 == 0)
         {
-            _trackedItems?.Clear();
-            _trackedItems = null;
+            _trackedItems.Value?.Clear();
+            _trackedItems.Value = null;
         }
     }
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IDisposable BlockScope()
     {
         EnterScope();
@@ -181,10 +165,8 @@ internal static class SignalBatch
 
     internal static void DisposeAll()
     {
-        _queue?.Clear();
-        _trackedItems?.Clear();
-        _trackedItems = null;
-        _scheduled = false;
-        _nestCount = 0;
+        while (_workQueue.TryDequeue(out _)) { }
+        _dirtySignals.Clear();
+        Volatile.Write(ref _scheduled, 0);
     }
 }

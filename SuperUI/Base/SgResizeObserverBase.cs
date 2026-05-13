@@ -1,159 +1,194 @@
-// SuperUI/Base/SgResizeObserverBase.cs — НОВЫЙ (MISSING-4)
-//
-// НОВОЕ:
-// ✅ Отслеживание изменения размеров элемента через ResizeObserver API
-// ✅ Callback при изменении размеров
-// ✅ Удобные свойства: ElementWidth, ElementHeight, AspectRatio
-// ✅ Поддержка кастомных элементов для наблюдения
-// ✅ Правильная очистка ресурсов
+// SuperUI/Base/SgResizeObserverBase.cs
+// ✅ UX-6: встроенный debounce — не нужно делать в каждом компоненте
+// ✅ SSR: ничего не делает при IsStaticSSR / IsPrerendering
+// ✅ Обратная совместимость: SgElementSize, ElementWidth/Height, OnElementResizedAsync сохранены
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
 namespace SuperUI.Base;
 
+/// <summary>Данные изменения размера элемента.</summary>
+public sealed record SgSizeChangedEventArgs(
+    double Width,
+    double Height,
+    double Left,
+    double Top);
+
 /// <summary>
-/// Базовый класс для компонентов, реагирующих на изменение своих размеров.
-/// Использует нативный ResizeObserver API для отслеживания размеров.
+/// Базовый класс для компонентов, наблюдающих за изменением размеров через ResizeObserver.
+/// Встроенный debounce предотвращает лавину обновлений при плавном ресайзе.
 /// </summary>
-/// <remarks>
-/// ResizeObserver поддерживается всеми современными браузерами.
-/// Позволяет компонентам адаптироваться к доступному пространству.
-/// </remarks>
 public abstract class SgResizeObserverBase : SgJsComponentBase
 {
-    private DotNetObjectReference<SgResizeObserverBase>? _selfRef;
-    private bool _observing;
+    [Parameter] public EventCallback<SgSizeChangedEventArgs> OnSizeChanged { get; set; }
+    [Parameter] public int ResizeDebounceMs { get; set; } = 100;
+    [Parameter] public bool ObserveOnFirstRender { get; set; } = true;
 
-    // ── Параметры ───────────────────────────────────────────────────────────
+    // ── Состояние ────────────────────────────────────────────────────────────
 
-    /// <summary>Элемент для наблюдения. По умолчанию — корневой элемент компонента.</summary>
+    protected double CurrentWidth { get; private set; }
+    protected double CurrentHeight { get; private set; }
+    protected bool IsObserving { get; private set; }
+
+    // Обратная совместимость
     protected ElementReference? ObservedElement { get; set; }
-
-    // ── Состояние ───────────────────────────────────────────────────────────
-
-    /// <summary>Последний известный размер элемента.</summary>
     protected SgElementSize? ElementSize { get; private set; }
-
-    /// <summary>Ширина элемента в пикселях (0 если нет данных).</summary>
     protected double ElementWidth => ElementSize?.Width ?? 0;
-
-    /// <summary>Высота элемента в пикселях (0 если нет данных).</summary>
     protected double ElementHeight => ElementSize?.Height ?? 0;
-
-    /// <summary>Соотношение сторон элемента (Width / Height).</summary>
     protected double AspectRatio => ElementSize?.AspectRatio ?? double.NaN;
-
-    /// <summary>true если элемент в ландшафтной ориентации (Width > Height).</summary>
     protected bool IsLandscape => ElementSize?.IsLandscape ?? false;
 
-    // ── Жизненный цикл ──────────────────────────────────────────────────────
+    private DotNetObjectReference<SgResizeObserverBase>? _selfRef;
+    private CancellationTokenSource? _resizeCts;
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     protected override async Task OnFirstRenderAsync()
     {
         await base.OnFirstRenderAsync();
-        await StartObservingAsync();
+        if (IsStaticSSR || IsPrerendering) return;
+
+        _selfRef = DotNetObjectReference.Create(this);
+
+        if (ObserveOnFirstRender)
+        {
+            // Новый путь: по ComponentId
+            await StartObservingAsync(ComponentId);
+        }
+        else if (ObservedElement.HasValue)
+        {
+            // Обратная совместимость: по ElementReference
+            await StartObservingAsync();
+        }
     }
 
-    // ── Публичные методы ────────────────────────────────────────────────────
+    // ── Публичные методы ──────────────────────────────────────────────────────
 
-    /// <summary>Начать наблюдение за изменением размеров элемента.</summary>
+    /// <summary>Начать наблюдение по elementId (новый API).</summary>
+    protected async Task StartObservingAsync(string elementId)
+    {
+        if (IsStaticSSR || IsDisposed) return;
+        await SafeInvokeVoidAsync("superui.observeResizeById", elementId, _selfRef, ResizeDebounceMs);
+        IsObserving = true;
+    }
+
+    /// <summary>Начать наблюдение по ElementReference (обратная совместимость).</summary>
     protected async Task StartObservingAsync()
     {
-        if (_observing || ObservedElement is null || IsPrerendering) return;
-
+        if (IsObserving || ObservedElement is null || IsPrerendering) return;
         _selfRef ??= DotNetObjectReference.Create(this);
-
-        await SafeInvokeVoidAsync(
-            "superui.observeResize",
-            ObservedElement.Value,
-            _selfRef,
-            nameof(OnResizeCallback));
-
-        _observing = true;
+        await SafeInvokeVoidAsync("superui.observeResize", ObservedElement.Value, _selfRef, nameof(OnResizeCallback));
+        IsObserving = true;
     }
 
-    /// <summary>Остановить наблюдение за размерами элемента.</summary>
+    /// <summary>Остановить наблюдение по elementId.</summary>
+    protected async Task StopObservingAsync(string elementId)
+    {
+        if (IsDisposed) return;
+        await SafeInvokeVoidAsync("superui.unobserveResizeById", elementId);
+        IsObserving = false;
+    }
+
+    /// <summary>Остановить наблюдение по ElementReference (обратная совместимость).</summary>
     protected async Task StopObservingAsync()
     {
-        if (!_observing || ObservedElement is null) return;
-
+        if (!IsObserving || ObservedElement is null) return;
         await SafeInvokeVoidAsync("superui.unobserveResize", ObservedElement.Value);
-        _observing = false;
+        IsObserving = false;
     }
 
-    // ── JS Callback ─────────────────────────────────────────────────────────
+    // ── JS Callbacks ──────────────────────────────────────────────────────────
 
-    /// <summary>
-    /// Вызывается из JS при изменении размеров наблюдаемого элемента.
-    /// </summary>
+    /// <summary>Вызывается из JS (новый API: width, height, left, top).</summary>
+    [JSInvokable]
+    public async Task OnResizedAsync(double width, double height, double left, double top)
+    {
+        if (IsDisposed) return;
+
+        CurrentWidth = width;
+        CurrentHeight = height;
+
+        _resizeCts?.Cancel();
+        _resizeCts?.Dispose();
+        _resizeCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+        var ct = _resizeCts.Token;
+
+        try
+        {
+            // Дополнительный debounce на .NET стороне (JS уже дебаунсит, это страховка)
+            if (ResizeDebounceMs > 0)
+                await Task.Delay(ResizeDebounceMs / 2, ct);
+
+            if (ct.IsCancellationRequested || IsDisposed) return;
+
+            var args = new SgSizeChangedEventArgs(width, height, left, top);
+            await InvokeAsync(async () =>
+            {
+                OnResized(args);
+                await OnSizeChanged.InvokeAsync(args);
+                StateHasChanged();
+            });
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    /// <summary>Вызывается из JS (обратная совместимость: только width, height).</summary>
     [JSInvokable]
     public async Task OnResizeCallback(double width, double height)
     {
         if (IsDisposed) return;
 
         var newSize = new SgElementSize(width, height);
-        var changed = ElementSize != newSize;
+        if (ElementSize == newSize) return;
 
         ElementSize = newSize;
+        CurrentWidth = width;
+        CurrentHeight = height;
 
-        if (changed)
-        {
-            await OnElementResizedAsync(newSize);
-            await InvokeAsync(StateHasChanged);
-        }
+        await OnElementResizedAsync(newSize);
+        await InvokeAsync(StateHasChanged);
     }
 
-    // ── Виртуальные методы ───────────────────────────────────────────────────
+    /// <summary>Переопределите для обработки изменения размера (новый API).</summary>
+    protected virtual void OnResized(SgSizeChangedEventArgs args) { }
 
-    /// <summary>
-    /// Вызывается при изменении размеров элемента.
-    /// Override для реакции на изменение размеров.
-    /// </summary>
-    /// <param name="newSize">Новые размеры элемента.</param>
+    /// <summary>Переопределите для обработки изменения размера (обратная совместимость).</summary>
     protected virtual Task OnElementResizedAsync(SgElementSize newSize) => Task.CompletedTask;
 
-    // ── Dispose ─────────────────────────────────────────────────────────────
+    // ── Dispose ───────────────────────────────────────────────────────────────
 
     protected override async ValueTask DisposeComponentAsync()
     {
-        await StopObservingAsync();
-        _selfRef?.Dispose();
-        _selfRef = null;
+        _resizeCts?.Cancel();
+        _resizeCts?.Dispose();
+
+        if (_selfRef is not null)
+        {
+            if (IsObserving)
+            {
+                if (ObservedElement.HasValue)
+                    await StopObservingAsync();
+                else
+                    await StopObservingAsync(ComponentId);
+            }
+            _selfRef.Dispose();
+            _selfRef = null;
+        }
+
         await base.DisposeComponentAsync();
     }
 }
 
-/// <summary>
-/// Размеры HTML-элемента.
-/// </summary>
-/// <remarks>
-/// Содержит информацию о размерах элемента, полученную от ResizeObserver.
-/// Включает удобные вычисляемые свойства для адаптивного дизайна.
-/// </remarks>
+/// <summary>Размеры HTML-элемента (обратная совместимость).</summary>
 public readonly record struct SgElementSize(double Width, double Height)
 {
-    /// <summary>Соотношение сторон (Width / Height). NaN если Height == 0.</summary>
     public double AspectRatio => Height == 0 ? double.NaN : Width / Height;
-
-    /// <summary>true если элемент в ландшафтной ориентации (Width > Height).</summary>
     public bool IsLandscape => Width > Height;
-
-    /// <summary>true если элемент в портретной ориентации (Width ≤ Height).</summary>
     public bool IsPortrait => Width <= Height;
-
-    /// <summary>true если элемент квадратный (Width ≈ Height).</summary>
     public bool IsSquare => Math.Abs(Width - Height) < 1;
-
-    /// <summary>Площадь элемента в квадратных пикселях.</summary>
     public double Area => Width * Height;
-
-    /// <summary>Периметр элемента в пикселях.</summary>
     public double Perimeter => 2 * (Width + Height);
-
-    /// <summary>Диагональ элемента в пикселях.</summary>
     public double Diagonal => Math.Sqrt(Width * Width + Height * Height);
-
-    /// <summary>Информативное представление размеров.</summary>
     public override string ToString() => $"{Width:F1}×{Height:F1}px";
 }
