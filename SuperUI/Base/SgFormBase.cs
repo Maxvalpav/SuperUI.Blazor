@@ -1,151 +1,139 @@
-// SuperUI/Base/SgFormBase.cs 
-// Улучшения: 
-// - [SupplyParameterFromForm] для SSR POST-форм (.NET 8) 
-// - AntiforgeryToken автоматически 
-// - Dual-mode: SSR POST + Interactive EditForm 
-// - Валидация в обоих режимах 
- 
-using System; 
-using System.Threading.Tasks; 
-using Microsoft.AspNetCore.Components; 
-using Microsoft.AspNetCore.Components.Forms; 
+// SuperUI/Base/SgFormBase.cs
+// ИСПРАВЛЕНО v3:
+// ✅ FIX: EditContext создаётся ТОЛЬКО в Interactive режиме
+// ✅ FIX: double-submit защита через Interlocked (не просто bool)
+// ✅ FIX: AntiforgeryToken поддержка для SSR (автоматическая через [SupplyParameterFromForm])
+// ✅ FIX: ValidationMessageStore не создаётся в SSR
+// ✅ NEW: OnFormReset() виртуальный метод
+// ✅ NET8+: [SupplyParameterFromForm] корректно работает в SSR
+
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Logging;
- 
-namespace SuperUI.Base; 
- 
-/// <summary> 
-/// Базовый класс для форм, работающих в обоих режимах: 
-/// - Static SSR: обработка через POST (SupplyParameterFromForm) 
-/// - Interactive: стандартный EditForm с валидацией 
-/// </summary> 
-public abstract class SgFormBase<TModel> : SgComponentBase where TModel : class, new() 
-{ 
-    private EditContext? _editContext; 
-    private ValidationMessageStore? _messageStore; 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Параметры 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    /// <summary> 
-    /// Модель формы. В SSR режиме заполняется из POST данных через [SupplyParameterFromForm]. 
-    /// </summary> 
-    [SupplyParameterFromForm] 
-    protected TModel? FormModel { get; set; } 
- 
-    [Parameter] public string FormName { get; set; } = "form"; 
-    [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; } 
-    [Parameter] public EventCallback<TModel> OnInvalidSubmit { get; set; } 
-    [Parameter] public RenderFragment<EditContext>? ChildContent { get; set; } 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Состояние 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    protected EditContext? EditContext => _editContext; 
-    protected bool IsSubmitting { get; private set; } 
-    protected string? SubmitError { get; private set; } 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Жизненный цикл 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    protected override async Task OnInitializedAsync() 
-    { 
-        await base.OnInitializedAsync(); 
- 
-        // Создаём модель если не пришла из SSR POST 
-        FormModel ??= await CreateModelAsync(); 
- 
-        // Инициализируем EditContext для интерактивного режима 
-        _editContext = new EditContext(FormModel); 
-        _messageStore = new ValidationMessageStore(_editContext); 
-        _editContext.OnValidationRequested += OnValidationRequested; 
-    } 
- 
-    /// <summary> 
-    /// Создаёт начальную модель формы (переопределите для инициализации из БД и т.д.). 
-    /// </summary> 
-    protected virtual Task<TModel> CreateModelAsync() => Task.FromResult(new TModel()); 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Обработка отправки 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    protected async Task HandleValidSubmitAsync() 
-    { 
-        if (FormModel == null) return; 
- 
-        IsSubmitting = true; 
-        SubmitError = null; 
-        StateHasChanged(); 
- 
-        try 
-        { 
-            // Серверная валидация 
-            var serverErrors = await ValidateAsync(FormModel); 
-            if (serverErrors != null && serverErrors.Length > 0) 
-            { 
-                foreach (var (field, error) in serverErrors) 
-                    _messageStore?.Add(_editContext!.Field(field), error); 
-                _editContext?.NotifyValidationStateChanged(); 
-                await OnInvalidSubmit.InvokeAsync(FormModel); 
-                return; 
-            } 
- 
-            await OnSubmitAsync(FormModel); 
-            await OnValidSubmit.InvokeAsync(FormModel); 
-        } 
-        catch (Exception ex) 
-        { 
-            SubmitError = ex.Message; 
-            Logger.LogError(ex, "Form submit failed"); 
-        } 
-        finally 
-        { 
-            IsSubmitting = false; 
-            StateHasChanged(); 
-        } 
-    } 
- 
-    protected async Task HandleInvalidSubmitAsync() 
-    { 
-        if (FormModel != null) 
-            await OnInvalidSubmit.InvokeAsync(FormModel); 
-    } 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Переопределяемые методы 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    /// <summary> 
-    /// Основная логика обработки формы. Переопределите. 
-    /// </summary> 
-    protected abstract Task OnSubmitAsync(TModel model); 
- 
-    /// <summary> 
-    /// Серверная валидация. Возвращает массив (поле, ошибка) или null. 
-    /// </summary> 
-    protected virtual Task<(string Field, string Error)[]?> ValidateAsync(TModel model) 
-        => Task.FromResult<(string, string)[]?>(null); 
- 
-    private void OnValidationRequested(object? sender, ValidationRequestedEventArgs e) 
-    { 
-        _messageStore?.Clear(); 
-    } 
- 
-    protected override void Dispose(bool disposing) 
-    { 
-        if (disposing && _editContext != null) 
-            _editContext.OnValidationRequested -= OnValidationRequested; 
-        base.Dispose(disposing); 
+
+namespace SuperUI.Base;
+
+public abstract class SgFormBase<TModel> : SgComponentBase
+    where TModel : class, new()
+{
+    private EditContext?           _editContext;
+    private ValidationMessageStore? _messageStore;
+    private int                    _submitting;  // ✅ FIX: Interlocked guard
+
+    // ── Параметры ──────────────────────────────────────────────────────────
+
+    [SupplyParameterFromForm]
+    protected TModel? FormModel { get; set; }
+
+    [Parameter] public string                     FormName        { get; set; } = "form";
+    [Parameter] public EventCallback<TModel>       OnValidSubmit   { get; set; }
+    [Parameter] public EventCallback<TModel>       OnInvalidSubmit { get; set; }
+    [Parameter] public RenderFragment<TModel>?     ChildContent    { get; set; }
+
+    // ── Состояние ──────────────────────────────────────────────────────────
+
+    protected EditContext? EditContext    => _editContext;
+    protected bool         IsSubmitting  => _submitting == 1;
+    protected string?      SubmitError   { get; private set; }
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        FormModel ??= await CreateModelAsync();
+
+        // ✅ FIX: EditContext только в Interactive режиме
+        if (IsInteractive)
+        {
+            _editContext  = new EditContext(FormModel);
+            _messageStore = new ValidationMessageStore(_editContext);
+            _editContext.OnValidationRequested += OnValidationRequested;
+        }
     }
 
-    /// <summary>
-    /// Log a form error with exception details.
-    /// </summary>
-    protected void LogFormError(Exception ex, string message)
+    protected virtual Task<TModel> CreateModelAsync() => Task.FromResult(new TModel());
+
+    // ── Submit ─────────────────────────────────────────────────────────────
+
+    protected async Task HandleValidSubmitAsync()
     {
-        Logger.LogError(ex, message);
+        if (FormModel is null) return;
+
+        // ✅ FIX: атомарная защита от двойного submit
+        if (Interlocked.CompareExchange(ref _submitting, 1, 0) == 1) return;
+
+        SubmitError = null;
+        await RefreshAsync();
+
+        try
+        {
+            var serverErrors = await ValidateAsync(FormModel);
+            if (serverErrors is { Length: > 0 })
+            {
+                if (_messageStore is not null && _editContext is not null)
+                {
+                    foreach (var (field, error) in serverErrors)
+                        _messageStore.Add(_editContext.Field(field), error);
+                    _editContext.NotifyValidationStateChanged();
+                }
+                await OnInvalidSubmit.InvokeAsync(FormModel);
+                return;
+            }
+
+            await OnSubmitAsync(FormModel);
+            await OnValidSubmit.InvokeAsync(FormModel);
+        }
+        catch (Exception ex)
+        {
+            SubmitError = ex.Message;
+            Logger.LogError(ex, "[{Id}] Form submit failed", ComponentId);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _submitting, 0);
+            await RefreshAsync();
+        }
     }
-} 
+
+    protected async Task HandleInvalidSubmitAsync()
+    {
+        if (FormModel is not null)
+            await OnInvalidSubmit.InvokeAsync(FormModel);
+    }
+
+    /// <summary>Сброс формы к исходному состоянию.</summary>
+    protected virtual async Task OnFormReset()
+    {
+        FormModel = await CreateModelAsync();
+        if (_editContext is not null && FormModel is not null)
+        {
+            _editContext = new EditContext(FormModel);
+            _messageStore = new ValidationMessageStore(_editContext);
+            _editContext.OnValidationRequested += OnValidationRequested;
+        }
+        await RefreshAsync();
+    }
+
+    // ── Переопределяемые методы ────────────────────────────────────────────
+
+    protected abstract Task OnSubmitAsync(TModel model);
+
+    protected virtual Task<(string Field, string Error)[]?> ValidateAsync(TModel model)
+        => Task.FromResult<(string, string)[]?>(null);
+
+    private void OnValidationRequested(object? sender, ValidationRequestedEventArgs e)
+        => _messageStore?.Clear();
+
+    // ── Dispose ────────────────────────────────────────────────────────────
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _editContext is not null)
+            _editContext.OnValidationRequested -= OnValidationRequested;
+        base.Dispose(disposing);
+    }
+}

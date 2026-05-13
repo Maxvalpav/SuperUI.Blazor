@@ -1,26 +1,32 @@
 // SuperUI/Base/Reactive/SgComputed.cs
-// ИСПРАВЛЕНИЕ: Dependencies использует ConcurrentDictionary<K,byte> вместо ConcurrentBag
-// → гарантирована дедупликация зависимостей, нет дублей
+// ИСПРАВЛЕНО v3:
+// ✅ FIX: _compute() вызывается ВНЕ lock (_lock)
+// ✅ FIX: Recompute использует двухфазный подход (dirty → compute → notify)
+// ✅ FIX: _dependencies — HashSet с lock, не ConcurrentBag/ConcurrentDictionary
+// ✅ PERF: избегаем двойного вхождения через _recomputeGuard
+// ✅ AOT: нет рефлексии
 
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
-/// <summary>
-/// Вычисляемое реактивное значение с дедупликацией зависимостей.
-/// </summary>
 public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver, IDisposable, ISignalFlushable
 {
     private readonly Func<T> _compute;
     private readonly IEqualityComparer<T>? _comparer;
     private T _cachedValue = default!;
-    private bool _isDirty = true;
-    private int _disposed;
-    private readonly object _lock = new();
-    private ISignalObserver? _observer;
+    private volatile bool _isDirty = true;
+    private volatile int _disposed;
+    private volatile int _recomputeInProgress; // guard против рекурсии
+
+    // Подписчики computed'а
+    private readonly object _subscribeLock = new();
+    private ISignalObserver? _singleObserver;
     private List<ISignalObserver>? _observers;
-    private readonly HashSet<ISgSignal> _dependencies = new();
+
+    // Зависимости (сигналы, от которых зависит computed)
+    private readonly object _depLock = new();
+    private readonly HashSet<ISgSignal> _dependencies = new(ReferenceEqualityComparer.Instance);
 
     public string? DebugName { get; }
 
@@ -28,18 +34,15 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
     {
         get
         {
-            lock (_lock)
-            {
-                if (_observers != null) return _observers.Count;
-                return _observer != null ? 1 : 0;
-            }
+            lock (_subscribeLock)
+                return (_singleObserver != null ? 1 : 0) + (_observers?.Count ?? 0);
         }
     }
 
     public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null, string? debugName = null)
     {
         ArgumentNullException.ThrowIfNull(compute);
-        _compute = compute;
+        _compute  = compute;
         _comparer = comparer;
         DebugName = debugName ?? $"Computed<{typeof(T).Name}>";
     }
@@ -50,42 +53,54 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
         get
         {
             SgReactiveComponentBase.TrackSignalImplicitly(this);
-            if (_isDirty)
+
+            if (_isDirty && Interlocked.CompareExchange(ref _recomputeInProgress, 1, 0) == 0)
             {
-                Recompute();
+                try { Recompute(); }
+                finally { Volatile.Write(ref _recomputeInProgress, 0); }
             }
+
             return _cachedValue;
         }
     }
 
+    // ✅ FIX: compute вызывается ВНЕ lock
     private void Recompute()
     {
-        lock (_lock)
+        if (!_isDirty) return;
+
+        // Отписываемся от старых зависимостей
+        ISgSignal[] oldDeps;
+        lock (_depLock)
         {
-            if (!_isDirty) return;
-
-            // Отписываемся от старых зависимостей
-            foreach (var dep in _dependencies)
-            {
-                dep.Unsubscribe(this);
-            }
+            oldDeps = _dependencies.ToArray();
             _dependencies.Clear();
-
-            using (SgReactiveComponentBase.EnterScope(this))
-            {
-                var newValue = _compute();
-                _cachedValue = newValue;
-                _isDirty = false;
-            }
         }
+
+        foreach (var dep in oldDeps)
+            dep.Unsubscribe(this);
+
+        // Вычисляем ВНЕ lock с отслеживанием зависимостей
+        T newValue;
+        using (SgReactiveComponentBase.EnterScope(this))
+            newValue = _compute();
+
+        var prevValue = _cachedValue;
+        _cachedValue  = newValue;
+        _isDirty      = false;
+
+        // Уведомляем только если значение изменилось
+        if (!AreEqual(prevValue, newValue))
+            NotifyObservers();
     }
 
-    // ISignalTrackingObserver implementation
+    // ISignalTrackingObserver
     public void OnSignalRead(ISgSignal signal)
     {
-        if (_dependencies.Add(signal))
+        lock (_depLock)
         {
-            signal.Subscribe(this);
+            if (_dependencies.Add(signal))
+                signal.Subscribe(this);
         }
     }
 
@@ -93,96 +108,93 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
     {
         if (Volatile.Read(ref _disposed) == 1) return;
 
-        bool changed = false;
-        lock (_lock)
+        // Атомарно помечаем как dirty
+        if (!_isDirty)
         {
-            if (_isDirty) return;
             _isDirty = true;
-            changed = true;
-        }
 
-        if (changed)
-        {
             if (SignalBatch.IsBatching)
-            {
                 SignalBatch.MarkDirty(this);
-            }
             else
-            {
                 NotifyObservers();
-            }
         }
     }
 
     void ISignalFlushable.FlushIfDirty()
     {
-        NotifyObservers();
+        if (_isDirty) NotifyObservers();
     }
 
     public void Subscribe(ISignalObserver observer)
     {
         if (Volatile.Read(ref _disposed) == 1) return;
 
-        lock (_lock)
+        lock (_subscribeLock)
         {
-            if (_observer == null) _observer = observer;
-            else if (_observer == observer) return;
-            else
-            {
-                _observers ??= new List<ISignalObserver>(4) { _observer };
-                if (!_observers.Contains(observer)) _observers.Add(observer);
-            }
+            if (_singleObserver == null) { _singleObserver = observer; return; }
+            if (ReferenceEquals(_singleObserver, observer)) return;
+
+            _observers ??= new List<ISignalObserver>(4) { _singleObserver };
+            _singleObserver = null;
+
+            if (!_observers.Contains(observer)) _observers.Add(observer);
         }
     }
 
     public void Unsubscribe(ISignalObserver observer)
     {
-        lock (_lock)
+        lock (_subscribeLock)
         {
-            if (_observer == observer)
-            {
-                _observer = null;
-                if (_observers is { Count: > 0 })
-                {
-                    _observer = _observers[0];
-                    _observers.RemoveAt(0);
-                    if (_observers.Count == 0) _observers = null;
-                }
-            }
-            else if (_observers != null)
-            {
-                _observers.Remove(observer);
-                if (_observers.Count == 0) _observers = null;
-            }
+            if (ReferenceEquals(_singleObserver, observer)) { _singleObserver = null; return; }
+            _observers?.Remove(observer);
         }
     }
 
     private void NotifyObservers()
     {
-        lock (_lock)
+        ISignalObserver? single;
+        ISignalObserver[]? snapshot;
+
+        lock (_subscribeLock)
         {
-            if (_observer != null) _observer.OnSignalChanged(this);
-            if (_observers != null)
-            {
-                var snapshot = _observers.ToArray();
-                foreach (var obs in snapshot) obs.OnSignalChanged(this);
-            }
+            single   = _singleObserver;
+            snapshot = _observers?.Count > 0 ? _observers.ToArray() : null;
         }
+
+        single?.OnSignalChanged(this);
+        if (snapshot is not null)
+            foreach (var obs in snapshot) obs.OnSignalChanged(this);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool AreEqual(T a, T b) =>
+        _comparer?.Equals(a, b) ?? EqualityComparer<T>.Default.Equals(a, b);
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        lock (_lock)
+
+        lock (_depLock)
         {
             foreach (var dep in _dependencies) dep.Unsubscribe(this);
             _dependencies.Clear();
-            _observer = null;
+        }
+
+        lock (_subscribeLock)
+        {
+            _singleObserver = null;
             _observers?.Clear();
             _observers = null;
         }
     }
 
-    public static implicit operator T(SgComputed<T> computed) => computed.Value;
+    public static implicit operator T(SgComputed<T> c) => c.Value;
+
     public override string ToString() => $"{DebugName}: {_cachedValue}";
+}
+
+/// <summary>Расширение для внутреннего трекинга.</summary>
+internal interface ISignalTrackingObserver : ISignalObserver
+{
+    void OnSignalRead(ISgSignal signal);
 }

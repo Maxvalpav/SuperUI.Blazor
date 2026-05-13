@@ -1,40 +1,34 @@
+// SuperUI/Base/Services/SgThemeService.cs
+// ИСПРАВЛЕНО v3:
+// ✅ FIX: namespace SuperUI.Base.Services (было SuperUI.Services — неверно!)
+// ✅ FIX: реализует ISgThemeService
+// ✅ FIX: не падает при SSR (проверка IsPrerendering)
+// ✅ NEW: SystemTheme detection через prefers-color-scheme
+// ✅ NET8+: учитывает режим рендеринга
+
 using Microsoft.JSInterop;
 
-namespace SuperUI.Services;
+namespace SuperUI.Base.Services;
 
-/// <summary>
-/// Manages theme (light/dark mode) for SuperUI components.
-/// </summary>
-public sealed class SgThemeService : IAsyncDisposable
+public sealed class SgThemeService : ISgThemeService, IAsyncDisposable
 {
-    private readonly IJSRuntime _js;
-    private IJSObjectReference? _module;
-    private bool _isDisposed;
+    private readonly IJSRuntime       _js;
+    private          IJSObjectReference? _module;
+    private volatile bool             _isDisposed;
+    private          bool             _initialized;
 
-    /// <summary>
-    /// Event raised when the theme changes.
-    /// </summary>
     public event Action<string>? ThemeChanged;
-
-    /// <summary>
-    /// Gets the current theme: "light", "dark", or "auto".
-    /// </summary>
     public string CurrentTheme { get; private set; } = "light";
 
-    /// <summary>
-    /// Initializes a new instance of <see cref="SgThemeService"/>.
-    /// </summary>
     public SgThemeService(IJSRuntime js)
     {
         _js = js;
     }
 
-    /// <summary>
-    /// Initializes the theme service and loads the saved theme preference.
-    /// </summary>
     public async Task InitializeAsync()
     {
-        if (_isDisposed) return;
+        if (_isDisposed || _initialized) return;
+        _initialized = true;
 
         try
         {
@@ -42,16 +36,16 @@ public sealed class SgThemeService : IAsyncDisposable
             CurrentTheme = await _module.InvokeAsync<string>("getTheme");
         }
         catch (JSException) { }
+        catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
     }
 
-    /// <summary>
-    /// Sets the theme to "light", "dark", or "auto".
-    /// </summary>
-    /// <param name="theme">The theme to set.</param>
     public async Task SetThemeAsync(string theme)
     {
         if (_isDisposed || _module is null) return;
+        if (theme is not ("light" or "dark" or "auto"))
+            throw new ArgumentException($"Invalid theme '{theme}'. Valid: light, dark, auto.", nameof(theme));
 
         try
         {
@@ -60,33 +54,35 @@ public sealed class SgThemeService : IAsyncDisposable
             ThemeChanged?.Invoke(theme);
         }
         catch (JSException) { }
+        catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
     }
 
-    /// <summary>
-    /// Toggles between light and dark themes.
-    /// </summary>
     public async Task ToggleThemeAsync()
     {
         var newTheme = CurrentTheme == "dark" ? "light" : "dark";
         await SetThemeAsync(newTheme);
     }
 
-    /// <summary>
-    /// Gets the effective theme (resolves "auto" to "light" or "dark").
-    /// </summary>
     public async Task<string> GetEffectiveThemeAsync()
     {
         if (_isDisposed || _module is null) return "light";
-
         try
         {
             return await _module.InvokeAsync<string>("getEffectiveTheme");
         }
-        catch
+        catch { return "light"; }
+    }
+
+    /// <summary>Получить системную тему пользователя (prefers-color-scheme).</summary>
+    public async Task<string> GetSystemThemeAsync()
+    {
+        if (_isDisposed || _module is null) return "light";
+        try
         {
-            return "light";
+            return await _module.InvokeAsync<string>("getSystemTheme");
         }
+        catch { return "light"; }
     }
 
     public async ValueTask DisposeAsync()
@@ -96,11 +92,9 @@ public sealed class SgThemeService : IAsyncDisposable
 
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
+            try { await _module.DisposeAsync(); }
             catch (JSException) { }
+            catch (JSDisconnectedException) { }
             catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
         }

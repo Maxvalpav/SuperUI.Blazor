@@ -1,123 +1,125 @@
-// ================================================================
-// Файл: SuperUI/Base/SgAsyncButton.cs
-// ИСПРАВЛЕНО: ButtonType → определён в этом же файле
-// ================================================================
+// SuperUI/Base/SgAsyncButton.cs
+// ИСПРАВЛЕНО v3:
+// ✅ FIX: наследует SgComponentBase (не ComponentBase напрямую)
+// ✅ FIX: Task.Delay с CancellationToken — нет вызова StateHasChanged после Dispose
+// ✅ FIX: TimeProvider для тестируемого debounce
+// ✅ FIX: CancellationTokenSource для отмены pending delays при Dispose
+// ✅ FIX: thread-safe через _stateLock
+// ✅ NET8+: совместим со всеми режимами
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SuperUI.Base;
 
-/// <summary>
-/// HTML button type enumeration.
-/// </summary>
-public enum ButtonType
+public enum ButtonType { Button, Submit, Reset }
+
+public class SgAsyncButton : SgComponentBase
 {
-    Button,
-    Submit,
-    Reset
-}
+    [Parameter] public string?           Text            { get; set; } = "Submit";
+    [Parameter] public string?           LoadingText     { get; set; } = "Loading...";
+    [Parameter] public string?           SuccessText     { get; set; }
+    [Parameter] public string?           ErrorText       { get; set; }
+    [Parameter] public bool              Disabled        { get; set; }
+    [Parameter] public ButtonType        Type            { get; set; } = ButtonType.Button;
+    [Parameter] public EventCallback     OnClick         { get; set; }
+    [Parameter] public Func<Task>?       OnClickAsync    { get; set; }
+    [Parameter] public int               DebounceMs      { get; set; } = 0;
+    [Parameter] public int               SuccessDisplayMs { get; set; } = 2000;
+    [Parameter] public RenderFragment?   ChildContent    { get; set; }
 
-/// <summary>
-/// Button with built-in async operation support,
-/// loading state, success/error feedback, and debouncing.
-/// </summary>
-public class SgAsyncButton : ComponentBase, IDisposable
-{
-    [Parameter] public string? Text { get; set; } = "Submit";
-    [Parameter] public string? LoadingText { get; set; } = "Loading...";
-    [Parameter] public string? SuccessText { get; set; }
-    [Parameter] public string? ErrorText { get; set; }
-    [Parameter] public string? CssClass { get; set; }
-    [Parameter] public string? IconCssClass { get; set; }
-    [Parameter] public bool Disabled { get; set; }
-    [Parameter] public ButtonType Type { get; set; } = ButtonType.Button;
-    [Parameter] public EventCallback OnClick { get; set; }
-    [Parameter] public Func<Task>? OnClickAsync { get; set; }
-    [Parameter] public int DebounceMs { get; set; } = 0;
-    [Parameter] public int SuccessDisplayMs { get; set; } = 2000;
-    [Parameter] public RenderFragment? ChildContent { get; set; }
+    private AsyncButtonState _state = AsyncButtonState.Idle;
+    private readonly object  _stateLock = new();
+    private long             _lastClickTick;
+    private CancellationTokenSource? _feedbackCts;
 
-    [Inject] private ILogger<SgAsyncButton> Logger { get; set; } = NullLogger<SgAsyncButton>.Instance;
-
-    private AsyncOperationState _state = AsyncOperationState.Idle;
-    private DateTime _lastClickTime = DateTime.MinValue;
-    private bool _disposed;
-
-    protected bool IsLoading => _state == AsyncOperationState.Loading;
-    protected bool IsSuccess => _state == AsyncOperationState.Success;
-    protected bool IsError => _state == AsyncOperationState.Error;
+    protected bool IsLoading => _state == AsyncButtonState.Loading;
+    protected bool IsSuccess => _state == AsyncButtonState.Success;
+    protected bool IsError   => _state == AsyncButtonState.Error;
 
     protected string CurrentText => _state switch
     {
-        AsyncOperationState.Loading => LoadingText ?? Text ?? "Loading...",
-        AsyncOperationState.Success => SuccessText ?? Text ?? "Done!",
-        AsyncOperationState.Error => ErrorText ?? Text ?? "Error",
-        _ => Text ?? "Submit"
+        AsyncButtonState.Loading => LoadingText ?? Text ?? "Loading...",
+        AsyncButtonState.Success => SuccessText ?? Text ?? "Done!",
+        AsyncButtonState.Error   => ErrorText   ?? Text ?? "Error",
+        _                        => Text ?? "Submit"
     };
 
     protected async Task HandleClickAsync(MouseEventArgs e)
     {
-        if (_disposed || Disabled || IsLoading) return;
+        if (IsDisposed || Disabled || IsLoading) return;
 
+        // ✅ FIX: TimeProvider для тестируемого debounce
         if (DebounceMs > 0)
         {
-            var elapsed = (DateTime.UtcNow - _lastClickTime).TotalMilliseconds;
-            if (elapsed < DebounceMs) return;
+            var nowTick  = TimeProvider.GetTimestamp();
+            var lastTick = Volatile.Read(ref _lastClickTick);
+            var elapsedMs = (nowTick - lastTick) * 1000.0 / TimeProvider.TimestampFrequency;
+            if (elapsedMs < DebounceMs) return;
+            Volatile.Write(ref _lastClickTick, nowTick);
         }
 
-        _lastClickTime = DateTime.UtcNow;
+        SetState(AsyncButtonState.Loading);
 
         try
         {
-            _state = AsyncOperationState.Loading;
-            StateHasChanged();
-
-            await OnClick.InvokeAsync();
-            if (OnClickAsync != null)
+            if (OnClickAsync is not null)
                 await OnClickAsync();
+            else
+                await OnClick.InvokeAsync(e);
 
-            _state = AsyncOperationState.Success;
-            StateHasChanged();
-
-            if (SuccessDisplayMs > 0)
+            if (!IsDisposed)
             {
-                await Task.Delay(SuccessDisplayMs);
-                if (!_disposed)
-                {
-                    _state = AsyncOperationState.Idle;
-                    StateHasChanged();
-                }
+                SetState(AsyncButtonState.Success);
+                if (SuccessDisplayMs > 0)
+                    await ResetAfterDelayAsync(SuccessDisplayMs);
             }
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error in SgAsyncButton click handler");
-            _state = AsyncOperationState.Error;
-            StateHasChanged();
-
-            await Task.Delay(3000);
-            if (!_disposed)
+            Logger.LogError(ex, "[{Id}] SgAsyncButton click error", ComponentId);
+            if (!IsDisposed)
             {
-                _state = AsyncOperationState.Idle;
-                StateHasChanged();
+                SetState(AsyncButtonState.Error);
+                await ResetAfterDelayAsync(3000);
             }
         }
     }
 
-    public void Dispose()
+    private void SetState(AsyncButtonState state)
     {
-        _disposed = true;
-        GC.SuppressFinalize(this);
+        lock (_stateLock) { _state = state; }
+        if (!IsDisposed) _ = InvokeAsync(StateHasChanged);
     }
 
-    private enum AsyncOperationState
+    // ✅ FIX: использует ComponentToken для отмены при Dispose
+    private async Task ResetAfterDelayAsync(int delayMs)
     {
-        Idle,
-        Loading,
-        Success,
-        Error
+        // Отменяем предыдущий pending reset
+        var oldCts = Interlocked.Exchange(ref _feedbackCts, null);
+        oldCts?.Cancel();
+        oldCts?.Dispose();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+        Interlocked.Exchange(ref _feedbackCts, cts);
+
+        try
+        {
+            await Task.Delay(delayMs, cts.Token);
+            if (!IsDisposed && !cts.Token.IsCancellationRequested)
+                SetState(AsyncButtonState.Idle);
+        }
+        catch (OperationCanceledException) { }
     }
+
+    protected override async ValueTask DisposeComponentAsync()
+    {
+        var cts = Interlocked.Exchange(ref _feedbackCts, null);
+        cts?.Cancel();
+        cts?.Dispose();
+        await base.DisposeComponentAsync();
+    }
+
+    private enum AsyncButtonState { Idle, Loading, Success, Error }
 }
