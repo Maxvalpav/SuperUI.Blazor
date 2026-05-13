@@ -1,38 +1,32 @@
 // SuperUI/Base/Diagnostics/ISgDiagnosticsCollector.cs
-// Коллектор диагностических данных для DevTools панели
+using System;
+using System.Collections.Generic;
+
 namespace SuperUI.Base.Diagnostics;
 
 /// <summary>
-/// Коллектор диагностических данных компонентов.
-/// Используется SgDiagnosticsPanel для отображения статистики рендера,
-/// графа сигналов и ARIA-оценки.
+/// Interface for collecting diagnostics across all SuperUI components.
+/// Registered as scoped service in DI.
 /// </summary>
 public interface ISgDiagnosticsCollector
 {
-    /// <summary>Все зарегистрированные компоненты с диагностикой.</summary>
-    IReadOnlyList<ComponentDiagnostics> GetAll();
+    IReadOnlyDictionary<string, ComponentDiagnosticEntry> Entries { get; }
 
-    /// <summary>Активные сигналы в графе зависимостей.</summary>
-    IReadOnlyList<SignalDiagnostics> GetSignals();
+    int TotalRenderCount { get; }
 
-    /// <summary>Количество активных сигналов.</summary>
-    int SignalCount { get; }
+    TimeSpan TotalRenderTime { get; }
 
-    /// <summary>ARIA score (0-100) — оценка доступности.</summary>
-    int AriaScore { get; }
+    int ErrorCount { get; }
 
-    /// <summary>Проблемы ARIA найденные в компонентах.</summary>
-    IReadOnlyList<AriaIssue> GetAriaIssues();
+    void RecordRender(string componentId, long elapsedTicks);
+
+    void RecordParameterChange(string componentId, string parameterName);
+
+    void RecordError(string componentId, Exception exception);
+
+    IReadOnlyCollection<ComponentErrorRecord> GetErrors();
+
+    string GetSummary();
+
+    void Reset();
 }
-
-/// <summary>Диагностика сигнала.</summary>
-public sealed record SignalDiagnostics(
-    string Name,
-    int SubscriberCount,
-    string? ValuePreview = null);
-
-/// <summary>Проблема ARIA.</summary>
-public sealed record AriaIssue(
-    string ComponentId,
-    string Message,
-    string Severity); // "error", "warning", "info"

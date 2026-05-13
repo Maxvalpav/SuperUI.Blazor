@@ -1,100 +1,86 @@
-// SuperUI/Base/SgThrottledBatchRenderer.cs 
-// Улучшения: 
-// - TimeProvider (.NET 8) вместо DateTime.UtcNow + Timer 
-// - PeriodicTimer вместо System.Threading.Timer 
-// - Один глобальный таймер на всех подписчиков (батч рендер) 
-// - Корректная отмена через CancellationToken 
-// - Не вызывает StateHasChanged если компонент disposed 
- 
-using System; 
-using System.Collections.Concurrent; 
-using System.Collections.Generic; 
-using System.Threading; 
-using System.Threading.Tasks; 
-using Microsoft.AspNetCore.Components; 
- 
-namespace SuperUI.Base; 
- 
-/// <summary> 
-/// Планировщик batch рендеринга. 
-/// Группирует несколько StateHasChanged в один вызов per tick. 
-/// Использует TimeProvider для тестируемости. 
-/// </summary> 
-public sealed class SgThrottledBatchRenderer : IAsyncDisposable 
-{ 
-    private readonly TimeProvider _timeProvider; 
-    private readonly TimeSpan _interval; 
-    private readonly ConcurrentDictionary<ComponentBase, byte> _pendingComponents = new(); 
-    private readonly CancellationTokenSource _cts = new(); 
-    private Task? _runLoop; 
- 
-    /// <summary> 
-    /// Создаёт планировщик. 
-    /// </summary> 
-    /// <param name="timeProvider">TimeProvider (инжектируется через DI).</param> 
-    /// <param name="intervalMs">Интервал батч-рендера в мс (по умолчанию 16мс ≈ 60fps).</param> 
-    public SgThrottledBatchRenderer(TimeProvider timeProvider, int intervalMs = 16) 
-    { 
-        _timeProvider = timeProvider; 
-        _interval = TimeSpan.FromMilliseconds(intervalMs); 
-        _runLoop = RunAsync(_cts.Token); 
-    } 
- 
-    /// <summary> 
-    /// Регистрирует компонент для рендера в следующем тике. 
-    /// Если компонент уже зарегистрирован — дублирования нет. 
-    /// </summary> 
-    public void RequestRender(ComponentBase component) 
-    { 
-        _pendingComponents.TryAdd(component, 0); 
-    } 
- 
-    /// <summary> 
-    /// Отменяет запрос рендера для компонента (например, при dispose). 
-    /// </summary> 
-    public void CancelRender(ComponentBase component) 
-    { 
-        _pendingComponents.TryRemove(component, out _); 
-    } 
- 
-    private async Task RunAsync(CancellationToken ct) 
-    { 
-        // PeriodicTimer (.NET 6+) — более эффективен чем System.Threading.Timer 
-        using var timer = new PeriodicTimer(_interval, _timeProvider); 
- 
-        try 
-        { 
-            while (await timer.WaitForNextTickAsync(ct)) 
-            { 
-                if (_pendingComponents.IsEmpty) continue; 
- 
-                // Снимаем снапшот и очищаем очередь 
-                var snapshot = _pendingComponents.Keys; 
-                foreach (var component in snapshot) 
-                { 
-                    _pendingComponents.TryRemove(component, out _); 
-                    try 
-                    { 
-                        // InvokeAsync гарантирует вызов на правильном потоке 
-                        await ((ComponentBase)component).InvokeAsync( 
-                            ((ComponentBase)component).StateHasChanged); 
-                    } 
-                    catch (ObjectDisposedException) { /* компонент уничтожен — норма */ } 
-                    catch (Exception) { /* изолируем ошибки */ } 
-                } 
-            } 
-        } 
-        catch (OperationCanceledException) { /* ожидаемо при dispose */ } 
-    } 
- 
-    public async ValueTask DisposeAsync() 
-    { 
-        _cts.Cancel(); 
-        if (_runLoop != null) 
-        { 
-            try { await _runLoop; } 
-            catch (OperationCanceledException) { } 
-        } 
-        _cts.Dispose(); 
-    } 
+// SuperUI/Base/SgThrottledBatchRenderer.cs
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
+
+namespace SuperUI.Base;
+
+/// <summary>
+/// Throttles StateHasChanged calls to batch multiple
+/// render requests into fewer actual renders.
+/// </summary>
+public class SgThrottledBatchRenderer : IDisposable
+{
+    private readonly ComponentBase _component;
+    private readonly int _throttleMs;
+    private readonly int _maxBatchSize;
+    private Timer? _timer;
+    private int _pendingCount;
+    private bool _disposed;
+
+    public int PendingCount => _pendingCount;
+
+    /// <summary>
+    /// Creates a throttled batch renderer for a component.
+    /// Uses reflection-safe approach: InvokeAsync(StateHasChanged) via Action.
+    /// </summary>
+    public SgThrottledBatchRenderer(ComponentBase component, int throttleMs = 16, int maxBatchSize = 10)
+    {
+        _component = component ?? throw new ArgumentNullException(nameof(component));
+        _throttleMs = Math.Max(1, throttleMs);
+        _maxBatchSize = maxBatchSize;
+    }
+
+    /// <summary>Request a render. Multiple rapid requests are batched.</summary>
+    public void RequestRender()
+    {
+        if (_disposed) return;
+
+        var count = Interlocked.Increment(ref _pendingCount);
+
+        // If we exceed batch size, render immediately
+        if (count >= _maxBatchSize)
+        {
+            Flush();
+            return;
+        }
+
+        // Otherwise, schedule a throttled render
+        if (_timer == null)
+        {
+            _timer = new Timer(_ =>
+            {
+                Flush();
+            }, null, _throttleMs, Timeout.Infinite);
+        }
+    }
+
+    private void Flush()
+    {
+        if (_disposed) return;
+
+        _timer?.Dispose();
+        _timer = null;
+        Interlocked.Exchange(ref _pendingCount, 0);
+
+        // Исправление CS0122: Используем InvokeAsync через публичный метод
+        // ComponentBase.InvokeAsync(Action) — protected, поэтому
+        // используем InvokeAsync(Func<Task>) с пустой лямбдой.
+        _ = _component.InvokeAsync(() =>
+        {
+            _component.StateHasChanged();
+            return Task.CompletedTask;
+        });
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _timer?.Dispose();
+        _timer = null;
+        GC.SuppressFinalize(this);
+    }
 }

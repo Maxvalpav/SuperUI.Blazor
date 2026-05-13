@@ -11,7 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SuperUI.Base;
 using SuperUI.Base.Services;
-using SuperUI.Localization;
 using SuperUI.Base.Diagnostics;
 
 namespace SuperUI;

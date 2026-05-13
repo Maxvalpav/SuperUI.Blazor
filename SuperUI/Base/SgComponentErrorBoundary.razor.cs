@@ -1,123 +1,93 @@
-// SgComponentErrorBoundary.razor.cs — Улучшенный компонент обработки ошибок 
-// Интеграция с .NET встроенным ErrorBoundary + кастомная логика 
- 
-using Microsoft.AspNetCore.Components; 
-using Microsoft.AspNetCore.Components.Rendering; 
-using Microsoft.AspNetCore.Components.Web; 
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging; 
+// SuperUI/Base/SgComponentErrorBoundary.razor.cs
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
 using SuperUI.Base.Diagnostics;
- 
-namespace SuperUI.Base; 
- 
-/// <summary> 
-/// Расширенный Error Boundary компонент. 
-/// 
-/// Улучшения относительно стандартного ErrorBoundary: 
-/// - Кастомный UI ошибки 
-/// - Кнопка Retry 
-/// - Логирование ошибок 
-/// - Поддержка разных стратегий восстановления 
-/// - Accessibility (роль alert) 
-/// </summary> 
-public partial class SgComponentErrorBoundary : ErrorBoundary 
-{ 
-    // ────────────────────────────────────────────── 
-    //  Параметры 
-    // ────────────────────────────────────────────── 
- 
-    /// <summary>Заголовок ошибки.</summary> 
-    [Parameter] 
-    public string ErrorTitle { get; set; } = "Something went wrong"; 
- 
-    /// <summary>Описание ошибки.</summary> 
-    [Parameter] 
-    public string ErrorDescription { get; set; } = "An unexpected error occurred. Please try again."; 
- 
-    /// <summary>Показывать ли технические детали ошибки.</summary> 
-    [Parameter] 
-    public bool ShowTechnicalDetails { get; set; } 
- 
-    /// <summary>Максимальное количество попыток восстановления.</summary> 
-    [Parameter] 
-    public int MaxRetryAttempts { get; set; } = 3; 
- 
-    /// <summary>Текст кнопки Retry.</summary> 
-    [Parameter] 
-    public string RetryText { get; set; } = "Try Again"; 
- 
-    /// <summary>CSS класс контейнера ошибки.</summary> 
-    [Parameter] 
-    public string? ErrorClass { get; set; } 
- 
-    // ────────────────────────────────────────────── 
-    //  Состояние 
-    // ────────────────────────────────────────────── 
- 
-    private int _retryCount; 
-    private bool _isRecovering; 
- 
-    // ────────────────────────────────────────────── 
-    //  Инжекция 
-    // ────────────────────────────────────────────── 
- 
-    [Inject] private ILogger<SgComponentErrorBoundary> Logger { get; set; } = default!; 
-    [Inject] private IServiceProvider ServiceProvider { get; set; } = default!;
- 
-    // ────────────────────────────────────────────── 
-    //  Переопределение методов 
-    // ────────────────────────────────────────────── 
- 
-    protected override Task OnErrorAsync(Exception exception) 
-    { 
-        _retryCount++; 
- 
-        Logger.LogError(exception, 
-            "[SgErrorBoundary] Error caught (attempt {Attempt}/{MaxAttempts}): {Message}", 
-            _retryCount, MaxRetryAttempts, exception.Message); 
- 
-        // Отправляем в диагностику если доступна 
-        var diagnostics = ServiceProvider.GetService<ComponentDiagnostics>(); 
-        diagnostics?.RecordError(GetType().Name, exception); 
- 
-        return Task.CompletedTask; 
-    } 
- 
-    /// <summary> 
-    /// Пытается восстановиться после ошибки. 
-    /// </summary> 
-    public new async Task RecoverAsync() 
-    { 
-        if (_retryCount >= MaxRetryAttempts) 
-        { 
-            Logger.LogWarning("[SgErrorBoundary] Max retry attempts ({Max}) reached", MaxRetryAttempts); 
-            return; 
-        } 
- 
-        _isRecovering = true; 
- 
-        try 
-        { 
-            base.Recover(); // ErrorBoundary.Recover() is synchronous in some versions, but standard is Recover()
-            await Task.Delay(100); // Give it a moment to clear
-            _isRecovering = false;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace SuperUI.Base;
+
+public partial class SgComponentErrorBoundary : ComponentBase, IDisposable
+{
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment<Exception>? ErrorContent { get; set; }
+    [Parameter] public string? ComponentName { get; set; }
+    [Parameter] public bool ShowErrorMessage { get; set; } = true;
+    [Parameter] public int MaxErrorCount { get; set; } = 3;
+
+    [Inject] private ComponentDiagnostics? Diagnostics { get; set; }
+    [Inject] private ILogger<SgComponentErrorBoundary> Logger { get; set; } = NullLogger<SgComponentErrorBoundary>.Instance;
+
+    private Exception? _currentError;
+    private int _errorCount;
+    private bool _isDisposed;
+    private bool _isRecovering;
+
+    protected bool HasError => _currentError != null;
+    protected bool TooManyErrors => _errorCount >= MaxErrorCount;
+
+    protected override void OnParametersSet()
+    {
+        if (_errorCount >= MaxErrorCount)
+        {
+            Logger.LogWarning("SgComponentErrorBoundary '{ComponentName}' reached max error count ({MaxErrorCount})",
+                ComponentName ?? "Unknown", MaxErrorCount);
+        }
+    }
+
+    /// <summary>Called when a child component throws.</summary>
+    public void HandleError(Exception exception)
+    {
+        if (_isDisposed) return;
+
+        _errorCount++;
+        _currentError = exception;
+
+        Logger.LogError(exception,
+            "Error in component '{ComponentName}' (error #{ErrorCount})",
+            ComponentName ?? "Unknown", _errorCount);
+
+        // Исправление: RecordError теперь доступен
+        Diagnostics?.RecordError(ComponentName ?? GetType().Name, exception);
+
+        StateHasChanged();
+    }
+
+    /// <summary>Try to recover from error.</summary>
+    public async Task RecoverAsync()
+    {
+        if (_isDisposed || _isRecovering) return;
+
+        _isRecovering = true;
+        try
+        {
+            _currentError = null;
             StateHasChanged();
-            Logger.LogInformation("[SgErrorBoundary] Recovery succeeded on attempt {Attempt}", _retryCount); 
-        } 
-        catch (Exception ex) 
-        { 
-            Logger.LogError(ex, "[SgErrorBoundary] Recovery failed on attempt {Attempt}", _retryCount); 
-            _isRecovering = false; 
-            throw; 
-        } 
-    } 
- 
-    /// <summary> 
-    /// Сбрасывает счётчик ошибок. 
-    /// </summary> 
-    public void ResetCounters() 
-    { 
-        _retryCount = 0; 
-        _isRecovering = false; 
-    } 
-} 
+
+            // Brief delay to allow UI to update
+            await Task.Delay(100);
+
+            if (!_isDisposed)
+                StateHasChanged();
+        }
+        finally
+        {
+            _isRecovering = false;
+        }
+    }
+
+    /// <summary>Reset error count (for page navigation, etc.).</summary>
+    public void Reset()
+    {
+        _currentError = null;
+        _errorCount = 0;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _isDisposed = true;
+        GC.SuppressFinalize(this);
+    }
+}

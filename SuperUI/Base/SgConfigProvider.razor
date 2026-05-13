@@ -1,68 +1,65 @@
 @* SuperUI/Base/SgConfigProvider.razor *@
-@* 
-    Провайдер конфигурации SuperUI.
-    Оборачивает дочерние компоненты в каскадные параметры.
-    
-    Использование:
-    <SgConfigProvider Theme="dark" Locale="ru-RU">
-        <SgToastHost />
-        @Body
-    </SgConfigProvider>
-*@
-@using Microsoft.Extensions.Options
-@inject IOptions<SgLibraryOptions> LibraryOptions
+@namespace SuperUI.Base
+@inherits ComponentBase
+@implements IDisposable
 
-<CascadingValue Value="_config" IsFixed="false">
-    <CascadingValue Value="_theme" IsFixed="false">
+<CascadingValue Value="Options" IsFixed="false">
+    <div class="@CssClass" style="@StyleAttribute" @attributes="AdditionalAttributes">
         @ChildContent
-    </CascadingValue>
+    </div>
 </CascadingValue>
 
 @code {
+    [Parameter] public SgLibraryOptions Options { get; set; } = new();
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    [Parameter] public string Theme   { get; set; } = "auto";
-    [Parameter] public string Locale { get; set; } = "en-US";
-    [Parameter] public bool   IsRtl   { get; set; } = false;
-    [Parameter] public bool   AnimationsEnabled { get; set; } = true;
-    [Parameter] public SgSize DefaultSize { get; set; } = SgSize.Md;
-    [Parameter] public Dictionary<string, string>? ThemeVariables { get; set; }
+    private string? StyleAttribute => GenerateStyleAttribute();
+    private bool _disposed;
 
-    private SgConfigContext _config  = new();
-    private SgThemeContext  _theme   = new();
-
-    protected override void OnParametersSet()
+    protected override void OnInitialized()
     {
-        var opts = LibraryOptions.Value;
-        
-        var isDark = Theme == "dark" ||
-                     (Theme == "auto" && IsSystemDark());
-
-        _config = new SgConfigContext
-        {
-            DefaultSize = DefaultSize,
-            AnimationsEnabled = AnimationsEnabled && opts.AnimationsEnabled,
-            AnimationDurationMs = opts.AnimationDurationMs,
-            EnableAria = opts.EnableAria,
-            Locale = !string.IsNullOrWhiteSpace(Locale) ? Locale : opts.Locale,
-            BaseZIndex = opts.BaseZIndex,
-            ZIndexStep = opts.ZIndexStep,
-            CssPrefix = opts.CssPrefix
-        };
-
-        _theme = new SgThemeContext
-        {
-            Theme = isDark ? SgTheme.Dark : SgTheme.Light,
-            IsRtl = IsRtl || opts.RightToLeft,
-            Variables = ThemeVariables?.Count > 0 
-                ? new Dictionary<string, string>(ThemeVariables, StringComparer.Ordinal)
-                : new Dictionary<string, string>(opts.ThemeVariables, StringComparer.Ordinal)
-        };
+        // Ensure defaults
+        Options.AnimationsEnabled = Options.AnimationsEnabled;
+        Options.AnimationDurationMs = Options.AnimationDurationMs > 0 ? Options.AnimationDurationMs : 200;
+        Options.EnableAria = Options.EnableAria;
+        Options.Locale = Options.Locale ?? "en-US";
+        Options.BaseZIndex = Options.BaseZIndex > 0 ? Options.BaseZIndex : 1000;
+        Options.ZIndexStep = Options.ZIndexStep > 0 ? Options.ZIndexStep : 100;
+        Options.CssPrefix = Options.CssPrefix ?? "sg-";
+        Options.RightToLeft = Options.RightToLeft;
+        Options.ThemeVariables ??= new Dictionary<string, string>();
     }
 
-    private static bool IsSystemDark()
+    private string? GenerateStyleAttribute()
     {
-        // Определяется JS-стороной, здесь default
-        return false;
+        var sb = new System.Text.StringBuilder();
+
+        // Theme CSS variables
+        foreach (var (key, value) in Options.ThemeVariables)
+        {
+            if (!string.IsNullOrEmpty(key))
+                sb.Append("--sg-").Append(key).Append(':').Append(value).Append(';');
+        }
+
+        // Animation durations
+        sb.Append("--sg-anim-duration:").Append(Options.AnimationDurationMs).Append("ms;");
+
+        // Z-index bases
+        sb.Append("--sg-z-base:").Append(Options.BaseZIndex).Append(';');
+        sb.Append("--sg-z-step:").Append(Options.ZIndexStep).Append(';');
+
+        // RTL
+        if (Options.RightToLeft)
+            sb.Append("direction:rtl;");
+
+        return sb.Length > 0 ? sb.ToString() : null;
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 }

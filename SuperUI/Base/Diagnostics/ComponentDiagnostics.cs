@@ -1,99 +1,145 @@
 // SuperUI/Base/Diagnostics/ComponentDiagnostics.cs
-// ✅ УЛУЧШЕНИЯ:
-//   - MemorySnapshot (DEBUG)
-//   - FirstRenderAt / LastRenderAt для timeline
-//   - ToString() расширенный
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Threading;
 
 namespace SuperUI.Base.Diagnostics;
 
 /// <summary>
-/// Диагностические данные компонента SuperUI.
-/// Доступны только в DEBUG-сборке через SgComponentBase.Diagnostics.
+/// Collects and exposes component diagnostics data: render counts,
+/// render times, errors, parameter changes. Implements
+/// ISgDiagnosticsCollector for DI registration.
 /// </summary>
-public sealed class ComponentDiagnostics
+public class ComponentDiagnostics : ISgDiagnosticsCollector, IDisposable
 {
-    /// <summary>ID компонента.</summary>
-    public string ComponentId { get; init; } = string.Empty;
+    private readonly ConcurrentDictionary<string, ComponentDiagnosticEntry> _entries = new();
+    private readonly ConcurrentQueue<ComponentErrorRecord> _errors = new();
+    private int _totalRenderCount;
+    private long _totalRenderTicks;
 
-    /// <summary>Количество выполненных рендеров.</summary>
-    public int RenderCount { get; set; }
-
-    /// <summary>Количество изменений параметров.</summary>
-    public int ParameterChangeCount { get; set; }
-
-    /// <summary>Время последнего рендера (мс).</summary>
-    public double LastRenderMs { get; set; }
-
-    /// <summary>Максимальное время рендера (мс).</summary>
-    public double MaxRenderMs { get; set; }
-
-    /// <summary>Минимальное время рендера (мс). -1 = нет данных.</summary>
-    public double MinRenderMs { get; set; } = -1;
-
-    /// <summary>Среднее время рендера (мс).</summary>
-    public double AverageRenderMs { get; set; }
-
-    /// <summary>Количество JS вызовов.</summary>
-    public int JsCallCount { get; set; }
-
-    /// <summary>Количество ошибок JS.</summary>
-    public int JsErrorCount { get; set; }
-
-    /// <summary>Суммарное время JS вызовов (мс).</summary>
-    public double TotalJsMs { get; set; }
-
-    /// <summary>Компонент был в prerendering состоянии.</summary>
-    public bool WasPrerendered { get; set; }
-
-    /// <summary>Количество пропущенных рендеров (ShouldRender = false).</summary>
-    public int SkippedRenderCount { get; set; }
-
-    /// <summary>Время создания компонента.</summary>
-    public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
-
-    /// <summary>Время первого рендера.</summary>
-    public DateTimeOffset? FirstRenderAt { get; set; }
-
-    /// <summary>Время последнего рендера.</summary>
-    public DateTimeOffset? LastRenderAt { get; set; }
-
-#if DEBUG
-    /// <summary>Снимок managed-памяти на момент последнего рендера (байт).</summary>
-    public long? ManagedMemoryBytes { get; set; }
-
-    /// <summary>Обновить снимок памяти.</summary>
-    public void SnapshotMemory() =>
-        ManagedMemoryBytes = GC.GetTotalMemory(forceFullCollection: false);
-#endif
-
-    /// <summary>Средний размер JS вызова (мс).</summary>
-    public double AverageJsMs => JsCallCount > 0
-        ? TotalJsMs / JsCallCount
-        : 0;
-
-    /// <summary>Uptime компонента.</summary>
-    public TimeSpan Uptime => DateTimeOffset.UtcNow - CreatedAt;
+    // --- ISgDiagnosticsCollector implementation ---
 
     /// <inheritdoc/>
-    public override string ToString()
+    public IReadOnlyDictionary<string, ComponentDiagnosticEntry> Entries => _entries;
+
+    /// <inheritdoc/>
+    public int TotalRenderCount => _totalRenderCount;
+
+    /// <inheritdoc/>
+    public TimeSpan TotalRenderTime => TimeSpan.FromTicks(Interlocked.Read(ref _totalRenderTicks));
+
+    /// <inheritdoc/>
+    public int ErrorCount => _errors.Count;
+
+    // --- Render tracking ---
+
+    /// <summary>Record a render event for a component.</summary>
+    public void RecordRender(string componentId, long elapsedTicks)
     {
-        var sb = new System.Text.StringBuilder();
-        sb.Append($"[{ComponentId}] ");
-        sb.Append($"Renders={RenderCount}");
-        if (SkippedRenderCount > 0) sb.Append($"(+{SkippedRenderCount} skipped)");
-        sb.Append($", AvgRenderMs={AverageRenderMs:F2}");
-        sb.Append($", MaxRenderMs={MaxRenderMs:F2}");
-        if (JsCallCount > 0)
-        {
-            sb.Append($", JsCalls={JsCallCount}");
-            if (JsErrorCount > 0) sb.Append($"/{JsErrorCount}err");
-            sb.Append($", TotalJsMs={TotalJsMs:F2}");
-        }
-        sb.Append($", Uptime={Uptime:mm\\:ss}");
-#if DEBUG
-        if (ManagedMemoryBytes.HasValue)
-            sb.Append($", Mem={ManagedMemoryBytes / 1024}KB");
-#endif
-        return sb.ToString();
+        var entry = _entries.GetOrAdd(componentId, _ => new ComponentDiagnosticEntry(componentId));
+        entry.RecordRender(elapsedTicks);
+        Interlocked.Increment(ref _totalRenderCount);
+        Interlocked.Add(ref _totalRenderTicks, elapsedTicks);
+    }
+
+    /// <summary>Record a parameter change for a component.</summary>
+    public void RecordParameterChange(string componentId, string parameterName)
+    {
+        var entry = _entries.GetOrAdd(componentId, _ => new ComponentDiagnosticEntry(componentId));
+        entry.RecordParameterChange(parameterName);
+    }
+
+    /// <summary>Record a component error.</summary>
+    public void RecordError(string componentId, Exception exception)
+    {
+        var entry = _entries.GetOrAdd(componentId, _ => new ComponentDiagnosticEntry(componentId));
+        entry.RecordError();
+        _errors.Enqueue(new ComponentErrorRecord(componentId, exception, DateTimeOffset.UtcNow));
+    }
+
+    /// <summary>Get all recorded errors (most recent first).</summary>
+    public IReadOnlyCollection<ComponentErrorRecord> GetErrors()
+    {
+        return _errors.ToArray();
+    }
+
+    /// <summary>Get diagnostic summary as formatted text.</summary>
+    public string GetSummary()
+    {
+        return $"Components: {_entries.Count}, Total Renders: {_totalRenderCount}, " +
+               $"Render Time: {TotalRenderTime.TotalMilliseconds:F2}ms, Errors: {_errors.Count}";
+    }
+
+    /// <summary>Reset all collected data.</summary>
+    public void Reset()
+    {
+        _entries.Clear();
+        while (_errors.TryDequeue(out _)) { }
+        Interlocked.Exchange(ref _totalRenderCount, 0);
+        Interlocked.Exchange(ref _totalRenderTicks, 0);
+    }
+
+    public void Dispose()
+    {
+        Reset();
+        GC.SuppressFinalize(this);
+    }
+}
+
+/// <summary>Per-component diagnostic data.</summary>
+public sealed class ComponentDiagnosticEntry
+{
+    public string ComponentId { get; }
+    public int RenderCount { get; private set; }
+    public long TotalRenderTicks { get; private set; }
+    public int ErrorCount { get; private set; }
+    public int ParameterChangeCount { get; private set; }
+    public List<string> RecentParameterChanges { get; } = new();
+    public DateTimeOffset FirstRenderTime { get; private set; }
+    public DateTimeOffset LastRenderTime { get; private set; }
+
+    public TimeSpan AverageRenderTime => RenderCount > 0
+        ? TimeSpan.FromTicks(TotalRenderTicks / RenderCount)
+        : TimeSpan.Zero;
+
+    public ComponentDiagnosticEntry(string componentId)
+    {
+        ComponentId = componentId;
+        FirstRenderTime = DateTimeOffset.UtcNow;
+        LastRenderTime = FirstRenderTime;
+    }
+
+    public void RecordRender(long elapsedTicks)
+    {
+        RenderCount++;
+        TotalRenderTicks += elapsedTicks;
+        LastRenderTime = DateTimeOffset.UtcNow;
+    }
+
+    public void RecordParameterChange(string parameterName)
+    {
+        ParameterChangeCount++;
+        RecentParameterChanges.Add(parameterName);
+        if (RecentParameterChanges.Count > 20)
+            RecentParameterChanges.RemoveAt(0);
+    }
+
+    public void RecordError() => ErrorCount++;
+}
+
+/// <summary>Record of a component error.</summary>
+public sealed class ComponentErrorRecord
+{
+    public string ComponentId { get; }
+    public Exception Exception { get; }
+    public DateTimeOffset Timestamp { get; }
+
+    public ComponentErrorRecord(string componentId, Exception exception, DateTimeOffset timestamp)
+    {
+        ComponentId = componentId;
+        Exception = exception;
+        Timestamp = timestamp;
     }
 }

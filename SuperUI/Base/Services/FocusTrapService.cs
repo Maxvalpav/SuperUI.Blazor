@@ -1,92 +1,117 @@
 // SuperUI/Base/Services/FocusTrapService.cs
-//
-// ИСПРАВЛЕНИЯ:
-//   ✅ using Microsoft.JSInterop добавлен (аналогично IFocusTrapService.cs)
-//   ✅ MoveFocusAsync использует InvokeVoidAsync через SafeJsVoidAsync helper
-//   ✅ JsFocusTrapServiceEx делегирует через JsFocusTrapService (не дублирует код)
-//
-// ДОРАБОТКИ:
-//   ✅ FocusTrapStack — публичный вспомогательный класс для стека trap-ов
-//   ✅ NullFocusTrapServiceEx — null-реализация для IFocusTrapServiceEx
-
-using Microsoft.JSInterop; // ← КЛЮЧЕВОЕ ИСПРАВЛЕНИЕ
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 namespace SuperUI.Base.Services;
 
-/// <summary>Направление перемещения фокуса внутри focus-trap контейнера.</summary>
-public enum FocusDirection { Forward, Backward, First, Last }
-
 /// <summary>
-/// Расширенный интерфейс с навигацией по фокусу (<see cref="MoveFocusAsync"/>).
+/// Manages focus trapping for modals, dialogs, dropdowns, etc.
+/// Implements a stack-based approach for nested focus traps.
+/// Supports both WASM (JS interop) and Server-side rendering.
 /// </summary>
-public interface IFocusTrapServiceEx : IFocusTrapService
+public class FocusTrapService : IFocusTrapService, IAsyncDisposable
 {
-    /// <summary>
-    /// Переместить фокус в указанном направлении внутри контейнера.
-    /// </summary>
-    Task MoveFocusAsync(string containerId, FocusDirection direction,
-        CancellationToken ct = default);
-}
+    private readonly IJSRuntime _jsRuntime;
+    private readonly FocusTrapStack _stack;
+    private bool _initialized;
+    private IJSObjectReference? _module;
 
-/// <summary>Реализация <see cref="IFocusTrapServiceEx"/> через JS Interop.</summary>
-internal sealed class JsFocusTrapServiceEx : IFocusTrapServiceEx
-{
-    private readonly JsFocusTrapService _inner;
-    private readonly IJSRuntime _js;
-
-    public JsFocusTrapServiceEx(IJSRuntime js)
+    public FocusTrapService(IJSRuntime jsRuntime)
     {
-        _js = js ?? throw new ArgumentNullException(nameof(js));
-        _inner = new JsFocusTrapService(js);
+        _jsRuntime = jsRuntime ?? throw new ArgumentNullException(nameof(jsRuntime));
+        _stack = new FocusTrapStack();
     }
 
-    public Task ActivateAsync(string elementId, CancellationToken ct = default)
-        => _inner.ActivateAsync(elementId, ct);
+    public bool IsTrappingActive => _stack.Count > 0;
 
-    public Task DeactivateAsync(string elementId, CancellationToken ct = default)
-        => _inner.DeactivateAsync(elementId, ct);
-
-    public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
-        => _inner.FocusFirstAsync(containerId, ct);
-
-    public Task RestoreFocusAsync(CancellationToken ct = default)
-        => _inner.RestoreFocusAsync(ct);
-
-    public async Task MoveFocusAsync(string containerId, FocusDirection direction,
-        CancellationToken ct = default)
+    /// <summary>Initialize the JS module (lazy, called once).</summary>
+    private async ValueTask EnsureInitializedAsync()
     {
-        try
+        if (!_initialized)
         {
-            await _js.InvokeVoidAsync(
-                "SuperUI.focusTrap.moveFocus",
-                ct,
-                containerId,
-                direction.ToString().ToLowerInvariant());
+            _module = await _jsRuntime.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/js/focusTrap.js");
+            _initialized = true;
         }
-        catch (Exception ex) when (ex is JSDisconnectedException
-                                   or OperationCanceledException
-                                   or JSException
-                                   or ObjectDisposedException)
-        { /* Игнорируемые исключения */ }
+    }
+
+    /// <summary>Activate focus trap for a specific element.</summary>
+    public async ValueTask TrapFocusAsync(ElementReference element, FocusTrapOptions? options = null)
+    {
+        await EnsureInitializedAsync();
+        _stack.Push(element, options ?? new FocusTrapOptions());
+        await _module!.InvokeVoidAsync("activate", element, options);
+    }
+
+    /// <summary>Deactivate the current focus trap (LIFO).</summary>
+    public async ValueTask ReleaseFocusAsync()
+    {
+        if (!_stack.TryPop(out var entry))
+            return;
+
+        await EnsureInitializedAsync();
+        await _module!.InvokeVoidAsync("deactivate", entry.Element);
+
+        // Restore focus to previous trap if any
+        if (_stack.TryPeek(out var previous))
+        {
+            await _module!.InvokeVoidAsync("activate", previous.Element, previous.Options);
+        }
+    }
+
+    /// <summary>Release all focus traps.</summary>
+    public async ValueTask ReleaseAllAsync()
+    {
+        await EnsureInitializedAsync();
+        while (_stack.TryPop(out var entry))
+        {
+            await _module!.InvokeVoidAsync("deactivate", entry.Element);
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null)
+        {
+            try { await _module.DisposeAsync(); } catch { /* JS runtime may be disposed */ }
+        }
+        GC.SuppressFinalize(this);
     }
 }
 
-/// <summary>
-/// Null-реализация <see cref="IFocusTrapServiceEx"/> для SSR и тестов.
-/// </summary>
-public sealed class NullFocusTrapServiceEx : IFocusTrapServiceEx
+/// <summary>Stack entry for nested focus trapping.</summary>
+public readonly struct FocusTrapEntry
 {
-    public static readonly NullFocusTrapServiceEx Instance = new();
-    private NullFocusTrapServiceEx() { }
+    public ElementReference Element { get; }
+    public FocusTrapOptions Options { get; }
 
-    public Task ActivateAsync(string elementId, CancellationToken ct = default)
-        => Task.CompletedTask;
-    public Task DeactivateAsync(string elementId, CancellationToken ct = default)
-        => Task.CompletedTask;
-    public Task FocusFirstAsync(string containerId, CancellationToken ct = default)
-        => Task.CompletedTask;
-    public Task RestoreFocusAsync(CancellationToken ct = default)
-        => Task.CompletedTask;
-    public Task MoveFocusAsync(string containerId, FocusDirection direction,
-        CancellationToken ct = default) => Task.CompletedTask;
+    public FocusTrapEntry(ElementReference element, FocusTrapOptions options)
+    {
+        Element = element;
+        Options = options;
+    }
+}
+
+/// <summary>Options for focus trap behavior.</summary>
+public sealed class FocusTrapOptions
+{
+    /// <summary>Return focus to trigger element on deactivate?</summary>
+    public bool ReturnFocusOnDeactivate { get; set; } = true;
+
+    /// <summary>Allow escape key to deactivate?</summary>
+    public bool EscapeDeactivates { get; set; } = true;
+
+    /// <summary>Allow click outside to deactivate?</summary>
+    public bool ClickOutsideDeactivates { get; set; } = true;
+
+    /// <summary>Initial focus selector (CSS selector).</summary>
+    public string? InitialFocus { get; set; }
+
+    /// <summary>Whether to prevent scroll on focus.</summary>
+    public bool PreventScroll { get; set; }
+
+    /// <summary>In SSR mode, focus trapping may be deferred.</summary>
+    public bool DeferInSsr { get; set; }
 }

@@ -1,163 +1,119 @@
 // SuperUI/Base/Reactive/SgEffect.cs
-// ✅ Реентрантность: _isRunning сбрасывается в finally
-// ✅ Лимитированная очередь: MaxQueueSize = 1, DroppedCount для метрик
-// ✅ Pause/Resume; sync + async actions; onError callback
-
-using System.Collections.Concurrent;
+using System;
+using System.Collections.Generic;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Side-effect, реактивно реагирующий на изменения отслеживаемых сигналов.
+/// Represents a reactive side effect. Automatically tracks
+/// signal dependencies and re-executes when they change.
 /// </summary>
-public sealed class SgEffect : ISignalTrackingObserver, IDisposable, ISignalFlushable
+public sealed class SgEffect : IDisposable
 {
-    private readonly Action? _sync;
-    private readonly Func<Task>? _async;
-    private readonly Action<Exception>? _onError;
-
-    private int _disposed;
-    private int _isRunning;
-    private int _paused;
+    private readonly Action _effect;
     private readonly HashSet<ISgSignal> _dependencies = new();
-    private readonly object _lock = new();
+    private bool _isDisposed;
+    private bool _isRunning;
 
-    public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
-    public bool IsPaused => Volatile.Read(ref _paused) == 1;
-    public bool IsRunning => Volatile.Read(ref _isRunning) == 1;
+    public bool IsDisposed => _isDisposed;
+    public bool IsRunning => _isRunning;
+    public int DependencyCount => _dependencies.Count;
 
-    public SgEffect(Action action, Action<Exception>? onError = null)
+    public SgEffect(Action effect)
     {
-        ArgumentNullException.ThrowIfNull(action);
-        _sync = action;
-        _onError = onError;
-        Run(); // Initial run to track dependencies
+        _effect = effect ?? throw new ArgumentNullException(nameof(effect));
     }
 
-    public SgEffect(Func<Task> action, Action<Exception>? onError = null)
+    /// <summary>Execute the effect and track dependencies.</summary>
+    public void Run()
     {
-        ArgumentNullException.ThrowIfNull(action);
-        _async = action;
-        _onError = onError;
-        Run(); // Initial run to track dependencies
-    }
-
-    public void Pause() => Volatile.Write(ref _paused, 1);
-
-    public void Resume()
-    {
-        if (Interlocked.Exchange(ref _paused, 0) == 1)
-            Schedule();
-    }
-
-    public void OnSignalRead(ISgSignal signal)
-    {
-        lock (_lock)
+        if (_isDisposed) return;
+        _isRunning = true;
+        try
         {
-            if (_dependencies.Add(signal))
-            {
-                signal.Subscribe(this);
-            }
+            SignalTracker.BeginTracking(this);
+            _effect();
+        }
+        finally
+        {
+            SignalTracker.EndTracking();
+            _isRunning = false;
         }
     }
 
-    public void OnSignalChanged(ISgSignal signal)
+    /// <summary>Add a signal dependency.</summary>
+    internal void AddDependency(ISgSignal signal)
     {
-        Schedule();
+        if (!_isDisposed)
+            _dependencies.Add(signal);
     }
 
-    void ISignalFlushable.FlushIfDirty()
+    /// <summary>Subscribe the effect to a signal, returning a disposable.</summary>
+    public IDisposable Subscribe(ISgSignal signal)
+    {
+        if (_isDisposed)
+            throw new ObjectDisposedException(nameof(SgEffect));
+
+        signal.Subscribe(this);
+        _dependencies.Add(signal);
+        return new Subscription(() =>
+        {
+            signal.Unsubscribe(this);
+            _dependencies.Remove(signal);
+        });
+    }
+
+    /// <summary>Subscribe to multiple signals.</summary>
+    public IDisposable SubscribeAll(params ISgSignal[] signals)
+    {
+        var disposables = new List<IDisposable>();
+        foreach (var signal in signals)
+            disposables.Add(Subscribe(signal));
+        return new CompositeSubscription(disposables);
+    }
+
+    /// <summary>Notify that a dependency changed.</summary>
+    internal void OnDependencyChanged()
     {
         Run();
     }
 
-    private void Schedule()
+    public void Dispose()
     {
-        if (IsDisposed || IsPaused) return;
-
-        if (Interlocked.CompareExchange(ref _isRunning, 1, 0) == 1)
-            return;
-
-        if (SignalBatch.IsBatching)
-        {
-            SignalBatch.MarkDirty(this);
-        }
-        else
-        {
-            SignalBatch.EnqueueEffect(this);
-        }
+        if (_isDisposed) return;
+        _isDisposed = true;
+        foreach (var dep in _dependencies)
+            dep.Unsubscribe(this);
+        _dependencies.Clear();
+        GC.SuppressFinalize(this);
     }
+}
 
-    public void Run()
-    {
-        if (IsDisposed || IsPaused)
-        {
-            Volatile.Write(ref _isRunning, 0);
-            return;
-        }
+/// <summary>Simple subscription that calls an action on dispose.</summary>
+internal sealed class Subscription : IDisposable
+{
+    private Action? _onDispose;
 
-        try
-        {
-            lock (_lock)
-            {
-                foreach (var dep in _dependencies) dep.Unsubscribe(this);
-                _dependencies.Clear();
-            }
-
-            using (SgReactiveComponentBase.EnterScope(this))
-            {
-                if (_sync is not null)
-                {
-                    _sync();
-                }
-                else if (_async is not null)
-                {
-                    var task = RunAsync();
-                    _ = task.ContinueWith(
-                        t =>
-                        {
-                            var ex = t.Exception!.GetBaseException();
-                            if (_onError is not null)
-                                try { _onError(ex); } catch { }
-                            else
-                                System.Diagnostics.Debug.WriteLine(
-                                    $"[SgEffect] Unobserved async exception: {ex.Message}");
-                        },
-                        CancellationToken.None,
-                        TaskContinuationOptions.OnlyOnFaulted,
-                        TaskScheduler.Current);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            if (_onError is not null) try { _onError(ex); } catch { }
-            else System.Diagnostics.Debug.WriteLine($"[SgEffect] Unhandled exception: {ex}");
-        }
-        finally
-        {
-            Volatile.Write(ref _isRunning, 0);
-        }
-    }
-
-    private async Task RunAsync()
-    {
-        try { await _async!(); }
-        catch (Exception ex)
-        {
-            if (_onError is not null) try { _onError(ex); } catch { }
-            else System.Diagnostics.Debug.WriteLine($"[SgEffect] Async exception: {ex}");
-        }
-    }
+    public Subscription(Action onDispose) => _onDispose = onDispose;
 
     public void Dispose()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        lock (_lock)
-        {
-            foreach (var dep in _dependencies) dep.Unsubscribe(this);
-            _dependencies.Clear();
-        }
-        Volatile.Write(ref _isRunning, 0);
+        var action = _onDispose;
+        _onDispose = null;
+        action?.Invoke();
+    }
+}
+
+internal sealed class CompositeSubscription : IDisposable
+{
+    private readonly List<IDisposable> _subscriptions;
+
+    public CompositeSubscription(List<IDisposable> subscriptions) => _subscriptions = subscriptions;
+
+    public void Dispose()
+    {
+        foreach (var sub in _subscriptions)
+            sub.Dispose();
+        _subscriptions.Clear();
     }
 }

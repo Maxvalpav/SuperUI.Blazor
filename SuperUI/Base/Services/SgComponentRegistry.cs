@@ -1,97 +1,99 @@
 // SuperUI/Base/Services/SgComponentRegistry.cs
-
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Центральный реестр активных компонентов SuperUI.
-/// Позволяет найти любой компонент по ID, подписаться на lifecycle-события глобально.
+/// Central registry for all SuperUI components. Provides lookup, metadata,
+/// and lazy-initialization support. Thread-safe for Server-side concurrent access.
 /// </summary>
-public interface IComponentRegistry
+public class SgComponentRegistry
 {
-    /// <summary>Зарегистрировать компонент.</summary>
-    void Register(SgComponentBase component);
+    private readonly ConcurrentDictionary<string, ComponentRegistration> _components = new();
+    private readonly ConcurrentDictionary<Type, string> _typeToName = new();
+    private readonly IServiceProvider? _serviceProvider;
 
-    /// <summary>Удалить из реестра.</summary>
-    void Unregister(string componentId);
-
-    /// <summary>Найти компонент по ID.</summary>
-    SgComponentBase? Find(string componentId);
-
-    /// <summary>Получить все активные компоненты заданного типа.</summary>
-    IEnumerable<T> GetAll<T>() where T : SgComponentBase;
-
-    /// <summary>Количество активных компонентов.</summary>
-    int Count { get; }
-
-    /// <summary>Событие: компонент зарегистрирован.</summary>
-    event Action<SgComponentBase>? ComponentRegistered;
-
-    /// <summary>Событие: компонент удалён.</summary>
-    event Action<SgComponentBase>? ComponentUnregistered;
-}
-
-/// <summary>
-/// Реализация реестра компонентов на основе ConcurrentDictionary + WeakReference.
-/// Автоматически очищает мёртвые ссылки при обходе коллекции.
-/// </summary>
-public sealed class ComponentRegistry : IComponentRegistry, IDisposable
-{
-    private readonly ConcurrentDictionary<string, WeakReference<SgComponentBase>> _components = new();
-
-    public event Action<SgComponentBase>? ComponentRegistered;
-    public event Action<SgComponentBase>? ComponentUnregistered;
+    public SgComponentRegistry(IServiceProvider? serviceProvider = null)
+    {
+        _serviceProvider = serviceProvider;
+    }
 
     public int Count => _components.Count;
 
-    public void Register(SgComponentBase component)
+    /// <summary>Register a component type with metadata.</summary>
+    public SgComponentRegistry Register<TComponent>(string name, ComponentMetadata? metadata = null)
+        where TComponent : class
     {
-        ArgumentNullException.ThrowIfNull(component);
-
-        _components[component.ComponentId] = new WeakReference<SgComponentBase>(component);
-        ComponentRegistered?.Invoke(component);
+        var type = typeof(TComponent);
+        var registration = new ComponentRegistration(name, type, metadata ?? new ComponentMetadata());
+        _components[name] = registration;
+        _typeToName[type] = name;
+        return this;
     }
 
-    public void Unregister(string componentId)
+    /// <summary>Check if a component name is registered.</summary>
+    public bool IsRegistered(string name) => _components.ContainsKey(name);
+
+    /// <summary>Check if a component type is registered.</summary>
+    public bool IsRegistered<TComponent>() => _typeToName.ContainsKey(typeof(TComponent));
+
+    /// <summary>Get component type by name.</summary>
+    public Type? ResolveType(string name)
     {
-        if (_components.TryRemove(componentId, out var weakRef) &&
-            weakRef.TryGetTarget(out var component))
-        {
-            ComponentUnregistered?.Invoke(component);
-        }
+        return _components.TryGetValue(name, out var registration) ? registration.ComponentType : null;
     }
 
-    public SgComponentBase? Find(string componentId)
-    {
-        if (_components.TryGetValue(componentId, out var weakRef) &&
-            weakRef.TryGetTarget(out var component))
-            return component;
+    /// <summary>Get all registered component names.</summary>
+    public IEnumerable<string> GetRegisteredNames() => _components.Keys;
 
-        // Мёртвая ссылка — очищаем
-        _components.TryRemove(componentId, out _);
-        return null;
+    /// <summary>Get metadata for a registered component.</summary>
+    public ComponentMetadata? GetMetadata(string name)
+    {
+        return _components.TryGetValue(name, out var registration) ? registration.Metadata : null;
     }
 
-    public IEnumerable<T> GetAll<T>() where T : SgComponentBase
+    /// <summary>Try to create an instance via DI.</summary>
+    public TComponent? Create<TComponent>() where TComponent : class
     {
-        var deadKeys = new List<string>();
-
-        foreach (var (key, weakRef) in _components)
-        {
-            if (weakRef.TryGetTarget(out var component) && component is T typed)
-                yield return typed;
-            else
-                deadKeys.Add(key);
-        }
-
-        // Очистка мёртвых ссылок после итерации (избегаем modification during enumeration)
-        foreach (var key in deadKeys)
-            _components.TryRemove(key, out _);
+        if (_serviceProvider is null)
+            throw new InvalidOperationException("ServiceProvider is not set. Cannot resolve components.");
+        return _serviceProvider.GetService<TComponent>();
     }
+}
 
-    public void Dispose()
+/// <summary>Registration entry for a component.</summary>
+public sealed class ComponentRegistration
+{
+    public string Name { get; }
+    public Type ComponentType { get; }
+    public ComponentMetadata Metadata { get; }
+
+    public ComponentRegistration(string name, Type componentType, ComponentMetadata metadata)
     {
-        _components.Clear();
+        Name = name;
+        ComponentType = componentType;
+        Metadata = metadata;
+    }
+}
+
+/// <summary>Metadata describing a component.</summary>
+public sealed class ComponentMetadata
+{
+    public string? Description { get; set; }
+    public string? Category { get; set; }
+    public string? Version { get; set; }
+    public bool IsExperimental { get; set; }
+    public bool IsDeprecated { get; set; }
+    public Dictionary<string, string> Tags { get; set; } = new();
+
+    public ComponentMetadata() { }
+
+    public ComponentMetadata(string description, string category = "General")
+    {
+        Description = description;
+        Category = category;
     }
 }

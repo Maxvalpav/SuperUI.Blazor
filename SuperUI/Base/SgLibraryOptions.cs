@@ -1,159 +1,111 @@
-// SgLibraryOptions.cs — Конфигурация библиотеки SuperUI 
-// Поддержка .NET 8+ RenderMode по умолчанию 
- 
+// SuperUI/Base/SgLibraryOptions.cs
 using System;
-using Microsoft.AspNetCore.Components; 
-using Microsoft.Extensions.DependencyInjection;
-using SuperUI.Base.Diagnostics;
-using SuperUI.Localization;
+using System.Collections.Generic;
 using SuperUI.Base.Services;
 
-namespace SuperUI.Base; 
- 
-/// <summary> 
-/// Опции конфигурации библиотеки SuperUI. 
-/// Регистрируется через services.Configure&lt;SgLibraryOptions&gt;(). 
-/// </summary> 
-public class SgLibraryOptions 
-{ 
-    /// <summary> 
-    /// Режим рендеринга по умолчанию для компонентов SuperUI. 
-    /// Unknown = авто-определение. 
-    /// </summary> 
-    public SgRenderMode DefaultRenderMode { get; set; } = SgRenderMode.Unknown; 
- 
-    /// <summary> 
-    /// Включать ли диагностический оверлей (только в Development). 
-    /// </summary> 
-    public bool EnableDiagnostics { get; set; } 
- 
-    /// <summary> 
-    /// Включать ли Performance Budget tracking. 
-    /// </summary> 
-    public bool EnablePerformanceBudget { get; set; } 
- 
-    /// <summary> 
-    /// Минимальный интервал между рендерами (anti-thrashing). 
-    /// По умолчанию 16ms (~60fps). 
-    /// </summary> 
-    public TimeSpan MinRenderInterval { get; set; } = TimeSpan.FromMilliseconds(16); 
- 
-    /// <summary> 
-    /// Максимальное количество рендеров в секунду. 
-    /// 0 = без ограничений. 
-    /// </summary> 
-    public int MaxRendersPerSecond { get; set; } 
- 
-    /// <summary> 
-    /// Стратегия throttling для реактивных компонентов. 
-    /// </summary> 
-    public ThrottleStrategy ThrottleStrategy { get; set; } = ThrottleStrategy.Adaptive; 
- 
-    /// <summary> 
-    /// Включать ли автоматическое определение RenderMode. 
-    /// </summary> 
-    public bool AutoDetectRenderMode { get; set; } = true; 
- 
-    /// <summary> 
-    /// Использовать ли стриминговый рендеринг где возможно. 
-    /// </summary> 
-    public bool PreferStreamingRendering { get; set; } = true; 
- 
-    /// <summary> 
-    /// Размер пула RenderTreeBuilder. 
-    /// </summary> 
-    public int RenderTreeBuilderPoolSize { get; set; } = 32; 
- 
-    /// <summary> 
-    /// Включать ли AOT-оптимизации. 
-    /// </summary> 
-    public bool EnableAotOptimizations { get; set; } 
- 
-    /// <summary> 
-    /// Тема по умолчанию. 
-    /// </summary> 
-    public string DefaultTheme { get; set; } = "light"; 
- 
-    /// <summary> 
-    /// Локаль по умолчанию. 
-    /// </summary> 
-    public string DefaultLocale { get; set; } = "en-US"; 
- 
-    /// <summary> 
-    /// Путь к файлам локализации. 
-    /// </summary> 
-    public string? LocalizationResourcesPath { get; set; } 
- 
-    /// <summary> 
-    /// Максимальный размер хранилища SgStore (в количестве ключей). 
-    /// </summary> 
-    public int MaxStoreKeys { get; set; } = 1000; 
-} 
- 
-/// <summary> 
-/// Стратегии throttling для рендеров. 
-/// </summary> 
-public enum ThrottleStrategy 
-{ 
-    /// <summary>Нет throttling.</summary> 
-    None = 0, 
- 
-    /// <summary>Фиксированный интервал.</summary> 
-    Fixed = 1, 
- 
-    /// <summary>Адаптивный: интервал растёт при высокой нагрузке.</summary> 
-    Adaptive = 2, 
- 
-    /// <summary>Только requestAnimationFrame (для WASM).</summary> 
-    RafOnly = 3 
-} 
- 
-/// <summary> 
-/// Методы расширения для регистрации SuperUI в DI. 
-/// </summary> 
-public static class SgServiceCollectionExtensions 
-{ 
-    /// <summary> 
-    /// Регистрирует все сервисы SuperUI. 
-    /// </summary> 
-    public static IServiceCollection AddSuperUI(this IServiceCollection services, Action<SgLibraryOptions>? configure = null) 
-    { 
-        // Опции 
-        if (configure != null) 
-            services.Configure(configure); 
-        else 
-            services.Configure<SgLibraryOptions>(_ => { }); 
- 
-        // Базовые сервисы 
-        services.AddScoped<SgStore>(); 
-        services.AddScoped<SgRenderModeDetector>(); 
-        services.AddScoped<SgRenderModeResolver>(); 
-        services.AddScoped<SgComponentRegistry>(); 
-        services.AddScoped<SgComponentFactory>(); 
- 
-        // Сервисы UI 
-        services.AddScoped<SgToastService>(); 
-        services.AddScoped<SgNotificationService>(); 
-        services.AddScoped<SgConfirmService>(); 
-        services.AddScoped<SgBroadcastService>(); 
- 
-        // Тема 
-        services.AddScoped<SgThemeService>(); 
- 
-        // Фокус/Клавиатура 
-        services.AddScoped<IFocusTrapService, FocusTrapService>(); 
-        services.AddScoped<IKeyboardService, KeyboardService>(); 
- 
-        // Пререндеринг 
-        services.AddScoped<IPrerenderingDetector, ServerPrerenderingDetector>(); 
- 
-        // Диагностика (только в Development) 
-        services.AddScoped<ComponentDiagnostics>(); 
-        services.AddScoped<PerformanceBudget>(); 
- 
-        // Локализация 
-        services.AddScoped<ISuperUILocalizer, SuperUILocalizer>(); 
- 
-        return services; 
-    } 
-} 
+namespace SuperUI.Base;
+
+/// <summary>
+/// Global configuration options for the SuperUI library.
+/// Fluent API with sensible defaults. Configurable per-render-mode.
+/// </summary>
+public class SgLibraryOptions
+{
+    // --- Component sizes ---
+    public SgComponentSize DefaultSize { get; set; } = SgComponentSize.Medium;
+
+    // --- Animation ---
+    public bool AnimationsEnabled { get; set; } = true;
+    public int AnimationDurationMs { get; set; } = 200;
+
+    // --- Accessibility ---
+    public bool EnableAria { get; set; } = true;
+
+    // --- Localization ---
+    public string Locale { get; set; } = "en-US";
+
+    // --- Z-Index ---
+    public int BaseZIndex { get; set; } = 1000;
+    public int ZIndexStep { get; set; } = 100;
+
+    // --- CSS ---
+    public string CssPrefix { get; set; } = "sg-";
+
+    // --- RTL ---
+    public bool RightToLeft { get; set; }
+
+    // --- Theme ---
+    public Dictionary<string, string> ThemeVariables { get; set; } = new();
+
+    // --- Debug / Diagnostics ---
+    public bool EnableDiagnostics { get; set; }
+    public bool EnableRenderTracking { get; set; }
+
+    // --- Services (lazy-initialized) ---
+    public SgComponentRegistry? ComponentRegistry { get; set; }
+    public SgComponentFactory? ComponentFactory { get; set; }
+    public SgThemeService? ThemeService { get; set; }
+    public FocusTrapService? FocusTrapService { get; set; }
+
+    // --- Throttling ---
+    public int RenderThrottleMs { get; set; } = 0; // 0 = no throttling
+    public int BatchSize { get; set; } = 10;
+
+    // --- SSR ---
+    public bool EnableSsrStreaming { get; set; } = true;
+    public int SsrStreamingChunkSizeBytes { get; set; } = 4096;
+
+    // --- Reconnection (Server-side) ---
+    public int ReconnectionRetryMs { get; set; } = 2000;
+    public int ReconnectionMaxRetries { get; set; } = 8;
+
+    // --- WASM ---
+    public bool EnableWasmLazyLoading { get; set; } = true;
+
+    // --- New: Render mode aware ---
+    public string? ForcedRenderMode { get; set; }
+
+    /// <summary>Compute z-index for a given layer (0-based).</summary>
+    public int GetZIndex(int layer = 0) => BaseZIndex + (layer * ZIndexStep);
+
+    /// <summary>Clone these options.</summary>
+    public SgLibraryOptions Clone()
+    {
+        return new SgLibraryOptions
+        {
+            DefaultSize = DefaultSize,
+            AnimationsEnabled = AnimationsEnabled,
+            AnimationDurationMs = AnimationDurationMs,
+            EnableAria = EnableAria,
+            Locale = Locale,
+            BaseZIndex = BaseZIndex,
+            ZIndexStep = ZIndexStep,
+            CssPrefix = CssPrefix,
+            RightToLeft = RightToLeft,
+            ThemeVariables = new Dictionary<string, string>(ThemeVariables),
+            EnableDiagnostics = EnableDiagnostics,
+            EnableRenderTracking = EnableRenderTracking,
+            ComponentRegistry = ComponentRegistry,
+            ComponentFactory = ComponentFactory,
+            ThemeService = ThemeService,
+            FocusTrapService = FocusTrapService,
+            RenderThrottleMs = RenderThrottleMs,
+            BatchSize = BatchSize,
+            EnableSsrStreaming = EnableSsrStreaming,
+            SsrStreamingChunkSizeBytes = SsrStreamingChunkSizeBytes,
+            ReconnectionRetryMs = ReconnectionRetryMs,
+            ReconnectionMaxRetries = ReconnectionMaxRetries,
+            EnableWasmLazyLoading = EnableWasmLazyLoading,
+            ForcedRenderMode = ForcedRenderMode
+        };
+    }
+}
+
+public enum SgComponentSize
+{
+    ExtraSmall,
+    Small,
+    Medium,
+    Large,
+    ExtraLarge
+}

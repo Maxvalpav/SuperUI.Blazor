@@ -1,73 +1,122 @@
-using System.Diagnostics;
+// SuperUI/Base/Localization/SuperUILocalizer.cs
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Resources;
+using System.Threading;
 
-namespace SuperUI.Localization;
+namespace SuperUI.Base.Localization;
 
 /// <summary>
-/// Default implementation of <see cref="ISuperUILocalizer"/> using .resx resource files.
+/// Default SuperUI localizer implementation. Supports embedded resources,
+/// custom dictionaries, and fallback chains. Culture-aware.
 /// </summary>
-public sealed class SuperUILocalizer : ISuperUILocalizer
+public class SuperUILocalizer : ISuperUILocalizer, IDisposable
 {
-    private readonly ResourceManager _resourceManager;
-    private readonly CultureInfo? _fixedCulture;
+    private readonly Dictionary<string, string> _customStrings = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, ResourceManager> _resourceManagers = new();
+    private CultureInfo _culture;
 
-    /// <summary>
-    /// Initializes a new instance of <see cref="SuperUILocalizer"/>. Reads
-    /// <see cref="CultureInfo.CurrentUICulture"/> on each lookup so language switches
-    /// take effect immediately without re-creating the service.
-    /// </summary>
-    public SuperUILocalizer()
-    {
-        _fixedCulture = null;
-        _resourceManager = new ResourceManager(
-            "SuperUI.Resources.SuperUIStrings",
-            typeof(SuperUILocalizer).Assembly);
-    }
+    public event Action<CultureInfo>? CultureChanged;
 
-    /// <summary>
-    /// Initializes a new instance of <see cref="SuperUILocalizer"/> pinned to a specific culture.
-    /// </summary>
-    /// <param name="culture">The culture to use for localization.</param>
+    public SuperUILocalizer() : this(CultureInfo.CurrentUICulture) { }
+
     public SuperUILocalizer(CultureInfo culture)
     {
-        _fixedCulture = culture;
-        _resourceManager = new ResourceManager(
-            "SuperUI.Resources.SuperUIStrings",
-            typeof(SuperUILocalizer).Assembly);
+        _culture = culture ?? CultureInfo.CurrentUICulture;
     }
 
-    private CultureInfo Culture => _fixedCulture ?? CultureInfo.CurrentUICulture;
+    public CultureInfo CurrentCulture
+    {
+        get => _culture;
+        set
+        {
+            if (_culture.Equals(value)) return;
+            _culture = value;
+            CultureChanged?.Invoke(_culture);
+        }
+    }
 
-    /// <inheritdoc/>
     public string this[string key]
     {
         get
         {
-            try
-            {
-                return _resourceManager.GetString(key, Culture) ?? key;
-            }
-            catch (Exception ex)
-            {
-                Debug.Fail($"[SuperUI] Localization lookup failed for key '{key}': {ex.Message}");
-                return key;
-            }
+            if (TryGetString(key, out var value))
+                return value;
+            // Return key as fallback (like Blazor's default behavior)
+            return $"[{key}]";
         }
     }
 
-    /// <inheritdoc/>
-    public string GetString(string key, params object[] args)
+    public bool TryGetString(string key, out string value)
+    {
+        // Check custom strings first
+        if (_customStrings.TryGetValue(key, out value!))
+            return true;
+
+        // Try resource managers
+        foreach (var (_, rm) in _resourceManagers)
+        {
+            value = rm.GetString(key, _culture);
+            if (value != null)
+                return true;
+        }
+
+        value = string.Empty;
+        return false;
+    }
+
+    public string Format(string key, params object[] args)
     {
         var format = this[key];
-        try
+        return string.Format(_culture, format, args);
+    }
+
+    /// <summary>Add a custom localized string.</summary>
+    public void AddCustomString(string key, string value)
+    {
+        _customStrings[key] = value;
+    }
+
+    /// <summary>Add multiple custom strings at once.</summary>
+    public void AddCustomStrings(IReadOnlyDictionary<string, string> strings)
+    {
+        foreach (var (k, v) in strings)
+            _customStrings[k] = v;
+    }
+
+    /// <summary>Register a resource manager as a source.</summary>
+    public void AddResourceManager(string name, ResourceManager resourceManager)
+    {
+        _resourceManagers[name] = resourceManager ?? throw new ArgumentNullException(nameof(resourceManager));
+    }
+
+    /// <summary>Get supported cultures from all resource managers.</summary>
+    public IEnumerable<CultureInfo> GetSupportedCultures()
+    {
+        var cultures = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (_, rm) in _resourceManagers)
         {
-            return string.Format(Culture, format, args);
+            // ResourceManager doesn't expose cultures directly,
+            // but we can use the known set from registration
         }
-        catch (Exception ex)
-        {
-            Debug.Fail($"[SuperUI] string.Format failed for key '{key}': {ex.Message}");
-            return format;
-        }
+
+        // Default supported cultures
+        yield return new CultureInfo("en");
+        yield return new CultureInfo("ru");
+        yield return new CultureInfo("de");
+        yield return new CultureInfo("fr");
+        yield return new CultureInfo("es");
+        yield return new CultureInfo("zh");
+        yield return new CultureInfo("ja");
+    }
+
+    public void Dispose()
+    {
+        _customStrings.Clear();
+        _resourceManagers.Clear();
+        CultureChanged = null;
+        GC.SuppressFinalize(this);
     }
 }

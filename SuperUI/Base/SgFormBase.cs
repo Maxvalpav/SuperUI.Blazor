@@ -9,6 +9,7 @@ using System;
 using System.Threading.Tasks; 
 using Microsoft.AspNetCore.Components; 
 using Microsoft.AspNetCore.Components.Forms; 
+using Microsoft.Extensions.Logging;
  
 namespace SuperUI.Base; 
  
@@ -138,5 +139,13 @@ public abstract class SgFormBase<TModel> : SgComponentBase where TModel : class,
         if (disposing && _editContext != null) 
             _editContext.OnValidationRequested -= OnValidationRequested; 
         base.Dispose(disposing); 
-    } 
+    }
+
+    /// <summary>
+    /// Log a form error with exception details.
+    /// </summary>
+    protected void LogFormError(Exception ex, string message)
+    {
+        Logger.LogError(ex, message);
+    }
 } 

@@ -2,7 +2,6 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
-using SuperUI.Localization;
 using System.Collections;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;

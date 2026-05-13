@@ -1,22 +1,28 @@
-namespace SuperUI.Localization;
+// SuperUI/Base/Localization/ISuperUILocalizer.cs
+using System;
+using System.Globalization;
+
+namespace SuperUI.Base.Localization;
 
 /// <summary>
-/// Provides localized strings for SuperUI components.
+/// Interface for SuperUI localization. Provides localized strings
+/// for all built-in components. Supports resource-based and
+/// custom localization providers.
 /// </summary>
 public interface ISuperUILocalizer
 {
-    /// <summary>
-    /// Gets a localized string by key.
-    /// </summary>
-    /// <param name="key">The resource key.</param>
-    /// <returns>The localized string, or the key if not found.</returns>
+    /// <summary>Current culture used for localization.</summary>
+    CultureInfo CurrentCulture { get; set; }
+
+    /// <summary>Get a localized string by key.</summary>
     string this[string key] { get; }
 
-    /// <summary>
-    /// Gets a localized string with format arguments.
-    /// </summary>
-    /// <param name="key">The resource key.</param>
-    /// <param name="args">Format arguments.</param>
-    /// <returns>The formatted localized string.</returns>
-    string GetString(string key, params object[] args);
+    /// <summary>Try to get a localized string.</summary>
+    bool TryGetString(string key, out string value);
+
+    /// <summary>Get a localized string with format arguments.</summary>
+    string Format(string key, params object[] args);
+
+    /// <summary>Event raised when the culture/locale changes.</summary>
+    event Action<CultureInfo>? CultureChanged;
 }

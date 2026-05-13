@@ -1,44 +1,55 @@
 // SuperUI/Base/Services/FocusTrapStack.cs
-//
-// Вспомогательный класс для управления стеком активных focus trap-ов.
-// Используется в SgOverlayBase для корректного восстановления фокуса
-// при наличии нескольких одновременно открытых overlay.
-
-using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Microsoft.AspNetCore.Components;
 
 namespace SuperUI.Base.Services;
 
-/// <summary>
-/// Вспомогательный класс для управления стеком активных focus trap-ов.
-/// Используется в <see cref="SgOverlayBase"/> для корректного восстановления фокуса
-/// при наличии нескольких одновременно открытых overlay.
-/// </summary>
-public sealed class FocusTrapStack
+/// <summary>Thread-safe stack for managing nested focus traps.</summary>
+public class FocusTrapStack
 {
-    private readonly Stack<string> _stack = new();
+    private readonly Stack<FocusTrapEntry> _stack = new();
+    private readonly object _lock = new();
 
-    /// <summary>Количество активных trap-ов.</summary>
-    public int Count => _stack.Count;
-
-    /// <summary>Верхний (текущий активный) trap ID.</summary>
-    public string? Current => _stack.TryPeek(out var id) ? id : null;
-
-    /// <summary>Добавить trap в стек.</summary>
-    public void Push(string elementId)
+    public int Count
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(elementId);
-        _stack.Push(elementId);
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        get { lock (_lock) return _stack.Count; }
     }
 
-    /// <summary>Удалить верхний trap из стека. Возвращает предыдущий активный ID или null.</summary>
-    public string? Pop()
+    public void Push(ElementReference element, FocusTrapOptions options)
     {
-        if (_stack.Count == 0) return null;
-        _stack.Pop();
-        return _stack.TryPeek(out var prev) ? prev : null;
+        lock (_lock)
+        {
+            _stack.Push(new FocusTrapEntry(element, options));
+        }
     }
 
-    /// <summary>Очистить стек.</summary>
-    public void Clear() => _stack.Clear();
+    public bool TryPop(out FocusTrapEntry entry)
+    {
+        lock (_lock)
+        {
+            if (_stack.Count > 0)
+            {
+                entry = _stack.Pop();
+                return true;
+            }
+            entry = default;
+            return false;
+        }
+    }
+
+    public bool TryPeek(out FocusTrapEntry entry)
+    {
+        lock (_lock)
+        {
+            if (_stack.Count > 0)
+            {
+                entry = _stack.Peek();
+                return true;
+            }
+            entry = default;
+            return false;
+        }
+    }
 }

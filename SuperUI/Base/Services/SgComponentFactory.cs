@@ -1,83 +1,96 @@
 // SuperUI/Base/Services/SgComponentFactory.cs
-
-using Microsoft.AspNetCore.Components;
+using System;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Фабрика для динамического создания компонентов SuperUI.
-/// Полезна при генерации UI на основе данных (form builders, dashboard builders).
+/// Factory for creating component instances with support for
+/// dependency injection, pooling, and async initialization.
+/// Optimized for both WASM (low overhead) and Server-side (circuit-aware).
 /// </summary>
-public interface IComponentFactory
+public class SgComponentFactory
 {
-    /// <summary>
-    /// Создать RenderFragment для компонента заданного типа с параметрами.
-    /// </summary>
-    RenderFragment Create<TComponent>(Action<Dictionary<string, object?>>? configureParams = null)
-        where TComponent : IComponent;
+    private readonly IServiceProvider _serviceProvider;
+    private readonly SgComponentRegistry _registry;
+    private readonly ConcurrentDictionary<Type, ObjectPool> _pools = new();
 
-    /// <summary>
-    /// Создать RenderFragment с содержимым (ChildContent).
-    /// </summary>
-    RenderFragment Create<TComponent>(
-        RenderFragment childContent,
-        Action<Dictionary<string, object?>>? configureParams = null)
-        where TComponent : IComponent;
+    public SgComponentFactory(IServiceProvider serviceProvider, SgComponentRegistry registry)
+    {
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+    }
+
+    /// <summary>Create a component by type with full DI resolution.</summary>
+    public T Create<T>() where T : class
+    {
+        return _serviceProvider.GetRequiredService<T>();
+    }
+
+    /// <summary>Create a component by type, with optional pooling.</summary>
+    public T Create<T>(bool usePooling) where T : class, IPoolableComponent, new()
+    {
+        if (!usePooling)
+            return Create<T>();
+
+        var pool = _pools.GetOrAdd(typeof(T), _ => new ObjectPool(() => Create<T>()));
+        return (T)pool.Rent();
+    }
+
+    /// <summary>Return a component to the pool for reuse.</summary>
+    public void Return<T>(T component) where T : class, IPoolableComponent
+    {
+        if (_pools.TryGetValue(typeof(T), out var pool))
+        {
+            component.Reset();
+            pool.Return(component);
+        }
+    }
+
+    /// <summary>Create a component by registered name via DI.</summary>
+    public object CreateByName(string name)
+    {
+        var type = _registry.ResolveType(name)
+            ?? throw new InvalidOperationException($"Component '{name}' is not registered.");
+        return _serviceProvider.GetRequiredService(type);
+    }
+
+    /// <summary>Async factory for components requiring async init.</summary>
+    public async ValueTask<T> CreateAsync<T>() where T : class
+    {
+        var component = Create<T>();
+        if (component is IAsyncInitializable asyncInit)
+            await asyncInit.InitializeAsync();
+        return component;
+    }
 }
 
-/// <summary>
-/// Реализация фабрики компонентов.
-/// Использует IServiceProvider для разрешения зависимостей (если требуется DI-контейнером).
-/// </summary>
-public sealed class ComponentFactory : IComponentFactory
+/// <summary>Simple object pool for component reuse (WASM-friendly, no ArrayPool dependency).</summary>
+internal sealed class ObjectPool
 {
-    public ComponentFactory()
+    private readonly ConcurrentBag<object> _bag = new();
+    private readonly Func<object> _factory;
+
+    public ObjectPool(Func<object> factory)
     {
+        _factory = factory;
     }
 
-    public RenderFragment Create<TComponent>(
-        Action<Dictionary<string, object?>>? configureParams = null)
-        where TComponent : IComponent
-    {
-        return builder =>
-        {
-            builder.OpenComponent<TComponent>(0);
+    public object Rent() => _bag.TryTake(out var obj) ? obj : _factory();
 
-            if (configureParams is not null)
-            {
-                var parameters = new Dictionary<string, object?>();
-                configureParams(parameters);
+    public void Return(object obj) => _bag.Add(obj);
+}
 
-                var seq = 1;
-                foreach (var (name, value) in parameters)
-                    builder.AddAttribute(seq++, name, value);
-            }
+/// <summary>Components that support pooling must implement this.</summary>
+public interface IPoolableComponent
+{
+    void Reset();
+}
 
-            builder.CloseComponent();
-        };
-    }
-
-    public RenderFragment Create<TComponent>(
-        RenderFragment childContent,
-        Action<Dictionary<string, object?>>? configureParams = null)
-        where TComponent : IComponent
-    {
-        return builder =>
-        {
-            builder.OpenComponent<TComponent>(0);
-
-            if (configureParams is not null)
-            {
-                var parameters = new Dictionary<string, object?>();
-                configureParams(parameters);
-
-                var seq = 1;
-                foreach (var (name, value) in parameters)
-                    builder.AddAttribute(seq++, name, value);
-            }
-
-            builder.AddAttribute(99, "ChildContent", childContent);
-            builder.CloseComponent();
-        };
-    }
+/// <summary>Components needing async initialization.</summary>
+public interface IAsyncInitializable
+{
+    ValueTask InitializeAsync();
 }

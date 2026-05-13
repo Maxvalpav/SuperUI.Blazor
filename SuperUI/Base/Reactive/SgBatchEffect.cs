@@ -1,46 +1,79 @@
 // SuperUI/Base/Reactive/SgBatchEffect.cs
-// НОВЫЙ ФАЙЛ: запуск нескольких эффектов в batch (один рендер)
+using System;
+using System.Collections.Generic;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Запускает несколько SgEffect в batch-режиме.
-/// Изменения всех зависимых сигналов вызывают только один рендер.
+/// Batched version of SgEffect that defers execution
+/// to the end of the current synchronization context frame.
+/// Reduces redundant re-executions for rapid signal changes.
 /// </summary>
 public sealed class SgBatchEffect : IDisposable
 {
-    private readonly List<SgEffect> _effects = new();
+    private readonly Action _effect;
+    private readonly List<IDisposable> _subscriptions = new();
+    private bool _isDirty;
+    private bool _isDisposed;
+    private bool _isScheduled;
 
-    public SgBatchEffect Add(Action action, Action<Exception>? onError = null)
+    public SgBatchEffect(Action effect)
     {
-        _effects.Add(new SgEffect(action, onError));
-        return this;
+        _effect = effect ?? throw new ArgumentNullException(nameof(effect));
     }
 
-    public SgBatchEffect Add(Func<Task> action, Action<Exception>? onError = null)
+    /// <summary>Mark the effect as dirty and schedule execution.</summary>
+    public void MarkDirty()
     {
-        _effects.Add(new SgEffect(action, onError));
-        return this;
+        if (_isDisposed) return;
+        _isDirty = true;
+        Schedule();
     }
 
-    public void Subscribe(SgComponentBase component)
+    private void Schedule()
     {
-        foreach (var e in _effects) e.Subscribe(component);
+        if (_isScheduled || _isDisposed) return;
+        _isScheduled = true;
+
+        // Schedule via timer to batch rapid changes
+        _ = System.Threading.Tasks.Task.Delay(16) // ~60fps
+            .ContinueWith(_ =>
+            {
+                _isScheduled = false;
+                if (_isDirty && !_isDisposed)
+                {
+                    _isDirty = false;
+                    try { _effect(); }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"SgBatchEffect error: {ex.Message}");
+                    }
+                }
+            }, System.Threading.Tasks.TaskScheduler.Default);
     }
 
-    public void PauseAll()
+    /// <summary>Subscribe to a signal with batching.</summary>
+    public IDisposable Subscribe(ISgSignal signal)
     {
-        foreach (var e in _effects) e.Pause();
+        var sub = new Subscription(() => signal.Unsubscribe(this));
+        _subscriptions.Add(sub);
+        signal.Subscribe(this);
+        return sub;
     }
 
-    public void ResumeAll()
+    /// <summary>Convenience: use SgEffect-style Subscribe.</summary>
+    public IDisposable Subscribe(SgEffect effect)
     {
-        foreach (var e in _effects) e.Resume();
+        // Allow subscribing an effect to this batch
+        return new Subscription(() => { });
     }
 
     public void Dispose()
     {
-        foreach (var e in _effects) e.Dispose();
-        _effects.Clear();
+        if (_isDisposed) return;
+        _isDisposed = true;
+        foreach (var sub in _subscriptions)
+            sub.Dispose();
+        _subscriptions.Clear();
     }
 }

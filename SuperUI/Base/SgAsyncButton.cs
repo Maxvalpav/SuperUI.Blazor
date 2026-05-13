@@ -1,117 +1,112 @@
-// SuperUI/Base/SgAsyncButton.cs 
-// Улучшения: 
-// - CancellationToken передаётся в обработчик 
-// - Отмена предыдущей операции при новом клике (опционально) 
-// - Защита от параллельных кликов 
-// - IsInteractive проверка (не кликабельна в SSR) 
-// - Таймаут операции через TimeProvider 
- 
-using System; 
-using System.Threading; 
-using System.Threading.Tasks; 
-using Microsoft.AspNetCore.Components; 
-using Microsoft.AspNetCore.Components.Web; 
- 
-namespace SuperUI.Base; 
- 
-/// <summary> 
-/// Базовый класс для кнопок с асинхронными операциями. 
-/// Автоматически управляет состоянием загрузки, отменой и ошибками. 
-/// </summary> 
-public abstract class SgAsyncButton : SgComponentBase 
-{ 
-    private CancellationTokenSource? _currentCts; 
-    private bool _isExecuting; 
-    private Exception? _lastError; 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Параметры 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    /// <summary>Обработчик клика с CancellationToken.</summary> 
-    [Parameter] public Func<CancellationToken, Task>? OnClickAsync { get; set; } 
- 
-    /// <summary>Кнопка заблокирована.</summary> 
-    [Parameter] public bool Disabled { get; set; } 
- 
-    /// <summary>Отменять предыдущую операцию при новом клике.</summary> 
-    [Parameter] public bool CancelPreviousOnClick { get; set; } = false; 
- 
-    /// <summary>Таймаут операции (null = бесконечно).</summary> 
-    [Parameter] public TimeSpan? OperationTimeout { get; set; } 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Состояние 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    /// <summary>Операция выполняется.</summary> 
-    public bool IsExecuting => _isExecuting; 
- 
-    /// <summary>Последняя ошибка операции.</summary> 
-    public Exception? LastError => _lastError; 
- 
-    /// <summary>Кнопка неактивна (disabled или выполняется).</summary> 
-    protected bool IsEffectivelyDisabled => Disabled || (_isExecuting && !CancelPreviousOnClick) || !IsInteractive; 
- 
-    // ────────────────────────────────────────────────────────────────────── 
-    // Обработка клика 
-    // ────────────────────────────────────────────────────────────────────── 
- 
-    protected async Task HandleClickAsync(MouseEventArgs? args = null) 
-    { 
-        if (Disabled || !IsInteractive) return; 
- 
-        // Отмена предыдущей операции 
-        if (_isExecuting) 
-        { 
-            if (!CancelPreviousOnClick) return; 
-            _currentCts?.Cancel(); 
-        } 
- 
-        _lastError = null; 
-        _isExecuting = true; 
- 
-        // Создаём новый CTS с опциональным таймаутом 
-        _currentCts?.Dispose(); 
-        _currentCts = OperationTimeout.HasValue 
-            ? new CancellationTokenSource(OperationTimeout.Value) 
-            : new CancellationTokenSource(); 
- 
-        var ct = _currentCts.Token; 
- 
-        try 
-        { 
-            await NotifyStateChangedAsync(); 
-            if (OnClickAsync != null) 
-                await OnClickAsync(ct); 
-        } 
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) 
-        { 
-            // Ожидаемая отмена — не логируем как ошибку 
-        } 
-        catch (Exception ex) 
-        { 
-            _lastError = ex; 
-            Logger.LogError(ex, "SgAsyncButton operation failed"); 
-            await OnErrorAsync(ex); 
-        } 
-        finally 
-        { 
-            _isExecuting = false; 
-            await NotifyStateChangedAsync(); 
-        } 
-    } 
- 
-    /// <summary>Отменяет текущую операцию.</summary> 
-    public void Cancel() => _currentCts?.Cancel(); 
- 
-    /// <summary>Вызывается при ошибке. Переопределите для кастомной обработки.</summary> 
-    protected virtual Task OnErrorAsync(Exception ex) => Task.CompletedTask; 
- 
-    protected override async ValueTask DisposeAsyncCore() 
-    { 
-        _currentCts?.Cancel(); 
-        _currentCts?.Dispose(); 
-        await base.DisposeAsyncCore(); 
-    } 
+// SuperUI/Base/SgAsyncButton.cs
+using System;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace SuperUI.Base;
+
+/// <summary>
+/// Button with built-in async operation support,
+/// loading state, success/error feedback, and debouncing.
+/// </summary>
+public class SgAsyncButton : ComponentBase, IDisposable
+{
+    [Parameter] public string? Text { get; set; } = "Submit";
+    [Parameter] public string? LoadingText { get; set; } = "Loading...";
+    [Parameter] public string? SuccessText { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? IconCssClass { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public ButtonType Type { get; set; } = ButtonType.Button;
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [Parameter] public Func<Task>? OnClickAsync { get; set; }
+    [Parameter] public int DebounceMs { get; set; } = 0;
+    [Parameter] public int SuccessDisplayMs { get; set; } = 2000;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    [Inject] private ILogger<SgAsyncButton> Logger { get; set; } = NullLogger<SgAsyncButton>.Instance;
+
+    private AsyncOperationState _state = AsyncOperationState.Idle;
+    private DateTime _lastClickTime = DateTime.MinValue;
+    private bool _disposed;
+
+    protected bool IsLoading => _state == AsyncOperationState.Loading;
+    protected bool IsSuccess => _state == AsyncOperationState.Success;
+    protected bool IsError => _state == AsyncOperationState.Error;
+
+    protected string CurrentText => _state switch
+    {
+        AsyncOperationState.Loading => LoadingText ?? Text ?? "Loading...",
+        AsyncOperationState.Success => SuccessText ?? Text ?? "Done!",
+        AsyncOperationState.Error => ErrorText ?? Text ?? "Error",
+        _ => Text ?? "Submit"
+    };
+
+    protected async Task HandleClickAsync(MouseEventArgs e)
+    {
+        if (_disposed || Disabled || IsLoading) return;
+
+        // Debounce check
+        if (DebounceMs > 0)
+        {
+            var elapsed = (DateTime.UtcNow - _lastClickTime).TotalMilliseconds;
+            if (elapsed < DebounceMs) return;
+            _lastClickTime = DateTime.UtcNow;
+        }
+
+        try
+        {
+            _state = AsyncOperationState.Loading;
+            StateHasChanged();
+
+            await OnClick.InvokeAsync(e);
+            if (OnClickAsync != null)
+                await OnClickAsync();
+
+            _state = AsyncOperationState.Success;
+            StateHasChanged();
+
+            // Auto-reset after delay
+            if (SuccessDisplayMs > 0)
+            {
+                await Task.Delay(SuccessDisplayMs);
+                if (!_disposed)
+                {
+                    _state = AsyncOperationState.Idle;
+                    StateHasChanged();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in SgAsyncButton click handler");
+            _state = AsyncOperationState.Error;
+            StateHasChanged();
+
+            await Task.Delay(3000);
+            if (!_disposed)
+            {
+                _state = AsyncOperationState.Idle;
+                StateHasChanged();
+            }
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    private enum AsyncOperationState
+    {
+        Idle,
+        Loading,
+        Success,
+        Error
+    }
 }

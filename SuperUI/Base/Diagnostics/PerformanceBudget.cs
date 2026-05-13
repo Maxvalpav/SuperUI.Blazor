@@ -1,98 +1,105 @@
 // SuperUI/Base/Diagnostics/PerformanceBudget.cs
-// НОВОЕ: Performance Budget для компонентов.
-// В DEV режиме выводит предупреждения если компонент:
-// - рендерится чаще заданного лимита в секунду
-// - рендер занимает больше заданного времени
-// - делает больше N JS вызовов за один рендер
-//
-// Аналогов нет ни в одной Blazor библиотеке.
-// Похоже на React DevTools Profiler, но встроено в компонент.
-using Microsoft.Extensions.Logging;
+using System;
+using System.Diagnostics;
 
 namespace SuperUI.Base.Diagnostics;
 
 /// <summary>
-/// Бюджет производительности компонента.
-/// В DEBUG режиме логирует нарушения через ILogger.
-/// В RELEASE режиме — zero-cost (весь код исключается компилятором).
+/// Defines performance budgets and monitors adherence.
+/// Helps catch performance regressions in development and testing.
 /// </summary>
-public sealed class PerformanceBudget
+public class PerformanceBudget
 {
-#if DEBUG
-    private readonly string _componentId;
-    private readonly ILogger _logger;
-    
-    // Лимиты по умолчанию
-    private int _maxRendersPerSecond = 30;
-    private double _maxRenderMs = 16.0; // один кадр при 60fps
-    private int _maxJsCallsPerRender = 5;
-    
-    // Статистика
-    private int _rendersThisSecond;
-    private long _secondStartTick;
-    private bool _budgetExceeded;
+    /// <summary>Maximum render time per component (ms).</summary>
+    public double MaxRenderTimeMs { get; init; } = 16.0; // ~60fps budget
 
-    public PerformanceBudget(string componentId, ILogger logger)
+    /// <summary>Maximum renders per second allowed for a component.</summary>
+    public int MaxRendersPerSecond { get; init; } = 60;
+
+    /// <summary>Maximum total components on screen at once.</summary>
+    public int MaxConcurrentVisibleComponents { get; init; } = 500;
+
+    /// <summary>Maximum memory estimate per component (bytes, rough).</summary>
+    public long MaxMemoryPerComponentBytes { get; init; } = 50_000;
+
+    /// <summary>Maximum JS interop calls per second.</summary>
+    public int MaxJsInteropCallsPerSecond { get; init; } = 30;
+
+    /// <summary>Maximum initial bundle size for WASM (bytes).</summary>
+    public long MaxWasmBundleSizeBytes { get; init; } = 5_000_000; // 5 MB
+
+    private readonly Stopwatch _windowTimer = Stopwatch.StartNew();
+    private int _currentWindowRenderCount;
+    private int _currentWindowJsInteropCount;
+    private long _lastWindowStartTicks;
+
+    /// <summary>Check if a render time exceeds the budget.</summary>
+    public bool IsRenderTimeExceeded(double renderTimeMs, out string? warning)
     {
-        _componentId = componentId;
-        _logger = logger;
-        _secondStartTick = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (renderTimeMs > MaxRenderTimeMs)
+        {
+            warning = $"Render time {renderTimeMs:F2}ms exceeds budget of {MaxRenderTimeMs}ms";
+            return true;
+        }
+        warning = null;
+        return false;
     }
 
-    /// <summary>Настроить лимиты бюджета.</summary>
-    public PerformanceBudget WithLimits(
-        int maxRendersPerSecond = 30,
-        double maxRenderMs = 16.0,
-        int maxJsCallsPerRender = 5)
+    /// <summary>Track a render for rate limiting.</summary>
+    public bool IsRenderRateExceeded(out string? warning)
     {
-        _maxRendersPerSecond = maxRendersPerSecond;
-        _maxRenderMs = maxRenderMs;
-        _maxJsCallsPerRender = maxJsCallsPerRender;
-        return this;
+        var elapsed = _windowTimer.Elapsed;
+        if (elapsed.TotalSeconds >= 1.0)
+        {
+            _currentWindowRenderCount = 0;
+            _currentWindowJsInteropCount = 0;
+            _windowTimer.Restart();
+        }
+        _currentWindowRenderCount++;
+        if (_currentWindowRenderCount > MaxRendersPerSecond)
+        {
+            warning = $"Render rate {_currentWindowRenderCount}/s exceeds budget of {MaxRendersPerSecond}/s";
+            return true;
+        }
+        warning = null;
+        return false;
     }
 
-    /// <summary>Проверить бюджет после рендера.</summary>
-    public void CheckAfterRender(double renderMs, int jsCallsThisRender)
+    /// <summary>Track a JS interop call for rate limiting.</summary>
+    public bool IsJsInteropRateExceeded(out string? warning)
     {
-        var now = System.Diagnostics.Stopwatch.GetTimestamp();
-        var elapsedSec = System.Diagnostics.Stopwatch.GetElapsedTime(_secondStartTick).TotalSeconds;
-        
-        if (elapsedSec >= 1.0)
+        if (_windowTimer.Elapsed.TotalSeconds >= 1.0)
         {
-            _rendersThisSecond = 0;
-            _secondStartTick = now;
-            _budgetExceeded = false;
+            _currentWindowJsInteropCount = 0;
         }
-
-        _rendersThisSecond++;
-
-        // Проверяем нарушения бюджета
-        if (renderMs > _maxRenderMs)
+        _currentWindowJsInteropCount++;
+        if (_currentWindowJsInteropCount > MaxJsInteropCallsPerSecond)
         {
-            _logger.LogWarning(
-                "⚠️ [PerformanceBudget] [{Id}] Render took {Ms:F1}ms > budget {Budget}ms",
-                _componentId, renderMs, _maxRenderMs);
+            warning = $"JS interop rate {_currentWindowJsInteropCount}/s exceeds budget of {MaxJsInteropCallsPerSecond}/s";
+            return true;
         }
-
-        if (_rendersThisSecond > _maxRendersPerSecond && !_budgetExceeded)
-        {
-            _budgetExceeded = true;
-            _logger.LogWarning(
-                "⚠️ [PerformanceBudget] [{Id}] Renders/sec={Count} > budget {Budget}",
-                _componentId, _rendersThisSecond, _maxRendersPerSecond);
-        }
-
-        if (jsCallsThisRender > _maxJsCallsPerRender)
-        {
-            _logger.LogWarning(
-                "⚠️ [PerformanceBudget] [{Id}] JS calls={Count} > budget {Budget} in one render",
-                _componentId, jsCallsThisRender, _maxJsCallsPerRender);
-        }
+        warning = null;
+        return false;
     }
-#else
-    // RELEASE: all methods are no-ops compiled away
-    public PerformanceBudget(string componentId, ILogger logger) { }
-    public PerformanceBudget WithLimits(int a = 0, double b = 0, int c = 0) => this;
-    public void CheckAfterRender(double renderMs, int jsCallsThisRender) { }
-#endif
+
+    /// <summary>Create a default budget suitable for WASM (stricter).</summary>
+    public static PerformanceBudget CreateWasmBudget() => new()
+    {
+        MaxRenderTimeMs = 20.0,
+        MaxRendersPerSecond = 30,
+        MaxConcurrentVisibleComponents = 200,
+        MaxJsInteropCallsPerSecond = 15,
+        MaxMemoryPerComponentBytes = 30_000,
+        MaxWasmBundleSizeBytes = 3_000_000
+    };
+
+    /// <summary>Create a default budget suitable for Server-side (more lenient).</summary>
+    public static PerformanceBudget CreateServerBudget() => new()
+    {
+        MaxRenderTimeMs = 10.0,
+        MaxRendersPerSecond = 120,
+        MaxConcurrentVisibleComponents = 500,
+        MaxJsInteropCallsPerSecond = 60,
+        MaxMemoryPerComponentBytes = 50_000
+    };
 }
