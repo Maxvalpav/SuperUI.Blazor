@@ -1,130 +1,75 @@
-// SuperUI/Base/Services/SgWasmOptimizer.cs — НОВЫЙ
-// ✅ Оптимизации специфичные для WebAssembly размера сборки
-// ✅ Условная компиляция методов (исключение из WASM того, что нужно только на сервере)
-// ✅ Ленивая загрузка JS модулей
+// SuperUI/Base/Services/SgWasmOptimizer.cs
+// УЛУЧШЕНИЯ: полная поддержка WASM-оптимизаций
 
-using System;
-using System.Threading.Tasks;
-using System.Runtime.CompilerServices;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Оптимизатор WASM: уменьшение размера сборки, ленивая загрузка.
+/// Интерфейс WASM-оптимизатора.
 /// </summary>
-public sealed class SgWasmOptimizer : IAsyncDisposable
+public interface ISgWasmOptimizer
 {
-    private readonly IJSRuntime _js;
-    private IJSObjectReference? _module;
-    private bool _initialized;
-
-    /// <summary>
-    /// true если запущено в браузере (WASM).
-    /// </summary>
-    public static bool IsWasm => OperatingSystem.IsBrowser();
-
-    public SgWasmOptimizer(IJSRuntime js)
-    {
-        _js = js;
-    }
-
-    /// <summary>
-    /// Загрузить JS-модуль только когда он действительно нужен
-    /// (ленивая инициализация для WASM).
-    /// </summary>
-    public async ValueTask<IJSObjectReference> GetModuleAsync(string modulePath)
-    {
-        if (_module is not null)
-            return _module;
-
-        _module = await _js.InvokeAsync<IJSObjectReference>("import", modulePath);
-        return _module;
-    }
-
-    /// <summary>
-    /// Предварительно загрузить сборку .NET в WASM (prefetch).
-    /// Уменьшает время до интерактивности при InteractiveAuto.
-    /// </summary>
-    public async Task PrefetchAssembliesAsync(params string[] assemblyNames)
-    {
-        if (!IsWasm || _module is null) return;
-
-        try
-        {
-            await _module.InvokeVoidAsync("prefetchAssemblies", (object)assemblyNames);
-        }
-        catch
-        {
-            // Недоступно — игнорируем
-        }
-    }
-
-    /// <summary>
-    /// Измерить размер загруженных сборок WASM (для диагностики).
-    /// </summary>
-    public async Task<long> GetWasmHeapSizeAsync()
-    {
-        if (!IsWasm || _module is null) return -1;
-
-        try
-        {
-            return await _module.InvokeAsync<long>("getWasmHeapSize");
-        }
-        catch
-        {
-            return -1;
-        }
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch { }
-        }
-    }
+    ValueTask PreloadAssemblyAsync(string assemblyName);
+    ValueTask PreloadAssembliesAsync(params string[] assemblyNames);
+    ValueTask OptimizeMemoryAsync();
+    bool IsWasm { get; }
 }
 
 /// <summary>
-/// Атрибут: метод НЕ компилируется в WASM-сборку (только Server-side).
+/// Оптимизатор для Blazor WASM: предзагрузка сборок, управление памятью.
 /// </summary>
-[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = false)]
-public sealed class SgServerOnlyAttribute : Attribute { }
-
-/// <summary>
-/// Атрибут: метод НЕ компилируется в Server-side сборку (только WASM).
-/// </summary>
-[AttributeUsage(AttributeTargets.Method | AttributeTargets.Class, Inherited = false)]
-public sealed class SgWasmOnlyAttribute : Attribute { }
-
-/// <summary>
-/// Хелпер для условной компиляции.
-/// </summary>
-public static class SgPlatformHelper
+public sealed class SgWasmOptimizer : ISgWasmOptimizer
 {
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsWasm() => OperatingSystem.IsBrowser();
+    private readonly IJSRuntime _js;
+    private readonly ILogger<SgWasmOptimizer> _logger;
+    private readonly HashSet<string> _loaded = new();
 
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsServer() => !OperatingSystem.IsBrowser();
+    public bool IsWasm => OperatingSystem.IsBrowser();
 
-    /// <summary>
-    /// Выполнить действие только если WASM.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IfWasm(Action action)
+    public SgWasmOptimizer(
+        IJSRuntime js,
+        ILogger<SgWasmOptimizer>? logger = null)
     {
-        if (OperatingSystem.IsBrowser()) action();
+        _js = js ?? throw new ArgumentNullException(nameof(js));
+        _logger = logger ?? NullLogger<SgWasmOptimizer>.Instance;
     }
 
-    /// <summary>
-    /// Выполнить действие только если Server.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void IfServer(Action action)
+    public async ValueTask PreloadAssemblyAsync(string assemblyName)
     {
-        if (!OperatingSystem.IsBrowser()) action();
+        if (!IsWasm || !_loaded.Add(assemblyName)) return;
+
+        try
+        {
+            _logger.LogDebug("Preloading assembly: {Assembly}", assemblyName);
+            await _js.InvokeVoidAsync("SuperUI.wasm.preloadAssembly", assemblyName);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to preload assembly: {Assembly}", assemblyName);
+        }
+    }
+
+    public async ValueTask PreloadAssembliesAsync(params string[] assemblyNames)
+    {
+        foreach (var name in assemblyNames)
+            await PreloadAssemblyAsync(name);
+    }
+
+    public async ValueTask OptimizeMemoryAsync()
+    {
+        if (!IsWasm) return;
+
+        try
+        {
+            await _js.InvokeVoidAsync("SuperUI.wasm.optimizeMemory");
+            _logger.LogDebug("WASM memory optimized");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "WASM memory optimization failed");
+        }
     }
 }

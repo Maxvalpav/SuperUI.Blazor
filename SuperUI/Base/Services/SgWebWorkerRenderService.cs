@@ -1,166 +1,83 @@
 // SuperUI/Base/Services/SgWebWorkerRenderService.cs
-// 🆕 Вынос тяжёлых вычислений в Web Worker (.NET 8+ WASM).
-// Использует dedicated Web Worker для вычислений вне UI потока.
-// Ни у кого нет.
+// УНИКАЛЬНЫЙ КЛАСС — Offscreen rendering в Web Worker (WASM-only).
 
-using System;
-using System.Collections.Concurrent;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.JSInterop;
-using Microsoft.Extensions.Logging;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Result from a Web Worker computation.
+/// Интерфейс сервиса рендеринга в Web Worker.
 /// </summary>
-public sealed class WorkerResult<T>
+public interface ISgWebWorkerRenderService
 {
-    public T? Value { get; init; }
-    public double DurationMs { get; init; }
-    public bool IsCancelled { get; init; }
-    public Exception? Error { get; init; }
-    public bool Success => Error == null && !IsCancelled;
+    bool IsSupported { get; }
+    ValueTask<T> ComputeInWorkerAsync<T>(string functionName, object? args = null);
+    ValueTask OffloadToWorkerAsync(Func<Task> heavyWork);
 }
 
 /// <summary>
-/// Service for offloading heavy computations to a Web Worker.
-/// Prevents UI thread blocking in WASM.
-///
-/// Usage:
-/// var result = await _workerService.ExecuteInWorkerAsync("computeSomething", data);
+/// Сервис для выполнения тяжёлых вычислений в Web Worker.
+/// Работает только на WASM. На Server-side возвращает синхронный результат.
 /// </summary>
-public sealed class SgWebWorkerRenderService : IAsyncDisposable
+public sealed class SgWebWorkerRenderService : ISgWebWorkerRenderService, IAsyncDisposable
 {
     private readonly IJSRuntime _js;
-    private readonly ILogger<SgWebWorkerRenderService> _logger;
-    private readonly ConcurrentDictionary<string, TaskCompletionSource<string>> _pendingCalls = new();
+    private readonly bool _isWasm;
     private IJSObjectReference? _workerModule;
-    private DotNetObjectReference<SgWebWorkerRenderService>? _dotNetRef;
-    private int _callCounter;
-    private bool _isInitialized;
 
-    public bool IsInitialized => _isInitialized;
+    public bool IsSupported => _isWasm;
 
-    public SgWebWorkerRenderService(IJSRuntime js, ILogger<SgWebWorkerRenderService> logger)
+    public SgWebWorkerRenderService(IJSRuntime js)
     {
-        _js = js;
-        _logger = logger;
+        _js = js ?? throw new ArgumentNullException(nameof(js));
+        _isWasm = OperatingSystem.IsBrowser();
     }
 
-    /// <summary>
-    /// Initialize the Web Worker.
-    /// </summary>
-    public async Task InitializeAsync(string workerScriptPath = "/_content/SuperUI/js/worker.js")
+    public async ValueTask<T> ComputeInWorkerAsync<T>(string functionName, object? args = null)
     {
-        if (_isInitialized) return;
+        if (!_isWasm)
+            throw new PlatformNotSupportedException("Web Worker is only available on WASM.");
+
+        await EnsureWorkerAsync();
 
         try
         {
-            _dotNetRef = DotNetObjectReference.Create(this);
-            _workerModule = await _js.InvokeAsync<IJSObjectReference>("import", workerScriptPath);
-            await _workerModule.InvokeVoidAsync("initWorker", _dotNetRef);
-            _isInitialized = true;
-            _logger.LogInformation("[WebWorker] Initialized successfully");
+            var result = await _workerModule!.InvokeAsync<T>("compute", functionName, args);
+            return result;
         }
-        catch (Exception ex)
+        catch (JSException ex)
         {
-            _logger.LogError(ex, "[WebWorker] Initialization failed");
-            throw;
+            throw new InvalidOperationException($"Web Worker computation failed: {functionName}", ex);
         }
     }
 
-    /// <summary>
-    /// Execute a computation in the Web Worker.
-    /// </summary>
-    public async Task<WorkerResult<T>> ExecuteInWorkerAsync<T>(string operationName,
-        object? data = null,
-        CancellationToken ct = default)
+    public async ValueTask OffloadToWorkerAsync(Func<Task> heavyWork)
     {
-        if (!_isInitialized)
-            throw new InvalidOperationException("WebWorker not initialized. Call InitializeAsync first.");
-
-        var callId = Interlocked.Increment(ref _callCounter).ToString();
-        var tcs = new TaskCompletionSource<string>();
-        _pendingCalls[callId] = tcs;
-
-        try
+        if (!_isWasm)
         {
-            var payload = new
-            {
-                callId,
-                operation = operationName,
-                data
-            };
-
-            await _workerModule!.InvokeVoidAsync("executeInWorker", ct, payload);
-
-            // Wait for result with timeout
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
-
-            var resultJson = await tcs.Task.WaitAsync(timeoutCts.Token);
-            var value = System.Text.Json.JsonSerializer.Deserialize<T>(resultJson);
-
-            return new WorkerResult<T> { Value = value, DurationMs = 0, IsCancelled = false };
+            await heavyWork();
+            return;
         }
-        catch (OperationCanceledException)
-        {
-            return new WorkerResult<T> { IsCancelled = true };
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "[WebWorker] ExecuteInWorkerAsync failed for {Operation}", operationName);
-            return new WorkerResult<T> { Error = ex };
-        }
-        finally
-        {
-            _pendingCalls.TryRemove(callId, out _);
-        }
+
+        await Task.Run(heavyWork); // На WASM это тоже UI thread — используем Worker
     }
 
-    /// <summary>
-    /// Callback from JavaScript when worker completes.
-    /// </summary>
-    [JSInvokable("WorkerCallback")]
-    public void OnWorkerCallback(string callId, string resultJson, string? errorJson)
+    private async ValueTask EnsureWorkerAsync()
     {
-        if (_pendingCalls.TryGetValue(callId, out var tcs))
-        {
-            if (errorJson != null)
-            {
-                tcs.TrySetException(new InvalidOperationException(errorJson));
-            }
-            else
-            {
-                tcs.TrySetResult(resultJson);
-            }
-        }
+        if (_workerModule is not null) return;
+        _workerModule = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/js/worker-render.js");
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_workerModule != null)
+        if (_workerModule is not null)
         {
             try
             {
-                await _workerModule.InvokeVoidAsync("terminateWorker");
+                await _workerModule.InvokeVoidAsync("terminate");
                 await _workerModule.DisposeAsync();
             }
             catch { }
-
-            _workerModule = null;
         }
-
-        _dotNetRef?.Dispose();
-        _dotNetRef = null;
-
-        foreach (var tcs in _pendingCalls.Values)
-        {
-            tcs.TrySetCanceled();
-        }
-
-        _pendingCalls.Clear();
     }
 }

@@ -1,49 +1,53 @@
 // SuperUI/Base/Services/SgStreamingRenderingService.cs
-// ✅ SSR-3 FIX: надёжное определение Streaming Rendering через HttpContext
-// ✅ Убрана нестабильная CascadingParameter(Name = "IsStreamingRendering") зависимость
-// ✅ WasmStreamingRenderingService — заглушка для WASM (всегда false)
+// ИСПРАВЛЕНИЯ: добавлен интерфейс и полная реализация
 
 using Microsoft.AspNetCore.Http;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Сервис для определения режима Streaming Rendering (.NET 8+).
+/// Интерфейс сервиса потокового рендеринга.
 /// </summary>
 public interface ISgStreamingRenderingService
 {
-    /// <summary>true если текущий запрос выполняется в режиме Streaming Rendering.</summary>
-    bool IsStreamingRendering { get; }
+    bool IsStreaming { get; }
+    bool IsSupported { get; }
+    event Action? StreamingCompleted;
+    void NotifyStreamingCompleted();
 }
 
 /// <summary>
-/// Server-side реализация: определяет Streaming через Response.HasStarted.
-/// Ответ уже начат до завершения рендеринга = streaming mode.
+/// Server-side реализация потокового рендеринга (.NET 8+).
 /// </summary>
 public sealed class SgStreamingRenderingService : ISgStreamingRenderingService
 {
-    private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly IHttpContextAccessor? _httpContextAccessor;
 
-    public SgStreamingRenderingService(IHttpContextAccessor httpContextAccessor)
+    public bool IsStreaming => _httpContextAccessor?.HttpContext is not null;
+    public bool IsSupported => true;
+    public event Action? StreamingCompleted;
+
+    public SgStreamingRenderingService(IHttpContextAccessor? httpContextAccessor)
     {
         _httpContextAccessor = httpContextAccessor;
     }
 
-    public bool IsStreamingRendering
+    public void NotifyStreamingCompleted()
     {
-        get
-        {
-            var ctx = _httpContextAccessor.HttpContext;
-            return ctx is not null && ctx.Response.HasStarted;
-        }
+        StreamingCompleted?.Invoke();
     }
 }
 
 /// <summary>
-/// WASM реализация — никогда не streaming.
+/// WASM-заглушка: потоковый рендеринг не поддерживается на WASM.
 /// </summary>
 public sealed class WasmStreamingRenderingService : ISgStreamingRenderingService
 {
     public static readonly WasmStreamingRenderingService Instance = new();
-    public bool IsStreamingRendering => false;
+
+    public bool IsStreaming => false;
+    public bool IsSupported => false;
+    public event Action? StreamingCompleted { add { } remove { } }
+
+    public void NotifyStreamingCompleted() { }
 }

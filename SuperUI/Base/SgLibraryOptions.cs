@@ -45,7 +45,7 @@ public class SgLibraryOptions
     public bool EnableRenderTracking { get; set; }
 
     // --- Services (lazy-initialized) ---
-    public IComponentRegistry? ComponentRegistry { get; set; }
+    public Services.ISgComponentTypeRegistry? ComponentRegistry { get; set; }
     public IComponentFactory? ComponentFactory { get; set; }
 
     // ✅ FIX: используем интерфейс, а не реализацию

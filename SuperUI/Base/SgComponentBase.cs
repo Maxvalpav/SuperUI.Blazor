@@ -20,7 +20,11 @@ using CssBuilder = SuperUI.Base.Utilities.SgCssBuilder;
 
 namespace SuperUI.Base;
 
-public interface IComponentRegistry
+/// <summary>
+/// Интерфейс для lifecycle-регистрации компонентов (добавить/убрать из дерева).
+/// ПЕРЕИМЕНОВАН из IComponentRegistry → ISgComponentLifetimeRegistry для устранения CS0104.
+/// </summary>
+public interface ISgComponentLifetimeRegistry
 {
     void Register(ISgComponent component);
     void Unregister(ISgComponent component);
@@ -35,7 +39,13 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     [Inject] protected IComponentOptionsService? OptionsService { get; set; }
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
-    [Inject] protected IComponentRegistry? ComponentRegistry { get; set; }
+
+    // ✅ FIX CS0104: используем ISgComponentLifetimeRegistry (не IComponentRegistry)
+    [Inject] protected ISgComponentLifetimeRegistry? ComponentLifetimeRegistry { get; set; }
+
+    // ✅ FIX CS0104: используем ISgComponentTypeRegistry из Services namespace
+    [Inject] protected Services.ISgComponentTypeRegistry? ComponentTypeRegistry { get; set; }
+
     [Inject] protected TimeProvider TimeProvider { get; set; } = TimeProvider.System;
     [Inject] protected PersistentComponentState? PersistentComponentState { get; set; }
 
@@ -257,7 +267,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
         _lastParametersSnapshot = new SgParameterSnapshot(parameters);
         await OnParametersChangedAsync(parameters);
-        await base.SetParametersAsync(ParameterView.Empty);
+
+        // ✅ FIX: передаём оригинальные parameters, не ParameterView.Empty!
+        // ParameterView.Empty ломает каскадные параметры и SSR
+        await base.SetParametersAsync(parameters);
     }
 
     protected virtual ValueTask OnParametersChangedAsync(ParameterView parameters) => ValueTask.CompletedTask;

@@ -1,98 +1,118 @@
-// SuperUI/Base/Services/SgRenderModeDetector.cs 
-// Улучшения: 
-// - Поддержка RendererInfo (.NET 9) 
-// - Поддержка InteractiveAuto перехода 
-// - Правильный WASM-specific путь 
-// - Без рефлексии (OperatingSystem.IsBrowser()) 
-// - Логирование режима при старте 
- 
-using System; 
-using System.Reflection;
-using Microsoft.AspNetCore.Components; 
-using Microsoft.AspNetCore.Components.Web; 
- 
-namespace SuperUI.Base.Services; 
- 
-/// <summary> 
-/// Сервис определения текущего режима рендеринга. 
-/// Регистрировать как Scoped (Server) / Singleton (WASM). 
-/// </summary> 
-public sealed class SgRenderModeDetector : ISgRenderModeDetector 
-{ 
-    private readonly IServiceProvider _services; 
-    private static readonly PropertyInfo? s_rendererInfoProperty;
-    private static readonly PropertyInfo? s_assignedRenderModeProperty;
+// SuperUI/Base/Services/SgRenderModeDetector.cs
+// ИСПРАВЛЕНИЯ: полная поддержка .NET 8/9/10
 
-    static SgRenderModeDetector()
+using Microsoft.AspNetCore.Components;
+
+namespace SuperUI.Base.Services;
+
+/// <summary>
+/// Интерфейс детектора режима рендеринга.
+/// </summary>
+public interface ISgRenderModeDetector
+{
+    SgRenderMode CurrentMode { get; }
+    bool IsPreRendering { get; }
+    bool IsInteractive { get; }
+    bool IsServer { get; }
+    bool IsWebAssembly { get; }
+    bool IsAuto { get; }
+    bool IsStaticSSR { get; }
+    bool SupportsStreaming { get; }
+    event Action<SgRenderMode>? RenderModeChanged;
+}
+
+/// <summary>
+/// Определитель режима рендеринга с поддержкой .NET 8/9/10.
+/// </summary>
+public sealed class SgRenderModeDetector : ISgRenderModeDetector, IDisposable
+{
+    private readonly IComponentRenderMode? _assignedMode;
+    private SgRenderMode _currentMode;
+    private bool _isPreRendering;
+
+    public SgRenderModeDetector(
+#if NET9_0_OR_GREATER
+        RendererInfo? rendererInfo = null
+#else
+        IComponentRenderMode? assignedMode = null
+#endif
+    )
     {
-        s_rendererInfoProperty = typeof(ComponentBase).GetProperty("RendererInfo", BindingFlags.NonPublic | BindingFlags.Instance);
-        s_assignedRenderModeProperty = typeof(ComponentBase).GetProperty("AssignedRenderMode", BindingFlags.NonPublic | BindingFlags.Instance);
+#if NET9_0_OR_GREATER
+        _isPreRendering = rendererInfo?.IsInteractive == false;
+        _currentMode = DetermineMode(rendererInfo);
+#else
+        _assignedMode = assignedMode;
+        _isPreRendering = assignedMode is null;
+        _currentMode = DetermineModeLegacy(assignedMode);
+#endif
     }
 
-    public SgRenderModeDetector(IServiceProvider services) 
-    { 
-        _services = services; 
-    } 
- 
-    /// <summary> 
-    /// Определяет режим рендеринга для данного компонента. 
-    /// </summary> 
-    public SgRenderMode GetRenderMode(ComponentBase component) 
-    { 
-        // 1. Сначала проверяем WASM — это быстро и точно 
-        if (OperatingSystem.IsBrowser()) 
-            return SgRenderMode.InteractiveWebAssembly; 
- 
- #if NET9_0_OR_GREATER 
-        // 2. .NET 9+ — используем официальный API через рефлексию (т.к. protected)
-        var rendererInfo = (RendererInfo)s_rendererInfoProperty?.GetValue(component)!; 
-        var assignedMode = (IComponentRenderMode?)s_assignedRenderModeProperty?.GetValue(component); 
- 
-        return (rendererInfo.IsInteractive, rendererInfo.Name, assignedMode) switch 
-        { 
-            (false, "Static", _) => SgRenderMode.StaticSSR, 
-            (false, "Server", _) => SgRenderMode.StaticSSR, 
-            (true, "Server", InteractiveAutoRenderMode) => SgRenderMode.InteractiveAuto, 
-            (true, "Server", _) => SgRenderMode.InteractiveServer, 
-            _ => SgRenderMode.StaticSSR 
-        }; 
- #elif NET8_0_OR_GREATER 
-        // 3. .NET 8 — используем AssignedRenderMode через рефлексию
-        var assignedMode = (IComponentRenderMode?)s_assignedRenderModeProperty?.GetValue(component); 
-        return assignedMode switch 
-        { 
-            InteractiveServerRenderMode => SgRenderMode.InteractiveServer, 
-            InteractiveWebAssemblyRenderMode => SgRenderMode.InteractiveWebAssembly, 
-            InteractiveAutoRenderMode => SgRenderMode.InteractiveAuto, 
-            null => SgRenderMode.StaticSSR, 
-            _ => SgRenderMode.StaticSSR 
-        }; 
- #else 
-        return SgRenderMode.InteractiveServer; 
- #endif 
-    } 
- 
-    /// <summary>true если компонент интерактивен (не SSR, не prerendering).</summary> 
-    public bool IsInteractive(ComponentBase component) 
-    { 
-        var mode = GetRenderMode(component); 
-        return mode is SgRenderMode.InteractiveServer 
-            or SgRenderMode.InteractiveWebAssembly 
-            or SgRenderMode.InteractiveAuto; 
-    } 
- 
-    /// <summary>true если код выполняется в браузере (WASM).</summary> 
-    public bool IsWebAssembly => OperatingSystem.IsBrowser(); 
- 
-    /// <summary>true если код выполняется на сервере.</summary> 
-    public bool IsServer => !OperatingSystem.IsBrowser(); 
-} 
- 
-/// <summary>Интерфейс детектора режима рендеринга.</summary> 
-public interface ISgRenderModeDetector 
-{ 
-    SgRenderMode GetRenderMode(ComponentBase component); 
-    bool IsInteractive(ComponentBase component); 
-    bool IsWebAssembly { get; } 
-    bool IsServer { get; } 
+    public SgRenderMode CurrentMode => _currentMode;
+    public bool IsPreRendering => _isPreRendering;
+
+    public bool IsInteractive => _currentMode is SgRenderMode.InteractiveServer
+        or SgRenderMode.InteractiveWebAssembly
+        or SgRenderMode.InteractiveAuto;
+
+    public bool IsServer => _currentMode == SgRenderMode.InteractiveServer;
+    public bool IsWebAssembly => _currentMode == SgRenderMode.InteractiveWebAssembly;
+    public bool IsAuto => _currentMode == SgRenderMode.InteractiveAuto;
+    public bool IsStaticSSR => _currentMode == SgRenderMode.StaticSSR;
+
+    public bool SupportsStreaming =>
+#if NET8_0_OR_GREATER
+        _currentMode == SgRenderMode.StaticSSR || _currentMode == SgRenderMode.InteractiveServer;
+#else
+        false;
+#endif
+
+    public event Action<SgRenderMode>? RenderModeChanged;
+
+    /// <summary>
+    /// Вызывается при смене режима (InteractiveAuto: Server → WASM).
+    /// </summary>
+    public void OnRenderModeChanged(SgRenderMode newMode)
+    {
+        if (_currentMode != newMode)
+        {
+            var old = _currentMode;
+            _currentMode = newMode;
+            _isPreRendering = false;
+            RenderModeChanged?.Invoke(newMode);
+        }
+    }
+
+#if NET9_0_OR_GREATER
+    private static SgRenderMode DetermineMode(RendererInfo? info)
+    {
+        if (info is null) return SgRenderMode.StaticSSR;
+
+        return info.Name switch
+        {
+            "Static" => SgRenderMode.StaticSSR,
+            "Server" => SgRenderMode.InteractiveServer,
+            "WebAssembly" => SgRenderMode.InteractiveWebAssembly,
+            "InteractiveAuto" => SgRenderMode.InteractiveAuto,
+            _ => SgRenderMode.Unknown
+        };
+    }
+#else
+    private static SgRenderMode DetermineModeLegacy(IComponentRenderMode? mode)
+    {
+        return mode switch
+        {
+            InteractiveServerRenderMode => SgRenderMode.InteractiveServer,
+            InteractiveWebAssemblyRenderMode => SgRenderMode.InteractiveWebAssembly,
+            InteractiveAutoRenderMode => SgRenderMode.InteractiveAuto,
+            null => SgRenderMode.StaticSSR,
+            _ => SgRenderMode.Unknown
+        };
+    }
+#endif
+
+    public void Dispose()
+    {
+        RenderModeChanged = null;
+    }
 }

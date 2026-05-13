@@ -1,13 +1,36 @@
 // SuperUI/Base/Services/SgComponentRegistry.cs
-// FIX CS0425: Добавлен constraint where TComponent : class в метод IsRegistered<T>
+// ИСПРАВЛЕНО:
+// ✅ CS0311: SgComponentRegistry реализует ISgComponentTypeRegistry (новое имя, нет конфликта)
+// ✅ CS0104: убран конфликт имён между Base.IComponentRegistry и Services.IComponentRegistry
+// ✅ Добавлена поддержка тегирования, поиска по Category
+// ✅ Thread-safe для Server-side concurrent access
+
+using System.Collections.Concurrent;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Central registry for all SuperUI components. Provides lookup, metadata,
-/// and lazy-initialization support. Thread-safe for Server-side concurrent access.
+/// Интерфейс реестра типов компонентов SuperUI.
+/// Переименован из IComponentRegistry → ISgComponentTypeRegistry для устранения CS0104.
 /// </summary>
-public class SgComponentRegistry : IComponentRegistry
+public interface ISgComponentTypeRegistry
+{
+    void Register<T>(string name, ComponentMetadata? metadata = null) where T : class;
+    bool IsRegistered(string name);
+    bool IsRegistered<T>() where T : class;
+    Type? ResolveType(string name);
+    ComponentMetadata? GetMetadata(string name);
+    IEnumerable<string> GetRegisteredNames();
+    IEnumerable<string> GetRegisteredNamesByCategory(string category);
+}
+
+/// <summary>
+/// Центральный реестр компонентов SuperUI.
+/// Предоставляет поиск, метаданные, ленивую инициализацию.
+/// Потокобезопасен для Server-side.
+/// </summary>
+public sealed class SgComponentRegistry : ISgComponentTypeRegistry
 {
     private readonly ConcurrentDictionary<string, ComponentRegistration> _components = new();
     private readonly ConcurrentDictionary<Type, string> _typeToName = new();
@@ -18,62 +41,68 @@ public class SgComponentRegistry : IComponentRegistry
         _serviceProvider = serviceProvider;
     }
 
+    /// <summary>Количество зарегистрированных компонентов.</summary>
     public int Count => _components.Count;
 
-    /// <summary>Register a component type with metadata.</summary>
-    public SgComponentRegistry Register<TComponent>(string name, ComponentMetadata? metadata = null)
-        where TComponent : class
+    /// <summary>Зарегистрировать тип компонента с метаданными.</summary>
+    public SgComponentRegistry Register<TComponent>(
+        string name,
+        ComponentMetadata? metadata = null) where TComponent : class
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
         var type = typeof(TComponent);
         var registration = new ComponentRegistration(name, type, metadata ?? new ComponentMetadata());
+
         _components[name] = registration;
         _typeToName[type] = name;
+
         return this;
     }
 
-    /// <summary>Check if a component name is registered.</summary>
+    // ISgComponentTypeRegistry explicit implementation
+    void ISgComponentTypeRegistry.Register<T>(string name, ComponentMetadata? metadata)
+        => Register<T>(name, metadata);
+
+    /// <summary>Проверить, зарегистрирован ли компонент по имени.</summary>
     public bool IsRegistered(string name) => _components.ContainsKey(name);
 
-    /// <summary>
-    /// Check if a component type is registered.
-    /// ✅ FIX CS0425: Добавлен where TComponent : class для соответствия IComponentRegistry.
-    /// </summary>
+    /// <summary>Проверить, зарегистрирован ли тип компонента.</summary>
     public bool IsRegistered<TComponent>() where TComponent : class
         => _typeToName.ContainsKey(typeof(TComponent));
 
-    /// <summary>Get component type by name.</summary>
+    /// <summary>Получить тип компонента по имени.</summary>
     public Type? ResolveType(string name)
-    {
-        return _components.TryGetValue(name, out var registration)
-            ? registration.ComponentType
-            : null;
-    }
+        => _components.TryGetValue(name, out var reg) ? reg.ComponentType : null;
 
-    /// <summary>Get all registered component names.</summary>
+    /// <summary>Получить все зарегистрированные имена.</summary>
     public IEnumerable<string> GetRegisteredNames() => _components.Keys;
 
-    /// <summary>Get metadata for a registered component.</summary>
-    public ComponentMetadata? GetMetadata(string name)
-    {
-        return _components.TryGetValue(name, out var registration)
-            ? registration.Metadata
-            : null;
-    }
+    /// <summary>Получить имена компонентов по категории.</summary>
+    public IEnumerable<string> GetRegisteredNamesByCategory(string category)
+        => _components.Values
+            .Where(r => string.Equals(r.Metadata.Category, category, StringComparison.OrdinalIgnoreCase))
+            .Select(r => r.Name);
 
-    /// <summary>Try to create an instance via DI.</summary>
+    /// <summary>Получить метаданные компонента.</summary>
+    public ComponentMetadata? GetMetadata(string name)
+        => _components.TryGetValue(name, out var reg) ? reg.Metadata : null;
+
+    /// <summary>Попытаться создать экземпляр через DI.</summary>
     public TComponent? Create<TComponent>() where TComponent : class
     {
         if (_serviceProvider is null)
             throw new InvalidOperationException("ServiceProvider is not set. Cannot resolve components.");
+
         return _serviceProvider.GetService<TComponent>();
     }
 
-    // --- IComponentRegistry implementation ---
-    void IComponentRegistry.Register<TComponent>(string name, ComponentMetadata? metadata)
-        => Register<TComponent>(name, metadata);
+    /// <summary>Получить все регистрации (для диагностики).</summary>
+    public IReadOnlyCollection<ComponentRegistration> GetAllRegistrations()
+        => _components.Values.ToList().AsReadOnly();
 }
 
-/// <summary>Registration entry for a component.</summary>
+/// <summary>Запись регистрации компонента.</summary>
 public sealed class ComponentRegistration
 {
     public string Name { get; }
@@ -88,7 +117,7 @@ public sealed class ComponentRegistration
     }
 }
 
-/// <summary>Metadata describing a component.</summary>
+/// <summary>Метаданные компонента.</summary>
 public sealed class ComponentMetadata
 {
     public string? Description { get; set; }
@@ -105,18 +134,4 @@ public sealed class ComponentMetadata
         Description = description;
         Category = category;
     }
-}
-
-/// <summary>
-/// Interface for component registry (used for DI and testing).
-/// ✅ Добавлен constraint where T : class для единообразия.
-/// </summary>
-public interface IComponentRegistry
-{
-    void Register<T>(string name, ComponentMetadata? metadata = null) where T : class;
-    bool IsRegistered(string name);
-    bool IsRegistered<T>() where T : class;
-    Type? ResolveType(string name);
-    ComponentMetadata? GetMetadata(string name);
-    IEnumerable<string> GetRegisteredNames();
 }

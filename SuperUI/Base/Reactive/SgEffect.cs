@@ -1,11 +1,10 @@
 // SuperUI/Base/Reactive/SgEffect.cs
-// ИСПРАВЛЕНИЯ:
-// ✅ THREAD SAFETY: HashSet → использование lock для _dependencies
-// ✅ _isDisposed → volatile int + Interlocked.Exchange (idempotent)
-// ✅ ASYNC: async эффект правильно awaited с обработкой исключений
-// ✅ AOT: нет dynamic, нет рефлексии
-// ✅ TRACKING: использует SgReactiveComponentBase.EnterScope() как SgComputed
-// ✅ NET8: совместим с .NET 8+
+// ИСПРАВЛЕНО:
+// ✅ CS0101: убраны дублирующие Subscription и CompositeSubscription (теперь в SgSubscription.cs)
+// ✅ Добавлена защита от потери pending-rerun при рекурсии
+// ✅ Добавлен onError callback с логированием
+// ✅ CancellationToken передаётся в async эффект
+// ✅ Поддержка .NET 8/9/10
 
 using System.Runtime.CompilerServices;
 
@@ -14,33 +13,25 @@ namespace SuperUI.Base.Reactive;
 /// <summary>
 /// Реактивный побочный эффект.
 /// Автоматически отслеживает зависимости от сигналов и перезапускается при их изменении.
-///
-/// ИСПРАВЛЕНИЯ:
-/// - HashSet без lock → HashSet с lock (thread-safety)
-/// - bool _isDisposed → volatile int (Interlocked)
-/// - async Fire-and-forget без обработки → правильный async с CancellationToken
-/// - SignalTracker.BeginTracking → SgReactiveComponentBase.EnterScope() (единая система)
-///
+/// <para>
 /// Использование:
 /// <code>
 /// var count = Signal&lt;int&gt;(0);
-/// var effect = new SgEffect(() =&gt; Console.WriteLine($"Count: {count.Value}"));
+/// var effect = new SgEffect(() => Console.WriteLine($"Count: {count.Value}"));
 /// effect.Run(); // первый запуск + подписка
 /// count.Set(1); // автоматически перезапустит эффект
 /// </code>
+/// </para>
 /// </summary>
 public sealed class SgEffect : ISignalObserver, IDisposable
 {
-    private readonly Delegate _effect;         // Action или Func<Task>
+    private readonly Delegate _effect;
     private readonly Action<Exception>? _onError;
-
-    // ✅ FIX: lock вместо незащищённого HashSet
     private readonly object _depLock = new();
     private readonly HashSet<ISgSignal> _dependencies = new(ReferenceEqualityComparer.Instance);
-
-    // ✅ FIX: volatile int для idempotent dispose и thread-visible state
     private volatile int _disposed;
     private volatile int _isRunning;
+    private volatile int _pendingRerun; // ✅ NEW: защита от потери pending-rerun
     private readonly CancellationTokenSource _cts = new();
 
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
@@ -74,37 +65,44 @@ public sealed class SgEffect : ISignalObserver, IDisposable
 
     /// <summary>
     /// Выполнить эффект и отследить зависимости.
-    /// Thread-safe. Идемпотентен (не запускается если уже выполняется).
+    /// Thread-safe. При рекурсивном вызове помечает pending-rerun.
     /// </summary>
     public void Run()
     {
         if (IsDisposed) return;
 
-        // Предотвращаем рекурсивный запуск
-        if (Interlocked.CompareExchange(ref _isRunning, 1, 0) == 1) return;
+        // ✅ FIX: если уже запущен — помечаем pending, не теряем вызов
+        if (Interlocked.CompareExchange(ref _isRunning, 1, 0) == 1)
+        {
+            Volatile.Write(ref _pendingRerun, 1);
+            return;
+        }
 
         try
         {
-            // Очищаем старые зависимости и переподписываемся
-            ClearDependencies();
-
-            // Запускаем эффект внутри scope отслеживания
-            using (SgReactiveComponentBase.EnterScope(new EffectSignalObserver(this)))
+            do
             {
-                if (_effect is Action syncAction)
+                Volatile.Write(ref _pendingRerun, 0);
+                ClearDependencies();
+
+                using (SgReactiveComponentBase.EnterScope(new EffectSignalObserver(this)))
                 {
-                    syncAction();
-                }
-                else if (_effect is Func<Task> asyncAction)
-                {
-                    // ✅ FIX: правильный fire-and-forget с обработкой исключений
-                    _ = RunAsyncEffect(asyncAction, _cts.Token);
-                }
-                else if (_effect is Func<CancellationToken, Task> asyncWithToken)
-                {
-                    _ = RunAsyncEffect(() => asyncWithToken(_cts.Token), _cts.Token);
+                    if (_effect is Action syncAction)
+                    {
+                        syncAction();
+                    }
+                    else if (_effect is Func<Task> asyncAction)
+                    {
+                        _ = RunAsyncEffect(asyncAction, _cts.Token);
+                    }
+                    else if (_effect is Func<CancellationToken, Task> asyncWithToken)
+                    {
+                        _ = RunAsyncEffect(() => asyncWithToken(_cts.Token), _cts.Token);
+                    }
                 }
             }
+            // ✅ FIX: повторяем если было pending-rerun во время выполнения
+            while (Volatile.Read(ref _pendingRerun) == 1 && !IsDisposed);
         }
         catch (Exception ex) when (!IsDisposed)
         {
@@ -145,7 +143,6 @@ public sealed class SgEffect : ISignalObserver, IDisposable
             dep.Unsubscribe(this);
     }
 
-    /// <summary>Добавить зависимость (вызывается из EffectSignalObserver).</summary>
     internal void AddDependency(ISgSignal signal)
     {
         if (IsDisposed) return;
@@ -157,17 +154,12 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         }
     }
 
-    /// <summary>
-    /// Вызывается при изменении отслеживаемого сигнала.
-    /// Перезапускает эффект.
-    /// </summary>
     public void OnSignalChanged(ISgSignal signal)
     {
         if (!IsDisposed && !IsRunning)
             Run();
     }
 
-    /// <summary>Подписаться на сигнал вручную.</summary>
     public IDisposable Subscribe(ISgSignal signal)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, nameof(SgEffect));
@@ -180,7 +172,6 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         });
     }
 
-    /// <summary>Подписаться на несколько сигналов вручную.</summary>
     public IDisposable SubscribeAll(params ISgSignal[] signals)
     {
         var disposables = new List<IDisposable>(signals.Length);
@@ -199,53 +190,17 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    // ── Вложенный наблюдатель для scope отслеживания ──────────────────────
-
-    /// <summary>
-    /// Адаптер, связывающий SgReactiveComponentBase.EnterScope() с SgEffect.
-    /// Реализует ISignalObserver для использования как observer в scope.
-    /// </summary>
     private sealed class EffectSignalObserver : ISignalObserver, ISignalTrackingObserver
     {
         private readonly SgEffect _effect;
 
-        public EffectSignalObserver(SgEffect effect) => _effect = effect;
+        public EffectSignalObserver(SgEffect effect)
+            => _effect = effect;
 
-        public void OnSignalChanged(ISgSignal signal) => _effect.OnSignalChanged(signal);
+        public void OnSignalChanged(ISgSignal signal)
+            => _effect.OnSignalChanged(signal);
 
-        public void OnSignalRead(ISgSignal signal) => _effect.AddDependency(signal);
-    }
-}
-
-// ── Вспомогательные типы ──────────────────────────────────────────────────────
-
-/// <summary>Подписка с действием на Dispose.</summary>
-internal sealed class Subscription : IDisposable
-{
-    private Action? _onDispose;
-
-    public Subscription(Action onDispose) => _onDispose = onDispose;
-
-    public void Dispose()
-    {
-        var action = _onDispose;
-        _onDispose = null;
-        action?.Invoke();
-    }
-}
-
-/// <summary>Композитная подписка — dispose всех при dispose.</summary>
-internal sealed class CompositeSubscription : IDisposable
-{
-    private readonly List<IDisposable> _subscriptions;
-
-    public CompositeSubscription(List<IDisposable> subscriptions)
-        => _subscriptions = subscriptions;
-
-    public void Dispose()
-    {
-        foreach (var sub in _subscriptions)
-            sub.Dispose();
-        _subscriptions.Clear();
+        public void OnSignalRead(ISgSignal signal)
+            => _effect.AddDependency(signal);
     }
 }
