@@ -3,15 +3,35 @@
 // ✅ EnqueueComponent/Effect: игнорирует disposed
 // ✅ NotifyComponent: внешний API для сигналов/computed
 // ✅ Nested scope: ExitScope очищает _current
+// ✅ Signal batching: Begin/End/IsBatching/AddDirty — атомарное применение изменений
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
+/// <summary>Внутренний интерфейс для сигналов, поддерживающих батчинг.</summary>
+internal interface ISignalFlushable
+{
+    void FlushIfDirty();
+}
+
 /// <summary>
 /// Батчинг уведомлений компонентов: несколько изменений сигналов за один тик
 /// вызывают только один рендер на компонент.
+///
+/// Также поддерживает батчинг самих сигналов через Begin()/End():
+/// все изменения внутри блока накапливаются и применяются атомарно в End().
+///
+/// Пример:
+/// <code>
+/// using (SignalBatch.Begin())
+/// {
+///     _count.Value++;
+///     _name.Value = "New";
+///     _items.Value = _items.Value.Add(newItem);
+/// } // здесь произойдёт одна нотификация
+/// </code>
 /// </summary>
 internal static class SignalBatch
 {
@@ -19,6 +39,62 @@ internal static class SignalBatch
     [ThreadStatic] private static bool _scheduled;
     [ThreadStatic] private static int _nestCount;
     [ThreadStatic] private static HashSet<object>? _trackedItems;
+
+    // ── Signal batching ───────────────────────────────────────────────────────
+
+    [ThreadStatic] private static int _batchDepth;
+    [ThreadStatic] private static HashSet<ISignalFlushable>? _dirtySignals;
+
+    /// <summary>Находимся ли внутри батча сигналов.</summary>
+    public static bool IsBatching => _batchDepth > 0;
+
+    /// <summary>
+    /// Начать батч сигналов. Все изменения накапливаются до End().
+    /// Возвращает IDisposable для using-синтаксиса.
+    /// </summary>
+    public static IDisposable Begin()
+    {
+        _batchDepth++;
+        return new BatchScope();
+    }
+
+    /// <summary>Завершить батч и применить все накопленные изменения.</summary>
+    public static void End()
+    {
+        if (_batchDepth <= 0)
+            throw new InvalidOperationException("SignalBatch.End() called without Begin()");
+
+        _batchDepth--;
+
+        if (_batchDepth == 0 && _dirtySignals is not null)
+        {
+            var signals = _dirtySignals;
+            _dirtySignals = null;
+            foreach (var signal in signals)
+                signal.FlushIfDirty();
+        }
+    }
+
+    /// <summary>Зарегистрировать сигнал как «грязный» внутри батча.</summary>
+    internal static void AddDirty(ISignalFlushable signal)
+    {
+        _dirtySignals ??= new HashSet<ISignalFlushable>();
+        _dirtySignals.Add(signal);
+    }
+
+    private sealed class BatchScope : IDisposable
+    {
+        private bool _disposed;
+
+        public void Dispose()
+        {
+            if (!_disposed)
+            {
+                _disposed = true;
+                End();
+            }
+        }
+    }
 
     public static void EnqueueComponent(SgComponentBase component)
     {

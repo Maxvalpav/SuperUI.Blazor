@@ -2,12 +2,11 @@
 // ✅ Ограничение частоты рендеров (по FPS)
 // ✅ Автоматическая адаптация под устройство (60fps desktop, 30fps mobile)
 // ✅ Совместим с ComponentSignalTracker
-// ✅ Приоритеты рендеринга (Low, Normal, High, Critical)
+// ✅ Приоритеты рендеринга (Critical, Normal, Idle)
 
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
-using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
 
@@ -26,7 +25,7 @@ public sealed class SgRenderThrottle : IDisposable
     public SgRenderThrottle(
         Func<Task> renderAction,
         int targetFps = 60,
-        SgRenderPriority priority = SgRenderPriority.Normal)
+        RenderPriority priority = RenderPriority.Normal)
     {
         _renderAction = renderAction ?? throw new ArgumentNullException(nameof(renderAction));
 
@@ -36,10 +35,9 @@ public sealed class SgRenderThrottle : IDisposable
             // WASM: можно получить через JS медиа-запрос prefers-reduced-motion
             targetFps = priority switch
             {
-                SgRenderPriority.Critical => 60,
-                SgRenderPriority.High => 60,
-                SgRenderPriority.Normal => 30,
-                SgRenderPriority.Low => 15,
+                RenderPriority.Critical => 60,
+                RenderPriority.Normal => 30,
+                RenderPriority.Idle => 15,
                 _ => 30
             };
         }

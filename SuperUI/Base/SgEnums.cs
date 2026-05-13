@@ -252,7 +252,6 @@ public enum SgRenderMode
     Force,
     Manual
 }
-
 // ── DataGrid Row ─────────────────────────────────────────────────────────────
 
 /// <summary>Тип строки DataGrid.</summary>
@@ -330,11 +329,19 @@ public enum SgTextAlign
     Justify
 }
 
-/// <summary>Приоритет рендеринга.</summary>
-public enum SgRenderPriority
+/// <summary>
+/// Режим обнаружения рендеринга для компонентов.
+/// Используется для адаптации поведения под Static SSR / Interactive.
+/// </summary>
+public enum SgRenderDetectionMode
 {
-    Low,
-    Normal,
-    High,
-    Critical
+    /// <summary>Автоматически определять (по RenderMode cascading parameter).</summary>
+    Auto,
+
+    /// <summary>Принудительный Static SSR (без интерактивности).</summary>
+    StaticSSR,
+
+    /// <summary>Принудительная интерактивность.</summary>
+    Interactive
 }
+

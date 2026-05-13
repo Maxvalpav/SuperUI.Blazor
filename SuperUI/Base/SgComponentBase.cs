@@ -1,15 +1,19 @@
 // SuperUI/Base/SgComponentBase.cs
-// ИСПРАВЛЕНИЯ v2:
-// ✅ BUG-1: ComponentToken - единая точка, SgJsComponentBase использует override
+// ИСПРАВЛЕНИЯ v3:
+// ✅ CS0019 FIX: RenderPriority используется из SuperUI.Base.Reactive
+// ✅ BUG-1: ComponentToken — единая точка, SgJsComponentBase использует override
 // ✅ BUG: ISgComponent явно реализован
-// ✅ PERF-1: AdditionalAttributesFiltered - lock только на Server
+// ✅ PERF-1: AdditionalAttributesFiltered — lock только на Server
 // ✅ UX: ThrowIfDisposed работает и без CallerMemberName
 // ✅ НОВОЕ: SetParametersAsync с ShouldSetParameters virtual hook
 // ✅ НОВОЕ: OnAfterFirstRenderAsync (convenience alias)
+// ✅ НОВОЕ: Blazor United — RenderMode cascading parameter, IsStaticSSR, IsInteractive
+// ✅ НОВОЕ: ComponentRegistry auto-registration
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SuperUI.Base.Diagnostics;
@@ -27,10 +31,39 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     [Inject] protected ILogger<SgComponentBase> Logger { get; set; } = null!;
     [Inject] protected IComponentOptionsService? OptionsService { get; set; }
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
+    [Inject] protected IComponentRegistry? ComponentRegistry { get; set; }
 
     // ── Каскадные параметры ─────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
+
+    /// <summary>
+    /// Текущий режим рендеринга компонента.
+    /// null = Static SSR (нет интерактивности).
+    /// </summary>
+    [CascadingParameter] protected IComponentRenderMode? RenderMode { get; set; }
+
+    /// <summary>
+    /// true — компонент в статическом SSR (нет SignalR/интерактивности).
+    /// В этом режиме события (onclick, onchange) не работают.
+    /// </summary>
+    protected bool IsStaticSSR => RenderMode is null;
+
+    /// <summary>
+    /// true — доступна интерактивность (InteractiveServer/WebAssembly/Auto).
+    /// </summary>
+    protected bool IsInteractive => RenderMode is not null;
+
+    /// <summary>
+    /// Режим InteractiveServer.
+    /// </summary>
+    protected bool IsInteractiveServer => RenderMode is InteractiveServerRenderMode;
+
+    /// <summary>InteractiveWebAssembly режим.</summary>
+    protected bool IsInteractiveWebAssembly => RenderMode is InteractiveWebAssemblyRenderMode;
+
+    /// <summary>InteractiveAuto режим.</summary>
+    protected bool IsInteractiveAuto => RenderMode is InteractiveAutoRenderMode;
 
     // ── Параметры ───────────────────────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
@@ -106,7 +139,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     private volatile int _filteredAttrsCacheGen = -1;
 
     // ── ShouldSetParameters: кэш снимка параметров ───────────────────────────────
-    private Utilities.SgParameterSnapshot<SgComponentBase>? _lastParametersSnapshot;
+    private SgParameterSnapshot<SgComponentBase>? _lastParametersSnapshot;
 
 #if DEBUG
     private readonly ComponentDiagnostics _diagnostics;
@@ -192,14 +225,13 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     /// Возвращает false если параметры структурно не изменились.
     /// Базовая реализация использует SgParameterSnapshot для сравнения.
     /// Переопределите для кастомной логики.
+    /// Примечание: snapshot обновляется в SetParametersAsync, а не здесь.
     /// </summary>
     protected virtual bool ShouldSetParameters(ParameterView parameters)
     {
+        if (!_lastParametersSnapshot.HasValue) return true;
         var current = new SgParameterSnapshot<SgComponentBase>(parameters);
-        if (_lastParametersSnapshot.HasValue && _lastParametersSnapshot.Value.Equals(current))
-            return false;
-        _lastParametersSnapshot = current;
-        return true;
+        return !_lastParametersSnapshot.Value.Equals(current);
     }
 
     // ── RequestRender ───────────────────────────────────────────────────────────
@@ -232,13 +264,18 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         Interlocked.Increment(ref _ariaGeneration);
         Volatile.Write(ref _filteredAttrsCacheGen, -1);
 
-        if (!ShouldSetParameters(parameters))
+        // BUG-FIX: первый вызов (snapshot == null) — всегда обрабатываем,
+        // иначе компонент никогда не получит свои первые параметры.
+        if (_lastParametersSnapshot.HasValue && !ShouldSetParameters(parameters))
         {
 #if DEBUG
             _diagnostics.ParameterChangeCount++;
 #endif
             return;
         }
+
+        // Обновляем snapshot после проверки
+        _lastParametersSnapshot = new SgParameterSnapshot<SgComponentBase>(parameters);
 
         await base.SetParametersAsync(parameters);
     }
@@ -248,6 +285,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     {
         base.OnInitialized();
         LogLifecycle(nameof(OnInitialized));
+        ComponentRegistry?.Register(this);
         foreach (var hook in _hooks) hook.OnInitialized(this);
     }
 

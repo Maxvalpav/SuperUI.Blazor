@@ -1,9 +1,10 @@
 // SuperUI/Base/SgJsComponentBase.cs
-// ИСПРАВЛЕНИЯ v2:
-// ✅ BUG-1: ComponentToken — sealed override, не new
+// ИСПРАВЛЕНИЯ v3:
+// ✅ BUG-FIX: _lifecycleToken замена теперь атомарна (volatile + Interlocked)
+// ✅ BUG-1: ComponentToken — sealed override
 // ✅ НОВОЕ: JS Circuit Breaker (после 5 ошибок — прекращаем звать JS)
 // ✅ НОВОЕ: GetModuleAsync с retry (1 раз при JSException)
-// ✅ НОВОЕ: SafeInvokeVoidAsync 5-arg
+// ✅ НОВОЕ: SafeInvokeVoidAsync — общий метод Core для сокращения WASM-размера
 // ✅ FIX: _moduleLockDisposed выставляется ДО Dispose
 
 using System.Diagnostics;
@@ -21,38 +22,45 @@ public abstract class SgJsComponentBase : SgComponentBase
     [Inject] protected IPrerenderingDetector PrerendingDetector { get; set; } = null!;
 
     // ── JS Module ───────────────────────────────────────────────────────────────
+
     private readonly SemaphoreSlim _moduleLock = new(1, 1);
     private volatile bool _moduleLockDisposed;
     private IJSObjectReference? _module;
 
-    // JS Circuit Breaker: после _jsErrorThreshold ошибок — прекращаем попытки
+    // JS Circuit Breaker
     private int _jsConsecutiveErrors;
     private const int JsCircuitBreakerThreshold = 5;
 
     protected virtual string? JsModulePath => null;
-
     protected virtual TimeSpan JsModuleLoadTimeout =>
-        OperatingSystem.IsBrowser()
-            ? TimeSpan.FromSeconds(10)
-            : TimeSpan.FromSeconds(30);
+        OperatingSystem.IsBrowser() ? TimeSpan.FromSeconds(10) : TimeSpan.FromSeconds(30);
 
     protected bool HasJsModule => _module is not null;
 
-    // ── BUG-1 FIX: sealed override (не new) ─────────────────────────────────────
-    private LifecycleToken _lifecycleToken = new();
-    protected internal sealed override CancellationToken ComponentToken => _lifecycleToken.Token;
+    // ── Lifecycle Token (исправленная версия) ───────────────────────────────────
+
+    private volatile LifecycleToken _lifecycleToken = new();
+    protected internal sealed override CancellationToken ComponentToken =>
+        _lifecycleToken.Token;
 
     // ── DotNetRef ───────────────────────────────────────────────────────────────
+
     private DotNetObjectReference<SgJsComponentBase>? _dotNetRef;
     protected DotNetObjectReference<SgJsComponentBase> DotNetRef
     {
         get
         {
             var existing = Volatile.Read(ref _dotNetRef);
-            if (existing is not null) return existing;
-            var newRef = DotNetObjectReference.Create<SgJsComponentBase>(this);
+            if (existing is not null)
+                return existing;
+
+            var newRef = DotNetObjectReference.Create(this);
             var prior = Interlocked.CompareExchange(ref _dotNetRef, newRef, null);
-            if (prior is not null) { newRef.Dispose(); return prior; }
+            if (prior is not null)
+            {
+                newRef.Dispose();
+                return prior;
+            }
             return newRef;
         }
     }
@@ -60,31 +68,41 @@ public abstract class SgJsComponentBase : SgComponentBase
     protected bool IsPrerendering => PrerendingDetector.IsPrerendering;
 
     // ── Lifecycle ───────────────────────────────────────────────────────────────
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        var old = Interlocked.Exchange(ref _lifecycleToken, new LifecycleToken());
-        old.Cancel();
-        old.Dispose();
+
+        // Атомарная замена токена: создаём новый, меняем, отменяем старый
+        var newToken = new LifecycleToken();
+        var oldToken = Interlocked.Exchange(ref _lifecycleToken, newToken);
+
+        // Отменяем старый токен ПОСЛЕ замены
+        oldToken.Cancel();
+        oldToken.Dispose();
+
         var oldModule = Interlocked.Exchange(ref _module, null);
-        if (oldModule is not null) _ = TryDisposeModuleAsync(oldModule);
-        _jsConsecutiveErrors = 0; // сброс circuit breaker
+        if (oldModule is not null)
+            _ = TryDisposeModuleAsync(oldModule);
+
+        _jsConsecutiveErrors = 0;
     }
 
     // ── GetModuleAsync с Circuit Breaker ────────────────────────────────────────
+
     protected async ValueTask<IJSObjectReference?> GetModuleAsync()
     {
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return null;
 
-        // Circuit Breaker: прекращаем попытки после N ошибок подряд
         if (Volatile.Read(ref _jsConsecutiveErrors) >= JsCircuitBreakerThreshold)
         {
             Logger.LogDebug("[{Id}] JS circuit breaker open, skipping module load", ComponentId);
             return null;
         }
 
-        if (_module is not null) return _module;
+        if (_module is not null)
+            return _module;
 
         using var timeoutCts = new CancellationTokenSource(JsModuleLoadTimeout);
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
@@ -92,6 +110,7 @@ public abstract class SgJsComponentBase : SgComponentBase
 
         var modulePath = JsModulePath ?? "_content/SuperUI/superui.js";
         bool semaphoreAcquired = false;
+
         try
         {
             await _moduleLock.WaitAsync(linkedCts.Token).ConfigureAwait(false);
@@ -103,7 +122,7 @@ public abstract class SgJsComponentBase : SgComponentBase
             _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import", ComponentToken, modulePath);
 
-            Interlocked.Exchange(ref _jsConsecutiveErrors, 0); // сброс при успехе
+            Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
             return _module;
         }
         catch (TaskCanceledException)
@@ -120,10 +139,8 @@ public abstract class SgJsComponentBase : SgComponentBase
         {
             Interlocked.Increment(ref _jsConsecutiveErrors);
             Logger.LogError(ex, "[{Id}] JS module load failed ({Errors}/{Max}): {Path}",
-                ComponentId,
-                Volatile.Read(ref _jsConsecutiveErrors),
-                JsCircuitBreakerThreshold,
-                modulePath);
+                ComponentId, Volatile.Read(ref _jsConsecutiveErrors),
+                JsCircuitBreakerThreshold, modulePath);
             return null;
         }
         finally
@@ -136,15 +153,22 @@ public abstract class SgJsComponentBase : SgComponentBase
         }
     }
 
-    // ── SafeInvokeVoidAsync — 0..5 arg overloads ───────────────────────────────
-    protected async ValueTask SafeInvokeVoidAsync(string identifier)
+    // ── SafeInvokeVoidAsync ─────────────────────────────────────────────────────
+
+    // Общий метод для сокращения дублирования кода (критично для WASM размера)
+    private async ValueTask SafeInvokeVoidCoreAsync(
+        string identifier,
+        Func<IJSObjectReference?, CancellationToken, ValueTask> invoker)
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
+            return;
+
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return;
-            await module.InvokeVoidAsync(identifier, ComponentToken);
+
+            await invoker(module, ComponentToken);
             Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
         }
         catch (TaskCanceledException) { }
@@ -154,144 +178,78 @@ public abstract class SgJsComponentBase : SgComponentBase
         catch (Exception ex)
         {
             Interlocked.Increment(ref _jsConsecutiveErrors);
-            Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed", ComponentId, identifier);
+            Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed",
+                ComponentId, identifier);
         }
     }
 
-    protected async ValueTask SafeInvokeVoidAsync<T1>(string identifier, T1 arg1)
-    {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
-        try
-        {
-            var module = await GetModuleAsync();
-            if (module is null) return;
-            await module.InvokeVoidAsync(identifier, ComponentToken, arg1);
-            Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
-        }
-        catch (TaskCanceledException) { }
-        catch (OperationCanceledException) { }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex)
-        { Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed", ComponentId, identifier); }
-    }
+    protected ValueTask SafeInvokeVoidAsync(string identifier) =>
+        SafeInvokeVoidCoreAsync(identifier,
+            (module, ct) => module!.InvokeVoidAsync(identifier, ct));
 
-    protected async ValueTask SafeInvokeVoidAsync<T1, T2>(string identifier, T1 arg1, T2 arg2)
-    {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
-        try
-        {
-            var module = await GetModuleAsync();
-            if (module is null) return;
-            await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2);
-            Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
-        }
-        catch (TaskCanceledException) { }
-        catch (OperationCanceledException) { }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex)
-        { Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed", ComponentId, identifier); }
-    }
+    protected ValueTask SafeInvokeVoidAsync<T1>(string identifier, T1 arg1) =>
+        SafeInvokeVoidCoreAsync(identifier,
+            (module, ct) => module!.InvokeVoidAsync(identifier, ct, arg1));
 
-    protected async ValueTask SafeInvokeVoidAsync<T1, T2, T3>(
-        string identifier, T1 arg1, T2 arg2, T3 arg3)
-    {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
-        try
-        {
-            var module = await GetModuleAsync();
-            if (module is null) return;
-            await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2, arg3);
-            Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
-        }
-        catch (TaskCanceledException) { }
-        catch (OperationCanceledException) { }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex)
-        { Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed", ComponentId, identifier); }
-    }
+    protected ValueTask SafeInvokeVoidAsync<T1, T2>(
+        string identifier, T1 arg1, T2 arg2) =>
+        SafeInvokeVoidCoreAsync(identifier,
+            (module, ct) => module!.InvokeVoidAsync(identifier, ct, arg1, arg2));
 
-    protected async ValueTask SafeInvokeVoidAsync<T1, T2, T3, T4>(
-        string identifier, T1 arg1, T2 arg2, T3 arg3, T4 arg4)
-    {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
-        try
-        {
-            var module = await GetModuleAsync();
-            if (module is null) return;
-            await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2, arg3, arg4);
-            Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
-        }
-        catch (TaskCanceledException) { }
-        catch (OperationCanceledException) { }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex)
-        { Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed", ComponentId, identifier); }
-    }
+    protected ValueTask SafeInvokeVoidAsync<T1, T2, T3>(
+        string identifier, T1 arg1, T2 arg2, T3 arg3) =>
+        SafeInvokeVoidCoreAsync(identifier,
+            (module, ct) => module!.InvokeVoidAsync(identifier, ct, arg1, arg2, arg3));
 
-    protected async ValueTask SafeInvokeVoidAsync<T1, T2, T3, T4, T5>(
-        string identifier, T1 arg1, T2 arg2, T3 arg3, T4 arg4, T5 arg5)
-    {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
-        try
-        {
-            var module = await GetModuleAsync();
-            if (module is null) return;
-            await module.InvokeVoidAsync(identifier, ComponentToken, arg1, arg2, arg3, arg4, arg5);
-            Interlocked.Exchange(ref _jsConsecutiveErrors, 0);
-        }
-        catch (TaskCanceledException) { }
-        catch (OperationCanceledException) { }
-        catch (JSDisconnectedException) { }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex)
-        { Logger.LogError(ex, "[{ComponentId}] JS void '{Identifier}' failed", ComponentId, identifier); }
-    }
+    protected ValueTask SafeInvokeVoidAsync<T1, T2, T3, T4>(
+        string identifier, T1 arg1, T2 arg2, T3 arg3, T4 arg4) =>
+        SafeInvokeVoidCoreAsync(identifier,
+            (module, ct) => module!.InvokeVoidAsync(identifier, ct, arg1, arg2, arg3, arg4));
+
+    protected ValueTask SafeInvokeVoidAsync<T1, T2, T3, T4, T5>(
+        string identifier, T1 arg1, T2 arg2, T3 arg3, T4 arg4, T5 arg5) =>
+        SafeInvokeVoidCoreAsync(identifier,
+            (module, ct) => module!.InvokeVoidAsync(identifier, ct, arg1, arg2, arg3, arg4, arg5));
 
     // ── SafeInvokeAsync ─────────────────────────────────────────────────────────
+
     protected async ValueTask<TResult> SafeInvokeAsync<TResult>(string identifier)
     {
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return default!;
+
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return default!;
             return await module.InvokeAsync<TResult>(identifier, ComponentToken);
         }
-        catch (TaskCanceledException) { return default!; }
-        catch (OperationCanceledException) { return default!; }
-        catch (JSDisconnectedException) { return default!; }
-        catch (ObjectDisposedException) { return default!; }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Interlocked.Increment(ref _jsConsecutiveErrors);
-            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed", ComponentId, identifier);
+            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed",
+                ComponentId, identifier);
             return default!;
         }
     }
 
-    protected async ValueTask<TResult> SafeInvokeAsync<TResult, T1>(string identifier, T1 arg1)
+    protected async ValueTask<TResult> SafeInvokeAsync<TResult, T1>(
+        string identifier, T1 arg1)
     {
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return default!;
+
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return default!;
             return await module.InvokeAsync<TResult>(identifier, ComponentToken, arg1);
         }
-        catch (TaskCanceledException) { return default!; }
-        catch (OperationCanceledException) { return default!; }
-        catch (JSDisconnectedException) { return default!; }
-        catch (ObjectDisposedException) { return default!; }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Interlocked.Increment(ref _jsConsecutiveErrors);
-            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed", ComponentId, identifier);
+            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed",
+                ComponentId, identifier);
             return default!;
         }
     }
@@ -301,20 +259,18 @@ public abstract class SgJsComponentBase : SgComponentBase
     {
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return default!;
+
         try
         {
             var module = await GetModuleAsync();
             if (module is null) return default!;
             return await module.InvokeAsync<TResult>(identifier, ComponentToken, arg1, arg2);
         }
-        catch (TaskCanceledException) { return default!; }
-        catch (OperationCanceledException) { return default!; }
-        catch (JSDisconnectedException) { return default!; }
-        catch (ObjectDisposedException) { return default!; }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Interlocked.Increment(ref _jsConsecutiveErrors);
-            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed", ComponentId, identifier);
+            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed",
+                ComponentId, identifier);
             return default!;
         }
     }
@@ -324,6 +280,7 @@ public abstract class SgJsComponentBase : SgComponentBase
     {
         if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
             return fallback;
+
         try
         {
             var module = await GetModuleAsync();
@@ -331,22 +288,25 @@ public abstract class SgJsComponentBase : SgComponentBase
             var result = await module.InvokeAsync<TResult>(identifier, ComponentToken, args);
             return result is null ? fallback : result;
         }
-        catch (TaskCanceledException) { return fallback; }
-        catch (OperationCanceledException) { return fallback; }
-        catch (JSDisconnectedException) { return fallback; }
-        catch (ObjectDisposedException) { return fallback; }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Interlocked.Increment(ref _jsConsecutiveErrors);
-            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed", ComponentId, identifier);
+            Logger.LogError(ex, "[{ComponentId}] JS '{Identifier}' failed",
+                ComponentId, identifier);
             return fallback;
         }
     }
 
-    protected async ValueTask SafeGlobalInvokeVoidAsync(string identifier, params object?[] args)
+    protected async ValueTask SafeGlobalInvokeVoidAsync(
+        string identifier, params object?[] args)
     {
-        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested) return;
-        try { await JS.InvokeVoidAsync(identifier, ComponentToken, args); }
+        if (IsPrerendering || IsDisposed || ComponentToken.IsCancellationRequested)
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync(identifier, ComponentToken, args);
+        }
         catch (TaskCanceledException) { }
         catch (OperationCanceledException) { }
         catch (JSDisconnectedException) { }
@@ -361,22 +321,22 @@ public abstract class SgJsComponentBase : SgComponentBase
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────
+
     private Task TryDisposeModuleAsync(IJSObjectReference module)
     {
         var vt = module.DisposeAsync();
-        if (vt.IsCompletedSuccessfully) return Task.CompletedTask;
-        return vt.AsTask().ContinueWith(
-            t =>
-            {
-                if (t.IsFaulted)
-                    Logger.LogDebug(t.Exception, "[{Id}] JS module dispose error", ComponentId);
-            },
-            CancellationToken.None,
-            TaskContinuationOptions.ExecuteSynchronously,
-            TaskScheduler.Current);
+        if (vt.IsCompletedSuccessfully)
+            return Task.CompletedTask;
+
+        return vt.AsTask().ContinueWith(t =>
+        {
+            if (t.IsFaulted)
+                Logger.LogDebug(t.Exception, "[{Id}] JS module dispose error", ComponentId);
+        }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Current);
     }
 
     // ── Dispose ─────────────────────────────────────────────────────────────────
+
     protected override async ValueTask DisposeComponentAsync()
     {
         _lifecycleToken.Cancel();
@@ -384,12 +344,13 @@ public abstract class SgJsComponentBase : SgComponentBase
         var module = Interlocked.Exchange(ref _module, null);
         if (module is not null)
         {
-            try { await module.DisposeAsync(); } catch { }
+            try { await module.DisposeAsync(); }
+            catch { }
         }
 
-        // FIX: флаг ПЕРЕД Dispose семафора
         _moduleLockDisposed = true;
         Thread.MemoryBarrier();
+
         try { _moduleLock.Dispose(); }
         catch (ObjectDisposedException) { }
 

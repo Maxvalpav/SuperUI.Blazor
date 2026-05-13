@@ -1,17 +1,17 @@
 // SuperUI/Base/Reactive/SgSignal.cs
-// ИСПРАВЛЕНИЯ v2:
-// ✅ PERF-4: ArrayPool<WeakReference> для snapshot — zero-allocation уведомление
-// ✅ BUG-10 prevention: SubscribeObserver проверяет дубли (HashSet уже это делает)
-// ✅ НОВОЕ: Subscribe(Action<T>) — подписка без компонента (для внешних наблюдателей)
-// ✅ НОВОЕ: Derived<TResult>(Func<T,TResult>) — создать производный сигнал
+// ИСПРАВЛЕНИЯ v3:
+// ✅ PERF-4: ArrayPool для snapshot — zero-allocation уведомление
+// ✅ BUG-10 prevention: SubscribeObserver проверяет дубли
+// ✅ НОВОЕ: Subscribe(Action<T>) — подписка без компонента
+// ✅ НОВОЕ: Derived(Func<T, TDerived>) — создать производный сигнал
+// ✅ НОВОЕ: SignalBatch integration — отложенная нотификация при Batch()
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
-using SuperUI.Base;
 
 namespace SuperUI.Base.Reactive;
 
-public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
+public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlushable
 {
     private readonly HashSet<ISignalObserver> _untypedObservers = new();
 
@@ -19,6 +19,7 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
     {
         lock (_lock) _untypedObservers.Add(observer);
     }
+
     private T _value;
     private readonly IEqualityComparer<T> _comparer;
     private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
@@ -26,6 +27,7 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
     private readonly List<Action<T>> _callbacks = new();
     private readonly object _lock = new();
     private int _disposedInt;
+    private bool _dirty;
 
     public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
     {
@@ -36,49 +38,98 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
     public T Value
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        get { SignalTracker.Track(this); return _value; }
+        get
+        {
+            SignalTracker.Track(this);
+            return _value;
+        }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set => Set(value);
     }
 
-    public T Peek() { lock (_lock) return _value; }
+    public T Peek()
+    {
+        lock (_lock) return _value;
+    }
 
     public void Set(T newValue)
     {
         if (Volatile.Read(ref _disposedInt) == 1) return;
+
         bool changed;
         lock (_lock)
         {
             changed = !_comparer.Equals(_value, newValue);
-            if (changed) _value = newValue;
+            if (changed)
+            {
+                _value = newValue;
+
+                // Если внутри SignalBatch — откладываем нотификацию
+                if (SignalBatch.IsBatching)
+                {
+                    _dirty = true;
+                    SignalBatch.AddDirty(this);
+                    return;
+                }
+            }
         }
-        if (changed) NotifySubscribers();
+
+        if (changed)
+            NotifySubscribers();
     }
 
     public void Update(Func<T, T> updater)
     {
         ArgumentNullException.ThrowIfNull(updater);
         if (Volatile.Read(ref _disposedInt) == 1) return;
+
         T newValue;
         bool changed;
         lock (_lock)
         {
             newValue = updater(_value);
             changed = !_comparer.Equals(_value, newValue);
-            if (changed) _value = newValue;
+            if (changed)
+            {
+                _value = newValue;
+                if (SignalBatch.IsBatching)
+                {
+                    _dirty = true;
+                    SignalBatch.AddDirty(this);
+                    return;
+                }
+            }
         }
-        if (changed) NotifySubscribers();
+
+        if (changed)
+            NotifySubscribers();
     }
 
-    public void Reset(T value) { lock (_lock) { _value = value; } }
+    /// <summary>Сбросить значение без нотификации.</summary>
+    public void Reset(T value)
+    {
+        lock (_lock) { _value = value; }
+    }
 
+    /// <summary>Принудительно уведомить подписчиков (даже без изменения).</summary>
     public void ForceNotify()
     {
         if (Volatile.Read(ref _disposedInt) == 1) return;
         NotifySubscribers();
     }
 
-    // НОВОЕ: Subscribe с callback (без компонента)
+    // Вызывается из SignalBatch.End()
+    void ISignalFlushable.FlushIfDirty()
+    {
+        if (_dirty)
+        {
+            _dirty = false;
+            NotifySubscribers();
+        }
+    }
+
+    // ── Подписки ────────────────────────────────────────────────────────────────
+
     public IDisposable Subscribe(Action<T> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
@@ -86,18 +137,16 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
         return new CallbackDisposable(this, callback);
     }
 
-    // НОВОЕ: Derived signal
-    public SgSignal<TResult> Derived<TResult>(Func<T, TResult> selector)
+    public SgSignal<TDerived> Derived<TDerived>(Func<T, TDerived> selector)
     {
         ArgumentNullException.ThrowIfNull(selector);
-        var derived = new SgSignal<TResult>(selector(Peek()));
+        var derived = new SgSignal<TDerived>(selector(Peek()));
         Subscribe(value => derived.Set(selector(value)));
         return derived;
     }
 
     public IObservable<T> AsObservable() => new SignalObservable(this);
 
-    // ── Internal API ────────────────────────────────────────────────────────────
     internal void Subscribe(SgComponentBase component)
     {
         lock (_lock) _subscribers.Add(new WeakReference<SgComponentBase>(component));
@@ -105,7 +154,12 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
 
     internal void SubscribeObserver(ISignalObserver<T> observer)
     {
-        lock (_lock) _observers.Add(observer);
+        lock (_lock)
+        {
+            // BUG-10 prevention: проверяем дубли
+            if (_observers.Contains(observer)) return;
+            _observers.Add(observer);
+        }
     }
 
     internal void UnsubscribeObserver(ISignalObserver<T> observer)
@@ -124,7 +178,8 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
             _subscribers.RemoveWhere(wr => !wr.TryGetTarget(out var c) || c.IsDisposed);
     }
 
-    // ── PERF-4: ArrayPool snapshot ──────────────────────────────────────────────
+    // ── Нотификация (ArrayPool для zero-allocation) ─────────────────────────────
+
     private void NotifySubscribers()
     {
         WeakReference<SgComponentBase>[]? rented = null;
@@ -134,7 +189,8 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
 
         lock (_lock)
         {
-            if (_subscribers.Count == 0 && _observers.Count == 0 && _callbacks.Count == 0)
+            if (_subscribers.Count == 0 && _observers.Count == 0 &&
+                _callbacks.Count == 0 && _untypedObservers.Count == 0)
                 return;
 
             if (_subscribers.Count > 0)
@@ -143,8 +199,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
                 foreach (var r in _subscribers)
                     rented[subCount++] = r;
             }
+
             if (_observers.Count > 0)
                 observerSnapshot = _observers.ToArray();
+
             if (_callbacks.Count > 0)
                 callbackSnapshot = _callbacks.ToArray();
         }
@@ -158,11 +216,20 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
             {
                 for (int i = 0; i < subCount; i++)
                 {
-                    var wr = rented[i];
-                    if (wr.TryGetTarget(out var comp) && !comp.IsDisposed)
-                        SignalBatch.NotifyComponent(comp);
-                    else
-                        (dead ??= new()).Add(wr);
+                    if (!rented[i].TryGetTarget(out var component) || component.IsDisposed)
+                    {
+                        dead ??= [];
+                        dead.Add(rented[i]);
+                        continue;
+                    }
+
+                    try { component.RequestRender(); }
+                    catch (ObjectDisposedException) { dead ??= []; dead.Add(rented[i]); }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SgSignal] Subscriber error: {ex.Message}");
+                    }
                 }
             }
 
@@ -171,7 +238,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
                 {
                     try { obs.OnSignalChanged(); }
                     catch (Exception ex)
-                    { System.Diagnostics.Debug.WriteLine($"[SgSignal<{typeof(T).Name}>] Observer error: {ex.Message}"); }
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SgSignal] Observer error: {ex.Message}");
+                    }
                 }
 
             // Untyped observers (computed, effects)
@@ -181,12 +251,16 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
                 if (_untypedObservers.Count > 0)
                     untypedSnapshot = _untypedObservers.ToArray();
             }
+
             if (untypedSnapshot is not null)
                 foreach (var obs in untypedSnapshot)
                 {
                     try { obs.OnSignalChanged(); }
                     catch (Exception ex)
-                    { System.Diagnostics.Debug.WriteLine($"[SgSignal] Untyped observer error: {ex.Message}"); }
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SgSignal] Untyped observer error: {ex.Message}");
+                    }
                 }
 
             if (callbackSnapshot is not null)
@@ -194,7 +268,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
                 {
                     try { cb(currentValue); }
                     catch (Exception ex)
-                    { System.Diagnostics.Debug.WriteLine($"[SgSignal] Callback error: {ex.Message}"); }
+                    {
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[SgSignal] Callback error: {ex.Message}");
+                    }
                 }
         }
         finally
@@ -212,6 +289,7 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
     }
 
     // ── IDisposable ─────────────────────────────────────────────────────────────
+
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
@@ -220,14 +298,15 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
             _subscribers.Clear();
             _observers.Clear();
             _callbacks.Clear();
+            _untypedObservers.Clear();
         }
     }
 
-    // ── Операторы ───────────────────────────────────────────────────────────────
     public static implicit operator T(SgSignal<T> signal) => signal.Value;
     public override string ToString() => $"SgSignal<{typeof(T).Name}>({_value})";
 
     // ── Вспомогательные типы ────────────────────────────────────────────────────
+
     private sealed class CallbackDisposable : IDisposable
     {
         private readonly SgSignal<T> _signal;
@@ -235,7 +314,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
         private int _disposed;
 
         public CallbackDisposable(SgSignal<T> signal, Action<T> callback)
-        { _signal = signal; _callback = callback; }
+        {
+            _signal = signal;
+            _callback = callback;
+        }
 
         public void Dispose()
         {
@@ -254,8 +336,7 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
             ArgumentNullException.ThrowIfNull(observer);
             var adapter = new ObserverAdapter(observer, _signal);
             _signal.SubscribeObserver(adapter);
-            try { observer.OnNext(_signal.Peek()); }
-            catch { }
+            try { observer.OnNext(_signal.Peek()); } catch { }
             return adapter;
         }
     }
@@ -267,7 +348,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable
         private int _disposed;
 
         public ObserverAdapter(IObserver<T> observer, SgSignal<T> signal)
-        { _observer = observer; _signal = signal; }
+        {
+            _observer = observer;
+            _signal = signal;
+        }
 
         public void OnSignalChanged()
         {

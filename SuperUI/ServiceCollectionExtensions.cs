@@ -89,6 +89,28 @@ public static class ServiceCollectionExtensions
         // ✅ FIX CS0311: SgNotificationService реализует ISgNotificationService
         services.AddScoped<ISgNotificationService, SgNotificationService>();
 
+        // ── Component Registry ───────────────────────────────────────────────────
+        services.AddScoped<IComponentRegistry, ComponentRegistry>();
+
+        // ── Component Factory ────────────────────────────────────────────────────
+        services.AddScoped<IComponentFactory, ComponentFactory>();
+
+        // ── WASM Crypto Optimizer ────────────────────────────────────────────────
+        services.AddScoped<ICryptoOptimizer, WasmCryptoOptimizer>();
+
+        // ── Circuit Awareness ─────────────────────────────────────────────────────
+        // На WASM — always-connected заглушка.
+        // На Server — переопределите через AddScoped<ICircuitAwareness, ServerCircuitAwareness>()
+        services.TryAddScoped<ICircuitAwareness, WasmCircuitAwareness>();
+
+        // ── Render Budget Service ─────────────────────────────────────────────────
+        // AdaptiveRenderBudgetService: мониторит CPU на Server и адаптирует бюджет.
+        // На WASM работает как обычный RenderBudgetService без CPU мониторинга.
+        services.TryAddScoped<IRenderBudgetService, AdaptiveRenderBudgetService>();
+
+        // ── Form Name Generator (Static SSR) ─────────────────────────────────────
+        services.AddScoped<IFormNameGenerator, DefaultFormNameGenerator>();
+
         // ── Memory Pressure Monitor (Blazor Server only) ─────────────────────────
         if (!OperatingSystem.IsBrowser())
         {

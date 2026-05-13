@@ -1,297 +1,192 @@
 // SuperUI/Base/SgFormBase.cs
-// ИСПРАВЛЕНИЯ v2:
-// ✅ BUG-5: try/catch в OnParametersSet при ConvertBack
-// ✅ UX-2: поддержка IAsyncSgConverter<TValue>
-// ✅ НОВОЕ: FormFieldState enum — None/Dirty/Valid/Invalid
-// ✅ НОВОЕ: ResetField() — сброс поля к начальному значению
+// Улучшенная версия с поддержкой Static SSR Forms (.NET 8+)
+//
+// ИСПОЛНЯЮЩИЙ ФАЙЛ:
+//   SgFormBase<TModel> — контейнер-обёртка для формы.
+//   SgFormFieldBase<TValue> — отдельное поле формы (см. SgFormFieldBase.cs).
+//
+// Static SSR:
+//   - EffectiveFormName для HTML аттрибута name на <form>
+//   - IFormNameGenerator — генерация уникальных имён для antiforgery
+//   - IsStaticSSR определяется через RenderMode (из SgComponentBase)
+//
+// Interactive:
+//   - OnValidSubmit / OnInvalidSubmit
+//   - EditContext валидация
+//   - LoadingTemplate
 
-using System.Linq.Expressions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Logging;
-using SuperUI.Base.Converters;
+using SuperUI.Base.Services;
 
 namespace SuperUI.Base;
 
-/// <summary>Состояние поля формы.</summary>
-public enum FormFieldState { None, Dirty, Valid, Invalid }
-
-/// <summary>Режим запуска валидации поля формы.</summary>
-public enum SgFormValidationMode { OnChange, OnBlur, OnSubmit }
-
-public abstract class SgFormBase<TValue> : SgInteractiveBase
+/// <summary>
+/// Базовый класс для компонентов формы SuperUI.
+/// Поддерживает как интерактивные компоненты, так и Static SSR (.NET 8+).
+/// </summary>
+/// <typeparam name="TModel">Тип модели формы (должен иметь конструктор без параметров).</typeparam>
+public abstract class SgFormBase<TModel> : SgInteractiveBase where TModel : class, new()
 {
-    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+    [Inject] protected IFormNameGenerator? FormNameGenerator { get; set; }
 
-    [Parameter] public TValue? Value { get; set; }
-    [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
-    [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; }
-    [Parameter] public ISgConverter<TValue>? Converter { get; set; }
-    [Parameter] public IAsyncSgConverter<TValue>? AsyncConverter { get; set; }
-    [Parameter] public string? Label { get; set; }
-    [Parameter] public string? Hint { get; set; }
-    [Parameter] public string? ErrorText { get; set; }
-    [Parameter] public bool Required { get; set; }
-    [Parameter] public string? Placeholder { get; set; }
-    [Parameter] public int? MaxLength { get; set; }
-    [Parameter] public int? MinLength { get; set; }
-    [Parameter] public SgFormValidationMode ValidationMode { get; set; } = SgFormValidationMode.OnChange;
+    // ── Параметры ─────────────────────────────────────────────────────────
 
-    private EditContext? _editContext;
-    private FieldIdentifier _fieldIdentifier;
-    private ValidationMessageStore? _messageStore;
-    private ISgConverter<TValue>? _effectiveConverter;
-    private ISgConverter<TValue>? _previousConverter;
-    private bool _editContextAttached;
-    private TValue? _lastSyncedValue;
-    private bool _isSettingValue;
+    [Parameter] public TModel? Model { get; set; }
+    [Parameter] public EventCallback<TModel> ModelChanged { get; set; }
+    [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
+    [Parameter] public EventCallback OnInvalidSubmit { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? LoadingTemplate { get; set; }
 
-    // НОВОЕ: состояние поля
-    protected FormFieldState FieldState { get; private set; } = FormFieldState.None;
+    /// <summary>
+    /// Имя формы для Static SSR (используется для antiforgery и routing).
+    /// </summary>
+    [Parameter] public string? FormName { get; set; }
 
-    protected EditContext? EditContext => _editContext;
-    protected FieldIdentifier FieldId => _fieldIdentifier;
+    // ── Состояние ──────────────────────────────────────────────────────────
 
-    protected bool HasError
-    {
-        get
-        {
-            if (!string.IsNullOrEmpty(ErrorText)) return true;
-            if (!string.IsNullOrEmpty(ConvertError)) return true;
-            if (_editContext?.GetValidationMessages(_fieldIdentifier).Any() == true) return true;
-            return false;
-        }
-    }
+    protected EditContext? _editContext;
+    protected bool _isSubmitting;
+    protected bool _isValid;
+    protected int _submitCount;
+    private string? _generatedFormName;
 
-    protected IEnumerable<string> ValidationMessages =>
-        _editContext?.GetValidationMessages(_fieldIdentifier) ??
-        (ErrorText != null ? [ErrorText] : Enumerable.Empty<string>());
+    protected string EffectiveFormName =>
+        FormName ?? _generatedFormName ?? $"sg-form-{ComponentId}";
 
-    protected string? ValidationCssClass => _editContext?.FieldCssClass(_fieldIdentifier);
-
-    protected ISgConverter<TValue> EffectiveConverter
-    {
-        get
-        {
-            if (Converter is not null) return Converter;
-            if (_effectiveConverter is not null) return _effectiveConverter;
-            _effectiveConverter = SgConverterFactory.Get<TValue>() ??
-                throw new InvalidOperationException(
-                    $"Конвертер для '{typeof(TValue).FullName}' не найден. " +
-                    $"Используйте Converter='...' или SgConverterFactory.Register<{typeof(TValue).Name}>().");
-            return _effectiveConverter;
-        }
-    }
-
-    protected string? CurrentText { get; private set; }
-    protected string? ConvertError { get; private set; }
-
-    // НОВОЕ: начальное значение для Reset
-    private TValue? _initialValue;
+    // ── Lifecycle ──────────────────────────────────────────────────────────
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        _initialValue = Value;
+        _generatedFormName = FormNameGenerator?.GenerateFormName();
+
+        Model ??= new TModel();
+        _editContext = new EditContext(Model);
+        _editContext.OnValidationStateChanged += OnValidationStateChanged;
     }
 
-    // ── Методы изменения значения ───────────────────────────────────────────────
-    protected async Task SetTextAsync(string? text)
+    protected override async Task OnParametersSetAsync()
     {
-        CurrentText = text;
-        FieldState = FormFieldState.Dirty;
+        await base.OnParametersSetAsync();
 
-        if (AsyncConverter is not null)
+        if (Model is not null && _editContext?.Model != Model)
         {
-            var (success, value, error) = await AsyncConverter.TryConvertAsync(text, ComponentToken);
-            if (success)
+            // Model изменился извне — пересоздаём EditContext
+            if (_editContext is not null)
+                _editContext.OnValidationStateChanged -= OnValidationStateChanged;
+
+            _editContext = new EditContext(Model);
+            _editContext.OnValidationStateChanged += OnValidationStateChanged;
+        }
+    }
+
+    // ── Submit ─────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Обработчик отправки формы.
+    /// В Static SSR: вызывается через form submit.
+    /// В Interactive: вызывается через OnValidSubmit callback.
+    /// </summary>
+    protected async Task HandleSubmitAsync()
+    {
+        if (IsDisposed || _editContext is null || IsEffectivelyDisabled)
+            return;
+
+        _isSubmitting = true;
+        _submitCount++;
+
+        try
+        {
+            var isValid = _editContext.Validate();
+            _isValid = isValid;
+
+            if (isValid)
             {
-                ConvertError = null;
-                await SetValueAsync(value);
+                await OnValidSubmit.InvokeAsync(Model!);
+                await OnFormValidSubmitAsync();
             }
             else
             {
-                ConvertError = error;
-                FieldState = FormFieldState.Invalid;
-                _editContext?.NotifyFieldChanged(_fieldIdentifier);
-                await InvokeAsync(StateHasChanged);
+                await OnInvalidSubmit.InvokeAsync();
+                await OnFormInvalidSubmitAsync();
             }
         }
-        else if (EffectiveConverter.TryConvert(text, out var val, out var err))
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
         {
-            ConvertError = null;
-            await SetValueAsync(val);
+            Logger.LogError(ex, "[{Id}] Form submit error", ComponentId);
         }
-        else
+        finally
         {
-            ConvertError = err;
-            FieldState = FormFieldState.Invalid;
-            _editContext?.NotifyFieldChanged(_fieldIdentifier);
+            _isSubmitting = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    protected async Task SetValueAsync(TValue? value)
-    {
-        if (_isSettingValue) return;
-        if (ValuesEqual(value, Value)) return;
-        _isSettingValue = true;
-        try
-        {
-            Value = value;
-            _lastSyncedValue = value;
-            // BUG-5 FIX: try/catch при ConvertBack
-            try
-            {
-                CurrentText = AsyncConverter is not null
-                    ? await AsyncConverter.ConvertBackAsync(value, ComponentToken)
-                    : EffectiveConverter.ConvertBack(value);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "[{Id}] ConvertBack failed for value {Val}", ComponentId, value);
-                CurrentText = value?.ToString();
-            }
-            ConvertError = null;
-            FieldState = HasError ? FormFieldState.Invalid : FormFieldState.Valid;
-            _editContext?.NotifyFieldChanged(_fieldIdentifier);
-            await ValueChanged.InvokeAsync(value);
-        }
-        finally { _isSettingValue = false; }
-    }
+    /// <summary>
+    /// Extension point для кастомной логики при успешной отправке.
+    /// </summary>
+    protected virtual Task OnFormValidSubmitAsync() => Task.CompletedTask;
 
-    private static bool ValuesEqual(TValue? a, TValue? b)
-    {
-        if (a is double da && b is double db)
-            return (double.IsNaN(da) && double.IsNaN(db)) || da == db;
-        if (a is float fa && b is float fb)
-            return (float.IsNaN(fa) && float.IsNaN(fb)) || fa == fb;
-        return EqualityComparer<TValue>.Default.Equals(a, b);
-    }
+    /// <summary>
+    /// Extension point для кастомной логики при ошибке валидации.
+    /// </summary>
+    protected virtual Task OnFormInvalidSubmitAsync() => Task.CompletedTask;
 
-    // НОВОЕ: сброс поля к начальному значению
-    public async Task ResetFieldAsync()
-    {
-        FieldState = FormFieldState.None;
-        ConvertError = null;
-        await SetValueAsync(_initialValue);
-    }
+    // ── Validation ─────────────────────────────────────────────────────────
 
-    // ── Валидация ───────────────────────────────────────────────────────────────
-    public void AddValidationError(string message)
-    {
-        if (_messageStore is null || _editContext is null) return;
-        _messageStore.Add(_fieldIdentifier, message);
-        _editContext.NotifyValidationStateChanged();
-        FieldState = FormFieldState.Invalid;
-    }
-
-    public void ClearValidationErrors()
-    {
-        if (_messageStore is null || _editContext is null) return;
-        _messageStore.Clear(_fieldIdentifier);
-        _editContext.NotifyValidationStateChanged();
-        FieldState = HasError ? FormFieldState.Invalid : FormFieldState.Valid;
-    }
-
-    public void ValidateNow()
-    {
-        if (!IsDisposed) _editContext?.Validate();
-    }
-
-    // ── Focus / Blur ────────────────────────────────────────────────────────────
-    protected new virtual async Task HandleBlurAsync(Microsoft.AspNetCore.Components.Web.FocusEventArgs e)
-    {
-        if (ValidationMode == SgFormValidationMode.OnBlur)
-        {
-            _editContext?.NotifyFieldChanged(_fieldIdentifier);
-            FieldState = HasError ? FormFieldState.Invalid : FormFieldState.Valid;
-        }
-        await base.HandleBlurAsync(e);
-    }
-
-    // ── ARIA ────────────────────────────────────────────────────────────────────
-    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
-    {
-        var baseAttrs = base.BuildAriaAttributes();
-        bool needsExtra = Required || HasError || Label != null || MaxLength.HasValue || Hint != null;
-        if (!needsExtra) return baseAttrs;
-        var attrs = new Dictionary<string, object>(baseAttrs, StringComparer.Ordinal)
-        {
-            ["id"] = EffectiveId
-        };
-        if (Required) attrs["aria-required"] = "true";
-        if (HasError) attrs["aria-invalid"] = "true";
-        if (Label != null) attrs["aria-label"] = Label;
-        if (Hint != null) attrs["aria-describedby"] = $"{EffectiveId}-hint";
-        if (HasError) attrs["aria-errormessage"] = $"{EffectiveId}-error";
-        if (MaxLength.HasValue) attrs["aria-maxlength"] = MaxLength.Value.ToString();
-        return attrs;
-    }
-
-    // ── Lifecycle ───────────────────────────────────────────────────────────────
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-        if (!ReferenceEquals(Converter, _previousConverter))
-        {
-            _previousConverter = Converter;
-            _effectiveConverter = null;
-        }
-        if (ValueExpression != null)
-            _fieldIdentifier = FieldIdentifier.Create(ValueExpression);
-        if (CascadedEditContext != _editContext)
-        {
-            DetachEditContext();
-            _editContext = CascadedEditContext;
-            AttachEditContext();
-        }
-        // BUG-5 FIX: try/catch при ConvertBack во время параметров
-        if (!_isSettingValue && !EqualityComparer<TValue>.Default.Equals(Value, _lastSyncedValue))
-        {
-            _lastSyncedValue = Value;
-            try
-            {
-                CurrentText = EffectiveConverter.ConvertBack(Value);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "[{Id}] ConvertBack failed in OnParametersSet", ComponentId);
-                CurrentText = Value?.ToString();
-                ConvertError = ex.Message;
-            }
-            ConvertError = null;
-        }
-    }
-
-    private void AttachEditContext()
-    {
-        if (_editContext is null || _editContextAttached) return;
-        _editContext.OnValidationStateChanged += OnValidationStateChanged;
-        _messageStore = new ValidationMessageStore(_editContext);
-        _editContextAttached = true;
-    }
-
-    private void DetachEditContext()
-    {
-        if (_editContext is null || !_editContextAttached) return;
-        _editContext.OnValidationStateChanged -= OnValidationStateChanged;
-        _messageStore?.Clear(_fieldIdentifier);
-        _editContext.NotifyValidationStateChanged();
-        _messageStore = null;
-        _editContextAttached = false;
-    }
-
-    private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
+    private async void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
         if (IsDisposed) return;
-        FieldState = HasError ? FormFieldState.Invalid : FormFieldState.Valid;
-        _ = InvokeAsync(StateHasChanged);
+
+        _isValid = !_editContext!.GetValidationMessages().Any();
+        await InvokeAsync(StateHasChanged);
     }
+
+    /// <summary>
+    /// Сбросить форму к исходному состоянию.
+    /// </summary>
+    public async Task ResetAsync()
+    {
+        if (IsDisposed) return;
+
+        Model = new TModel();
+        _editContext = new EditContext(Model);
+        _editContext.OnValidationStateChanged += OnValidationStateChanged;
+        _isSubmitting = false;
+        _isValid = false;
+        _submitCount = 0;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── IDisposable ────────────────────────────────────────────────────────
 
     protected override async ValueTask DisposeComponentAsync()
     {
-        DetachEditContext();
+        if (_editContext is not null)
+            _editContext.OnValidationStateChanged -= OnValidationStateChanged;
+
         await base.DisposeComponentAsync();
     }
+}
+
+/// <summary>
+/// Генератор имён форм для Static SSR Antiforgery.
+/// Регистрируется как Scoped-сервис.
+/// </summary>
+public interface IFormNameGenerator
+{
+    string GenerateFormName();
+}
+
+internal sealed class DefaultFormNameGenerator : IFormNameGenerator
+{
+    private long _counter;
+
+    public string GenerateFormName() =>
+        $"sg-form-{Interlocked.Increment(ref _counter):x}";
 }

@@ -1,19 +1,12 @@
 // SuperUI/Base/SgRenderScheduler.cs
 // НОВЫЙ: глобальный планировщик рендеров с приоритетами (Critical > Normal > Low)
 // Аналог React Scheduler / Concurrent Mode для Blazor
+//
+// RenderPriority используется из SuperUI.Base.Reactive (объединённый enum)
+
+using SuperUI.Base.Reactive;
 
 namespace SuperUI.Base;
-
-/// <summary>Приоритет рендеринга компонента.</summary>
-public enum RenderPriority
-{
-    /// Немедленно (пользовательский ввод, анимации)
-    Critical = 0,
-    /// В следующем batch-окне (~16ms)
-    Normal = 1,
-    /// При простое (~100ms)
-    Low = 2
-}
 
 /// <summary>
 /// Глобальный планировщик рендеров.
@@ -46,7 +39,7 @@ public sealed class SgRenderScheduler : IDisposable
             {
                 case RenderPriority.Critical: _critical.Enqueue(weakRef); break;
                 case RenderPriority.Normal: _normal.Enqueue(weakRef); break;
-                case RenderPriority.Low: _low.Enqueue(weakRef); break;
+                case RenderPriority.Idle: _low.Enqueue(weakRef); break;
             }
         }
 

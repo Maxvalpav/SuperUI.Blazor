@@ -57,7 +57,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected async Task HandleFocusAsync(FocusEventArgs e)
     {
-        if (IsDisposed) return;
+        if (IsStaticSSR || IsDisposed) return;
         IsFocused = true;
         try { await OnFocus.InvokeAsync(e); }
         catch (OperationCanceledException) { }
@@ -66,7 +66,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected async Task HandleBlurAsync(FocusEventArgs e)
     {
-        if (IsDisposed) return;
+        if (IsStaticSSR || IsDisposed) return;
         IsFocused = false;
         try { await OnBlur.InvokeAsync(e); }
         catch (OperationCanceledException) { }
@@ -390,7 +390,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
-        if (IsEffectivelyDisabled) return;
+        if (IsStaticSSR || IsEffectivelyDisabled) return;
         var key = BuildKeyString(e);
         if (!string.IsNullOrEmpty(key) && _keyHandlers.TryGetValue(key, out var handler))
             await handler(e);
@@ -401,7 +401,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     /// </summary>
     protected async Task HandleKeyUpAsync(KeyboardEventArgs e)
     {
-        if (IsEffectivelyDisabled) return;
+        if (IsStaticSSR || IsEffectivelyDisabled) return;
         var key = BuildKeyString(e);
         if (!string.IsNullOrEmpty(key) && _keyUpHandlers.TryGetValue(key, out var handler))
             await handler(e);
@@ -441,7 +441,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected async Task HandleClickAsync(MouseEventArgs e)
     {
-        if (IsEffectivelyDisabled || IsDisposed) return;
+        if (IsStaticSSR || IsEffectivelyDisabled || IsDisposed) return;
         try { await OnClick.InvokeAsync(e); }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -452,7 +452,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected async Task HandleMouseEnterAsync(MouseEventArgs e)
     {
-        if (IsDisposed) return;
+        if (IsStaticSSR || IsDisposed) return;
         try   { await OnMouseEnter.InvokeAsync(e); }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -461,7 +461,7 @@ public abstract class SgInteractiveBase : SgJsComponentBase
 
     protected async Task HandleMouseLeaveAsync(MouseEventArgs e)
     {
-        if (IsDisposed) return;
+        if (IsStaticSSR || IsDisposed) return;
         try   { await OnMouseLeave.InvokeAsync(e); }
         catch (OperationCanceledException) { }
         catch (Exception ex)
