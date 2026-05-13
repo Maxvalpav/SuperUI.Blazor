@@ -1,16 +1,25 @@
-using Microsoft.AspNetCore.Components;
+// SuperUI/Base/Reactive/SgReactiveComponentBase.cs
+// ИСПРАВЛЕНО:
+// ✅ CS0101: ISignalTrackingObserver удалён из этого файла (объявлен в SgComputed.cs)
+// ✅ CS0111: OnSignalRead — нет дублирующих объявлений
+// ✅ PERF: [ThreadStatic] безопасен для синхронного BuildRenderTree в Blazor
+// ✅ ЛОГИКА: SgEffect.Run() теперь правильно использует EnterScope
+
 using Microsoft.AspNetCore.Components.Rendering;
-using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Базовый класс для реактивных компонентов SuperUI.
-/// Автоматически отслеживает сигналы, прочитанные во время рендеринга.
+/// Автоматически отслеживает сигналы, прочитанные во время рендеринга,
+/// и подписывается на их изменения.
 /// </summary>
-public abstract class SgReactiveComponentBase : SgComponentBase, ISignalObserver
+public abstract class SgReactiveComponentBase : SgComponentBase, ISignalObserver, ISignalTrackingObserver
 {
+    // [ThreadStatic] безопасен здесь, так как BuildRenderTree — всегда синхронный вызов.
+    // На Blazor Server — один поток на circuit.
+    // На WASM — однопоточная среда.
     [ThreadStatic]
     private static ISignalObserver? _currentObserver;
 
@@ -21,14 +30,20 @@ public abstract class SgReactiveComponentBase : SgComponentBase, ISignalObserver
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void TrackSignalImplicitly(ISgSignal signal)
     {
-        _currentObserver?.OnSignalRead(signal);
+        var observer = _currentObserver;
+        if (observer is null) return;
+
+        if (observer is ISignalTrackingObserver tracking)
+            tracking.OnSignalRead(signal);
+        else
+            signal.Subscribe(observer);
     }
 
     /// <summary>
-    /// Внутренний метод для регистрации зависимости. 
-    /// Можно расширить ISignalObserver если нужно, но пока используем виртуальный метод.
+    /// Внутренний метод для регистрации зависимости — подписываемся на сигнал.
+    /// Реализует ISignalTrackingObserver.
     /// </summary>
-    internal virtual void OnSignalRead(ISgSignal signal)
+    public virtual void OnSignalRead(ISgSignal signal)
     {
         signal.Subscribe(this);
     }
@@ -45,6 +60,7 @@ public abstract class SgReactiveComponentBase : SgComponentBase, ISignalObserver
     {
         var prev = _currentObserver;
         _currentObserver = this;
+
         try
         {
             BuildReactiveRenderTree(builder);
@@ -60,7 +76,7 @@ public abstract class SgReactiveComponentBase : SgComponentBase, ISignalObserver
     /// </summary>
     protected abstract void BuildReactiveRenderTree(RenderTreeBuilder builder);
 
-    // ── Фабрики сигналов ───────────────────────────────────────────────────────
+    // ── Фабрики сигналов ──────────────────────────────────────────────────
 
     protected SgSignal<T> Signal<T>(T initial, string? debugName = null)
     {
@@ -97,54 +113,37 @@ public abstract class SgReactiveComponentBase : SgComponentBase, ISignalObserver
         return effect;
     }
 
-    // Вспомогательный статический метод для установки текущего наблюдателя (для Computed/Effect)
+    /// <summary>
+    /// Вспомогательный метод для установки текущего наблюдателя.
+    /// Используется в SgComputed и SgEffect для трекинга зависимостей.
+    /// </summary>
     internal static IDisposable EnterScope(ISignalObserver observer)
-    {
-        return new ObserverScope(observer);
-    }
+        => new ObserverScope(observer);
 
     private sealed class ObserverScope : IDisposable
     {
         private readonly ISignalObserver? _prev;
+
         public ObserverScope(ISignalObserver observer)
         {
             _prev = _currentObserver;
             _currentObserver = observer;
         }
-        public void Dispose()
-        {
-            _currentObserver = _prev;
-        }
+
+        public void Dispose() => _currentObserver = _prev;
     }
 }
 
-/// <summary>
-/// Расширение для поддержки трекинга (внутреннее).
-/// </summary>
+// ✅ FIX CS0101: SignalObserverExtensions оставляем, но убираем дублирующий ISignalTrackingObserver
+// ISignalTrackingObserver объявлен в SgComputed.cs
+
 internal static class SignalObserverExtensions
 {
     public static void OnSignalRead(this ISignalObserver observer, ISgSignal signal)
     {
-        if (observer is SgReactiveComponentBase reactiveComponent)
-        {
-            reactiveComponent.OnSignalRead(signal);
-        }
-        else if (observer is ISignalTrackingObserver trackingObserver)
-        {
+        if (observer is ISignalTrackingObserver trackingObserver)
             trackingObserver.OnSignalRead(signal);
-        }
         else
-        {
-            // Дефолтное поведение — просто подписываемся
             signal.Subscribe(observer);
-        }
     }
-}
-
-/// <summary>
-/// Интерфейс для наблюдателей, которые хотят знать о факте чтения сигнала (например, Computed).
-/// </summary>
-internal interface ISignalTrackingObserver : ISignalObserver
-{
-    void OnSignalRead(ISgSignal signal);
 }

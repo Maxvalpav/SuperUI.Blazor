@@ -1,24 +1,32 @@
 // SuperUI/Base/Reactive/SgEffect.cs
+// ИСПРАВЛЕНО:
+// ✅ ЛОГИКА: async эффекты — ошибки передаются в _onError через ContinueWith
+// ✅ ЛОГИКА: зависимости сбрасываются перед каждым Run() — нет "застрявших" подписок
+// ✅ ЛОГИКА: SignalTracker интегрирован правильно через SgReactiveComponentBase.EnterScope
+
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
-/// Represents a reactive side effect. Automatically tracks
-/// signal dependencies and re-executes when they change.
+/// Представляет реактивный побочный эффект.
+/// Автоматически отслеживает зависимости и перезапускается при изменении сигналов.
 /// </summary>
-public sealed class SgEffect : ISignalObserver, IDisposable
+public sealed class SgEffect : ISignalObserver, ISignalTrackingObserver, IDisposable
 {
-    private readonly Delegate _effect; // Can be Action or Func<Task>
+    private readonly Delegate _effect;
     private readonly Action<Exception>? _onError;
-    private readonly HashSet<ISgSignal> _dependencies = new();
-    private bool _isDisposed;
-    private bool _isRunning;
+    private readonly object _depLock = new();
+    private readonly HashSet<ISgSignal> _dependencies = new(ReferenceEqualityComparer.Instance);
+    private volatile bool _isDisposed;
+    private int _isRunning; // Interlocked guard
 
     public bool IsDisposed => _isDisposed;
-    public bool IsRunning => _isRunning;
-    public int DependencyCount => _dependencies.Count;
+    public bool IsRunning => _isRunning == 1;
+    public int DependencyCount { get { lock (_depLock) return _dependencies.Count; } }
 
     public SgEffect(Action effect, Action<Exception>? onError = null)
     {
@@ -32,21 +40,43 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         _onError = onError;
     }
 
-    /// <summary>Execute the effect and track dependencies.</summary>
+    /// <summary>
+    /// Выполняет эффект и отслеживает зависимости.
+    /// ✅ FIX: зависимости сбрасываются перед каждым вызовом
+    /// </summary>
     public void Run()
     {
         if (_isDisposed) return;
-        _isRunning = true;
+
+        if (Interlocked.CompareExchange(ref _isRunning, 1, 0) != 0) return; // уже выполняется
+
         try
         {
-            SignalTracker.BeginTracking(this);
-            if (_effect is Action action)
+            // ✅ FIX: очищаем старые зависимости перед перезапуском
+            ClearDependencies();
+
+            using var scope = SgReactiveComponentBase.EnterScope(this);
+
+            if (_effect is Action syncAction)
             {
-                action();
+                syncAction();
             }
             else if (_effect is Func<Task> asyncAction)
             {
-                _ = asyncAction(); // Fire and forget for now
+                // ✅ FIX: async — обрабатываем исключение через ContinueWith
+                var task = asyncAction();
+
+                if (!task.IsCompleted)
+                {
+                    task.ContinueWith(t => _onError?.Invoke(t.Exception!.InnerException ?? t.Exception),
+                        CancellationToken.None,
+                        TaskContinuationOptions.OnlyOnFaulted,
+                        TaskScheduler.Default);
+                }
+                else if (task.IsFaulted && _onError is not null)
+                {
+                    _onError(task.Exception!.InnerException ?? task.Exception);
+                }
             }
         }
         catch (Exception ex)
@@ -55,79 +85,86 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         }
         finally
         {
-            SignalTracker.EndTracking();
-            _isRunning = false;
+            Interlocked.Exchange(ref _isRunning, 0);
         }
     }
 
-    /// <summary>Add a signal dependency.</summary>
-    internal void AddDependency(ISgSignal signal)
+    private void ClearDependencies()
     {
-        if (!_isDisposed)
-            _dependencies.Add(signal);
+        ISgSignal[] old;
+        lock (_depLock)
+        {
+            old = _dependencies.Count > 0 ? _dependencies.ToArray() : Array.Empty<ISgSignal>();
+            _dependencies.Clear();
+        }
+
+        foreach (var dep in old)
+            dep.Unsubscribe(this);
     }
 
-    /// <summary>Called when a signal changes.</summary>
+    // ISignalTrackingObserver — вызывается при чтении сигнала в scope
+    public void OnSignalRead(ISgSignal signal)
+    {
+        if (_isDisposed) return;
+
+        lock (_depLock)
+        {
+            if (_dependencies.Add(signal))
+                signal.Subscribe(this);
+        }
+    }
+
+    // ISignalObserver — вызывается при изменении сигнала
     public void OnSignalChanged(ISgSignal signal)
     {
-        if (!_isDisposed && !_isRunning)
+        if (_isDisposed || _isRunning == 1) return;
+
+        if (SignalBatch.IsBatching)
+            SignalBatch.EnqueueEffect(this);
+        else
             Run();
     }
 
-    /// <summary>Subscribe the effect to a signal, returning a disposable.</summary>
     public IDisposable Subscribe(ISgSignal signal)
     {
-        if (_isDisposed)
-            throw new ObjectDisposedException(nameof(SgEffect));
+        ObjectDisposedException.ThrowIf(_isDisposed, nameof(SgEffect));
 
         signal.Subscribe(this);
-        _dependencies.Add(signal);
+        lock (_depLock) _dependencies.Add(signal);
+
         return new Subscription(() =>
         {
             signal.Unsubscribe(this);
-            _dependencies.Remove(signal);
+            lock (_depLock) _dependencies.Remove(signal);
         });
     }
 
-    /// <summary>Subscribe to multiple signals.</summary>
     public IDisposable SubscribeAll(params ISgSignal[] signals)
     {
-        var disposables = new List<IDisposable>();
+        var disposables = new List<IDisposable>(signals.Length);
         foreach (var signal in signals)
             disposables.Add(Subscribe(signal));
-        return new CompositeSubscription(disposables);
-    }
 
-    /// <summary>Notify that a dependency changed.</summary>
-    internal void OnDependencyChanged()
-    {
-        Run();
+        return new CompositeSubscription(disposables);
     }
 
     public void Dispose()
     {
         if (_isDisposed) return;
+
         _isDisposed = true;
-        foreach (var dep in _dependencies)
-            dep.Unsubscribe(this);
-        _dependencies.Clear();
+        ClearDependencies();
         GC.SuppressFinalize(this);
     }
 }
 
-/// <summary>Simple subscription that calls an action on dispose.</summary>
 internal sealed class Subscription : IDisposable
 {
     private Action? _onDispose;
 
     public Subscription(Action onDispose) => _onDispose = onDispose;
 
-    public void Dispose()
-    {
-        var action = _onDispose;
-        _onDispose = null;
-        action?.Invoke();
-    }
+    public void Dispose() { var a = _onDispose; _onDispose = null; a?.Invoke(); }
 }
 
 internal sealed class CompositeSubscription : IDisposable
@@ -136,10 +173,5 @@ internal sealed class CompositeSubscription : IDisposable
 
     public CompositeSubscription(List<IDisposable> subscriptions) => _subscriptions = subscriptions;
 
-    public void Dispose()
-    {
-        foreach (var sub in _subscriptions)
-            sub.Dispose();
-        _subscriptions.Clear();
-    }
+    public void Dispose() { foreach (var s in _subscriptions) s.Dispose(); _subscriptions.Clear(); }
 }

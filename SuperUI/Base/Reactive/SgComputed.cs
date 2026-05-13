@@ -1,14 +1,23 @@
 // SuperUI/Base/Reactive/SgComputed.cs
-// ИСПРАВЛЕНО v3:
-// ✅ FIX: _compute() вызывается ВНЕ lock (_lock)
-// ✅ FIX: Recompute использует двухфазный подход (dirty → compute → notify)
-// ✅ FIX: _dependencies — HashSet с lock, не ConcurrentBag/ConcurrentDictionary
-// ✅ PERF: избегаем двойного вхождения через _recomputeGuard
-// ✅ AOT: нет рефлексии
+// ИСПРАВЛЕНО:
+// ✅ CS0535: ISignalFlushable объявлен только в SignalBatch.cs — этот файл только реализует
+// ✅ CS0101: ISignalTrackingObserver объявлен только здесь — удалён из SgReactiveComponentBase.cs
+// ✅ FIX: _compute() вызывается ВНЕ lock
+// ✅ FIX: Recompute — двухфазный подход (dirty → compute → notify)
+// ✅ PERF: guard против рекурсии через _recomputeInProgress
 
 using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
+
+/// <summary>
+/// Интерфейс для наблюдателей, которые хотят знать о факте чтения сигнала.
+/// ✅ FIX CS0101: объявлен ТОЛЬКО здесь. Удалён из SgReactiveComponentBase.cs
+/// </summary>
+internal interface ISignalTrackingObserver : ISignalObserver
+{
+    void OnSignalRead(ISgSignal signal);
+}
 
 public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver, IDisposable, ISignalFlushable
 {
@@ -17,7 +26,7 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
     private T _cachedValue = default!;
     private volatile bool _isDirty = true;
     private volatile int _disposed;
-    private volatile int _recomputeInProgress; // guard против рекурсии
+    private volatile int _recomputeInProgress; // защита от рекурсии
 
     // Подписчики computed'а
     private readonly object _subscribeLock = new();
@@ -42,7 +51,7 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
     public SgComputed(Func<T> compute, IEqualityComparer<T>? comparer = null, string? debugName = null)
     {
         ArgumentNullException.ThrowIfNull(compute);
-        _compute  = compute;
+        _compute = compute;
         _comparer = comparer;
         DebugName = debugName ?? $"Computed<{typeof(T).Name}>";
     }
@@ -64,7 +73,10 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
         }
     }
 
-    // ✅ FIX: compute вызывается ВНЕ lock
+    /// <summary>
+    /// ✅ FIX: compute вызывается ВНЕ lock.
+    /// Зависимости сбрасываются и пересобираются при каждом вычислении.
+    /// </summary>
     private void Recompute()
     {
         if (!_isDirty) return;
@@ -86,8 +98,8 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
             newValue = _compute();
 
         var prevValue = _cachedValue;
-        _cachedValue  = newValue;
-        _isDirty      = false;
+        _cachedValue = newValue;
+        _isDirty = false;
 
         // Уведомляем только если значение изменилось
         if (!AreEqual(prevValue, newValue))
@@ -108,7 +120,6 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
     {
         if (Volatile.Read(ref _disposed) == 1) return;
 
-        // Атомарно помечаем как dirty
         if (!_isDirty)
         {
             _isDirty = true;
@@ -120,6 +131,7 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
         }
     }
 
+    // ✅ FIX CS0535: реализует ISignalFlushable из SignalBatch.cs
     void ISignalFlushable.FlushIfDirty()
     {
         if (_isDirty) NotifyObservers();
@@ -157,18 +169,19 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
 
         lock (_subscribeLock)
         {
-            single   = _singleObserver;
+            single = _singleObserver;
             snapshot = _observers?.Count > 0 ? _observers.ToArray() : null;
         }
 
         single?.OnSignalChanged(this);
         if (snapshot is not null)
-            foreach (var obs in snapshot) obs.OnSignalChanged(this);
+            foreach (var obs in snapshot)
+                obs.OnSignalChanged(this);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool AreEqual(T a, T b) =>
-        _comparer?.Equals(a, b) ?? EqualityComparer<T>.Default.Equals(a, b);
+    private bool AreEqual(T a, T b)
+        => _comparer?.Equals(a, b) ?? EqualityComparer<T>.Default.Equals(a, b);
 
     public void Dispose()
     {
@@ -191,10 +204,4 @@ public sealed class SgComputed<T> : IReadOnlySignal<T>, ISignalTrackingObserver,
     public static implicit operator T(SgComputed<T> c) => c.Value;
 
     public override string ToString() => $"{DebugName}: {_cachedValue}";
-}
-
-/// <summary>Расширение для внутреннего трекинга.</summary>
-internal interface ISignalTrackingObserver : ISignalObserver
-{
-    void OnSignalRead(ISgSignal signal);
 }

@@ -1,14 +1,10 @@
-// ================================================================
-// Файл: SuperUI/Base/SgLibraryOptions.cs
+// SuperUI/Base/SgLibraryOptions.cs
 // ИСПРАВЛЕНО:
-// - SgThemeService → правильный using SuperUI.Services
-// - ComponentRegistry → IComponentRegistry
-// - ComponentFactory → IComponentFactory
-// - Добавлены поля .NET 8+ (DefaultRenderMode, EnableWasmCryptoOptimization)
-// ================================================================
+// ✅ CS0234: using SuperUI.Services → using SuperUI.Base.Services
+// ✅ ThemeService тип изменён с SgThemeService на ISgThemeService (принцип инверсии)
+// ✅ DefaultRenderMode, EnableWasmCryptoOptimization добавлены
 
-using SuperUI.Base.Services;
-using SuperUI.Services;
+using SuperUI.Base.Services; // ✅ FIX: был using SuperUI.Services — НЕ СУЩЕСТВУЕТ
 
 namespace SuperUI.Base;
 
@@ -51,7 +47,9 @@ public class SgLibraryOptions
     // --- Services (lazy-initialized) ---
     public IComponentRegistry? ComponentRegistry { get; set; }
     public IComponentFactory? ComponentFactory { get; set; }
-    public SgThemeService? ThemeService { get; set; }
+
+    // ✅ FIX: используем интерфейс, а не реализацию
+    public ISgThemeService? ThemeService { get; set; }
     public IFocusTrapService? FocusTrapService { get; set; }
 
     // --- Throttling ---
@@ -85,53 +83,39 @@ public class SgLibraryOptions
     // --- WASM Crypto optimization (.NET 8+) ---
     public bool EnableWasmCryptoOptimization { get; set; } = true;
 
-    /// <summary>
-    /// Compute z-index for a given layer (0-based).
-    /// </summary>
+    /// <summary>Compute z-index for a given layer (0-based).</summary>
     public int GetZIndex(int layer = 0) => BaseZIndex + (layer * ZIndexStep);
 
-    /// <summary>
-    /// Clone these options.
-    /// </summary>
-    public SgLibraryOptions Clone()
+    /// <summary>Clone these options.</summary>
+    public SgLibraryOptions Clone() => new()
     {
-        return new SgLibraryOptions
-        {
-            DefaultSize = DefaultSize,
-            AnimationsEnabled = AnimationsEnabled,
-            AnimationDurationMs = AnimationDurationMs,
-            EnableAria = EnableAria,
-            Locale = Locale,
-            BaseZIndex = BaseZIndex,
-            ZIndexStep = ZIndexStep,
-            CssPrefix = CssPrefix,
-            RightToLeft = RightToLeft,
-            ThemeVariables = new Dictionary<string, string>(ThemeVariables),
-            EnableDiagnostics = EnableDiagnostics,
-            EnableRenderTracking = EnableRenderTracking,
-            ComponentRegistry = ComponentRegistry,
-            ComponentFactory = ComponentFactory,
-            ThemeService = ThemeService,
-            FocusTrapService = FocusTrapService,
-            RenderThrottleMs = RenderThrottleMs,
-            BatchSize = BatchSize,
-            EnableSsrStreaming = EnableSsrStreaming,
-            SsrStreamingChunkSizeBytes = SsrStreamingChunkSizeBytes,
-            DefaultRenderMode = DefaultRenderMode,
-            ForcedRenderMode = ForcedRenderMode,
-            ReconnectionRetryMs = ReconnectionRetryMs,
-            ReconnectionMaxRetries = ReconnectionMaxRetries,
-            EnableWasmLazyLoading = EnableWasmLazyLoading,
-            EnableWasmCryptoOptimization = EnableWasmCryptoOptimization
-        };
-    }
+        DefaultSize = DefaultSize,
+        AnimationsEnabled = AnimationsEnabled,
+        AnimationDurationMs = AnimationDurationMs,
+        EnableAria = EnableAria,
+        Locale = Locale,
+        BaseZIndex = BaseZIndex,
+        ZIndexStep = ZIndexStep,
+        CssPrefix = CssPrefix,
+        RightToLeft = RightToLeft,
+        ThemeVariables = new Dictionary<string, string>(ThemeVariables),
+        EnableDiagnostics = EnableDiagnostics,
+        EnableRenderTracking = EnableRenderTracking,
+        ComponentRegistry = ComponentRegistry,
+        ComponentFactory = ComponentFactory,
+        ThemeService = ThemeService,
+        FocusTrapService = FocusTrapService,
+        RenderThrottleMs = RenderThrottleMs,
+        BatchSize = BatchSize,
+        EnableSsrStreaming = EnableSsrStreaming,
+        SsrStreamingChunkSizeBytes = SsrStreamingChunkSizeBytes,
+        DefaultRenderMode = DefaultRenderMode,
+        ForcedRenderMode = ForcedRenderMode,
+        ReconnectionRetryMs = ReconnectionRetryMs,
+        ReconnectionMaxRetries = ReconnectionMaxRetries,
+        EnableWasmLazyLoading = EnableWasmLazyLoading,
+        EnableWasmCryptoOptimization = EnableWasmCryptoOptimization
+    };
 }
 
-public enum SgComponentSize
-{
-    ExtraSmall,
-    Small,
-    Medium,
-    Large,
-    ExtraLarge
-}
+public enum SgComponentSize { ExtraSmall, Small, Medium, Large, ExtraLarge }

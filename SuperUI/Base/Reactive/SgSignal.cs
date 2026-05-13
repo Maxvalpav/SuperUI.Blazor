@@ -1,11 +1,17 @@
 // SuperUI/Base/Reactive/SgSignal.cs
+// ИСПРАВЛЕНО:
+// ✅ CS0535: интерфейс ISignalFlushable объявлен ТОЛЬКО в SignalBatch.cs
+// ✅ Убрано дублирующее объявление internal interface ISignalFlushable из этого файла
+// ✅ Реализация void ISignalFlushable.FlushIfDirty() ОСТАВЛЕНА — она корректна
+
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
 // ══════════════════════════════════════════════
-// ИНТЕРФЕЙСЫ
+// ИНТЕРФЕЙСЫ (только те, что не дублируются)
+// ISignalFlushable объявлен в SignalBatch.cs
 // ══════════════════════════════════════════════
 
 /// <summary>Базовый интерфейс для всех сигналов.</summary>
@@ -18,7 +24,7 @@ public interface ISgSignal
 }
 
 /// <summary>Типизированный read-only сигнал.</summary>
-public interface IReadOnlySignal<T> : ISgSignal
+public interface IReadOnlySignal<out T> : ISgSignal
 {
     T Value { get; }
 }
@@ -33,12 +39,6 @@ public interface ISgSignal<T> : IReadOnlySignal<T>
 public interface ISignalObserver
 {
     void OnSignalChanged(ISgSignal signal);
-}
-
-/// <summary>Маркер для batch-flush.</summary>
-internal interface ISignalFlushable
-{
-    void FlushIfDirty();
 }
 
 // ══════════════════════════════════════════════
@@ -63,9 +63,8 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
     {
         get
         {
-            // lock-free read через snapshot
             var single = Volatile.Read(ref _singleObserver);
-            var list   = Volatile.Read(ref _observers);
+            var list = Volatile.Read(ref _observers);
             return (single != null ? 1 : 0) + (list?.Count ?? 0);
         }
     }
@@ -75,7 +74,7 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
 
     public SgSignal(T initialValue, IEqualityComparer<T>? comparer, string? debugName = null)
     {
-        _value    = initialValue;
+        _value = initialValue;
         _comparer = comparer;
         DebugName = debugName ?? $"Signal<{typeof(T).Name}>";
     }
@@ -108,18 +107,18 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public void Update(Func<T, T> mutator)
-    {
-        var newValue = mutator(_value);
-        Set(newValue);
-    }
+    public void Update(Func<T, T> mutator) => Set(mutator(_value));
 
     public void MutateAndNotify(Action<T> mutator)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, DebugName!);
         mutator(_value);
 
-        if (SignalBatch.IsBatching) { SignalBatch.MarkDirty(this); return; }
+        if (SignalBatch.IsBatching)
+        {
+            SignalBatch.MarkDirty(this);
+            return;
+        }
 
         NotifyObservers();
     }
@@ -141,7 +140,7 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
             if (ReferenceEquals(_singleObserver, observer)) return;
 
             _observers ??= new List<ISignalObserver>(4) { _singleObserver };
-            _singleObserver = null; // переходим в список
+            _singleObserver = null;
 
             if (!_observers.Contains(observer))
                 _observers.Add(observer);
@@ -162,7 +161,9 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
         }
     }
 
-    // ✅ FIX DEADLOCK: снимаем snapshot ВНЕ lock, затем вызываем подписчиков
+    /// <summary>
+    /// ✅ FIX: snapshot вне lock — предотвращает deadlock
+    /// </summary>
     internal void NotifyObservers()
     {
         ISignalObserver? single;
@@ -170,24 +171,23 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
 
         lock (_subscribeLock)
         {
-            single   = _singleObserver;
+            single = _singleObserver;
             snapshot = _observers?.Count > 0 ? _observers.ToArray() : null;
         }
 
         // Вызов ВНЕ lock!
         single?.OnSignalChanged(this);
         if (snapshot is not null)
-        {
             foreach (var obs in snapshot)
                 obs.OnSignalChanged(this);
-        }
     }
 
+    // ✅ FIX CS0535: реализует ISignalFlushable из SignalBatch.cs
     void ISignalFlushable.FlushIfDirty() => NotifyObservers();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private bool AreEqual(T a, T b) =>
-        _comparer?.Equals(a, b) ?? EqualityComparer<T>.Default.Equals(a, b);
+    private bool AreEqual(T a, T b)
+        => _comparer?.Equals(a, b) ?? EqualityComparer<T>.Default.Equals(a, b);
 
     public void Dispose()
     {
