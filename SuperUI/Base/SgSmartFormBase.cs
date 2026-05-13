@@ -4,11 +4,13 @@
 // ✅ NEW: ConflictDetection — детекция конфликтов при восстановлении черновика
 // ✅ NEW: DraftMetadata — метаданные черновика (время, версия)
 // ✅ NEW: DebouncedAutoSave — защита от частых сохранений при быстрых изменениях
+// ✅ OPTIM: ComputeModelHash — замена JSON на GetHashCode (SgModelHasher)
 
 using System.Text.Json;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.Extensions.Logging;
+using SuperUI.Base;
 using SuperUI.Base.Services;
 
 namespace SuperUI.Base;
@@ -61,8 +63,17 @@ public abstract class SgSmartFormBase<TModel> : SgFormBase<TModel>
             _autoSaveTimer = new Timer(
                 async _ =>
                 {
-                    if (!IsDisposed && IsDirty)
+                    // ✅ FIX C7: проверяем IsDisposed перед каждым тиком
+                    if (IsDisposed || !IsDirty) return;
+
+                    try
+                    {
                         await SaveDraftAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogDebug(ex, "[{Id}] Auto-save timer tick failed", ComponentId);
+                    }
                 },
                 null,
                 TimeSpan.FromSeconds(AutoSaveIntervalSec),
@@ -233,26 +244,23 @@ public abstract class SgSmartFormBase<TModel> : SgFormBase<TModel>
     }
 
     /// <summary>
-    /// Вычисление FNV-1a хэша модели для детекции конфликтов.
-    /// Переопределите для кастомной логики сравнения.
+    /// Вычисление хэша модели для детекции конфликтов.
+    /// Использует SgModelHasher для эффективного сравнения.
     /// </summary>
     protected virtual string ComputeModelHash(TModel model)
-    {
-        var json = JsonSerializer.Serialize(model);
-        unchecked
-        {
-            uint hash = 2166136261;
-            foreach (var b in System.Text.Encoding.UTF8.GetBytes(json))
-                hash = (hash ^ b) * 16777619;
-            return hash.ToString("x8");
-        }
-    }
+        => SgModelHasher<TModel>.ComputeHash(model);
 
     // ── Dispose ────────────────────────────────────────────────────────────────
 
     protected override async ValueTask DisposeComponentAsync()
     {
-        _autoSaveTimer?.Dispose();
+        // ✅ FIX C7: останавливаем таймер ПЕРВЫМ — предотвращаем тик после dispose
+        var timer = Interlocked.Exchange(ref _autoSaveTimer, null);
+        if (timer is not null)
+        {
+            try { await timer.DisposeAsync(); } catch { }
+        }
+
         _navigationSubscription?.Dispose();
         await base.DisposeComponentAsync();
     }

@@ -30,6 +30,12 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
     [Inject] protected IComponentRegistry? ComponentRegistry { get; set; }
 
+    /// <summary>
+    /// Состояние компонента, сохраняемое между prerender (Server) и WASM.
+    /// Доступно в .NET 8+ InteractiveAuto режиме.
+    /// </summary>
+    [Inject] protected PersistentComponentState? PersistentComponentState { get; set; }
+
     // ── Каскадные параметры ────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
@@ -508,6 +514,29 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     }
 
     // ── Service helpers ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Попытаться восстановить состояние, сохранённое при prerender.
+    /// Возвращает true если состояние найдено и восстановлено.
+    /// </summary>
+    protected bool TryTakePersistedState<T>(string key, out T? value)
+    {
+        if (PersistentComponentState is not null &&
+            PersistentComponentState.TryTakeFromJson<T>(key, out var result))
+        {
+            value = result;
+            return true;
+        }
+        value = default;
+        return false;
+    }
+
+    /// <summary>
+    /// Сохранить состояние для последующего восстановления в WASM.
+    /// </summary>
+    protected void PersistState<T>(string key, T value)
+        => PersistentComponentState?.PersistAsJson(key, value);
+
     protected T? TryGetService<T>() where T : class
         => ServiceProvider.GetService<T>();
 

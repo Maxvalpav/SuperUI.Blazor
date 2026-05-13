@@ -96,7 +96,13 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
             if (retries >= maxRetries)
                 throw new InvalidOperationException(
                     $"SgStore.DispatchAsync: too many retries ({maxRetries}).");
-            await Task.Yield();
+
+            // Exponential backoff: 0, 1, 2, 4, 8 ms
+            var backoffMs = retries == 1 ? 0 : (1 << (retries - 2));
+            if (backoffMs > 0)
+                await Task.Delay(backoffMs);
+            else
+                await Task.Yield();
         }
     }
 
@@ -113,17 +119,19 @@ public sealed class SgStore<TState> : IDisposable where TState : notnull
         _state.ForceNotify();
     }
 
+    /// <summary>
+    /// Подписаться на изменения состояния с получением предыдущего и нового значения.
+    /// Использует SgSignal.Subscribe — не загрязняет middleware цепочку.
+    /// </summary>
     public IDisposable OnStateChange(Action<TState, TState> observer)
     {
         ArgumentNullException.ThrowIfNull(observer);
-        Use((prev, next) => { observer(prev, next); return next; });
-        return EmptyDisposable.Instance;
-    }
-
-    private sealed class EmptyDisposable : IDisposable
-    {
-        public static readonly EmptyDisposable Instance = new();
-        public void Dispose() { }
+        TState prev = _state.Peek();
+        return _state.Subscribe(next =>
+        {
+            var p = Interlocked.Exchange(ref prev, next);
+            observer(p, next);
+        });
     }
 
     public TState Snapshot() => Current;

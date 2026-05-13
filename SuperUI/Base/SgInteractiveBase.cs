@@ -87,26 +87,24 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     }
 
     // ── Debounce ──────────────────────────────────────────────────────────────
-    private readonly object _debounceLock = new();
-    private readonly Dictionary<string, CancellationTokenSource> _debouncers = new();
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _debouncers = new();
 
     protected Task DebounceAsync(string key, Func<Task> action, TimeSpan delay)
     {
-        // УЛУЧШЕНО: ранний выход при dispose
         if (IsDisposed) return Task.CompletedTask;
 
-        CancellationTokenSource newCts;
-        lock (_debounceLock)
-        {
-            if (IsDisposed) return Task.CompletedTask;
-            if (_debouncers.TryGetValue(key, out var old))
+        var newCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+
+        // ConcurrentDictionary.AddOrUpdate — атомарно заменяем и отменяем старый CTS
+        _debouncers.AddOrUpdate(
+            key,
+            addValueFactory: _ => newCts,
+            updateValueFactory: (_, existing) =>
             {
-                old.Cancel();
-                old.Dispose();
-            }
-            newCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-            _debouncers[key] = newCts;
-        }
+                existing.Cancel();
+                existing.Dispose();
+                return newCts;
+            });
 
         _ = DelayThenInvokeAsync(key, action, delay, newCts.Token);
         return Task.CompletedTask;
@@ -167,15 +165,12 @@ public abstract class SgInteractiveBase : SgJsComponentBase
     /// <summary>Явно отменить все pending debounce-операции.</summary>
     public void ClearDebouncers()
     {
-        lock (_debounceLock)
+        foreach (var cts in _debouncers.Values)
         {
-            foreach (var cts in _debouncers.Values)
-            {
-                try { cts.Cancel(); cts.Dispose(); }
-                catch { }
-            }
-            _debouncers.Clear();
+            try { cts.Cancel(); cts.Dispose(); }
+            catch { }
         }
+        _debouncers.Clear();
     }
 
     private async Task DelayThenInvokeAsync(
@@ -194,13 +189,10 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         }
         finally
         {
-            lock (_debounceLock)
+            if (_debouncers.TryGetValue(key, out var cts) && cts.Token == ct)
             {
-                if (_debouncers.TryGetValue(key, out var cts) && cts.Token == ct)
-                {
-                    _debouncers.Remove(key);
-                    try { cts.Dispose(); } catch { }
-                }
+                _debouncers.TryRemove(key, out _);
+                try { cts.Dispose(); } catch { }
             }
         }
     }

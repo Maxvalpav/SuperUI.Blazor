@@ -122,6 +122,10 @@ public sealed class AriaBuilder
     public AriaBuilder Busy(bool busy)
         => Set("aria-busy", busy ? "true" : "false");
 
+    /// <summary>aria-atomic — объявлять ли регион целиком при изменении.</summary>
+    public AriaBuilder Atomic(bool atomic)
+        => Set("aria-atomic", atomic ? "true" : "false");
+
     /// <summary>aria-live (для динамических регионов).</summary>
     public AriaBuilder Live(AriaLive live)
         => Set("aria-live", live switch
@@ -131,9 +135,123 @@ public sealed class AriaBuilder
             _                  => "off"
         });
 
-    /// <summary>aria-atomic.</summary>
-    public AriaBuilder Atomic(bool atomic = true)
-        => Set("aria-atomic", atomic ? "true" : "false");
+    /// <summary>aria-relevant — что именно изменения в live region должны объявляться.</summary>
+    /// <remarks>
+    /// WAI-ARIA 1.2: additions | removals | text | all (пробел-разделённый список).
+    /// </remarks>
+    public AriaBuilder Relevant(AriaRelevant relevant)
+    {
+        var parts = new List<string>();
+        if (relevant.HasFlag(AriaRelevant.Additions)) parts.Add("additions");
+        if (relevant.HasFlag(AriaRelevant.Removals))  parts.Add("removals");
+        if (relevant.HasFlag(AriaRelevant.Text))      parts.Add("text");
+        if (relevant.HasFlag(AriaRelevant.All))       return Set("aria-relevant", "all");
+        return parts.Count > 0 ? Set("aria-relevant", string.Join(" ", parts)) : this;
+    }
+
+    /// <summary>aria-roledescription — кастомное описание роли для AT.</summary>
+    /// <remarks>WAI-ARIA 1.2: позволяет переопределить стандартное произношение роли.</remarks>
+    public AriaBuilder RoleDescription(string? description)
+        => Set("aria-roledescription", description);
+
+    /// <summary>aria-placeholder — подсказка внутри текстового поля (не заменяет label).</summary>
+    /// <remarks>WAI-ARIA 1.2.</remarks>
+    public AriaBuilder Placeholder(string? placeholder)
+        => Set("aria-placeholder", placeholder);
+
+    /// <summary>aria-errormessage — ID элемента с сообщением об ошибке.</summary>
+    /// <remarks>WAI-ARIA 1.2 (заменяет aria-describedby для ошибок).</remarks>
+    public AriaBuilder ErrorMessage(string? errorElementId)
+        => Set("aria-errormessage", errorElementId);
+
+    /// <summary>aria-details — ID элемента с расширенным описанием.</summary>
+    /// <remarks>WAI-ARIA 1.2 (расширение aria-describedby).</remarks>
+    public AriaBuilder Details(string? detailsElementId)
+        => Set("aria-details", detailsElementId);
+
+    /// <summary>aria-keyshortcuts — клавиатурные сокращения для элемента.</summary>
+    /// <remarks>WAI-ARIA 1.2.</remarks>
+    public AriaBuilder KeyShortcuts(string shortcuts)
+        => Set("aria-keyshortcuts", shortcuts);
+
+    /// <summary>aria-colcount / aria-rowcount — для виртуализированных таблиц.</summary>
+    /// <remarks>
+    /// WAI-ARIA 1.2: когда не все строки/столбцы DOM-присутствуют.
+    /// </remarks>
+    public AriaBuilder GridDimensions(int colCount, int rowCount)
+    {
+        Set("aria-colcount", colCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Set("aria-rowcount", rowCount.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return this;
+    }
+
+    /// <summary>aria-colindex / aria-rowindex — позиция ячейки в виртуализированной таблице.</summary>
+    public AriaBuilder GridPosition(int colIndex, int rowIndex)
+    {
+        Set("aria-colindex", colIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Set("aria-rowindex", rowIndex.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return this;
+    }
+
+    /// <summary>aria-colspan / aria-rowspan — объединение ячеек.</summary>
+    /// <remarks>WAI-ARIA 1.2.</remarks>
+    public AriaBuilder GridSpan(int? colSpan = null, int? rowSpan = null)
+    {
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (colSpan.HasValue) Set("aria-colspan", colSpan.Value.ToString(inv));
+        if (rowSpan.HasValue) Set("aria-rowspan", rowSpan.Value.ToString(inv));
+        return this;
+    }
+
+    /// <summary>aria-multiselectable — разрешить выбор нескольких элементов.</summary>
+    public AriaBuilder MultiSelectable(bool multiSelectable = true)
+        => Set("aria-multiselectable", multiSelectable ? "true" : "false");
+
+    /// <summary>aria-orientation — горизонтальный или вертикальный.</summary>
+    public AriaBuilder Orientation(AriaOrientation orientation)
+        => Set("aria-orientation", orientation == AriaOrientation.Horizontal
+            ? "horizontal" : "vertical");
+
+    /// <summary>aria-pressed — состояние toggle-кнопки.</summary>
+    /// <remarks>WAI-ARIA 1.2: true | false | mixed.</remarks>
+    public AriaBuilder Pressed(bool? pressed)
+        => Set("aria-pressed", pressed switch
+        {
+            true => "true",
+            false => "false",
+            null => "mixed"
+        });
+
+    /// <summary>
+    /// aria-current — текущий элемент в наборе (page, step, location и т.д.).
+    /// WAI-ARIA 1.2.
+    /// </summary>
+    public AriaBuilder Current(AriaCurrent current)
+        => Set("aria-current", current switch
+        {
+            AriaCurrent.Page => "page",
+            AriaCurrent.Step => "step",
+            AriaCurrent.Location => "location",
+            AriaCurrent.Date => "date",
+            AriaCurrent.Time => "time",
+            AriaCurrent.True => "true",
+            _ => "false"
+        });
+
+    /// <summary>
+    /// Полная конфигурация live-region (WAI-ARIA 1.2).
+    /// Комбинирует aria-live, aria-atomic и aria-relevant.
+    /// </summary>
+    public AriaBuilder LiveRegion(
+        AriaLive live,
+        bool atomic = false,
+        AriaRelevant relevant = AriaRelevant.Additions | AriaRelevant.Text)
+    {
+        Live(live);
+        Atomic(atomic);
+        Relevant(relevant);
+        return this;
+    }
 
     /// <summary>aria-haspopup.</summary>
     public AriaBuilder HasPopup(AriaHasPopup popup = AriaHasPopup.True)
@@ -249,3 +367,19 @@ public enum AriaHasPopup { False, True, Menu, Listbox, Tree, Grid, Dialog }
 
 /// <summary>Значения aria-sort.</summary>
 public enum AriaSort { None, Ascending, Descending, Other }
+
+// ── WAI-ARIA 1.2 новые enum-типы ─────────────────────────────────────────────
+
+[Flags]
+public enum AriaRelevant
+{
+    None      = 0,
+    Additions = 1,
+    Removals  = 2,
+    Text      = 4,
+    All       = 8
+}
+
+public enum AriaOrientation { Horizontal, Vertical }
+
+public enum AriaCurrent { False, True, Page, Step, Location, Date, Time }

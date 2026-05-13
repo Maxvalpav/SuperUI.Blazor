@@ -1,20 +1,19 @@
+// SuperUI/Base/SgVirtualizedDataBase.cs
+// ✅ BUG-7 FIX: ConcurrentDictionary для _prefetchCache
+// ✅ PERF-6: IAsyncEnumerable streaming
+// ✅ FIX C4: CancelCurrentLoad() — атомарная отмена; IsDisposed проверки
+
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 
 namespace SuperUI.Base;
 
-/// <summary>
-/// Базовый класс для компонентов с виртуализацией данных.
-/// </summary>
 public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
 {
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
-    [Parameter] public Func<SgDataRequest, Task<SgDataResult<TItem>>>? LoadData { get; set; }
-
-    // ✅ PERF-6 NEW: streaming источник данных
+    [Parameter] public Func<SgDataRequest, Task<SgDataResult<TItem>?>>? LoadData { get; set; }
     [Parameter] public Func<SgDataRequest, IAsyncEnumerable<TItem>>? StreamData { get; set; }
-
     [Parameter] public int PageSize { get; set; } = 50;
     [Parameter] public bool EnablePaging { get; set; } = true;
     [Parameter] public bool EnableVirtualization { get; set; } = false;
@@ -26,11 +25,7 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
     private bool _isLoading;
     private string? _loadError;
     private readonly SemaphoreSlim _loadLock = new(1, 1);
-
-    // ✅ BUG-7 FIX: ConcurrentDictionary — потокобезопасен (был Dictionary)
     private readonly ConcurrentDictionary<int, SgDataResult<TItem>> _prefetchCache = new();
-
-    // ✅ NEW: отмена текущей загрузки при переходе на другую страницу
     private CancellationTokenSource? _currentLoadCts;
 
     public IReadOnlyList<TItem> DisplayItems => _items;
@@ -53,10 +48,8 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
         if (IsDisposed) return;
         if (page < 1 || (TotalPages > 0 && page > TotalPages)) return;
 
-        // ✅ NEW: отменяем предыдущую загрузку
-        var prevCts = Interlocked.Exchange(ref _currentLoadCts, null);
-        prevCts?.Cancel();
-        prevCts?.Dispose();
+        // ✅ FIX C4: всегда отменяем предыдущую загрузку
+        CancelCurrentLoad();
 
         _currentPage = page;
         await LoadPageAsync(page);
@@ -65,18 +58,33 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
     public async Task ReloadAsync()
     {
         if (IsDisposed) return;
+
+        CancelCurrentLoad();
         _currentPage = 1;
         _items.Clear();
         _prefetchCache.Clear();
+
         if (LoadData is not null || StreamData is not null)
             await LoadPageAsync(1);
     }
 
+    // ✅ FIX C4: выделенный метод — атомарная отмена с try/catch
+    private void CancelCurrentLoad()
+    {
+        var cts = Interlocked.Exchange(ref _currentLoadCts, null);
+        if (cts is not null)
+        {
+            try { cts.Cancel(); } catch { }
+            try { cts.Dispose(); } catch { }
+        }
+    }
+
     protected async Task LoadPageAsync(int page)
     {
-        // ✅ BUG-7 FIX: TryRemove — атомарно (был TryGetValue + Remove)
         if (_prefetchCache.TryRemove(page, out var cached))
         {
+            if (IsDisposed) return; // ✅ FIX C4: проверка после кэша
+
             _items.Clear();
             _items.AddRange(cached.Items);
             _totalCount = cached.TotalCount;
@@ -88,11 +96,19 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
 
         if (!await _loadLock.WaitAsync(0)) return;
 
+        // ✅ FIX C4: атомарно заменяем CTS и отменяем старый
         var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-        Interlocked.Exchange(ref _currentLoadCts, cts);
+        var oldCts = Interlocked.Exchange(ref _currentLoadCts, cts);
+        if (oldCts is not null)
+        {
+            try { oldCts.Cancel(); } catch { }
+            try { oldCts.Dispose(); } catch { }
+        }
 
         try
         {
+            if (IsDisposed) return;
+
             _isLoading = true;
             _loadError = null;
             await InvokeAsync(StateHasChanged);
@@ -108,7 +124,6 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
 
             if (StreamData is not null)
             {
-                // ✅ PERF-6: Streaming — показываем элементы по мере поступления
                 await LoadStreamingAsync(request, cts.Token);
             }
             else if (LoadData is not null)
@@ -132,14 +147,21 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
         finally
         {
             _isLoading = false;
-            _loadLock.Release();
+
+            // ✅ FIX C4: безопасный Release
+            try { _loadLock.Release(); } catch (ObjectDisposedException) { }
+
             if (!IsDisposed && !cts.Token.IsCancellationRequested)
                 await InvokeAsync(StateHasChanged);
-            cts.Dispose();
+
+            // ✅ FIX C4: dispose только если CTS всё ещё текущий
+            if (Interlocked.CompareExchange(ref _currentLoadCts, null, cts) == cts)
+            {
+                try { cts.Dispose(); } catch { }
+            }
         }
     }
 
-    // ✅ PERF-6 NEW: инкрементальный рендер при streaming
     private async Task LoadStreamingAsync(SgDataRequest request, CancellationToken ct)
     {
         _items.Clear();
@@ -148,6 +170,7 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
 
         await foreach (var item in StreamData!(request).WithCancellation(ct))
         {
+            if (IsDisposed || ct.IsCancellationRequested) break; // ✅ FIX C4
             _items.Add(item);
             if (++batchCount % batchSize == 0)
                 await InvokeAsync(StateHasChanged);
@@ -168,6 +191,8 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
         {
             try
             {
+                if (IsDisposed) return; // ✅ FIX C4
+
                 var result = await LoadData(new SgDataRequest
                 {
                     Page = nextPage,
@@ -175,7 +200,6 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
                     CancellationToken = ComponentToken
                 });
 
-                // ✅ BUG-7 FIX: TryAdd — потокобезопасно (был _prefetchCache[key] = value)
                 if (result is not null && !IsDisposed)
                     _prefetchCache.TryAdd(nextPage, result);
             }
@@ -191,13 +215,9 @@ public abstract class SgVirtualizedDataBase<TItem> : SgInteractiveBase
 
     protected override async ValueTask DisposeComponentAsync()
     {
+        CancelCurrentLoad();
         _prefetchCache.Clear();
-        _loadLock.Dispose();
-
-        var cts = Interlocked.Exchange(ref _currentLoadCts, null);
-        cts?.Cancel();
-        cts?.Dispose();
-
+        try { _loadLock.Dispose(); } catch { }
         await base.DisposeComponentAsync();
     }
 }

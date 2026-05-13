@@ -11,7 +11,7 @@ using System.Runtime.CompilerServices;
 
 namespace SuperUI.Base.Reactive;
 
-public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlushable
+public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlushable, ISgSignal<T>
 {
     private readonly HashSet<ISignalObserver> _untypedObservers = new();
 

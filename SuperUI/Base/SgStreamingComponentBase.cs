@@ -1,52 +1,62 @@
-// SuperUI/Base/SgStreamingComponentBase.cs — НОВЫЙ
-// ✅ Поддержка Streaming Rendering (.NET 8+)
-// ✅ Автоматический placeholder при SSR Streaming
-// ✅ Адаптивный рендеринг: SSR → Interactive без мерцания
+// SuperUI/Base/SgStreamingComponentBase.cs
+// ✅ .NET 8+ Streaming Rendering из коробки
+// ✅ Интеграция с PersistentComponentState через SgPersistentState
+// ✅ DeferredContent — skeleton пока данные грузятся
+// ✅ Обратная совместимость: LoadContentAsync, ReloadContentAsync, LoadingState, ErrorTemplate
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
 using Microsoft.Extensions.Logging;
+using SuperUI.Base.Services;
+using SuperUI.Base.State;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// Базовый класс для компонентов с нативной поддержкой Streaming Rendering.
-/// Автоматически показывает placeholder при SSR Streaming и заменяет
-/// его на реальный контент когда данные готовы.
+/// Базовый класс для компонентов с нативной поддержкой Streaming Rendering (.NET 8+).
+/// Автоматически показывает skeleton при SSR Streaming и заменяет его на контент.
 ///
-/// Иерархия: ComponentBase → SgComponentBase → SgJsComponentBase → SgInteractiveBase → SgStreamingComponentBase
+/// Использование в Razor:
+/// <code>
+/// @attribute [StreamRendering]
+/// @inherits SgStreamingComponentBase
+/// </code>
 /// </summary>
 public abstract class SgStreamingComponentBase : SgInteractiveBase
 {
-    // ── Состояние ──────────────────────────────────────────────────────────────
+    [Inject] private PersistentComponentState? PersistentState { get; set; }
+    [Inject] protected ISgStreamingRenderingService StreamingService { get; set; } = null!;
 
-    /// <summary>Компонент находится в процессе Streaming Rendering.</summary>
-    protected bool IsStreaming => IsStreamingRendering && !IsInteractive;
+    // ── Параметры ──────────────────────────────────────────────────────────
+    [Parameter] public RenderFragment? LoadingPlaceholder { get; set; }
+    [Parameter] public RenderFragment<Exception>? ErrorTemplate { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Данные полностью загружены (streaming завершён).</summary>
+    // ── Состояние ──────────────────────────────────────────────────────────
+    /// <summary>Компонент в режиме Streaming Rendering (данные ещё не готовы).</summary>
+    protected bool IsStreaming => StreamingService.IsStreamingRendering && !IsInteractive;
+
+    /// <summary>Данные полностью загружены.</summary>
     protected bool IsContentReady { get; private set; }
 
     /// <summary>Ошибка загрузки данных.</summary>
     protected Exception? ContentError { get; private set; }
 
-    /// <summary>Состояние загрузки данных.</summary>
+    /// <summary>Состояние загрузки.</summary>
     protected SgLoadingState LoadingState { get; private set; } = SgLoadingState.Idle;
 
-    // ── Параметры ──────────────────────────────────────────────────────────────
-
     /// <summary>
-    /// Шаблон-заглушка на время загрузки (SSR Streaming).
-    /// Если не задан — используется стандартный скелетон.
+    /// Абстракция над PersistentComponentState.
+    /// Доступна после OnInitialized.
     /// </summary>
-    [Parameter] public RenderFragment? LoadingPlaceholder { get; set; }
+    protected SgPersistentState? AppState { get; private set; }
 
-    /// <summary>Шаблон при ошибке загрузки.</summary>
-    [Parameter] public RenderFragment<Exception>? ErrorTemplate { get; set; }
-
-    /// <summary>Контент, отображаемый когда данные готовы.</summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    // ── Lifecycle ──────────────────────────────────────────────────────────────
+    // ── Lifecycle ───────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        AppState = new SgPersistentState(PersistentState, Logger);
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -73,22 +83,17 @@ public abstract class SgStreamingComponentBase : SgInteractiveBase
         }
     }
 
-    // ── Render ─────────────────────────────────────────────────────────────────
-
+    // ── Render ──────────────────────────────────────────────────────────────
     protected override void BuildRenderTree(RenderTreeBuilder builder)
     {
-        var seq = 0;
-
         switch (LoadingState)
         {
             case SgLoadingState.Loading:
-                // В Streaming SSR placeholder будет заменён сервером по готовности.
-                // В интерактивном режиме — показываем спиннер до завершения загрузки.
-                builder.AddContent(seq, LoadingPlaceholder ?? DefaultPlaceholder());
+                builder.AddContent(0, LoadingPlaceholder ?? StreamingSkeleton);
                 break;
 
             case SgLoadingState.Error:
-                builder.AddContent(seq,
+                builder.AddContent(0,
                     ErrorTemplate?.Invoke(ContentError!) ??
                     (RenderFragment)(b =>
                     {
@@ -100,42 +105,61 @@ public abstract class SgStreamingComponentBase : SgInteractiveBase
                     }));
                 break;
 
-            case SgLoadingState.Success:
             default:
-                builder.AddContent(seq, ChildContent);
+                builder.AddContent(0, ChildContent);
                 break;
         }
     }
 
-    // ── Abstract ───────────────────────────────────────────────────────────────
+    // ── Abstract / Virtual ──────────────────────────────────────────────────
 
     /// <summary>
     /// Загрузить данные асинхронно.
-    /// Вызывается в <see cref="OnInitializedAsync"/> и <see cref="ReloadContentAsync"/>.
     /// В режиме Streaming SSR выполняется на сервере до отправки HTML клиенту.
     /// </summary>
-    protected abstract Task LoadContentAsync();
-
-    // ── Helpers ────────────────────────────────────────────────────────────────
+    protected virtual Task LoadContentAsync() => Task.CompletedTask;
 
     /// <summary>
-    /// Стандартный placeholder — скелетон-строка.
+    /// Skeleton-плейсхолдер на время загрузки.
     /// Переопределите для кастомного вида.
     /// </summary>
-    protected virtual RenderFragment DefaultPlaceholder() =>
-        builder =>
-        {
-            builder.OpenElement(0, "div");
-            builder.AddAttribute(1, "class", "sg-skeleton sg-skeleton--text");
-            builder.AddAttribute(2, "style", "height: 1.5rem; width: 100%; margin: 0.5rem 0;");
-            builder.AddAttribute(3, "aria-busy", "true");
-            builder.AddAttribute(4, "aria-label", "Loading...");
-            builder.CloseElement();
-        };
+    protected virtual RenderFragment StreamingSkeleton => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sg-streaming-skeleton");
+        builder.AddAttribute(2, "aria-busy", "true");
+        builder.AddAttribute(3, "role", "status");
+
+        builder.OpenElement(4, "div");
+        builder.AddAttribute(5, "class", "sg-skeleton-pulse");
+        builder.AddAttribute(6, "style", "height:1rem;width:60%;margin:.5rem 0");
+        builder.CloseElement();
+
+        builder.OpenElement(7, "div");
+        builder.AddAttribute(8, "class", "sg-skeleton-pulse");
+        builder.AddAttribute(9, "style", "height:1rem;width:80%;margin:.5rem 0");
+        builder.CloseElement();
+
+        builder.OpenElement(10, "div");
+        builder.AddAttribute(11, "class", "sg-skeleton-pulse");
+        builder.AddAttribute(12, "style", "height:1rem;width:40%;margin:.5rem 0");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    // Обратная совместимость
+    protected virtual RenderFragment DefaultPlaceholder() => StreamingSkeleton;
 
     /// <summary>
-    /// Принудительно перезагрузить контент (например, по кнопке Retry).
+    /// Обёртка: показывает skeleton пока данные грузятся, контент — когда готовы.
     /// </summary>
+    protected RenderFragment DeferredContent(RenderFragment content) => builder =>
+        builder.AddContent(0, !IsContentReady && IsStreaming ? StreamingSkeleton : content);
+
+    // ── Reload ──────────────────────────────────────────────────────────────
+
+    /// <summary>Принудительно перезагрузить контент (например, по кнопке Retry).</summary>
     public async Task ReloadContentAsync()
     {
         if (IsDisposed) return;
