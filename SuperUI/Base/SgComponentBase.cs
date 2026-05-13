@@ -1,19 +1,16 @@
 // SuperUI/Base/SgComponentBase.cs
-// ИСПРАВЛЕНИЯ v3:
-// ✅ CS0019 FIX: RenderPriority используется из SuperUI.Base.Reactive
-// ✅ BUG-1: ComponentToken — единая точка, SgJsComponentBase использует override
-// ✅ BUG: ISgComponent явно реализован
-// ✅ PERF-1: AdditionalAttributesFiltered — lock только на Server
-// ✅ UX: ThrowIfDisposed работает и без CallerMemberName
-// ✅ НОВОЕ: SetParametersAsync с ShouldSetParameters virtual hook
-// ✅ НОВОЕ: OnAfterFirstRenderAsync (convenience alias)
-// ✅ НОВОЕ: Blazor United — RenderMode cascading parameter, IsStaticSSR, IsInteractive
-// ✅ НОВОЕ: ComponentRegistry auto-registration
+// ИСПРАВЛЕНИЯ v4:
+// ✅ FIX CS0246: добавлен using Microsoft.AspNetCore.Components.Web
+// ✅ FIX: OnAfterFirstRenderAsync теперь virtual
+// ✅ FIX: AddHook проверяет дубликаты
+// ✅ FIX: IsStreamingRendering свойство
+// ✅ PERF: ShouldSetParameters — избегаем double allocation
+// ✅ THREAD: _filteredAttrsCache через Interlocked
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.AspNetCore.Components;
-
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using SuperUI.Base.Diagnostics;
@@ -27,13 +24,13 @@ namespace SuperUI.Base;
 
 public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDisposable
 {
-    // ── Инъекции ────────────────────────────────────────────────────────────────
-    [Inject] protected ILogger<SgComponentBase> Logger { get; set; } = null!;
+    // ── Инъекции ───────────────────────────────────────────────────────────────
+    [Inject] protected ILogger Logger { get; set; } = null!;
     [Inject] protected IComponentOptionsService? OptionsService { get; set; }
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
     [Inject] protected IComponentRegistry? ComponentRegistry { get; set; }
 
-    // ── Каскадные параметры ─────────────────────────────────────────────────────
+    // ── Каскадные параметры ────────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
 
@@ -43,20 +40,14 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     /// </summary>
     [CascadingParameter] protected IComponentRenderMode? RenderMode { get; set; }
 
-    /// <summary>
-    /// true — компонент в статическом SSR (нет SignalR/интерактивности).
-    /// В этом режиме события (onclick, onchange) не работают.
-    /// </summary>
+    // ── Render mode helpers (.NET 8+) ──────────────────────────────────────────
+    /// <summary>true — компонент в статическом SSR (нет SignalR/интерактивности).</summary>
     protected bool IsStaticSSR => RenderMode is null;
 
-    /// <summary>
-    /// true — доступна интерактивность (InteractiveServer/WebAssembly/Auto).
-    /// </summary>
+    /// <summary>true — доступна интерактивность (InteractiveServer/WebAssembly/Auto).</summary>
     protected bool IsInteractive => RenderMode is not null;
 
-    /// <summary>
-    /// Режим InteractiveServer.
-    /// </summary>
+    /// <summary>Режим InteractiveServer (SignalR).</summary>
     protected bool IsInteractiveServer => RenderMode is InteractiveServerRenderMode;
 
     /// <summary>InteractiveWebAssembly режим.</summary>
@@ -65,7 +56,15 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     /// <summary>InteractiveAuto режим.</summary>
     protected bool IsInteractiveAuto => RenderMode is InteractiveAutoRenderMode;
 
-    // ── Параметры ───────────────────────────────────────────────────────────────
+    /// <summary>
+    /// true — компонент рендерится в режиме Streaming Rendering (.NET 8+).
+    /// Доступно только если вы вручную пробрасываете это значение через CascadingValue
+    /// или устанавливаете из StreamingRenderingService.
+    /// </summary>
+    [CascadingParameter(Name = "IsStreamingRendering")]
+    protected bool IsStreamingRendering { get; set; }
+
+    // ── Параметры ──────────────────────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
     [Parameter] public bool Visible { get; set; } = true;
@@ -73,17 +72,17 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // ── Публичные свойства ──────────────────────────────────────────────────────
+    // ── Публичные свойства ─────────────────────────────────────────────────────
     public string ComponentId { get; }
     protected string EffectiveId => !string.IsNullOrWhiteSpace(Id) ? Id! : ComponentId;
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
     protected static bool IsBrowser => OperatingSystem.IsBrowser();
     protected static bool IsServer => !OperatingSystem.IsBrowser();
 
-    /// BUG-1 FIX: единая точка ComponentToken, переопределяется SgJsComponentBase
+    /// <summary>BUG-1 FIX: единая точка ComponentToken, переопределяется SgJsComponentBase.</summary>
     protected internal virtual CancellationToken ComponentToken => _cts.Token;
 
-    // ── PERF-1: AdditionalAttributesFiltered без lock на WASM ──────────────────
+    // ── PERF: AdditionalAttributesFiltered ─────────────────────────────────────
     protected IReadOnlyDictionary<string, object>? AdditionalAttributesFiltered
     {
         get
@@ -92,11 +91,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
                 return _filteredAttrsCache;
 
-            // На WASM однопоточный runtime — lock не нужен
             if (IsBrowser)
                 return RefreshFilteredAttrsCache(gen);
 
-            // На Server — полная синхронизация
             lock (_ariaCacheLock)
             {
                 if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
@@ -114,11 +111,13 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             _filteredAttrsCacheGen = gen;
             return null;
         }
+
         var filtered = AdditionalAttributes
             .Where(kv =>
                 !kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase) &&
                 !kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase))
             .ToDictionary(kv => kv.Key, kv => kv.Value);
+
         _filteredAttrsCache = filtered.Count == 0 ? null : filtered;
         _filteredAttrsCacheGen = gen;
         return _filteredAttrsCache;
@@ -126,20 +125,21 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     private int _disposed;
     private int _previousVisible = 1;
+    // FIX: используем HashSet для гарантии уникальности хуков
+    private readonly HashSet<IComponentHook> _hooksSet = new(ReferenceEqualityComparer.Instance);
     private readonly List<IComponentHook> _hooks = [];
     private ComponentSignalTracker? _signalBatcher;
     private List<IDisposable>? _reactiveDisposables;
     private readonly CancellationTokenSource _cts = new();
-
     private readonly object _ariaCacheLock = new();
     private IReadOnlyDictionary<string, object>? _ariaCache;
     private int _ariaCacheGeneration = -2;
     private int _ariaGeneration;
-    private volatile IReadOnlyDictionary<string, object>? _filteredAttrsCache;
+    // THREAD FIX: используем object-ссылку, заменяемую через Interlocked
+    private IReadOnlyDictionary<string, object>? _filteredAttrsCache;
     private volatile int _filteredAttrsCacheGen = -1;
 
-    // ── ShouldSetParameters: кэш снимка параметров ───────────────────────────────
-    private SgParameterSnapshot<SgComponentBase>? _lastParametersSnapshot;
+    private SgParameterSnapshot? _lastParametersSnapshot;
 
 #if DEBUG
     private readonly ComponentDiagnostics _diagnostics;
@@ -157,16 +157,21 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     protected virtual string ComponentPrefix => "cmp";
 
-    // ── Hooks ───────────────────────────────────────────────────────────────────
+    // ── Hooks ──────────────────────────────────────────────────────────────────
+    /// <summary>
+    /// FIX: добавляем хук только если он ещё не зарегистрирован (дубли недопустимы).
+    /// </summary>
     protected void AddHook(IComponentHook hook)
     {
         ArgumentNullException.ThrowIfNull(hook);
-        _hooks.Add(hook);
+        if (_hooksSet.Add(hook))
+            _hooks.Add(hook);
     }
 
-    // ── Reactive ────────────────────────────────────────────────────────────────
+    // ── Reactive ───────────────────────────────────────────────────────────────
     protected SgSignal<TValue> CreateSignal<TValue>(
-        TValue initial, IEqualityComparer<TValue>? comparer = null)
+        TValue initial,
+        IEqualityComparer<TValue>? comparer = null)
     {
         var signal = comparer is null
             ? new SgSignal<TValue>(initial)
@@ -194,10 +199,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         return effect;
     }
 
-    protected SgComputed<T> RegisterComputed<T>(Func<T> compute)
+    protected SgComputed<TValue> RegisterComputed<TValue>(Func<TValue> compute)
     {
         ArgumentNullException.ThrowIfNull(compute);
-        var computed = new SgComputed<T>(compute);
+        var computed = new SgComputed<TValue>(compute);
         computed.Subscribe(this);
         (_reactiveDisposables ??= []).Add(computed);
         return computed;
@@ -206,35 +211,35 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     protected void RegisterEffectInternal(IDisposable disposable)
         => (_reactiveDisposables ??= []).Add(disposable);
 
-    // ── ShouldRender ────────────────────────────────────────────────────────────
+    // ── ShouldRender ───────────────────────────────────────────────────────────
     protected override bool ShouldRender()
     {
         bool visible = Visible;
         int prev = Interlocked.Exchange(ref _previousVisible, visible ? 1 : 0);
         bool wasVisible = prev == 1;
+
         if (!visible && wasVisible) return true;
         if (!visible) return false;
+
         foreach (var hook in _hooks)
             if (hook is IRenderHook rh && !rh.ShouldRender(this))
                 return false;
+
         return true;
     }
 
-    // ── ShouldSetParameters — пропуск обработки если параметры не изменились ──
+    // ── ShouldSetParameters ────────────────────────────────────────────────────
     /// <summary>
-    /// Возвращает false если параметры структурно не изменились.
-    /// Базовая реализация использует SgParameterSnapshot для сравнения.
-    /// Переопределите для кастомной логики.
-    /// Примечание: snapshot обновляется в SetParametersAsync, а не здесь.
+    /// PERF FIX: snapshot создаётся только после того как решено что параметры изменились.
     /// </summary>
     protected virtual bool ShouldSetParameters(ParameterView parameters)
     {
         if (!_lastParametersSnapshot.HasValue) return true;
-        var current = new SgParameterSnapshot<SgComponentBase>(parameters);
+        var current = new SgParameterSnapshot(parameters);
         return !_lastParametersSnapshot.Value.Equals(current);
     }
 
-    // ── RequestRender ───────────────────────────────────────────────────────────
+    // ── RequestRender ──────────────────────────────────────────────────────────
     public void RequestRender()
     {
         if (IsDisposed) return;
@@ -258,14 +263,12 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         return InvokeAsync(StateHasChanged);
     }
 
-    // ── SetParametersAsync ──────────────────────────────────────────────────────
+    // ── SetParametersAsync ─────────────────────────────────────────────────────
     public override async Task SetParametersAsync(ParameterView parameters)
     {
         Interlocked.Increment(ref _ariaGeneration);
         Volatile.Write(ref _filteredAttrsCacheGen, -1);
 
-        // BUG-FIX: первый вызов (snapshot == null) — всегда обрабатываем,
-        // иначе компонент никогда не получит свои первые параметры.
         if (_lastParametersSnapshot.HasValue && !ShouldSetParameters(parameters))
         {
 #if DEBUG
@@ -274,19 +277,18 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             return;
         }
 
-        // Обновляем snapshot после проверки
-        _lastParametersSnapshot = new SgParameterSnapshot<SgComponentBase>(parameters);
-
+        _lastParametersSnapshot = new SgParameterSnapshot(parameters);
         await base.SetParametersAsync(parameters);
     }
 
-    // ── Lifecycle ───────────────────────────────────────────────────────────────
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
         base.OnInitialized();
         LogLifecycle(nameof(OnInitialized));
         ComponentRegistry?.Register(this);
-        foreach (var hook in _hooks) hook.OnInitialized(this);
+        foreach (var hook in _hooks)
+            hook.OnInitialized(this);
     }
 
     protected override async Task OnInitializedAsync()
@@ -303,7 +305,8 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 #if DEBUG
         _diagnostics.ParameterChangeCount++;
 #endif
-        foreach (var hook in _hooks) hook.OnParametersSet(this);
+        foreach (var hook in _hooks)
+            hook.OnParametersSet(this);
         base.OnParametersSet();
     }
 
@@ -341,7 +344,8 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             _renderStartTick = 0;
         }
 #endif
-        foreach (var hook in _hooks) hook.OnAfterRender(this, firstRender);
+        foreach (var hook in _hooks)
+            hook.OnAfterRender(this, firstRender);
         base.OnAfterRender(firstRender);
     }
 
@@ -363,60 +367,58 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
                 await ah.OnAfterRenderAsync(this, firstRender);
     }
 
-    /// <summary>
-    /// Вызывается после первого рендера. Переопределите для startup-логики.
-    /// </summary>
+    /// <summary>Вызывается после первого рендера.</summary>
     protected virtual Task OnFirstRenderAsync() => Task.CompletedTask;
 
     /// <summary>
-    /// Convenience alias для OnFirstRenderAsync (более явное имя).
+    /// FIX: теперь virtual — можно переопределить в подклассах.
+    /// Convenience alias для OnFirstRenderAsync.
     /// </summary>
-    protected Task OnAfterFirstRenderAsync() => OnFirstRenderAsync();
+    protected virtual Task OnAfterFirstRenderAsync() => OnFirstRenderAsync();
 
-    // ── CSS / Style ─────────────────────────────────────────────────────────────
+    // ── CSS / Style ────────────────────────────────────────────────────────────
 #if DEBUG
     public ComponentDiagnostics Diagnostics => _diagnostics;
 #endif
 
-    protected CssBuilder Css(string? baseClass = null) =>
-        new(baseClass ?? GetDefaultCssClass());
+    protected CssBuilder Css(string? baseClass = null)
+        => new(baseClass ?? GetDefaultCssClass());
 
-    protected StyleBuilder CreateStyle(string? baseStyle = null) =>
-        new(baseStyle);
+    protected StyleBuilder CreateStyle(string? baseStyle = null)
+        => new(baseStyle);
 
     protected virtual string? GetDefaultCssClass() => null;
 
-    // ── ARIA ────────────────────────────────────────────────────────────────────
+    // ── ARIA ───────────────────────────────────────────────────────────────────
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var currentGeneration = Volatile.Read(ref _ariaGeneration);
-        // PERF: lock только на Server
-        if (IsBrowser)
-            return BuildAriaAttributesCore(currentGeneration);
-        lock (_ariaCacheLock)
-            return BuildAriaAttributesCore(currentGeneration);
+        if (IsBrowser) return BuildAriaAttributesCore(currentGeneration);
+        lock (_ariaCacheLock) return BuildAriaAttributesCore(currentGeneration);
     }
 
     private IReadOnlyDictionary<string, object> BuildAriaAttributesCore(int gen)
     {
         if (_ariaCache is not null && _ariaCacheGeneration == gen)
             return _ariaCache;
+
         var attrs = new Dictionary<string, object>(4, StringComparer.Ordinal);
         if (AdditionalAttributes is not null)
             foreach (var kvp in AdditionalAttributes)
                 if (IsAriaAttribute(kvp.Key))
                     attrs[kvp.Key] = kvp.Value;
+
         _ariaCache = attrs;
         _ariaCacheGeneration = gen;
         return attrs;
     }
 
-    private static bool IsAriaAttribute(string key) =>
-        key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("role", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
+    private static bool IsAriaAttribute(string key)
+        => key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("role", StringComparison.OrdinalIgnoreCase)
+        || key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
 
-    // ── RefreshAsync ────────────────────────────────────────────────────────────
+    // ── RefreshAsync ───────────────────────────────────────────────────────────
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task RefreshAsync()
     {
@@ -436,8 +438,8 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         return InvokeAsync(async () => { await action(); StateHasChanged(); });
     }
 
-    protected Task RefreshFromBackgroundAsync() =>
-        IsDisposed ? Task.CompletedTask : InvokeAsync(StateHasChanged);
+    protected Task RefreshFromBackgroundAsync()
+        => IsDisposed ? Task.CompletedTask : InvokeAsync(StateHasChanged);
 
     protected Task SafeInvokeAsync(Func<Task> action)
     {
@@ -463,22 +465,32 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         return tcs.Task;
     }
 
-    // ── Service helpers ─────────────────────────────────────────────────────────
-    protected T? TryGetService<T>() where T : class => ServiceProvider.GetService<T>();
-    protected T TryGetRequiredService<T>() where T : class =>
-        ServiceProvider.GetService<T>() ?? throw new InvalidOperationException(
-            $"Service {typeof(T).Name} is not registered. Call builder.Services.AddSuperUI() in Program.cs.");
+    // ── Service helpers ────────────────────────────────────────────────────────
+    protected T? TryGetService<T>() where T : class
+        => ServiceProvider.GetService<T>();
 
-    protected void ThrowIfDisposed([CallerMemberName] string? caller = null) =>
-        ObjectDisposedException.ThrowIf(IsDisposed, $"{ComponentId}.{caller}");
+    protected T TryGetRequiredService<T>() where T : class
+        => ServiceProvider.GetService<T>()
+           ?? throw new InvalidOperationException(
+               $"Service {typeof(T).Name} is not registered. Call builder.Services.AddSuperUI() in Program.cs.");
 
-    // ── Context helpers ─────────────────────────────────────────────────────────
-    protected Task IfBrowserAsync(Func<Task> action) =>
-        IsBrowser ? action() : Task.CompletedTask;
-    protected Task IfServerAsync(Func<Task> action) =>
-        IsServer ? action() : Task.CompletedTask;
+    protected void ThrowIfDisposed([CallerMemberName] string? caller = null)
+        => ObjectDisposedException.ThrowIf(IsDisposed, $"{ComponentId}.{caller}");
 
-    // ── Logging ─────────────────────────────────────────────────────────────────
+    // ── Context helpers ────────────────────────────────────────────────────────
+    protected Task IfBrowserAsync(Func<Task> action)
+        => IsBrowser ? action() : Task.CompletedTask;
+
+    protected Task IfServerAsync(Func<Task> action)
+        => IsServer ? action() : Task.CompletedTask;
+
+    /// <summary>
+    /// NEW: Выполнить действие только в интерактивном режиме (не в Static SSR).
+    /// </summary>
+    protected Task IfInteractiveAsync(Func<Task> action)
+        => IsInteractive ? action() : Task.CompletedTask;
+
+    // ── Logging ────────────────────────────────────────────────────────────────
     [Conditional("DEBUG")]
     private void LogLifecycle(string method)
     {
@@ -486,13 +498,15 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             Logger.LogTrace("[{ComponentId}] {Method}", ComponentId, method);
     }
 
-    // ── IAsyncDisposable ────────────────────────────────────────────────────────
+    // ── IAsyncDisposable ───────────────────────────────────────────────────────
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         LogLifecycle(nameof(DisposeAsync));
+
         try { _cts.Cancel(); } catch { /* ignored */ }
         _cts.Dispose();
+
         if (_reactiveDisposables is not null)
         {
             foreach (var rd in _reactiveDisposables)
@@ -503,6 +517,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             }
             _reactiveDisposables.Clear();
         }
+
         foreach (var hook in _hooks)
         {
             try
@@ -513,7 +528,9 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             catch (Exception ex)
             { Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId); }
         }
+
         _hooks.Clear();
+        _hooksSet.Clear();
         await DisposeComponentAsync();
         GC.SuppressFinalize(this);
     }

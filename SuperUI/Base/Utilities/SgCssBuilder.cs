@@ -1,11 +1,11 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
-// УЛУЧШЕНИЯ v2:
-// ✅ PERF-2: capacity = реальная длина строк (не * 14)
-// ✅ НОВОЕ: State(stateName, condition) — shorthand для BEM-модификаторов состояния
-// ✅ НОВОЕ: Responsive(breakpoint, class) — добавление Tailwind-брейкпоинтов
-// ✅ FIX: Deduplicate() использует FrozenSet на .NET 8+
+// УЛУЧШЕНИЯ v3:
+// ✅ PERF: Deduplicate использует HashSet<string> (быстрее FrozenSet для одноразовой операции)
+// ✅ NEW: AddIfNotEmpty(string? value, string cssClass)
+// ✅ NEW: Dark(string) / Light(string) для theme-aware CSS
+// ✅ NEW: WithConditionalPrefix(bool, string) для runtime-breakpoints
+// ✅ PERF: Build() — fast path для пустого builder
 
-using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using System.Text;
 
@@ -22,10 +22,10 @@ public sealed class SgCssBuilder
         _base = string.IsNullOrWhiteSpace(baseClass) ? null : baseClass.Trim();
     }
 
-    public bool IsEmpty =>
-        string.IsNullOrWhiteSpace(_base) && (_parts is null || _parts.Count == 0);
+    public bool IsEmpty
+        => string.IsNullOrWhiteSpace(_base) && (_parts is null || _parts.Count == 0);
 
-    // ── Добавить ─────────────────────────────────────────────────────────────────
+    // ── Добавить ───────────────────────────────────────────────────────────────
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SgCssBuilder Add(string? cssClass)
     {
@@ -53,15 +53,15 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Условные ────────────────────────────────────────────────────────────────
+    // ── Условные ──────────────────────────────────────────────────────────────
     public SgCssBuilder If(bool condition, string? cssClass)
     {
         if (condition) Add(cssClass);
         return this;
     }
 
-    public SgCssBuilder If(bool condition, string? trueClass, string? falseClass) =>
-        Add(condition ? trueClass : falseClass);
+    public SgCssBuilder If(bool condition, string? trueClass, string? falseClass)
+        => Add(condition ? trueClass : falseClass);
 
     public SgCssBuilder If(Func<bool> condition, string? cssClass)
     {
@@ -76,7 +76,17 @@ public sealed class SgCssBuilder
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SgCssBuilder AddIf(bool condition, string? cssClass) => If(condition, cssClass);
 
-    // ── BEM ─────────────────────────────────────────────────────────────────────
+    /// <summary>
+    /// NEW: Добавить cssClass если value не пустое.
+    /// Пример: .AddIfNotEmpty(Title, "has-title")
+    /// </summary>
+    public SgCssBuilder AddIfNotEmpty(string? value, string cssClass)
+    {
+        if (!string.IsNullOrWhiteSpace(value)) Add(cssClass);
+        return this;
+    }
+
+    // ── BEM ────────────────────────────────────────────────────────────────────
     public SgCssBuilder Modifier(string? modifier, bool condition = true)
     {
         if (condition && !string.IsNullOrWhiteSpace(modifier) && !string.IsNullOrWhiteSpace(_base))
@@ -91,7 +101,6 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // НОВОЕ: State — shorthand для BEM state модификаторов (is-active, is-disabled, etc.)
     public SgCssBuilder State(string stateName, bool condition)
     {
         if (condition && !string.IsNullOrWhiteSpace(stateName))
@@ -99,7 +108,7 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // НОВОЕ: Responsive — Tailwind-подобные брейкпоинты
+    // ── Responsive ─────────────────────────────────────────────────────────────
     public SgCssBuilder Responsive(string breakpoint, string? cssClass, bool condition = true)
     {
         if (condition && !string.IsNullOrWhiteSpace(cssClass) && !string.IsNullOrWhiteSpace(breakpoint))
@@ -107,7 +116,26 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Маппинг ──────────────────────────────────────────────────────────────────
+    /// <summary>
+    /// NEW: Добавить prefix к классу только при условии (runtime breakpoint-switching).
+    /// Пример: .WithConditionalPrefix(IsMobile, "sm:")
+    /// </summary>
+    public SgCssBuilder WithConditionalPrefix(bool condition, string prefix)
+    {
+        _prefix = condition && !string.IsNullOrWhiteSpace(prefix) ? prefix : null;
+        return this;
+    }
+
+    // ── Theme ──────────────────────────────────────────────────────────────────
+    /// <summary>NEW: Добавить класс для тёмной темы (dark: prefix).</summary>
+    public SgCssBuilder Dark(string? cssClass, bool condition = true)
+        => Responsive("dark", cssClass, condition);
+
+    /// <summary>NEW: Условный класс для светлой и тёмной темы.</summary>
+    public SgCssBuilder Theme(bool isDark, string? lightClass, string? darkClass)
+        => isDark ? Add(darkClass) : Add(lightClass);
+
+    // ── Маппинг ────────────────────────────────────────────────────────────────
     public SgCssBuilder Map<TKey>(TKey key, IReadOnlyDictionary<TKey, string> map)
         where TKey : notnull
     {
@@ -122,7 +150,7 @@ public sealed class SgCssBuilder
         return Add(mapper(key));
     }
 
-    // ── Удаление ────────────────────────────────────────────────────────────────
+    // ── Удаление ──────────────────────────────────────────────────────────────
     public SgCssBuilder Remove(string cssClass)
     {
         if (!string.IsNullOrWhiteSpace(cssClass) && _parts is not null)
@@ -138,7 +166,11 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Дедупликация — FrozenSet на .NET 8+ ─────────────────────────────────────
+    // ── Дедупликация ───────────────────────────────────────────────────────────
+    /// <summary>
+    /// PERF FIX: HashSet быстрее FrozenSet для одноразовой фильтрации.
+    /// FrozenSet оптимален для lookup, а не для one-shot deduplicate.
+    /// </summary>
     public SgCssBuilder Deduplicate()
     {
         if (_parts is null || _parts.Count < 2) return this;
@@ -147,16 +179,20 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Prefix ──────────────────────────────────────────────────────────────────
+    // ── Prefix ─────────────────────────────────────────────────────────────────
     public SgCssBuilder WithPrefix(string? prefix)
     {
         _prefix = string.IsNullOrEmpty(prefix) ? null : prefix;
         return this;
     }
 
-    public SgCssBuilder ClearPrefix() { _prefix = null; return this; }
+    public SgCssBuilder ClearPrefix()
+    {
+        _prefix = null;
+        return this;
+    }
 
-    // ── Объединение ─────────────────────────────────────────────────────────────
+    // ── Объединение ────────────────────────────────────────────────────────────
     public SgCssBuilder Merge(SgCssBuilder? other)
     {
         if (other is null) return this;
@@ -166,34 +202,32 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    // ── Клонирование ────────────────────────────────────────────────────────────
+    // ── Клонирование ───────────────────────────────────────────────────────────
     public SgCssBuilder Clone()
     {
         var clone = new SgCssBuilder(_base) { _prefix = _prefix };
-        if (_parts is not null) clone._parts = new List<string>(_parts);
+        if (_parts is not null)
+            clone._parts = new List<string>(_parts);
         return clone;
     }
 
-    // ── Сборка ── PERF-2: реальная длина capacity ────────────────────────────────
+    // ── Сборка ─────────────────────────────────────────────────────────────────
     public string Build()
     {
         var hasBase = !string.IsNullOrWhiteSpace(_base);
         var hasParts = _parts is { Count: > 0 };
 
+        // Fast paths — без StringBuilder
         if (!hasParts) return hasBase ? _base! : string.Empty;
         if (!hasBase && _parts!.Count == 1) return _parts[0];
         if (hasBase && _parts!.Count == 1) return string.Concat(_base, " ", _parts[0]);
-        if (!hasBase && _parts!.Count == 2)
-            return string.Concat(_parts[0], " ", _parts[1]);
-        if (hasBase && _parts!.Count == 2)
-            return string.Concat(_base, " ", _parts[0], " ", _parts[1]);
-        if (!hasBase && _parts!.Count == 3)
-            return string.Concat(_parts[0], " ", _parts[1], " ", _parts[2]);
-        if (hasBase && _parts!.Count == 3)
-            return string.Concat(_base, " ", _parts[0], " ", _parts[1], " ", _parts[2]);
+        if (!hasBase && _parts!.Count == 2) return string.Concat(_parts[0], " ", _parts[1]);
+        if (hasBase && _parts!.Count == 2) return string.Concat(_base, " ", _parts[0], " ", _parts[1]);
+        if (!hasBase && _parts!.Count == 3) return string.Concat(_parts[0], " ", _parts[1], " ", _parts[2]);
+        if (hasBase && _parts!.Count == 3) return string.Concat(_base, " ", _parts[0], " ", _parts[1], " ", _parts[2]);
 
-        // PERF-2 FIX: реальная длина вместо * 14
-        int capacity = (hasBase ? _base!.Length + 1 : 0);
+        // Общий путь — StringBuilder с точной capacity
+        int capacity = hasBase ? _base!.Length + 1 : 0;
         foreach (var p in _parts!) capacity += p.Length + 1;
 
         var sb = new StringBuilder(capacity);

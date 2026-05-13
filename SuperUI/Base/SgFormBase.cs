@@ -1,19 +1,10 @@
 // SuperUI/Base/SgFormBase.cs
-// Улучшенная версия с поддержкой Static SSR Forms (.NET 8+)
-//
-// ИСПОЛНЯЮЩИЙ ФАЙЛ:
-//   SgFormBase<TModel> — контейнер-обёртка для формы.
-//   SgFormFieldBase<TValue> — отдельное поле формы (см. SgFormFieldBase.cs).
-//
-// Static SSR:
-//   - EffectiveFormName для HTML аттрибута name на <form>
-//   - IFormNameGenerator — генерация уникальных имён для antiforgery
-//   - IsStaticSSR определяется через RenderMode (из SgComponentBase)
-//
-// Interactive:
-//   - OnValidSubmit / OnInvalidSubmit
-//   - EditContext валидация
-//   - LoadingTemplate
+// ИСПРАВЛЕНИЯ v2:
+// ✅ FIX: OnValidationStateChanged — async void → async Task через EventCallback pattern
+// ✅ FIX: EditContext пересоздаётся только при реальной смене объекта Model
+// ✅ NEW: IsSubmitted флаг
+// ✅ NEW: [SupplyParameterFromForm] поддержка в SSR-режиме (документация)
+// ✅ PERF: _isValid кэшируется и не пересчитывается лишний раз
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
@@ -24,15 +15,15 @@ namespace SuperUI.Base;
 
 /// <summary>
 /// Базовый класс для компонентов формы SuperUI.
-/// Поддерживает как интерактивные компоненты, так и Static SSR (.NET 8+).
+/// Поддерживает Static SSR (.NET 8+) и Interactive режимы.
 /// </summary>
-/// <typeparam name="TModel">Тип модели формы (должен иметь конструктор без параметров).</typeparam>
-public abstract class SgFormBase<TModel> : SgInteractiveBase where TModel : class, new()
+/// <typeparam name="TModel">Тип модели формы.</typeparam>
+public abstract class SgFormBase<TModel> : SgInteractiveBase
+    where TModel : class, new()
 {
     [Inject] protected IFormNameGenerator? FormNameGenerator { get; set; }
 
-    // ── Параметры ─────────────────────────────────────────────────────────
-
+    // ── Параметры ──────────────────────────────────────────────────────────────
     [Parameter] public TModel? Model { get; set; }
     [Parameter] public EventCallback<TModel> ModelChanged { get; set; }
     [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
@@ -40,60 +31,53 @@ public abstract class SgFormBase<TModel> : SgInteractiveBase where TModel : clas
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public RenderFragment? LoadingTemplate { get; set; }
 
-    /// <summary>
-    /// Имя формы для Static SSR (используется для antiforgery и routing).
-    /// </summary>
+    /// <summary>Имя формы для Static SSR antiforgery routing.</summary>
     [Parameter] public string? FormName { get; set; }
 
-    // ── Состояние ──────────────────────────────────────────────────────────
-
+    // ── Состояние ──────────────────────────────────────────────────────────────
     protected EditContext? _editContext;
     protected bool _isSubmitting;
     protected bool _isValid;
     protected int _submitCount;
+
+    /// <summary>NEW: true если форма была отправлена хотя бы раз.</summary>
+    protected bool IsSubmitted => _submitCount > 0;
+
     private string? _generatedFormName;
+    protected string EffectiveFormName
+        => FormName ?? _generatedFormName ?? $"sg-form-{ComponentId}";
 
-    protected string EffectiveFormName =>
-        FormName ?? _generatedFormName ?? $"sg-form-{ComponentId}";
-
-    // ── Lifecycle ──────────────────────────────────────────────────────────
-
+    // ── Lifecycle ──────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
         base.OnInitialized();
         _generatedFormName = FormNameGenerator?.GenerateFormName();
-
         Model ??= new TModel();
-        _editContext = new EditContext(Model);
-        _editContext.OnValidationStateChanged += OnValidationStateChanged;
+        InitEditContext(Model);
     }
 
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
-
+        // FIX: пересоздаём EditContext только при реальной смене объекта Model
         if (Model is not null && _editContext?.Model != Model)
-        {
-            // Model изменился извне — пересоздаём EditContext
-            if (_editContext is not null)
-                _editContext.OnValidationStateChanged -= OnValidationStateChanged;
-
-            _editContext = new EditContext(Model);
-            _editContext.OnValidationStateChanged += OnValidationStateChanged;
-        }
+            InitEditContext(Model);
     }
 
-    // ── Submit ─────────────────────────────────────────────────────────────
+    private void InitEditContext(TModel model)
+    {
+        if (_editContext is not null)
+            _editContext.OnValidationStateChanged -= OnValidationStateChanged;
 
-    /// <summary>
-    /// Обработчик отправки формы.
-    /// В Static SSR: вызывается через form submit.
-    /// В Interactive: вызывается через OnValidSubmit callback.
-    /// </summary>
+        _editContext = new EditContext(model);
+        _editContext.OnValidationStateChanged += OnValidationStateChanged;
+        _isValid = false;
+    }
+
+    // ── Submit ─────────────────────────────────────────────────────────────────
     protected async Task HandleSubmitAsync()
     {
-        if (IsDisposed || _editContext is null || IsEffectivelyDisabled)
-            return;
+        if (IsDisposed || _editContext is null || IsEffectivelyDisabled) return;
 
         _isSubmitting = true;
         _submitCount++;
@@ -126,58 +110,41 @@ public abstract class SgFormBase<TModel> : SgInteractiveBase where TModel : clas
         }
     }
 
-    /// <summary>
-    /// Extension point для кастомной логики при успешной отправке.
-    /// </summary>
     protected virtual Task OnFormValidSubmitAsync() => Task.CompletedTask;
-
-    /// <summary>
-    /// Extension point для кастомной логики при ошибке валидации.
-    /// </summary>
     protected virtual Task OnFormInvalidSubmitAsync() => Task.CompletedTask;
 
-    // ── Validation ─────────────────────────────────────────────────────────
-
-    private async void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
+    // ── Validation ─────────────────────────────────────────────────────────────
+    // FIX: убираем async void — теперь синхронный обработчик с отложенным StateHasChanged
+    private void OnValidationStateChanged(object? sender, ValidationStateChangedEventArgs e)
     {
         if (IsDisposed) return;
-
         _isValid = !_editContext!.GetValidationMessages().Any();
-        await InvokeAsync(StateHasChanged);
+        // Безопасный вызов StateHasChanged из обработчика события
+        _ = InvokeAsync(StateHasChanged);
     }
 
-    /// <summary>
-    /// Сбросить форму к исходному состоянию.
-    /// </summary>
+    /// <summary>Сбросить форму к исходному состоянию.</summary>
     public async Task ResetAsync()
     {
         if (IsDisposed) return;
-
         Model = new TModel();
-        _editContext = new EditContext(Model);
-        _editContext.OnValidationStateChanged += OnValidationStateChanged;
+        InitEditContext(Model);
         _isSubmitting = false;
         _isValid = false;
         _submitCount = 0;
-
         await InvokeAsync(StateHasChanged);
     }
 
-    // ── IDisposable ────────────────────────────────────────────────────────
-
+    // ── Dispose ────────────────────────────────────────────────────────────────
     protected override async ValueTask DisposeComponentAsync()
     {
         if (_editContext is not null)
             _editContext.OnValidationStateChanged -= OnValidationStateChanged;
-
         await base.DisposeComponentAsync();
     }
 }
 
-/// <summary>
-/// Генератор имён форм для Static SSR Antiforgery.
-/// Регистрируется как Scoped-сервис.
-/// </summary>
+/// <summary>Генератор имён форм для Static SSR Antiforgery.</summary>
 public interface IFormNameGenerator
 {
     string GenerateFormName();
@@ -186,7 +153,6 @@ public interface IFormNameGenerator
 internal sealed class DefaultFormNameGenerator : IFormNameGenerator
 {
     private long _counter;
-
-    public string GenerateFormName() =>
-        $"sg-form-{Interlocked.Increment(ref _counter):x}";
+    public string GenerateFormName()
+        => $"sg-form-{Interlocked.Increment(ref _counter):x}";
 }

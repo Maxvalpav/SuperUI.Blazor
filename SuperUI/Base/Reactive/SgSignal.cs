@@ -27,7 +27,9 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
     private readonly List<Action<T>> _callbacks = new();
     private readonly object _lock = new();
     private int _disposedInt;
-    private bool _dirty;
+    private volatile bool _dirty;
+    private int _notifyCount;
+    private const int PurgeEveryN = 100; // purge каждые 100 нотификаций
 
     public SgSignal(T initial, IEqualityComparer<T>? comparer = null)
     {
@@ -286,6 +288,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
                 foreach (var d in dead)
                     _subscribers.Remove(d);
         }
+
+        // Авто-очистка каждые N нотификаций
+        if (Interlocked.Increment(ref _notifyCount) % PurgeEveryN == 0)
+            PurgeDeadSubscribers();
     }
 
     // ── IDisposable ─────────────────────────────────────────────────────────────

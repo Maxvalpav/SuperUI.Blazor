@@ -134,6 +134,36 @@ public abstract class SgInteractiveBase : SgJsComponentBase
         });
     }
 
+    /// <summary>
+    /// NEW: Создать throttled обёртку вокруг EventCallback.
+    /// </summary>
+    protected EventCallback<T> WithThrottle<T>(
+        EventCallback<T> callback,
+        int intervalMs = 300)
+    {
+        return EventCallback.Factory.Create<T>(this, async value =>
+        {
+            await ThrottleAsync(
+                $"__throttle_{callback.GetHashCode()}",
+                () => callback.InvokeAsync(value),
+                TimeSpan.FromMilliseconds(intervalMs));
+        });
+    }
+
+    /// <summary>
+    /// NEW: Создать throttled обёртку вокруг EventCallback (без аргументов).
+    /// </summary>
+    protected EventCallback WithThrottle(EventCallback callback, int intervalMs = 300)
+    {
+        return EventCallback.Factory.Create(this, async () =>
+        {
+            await ThrottleAsync(
+                $"__throttle_{callback.GetHashCode()}",
+                () => callback.InvokeAsync(),
+                TimeSpan.FromMilliseconds(intervalMs));
+        });
+    }
+
     /// <summary>Явно отменить все pending debounce-операции.</summary>
     public void ClearDebouncers()
     {

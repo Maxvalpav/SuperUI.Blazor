@@ -16,6 +16,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Linq.Expressions;
 using System.Reflection;
+using System.Threading;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
 
@@ -355,6 +356,7 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     private IQueryable<T>? _lastQueryableItems;
     private int _lastPageSize;
     private Func<SgDataRequest, Task<SgDataResult<T>>>? _lastDataSource;
+    private CancellationTokenSource? _searchDebounceCts;
 
     // ── Загрузка данных ─────────────────────────────────────────────────────
 
@@ -524,6 +526,26 @@ public abstract class SgDataBase<T> : SgInteractiveBase
         await LoadDataAsync();
     }
 
+    /// <summary>
+    /// Поиск с дебаунсом (по умолчанию 300ms).
+    /// Предотвращает лавину запросов при быстром вводе.
+    /// </summary>
+    public async Task SearchDebouncedAsync(string? text, int debounceMs = 300)
+    {
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+
+        _searchDebounceCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+        var ct = _searchDebounceCts.Token;
+
+        try
+        {
+            await Task.Delay(debounceMs, ct);
+            await SearchAsync(text);
+        }
+        catch (OperationCanceledException) { }
+    }
+
     /// <summary>Сбросить все фильтры, сортировку, поиск, страницу.</summary>
     public async Task ResetAsync()
     {
@@ -554,11 +576,43 @@ public abstract class SgDataBase<T> : SgInteractiveBase
     /// <summary>Кэш свойств для быстрого поиска через reflection.</summary>
     private static readonly ConcurrentDictionary<(Type, string), PropertyInfo?> _propertyCache = new();
 
+    /// <summary>
+    /// Expression cache для string.Contains (самый частый фильтр).
+    /// Ключ: (EntityType, fieldName, lowerValue)
+    /// </summary>
+    private static readonly ConcurrentDictionary<(Type EntityType, string Field, string LowerValue), Expression<Func<T, bool>>> _stringContainsCache = new();
+
     /// <summary>Получить кэшированное свойство типа.</summary>
     private static PropertyInfo? GetCachedProperty(Type type, string fieldName)
         => _propertyCache.GetOrAdd((type, fieldName), static k =>
             k.Item1.GetProperty(k.Item2,
                 BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase));
+
+    /// <summary>
+    /// Получить или построить кэшированное expression для string.Contains (case-insensitive).
+    /// </summary>
+    private static Expression<Func<T, bool>> GetCachedStringContainsExpression(
+        string fieldName, string value)
+    {
+        var key = (typeof(T), fieldName, value.ToLowerInvariant());
+        return _stringContainsCache.GetOrAdd(key, _ =>
+        {
+            var prop = GetCachedProperty(typeof(T), fieldName);
+            if (prop is null) return (Expression<Func<T, bool>>)(x => false);
+
+            var param = Expression.Parameter(typeof(T), "x");
+            var member = Expression.Property(param, prop);
+            var toLower = Expression.Call(member, typeof(string).GetMethod("ToLower", Type.EmptyTypes)!);
+            var contains = Expression.Call(toLower,
+                typeof(string).GetMethod(nameof(string.Contains), [typeof(string)])!,
+                Expression.Constant(value.ToLowerInvariant()));
+
+            var notNull = Expression.NotEqual(member, Expression.Constant(null, typeof(string)));
+            var body = Expression.AndAlso(notNull, contains);
+
+            return Expression.Lambda<Func<T, bool>>(body, param);
+        });
+    }
 
     /// <summary>Получить или построить кэшированное expression дерево для фильтра.</summary>
     private Expression<Func<T, bool>>? GetOrBuildFilterExpression(SgFilterDescriptor filter)
@@ -614,16 +668,10 @@ public abstract class SgDataBase<T> : SgInteractiveBase
                         Expression.Constant(Convert.ChangeType(filterValue, prop.PropertyType), prop.PropertyType)),
 
                 SgFilterOperator.Contains when prop.PropertyType == typeof(string) =>
-                    Expression.Call(member,
-                        typeof(string).GetMethod(nameof(string.Contains), [typeof(string), typeof(StringComparison)])!,
-                        Expression.Constant(filterValue?.ToString() ?? string.Empty),
-                        Expression.Constant(StringComparison.OrdinalIgnoreCase)),
+                     GetCachedStringContainsExpression(filter.Field, filterValue?.ToString() ?? string.Empty),
 
                 SgFilterOperator.NotContains when prop.PropertyType == typeof(string) =>
-                    Expression.Not(Expression.Call(member,
-                        typeof(string).GetMethod(nameof(string.Contains), [typeof(string), typeof(StringComparison)])!,
-                        Expression.Constant(filterValue?.ToString() ?? string.Empty),
-                        Expression.Constant(StringComparison.OrdinalIgnoreCase))),
+                     Expression.Not(GetCachedStringContainsExpression(filter.Field, filterValue?.ToString() ?? string.Empty)),
 
                 SgFilterOperator.StartsWith when prop.PropertyType == typeof(string) =>
                     Expression.Call(member,
@@ -833,5 +881,14 @@ public abstract class SgDataBase<T> : SgInteractiveBase
             if (!dataSourceChanged && !queryableItemsChanged) CurrentPage = 1;
             await LoadDataAsync();
         }
+    }
+
+    // ── Dispose ────────────────────────────────────────────────────────────────
+
+    protected override async ValueTask DisposeComponentAsync()
+    {
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+        await base.DisposeComponentAsync();
     }
 }

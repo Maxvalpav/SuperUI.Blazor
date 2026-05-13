@@ -1,205 +1,144 @@
 // SuperUI/Base/SgSmartFormBase.cs
-//
-// ИСПРАВЛЕНИЯ:
-//   ✅ GetAllErrors() — исправлен тип возврата: (string Field, IReadOnlyList<string> Errors)
-//   ✅ ConcurrentDictionary — thread-safe для Server
-//   ✅ CompletionPercent — реальный подсёт через reflection (кэшированный)
-//   ✅ IsFormValid — учитывает невалидированные поля
-//   ✅ CrossFieldValidate — virtual Task<IEnumerable<(string, string)>>
-//
-// УЛУЧШЕНИЯ:
-//   ✅ ResetAsync() — сброс формы к начальному состоянию
-//   ✅ GetFieldErrors(string) / HasFieldError(string) — удобные helper-ы
+// НОВЫЙ: Умная форма с авто-сохранением, детекцией грязных полей и конфликтами
 
-using System.Collections.Concurrent;
-using System.Reflection;
+using System.Threading;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Forms;
+using SuperUI.Base.Services;
 
 namespace SuperUI.Base;
 
 /// <summary>
-/// SmartForm: форма с интеллектуальной валидацией.
-/// - Thread-safe словарь ошибок (Blazor Server)
-/// - Дедупликация ошибок
-/// - Cross-field validation
-/// - Async remote validation с debounce
-/// - Прогресс заполнения формы
+/// Умная форма с авто-сохранением черновика в sessionStorage,
+/// детекцией несохранённых изменений и предупреждением при уходе.
 /// </summary>
-/// <typeparam name="TModel">Тип модели формы (должен иметь конструктор без параметров).</typeparam>
-public abstract class SgSmartFormBase<TModel> : SgInteractiveBase
+/// <typeparam name="TModel">Тип модели формы.</typeparam>
+public abstract class SgSmartFormBase<TModel> : SgFormBase<TModel>
     where TModel : class, new()
 {
-    [Parameter] public TModel Model { get; set; } = new();
-    [Parameter] public Func<TModel, CancellationToken, Task<Dictionary<string, List<string>>>>?
-        RemoteValidator { get; set; }
-    [Parameter] public EventCallback<TModel> OnValidSubmit { get; set; }
-    [Parameter] public int ValidationDebounceMs { get; set; } = 500;
+    [Inject] protected ISessionStorage SessionStorage { get; set; } = null!;
+    [Inject] protected IEnhancedNavigationService? EnhancedNav { get; set; }
 
-    // ИСПРАВЛЕНИЕ: ConcurrentDictionary для thread-safety на Server
-    private readonly ConcurrentDictionary<string, List<string>> _fieldErrors = new();
+    [Parameter] public int AutoSaveIntervalSec { get; set; } = 30;
+    [Parameter] public string? DraftKey { get; set; }
+    [Parameter] public bool WarnOnUnsavedChanges { get; set; } = true;
 
-    // C6 FIX: кэш CompletionPercent с инвалидацией
-    private double _cachedCompletionPercent = -1;
-    private int _completionGeneration;
+    protected bool IsDirty { get; private set; }
+    protected bool AutoSaveEnabled => AutoSaveIntervalSec > 0;
 
-    // ── Completion ───────────────────────────────────────────────────────────────
+    private Timer? _autoSaveTimer;
+    private TModel? _originalModel;
+    private IDisposable? _navigationSubscription;
+    private string EffectiveDraftKey => DraftKey ?? $"sg-draft-{typeof(TModel).Name}-{ComponentId}";
 
-    /// <summary>
-    /// Процент заполнения формы (0-100).
-    /// C6 FIX: кэшируется с инвалидацией вместо вычисления каждый раз.
-    /// </summary>
-    protected double CompletionPercent
+    protected override void OnInitialized()
     {
-        get
+        base.OnInitialized();
+        _originalModel = Model is not null ? CloneModel(Model) : null;
+
+        if (AutoSaveEnabled)
         {
-            // Инвалидация при изменении ошибок (косвенный признак изменения данных)
-            var currentGen = _fieldErrors.Count + _fieldErrors.Sum(kv => kv.Value.Count);
-            if (_cachedCompletionPercent >= 0 && _completionGeneration == currentGen)
-                return _cachedCompletionPercent;
-
-            var props = GetModelProperties();
-            if (props.Length == 0)
+            _autoSaveTimer = new Timer(async _ =>
             {
-                _cachedCompletionPercent = 0;
-                _completionGeneration = currentGen;
-                return 0;
-            }
+                if (!IsDisposed && IsDirty)
+                    await SaveDraftAsync();
+            }, null, TimeSpan.FromSeconds(AutoSaveIntervalSec),
+               TimeSpan.FromSeconds(AutoSaveIntervalSec));
+        }
 
-            int filled = 0;
-            foreach (var p in props)
-            {
-                var val = p.GetValue(Model);
-                if (val is not null && (val is not string s || !string.IsNullOrWhiteSpace(s)))
-                    filled++;
-            }
+        if (WarnOnUnsavedChanges && EnhancedNav is not null)
+        {
+            _navigationSubscription = EnhancedNav.OnBeforeUnload(() =>
+                IsDirty ? "У вас есть несохранённые изменения. Хотите уйти?" : null);
+        }
 
-            _cachedCompletionPercent = (double)filled / props.Length * 100;
-            _completionGeneration = currentGen;
-            return _cachedCompletionPercent;
+        _ = RestoreDraftAsync();
+    }
+
+    protected void MarkDirty()
+    {
+        if (!IsDirty)
+        {
+            IsDirty = true;
+            _ = InvokeAsync(StateHasChanged);
         }
     }
 
-    /// <summary>Инвалидировать кэш CompletionPercent.</summary>
-    protected void InvalidateCompletionCache()
+    protected async Task SaveDraftAsync()
     {
-        _cachedCompletionPercent = -1;
-    }
-
-    // ── Validation ───────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Форма валидна если все поля прошли валидацию без ошибок.
-    /// Невалидированные поля считаются невалидными.
-    /// </summary>
-    protected bool IsFormValid
-    {
-        get
+        if (Model is null || IsDisposed) return;
+        try
         {
-            var props = GetModelProperties();
-            if (_fieldErrors.Count < props.Length) return false; // не все поля валидированы
-            return _fieldErrors.Values.All(e => e.Count == 0);
+            await SessionStorage.SetItemAsync(EffectiveDraftKey, Model);
+            Logger.LogDebug("[{Id}] Draft saved: {Key}", ComponentId, EffectiveDraftKey);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[{Id}] Failed to save draft", ComponentId);
         }
     }
 
-    /// <summary>
-    /// Валидировать поле с удалённой и cross-field валидацией.
-    /// </summary>
-    protected async Task ValidateFieldAsync(string fieldName, object? value)
+    private async Task RestoreDraftAsync()
     {
-        var localErrors = ValidateField(fieldName, value).Distinct().ToList();
-        _fieldErrors[fieldName] = localErrors;
-
-        // Удалённая валидация с дебаунсом
-        if (RemoteValidator is not null && localErrors.Count == 0)
+        try
         {
-            await DebounceAsync($"remote_{fieldName}", async () =>
+            var draft = await SessionStorage.GetItemAsync<TModel>(EffectiveDraftKey);
+            if (draft is not null)
             {
-                try
+                Model = draft;
+                IsDirty = true;
+                _editContext = new EditContext(Model);
+                _editContext.OnValidationStateChanged += (s, e) =>
                 {
-                    var remoteErrors = await RemoteValidator(Model, ComponentToken);
-                    foreach (var (field, errors) in remoteErrors)
-                    {
-                        _fieldErrors[field] = errors;
-                    }
-                    _ = RefreshAsync();
-                }
-                catch (OperationCanceledException) { }
-            }, TimeSpan.FromMilliseconds(ValidationDebounceMs));
+                    _isValid = !_editContext.GetValidationMessages().Any();
+                    _ = InvokeAsync(StateHasChanged);
+                };
+                _isValid = false;
+                await InvokeAsync(StateHasChanged);
+            }
         }
-
-        // Cross-field validation
-        var crossErrors = await ValidateCrossFieldAsync(fieldName);
-        foreach (var (field, error) in crossErrors)
+        catch (Exception ex)
         {
-            _fieldErrors.AddOrUpdate(
-                field,
-                _ => [error],
-                (_, list) => { lock (list) { if (!list.Contains(error)) list.Add(error); } return list; });
+            Logger.LogDebug(ex, "[{Id}] No draft to restore: {Key}", ComponentId, EffectiveDraftKey);
         }
-
-        _ = RefreshAsync();
     }
 
-    /// <summary>Синхронная локальная валидация поля. Переопределите для добавления правил.</summary>
-    protected virtual IEnumerable<string> ValidateField(string fieldName, object? value)
-        => [];
-
-    /// <summary>
-    /// Cross-field валидация. Переопределите для межполевых проверок.
-    /// Возвращает список (fieldName, errorMessage).
-    /// </summary>
-    protected virtual Task<IEnumerable<(string Field, string Error)>> ValidateCrossFieldAsync(
-        string changedField)
-        => Task.FromResult(Enumerable.Empty<(string, string)>());
-
-    /// <summary>Получить ошибки для конкретного поля.</summary>
-    protected IEnumerable<string> GetFieldErrors(string fieldName)
-        => _fieldErrors.TryGetValue(fieldName, out var errors) ? errors : [];
-
-    /// <summary>Есть ли ошибки у поля.</summary>
-    protected bool HasFieldError(string fieldName)
-        => _fieldErrors.TryGetValue(fieldName, out var e) && e.Count > 0;
-
-    /// <summary>
-    /// Получить все ошибки формы.
-    /// ИСПРАВЛЕНИЕ: правильный тип tuple — (Field, Errors).
-    /// </summary>
-    protected IEnumerable<(string Field, IReadOnlyList<string> Errors)> GetAllErrors()
-        => _fieldErrors
-            .Where(kv => kv.Value.Count > 0)
-            .Select(kv => (kv.Key, (IReadOnlyList<string>)kv.Value));
-
-    /// <summary>Очистить все ошибки.</summary>
-    protected void ClearAllErrors() => _fieldErrors.Clear();
-
-    // ── Submit ───────────────────────────────────────────────────────────────────
-
-    /// <summary>Валидировать все поля и отправить форму если валидна.</summary>
-    protected async Task SubmitAsync()
+    protected async Task ClearDraftAsync()
     {
-        var props = GetModelProperties();
-        foreach (var p in props)
-            await ValidateFieldAsync(p.Name, p.GetValue(Model));
-
-        if (!IsFormValid) return;
-        await OnValidSubmit.InvokeAsync(Model);
+        try
+        {
+            await SessionStorage.RemoveItemAsync(EffectiveDraftKey);
+            IsDirty = false;
+            _originalModel = Model is not null ? CloneModel(Model) : null;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "[{Id}] Failed to clear draft", ComponentId);
+        }
     }
 
-    /// <summary>Сбросить форму к начальному состоянию.</summary>
-    protected void ResetAsync()
+    protected override async Task OnFormValidSubmitAsync()
     {
-        Model = new TModel();
-        _fieldErrors.Clear();
-        _ = RefreshAsync();
+        await ClearDraftAsync();
+        await base.OnFormValidSubmitAsync();
     }
 
-    // ── Internals ────────────────────────────────────────────────────────────────
+    public override async Task ResetAsync()
+    {
+        await base.ResetAsync();
+        await ClearDraftAsync();
+    }
 
-    private static readonly ConcurrentDictionary<Type, PropertyInfo[]> _propCache = new();
+    protected virtual TModel CloneModel(TModel source)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(source);
+        return System.Text.Json.JsonSerializer.Deserialize<TModel>(json)!;
+    }
 
-    private PropertyInfo[] GetModelProperties()
-        => _propCache.GetOrAdd(typeof(TModel), static t =>
-            t.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-             .Where(p => p.CanRead && p.CanWrite)
-             .ToArray());
+    protected override async ValueTask DisposeComponentAsync()
+    {
+        _autoSaveTimer?.Dispose();
+        _navigationSubscription?.Dispose();
+        await base.DisposeComponentAsync();
+    }
 }

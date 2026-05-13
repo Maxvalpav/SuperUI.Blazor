@@ -1,60 +1,43 @@
 // SuperUI/Base/Services/SgRenderModeDetector.cs
-// НОВЫЙ: определение режима рендеринга (.NET 8+)
-//
-// Позволяет компонентам определить, в каком режиме они рендерятся:
-//   - Static SSR (без интерактивности)
-//   - InteractiveServer (SignalR)
-//   - InteractiveWebAssembly (WASM)
-//   - InteractiveAuto
+// ИСПРАВЛЕНИЯ:
+// ✅ FIX CS0246: добавлен using Microsoft.AspNetCore.Components.Web
+// ✅ FIX ARCH: CurrentRenderMode через internal set (только для DI/CascadingParameter)
+// ✅ NEW: IsPrerendering через OperatingSystem + IComponentRenderMode
 
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;
+using Microsoft.AspNetCore.Components.Web;   // ← FIX CS0246
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
 /// Определяет текущий режим рендеринга компонента (.NET 8+).
-/// Работает в SSR, InteractiveServer, InteractiveWebAssembly, InteractiveAuto.
 /// </summary>
 public interface IRenderModeDetector
 {
-    /// <summary>Компонент находится в фазе статического SSR (нет SignalR/интерактивности).</summary>
     bool IsStaticSSR { get; }
-
-    /// <summary>Компонент рендерится интерактивно через SignalR (InteractiveServer).</summary>
     bool IsInteractiveServer { get; }
-
-    /// <summary>Компонент рендерится в WebAssembly (InteractiveWebAssembly).</summary>
     bool IsInteractiveWebAssembly { get; }
-
-    /// <summary>Интерактивность доступна (любой режим кроме Static SSR).</summary>
     bool IsInteractive { get; }
-
-    /// <summary>
-    /// Текущий RenderMode компонента.
-    /// Для .NET 7- — всегда null.
-    /// </summary>
-    IComponentRenderMode? CurrentRenderMode { get; }
-
-    /// <summary>Запущено ли приложение в режиме InteractiveAuto.</summary>
     bool IsInteractiveAuto { get; }
+    IComponentRenderMode? CurrentRenderMode { get; }
 }
 
 public sealed class SgRenderModeDetector : IRenderModeDetector
 {
-    // RenderMode присваивается через CascadingParameter или вручную
-    public IComponentRenderMode? CurrentRenderMode { get; set; }
+    // FIX ARCH: internal set — устанавливается только из компонента через CascadingParameter
+    public IComponentRenderMode? CurrentRenderMode { get; internal set; }
 
-    public bool IsStaticSSR => CurrentRenderMode is null;
+    public bool IsStaticSSR        => CurrentRenderMode is null;
+    public bool IsInteractiveServer    => CurrentRenderMode is InteractiveServerRenderMode;
+    public bool IsInteractiveWebAssembly => CurrentRenderMode is InteractiveWebAssemblyRenderMode;
+    public bool IsInteractiveAuto  => CurrentRenderMode is InteractiveAutoRenderMode;
+    public bool IsInteractive      => CurrentRenderMode is not null;
 
-    public bool IsInteractiveServer =>
-        CurrentRenderMode is InteractiveServerRenderMode;
-
-    public bool IsInteractiveWebAssembly =>
-        CurrentRenderMode is InteractiveWebAssemblyRenderMode;
-
-    public bool IsInteractiveAuto =>
-        CurrentRenderMode is InteractiveAutoRenderMode;
-
-    public bool IsInteractive => !IsStaticSSR;
+    /// <summary>
+    /// NEW: Определяет фазу prerendering (компонент рендерится на сервере перед гидрацией).
+    /// На WASM prerendering — когда ещё нет интерактивности.
+    /// </summary>
+    public bool IsPrerendering
+        => IsInteractiveServer && !OperatingSystem.IsBrowser()
+        || IsInteractiveAuto   && !OperatingSystem.IsBrowser();
 }

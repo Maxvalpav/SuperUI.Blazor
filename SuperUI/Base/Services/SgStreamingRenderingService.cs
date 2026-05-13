@@ -1,69 +1,87 @@
 // SuperUI/Base/Services/SgStreamingRenderingService.cs
 // НОВЫЙ: поддержка Streaming Rendering (.NET 8+)
+// 
+// Streaming Rendering позволяет отправлять части страницы клиенту
+// по мере их готовности, не ожидая полного рендеринга.
+// Активируется атрибутом [StreamRendering] на странице.
 //
-// Позволяет компонентам использовать механизм streaming-рендеринга:
-//   1. Сразу рендерится placeholder (LoadingContent)
-//   2. После завершения загрузки данных — полный контент
+// Использование:
+//   В компоненте через CascadingParameter:
+//   [CascadingParameter(Name = "IsStreamingRendering")] bool IsStreaming { get; set; }
 
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Components;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Сервис для работы со Streaming Rendering (.NET 8+).
-/// Позволяет компонентам постепенно отдавать контент по мере загрузки данных.
+/// Сервис для определения и управления Streaming Rendering (.NET 8+).
 /// </summary>
-public interface IStreamingRenderingService
+public interface ISgStreamingRenderingService
 {
-    /// <summary>
-    /// Зарегистрировать промис для streaming-рендеринга.
-    /// Компонент отрендерится дважды:
-    ///   1. Сразу с placeholder (LoadingContent)
-    ///   2. После завершения Task — с полными данными
-    /// </summary>
-    Task StreamAsync<T>(Task<T> dataTask, Action<T> onComplete, Action? onPlaceholder = null);
+    /// <summary>true если страница рендерится в режиме Streaming.</summary>
+    bool IsStreamingRendering { get; }
 
-    /// <summary>Включён ли streaming rendering для текущего запроса.</summary>
-    bool IsStreamingEnabled { get; }
+    /// <summary>
+    /// Получить RenderFragment с Suspense-подобной обёрткой для Streaming.
+    /// Показывает fallback пока данные загружаются.
+    /// </summary>
+    RenderFragment StreamingFragment(
+        RenderFragment content,
+        RenderFragment? fallback = null);
 }
 
-public sealed class SgStreamingRenderingService : IStreamingRenderingService, IDisposable
+public sealed class SgStreamingRenderingService : ISgStreamingRenderingService
 {
-    private readonly List<Task> _pendingStreams = new();
-    private readonly CancellationTokenSource _cts = new();
+    private bool _isStreaming;
 
-    public bool IsStreamingEnabled { get; set; } = true;
+    public bool IsStreamingRendering => _isStreaming;
 
-    public async Task StreamAsync<T>(
-        Task<T> dataTask,
-        Action<T> onComplete,
-        Action? onPlaceholder = null)
+    /// <summary>Устанавливается из HttpContext через Middleware или CascadingValue.</summary>
+    public void SetStreamingRendering(bool value) => _isStreaming = value;
+
+    public RenderFragment StreamingFragment(
+        RenderFragment content,
+        RenderFragment? fallback = null)
     {
-        ArgumentNullException.ThrowIfNull(dataTask);
-        ArgumentNullException.ThrowIfNull(onComplete);
-
-        if (!IsStreamingEnabled)
+        return builder =>
         {
-            var data = await dataTask;
-            onComplete(data);
-            return;
-        }
-
-        // 1. Сразу показываем placeholder
-        onPlaceholder?.Invoke();
-
-        // 2. Регистрируем продолжение
-        var continuation = dataTask.ContinueWith(t =>
-        {
-            if (t.IsCompletedSuccessfully && !_cts.IsCancellationRequested)
-                onComplete(t.Result);
-        }, _cts.Token, TaskContinuationOptions.NotOnCanceled, TaskScheduler.Current);
-
-        _pendingStreams.Add(continuation);
+            if (_isStreaming && fallback is not null)
+            {
+                // В режиме Streaming — сначала fallback, потом заменяется content
+                // через механизм Streaming Rendering Blazor
+                builder.AddContent(0, fallback);
+            }
+            else
+            {
+                builder.AddContent(0, content);
+            }
+        };
     }
+}
 
-    public void Dispose() => _cts.Dispose();
+/// <summary>
+/// Хелпер атрибута для Streaming Rendering компонентов.
+/// Используйте на страницах (.razor с @page):
+/// <code>@attribute [StreamRendering(true)]</code>
+/// </summary>
+public static class StreamingRenderingHelper
+{
+    /// <summary>
+    /// Создать CascadingValue для передачи IsStreamingRendering в дочерние компоненты.
+    /// Используется в App.razor или Layout.
+    /// </summary>
+    public static RenderFragment CreateStreamingContext(
+        bool isStreaming,
+        RenderFragment childContent)
+    {
+        return builder =>
+        {
+            builder.OpenComponent<CascadingValue<bool>>(0);
+            builder.AddAttribute(1, "Name", "IsStreamingRendering");
+            builder.AddAttribute(2, "Value", isStreaming);
+            builder.AddAttribute(3, "IsFixed", true); // не меняется — оптимизация
+            builder.AddAttribute(4, "ChildContent", childContent);
+            builder.CloseComponent();
+        };
+    }
 }
