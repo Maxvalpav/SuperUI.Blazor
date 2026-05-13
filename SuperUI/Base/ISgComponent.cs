@@ -6,16 +6,14 @@
 // ✅ Позволяет мокировать компоненты в тестах
 // ✅ Улучшает тестируемость и разделение ответственности
 
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
 namespace SuperUI.Base;
 
 /// <summary>
-/// Минимальный публичный контракт компонента SuperUI.
-/// Используется в юнит-тестах с bUnit без зависимости от ComponentBase.
+/// Базовый контракт для всех компонентов SuperUI.
 /// </summary>
-/// <remarks>
-/// Реализуется SgComponentBase и всеми его наследниками.
-/// Позволяет тестировать компоненты через интерфейс вместо конкретного типа.
-/// </remarks>
 public interface ISgComponent
 {
     /// <summary>Уникальный идентификатор компонента.</summary>
@@ -26,6 +24,21 @@ public interface ISgComponent
 
     /// <summary>Компонент утилизирован.</summary>
     bool IsDisposed { get; }
+
+    /// <summary>Дополнительные HTML-атрибуты (splatting).</summary>
+    IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Пользовательский CSS класс.</summary>
+    string? Class { get; set; }
+
+    /// <summary>Пользовательский inline стиль.</summary>
+    string? Style { get; set; }
+
+    /// <summary>Компонент находится в фазе prerendering.</summary>
+    bool IsPrerendering { get; }
+
+    /// <summary>Компонент интерактивен.</summary>
+    bool IsInteractive { get; }
 
     /// <summary>Запросить перерисовку (без ожидания).</summary>
     void RequestRender();

@@ -1,191 +1,152 @@
-// SuperUI/Base/SgStreamingComponentBase.cs
-// ✅ .NET 8+ Streaming Rendering из коробки
-// ✅ Интеграция с PersistentComponentState через SgPersistentState
-// ✅ DeferredContent — skeleton пока данные грузятся
-// ✅ Обратная совместимость: LoadContentAsync, ReloadContentAsync, LoadingState, ErrorTemplate
-
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Rendering;
+// SuperUI/Base/SgStreamingComponentBase.cs 
+// Новый класс для поддержки [StreamRendering] (.NET 8+) 
+// Улучшения: 
+// - Правильный паттерн для streaming rendering 
+// - Skeleton/placeholder пока данные загружаются 
+// - Skeleton автоматически скрывается после загрузки 
+// - Поддержка ошибок при загрузке 
+ 
+using System; 
+using System.Threading; 
+using System.Threading.Tasks; 
+using Microsoft.AspNetCore.Components; 
 using Microsoft.Extensions.Logging;
-using SuperUI.Base.Services;
-using SuperUI.Base.State;
-
-namespace SuperUI.Base;
-
-/// <summary>
-/// Базовый класс для компонентов с нативной поддержкой Streaming Rendering (.NET 8+).
-/// Автоматически показывает skeleton при SSR Streaming и заменяет его на контент.
-///
-/// Использование в Razor:
-/// <code>
-/// @attribute [StreamRendering]
-/// @inherits SgStreamingComponentBase
-/// </code>
-/// </summary>
-public abstract class SgStreamingComponentBase : SgInteractiveBase
-{
-    [Inject] private PersistentComponentState? PersistentState { get; set; }
-    [Inject] protected ISgStreamingRenderingService StreamingService { get; set; } = null!;
-
-    // ── Параметры ──────────────────────────────────────────────────────────
-    [Parameter] public RenderFragment? LoadingPlaceholder { get; set; }
-    [Parameter] public RenderFragment<Exception>? ErrorTemplate { get; set; }
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    // ── Состояние ──────────────────────────────────────────────────────────
-    /// <summary>Компонент в режиме Streaming Rendering (данные ещё не готовы).</summary>
-    protected bool IsStreaming => StreamingService.IsStreamingRendering && !IsInteractive;
-
-    /// <summary>Данные полностью загружены.</summary>
-    protected bool IsContentReady { get; private set; }
-
-    /// <summary>Ошибка загрузки данных.</summary>
-    protected Exception? ContentError { get; private set; }
-
-    /// <summary>Состояние загрузки.</summary>
-    protected SgLoadingState LoadingState { get; private set; } = SgLoadingState.Idle;
-
-    /// <summary>
-    /// Абстракция над PersistentComponentState.
-    /// Доступна после OnInitialized.
-    /// </summary>
-    protected SgPersistentState? AppState { get; private set; }
-
-    // ── Lifecycle ───────────────────────────────────────────────────────────
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        AppState = new SgPersistentState(PersistentState, Logger);
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        await base.OnInitializedAsync();
-
-        LoadingState = SgLoadingState.Loading;
-        ContentError = null;
-
-        try
-        {
-            await LoadContentAsync();
-            IsContentReady = true;
-            LoadingState = SgLoadingState.Success;
-        }
-        catch (OperationCanceledException)
-        {
-            LoadingState = SgLoadingState.Idle;
-        }
-        catch (Exception ex)
-        {
-            ContentError = ex;
-            LoadingState = SgLoadingState.Error;
-            Logger.LogError(ex, "[{Id}] Streaming content load error", ComponentId);
-        }
-    }
-
-    // ── Render ──────────────────────────────────────────────────────────────
-    protected override void BuildRenderTree(RenderTreeBuilder builder)
-    {
-        switch (LoadingState)
-        {
-            case SgLoadingState.Loading:
-                builder.AddContent(0, LoadingPlaceholder ?? StreamingSkeleton);
-                break;
-
-            case SgLoadingState.Error:
-                builder.AddContent(0,
-                    ErrorTemplate?.Invoke(ContentError!) ??
-                    (RenderFragment)(b =>
-                    {
-                        b.OpenElement(0, "div");
-                        b.AddAttribute(1, "class", "sg-error sg-error--content");
-                        b.AddAttribute(2, "role", "alert");
-                        b.AddContent(3, $"Error: {ContentError!.Message}");
-                        b.CloseElement();
-                    }));
-                break;
-
-            default:
-                builder.AddContent(0, ChildContent);
-                break;
-        }
-    }
-
-    // ── Abstract / Virtual ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// Загрузить данные асинхронно.
-    /// В режиме Streaming SSR выполняется на сервере до отправки HTML клиенту.
-    /// </summary>
-    protected virtual Task LoadContentAsync() => Task.CompletedTask;
-
-    /// <summary>
-    /// Skeleton-плейсхолдер на время загрузки.
-    /// Переопределите для кастомного вида.
-    /// </summary>
-    protected virtual RenderFragment StreamingSkeleton => builder =>
-    {
-        builder.OpenElement(0, "div");
-        builder.AddAttribute(1, "class", "sg-streaming-skeleton");
-        builder.AddAttribute(2, "aria-busy", "true");
-        builder.AddAttribute(3, "role", "status");
-
-        builder.OpenElement(4, "div");
-        builder.AddAttribute(5, "class", "sg-skeleton-pulse");
-        builder.AddAttribute(6, "style", "height:1rem;width:60%;margin:.5rem 0");
-        builder.CloseElement();
-
-        builder.OpenElement(7, "div");
-        builder.AddAttribute(8, "class", "sg-skeleton-pulse");
-        builder.AddAttribute(9, "style", "height:1rem;width:80%;margin:.5rem 0");
-        builder.CloseElement();
-
-        builder.OpenElement(10, "div");
-        builder.AddAttribute(11, "class", "sg-skeleton-pulse");
-        builder.AddAttribute(12, "style", "height:1rem;width:40%;margin:.5rem 0");
-        builder.CloseElement();
-
-        builder.CloseElement();
-    };
-
-    // Обратная совместимость
-    protected virtual RenderFragment DefaultPlaceholder() => StreamingSkeleton;
-
-    /// <summary>
-    /// Обёртка: показывает skeleton пока данные грузятся, контент — когда готовы.
-    /// </summary>
-    protected RenderFragment DeferredContent(RenderFragment content) => builder =>
-        builder.AddContent(0, !IsContentReady && IsStreaming ? StreamingSkeleton : content);
-
-    // ── Reload ──────────────────────────────────────────────────────────────
-
-    /// <summary>Принудительно перезагрузить контент (например, по кнопке Retry).</summary>
-    public async Task ReloadContentAsync()
-    {
-        if (IsDisposed) return;
-
-        IsContentReady = false;
-        ContentError = null;
-        LoadingState = SgLoadingState.Loading;
-        await InvokeAsync(StateHasChanged);
-
-        try
-        {
-            await LoadContentAsync();
-            IsContentReady = true;
-            LoadingState = SgLoadingState.Success;
-        }
-        catch (OperationCanceledException)
-        {
-            LoadingState = SgLoadingState.Idle;
-        }
-        catch (Exception ex)
-        {
-            ContentError = ex;
-            LoadingState = SgLoadingState.Error;
-            Logger.LogError(ex, "[{Id}] Streaming content reload error", ComponentId);
-        }
-
-        await InvokeAsync(StateHasChanged);
-    }
-}
+ 
+namespace SuperUI.Base; 
+ 
+/// <summary> 
+/// Базовый класс для компонентов с потоковым рендерингом. 
+/// Автоматически показывает skeleton пока данные загружаются. 
+/// 
+/// Использование: 
+/// <code> 
+/// @attribute [StreamRendering] 
+/// @inherits SgStreamingComponentBase&lt;MyData&gt; 
+/// 
+/// @if (IsLoading) { &lt;Skeleton /&gt; } 
+/// else if (HasError) { &lt;Error Message="@ErrorMessage" /&gt; } 
+/// else { &lt;MyContent Data="@Data" /&gt; } 
+/// </code> 
+/// </summary> 
+public abstract class SgStreamingComponentBase<TData> : SgComponentBase 
+{ 
+    private CancellationTokenSource? _loadCts; 
+ 
+    /// <summary>Данные загружаются.</summary> 
+    protected bool IsLoading { get; private set; } = true; 
+ 
+    /// <summary>Произошла ошибка загрузки.</summary> 
+    protected bool HasError { get; private set; } 
+ 
+    /// <summary>Сообщение об ошибке.</summary> 
+    protected string? ErrorMessage { get; private set; } 
+ 
+    /// <summary>Загруженные данные.</summary> 
+    protected TData? Data { get; private set; } 
+ 
+    /// <summary>Прогресс загрузки (0-100), если поддерживается.</summary> 
+    protected int LoadProgress { get; private set; } 
+ 
+    // ────────────────────────────────────────────────────────────────────── 
+    // Параметры 
+    // ────────────────────────────────────────────────────────────────────── 
+ 
+    /// <summary>Таймаут загрузки данных.</summary> 
+    [Parameter] public TimeSpan LoadTimeout { get; set; } = TimeSpan.FromSeconds(30); 
+ 
+    /// <summary>Количество попыток при ошибке.</summary> 
+    [Parameter] public int RetryCount { get; set; } = 0; 
+ 
+    // ────────────────────────────────────────────────────────────────────── 
+    // Жизненный цикл 
+    // ────────────────────────────────────────────────────────────────────── 
+ 
+    protected override async Task OnInitializedAsync() 
+    { 
+        await base.OnInitializedAsync(); 
+        await LoadDataWithRetryAsync(); 
+    } 
+ 
+    private async Task LoadDataWithRetryAsync() 
+    { 
+        IsLoading = true; 
+        HasError = false; 
+        ErrorMessage = null; 
+ 
+        _loadCts?.Dispose(); 
+        _loadCts = new CancellationTokenSource(LoadTimeout); 
+ 
+        int attempts = 0; 
+        while (true) 
+        { 
+            try 
+            { 
+                Data = await LoadAsync(_loadCts.Token); 
+                IsLoading = false; 
+                return; 
+            } 
+            catch (OperationCanceledException) when (_loadCts.Token.IsCancellationRequested) 
+            { 
+                HasError = true; 
+                ErrorMessage = "Превышено время ожидания загрузки данных."; 
+                IsLoading = false; 
+                return; 
+            } 
+            catch (Exception ex) when (attempts < RetryCount) 
+            { 
+                attempts++; 
+                Logger.LogWarning(ex, "Load attempt {Attempt}/{Max} failed, retrying...", 
+                    attempts, RetryCount); 
+                await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempts)), _loadCts.Token); 
+            } 
+            catch (Exception ex) 
+            { 
+                HasError = true; 
+                ErrorMessage = GetUserFriendlyError(ex); 
+                IsLoading = false; 
+                Logger.LogError(ex, "SgStreamingComponentBase failed to load data"); 
+                return; 
+            } 
+        } 
+    } 
+ 
+    /// <summary>Повторяет загрузку данных.</summary> 
+    public async Task ReloadAsync() 
+    { 
+        await InvokeAsync(async () => 
+        { 
+            await LoadDataWithRetryAsync(); 
+            StateHasChanged(); 
+        }); 
+    } 
+ 
+    /// <summary>Обновляет прогресс загрузки.</summary> 
+    protected void ReportProgress(int percent) 
+    { 
+        LoadProgress = Math.Clamp(percent, 0, 100); 
+        // При StreamRendering StateHasChanged отправляет patch клиенту 
+        StateHasChanged(); 
+    } 
+ 
+    // ────────────────────────────────────────────────────────────────────── 
+    // Абстрактные методы 
+    // ────────────────────────────────────────────────────────────────────── 
+ 
+    /// <summary> 
+    /// Загружает данные. Переопределите. 
+    /// При StreamRendering промежуточные вызовы StateHasChanged 
+    /// отправляют обновления клиенту в реальном времени. 
+    /// </summary> 
+    protected abstract Task<TData> LoadAsync(CancellationToken ct); 
+ 
+    /// <summary>Преобразует исключение в пользовательское сообщение.</summary> 
+    protected virtual string GetUserFriendlyError(Exception ex) 
+        => "Произошла ошибка при загрузке данных. Попробуйте ещё раз."; 
+ 
+    protected override async ValueTask DisposeAsyncCore() 
+    { 
+        _loadCts?.Cancel(); 
+        _loadCts?.Dispose(); 
+        await base.DisposeAsyncCore(); 
+    } 
+} 

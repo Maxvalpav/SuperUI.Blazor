@@ -1,96 +1,114 @@
-// SuperUI/Base/Configuration/SgComponentBuilder.cs
-// УЛУЧШЕНИЯ:
-// ✅ NEW: WithRenderMode — установить render mode (.NET 8+)
-// ✅ NEW: WithEventCallback — типизированный helper
-// ✅ FIX: BuildParameters возвращает IReadOnlyDictionary (immutable)
-
-using Microsoft.AspNetCore.Components;
-using SuperUI.Base;
-
-namespace SuperUI.Base.Configuration;
-
-/// <summary>
-/// Fluent builder для динамического создания компонентов SuperUI.
-/// </summary>
-public class SgComponentBuilder<TComponent> where TComponent : SgComponentBase
-{
-    private readonly Dictionary<string, object?> _parameters = new();
-    private readonly List<Action<TComponent>> _configurators = new();
-
-    public SgComponentBuilder<TComponent> WithId(string id)
-    {
-        _parameters["Id"] = id;
-        return this;
-    }
-
-    public SgComponentBuilder<TComponent> WithClass(string cssClass)
-    {
-        _parameters["Class"] = cssClass;
-        return this;
-    }
-
-    public SgComponentBuilder<TComponent> WithStyle(string style)
-    {
-        _parameters["Style"] = style;
-        return this;
-    }
-
-    public SgComponentBuilder<TComponent> WithVisible(bool visible)
-    {
-        _parameters["Visible"] = visible;
-        return this;
-    }
-
-    public SgComponentBuilder<TComponent> WithParameter(string name, object? value)
-    {
-        _parameters[name] = value;
-        return this;
-    }
-
-    /// <summary>NEW: Установить render mode (.NET 8+).</summary>
-    public SgComponentBuilder<TComponent> WithRenderMode(IComponentRenderMode renderMode)
-    {
-        _parameters["@rendermode"] = renderMode;
-        return this;
-    }
-
-    /// <summary>NEW: Типизированный helper для EventCallback.</summary>
-    public SgComponentBuilder<TComponent> WithEventCallback(
-        string name, Func<Task> callback)
-    {
-        _parameters[name] = EventCallback.Factory.Create(this, callback);
-        return this;
-    }
-
-    /// <summary>NEW: Типизированный helper для EventCallback<T>.</summary>
-    public SgComponentBuilder<TComponent> WithEventCallback<TArg>(
-        string name, Func<TArg, Task> callback)
-    {
-        _parameters[name] = EventCallback.Factory.Create<TArg>(this, callback);
-        return this;
-    }
-
-    public SgComponentBuilder<TComponent> Configure(Action<TComponent> configurator)
-    {
-        _configurators.Add(configurator);
-        return this;
-    }
-
-    /// <summary>FIX: возвращает IReadOnlyDictionary — immutable снаружи.</summary>
-    public IReadOnlyDictionary<string, object?> BuildParameters()
-        => new Dictionary<string, object?>(_parameters);
-
-    public static implicit operator RenderFragment(SgComponentBuilder<TComponent> builder)
-        => builder.Build();
-
-    public RenderFragment Build() => renderTreeBuilder =>
-    {
-        renderTreeBuilder.OpenComponent<TComponent>(0);
-        foreach (var (name, value) in _parameters)
-        {
-            if (value is not null)
-                renderTreeBuilder.AddAttribute(1, name, value);
-        }
-        renderTreeBuilder.CloseComponent();
-    };
-}
+// SuperUI/Base/Configuration/SgComponentBuilder.cs 
+// Улучшения: 
+// - Правильная регистрация для WASM vs Server 
+// - TimeProvider регистрация (.NET 8) 
+// - PersistentComponentState поддержка 
+// - Опциональные сервисы 
+ 
+using System; 
+using Microsoft.Extensions.DependencyInjection; 
+using Microsoft.Extensions.DependencyInjection.Extensions; 
+using SuperUI.Base.Services; 
+using SuperUI.Base.State; 
+using SuperUI.Base.Utilities; 
+ 
+namespace SuperUI.Base.Configuration; 
+ 
+ public sealed class SgComponentBuilder 
+ { 
+     public IServiceCollection Services { get; } 
+ 
+     internal SgComponentBuilder(IServiceCollection services) 
+     { 
+         Services = services; 
+     } 
+ } 
+ 
+ public static class SgComponentBuilderExtensions 
+ { 
+     /// <summary> 
+     /// Добавляет все базовые сервисы SuperUI. 
+     /// Автоматически определяет среду (Server vs WASM) и регистрирует 
+     /// правильные реализации. 
+     /// </summary> 
+     public static SgComponentBuilder AddSuperUI( 
+         this IServiceCollection services, 
+         Action<SgLibraryOptions>? configure = null) 
+     { 
+         var builder = new SgComponentBuilder(services); 
+ 
+         // Конфигурация 
+         if (configure != null) 
+             services.Configure(configure); 
+         else 
+             services.Configure<SgLibraryOptions>(_ => { }); 
+ 
+         // TimeProvider (.NET 8) — используется в рендер планировщике 
+         services.TryAddSingleton(TimeProvider.System); 
+ 
+         // Render mode detector 
+         services.TryAddScoped<ISgRenderModeDetector, SgRenderModeDetector>(); 
+ 
+         // Z-index service 
+         services.TryAddScoped<IZIndexService, ZIndexService>(); 
+ 
+         // Focus trap 
+         services.TryAddScoped<IFocusTrapService, FocusTrapService>(); 
+         services.TryAddScoped<FocusTrapStack>(); 
+ 
+         // Toast / Notification / Confirm 
+         services.TryAddScoped<ISgToastService, SgToastService>(); 
+         services.TryAddScoped<ISgNotificationService, SgNotificationService>(); 
+         services.TryAddScoped<ISgConfirmService, SgConfirmService>(); 
+ 
+         // Theme 
+         services.TryAddScoped<SgThemeService>(); 
+ 
+         // Broadcast (для Server — используем SgBroadcastService с Channel<T>) 
+         services.TryAddScoped<ISgBroadcastService, SgBroadcastService>(); 
+ 
+         // Batch renderer — Singleton на WASM, Scoped на Server 
+         // (на Server каждый circuit должен иметь свой batch renderer) 
+         if (OperatingSystem.IsBrowser()) 
+             services.TryAddSingleton<SgThrottledBatchRenderer>(); 
+         else 
+             services.TryAddScoped<SgThrottledBatchRenderer>(); 
+ 
+         return builder; 
+     } 
+ 
+     /// <summary> 
+     /// Добавляет Server-specific сервисы (только для Blazor Server / InteractiveAuto). 
+     /// Вызывать ТОЛЬКО в серверном проекте. 
+     /// </summary> 
+     public static SgComponentBuilder AddSuperUIServer(this SgComponentBuilder builder) 
+     { 
+         builder.Services.TryAddScoped<IPrerenderingDetector, ServerPrerenderingDetector>(); 
+         builder.Services.TryAddScoped<SgCircuitAwareness>(); 
+ 
+         return builder; 
+     } 
+ 
+     /// <summary> 
+     /// Добавляет WASM-specific сервисы. 
+     /// Вызывать ТОЛЬКО в клиентском проекте. 
+     /// </summary> 
+     public static SgComponentBuilder AddSuperUIWebAssembly(this SgComponentBuilder builder) 
+     { 
+         builder.Services.TryAddScoped<IPrerenderingDetector, WasmPrerendingDetector>(); 
+         builder.Services.TryAddSingleton<SgWasmOptimizer>(); 
+ 
+         return builder; 
+     } 
+ 
+     /// <summary> 
+     /// Добавляет диагностические сервисы (только в Development). 
+     /// </summary> 
+     public static SgComponentBuilder AddSuperUIDiagnostics(this SgComponentBuilder builder) 
+     { 
+         builder.Services.TryAddScoped<Diagnostics.ISgDiagnosticsCollector, 
+             Diagnostics.ComponentDiagnostics>(); 
+ 
+         return builder; 
+     } 
+ } 

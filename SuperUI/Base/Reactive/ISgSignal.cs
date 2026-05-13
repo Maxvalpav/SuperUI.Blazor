@@ -35,4 +35,7 @@ public interface ISgSignal<T> : IReadOnlySgSignal<T>
 
     /// <summary>Принудительно уведомить подписчиков.</summary>
     void ForceNotify();
+
+    /// <summary>Начать пакетное обновление (batch).</summary>
+    IDisposable BeginBatch();
 }

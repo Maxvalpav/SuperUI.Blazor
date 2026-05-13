@@ -34,7 +34,7 @@ public static class SgTrimmingHints
     /// <summary>
     /// Сохранение новых сервисов, добавленных в ServiceCollectionExtensions.
     /// </summary>
-    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Configuration.SgComponentBuilder<>))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Configuration.SgComponentBuilder))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Services.IComponentRegistry))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Services.ComponentRegistry))]
     [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Services.IComponentFactory))]

@@ -17,15 +17,17 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
     void ISignalSubscribable.SubscribeObserverUntyped(ISignalObserver observer)
     {
-        lock (_lock) _untypedObservers.Add(observer);
+        _lock.EnterWriteLock();
+        try { _untypedObservers.Add(observer); }
+        finally { _lock.ExitWriteLock(); }
     }
 
     private T _value;
     private readonly IEqualityComparer<T> _comparer;
     private readonly HashSet<WeakReference<SgComponentBase>> _subscribers = new();
     private readonly HashSet<ISignalObserver<T>> _observers = new();
-    private readonly List<Action<T>> _callbacks = new();
-    private readonly object _lock = new();
+    private readonly List<WeakReference<Action<T>>> _callbacks = new();
+    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.SupportsRecursion);
     private int _disposedInt;
     private volatile bool _dirty;
     private int _notifyCount;
@@ -51,7 +53,9 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
     public T Peek()
     {
-        lock (_lock) return _value;
+        _lock.EnterReadLock();
+        try { return _value; }
+        finally { _lock.ExitReadLock(); }
     }
 
     public void Set(T newValue)
@@ -59,7 +63,8 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
         if (Volatile.Read(ref _disposedInt) == 1) return;
 
         bool changed;
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             changed = !_comparer.Equals(_value, newValue);
             if (changed)
@@ -75,6 +80,7 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
                 }
             }
         }
+        finally { _lock.ExitWriteLock(); }
 
         if (changed)
             NotifySubscribers();
@@ -87,7 +93,8 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
         T newValue;
         bool changed;
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             newValue = updater(_value);
             changed = !_comparer.Equals(_value, newValue);
@@ -102,6 +109,7 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
                 }
             }
         }
+        finally { _lock.ExitWriteLock(); }
 
         if (changed)
             NotifySubscribers();
@@ -110,7 +118,9 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
     /// <summary>Сбросить значение без нотификации.</summary>
     public void Reset(T value)
     {
-        lock (_lock) { _value = value; }
+        _lock.EnterWriteLock();
+        try { _value = value; }
+        finally { _lock.ExitWriteLock(); }
     }
 
     /// <summary>Принудительно уведомить подписчиков (даже без изменения).</summary>
@@ -135,9 +145,15 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
     public IDisposable Subscribe(Action<T> callback)
     {
         ArgumentNullException.ThrowIfNull(callback);
-        lock (_lock) _callbacks.Add(callback);
-        return new CallbackDisposable(this, callback);
+        var weak = new WeakReference<Action<T>>(callback);
+        _lock.EnterWriteLock();
+        try { _callbacks.Add(weak); }
+        finally { _lock.ExitWriteLock(); }
+        return new CallbackDisposable(this, callback, weak);
     }
+
+    /// <summary>Начать пакетное обновление (batch).</summary>
+    public IDisposable BeginBatch() => SignalBatch.Begin();
 
     public SgSignal<TDerived> Derived<TDerived>(Func<T, TDerived> selector)
     {
@@ -151,33 +167,50 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
     internal void Subscribe(SgComponentBase component)
     {
-        lock (_lock) _subscribers.Add(new WeakReference<SgComponentBase>(component));
+        _lock.EnterWriteLock();
+        try { _subscribers.Add(new WeakReference<SgComponentBase>(component)); }
+        finally { _lock.ExitWriteLock(); }
     }
 
     internal void SubscribeObserver(ISignalObserver<T> observer)
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             // BUG-10 prevention: проверяем дубли
             if (_observers.Contains(observer)) return;
             _observers.Add(observer);
         }
+        finally { _lock.ExitWriteLock(); }
     }
 
     internal void UnsubscribeObserver(ISignalObserver<T> observer)
     {
-        lock (_lock) _observers.Remove(observer);
+        _lock.EnterWriteLock();
+        try { _observers.Remove(observer); }
+        finally { _lock.ExitWriteLock(); }
     }
 
     public void PurgeDeadSubscribers()
     {
-        lock (_lock) _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
+        _lock.EnterWriteLock();
+        try
+        {
+            _subscribers.RemoveWhere(w => !w.TryGetTarget(out _));
+            _callbacks.RemoveWhere(w => !w.TryGetTarget(out _));
+        }
+        finally { _lock.ExitWriteLock(); }
     }
 
     internal void Cleanup()
     {
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
+        {
             _subscribers.RemoveWhere(wr => !wr.TryGetTarget(out var c) || c.IsDisposed);
+            _callbacks.RemoveWhere(wr => !wr.TryGetTarget(out _));
+        }
+        finally { _lock.ExitWriteLock(); }
     }
 
     // ── Нотификация (ArrayPool для zero-allocation) ─────────────────────────────
@@ -193,10 +226,11 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
         WeakReference<SgComponentBase>[]? rented = null;
         ISignalObserver<T>[]? observerSnapshot = null;
-        Action<T>[]? callbackSnapshot = null;
+        WeakReference<Action<T>>[]? callbackSnapshot = null;
         int subCount = 0;
 
-        lock (_lock)
+        _lock.EnterReadLock();
+        try
         {
             if (_subscribers.Count > 0)
             {
@@ -211,9 +245,10 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
             if (_callbacks.Count > 0)
                 callbackSnapshot = _callbacks.ToArray();
         }
+        finally { _lock.ExitReadLock(); }
 
         T currentValue = Peek();
-        List<WeakReference<SgComponentBase>>? dead = null;
+        List<WeakReference<SgComponentBase>>? deadComponents = null;
 
         try
         {
@@ -223,13 +258,13 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
                 {
                     if (!rented[i].TryGetTarget(out var component) || component.IsDisposed)
                     {
-                        dead ??= [];
-                        dead.Add(rented[i]);
+                        deadComponents ??= [];
+                        deadComponents.Add(rented[i]);
                         continue;
                     }
 
                     try { component.RequestRender(); }
-                    catch (ObjectDisposedException) { dead ??= []; dead.Add(rented[i]); }
+                    catch (ObjectDisposedException) { deadComponents ??= []; deadComponents.Add(rented[i]); }
                     catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine(
@@ -251,11 +286,13 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
 
             // Untyped observers (computed, effects)
             ISignalObserver[]? untypedSnapshot = null;
-            lock (_lock)
+            _lock.EnterReadLock();
+            try
             {
                 if (_untypedObservers.Count > 0)
                     untypedSnapshot = _untypedObservers.ToArray();
             }
+            finally { _lock.ExitReadLock(); }
 
             if (untypedSnapshot is not null)
                 foreach (var obs in untypedSnapshot)
@@ -269,13 +306,16 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
                 }
 
             if (callbackSnapshot is not null)
-                foreach (var cb in callbackSnapshot)
+                foreach (var weak in callbackSnapshot)
                 {
-                    try { cb(currentValue); }
-                    catch (Exception ex)
+                    if (weak.TryGetTarget(out var cb))
                     {
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[SgSignal] Callback error: {ex.Message}");
+                        try { cb(currentValue); }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[SgSignal] Callback error: {ex.Message}");
+                        }
                     }
                 }
         }
@@ -285,11 +325,15 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
                 ArrayPool<WeakReference<SgComponentBase>>.Shared.Return(rented, clearArray: true);
         }
 
-        if (dead is not null)
+        if (deadComponents is not null)
         {
-            lock (_lock)
-                foreach (var d in dead)
+            _lock.EnterWriteLock();
+            try
+            {
+                foreach (var d in deadComponents)
                     _subscribers.Remove(d);
+            }
+            finally { _lock.ExitWriteLock(); }
         }
 
         // Авто-очистка каждые N нотификаций
@@ -302,12 +346,18 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposedInt, 1) == 1) return;
-        lock (_lock)
+        _lock.EnterWriteLock();
+        try
         {
             _subscribers.Clear();
             _observers.Clear();
             _callbacks.Clear();
             _untypedObservers.Clear();
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+            _lock.Dispose();
         }
     }
 
@@ -320,18 +370,22 @@ public sealed class SgSignal<T> : IDisposable, ISignalSubscribable, ISignalFlush
     {
         private readonly SgSignal<T> _signal;
         private readonly Action<T> _callback;
+        private readonly WeakReference<Action<T>> _weak;
         private int _disposed;
 
-        public CallbackDisposable(SgSignal<T> signal, Action<T> callback)
+        public CallbackDisposable(SgSignal<T> signal, Action<T> callback, WeakReference<Action<T>> weak)
         {
             _signal = signal;
             _callback = callback;
+            _weak = weak;
         }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-            lock (_signal._lock) _signal._callbacks.Remove(_callback);
+            _signal._lock.EnterWriteLock();
+            try { _signal._callbacks.Remove(_weak); }
+            finally { _signal._lock.ExitWriteLock(); }
         }
     }
 

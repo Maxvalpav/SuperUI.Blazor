@@ -248,7 +248,7 @@ public abstract class SgSmartFormBase<TModel> : SgFormBase<TModel>
     /// Использует SgModelHasher для эффективного сравнения.
     /// </summary>
     protected virtual string ComputeModelHash(TModel model)
-        => SgModelHasher<TModel>.ComputeHash(model);
+        => SgModelHasher.ComputeHash(model).ToString("x8");
 
     // ── Dispose ────────────────────────────────────────────────────────────────
 

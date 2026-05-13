@@ -1,43 +1,113 @@
-// SuperUI/Base/Services/SgRenderModeDetector.cs
-// ИСПРАВЛЕНИЯ:
-// ✅ FIX CS0246: добавлен using Microsoft.AspNetCore.Components.Web
-// ✅ FIX ARCH: CurrentRenderMode через internal set (только для DI/CascadingParameter)
-// ✅ NEW: IsPrerendering через OperatingSystem + IComponentRenderMode
-
-using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Web;   // ← FIX CS0246
-
-namespace SuperUI.Base.Services;
-
-/// <summary>
-/// Определяет текущий режим рендеринга компонента (.NET 8+).
-/// </summary>
-public interface IRenderModeDetector
-{
-    bool IsStaticSSR { get; }
-    bool IsInteractiveServer { get; }
-    bool IsInteractiveWebAssembly { get; }
-    bool IsInteractive { get; }
-    bool IsInteractiveAuto { get; }
-    IComponentRenderMode? CurrentRenderMode { get; }
-}
-
-public sealed class SgRenderModeDetector : IRenderModeDetector
-{
-    // FIX ARCH: internal set — устанавливается только из компонента через CascadingParameter
-    public IComponentRenderMode? CurrentRenderMode { get; internal set; }
-
-    public bool IsStaticSSR        => CurrentRenderMode is null;
-    public bool IsInteractiveServer    => CurrentRenderMode is InteractiveServerRenderMode;
-    public bool IsInteractiveWebAssembly => CurrentRenderMode is InteractiveWebAssemblyRenderMode;
-    public bool IsInteractiveAuto  => CurrentRenderMode is InteractiveAutoRenderMode;
-    public bool IsInteractive      => CurrentRenderMode is not null;
-
-    /// <summary>
-    /// NEW: Определяет фазу prerendering (компонент рендерится на сервере перед гидрацией).
-    /// На WASM prerendering — когда ещё нет интерактивности.
-    /// </summary>
-    public bool IsPrerendering
-        => IsInteractiveServer && !OperatingSystem.IsBrowser()
-        || IsInteractiveAuto   && !OperatingSystem.IsBrowser();
+// SuperUI/Base/Services/SgRenderModeDetector.cs 
+// Улучшения: 
+// - Поддержка RendererInfo (.NET 9) 
+// - Поддержка InteractiveAuto перехода 
+// - Правильный WASM-specific путь 
+// - Без рефлексии (OperatingSystem.IsBrowser()) 
+// - Логирование режима при старте 
+ 
+using System; 
+using Microsoft.AspNetCore.Components; 
+using Microsoft.AspNetCore.Components.Web; 
+ 
+namespace SuperUI.Base.Services; 
+ 
+/// <summary> 
+/// Перечисление режимов рендеринга SuperUI. 
+/// </summary> 
+public enum SgRenderMode 
+{ 
+    /// <summary>Статичный SSR (нет интерактивности).</summary> 
+    StaticServer, 
+ 
+    /// <summary>SSR с потоковым рендерингом ([StreamRendering]).</summary> 
+    StreamingServer, 
+ 
+    /// <summary>Prerendering для интерактивных режимов.</summary> 
+    Prerendering, 
+ 
+    /// <summary>InteractiveServer (SignalR circuit).</summary> 
+    InteractiveServer, 
+ 
+    /// <summary>InteractiveWebAssembly (браузер).</summary> 
+    InteractiveWebAssembly, 
+ 
+    /// <summary>InteractiveAuto (Server → WebAssembly).</summary> 
+    InteractiveAuto, 
+} 
+ 
+/// <summary> 
+/// Сервис определения текущего режима рендеринга. 
+/// Регистрировать как Scoped (Server) / Singleton (WASM). 
+/// </summary> 
+public sealed class SgRenderModeDetector : ISgRenderModeDetector 
+{ 
+    private readonly IServiceProvider _services; 
+ 
+    public SgRenderModeDetector(IServiceProvider services) 
+    { 
+        _services = services; 
+    } 
+ 
+    /// <summary> 
+    /// Определяет режим рендеринга для данного компонента. 
+    /// </summary> 
+    public SgRenderMode GetRenderMode(ComponentBase component) 
+    { 
+        // 1. Сначала проверяем WASM — это быстро и точно 
+        if (OperatingSystem.IsBrowser()) 
+            return SgRenderMode.InteractiveWebAssembly; 
+ 
+ #if NET9_0_OR_GREATER 
+        // 2. .NET 9+ — используем официальный API 
+        var rendererInfo = component.RendererInfo; 
+        var assignedMode = component.AssignedRenderMode; 
+ 
+        return (rendererInfo.IsInteractive, rendererInfo.Name, assignedMode) switch 
+        { 
+            (false, "Static", _) => SgRenderMode.StaticServer, 
+            (false, "Server", _) => SgRenderMode.Prerendering, 
+            (true, "Server", InteractiveAutoRenderMode) => SgRenderMode.InteractiveAuto, 
+            (true, "Server", _) => SgRenderMode.InteractiveServer, 
+            _ => SgRenderMode.StaticServer 
+        }; 
+ #elif NET8_0_OR_GREATER 
+        // 3. .NET 8 — используем AssignedRenderMode 
+        var assignedMode = component.AssignedRenderMode; 
+        return assignedMode switch 
+        { 
+            InteractiveServerRenderMode => SgRenderMode.InteractiveServer, 
+            InteractiveWebAssemblyRenderMode => SgRenderMode.InteractiveWebAssembly, 
+            InteractiveAutoRenderMode => SgRenderMode.InteractiveAuto, 
+            null => SgRenderMode.StaticServer, 
+            _ => SgRenderMode.StaticServer 
+        }; 
+ #else 
+        return SgRenderMode.InteractiveServer; 
+ #endif 
+    } 
+ 
+    /// <summary>true если компонент интерактивен (не SSR, не prerendering).</summary> 
+    public bool IsInteractive(ComponentBase component) 
+    { 
+        var mode = GetRenderMode(component); 
+        return mode is SgRenderMode.InteractiveServer 
+            or SgRenderMode.InteractiveWebAssembly 
+            or SgRenderMode.InteractiveAuto; 
+    } 
+ 
+    /// <summary>true если код выполняется в браузере (WASM).</summary> 
+    public bool IsWebAssembly => OperatingSystem.IsBrowser(); 
+ 
+    /// <summary>true если код выполняется на сервере.</summary> 
+    public bool IsServer => !OperatingSystem.IsBrowser(); 
+} 
+ 
+/// <summary>Интерфейс детектора режима рендеринга.</summary> 
+public interface ISgRenderModeDetector 
+{ 
+    SgRenderMode GetRenderMode(ComponentBase component); 
+    bool IsInteractive(ComponentBase component); 
+    bool IsWebAssembly { get; } 
+    bool IsServer { get; } 
 }

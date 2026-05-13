@@ -1,87 +1,100 @@
-// SuperUI/Base/SgThrottledBatchRenderer.cs
-// НОВЫЙ: батчевый рендеринг с адаптивным throttle
-// Для компонентов с высокочастотными обновлениями (realtime charts, live data)
-
-namespace SuperUI.Base;
-
-/// <summary>
-/// Батч-рендерер: коагулирует множество RequestRender() в один StateHasChanged().
-/// Адаптивный: на WASM использует requestAnimationFrame-подобную семантику,
-/// на Server — ограничение по времени.
-/// </summary>
-public sealed class SgBatchRenderScheduler : IAsyncDisposable
-{
-    private readonly SgComponentBase _component;
-    private readonly TimeSpan _minInterval;
-    private int _pendingRender; // 0 = нет, 1 = pending
-    private long _lastRenderTick;
-    private readonly CancellationToken _ct;
-    private Task? _scheduledTask;
-
-    /// <summary>
-    /// Создать планировщик.
-    /// </summary>
-    /// <param name="component">Компонент для рендеринга.</param>
-    /// <param name="minInterval">Минимальный интервал между рендерами (по умолчанию 16ms = ~60fps).</param>
-    public SgBatchRenderScheduler(SgComponentBase component, TimeSpan? minInterval = null)
-    {
-        _component = component;
-        _minInterval = minInterval ?? TimeSpan.FromMilliseconds(16); // 60fps
-        _ct = component.ComponentToken;
-    }
-
-    /// <summary>
-    /// Запланировать рендер. Если рендер уже запланирован — игнорируется.
-    /// Если прошло меньше minInterval с последнего рендера — ждёт.
-    /// </summary>
-    public void Schedule()
-    {
-        if (_component.IsDisposed || _ct.IsCancellationRequested) return;
-        if (Interlocked.CompareExchange(ref _pendingRender, 1, 0) == 1) return;
-
-        var elapsed = GetElapsedSinceLastRender();
-        if (elapsed >= _minInterval)
-        {
-            // Можно рендерить сразу
-            _pendingRender = 0;
-            Interlocked.Exchange(ref _lastRenderTick, System.Diagnostics.Stopwatch.GetTimestamp());
-            _component.RequestRender();
-        }
-        else
-        {
-            // Отложить до следующего окна
-            var delay = _minInterval - elapsed;
-            _scheduledTask = ScheduleDelayedAsync(delay);
-        }
-    }
-
-    private async Task ScheduleDelayedAsync(TimeSpan delay)
-    {
-        try
-        {
-            await Task.Delay(delay, _ct);
-            Interlocked.Exchange(ref _pendingRender, 0);
-            Interlocked.Exchange(ref _lastRenderTick, System.Diagnostics.Stopwatch.GetTimestamp());
-            if (!_component.IsDisposed)
-                _component.RequestRender();
-        }
-        catch (OperationCanceledException) { }
-        finally { Interlocked.Exchange(ref _pendingRender, 0); }
-    }
-
-    private TimeSpan GetElapsedSinceLastRender()
-    {
-        var last = Volatile.Read(ref _lastRenderTick);
-        if (last == 0) return TimeSpan.MaxValue;
-        return System.Diagnostics.Stopwatch.GetElapsedTime(last);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_scheduledTask is not null)
-        {
-            try { await _scheduledTask.WaitAsync(TimeSpan.FromSeconds(1)); }
-            catch { }
-        }
-    }
+// SuperUI/Base/SgThrottledBatchRenderer.cs 
+// Улучшения: 
+// - TimeProvider (.NET 8) вместо DateTime.UtcNow + Timer 
+// - PeriodicTimer вместо System.Threading.Timer 
+// - Один глобальный таймер на всех подписчиков (батч рендер) 
+// - Корректная отмена через CancellationToken 
+// - Не вызывает StateHasChanged если компонент disposed 
+ 
+using System; 
+using System.Collections.Concurrent; 
+using System.Collections.Generic; 
+using System.Threading; 
+using System.Threading.Tasks; 
+using Microsoft.AspNetCore.Components; 
+ 
+namespace SuperUI.Base; 
+ 
+/// <summary> 
+/// Планировщик batch рендеринга. 
+/// Группирует несколько StateHasChanged в один вызов per tick. 
+/// Использует TimeProvider для тестируемости. 
+/// </summary> 
+public sealed class SgThrottledBatchRenderer : IAsyncDisposable 
+{ 
+    private readonly TimeProvider _timeProvider; 
+    private readonly TimeSpan _interval; 
+    private readonly ConcurrentDictionary<ComponentBase, byte> _pendingComponents = new(); 
+    private readonly CancellationTokenSource _cts = new(); 
+    private Task? _runLoop; 
+ 
+    /// <summary> 
+    /// Создаёт планировщик. 
+    /// </summary> 
+    /// <param name="timeProvider">TimeProvider (инжектируется через DI).</param> 
+    /// <param name="intervalMs">Интервал батч-рендера в мс (по умолчанию 16мс ≈ 60fps).</param> 
+    public SgThrottledBatchRenderer(TimeProvider timeProvider, int intervalMs = 16) 
+    { 
+        _timeProvider = timeProvider; 
+        _interval = TimeSpan.FromMilliseconds(intervalMs); 
+        _runLoop = RunAsync(_cts.Token); 
+    } 
+ 
+    /// <summary> 
+    /// Регистрирует компонент для рендера в следующем тике. 
+    /// Если компонент уже зарегистрирован — дублирования нет. 
+    /// </summary> 
+    public void RequestRender(ComponentBase component) 
+    { 
+        _pendingComponents.TryAdd(component, 0); 
+    } 
+ 
+    /// <summary> 
+    /// Отменяет запрос рендера для компонента (например, при dispose). 
+    /// </summary> 
+    public void CancelRender(ComponentBase component) 
+    { 
+        _pendingComponents.TryRemove(component, out _); 
+    } 
+ 
+    private async Task RunAsync(CancellationToken ct) 
+    { 
+        // PeriodicTimer (.NET 6+) — более эффективен чем System.Threading.Timer 
+        using var timer = new PeriodicTimer(_interval, _timeProvider); 
+ 
+        try 
+        { 
+            while (await timer.WaitForNextTickAsync(ct)) 
+            { 
+                if (_pendingComponents.IsEmpty) continue; 
+ 
+                // Снимаем снапшот и очищаем очередь 
+                var snapshot = _pendingComponents.Keys; 
+                foreach (var component in snapshot) 
+                { 
+                    _pendingComponents.TryRemove(component, out _); 
+                    try 
+                    { 
+                        // InvokeAsync гарантирует вызов на правильном потоке 
+                        await ((ComponentBase)component).InvokeAsync( 
+                            ((ComponentBase)component).StateHasChanged); 
+                    } 
+                    catch (ObjectDisposedException) { /* компонент уничтожен — норма */ } 
+                    catch (Exception) { /* изолируем ошибки */ } 
+                } 
+            } 
+        } 
+        catch (OperationCanceledException) { /* ожидаемо при dispose */ } 
+    } 
+ 
+    public async ValueTask DisposeAsync() 
+    { 
+        _cts.Cancel(); 
+        if (_runLoop != null) 
+        { 
+            try { await _runLoop; } 
+            catch (OperationCanceledException) { } 
+        } 
+        _cts.Dispose(); 
+    } 
 }

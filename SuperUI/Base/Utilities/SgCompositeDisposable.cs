@@ -1,74 +1,128 @@
-// SuperUI/Base/Utilities/SgCompositeDisposable.cs
-// НОВЫЙ: удобный контейнер для управления несколькими IDisposable
-//
-// Использование в компонентах:
-//   private readonly SgCompositeDisposable _disposables = new();
-//
-//   protected override void OnInitialized()
-//   {
-//       _disposables += notificationService.Subscribe(OnNotification);
-//       _disposables += keyboardService.Register("Escape", OnEscape);
-//   }
-//
-//   protected override async ValueTask DisposeComponentAsync()
-//   {
-//       _disposables.Dispose();
-//       await base.DisposeComponentAsync();
-//   }
-
-namespace SuperUI.Base.Utilities;
-
-/// <summary>
-/// Контейнер для групповой отписки нескольких IDisposable.
-/// Потокобезопасен — можно использовать как на Server, так и на WASM.
-/// </summary>
-public sealed class SgCompositeDisposable : IDisposable
-{
-    private readonly List<IDisposable> _disposables = [];
-    private int _disposed;
-
-    /// <summary>Добавить disposable в контейнер.</summary>
-    public void Add(IDisposable disposable)
-    {
-        ArgumentNullException.ThrowIfNull(disposable);
-        if (Volatile.Read(ref _disposed) == 1)
-        {
-            // Уже disposed — сразу освобождаем
-            disposable.Dispose();
-            return;
-        }
-        lock (_disposables)
-            _disposables.Add(disposable);
-    }
-
-    /// <summary>Оператор += для удобства.</summary>
-    public static SgCompositeDisposable operator +(
-        SgCompositeDisposable composite,
-        IDisposable disposable)
-    {
-        composite.Add(disposable);
-        return composite;
-    }
-
-    /// <summary>Освободить все подписки.</summary>
-    public void Clear()
-    {
-        List<IDisposable> toDispose;
-        lock (_disposables)
-        {
-            toDispose = new List<IDisposable>(_disposables);
-            _disposables.Clear();
-        }
-        foreach (var d in toDispose)
-        {
-            try { d.Dispose(); }
-            catch { /* игнорируем */ }
-        }
-    }
-
-    public void Dispose()
-    {
-        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-        Clear();
-    }
-}
+// SuperUI/Base/Utilities/SgCompositeDisposable.cs 
+// Улучшения: 
+// - IAsyncDisposable поддержка 
+// - Thread-safe добавление/удаление 
+// - Не бросает исключений при повторном Dispose 
+// - Агрегация ошибок (AggregateException) 
+ 
+using System; 
+using System.Collections.Generic; 
+using System.Threading; 
+using System.Threading.Tasks; 
+ 
+namespace SuperUI.Base.Utilities; 
+ 
+/// <summary> 
+/// Коллекция disposable объектов. 
+/// Поддерживает IDisposable и IAsyncDisposable. 
+/// Thread-safe. 
+/// </summary> 
+public sealed class SgCompositeDisposable : IAsyncDisposable, IDisposable 
+{ 
+    private readonly List<object> _disposables = new(); 
+    private readonly object _lock = new(); 
+    private bool _disposed; 
+ 
+    /// <summary>Добавляет IDisposable.</summary> 
+    public void Add(IDisposable disposable) 
+    { 
+        lock (_lock) 
+        { 
+            if (_disposed) 
+            { 
+                disposable.Dispose(); 
+                return; 
+            } 
+            _disposables.Add(disposable); 
+        } 
+    } 
+ 
+    /// <summary>Добавляет IAsyncDisposable.</summary> 
+    public void Add(IAsyncDisposable disposable) 
+    { 
+        lock (_lock) 
+        { 
+            if (_disposed) 
+            { 
+                disposable.DisposeAsync().AsTask().GetAwaiter().GetResult(); 
+                return; 
+            } 
+            _disposables.Add(disposable); 
+        } 
+    } 
+ 
+    /// <summary>Добавляет Action как disposable.</summary> 
+    public void Add(Action disposeAction) => Add(new ActionDisposable(disposeAction)); 
+ 
+    /// <summary>Удаляет disposable из коллекции (не вызывает Dispose).</summary> 
+    public bool Remove(IDisposable disposable) 
+    { 
+        lock (_lock) { return _disposables.Remove(disposable); } 
+    } 
+ 
+    public void Dispose() 
+    { 
+        List<object> toDispose; 
+        lock (_lock) 
+        { 
+            if (_disposed) return; 
+            _disposed = true; 
+            toDispose = new List<object>(_disposables); 
+            _disposables.Clear(); 
+        } 
+ 
+        List<Exception>? errors = null; 
+        foreach (var d in toDispose) 
+        { 
+            try 
+            { 
+                if (d is IDisposable sync) sync.Dispose(); 
+                else if (d is IAsyncDisposable async) 
+                    async.DisposeAsync().AsTask().GetAwaiter().GetResult(); 
+            } 
+            catch (Exception ex) 
+            { 
+                errors ??= new List<Exception>(); 
+                errors.Add(ex); 
+            } 
+        } 
+ 
+        if (errors != null) throw new AggregateException(errors); 
+    } 
+ 
+    public async ValueTask DisposeAsync() 
+    { 
+        List<object> toDispose; 
+        lock (_lock) 
+        { 
+            if (_disposed) return; 
+            _disposed = true; 
+            toDispose = new List<object>(_disposables); 
+            _disposables.Clear(); 
+        } 
+ 
+        List<Exception>? errors = null; 
+        foreach (var d in toDispose) 
+        { 
+            try 
+            { 
+                if (d is IAsyncDisposable async) await async.DisposeAsync(); 
+                else if (d is IDisposable sync) sync.Dispose(); 
+            } 
+            catch (Exception ex) 
+            { 
+                errors ??= new List<Exception>(); 
+                errors.Add(ex); 
+            } 
+        } 
+ 
+        if (errors != null) throw new AggregateException(errors); 
+    } 
+ 
+    private sealed class ActionDisposable : IDisposable 
+    { 
+        private readonly Action _action; 
+        public ActionDisposable(Action action) => _action = action; 
+        public void Dispose() => _action(); 
+    } 
+} 
