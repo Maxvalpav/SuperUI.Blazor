@@ -3,7 +3,7 @@ namespace SuperUI.Components;
 /// <summary>Supported barcode/QR code formats.</summary>
 public enum SgBarcodeFormat
 {
-    /// <summary>QR Code</summary>
+    /// <summary>QR Code </summary>
     QRCode,
     /// <summary>Code 128</summary>
     Code128,
