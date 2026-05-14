@@ -94,6 +94,8 @@ public static class ServiceCollectionExtensions
         // ── Notification ──────────────────────────────────────────────────
         services.AddScoped<ISgNotificationService, SgNotificationService>();
 
+        services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
+
         // ── Component Registry ────────────────────────────────────────────
         // ✅ FIX CS0311: ISgComponentTypeRegistry (не IComponentRegistry)
         services.AddScoped<ISgComponentTypeRegistry, SgComponentRegistry>();
