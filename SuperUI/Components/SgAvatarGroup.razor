@@ -13,10 +13,7 @@
         <span class="sgc-avatar sgc-avatar-overflow @SizeClass @ShapeClass"
               title="@OverflowTooltip"
               aria-label="@OverflowTooltip"
-              role="@(OnOverflowClick.HasDelegate ? "button" : "img")"
-              tabindex="@(OnOverflowClick.HasDelegate ? "0" : null)"
-              @onclick="HandleOverflowClickAsync"
-              @onkeydown="HandleOverflowKeyAsync">
+              @onclick="HandleOverflowClickAsync">
             +@OverflowCount
         </span>
     }
@@ -28,37 +25,31 @@
     /// <summary>Avatar content (typically <see cref="SgAvatar"/> components).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    /// Maximum number of avatars displayed before collapsing into a "+N" pill.
-    /// Requires <see cref="TotalCount"/> to compute the overflow.
-    /// </summary>
+    /// <summary>Maximum number of avatars displayed.</summary>
     [Parameter] public int? Max { get; set; }
 
-    /// <summary>
-    /// Total number of items represented by this group.
-    /// When greater than the visible count, an overflow pill is rendered.
-    /// </summary>
+    /// <summary>Total number of items (to compute overflow).</summary>
     [Parameter] public int? TotalCount { get; set; }
 
     /// <summary>Whether avatars overlap. Default true.</summary>
     [Parameter] public bool Overlap { get; set; } = true;
 
-    /// <summary>Reverses the stack order (last avatar appears on top).</summary>
+    /// <summary>Reverses the stack order.</summary>
     [Parameter] public bool Reverse { get; set; }
 
-    /// <summary>Custom overlap distance in pixels (negative margin).</summary>
+    /// <summary>Custom overlap distance in pixels.</summary>
     [Parameter] public int? OverlapPx { get; set; }
 
-    /// <summary>Size applied to all avatars in the group. Default <see cref="SgSize.Md"/>.</summary>
+    /// <summary>Size applied to all avatars in the group.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
-    /// <summary>Shape of the overflow pill (matches the avatars).</summary>
+    /// <summary>Shape of the overflow pill.</summary>
     [Parameter] public SgAvatarShape Shape { get; set; } = SgAvatarShape.Circle;
 
     /// <summary>Tooltip / aria-label override for the overflow pill.</summary>
     [Parameter] public string? OverflowLabel { get; set; }
 
-    /// <summary>Callback when the overflow pill is activated.</summary>
+    /// <summary>Callback when the overflow pill is clicked.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnOverflowClick { get; set; }
 
     /// <summary>Accessibility label for the group.</summary>
@@ -70,17 +61,12 @@
     /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>Additional HTML attributes for the root element.</summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    // ── Internals ────────────────────────────────────────────────────────────
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool HasOverflow => Max.HasValue && TotalCount.HasValue && TotalCount.Value > Max.Value;
-
     private int OverflowCount => HasOverflow ? TotalCount!.Value - Max!.Value : 0;
-
-    private string OverflowTooltip =>
-        OverflowLabel ?? $"+{OverflowCount} {Localizer["More"]}";
+    private string OverflowTooltip => OverflowLabel ?? $"+{OverflowCount} {Localizer["More"]}";
 
     private string SizeClass => Size switch
     {
@@ -108,11 +94,5 @@
     private async Task HandleOverflowClickAsync(MouseEventArgs e)
     {
         if (OnOverflowClick.HasDelegate) await OnOverflowClick.InvokeAsync(e);
-    }
-
-    private async Task HandleOverflowKeyAsync(KeyboardEventArgs e)
-    {
-        if (e.Key is "Enter" or " " && OnOverflowClick.HasDelegate)
-            await OnOverflowClick.InvokeAsync(new MouseEventArgs());
     }
 }
