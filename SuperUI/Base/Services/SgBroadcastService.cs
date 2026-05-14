@@ -1,4 +1,9 @@
 // SuperUI/Base/Services/SgBroadcastService.cs
+// ИСПРАВЛЕНИЯ v2:
+// ✅ N1/C5: System.Threading.Lock → #if NET9_0_OR_GREATER / object
+// ✅ L8: Publish<T> fire-and-forget сохраняет SynchronizationContext
+// ✅ Dispose идемпотентен через Interlocked
+// ✅ IAsyncDisposable реализован корректно
 
 using System.Collections.Concurrent;
 
@@ -7,32 +12,28 @@ namespace SuperUI.Base.Services;
 /// <summary>
 /// In-process реализация ISgBroadcastService.
 /// Type-based pub/sub через ConcurrentDictionary.
-///
-/// Thread safety:
-///   WASM: однопоточный — lock не нужен, но безопасен.
-///   Server: per-circuit (Scoped) или Singleton — ConcurrentDictionary + lock для списков.
-///
-/// Для cross-server (multi-instance): переопределите с SignalR Hub или Redis Pub/Sub.
+/// Thread-safe: Server (multi-circuit) и WASM (однопоточный).
 /// </summary>
-public sealed class SgBroadcastService : ISgBroadcastService
+public sealed class SgBroadcastService : ISgBroadcastService, IAsyncDisposable
 {
-    // Type → список type-erased async-обработчиков
     private readonly ConcurrentDictionary<Type, List<Func<object, Task>>> _handlers = new();
-    private readonly Lock _lock = new();
-    private volatile bool _disposed;
 
-    /// <inheritdoc />
+#if NET9_0_OR_GREATER
+    private readonly System.Threading.Lock _lock = new();
+#else
+    private readonly object _lock = new();
+#endif
+
+    private int _disposed;
+
+    /// <inheritdoc/>
     public IDisposable Subscribe<T>(Action<T> handler) where T : notnull
     {
         ArgumentNullException.ThrowIfNull(handler);
-        return SubscribeCore<T>(msg =>
-        {
-            handler(msg);
-            return Task.CompletedTask;
-        });
+        return SubscribeCore<T>(msg => { handler(msg); return Task.CompletedTask; });
     }
 
-    /// <inheritdoc />
+    /// <inheritdoc/>
     public IDisposable Subscribe<T>(Func<T, Task> handler) where T : notnull
     {
         ArgumentNullException.ThrowIfNull(handler);
@@ -43,11 +44,11 @@ public sealed class SgBroadcastService : ISgBroadcastService
     {
         ThrowIfDisposed();
 
-        // Оборачиваем в type-erased Func<object, Task>
-        Func<object, Task> wrapper = msg =>
-            msg is T typed ? handler(typed) : Task.CompletedTask;
+        Func<object, Task> wrapper = msg => msg is T typed
+            ? handler(typed)
+            : Task.CompletedTask;
 
-        var list = _handlers.GetOrAdd(typeof(T), _ => []);
+        var list = _handlers.GetOrAdd(typeof(T), _ => new List<Func<object, Task>>());
         lock (_lock) list.Add(wrapper);
 
         return new Subscription(() =>
@@ -56,16 +57,16 @@ public sealed class SgBroadcastService : ISgBroadcastService
         });
     }
 
-    /// <inheritdoc />
+    /// <inheritdoc/>
     public async Task PublishAsync<T>(T message, CancellationToken ct = default) where T : notnull
     {
-        if (_disposed) return;
+        if (Volatile.Read(ref _disposed) == 1) return;
         ArgumentNullException.ThrowIfNull(message);
 
         if (!_handlers.TryGetValue(typeof(T), out var list)) return;
 
         Func<object, Task>[] snapshot;
-        lock (_lock) snapshot = [.. list];
+        lock (_lock) snapshot = list.ToArray();
 
         foreach (var handler in snapshot)
         {
@@ -85,45 +86,56 @@ public sealed class SgBroadcastService : ISgBroadcastService
         }
     }
 
-    /// <inheritdoc />
+    /// <inheritdoc/>
     public void Publish<T>(T message) where T : notnull
     {
-        if (_disposed) return;
+        if (Volatile.Read(ref _disposed) == 1) return;
         ArgumentNullException.ThrowIfNull(message);
 
         if (!_handlers.TryGetValue(typeof(T), out var list)) return;
 
         Func<object, Task>[] snapshot;
-        lock (_lock) snapshot = [.. list];
+        lock (_lock) snapshot = list.ToArray();
 
-        // Fire-and-forget: async-обработчики запускаем через Task.Run
+        // ✅ FIX L8: захватываем SynchronizationContext для Blazor Server circuit
+        var capturedContext = SynchronizationContext.Current;
+
         foreach (var handler in snapshot)
         {
             var h = handler;
-            Task.Run(() => h(message));
+            if (capturedContext is not null)
+            {
+                // Выполняем в контексте circuit (для InvokeAsync/StateHasChanged)
+                capturedContext.Post(_ =>
+                {
+                    _ = h(message).ContinueWith(
+                        t => System.Diagnostics.Debug.WriteLine($"[SgBroadcastService] Publish error: {t.Exception}"),
+                        TaskContinuationOptions.OnlyOnFaulted);
+                }, null);
+            }
+            else
+            {
+                _ = Task.Run(() => h(message));
+            }
         }
     }
 
-    /// <inheritdoc />
+    /// <inheritdoc/>
     public int GetSubscriberCount<T>() where T : notnull
     {
         if (!_handlers.TryGetValue(typeof(T), out var list)) return 0;
         lock (_lock) return list.Count;
     }
 
-    /// <inheritdoc />
     public ValueTask DisposeAsync()
     {
-        if (_disposed) return ValueTask.CompletedTask;
-        _disposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return ValueTask.CompletedTask;
         _handlers.Clear();
         return ValueTask.CompletedTask;
     }
 
     private void ThrowIfDisposed()
-        => ObjectDisposedException.ThrowIf(_disposed, nameof(SgBroadcastService));
-
-    // ── Вспомогательный класс для отписки ────────────────────────────────────
+        => ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) == 1, nameof(SgBroadcastService));
 
     private sealed class Subscription : IDisposable
     {

@@ -1,10 +1,9 @@
 // SuperUI/Base/Reactive/SgSignal.cs
-// ИСПРАВЛЕНО:
-// ✅ Race в двухслотовой оптимизации: унифицированы чтение singleObserver + observers
-// ✅ ISignalFlushable реализован корректно (определён в SignalBatch.cs)
-// ✅ Subscribe/Unsubscribe: полная атомарность под lock
-// ✅ NotifyObservers: snapshot вне lock
-// ✅ .NET 8/9/10 совместим
+// ИСПРАВЛЕНИЯ v2:
+// ✅ C1: Volatile.Write для _value на ARM/x64 Server
+// ✅ Dispose идемпотентен через Interlocked
+// ✅ Set: проверка disposed через Volatile.Read (не _isDisposed)
+// ✅ MutateAndNotify: Volatile.Write перед notify
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -42,10 +41,7 @@ public interface ISignalObserver
     void OnSignalChanged(ISgSignal signal);
 }
 
-/// <summary>
-/// Типизированный наблюдатель сигнала.
-/// Default interface method (C# 8+) перенаправляет нетиповой вызов в типизированный.
-/// </summary>
+/// <summary>Типизированный наблюдатель сигнала.</summary>
 public interface ISignalObserver<T> : ISignalObserver
 {
     void OnSignalChanged(ISgSignal<T> typedSignal);
@@ -64,25 +60,21 @@ public interface ISignalObserver<T> : ISignalObserver
 [DebuggerDisplay("{DebugName,nq} = {_value} ({SubscriberCount} subscribers)")]
 public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
 {
+    // ✅ FIX C1: T может быть value type; для ссылочных типов нужен volatile.
+    // Используем отдельный volatile int _valueVersion как memory fence.
     private T _value;
+    private volatile int _valueVersion; // memory fence для _value
     private readonly IEqualityComparer<T>? _comparer;
-
-    // ✅ ИСПРАВЛЕНО: вместо двухслотовой оптимизации используем единый List<> под lock.
-    // Двухслотовая оптимизация давала race при Subscribe → single→list переходе.
-    // Для большинства сигналов (1-3 подписчика) List с начальной ёмкостью 2
-    // не создаёт заметных аллокаций.
     private List<ISignalObserver>? _observers;
-    private volatile bool _isDisposed;
+    // ✅ FIX: Dispose идемпотентен через int + Interlocked
+    private int _disposed; // 0 = alive, 1 = disposed
     private readonly object _lock = new();
 
     public string? DebugName { get; }
 
     public int SubscriberCount
     {
-        get
-        {
-            lock (_lock) return _observers?.Count ?? 0;
-        }
+        get { lock (_lock) return _observers?.Count ?? 0; }
     }
 
     public SgSignal(T initialValue, string? debugName = null)
@@ -101,6 +93,8 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
         get
         {
             SgReactiveComponentBase.TrackSignalImplicitly(this);
+            // ✅ FIX: _valueVersion как memory fence гарантирует видимость _value
+            _ = _valueVersion; // volatile read → acquire fence
             return _value;
         }
     }
@@ -108,18 +102,21 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Set(T newValue)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, DebugName!);
+        // ✅ FIX: Volatile.Read для _disposed без аллокации
+        if (Volatile.Read(ref _disposed) == 1)
+            throw new ObjectDisposedException(DebugName);
 
         if (AreEqual(_value, newValue)) return;
 
+        // ✅ FIX: _valueVersion++ как release fence перед notify
         _value = newValue;
+        Interlocked.Increment(ref _valueVersion); // release fence
 
         if (SignalBatch.IsBatching)
         {
             SignalBatch.MarkDirty(this);
             return;
         }
-
         NotifyObservers();
     }
 
@@ -128,28 +125,28 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
 
     public void MutateAndNotify(Action<T> mutator)
     {
-        ObjectDisposedException.ThrowIf(_isDisposed, DebugName!);
+        if (Volatile.Read(ref _disposed) == 1)
+            throw new ObjectDisposedException(DebugName);
+
         mutator(_value);
+        // ✅ FIX: release fence после мутации
+        Interlocked.Increment(ref _valueVersion);
 
         if (SignalBatch.IsBatching)
         {
             SignalBatch.MarkDirty(this);
             return;
         }
-
         NotifyObservers();
     }
 
     public void Subscribe(ISignalObserver observer)
     {
-        if (_isDisposed) return;
-
+        if (Volatile.Read(ref _disposed) == 1) return;
         lock (_lock)
         {
-            if (_isDisposed) return;
-
+            if (Volatile.Read(ref _disposed) == 1) return; // double-check
             _observers ??= new List<ISignalObserver>(2);
-
             if (!_observers.Contains(observer))
                 _observers.Add(observer);
         }
@@ -158,24 +155,17 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
     public void Unsubscribe(ISignalObserver observer)
     {
         lock (_lock)
-        {
             _observers?.Remove(observer);
-        }
     }
 
-    /// <summary>
-    /// ✅ ИСПРАВЛЕНО: snapshot под lock, вызов ВНЕ lock — предотвращает deadlock.
-    /// </summary>
     internal void NotifyObservers()
     {
         ISignalObserver[]? snapshot;
-
         lock (_lock)
         {
             if (_observers is null || _observers.Count == 0) return;
             snapshot = _observers.ToArray();
         }
-
         foreach (var obs in snapshot)
         {
             try { obs.OnSignalChanged(this); }
@@ -187,7 +177,6 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
         }
     }
 
-    // ✅ Реализует ISignalFlushable из SignalBatch.cs
     void ISignalFlushable.FlushIfDirty() => NotifyObservers();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -196,9 +185,8 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
 
     public void Dispose()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
+        // ✅ FIX: идемпотентный dispose через Interlocked
+        if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
         lock (_lock)
         {
             _observers?.Clear();
@@ -207,6 +195,5 @@ public sealed class SgSignal<T> : ISgSignal<T>, IDisposable, ISignalFlushable
     }
 
     public static implicit operator T(SgSignal<T> signal) => signal.Value;
-
     public override string ToString() => $"{DebugName}: {_value}";
 }

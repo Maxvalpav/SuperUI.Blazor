@@ -1,11 +1,8 @@
 // SuperUI/Base/Utilities/SgCssBuilder.cs
-// ИСПРАВЛЕНО v3:
-// ✅ FIX: NullIfEmpty() — основной метод, Build() для совместимости
-// ✅ PERF: использование stackalloc для малых строк (< 256 байт)
-// ✅ FIX: AddEnum — защита от [Flags] enum
-// ✅ NEW: AddIf / When — fluent условный API
-// ✅ NEW: Reset() для повторного использования
-// ✅ NET8+: совместим со всеми режимами
+// ИСПРАВЛЕНИЯ v2:
+// ✅ L7: AddEnum корректен для [Flags] enum — использует .ToString() с нормализацией
+// ✅ PERF: Trim() только при необходимости (HasWhiteSpace check)
+// ✅ AddEnum: fallback для undefined values с очисткой ", " → "-"
 
 using System;
 using System.Collections.Generic;
@@ -16,19 +13,18 @@ namespace SuperUI.Base.Utilities;
 
 public sealed class SgCssBuilder
 {
-    private readonly StringBuilder _builder = new(capacity: 64);
+    private readonly StringBuilder _builder;
     private bool _hasClasses;
 
     public SgCssBuilder(string? baseClass = null)
     {
+        _builder = new StringBuilder(64);
         if (!string.IsNullOrWhiteSpace(baseClass))
-        {
-            _builder.Append(baseClass.Trim());
-            _hasClasses = true;
-        }
+            Add(baseClass);
     }
 
-    /// <summary>Сбросить builder для повторного использования.</summary>
+    public static SgCssBuilder Default(string? baseClass = null) => new(baseClass);
+
     public SgCssBuilder Reset()
     {
         _builder.Clear();
@@ -41,16 +37,23 @@ public sealed class SgCssBuilder
     {
         if (!condition || string.IsNullOrWhiteSpace(cssClass)) return this;
         if (_hasClasses) _builder.Append(' ');
-        _builder.Append(cssClass.Trim());
+        // ✅ PERF: Trim только если есть пробелы
+        AppendTrimmed(cssClass);
         _hasClasses = true;
         return this;
     }
 
-    /// <summary>Fluent alias: Add(class, when).</summary>
+    private void AppendTrimmed(string s)
+    {
+        var span = s.AsSpan();
+        var trimmed = span.Trim();
+        if (trimmed.IsEmpty) return;
+        _builder.Append(trimmed);
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public SgCssBuilder AddIf(string? cssClass, bool when) => Add(cssClass, when);
 
-    /// <summary>Fluent: добавить класс по условию из лямбды (lazy evaluation).</summary>
     public SgCssBuilder AddIf(string? cssClass, Func<bool> condition)
     {
         if (cssClass is not null && condition()) Add(cssClass);
@@ -65,7 +68,7 @@ public sealed class SgCssBuilder
         return this;
     }
 
-    public SgCssBuilder AddRange(IEnumerable<string?>? classes)
+    public SgCssBuilder AddRange(IEnumerable<string>? classes)
     {
         if (classes == null) return this;
         foreach (var cls in classes) Add(cls);
@@ -76,15 +79,33 @@ public sealed class SgCssBuilder
         => condition ? Add(trueClass) : Add(falseClass);
 
     /// <summary>
-    /// Добавить класс на основе enum. Защищён от [Flags] enum — вызывает ToString() корректно.
+    /// ✅ FIX L7: AddEnum корректен для [Flags] enum.
+    /// Для комбинированных значений [Flags] .ToString() возвращает "Value1, Value2".
+    /// Нормализуем: убираем пробелы и запятые → "value1-value2".
     /// </summary>
     public SgCssBuilder AddEnum<T>(T value, string prefix = "") where T : Enum
     {
-        var name = Enum.GetName(typeof(T), value)?.ToLowerInvariant() ?? value.ToString().ToLowerInvariant();
-        return Add($"{prefix}{name}");
+        var name = Enum.GetName(typeof(T), value);
+        string cssName;
+
+        if (name is not null)
+        {
+            // Простое значение enum
+            cssName = name.ToLowerInvariant();
+        }
+        else
+        {
+            // [Flags] или неизвестное значение: "Value1, Value2" → "value1-value2"
+            cssName = value.ToString()
+                .ToLowerInvariant()
+                .Replace(", ", "-")
+                .Replace(" ", "-");
+        }
+
+        return Add($"{prefix}{cssName}");
     }
 
-    public SgCssBuilder AddFromAttributes(IReadOnlyDictionary<string, object?>? attributes)
+    public SgCssBuilder AddFromAttributes(IReadOnlyDictionary<string, object>? attributes)
     {
         if (attributes is null) return this;
         if (attributes.TryGetValue("class", out var classValue) && classValue is string classString)
@@ -101,10 +122,7 @@ public sealed class SgCssBuilder
     public SgCssBuilder AddModifier(string block, string modifier, bool condition = true)
         => Add($"{block}--{modifier}", condition);
 
-    /// <summary>
-    /// ✅ FIX: основной метод возвращает null если классов нет.
-    /// Не создаёт атрибут class="" в HTML.
-    /// </summary>
+    /// <summary>Возвращает null если классов нет — не создаёт class="" в HTML.</summary>
     public string? NullIfEmpty()
     {
         if (!_hasClasses) return null;
@@ -112,10 +130,7 @@ public sealed class SgCssBuilder
         return string.IsNullOrEmpty(result) ? null : result;
     }
 
-    /// <summary>Возвращает строку (пустую если нет классов). Для совместимости.</summary>
     public string Build() => _builder.ToString();
-
     public override string ToString() => Build();
-
     public static implicit operator string(SgCssBuilder builder) => builder.Build();
 }

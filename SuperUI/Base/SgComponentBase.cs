@@ -60,7 +60,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 #if NET9_0_OR_GREATER
         RendererInfo.IsInteractive;
 #else
-        RenderMode is not null;
+        RenderMode is not null && !_isPrerendering;
 #endif
 
     /// <summary>
@@ -131,7 +131,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     private int _ariaGeneration;
     private IReadOnlyDictionary<string, object>? _filteredAttrsCache;
     private volatile int _filteredAttrsCacheGen = -1;
-    private SgParameterSnapshot? _lastParametersSnapshot;
+    private Dictionary<string, object?>? _lastParametersCache;
 
 #if DEBUG
     private readonly ComponentDiagnostics _diagnostics;
@@ -242,9 +242,23 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     protected virtual bool ShouldSetParameters(ParameterView parameters)
     {
-        if (!_lastParametersSnapshot.HasValue) return true;
-        var current = new SgParameterSnapshot(parameters);
-        return !_lastParametersSnapshot.Value.Equals(current);
+        // Для первого вызова — всегда true
+        if (_lastParametersCache is null) return true;
+
+        // Сравниваем текущие параметры с кешем
+        var current = new Dictionary<string, object?>();
+        foreach (var p in parameters)
+            current[p.Name] = p.Value;
+
+        if (current.Count != _lastParametersCache.Count) return true;
+        foreach (var (key, value) in current)
+        {
+            if (!_lastParametersCache.TryGetValue(key, out var cached))
+                return true;
+            if (!ReferenceEquals(value, cached) && !Equals(value, cached))
+                return true;
+        }
+        return false;
     }
 
     public override async Task SetParametersAsync(ParameterView parameters)
@@ -262,7 +276,12 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
         if (parametersChanged)
         {
-            _lastParametersSnapshot = new SgParameterSnapshot(parameters);
+            // ✅ FIX L2: кешируем словарь, не ParameterView
+            var cache = new Dictionary<string, object?>();
+            foreach (var p in parameters)
+                cache[p.Name] = p.Value;
+            _lastParametersCache = cache;
+
             await OnParametersChangedAsync(parameters);
         }
 

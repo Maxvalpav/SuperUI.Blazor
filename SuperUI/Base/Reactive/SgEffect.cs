@@ -1,10 +1,8 @@
 // SuperUI/Base/Reactive/SgEffect.cs
-// ИСПРАВЛЕНО:
-// ✅ CS0101: убраны дублирующие Subscription и CompositeSubscription (теперь в SgSubscription.cs)
-// ✅ Добавлена защита от потери pending-rerun при рекурсии
-// ✅ Добавлен onError callback с логированием
-// ✅ CancellationToken передаётся в async эффект
-// ✅ Поддержка .NET 8/9/10
+// ИСПРАВЛЕНИЯ v2:
+// ✅ L6: _cts пересоздаётся при каждом Run(), старый Dispose-ится
+// ✅ C3: CanExecute проверяет disposed перед Run
+// ✅ Async fire-and-forget: ошибки всегда передаются в _onError
 
 using System.Runtime.CompilerServices;
 
@@ -13,15 +11,6 @@ namespace SuperUI.Base.Reactive;
 /// <summary>
 /// Реактивный побочный эффект.
 /// Автоматически отслеживает зависимости от сигналов и перезапускается при их изменении.
-/// <para>
-/// Использование:
-/// <code>
-/// var count = Signal&lt;int&gt;(0);
-/// var effect = new SgEffect(() => Console.WriteLine($"Count: {count.Value}"));
-/// effect.Run(); // первый запуск + подписка
-/// count.Set(1); // автоматически перезапустит эффект
-/// </code>
-/// </para>
 /// </summary>
 public sealed class SgEffect : ISignalObserver, IDisposable
 {
@@ -31,8 +20,10 @@ public sealed class SgEffect : ISignalObserver, IDisposable
     private readonly HashSet<ISgSignal> _dependencies = new(ReferenceEqualityComparer.Instance);
     private volatile int _disposed;
     private volatile int _isRunning;
-    private volatile int _pendingRerun; // ✅ NEW: защита от потери pending-rerun
-    private readonly CancellationTokenSource _cts = new();
+    private volatile int _pendingRerun;
+
+    // ✅ FIX L6: CTS создаётся/пересоздаётся при каждом Run, глобальный — только для Dispose
+    private readonly CancellationTokenSource _globalCts = new();
 
     public bool IsDisposed => Volatile.Read(ref _disposed) == 1;
     public bool IsRunning => Volatile.Read(ref _isRunning) == 1;
@@ -70,8 +61,8 @@ public sealed class SgEffect : ISignalObserver, IDisposable
     public void Run()
     {
         if (IsDisposed) return;
+        if (_globalCts.IsCancellationRequested) return;
 
-        // ✅ FIX: если уже запущен — помечаем pending, не теряем вызов
         if (Interlocked.CompareExchange(ref _isRunning, 1, 0) == 1)
         {
             Volatile.Write(ref _pendingRerun, 1);
@@ -85,6 +76,10 @@ public sealed class SgEffect : ISignalObserver, IDisposable
                 Volatile.Write(ref _pendingRerun, 0);
                 ClearDependencies();
 
+                // ✅ FIX L6: создаём локальный CTS для этого запуска,
+                // linked с глобальным (для отмены при Dispose)
+                using var runCts = CancellationTokenSource.CreateLinkedTokenSource(_globalCts.Token);
+
                 using (SgReactiveComponentBase.EnterScope(new EffectSignalObserver(this)))
                 {
                     if (_effect is Action syncAction)
@@ -93,20 +88,23 @@ public sealed class SgEffect : ISignalObserver, IDisposable
                     }
                     else if (_effect is Func<Task> asyncAction)
                     {
-                        _ = RunAsyncEffect(asyncAction, _cts.Token);
+                        // ✅ FIX: fire-and-forget с явной обработкой ошибок
+                        _ = RunAsyncSafe(() => asyncAction(), runCts.Token);
                     }
                     else if (_effect is Func<CancellationToken, Task> asyncWithToken)
                     {
-                        _ = RunAsyncEffect(() => asyncWithToken(_cts.Token), _cts.Token);
+                        _ = RunAsyncSafe(() => asyncWithToken(runCts.Token), runCts.Token);
                     }
                 }
             }
-            // ✅ FIX: повторяем если было pending-rerun во время выполнения
             while (Volatile.Read(ref _pendingRerun) == 1 && !IsDisposed);
         }
         catch (Exception ex) when (!IsDisposed)
         {
-            _onError?.Invoke(ex);
+            if (_onError is not null)
+                _onError(ex);
+            else
+                System.Diagnostics.Debug.WriteLine($"[SgEffect] Unhandled error: {ex}");
         }
         finally
         {
@@ -114,19 +112,22 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         }
     }
 
-    private async Task RunAsyncEffect(Func<Task> asyncAction, CancellationToken cancellationToken)
+    private async Task RunAsyncSafe(Func<Task> asyncAction, CancellationToken ct)
     {
         try
         {
-            await asyncAction();
+            await asyncAction().ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             // Нормальное завершение при dispose
         }
         catch (Exception ex) when (!IsDisposed)
         {
-            _onError?.Invoke(ex);
+            if (_onError is not null)
+                _onError(ex);
+            else
+                System.Diagnostics.Debug.WriteLine($"[SgEffect] Async error: {ex}");
         }
     }
 
@@ -138,7 +139,6 @@ public sealed class SgEffect : ISignalObserver, IDisposable
             old = _dependencies.ToArray();
             _dependencies.Clear();
         }
-
         foreach (var dep in old)
             dep.Unsubscribe(this);
     }
@@ -146,7 +146,6 @@ public sealed class SgEffect : ISignalObserver, IDisposable
     internal void AddDependency(ISgSignal signal)
     {
         if (IsDisposed) return;
-
         lock (_depLock)
         {
             if (_dependencies.Add(signal))
@@ -172,20 +171,11 @@ public sealed class SgEffect : ISignalObserver, IDisposable
         });
     }
 
-    public IDisposable SubscribeAll(params ISgSignal[] signals)
-    {
-        var disposables = new List<IDisposable>(signals.Length);
-        foreach (var signal in signals)
-            disposables.Add(Subscribe(signal));
-        return new CompositeSubscription(disposables);
-    }
-
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
-
-        _cts.Cancel();
-        _cts.Dispose();
+        _globalCts.Cancel();
+        _globalCts.Dispose();
         ClearDependencies();
         GC.SuppressFinalize(this);
     }
@@ -193,14 +183,8 @@ public sealed class SgEffect : ISignalObserver, IDisposable
     private sealed class EffectSignalObserver : ISignalObserver, ISignalTrackingObserver
     {
         private readonly SgEffect _effect;
-
-        public EffectSignalObserver(SgEffect effect)
-            => _effect = effect;
-
-        public void OnSignalChanged(ISgSignal signal)
-            => _effect.OnSignalChanged(signal);
-
-        public void OnSignalRead(ISgSignal signal)
-            => _effect.AddDependency(signal);
+        public EffectSignalObserver(SgEffect effect) => _effect = effect;
+        public void OnSignalChanged(ISgSignal signal) => _effect.OnSignalChanged(signal);
+        public void OnSignalRead(ISgSignal signal) => _effect.AddDependency(signal);
     }
 }

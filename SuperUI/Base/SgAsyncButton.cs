@@ -1,11 +1,8 @@
 // SuperUI/Base/SgAsyncButton.cs
-// ИСПРАВЛЕНО v3:
-// ✅ FIX: наследует SgComponentBase (не ComponentBase напрямую)
-// ✅ FIX: Task.Delay с CancellationToken — нет вызова StateHasChanged после Dispose
-// ✅ FIX: TimeProvider для тестируемого debounce
-// ✅ FIX: CancellationTokenSource для отмены pending delays при Dispose
-// ✅ FIX: thread-safe через _stateLock
-// ✅ NET8+: совместим со всеми режимами
+// ИСПРАВЛЕНИЯ v2:
+// ✅ W9: Volatile.Write для _lastClickTick
+// ✅ ShouldRender: базовая оптимизация для кнопки
+// ✅ ResetAfterDelayAsync: идемпотентен через LinkedCTS
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -16,48 +13,64 @@ public enum ButtonType { Button, Submit, Reset }
 
 public class SgAsyncButton : SgComponentBase
 {
-    [Parameter] public string?           Text            { get; set; } = "Submit";
-    [Parameter] public string?           LoadingText     { get; set; } = "Loading...";
-    [Parameter] public string?           SuccessText     { get; set; }
-    [Parameter] public string?           ErrorText       { get; set; }
-    [Parameter] public bool              Disabled        { get; set; }
-    [Parameter] public ButtonType        Type            { get; set; } = ButtonType.Button;
-    [Parameter] public EventCallback     OnClick         { get; set; }
-    [Parameter] public Func<Task>?       OnClickAsync    { get; set; }
-    [Parameter] public int               DebounceMs      { get; set; } = 0;
-    [Parameter] public int               SuccessDisplayMs { get; set; } = 2000;
-    [Parameter] public RenderFragment?   ChildContent    { get; set; }
+    [Parameter] public string? Text { get; set; } = "Submit";
+    [Parameter] public string? LoadingText { get; set; } = "Loading...";
+    [Parameter] public string? SuccessText { get; set; }
+    [Parameter] public string? ErrorText { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public ButtonType Type { get; set; } = ButtonType.Button;
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [Parameter] public Func<Task>? OnClickAsync { get; set; }
+    [Parameter] public int DebounceMs { get; set; } = 0;
+    [Parameter] public int SuccessDisplayMs { get; set; } = 2000;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
 
     private AsyncButtonState _state = AsyncButtonState.Idle;
-    private readonly object  _stateLock = new();
-    private long             _lastClickTick;
+    private readonly object _stateLock = new();
+    private long _lastClickTick;
     private CancellationTokenSource? _feedbackCts;
 
     protected bool IsLoading => _state == AsyncButtonState.Loading;
     protected bool IsSuccess => _state == AsyncButtonState.Success;
-    protected bool IsError   => _state == AsyncButtonState.Error;
+    protected bool IsError => _state == AsyncButtonState.Error;
 
     protected string CurrentText => _state switch
     {
         AsyncButtonState.Loading => LoadingText ?? Text ?? "Loading...",
         AsyncButtonState.Success => SuccessText ?? Text ?? "Done!",
-        AsyncButtonState.Error   => ErrorText   ?? Text ?? "Error",
+        AsyncButtonState.Error   => ErrorText ?? Text ?? "Error",
         _                        => Text ?? "Submit"
     };
+
+    // ✅ FIX: ShouldRender оптимизирован — рендеримся только при смене состояния
+    private AsyncButtonState _lastRenderedState = AsyncButtonState.Idle;
+    private bool _lastRenderedDisabled;
+
+    protected override bool ShouldRender()
+    {
+        var currentState = _state;
+        var currentDisabled = Disabled;
+        if (currentState == _lastRenderedState && currentDisabled == _lastRenderedDisabled)
+            return false;
+        _lastRenderedState = currentState;
+        _lastRenderedDisabled = currentDisabled;
+        return true;
+    }
 
     protected async Task HandleClickAsync(MouseEventArgs e)
     {
         if (IsDisposed || Disabled || IsLoading) return;
 
-        // ✅ FIX: TimeProvider для тестируемого debounce
         if (DebounceMs > 0)
         {
-            var nowTick  = TimeProvider.GetTimestamp();
+            var nowTick = TimeProvider.GetTimestamp();
             var lastTick = Volatile.Read(ref _lastClickTick);
             var elapsedMs = (nowTick - lastTick) * 1000.0 / TimeProvider.TimestampFrequency;
             if (elapsedMs < DebounceMs) return;
-            Volatile.Write(ref _lastClickTick, nowTick);
         }
+
+        // ✅ FIX W9: Volatile.Write для _lastClickTick
+        Volatile.Write(ref _lastClickTick, TimeProvider.GetTimestamp());
 
         SetState(AsyncButtonState.Loading);
 
@@ -89,21 +102,18 @@ public class SgAsyncButton : SgComponentBase
 
     private void SetState(AsyncButtonState state)
     {
-        lock (_stateLock) { _state = state; }
+        lock (_stateLock) _state = state;
         if (!IsDisposed) _ = InvokeAsync(StateHasChanged);
     }
 
-    // ✅ FIX: использует ComponentToken для отмены при Dispose
     private async Task ResetAfterDelayAsync(int delayMs)
     {
-        // Отменяем предыдущий pending reset
         var oldCts = Interlocked.Exchange(ref _feedbackCts, null);
         oldCts?.Cancel();
         oldCts?.Dispose();
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
         Interlocked.Exchange(ref _feedbackCts, cts);
-
         try
         {
             await Task.Delay(delayMs, cts.Token);
