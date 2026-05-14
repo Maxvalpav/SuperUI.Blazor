@@ -120,7 +120,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     protected string RendererName => RendererInfo.Name ?? "Unknown";
 
     /// <summary>Целевой render mode компонента после prerendering.</summary>
-    protected IComponentRenderMode? AssignedRenderMode => ComponentBase.AssignedRenderMode;
+    protected new IComponentRenderMode? AssignedRenderMode => base.AssignedRenderMode;
 #endif
 
     // ── Приватные поля ────────────────────────────────────────────────────

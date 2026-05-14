@@ -30,8 +30,8 @@ public abstract class SgCircuitAwareComponent : SgComponentBase
     /// <summary>SignalR circuit активен.</summary> 
     protected bool IsCircuitConnected => _circuitConnected; 
  
-    /// <summary>Текущий режим рендеринга.</summary> 
-    protected SgRenderMode CurrentMode => RenderModeDetector.GetRenderMode(this); 
+    /// <summary>Текущий режим рендеринга.</summary>
+    protected SgRenderMode CurrentMode => RenderModeDetector.CurrentMode;
  
     // ────────────────────────────────────────────────────────────────────── 
     // Жизненный цикл 
@@ -41,7 +41,7 @@ public abstract class SgCircuitAwareComponent : SgComponentBase
     { 
         await base.OnAfterRenderAsync(firstRender); 
  
-        var currentMode = RenderModeDetector.GetRenderMode(this); 
+        var currentMode = RenderModeDetector.CurrentMode;
  
         if (firstRender) 
         { 

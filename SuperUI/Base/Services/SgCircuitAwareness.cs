@@ -1,39 +1,62 @@
 // ================================================================
 // Файл: SuperUI/Base/Services/SgCircuitAwareness.cs
 // ИСПРАВЛЕНО:
-// - Убрана прямая зависимость от CircuitHandler
-// - Добавлен интерфейс ICircuitAwareness
-// - Добавлена WasmCircuitAwareness заглушка
+// ✅ CS0246/CS0311: ISgCircuitAwareness — добавлен как alias для ICircuitAwareness
+// ✅ ServiceCollectionExtensions может использовать оба имени
+// ✅ WasmCircuitAwareness — полная заглушка
+// ✅ ISgCircuitStateStore — потокобезопасный InMemory вариант
+// УЛУЧШЕНО:
+// ✅ SgCircuitAwareness: опциональный logger через NullLogger
+// ✅ Thread-safe: ConcurrentDictionary
 // ================================================================
 
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace SuperUI.Base.Services;
 
 /// <summary>
-/// Интерфейс для мониторинга состояния circuit (Server-side Blazor).
-/// На WASM — заглушка WasmCircuitAwareness.
+/// Основной интерфейс для мониторинга состояния Blazor Server circuit.
+/// На WASM реализуется заглушкой WasmCircuitAwareness.
 /// </summary>
 public interface ICircuitAwareness
 {
+    /// <summary>Вызывается при открытии нового circuit.</summary>
     event Action<string>? CircuitOpened;
+
+    /// <summary>Вызывается при закрытии circuit (disconnect/timeout).</summary>
     event Action<string>? CircuitClosed;
+
+    /// <summary>Вызывается при восстановлении соединения.</summary>
     event Action<string>? ConnectionUp;
+
+    /// <summary>Вызывается при потере соединения.</summary>
     event Action<string>? ConnectionDown;
 
+    /// <summary>Количество активных circuits (Server-side).</summary>
     int ActiveCircuitCount { get; }
+
+    /// <summary>ID текущего circuit (null на WASM).</summary>
     string? CurrentCircuitId { get; }
+
+    /// <summary>Проверить активность circuit по ID.</summary>
     bool IsConnected(string? circuitId = null);
 }
 
 /// <summary>
-/// Server-side реализация circuit awareness.
-/// CircuitHandler регистрируется отдельно через DI на Server.
+/// ✅ FIX CS0246: псевдоним для обратной совместимости.
+/// ServiceCollectionExtensions может использовать ISgCircuitAwareness вместо ICircuitAwareness.
 /// </summary>
-public sealed class SgCircuitAwareness : ICircuitAwareness, IDisposable
+public interface ISgCircuitAwareness : ICircuitAwareness { }
+
+/// <summary>
+/// Server-side реализация circuit awareness.
+/// Вызывается из CircuitHandler-адаптера (регистрируется отдельно через DI).
+/// </summary>
+public sealed class SgCircuitAwareness : ISgCircuitAwareness, IDisposable
 {
-    private readonly ILogger _logger;
+    private readonly ILogger<SgCircuitAwareness> _logger;
     private readonly ISgCircuitStateStore _stateStore;
 
     public event Action<string>? CircuitOpened;
@@ -51,9 +74,7 @@ public sealed class SgCircuitAwareness : ICircuitAwareness, IDisposable
         _stateStore = stateStore ?? new InMemoryCircuitStateStore();
     }
 
-    /// <summary>
-    /// Вызывается из адаптера CircuitHandler при открытии circuit.
-    /// </summary>
+    /// <summary>Вызывается при открытии нового circuit (из CircuitHandler).</summary>
     public void OnCircuitOpened(string circuitId)
     {
         CurrentCircuitId = circuitId;
@@ -62,19 +83,24 @@ public sealed class SgCircuitAwareness : ICircuitAwareness, IDisposable
         CircuitOpened?.Invoke(circuitId);
     }
 
+    /// <summary>Вызывается при закрытии circuit (из CircuitHandler).</summary>
     public void OnCircuitClosed(string circuitId)
     {
         _stateStore.Remove(circuitId);
+        if (string.Equals(CurrentCircuitId, circuitId, StringComparison.Ordinal))
+            CurrentCircuitId = null;
         _logger.LogInformation("Circuit closed: {CircuitId}", circuitId);
         CircuitClosed?.Invoke(circuitId);
     }
 
+    /// <summary>Вызывается при восстановлении соединения.</summary>
     public void OnConnectionUp(string circuitId)
     {
         _logger.LogInformation("Connection up: {CircuitId}", circuitId);
         ConnectionUp?.Invoke(circuitId);
     }
 
+    /// <summary>Вызывается при потере соединения.</summary>
     public void OnConnectionDown(string circuitId)
     {
         _logger.LogWarning("Connection down: {CircuitId}", circuitId);
@@ -95,15 +121,17 @@ public sealed class SgCircuitAwareness : ICircuitAwareness, IDisposable
 }
 
 /// <summary>
-/// WASM-заглушка — всегда "connected" (один "circuit").
+/// WASM-заглушка circuit awareness.
+/// В WASM всегда "connected" — нет понятия circuit.
 /// </summary>
-public sealed class WasmCircuitAwareness : ICircuitAwareness
+public sealed class WasmCircuitAwareness : ISgCircuitAwareness
 {
     public static readonly WasmCircuitAwareness Instance = new();
 
+    // События — noop (нет subscribers в WASM)
     public event Action<string>? CircuitOpened { add { } remove { } }
     public event Action<string>? CircuitClosed { add { } remove { } }
-    public event Action<string>? ConnectionUp { add { } remove { } }
+    public event Action<string>? ConnectionUp   { add { } remove { } }
     public event Action<string>? ConnectionDown { add { } remove { } }
 
     public int ActiveCircuitCount => 1;
@@ -111,6 +139,9 @@ public sealed class WasmCircuitAwareness : ICircuitAwareness
     public bool IsConnected(string? circuitId = null) => true;
 }
 
+// ── Circuit State Store ────────────────────────────────────────────────────
+
+/// <summary>Интерфейс хранилища состояний circuit.</summary>
 public interface ISgCircuitStateStore
 {
     void Add(string circuitId);
@@ -119,6 +150,7 @@ public interface ISgCircuitStateStore
     int ActiveCount { get; }
 }
 
+/// <summary>In-memory thread-safe хранилище circuit ID.</summary>
 internal sealed class InMemoryCircuitStateStore : ISgCircuitStateStore
 {
     private readonly ConcurrentDictionary<string, bool> _circuits = new();
@@ -129,6 +161,5 @@ internal sealed class InMemoryCircuitStateStore : ISgCircuitStateStore
 
     public void Remove(string circuitId) => _circuits.TryRemove(circuitId, out _);
 
-    public bool IsActive(string? circuitId)
-        => circuitId != null && _circuits.ContainsKey(circuitId);
+    public bool IsActive(string? circuitId) => circuitId != null && _circuits.ContainsKey(circuitId);
 }

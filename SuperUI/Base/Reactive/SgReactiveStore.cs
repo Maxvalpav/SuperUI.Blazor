@@ -24,6 +24,7 @@ internal interface ISgSignalResettable
     void SetFromObject(object? value);
     string Key { get; }
     Type ValueType { get; }
+    IDisposable? AsDisposable { get; }
 }
 
 /// <summary>
@@ -46,6 +47,8 @@ internal sealed class SgStoreEntry<T> : ISgSignalResettable
 
     /// <summary>Сброс к дефолтному значению — без dynamic, без рефлексии.</summary>
     public void ResetToDefault() => Signal.Set(_defaultValue);
+
+    public IDisposable? AsDisposable => Signal as IDisposable;
 
     /// <summary>Получить значение как object (для Export/Snapshot).</summary>
     public object? GetValue() => Signal.Value;
@@ -199,7 +202,7 @@ public sealed class SgReactiveStore : IDisposable
         {
             if (_entries.TryGetValue(key, out var entry))
             {
-                if (entry.Signal is IDisposable d) d.Dispose();
+                entry.AsDisposable?.Dispose();
                 _entries.Remove(key);
                 return true;
             }
@@ -340,7 +343,7 @@ public sealed class SgReactiveStore : IDisposable
         {
             foreach (var entry in _entries.Values)
             {
-                if (entry.Signal is IDisposable d) d.Dispose();
+                entry.AsDisposable?.Dispose();
             }
             _entries.Clear();
         }

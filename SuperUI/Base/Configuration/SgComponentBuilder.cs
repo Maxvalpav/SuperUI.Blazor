@@ -41,10 +41,10 @@ public static class SgComponentBuilderExtensions
         // TimeProvider (.NET 8) — используется в рендер-планировщике
         services.TryAddSingleton(TimeProvider.System);
 
-        // ✅ FIX: регистрируем IComponentRegistry — без этого [Inject] в SgComponentBase = null
-        services.TryAddSingleton<IComponentRegistry, SgComponentRegistry>();
+        // ✅ FIX: регистрируем ISgComponentTypeRegistry — без этого [Inject] в SgComponentBase = null
+        services.TryAddSingleton<Services.ISgComponentTypeRegistry, SgComponentRegistry>();
 
-        // ✅ FIX: IComponentFactory зависит от IComponentRegistry
+        // ✅ FIX: IComponentFactory зависит от ISgComponentTypeRegistry
         services.TryAddSingleton<IComponentFactory, SgComponentFactory>();
 
         // Render mode detector

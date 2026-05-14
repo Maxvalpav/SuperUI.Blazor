@@ -35,10 +35,33 @@ public interface ISgSignal<T> : IReadOnlySignal<T>
     void Set(T value);
 }
 
-/// <summary>Наблюдатель изменений сигнала.</summary>
+/// <summary>Наблюдатель изменений сигнала (нетиповой).</summary>
 public interface ISignalObserver
 {
     void OnSignalChanged(ISgSignal signal);
+}
+
+/// <summary>
+/// ✅ FIX CS0308: Типизированный наблюдатель сигнала.
+/// Использует default interface method (C# 8+) для совместимости с ISignalObserver.
+/// Позволяет избежать unsafe casting в DevTools и Persistence.
+/// </summary>
+/// <typeparam name="T">Тип значения сигнала.</typeparam>
+public interface ISignalObserver<T> : ISignalObserver
+{
+    /// <summary>Вызывается при изменении типизированного сигнала.</summary>
+    void OnSignalChanged(ISgSignal<T> typedSignal);
+
+    /// <summary>
+    /// Default implementation: перенаправляет нетиповой вызов в типизированный.
+    /// Безопасен: если signal не ISgSignal&lt;T&gt;, логирует и выходит.
+    /// </summary>
+    void ISignalObserver.OnSignalChanged(ISgSignal signal)
+    {
+        if (signal is ISgSignal<T> typed)
+            OnSignalChanged(typed);
+        // else: несовпадение типа — игнорируем (защита от misc подписок)
+    }
 }
 
 // ══════════════════════════════════════════════

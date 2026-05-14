@@ -140,7 +140,7 @@ public sealed class UnsavedChangesGuard : IRouteDeactivateGuard
 
         if (_confirmService is not null)
         {
-            var confirmed = await _confirmService.ConfirmAsync(_message, ct);
+            var confirmed = await _confirmService.ConfirmAsync(_message);
             return confirmed ? RouteGuardResult.Allow() : RouteGuardResult.Deny();
         }
 

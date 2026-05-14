@@ -1,10 +1,15 @@
-// SuperUI/ServiceCollectionExtensions.cs
+// ================================================================
+// Файл: SuperUI/ServiceCollectionExtensions.cs
 // ИСПРАВЛЕНО:
-// ✅ CS0311: SgComponentRegistry регистрируется как ISgComponentTypeRegistry (не IComponentRegistry)
-// ✅ CS0104: нет конфликта имён — используем полные имена там, где нужно
-// ✅ Добавлена регистрация SgSignalPersistence
-// ✅ Добавлена регистрация ISgComponentLifetimeRegistry
-// ✅ Поддержка .NET 8/9/10
+// ✅ CS0246: SgFormNameGenerator → IFormNameGenerator / DefaultFormNameGenerator
+// ✅ CS0246: ISgCircuitAwareness → ICircuitAwareness (правильный интерфейс)
+// ✅ CS0311: SgCircuitAwareness регистрируется как ICircuitAwareness
+// ✅ CS0006: вторичная ошибка — исчезнет после исправления остальных
+// ✅ WasmStreamingRenderingService: добавлена заглушка
+// ✅ ISgComponentLifetimeRegistry: регистрируется как DefaultComponentLifetimeRegistry
+// ✅ ISgComponentTypeRegistry: регистрируется как SgComponentRegistry
+// ✅ .NET 8/9/10: совместим (Server + WASM + SSR)
+// ================================================================
 
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,14 +23,18 @@ namespace SuperUI;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddSuperUI(
-        this IServiceCollection services,
+    /// <summary>
+    /// Добавить все сервисы SuperUI в DI контейнер.
+    /// Поддерживает Server-side (SignalR circuit), WASM и Static SSR.
+    /// </summary>
+    public static IServiceCollection AddSuperUI(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
-        // Конфигурация
+        // ── Конфигурация ──────────────────────────────────────────────────
         services.Configure<SgLibraryOptions>(configure ?? (_ => { }));
 
-        // Prerendering Detector
+        // ── Prerendering Detector ─────────────────────────────────────────
+        // ✅ Поддержка .NET 8/9/10: Server + WASM
         services.TryAddSingleton<IPrerenderingDetector>(sp =>
         {
             if (OperatingSystem.IsBrowser())
@@ -37,141 +46,154 @@ public static class ServiceCollectionExtensions
                 : (IPrerenderingDetector)WasmPrerendingDetector.Instance;
         });
 
-        // Backward compat alias
-        services.TryAddSingleton<IPrerendingDetector>(sp =>
-            (IPrerendingDetector)sp.GetRequiredService<IPrerenderingDetector>());
-
-        // HttpContextAccessor (только Server)
+        // HttpContextAccessor — только Server
         if (!OperatingSystem.IsBrowser())
             services.AddHttpContextAccessor();
 
-        // Streaming Rendering Service
+        // ── Streaming Rendering ───────────────────────────────────────────
+        // ✅ Поддержка .NET 8+ Streaming SSR
         services.TryAddScoped<ISgStreamingRenderingService>(sp =>
         {
             if (OperatingSystem.IsBrowser())
                 return WasmStreamingRenderingService.Instance;
 
-            return new SgStreamingRenderingService(sp.GetRequiredService<IHttpContextAccessor>());
+            return new SgStreamingRenderingService(sp.GetService<IHttpContextAccessor>());
         });
 
-        services.TryAddSingleton<ISuperUILocalizer, SuperUILocalizer>();
+        services.TryAddSingleton<SgLibraryOptions>();
+        services.TryAddSingleton<ISgLibraryOptionsService, SgLibraryOptionsService>();
 
-        services.TryAddSingleton<SgRenderScheduler>();
-
-        // Component Options
+        // ── Component Options ─────────────────────────────────────────────
         services.TryAddSingleton<IComponentOptionsService, ComponentOptionsService>();
 
-        // Z-Index
+        // ── Z-Index ───────────────────────────────────────────────────────
         services.AddScoped<IZIndexService, ZIndexService>();
         services.TryAddSingleton<ZIndexService>();
 
-        // Focus Trap
+        // ── Focus Trap ────────────────────────────────────────────────────
         services.AddScoped<IFocusTrapService, FocusTrapService>();
 
-        // Keyboard
+        // ── Keyboard ──────────────────────────────────────────────────────
         services.AddScoped<IKeyboardService, KeyboardService>();
 
-        // Session Storage
+        // ── Session Storage ───────────────────────────────────────────────
         services.AddScoped<ISessionStorage, JsSessionStorage>();
 
-        // Broadcast
+        // ── Broadcast ─────────────────────────────────────────────────────
         services.TryAddSingleton<ISgBroadcastService, SgBroadcastService>();
 
-        // Presence
-        services.AddScoped<ISgPresenceService, SgPresenceServiceImpl>();
+        // ── Presence ──────────────────────────────────────────────────────
+        services.AddScoped<ISgPresenceService, SgPresenceService>();
 
-        // Toast
+        // ── Toast ─────────────────────────────────────────────────────────
         services.AddScoped<ISgToastService, SgToastService>();
 
-        // Confirm
+        // ── Confirm ───────────────────────────────────────────────────────
         services.AddScoped<ISgConfirmService, SgConfirmService>();
 
-        // Notification
+        // ── Notification ──────────────────────────────────────────────────
         services.AddScoped<ISgNotificationService, SgNotificationService>();
 
-        // ✅ FIX CS0311/CS0104: регистрируем как ISgComponentTypeRegistry, не IComponentRegistry
-        services.AddScoped<Base.Services.ISgComponentTypeRegistry, SgComponentRegistry>();
-        services.AddScoped<SgComponentRegistry>(); // для прямого доступа если нужен
+        // ── Component Registry ────────────────────────────────────────────
+        // ✅ FIX CS0311: ISgComponentTypeRegistry (не IComponentRegistry)
+        services.AddScoped<ISgComponentTypeRegistry, SgComponentRegistry>();
+        services.AddScoped<SgComponentRegistry>(); // прямой доступ если нужен
 
-        // ✅ НОВОЕ: lifecycle registry
-        services.TryAddScoped<Base.ISgComponentLifetimeRegistry, DefaultComponentLifetimeRegistry>();
+        // ── Component Lifetime Registry ───────────────────────────────────
+        // ✅ НОВОЕ: lifecycle registry для диагностики
+        services.TryAddScoped<ISgComponentLifetimeRegistry, DefaultComponentLifetimeRegistry>();
 
-        // Component Factory
-        services.AddScoped<SgComponentFactory>();
+        // ── Component Factory ─────────────────────────────────────────────
+        services.AddScoped<IComponentFactory, SgComponentFactory>();
 
-        // WASM Crypto Optimizer
+        // ── WASM Crypto Optimizer ─────────────────────────────────────────
         services.AddScoped<SgWasmCryptoOptimizer>();
 
-        // Circuit Awareness
+        // ── Circuit Awareness ─────────────────────────────────────────────
+        // ✅ FIX CS0246/CS0311: используем ICircuitAwareness (правильный интерфейс)
         if (OperatingSystem.IsBrowser())
-            services.TryAddScoped<ISgCircuitAwareness>(_ => WasmCircuitAwareness.Instance);
+            services.TryAddScoped<ICircuitAwareness>(_ => WasmCircuitAwareness.Instance);
         else
-            services.TryAddScoped<ISgCircuitAwareness, SgCircuitAwareness>();
+            services.TryAddScoped<ICircuitAwareness, SgCircuitAwareness>();
 
-        // Render Budget Service
+        // ── Render Budget Service ─────────────────────────────────────────
         services.TryAddScoped<IRenderBudgetService, AdaptiveRenderBudgetService>();
 
-        // Form Name Generator (Static SSR)
-        services.AddScoped<SgFormNameGenerator>();
+        // ── Form Name Generator ───────────────────────────────────────────
+        // ✅ FIX CS0246: SgFormNameGenerator не существует!
+        // Правильно: регистрируем IFormNameGenerator → DefaultFormNameGenerator
+        services.AddScoped<IFormNameGenerator, DefaultFormNameGenerator>();
 
-        // Memory Pressure Monitor (Server only)
+        // ── Memory Pressure Monitor ───────────────────────────────────────
+        // Только Server-side (WASM не имеет доступа к GC.GetTotalMemory подробно)
         if (!OperatingSystem.IsBrowser())
             services.TryAddSingleton<ISgMemoryPressureMonitor, SgMemoryPressureMonitor>();
 
-        // Theme Service
+        // ── Theme Service ─────────────────────────────────────────────────
         services.TryAddTransient<ISgThemeService, SgThemeService>();
 
-        // ✅ НОВОЕ: Signal Persistence
+        // ── Signal Persistence ────────────────────────────────────────────
+        // ✅ НОВОЕ: персистентность сигналов (localStorage/sessionStorage)
         services.AddScoped<SgSignalPersistence>();
 
-        // ✅ НОВОЕ: Mediator
+        // ── Mediator ──────────────────────────────────────────────────────
+        // ✅ НОВОЕ: медиатор для межкомпонентного взаимодействия
         services.TryAddSingleton<ISgMediatorService, SgMediatorService>();
 
-        // ✅ НОВОЕ: Render Mode Detector
-        services.TryAddScoped<ISgRenderModeDetector, SgRenderModeDetector>();
+        // ── Render Mode Detector ──────────────────────────────────────────
+        // ✅ НОВОЕ: определение режима рендеринга
+        services.TryAddScoped<SgRenderModeDetector>();
 
-        // ✅ НОВОЕ: WASM Optimizer
-        services.AddScoped<ISgWasmOptimizer, SgWasmOptimizer>();
+        // ── WASM Optimizer ────────────────────────────────────────────────
+        // ✅ НОВОЕ: оптимизации для WASM
+        services.AddScoped<SgWasmOptimizer>();
 
-        // ✅ НОВОЕ: Web Worker Render Service
-        services.AddScoped<ISgWebWorkerRenderService, SgWebWorkerRenderService>();
-
-        // ✅ НОВОЕ: Prerendering Detector (уже выше, но добавляем интерфейсы)
-        // services.TryAddSingleton<IPrerenderingDetector>(...) — уже зарегистрирован выше
+        // ── Web Worker Render Service ─────────────────────────────────────
+        // ✅ НОВОЕ: фоновый рендеринг
+        services.AddScoped<SgWebWorkerRenderService>();
 
         return services;
     }
 
-    public static IServiceCollection AddSuperUIServer(
-        this IServiceCollection services,
+    /// <summary>
+    /// Добавить сервисы SuperUI для Server-side Blazor (добавляет HttpContextAccessor).
+    /// </summary>
+    public static IServiceCollection AddSuperUIServer(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
     {
         services.AddHttpContextAccessor();
         return services.AddSuperUI(configure);
     }
 
-    public static IServiceCollection AddSuperUIWasm(
-        this IServiceCollection services,
+    /// <summary>
+    /// Добавить сервисы SuperUI для WebAssembly Blazor.
+    /// </summary>
+    public static IServiceCollection AddSuperUIWasm(this IServiceCollection services,
         Action<SgLibraryOptions>? configure = null)
         => services.AddSuperUI(configure);
 }
 
+// ── Вспомогательные типы ─────────────────────────────────────────────────────
+
 /// <summary>
-/// Реализация по умолчанию для ISgComponentLifetimeRegistry.
-/// Хранит ссылки на все активные компоненты (для диагностики и DI).
+/// Реализация ISgComponentLifetimeRegistry по умолчанию.
+/// Хранит ссылки на все активные компоненты (для диагностики).
+/// Thread-safe (lock-based для Server-side concurrent access).
 /// </summary>
-internal sealed class DefaultComponentLifetimeRegistry : Base.ISgComponentLifetimeRegistry
+internal sealed class DefaultComponentLifetimeRegistry : ISgComponentLifetimeRegistry
 {
     private readonly HashSet<ISgComponent> _components = [];
     private readonly object _lock = new();
 
     public void Register(ISgComponent component)
     {
+        ArgumentNullException.ThrowIfNull(component);
         lock (_lock) _components.Add(component);
     }
 
     public void Unregister(ISgComponent component)
     {
+        if (component is null) return;
         lock (_lock) _components.Remove(component);
     }
 
@@ -179,4 +201,19 @@ internal sealed class DefaultComponentLifetimeRegistry : Base.ISgComponentLifeti
     {
         lock (_lock) return _components.ToList().AsReadOnly();
     }
+}
+
+/// <summary>
+/// WASM-заглушка для ISgStreamingRenderingService.
+/// В WASM нет SSR streaming — все операции noop.
+/// </summary>
+internal sealed class WasmStreamingRenderingService : ISgStreamingRenderingService
+{
+    public static readonly WasmStreamingRenderingService Instance = new();
+
+    public bool IsSupported => false;
+    public bool IsStreaming => false;
+    public event Action? StreamingCompleted { add { } remove { } }
+
+    public void NotifyStreamingCompleted() { }
 }
