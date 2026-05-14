@@ -15,7 +15,7 @@ namespace SuperUI.Base;
 
 public sealed class AriaBuilder
 {
-    private readonly Dictionary<string, object?> _attributes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, object> _attributes = new(StringComparer.OrdinalIgnoreCase);
 
     // ── Стандартные ARIA атрибуты ──────────────────────────────────────────
 
@@ -61,6 +61,18 @@ public sealed class AriaBuilder
     public AriaBuilder Selected(bool selected = true)
     {
         _attributes["aria-selected"] = selected ? "true" : "false";
+        return this;
+    }
+
+    public AriaBuilder Pressed(bool pressed = true)
+    {
+        _attributes["aria-pressed"] = pressed ? "true" : "false";
+        return this;
+    }
+
+    public AriaBuilder ReadOnly(bool readOnly = true)
+    {
+        _attributes["aria-readonly"] = readOnly ? "true" : "false";
         return this;
     }
 
@@ -243,8 +255,8 @@ public sealed class AriaBuilder
 
     // ── Build ──────────────────────────────────────────────────────────────
 
-    public IReadOnlyDictionary<string, object?> Build() =>
-        new Dictionary<string, object?>(_attributes);
+    public IReadOnlyDictionary<string, object> Build() =>
+        new Dictionary<string, object>(_attributes);
 
     public string? Get(string attribute) =>
         _attributes.TryGetValue(attribute, out var v) ? v?.ToString() : null;

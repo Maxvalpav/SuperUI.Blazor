@@ -1,42 +1,46 @@
 @namespace SuperUI.Components
-@inherits SgInputBase<string>
+@inherits SgFormFieldBase<string>
 @using System.Globalization
 @using System.Text
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="@GetFieldClasses()" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
+        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@EffectiveId">@Label</label>
     }
+
     <div class="sgc-input-wrap @(PrefixContent != null ? "sgc-has-prefix" : "") @(SuffixContent != null ? "sgc-has-suffix" : "")">
-        @if (PrefixContent != null)
+        @if (PrefixContent is not null)
         {
             <span class="sgc-input-affix sgc-input-affix-prefix">@PrefixContent</span>
         }
-        <input id="@_id"
+
+        <input id="@EffectiveId"
                type="text"
                inputmode="@InputMode"
-               class="sgc-input @(IsInvalid ? "sgc-invalid" : "") @(_isNumeric ? "sgc-text-right" : "") @(IsComplete ? "sgc-mask-complete" : "")"
+               class="@GetInputClasses()"
                placeholder="@EffectivePlaceholder"
-               disabled="@Disabled"
+               disabled="@IsEffectivelyDisabled"
                readonly="@ReadOnly"
                required="@Required"
                aria-required="@(Required ? "true" : null)"
-               aria-invalid="@(IsInvalid ? "true" : null)"
+               aria-invalid="@(HasError ? "true" : null)"
                aria-describedby="@DescribedBy"
                value="@DisplayValue"
                maxlength="@MaxDisplayLength"
                @oninput="OnInputAsync"
                @onchange="OnChangeAsync"
-               @onfocus="OnFocusAsync"
-               @onblur="OnBlurAsync"
+               @onfocus="HandleMaskedFocusAsync"
+               @onblur="HandleMaskedBlurAsync"
                @onkeydown="OnKeyDownAsync"
-               @attributes="AdditionalAttributes" />
-        @if (SuffixContent != null)
+               @attributes="AdditionalAttributesFiltered" />
+
+        @if (SuffixContent is not null)
         {
             <span class="sgc-input-affix sgc-input-affix-suffix">@SuffixContent</span>
         }
-        @if (ShowClearButton && !string.IsNullOrEmpty(Value) && !Disabled && !ReadOnly)
+
+        @if (ShowClearButton && !string.IsNullOrEmpty(Value) && !IsEffectivelyDisabled && !ReadOnly)
         {
             <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="@Localizer["Clear"]" tabindex="-1">
                 <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
@@ -45,494 +49,13 @@
             </button>
         }
     </div>
-    @if (IsInvalid)
+
+    @if (HasError)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        <span id="@($"{EffectiveId}-err")" class="sgc-error">@DisplayedError</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
+        <span id="@($"{EffectiveId}-hint")" class="sgc-hint">@Hint</span>
     }
 </div>
-
-@code {
-    private readonly string _id = "sg-" + Guid.NewGuid().ToString("N")[..8];
-    private string _hintId => _id + "-hint";
-    private string _errorId => _id + "-err";
-
-    private bool _focused;
-    private bool _touched;
-    private string? _lastCompleteRaw;
-
-    /// <summary>Label text displayed above the input.</summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>Label position. Default is Top.</summary>
-    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-
-    /// <summary>Mask preset type. Default is <see cref="SgMaskType.Custom"/>.</summary>
-    [Parameter] public SgMaskType MaskType { get; set; } = SgMaskType.Custom;
-
-    /// <summary>Custom mask pattern used when <see cref="MaskType"/> is <see cref="SgMaskType.Custom"/>.
-    /// Tokens: <c>9</c> digit, <c>a</c> letter, <c>A</c> uppercase letter, <c>n</c> alphanumeric, <c>*</c> any char.
-    /// Other characters are treated as literals.</summary>
-    [Parameter] public string? Mask { get; set; }
-
-    /// <summary>Placeholder shown when input is empty. If null and <see cref="ShowMaskAsPlaceholder"/> is true, the mask itself is used.</summary>
-    [Parameter] public string? Placeholder { get; set; }
-
-    /// <summary>Character used to fill un-typed slots when <see cref="ShowMaskWhileTyping"/> is enabled. Default is '_'.</summary>
-    [Parameter] public char MaskPlaceholder { get; set; } = '_';
-
-    /// <summary>When true, the unfilled portion of the mask is rendered as the placeholder while empty.</summary>
-    [Parameter] public bool ShowMaskAsPlaceholder { get; set; } = true;
-
-    /// <summary>When true, mask literals and <see cref="MaskPlaceholder"/> chars are kept visible while typing.</summary>
-    [Parameter] public bool ShowMaskWhileTyping { get; set; }
-
-    /// <summary>Hint text displayed below the input.</summary>
-    [Parameter] public string? Hint { get; set; }
-
-    /// <summary>Error text to display. Takes precedence over validation messages.</summary>
-    [Parameter] public string? ErrorText { get; set; }
-
-    /// <summary>Whether the input is required.</summary>
-    [Parameter] public bool Required { get; set; }
-
-    /// <summary>Whether the input is disabled.</summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>Whether the input is read-only.</summary>
-    [Parameter] public bool ReadOnly { get; set; }
-
-    /// <summary>Whether the input takes full width. Default is true.</summary>
-    [Parameter] public bool Block { get; set; } = true;
-
-    /// <summary>Additional CSS classes for the field container.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Whether to show a clear button. Default is false.</summary>
-    [Parameter] public bool ShowClearButton { get; set; }
-
-    /// <summary>Culture used for numeric / date formatting. Default is current culture.</summary>
-    [Parameter] public CultureInfo? Culture { get; set; }
-
-    /// <summary>Number of decimal places for currency / percent. Default is 2.</summary>
-    [Parameter] public int DecimalPlaces { get; set; } = 2;
-
-    /// <summary>Currency symbol for <see cref="SgMaskType.Currency"/>. Default is "₽".</summary>
-    [Parameter] public string CurrencySymbol { get; set; } = "₽";
-
-    /// <summary>When true, currency / percent values render with thousands separators. Default is true.</summary>
-    [Parameter] public bool UseThousandsSeparator { get; set; } = true;
-
-    /// <summary>Allow negative numbers in currency / percent. Default is false.</summary>
-    [Parameter] public bool AllowNegative { get; set; }
-
-    /// <summary>Optional minimum numeric value (currency / percent).</summary>
-    [Parameter] public decimal? MinValue { get; set; }
-
-    /// <summary>Optional maximum numeric value (currency / percent).</summary>
-    [Parameter] public decimal? MaxValue { get; set; }
-
-    /// <summary>Custom date pattern for <see cref="SgMaskType.Date"/>; falls back to culture short date.</summary>
-    [Parameter] public string? DatePattern { get; set; }
-
-    /// <summary>Callback invoked when Enter key is pressed.</summary>
-    [Parameter] public EventCallback OnEnterPressed { get; set; }
-
-    /// <summary>Callback invoked once the value first satisfies the mask (length-complete and valid).</summary>
-    [Parameter] public EventCallback<string> OnComplete { get; set; }
-
-    /// <summary>Optional content rendered inside the input on the leading edge.</summary>
-    [Parameter] public RenderFragment? PrefixContent { get; set; }
-
-    /// <summary>Optional content rendered inside the input on the trailing edge.</summary>
-    [Parameter] public RenderFragment? SuffixContent { get; set; }
-
-    /// <summary>Additional HTML attributes for the input element.</summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
-
-    /// <summary>True once the raw value satisfies the mask (length matches significant slots, or numeric value is in range).</summary>
-    public bool IsComplete => CheckComplete(Value);
-
-    private bool IsInvalid =>
-        !string.IsNullOrEmpty(ErrorText)
-        || HasValidationErrors
-        || (_touched && Required && string.IsNullOrEmpty(Value))
-        || (_touched && !string.IsNullOrEmpty(Value) && !IsComplete && !_isNumeric);
-
-    private string? DisplayedError =>
-        !string.IsNullOrEmpty(ErrorText) ? ErrorText
-        : ValidationMessages.FirstOrDefault()
-            ?? (_touched && Required && string.IsNullOrEmpty(Value) ? Localizer["Required"] : null)
-            ?? (_touched && !string.IsNullOrEmpty(Value) && !IsComplete && !_isNumeric ? Localizer["Incomplete"] : null);
-
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-
-    private bool _isNumeric => MaskType is SgMaskType.Currency or SgMaskType.Percent;
-
-    private string InputMode => MaskType switch
-    {
-        SgMaskType.Phone or SgMaskType.Inn or SgMaskType.Kpp or SgMaskType.Account or SgMaskType.Bic
-            or SgMaskType.Snils or SgMaskType.Ogrn or SgMaskType.CreditCard or SgMaskType.CardExpiry
-            or SgMaskType.Cvv or SgMaskType.Postal => "numeric",
-        SgMaskType.Currency or SgMaskType.Percent => "decimal",
-        SgMaskType.Iban => "text",
-        _ => "text"
-    };
-
-    private string? EffectivePlaceholder
-    {
-        get
-        {
-            if (!string.IsNullOrEmpty(Placeholder)) return Placeholder;
-            if (!ShowMaskAsPlaceholder) return null;
-            var mask = GetMaskPattern();
-            if (string.IsNullOrEmpty(mask)) return null;
-            return MaskTemplate(mask, MaskPlaceholder);
-        }
-    }
-
-    private string DisplayValue => GetDisplayValue();
-
-    private string GetDisplayValue()
-    {
-        if (string.IsNullOrEmpty(Value))
-            return ShowMaskWhileTyping && !_isNumeric ? MaskTemplate(GetMaskPattern(), MaskPlaceholder) : string.Empty;
-
-        return MaskType switch
-        {
-            SgMaskType.Currency => _focused ? FormatNumericEditing(Value) : FormatCurrency(Value),
-            SgMaskType.Percent  => _focused ? FormatNumericEditing(Value) : FormatPercent(Value),
-            _                   => ShowMaskWhileTyping
-                                    ? ApplyMaskWithPlaceholder(Value, GetMaskPattern(), MaskPlaceholder)
-                                    : ApplyMask(Value, GetMaskPattern())
-        };
-    }
-
-    private string GetMaskPattern() => MaskType switch
-    {
-        SgMaskType.Phone      => "+7 (999) 999-99-99",
-        SgMaskType.Inn        => CountDigits(Value) > 10 ? "999999999999" : "9999999999",
-        SgMaskType.Kpp        => "9999nn999",
-        SgMaskType.Account    => "9999 9999 9999 9999 9999",
-        SgMaskType.Bic        => "999999999",
-        SgMaskType.Snils      => "999-999-999 99",
-        SgMaskType.Ogrn       => CountDigits(Value) > 13 ? "999999999999999" : "9999999999999",
-        SgMaskType.Iban       => "AAnn nnnn nnnn nnnn nnnn nnnn nnnn nn",
-        SgMaskType.CreditCard => "9999 9999 9999 9999",
-        SgMaskType.CardExpiry => "99/99",
-        SgMaskType.Cvv        => "999",
-        SgMaskType.Postal     => "999999",
-        SgMaskType.Date       => DateMask(),
-        SgMaskType.Time       => "99:99",
-        _                     => Mask ?? ""
-    };
-
-    private string DateMask()
-    {
-        if (!string.IsNullOrEmpty(DatePattern)) return DigitMaskFromDatePattern(DatePattern);
-        var c = Culture ?? CultureInfo.CurrentCulture;
-        return DigitMaskFromDatePattern(c.DateTimeFormat.ShortDatePattern);
-    }
-
-    private static string DigitMaskFromDatePattern(string p)
-    {
-        var sb = new StringBuilder(p.Length);
-        foreach (var c in p)
-            sb.Append(char.IsLetter(c) ? '9' : c);
-        return sb.ToString();
-    }
-
-    private int? MaxDisplayLength => MaskType switch
-    {
-        SgMaskType.Currency or SgMaskType.Percent => null,
-        _ => GetMaskPattern().Length > 0 ? GetMaskPattern().Length : null
-    };
-
-    private async Task OnInputAsync(ChangeEventArgs e)
-    {
-        await ProcessInputAsync(e.Value?.ToString() ?? "");
-    }
-
-    private Task OnChangeAsync(ChangeEventArgs e) => Task.CompletedTask;
-
-    private Task OnFocusAsync()
-    {
-        _focused = true;
-        return Task.CompletedTask;
-    }
-
-    private async Task OnBlurAsync()
-    {
-        _focused = false;
-        _touched = true;
-        if (_isNumeric && !string.IsNullOrEmpty(Value))
-            await ApplyNumericConstraintsAsync();
-    }
-
-    private async Task ProcessInputAsync(string rawInput)
-    {
-        try
-        {
-            string nextRaw = MaskType switch
-            {
-                SgMaskType.Currency => ParseNumericInput(rawInput, true),
-                SgMaskType.Percent  => ParseNumericInput(rawInput, false),
-                _                   => StripToSignificantChars(rawInput, GetMaskPattern())
-            };
-
-            if (!_isNumeric)
-            {
-                int maxLen = CountSignificantChars(GetMaskPattern());
-                if (maxLen > 0 && nextRaw.Length > maxLen)
-                    nextRaw = nextRaw[..maxLen];
-            }
-
-            await SetValueAsync(string.IsNullOrEmpty(nextRaw) ? null : nextRaw);
-
-            if (CheckComplete(Value) && _lastCompleteRaw != Value)
-            {
-                _lastCompleteRaw = Value;
-                if (OnComplete.HasDelegate)
-                    await OnComplete.InvokeAsync(Value!);
-            }
-            else if (!CheckComplete(Value))
-            {
-                _lastCompleteRaw = null;
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[SgMaskedInput] {ex}");
-        }
-    }
-
-    private async Task ApplyNumericConstraintsAsync()
-    {
-        var culture = Culture ?? CultureInfo.CurrentCulture;
-        if (!decimal.TryParse(Value, NumberStyles.Any, culture, out var d)) return;
-        var clamped = d;
-        if (MinValue.HasValue && clamped < MinValue.Value) clamped = MinValue.Value;
-        if (MaxValue.HasValue && clamped > MaxValue.Value) clamped = MaxValue.Value;
-        if (!AllowNegative && clamped < 0) clamped = 0;
-        if (clamped != d)
-            await SetValueAsync(clamped.ToString(culture));
-    }
-
-    private async Task OnKeyDownAsync(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
-            await OnEnterPressed.InvokeAsync();
-    }
-
-    private Task ClearAsync() => SetValueAsync(null);
-
-    /// <summary>Returns the value formatted with the active mask, or null if empty.</summary>
-    public string? GetFormattedValue() => string.IsNullOrEmpty(Value) ? null : GetDisplayValue();
-
-    // ---------- Mask engine ----------
-
-    private static bool TokenMatches(char token, char c) => token switch
-    {
-        '9' => char.IsDigit(c),
-        'a' => char.IsLetter(c),
-        'A' => char.IsLetter(c),
-        'n' => char.IsLetterOrDigit(c),
-        '*' => true,
-        _   => false
-    };
-
-    private static bool IsToken(char c) => c is '9' or 'a' or 'A' or 'n' or '*';
-
-    private static char TransformChar(char token, char c) => token switch
-    {
-        'A' => char.ToUpperInvariant(c),
-        _   => c
-    };
-
-    private static string ApplyMask(string raw, string mask)
-    {
-        if (string.IsNullOrEmpty(mask)) return raw;
-        var sb = new StringBuilder();
-        int ri = 0;
-        foreach (char m in mask)
-        {
-            if (ri >= raw.Length) break;
-            if (IsToken(m))
-            {
-                if (TokenMatches(m, raw[ri])) { sb.Append(TransformChar(m, raw[ri])); ri++; }
-                else { ri++; } // skip invalid char defensively
-            }
-            else
-            {
-                sb.Append(m);
-            }
-        }
-        return sb.ToString();
-    }
-
-    private static string ApplyMaskWithPlaceholder(string raw, string mask, char ph)
-    {
-        if (string.IsNullOrEmpty(mask)) return raw;
-        var sb = new StringBuilder();
-        int ri = 0;
-        foreach (char m in mask)
-        {
-            if (IsToken(m))
-            {
-                if (ri < raw.Length) { sb.Append(TransformChar(m, raw[ri])); ri++; }
-                else sb.Append(ph);
-            }
-            else
-            {
-                sb.Append(m);
-            }
-        }
-        return sb.ToString();
-    }
-
-    private static string MaskTemplate(string mask, char ph)
-    {
-        if (string.IsNullOrEmpty(mask)) return string.Empty;
-        var sb = new StringBuilder(mask.Length);
-        foreach (var m in mask)
-            sb.Append(IsToken(m) ? ph : m);
-        return sb.ToString();
-    }
-
-    private string StripToSignificantChars(string input, string mask)
-    {
-        if (string.IsNullOrEmpty(mask))
-            return new string(input.Where(char.IsLetterOrDigit).ToArray());
-
-        var sb = new StringBuilder();
-        int mi = 0;
-        foreach (char c in input)
-        {
-            // Ignore mask placeholder
-            if (c == MaskPlaceholder) continue;
-            if (mi >= mask.Length) break;
-
-            char m = mask[mi];
-            if (IsToken(m))
-            {
-                if (TokenMatches(m, c))
-                {
-                    sb.Append(TransformChar(m, c));
-                    mi++;
-                }
-            }
-            else if (c == m)
-            {
-                mi++;
-            }
-            else if (char.IsLetterOrDigit(c))
-            {
-                // User typed a significant char where a literal was expected — skip the literal and try again
-                while (mi < mask.Length && !IsToken(mask[mi])) mi++;
-                if (mi < mask.Length && TokenMatches(mask[mi], c))
-                {
-                    sb.Append(TransformChar(mask[mi], c));
-                    mi++;
-                }
-            }
-        }
-        return sb.ToString();
-    }
-
-    private static int CountSignificantChars(string mask)
-    {
-        int n = 0;
-        foreach (char c in mask)
-            if (IsToken(c)) n++;
-        return n;
-    }
-
-    private static int CountDigits(string? s)
-    {
-        if (string.IsNullOrEmpty(s)) return 0;
-        int n = 0;
-        foreach (var c in s) if (char.IsDigit(c)) n++;
-        return n;
-    }
-
-    private bool CheckComplete(string? raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return false;
-        if (_isNumeric)
-        {
-            var culture = Culture ?? CultureInfo.CurrentCulture;
-            if (!decimal.TryParse(raw, NumberStyles.Any, culture, out var d)) return false;
-            if (MinValue.HasValue && d < MinValue.Value) return false;
-            if (MaxValue.HasValue && d > MaxValue.Value) return false;
-            return true;
-        }
-        var mask = GetMaskPattern();
-        if (string.IsNullOrEmpty(mask)) return raw.Length > 0;
-        return raw.Length >= CountSignificantChars(mask);
-    }
-
-    // ---------- Numeric formatting ----------
-
-    private string ParseNumericInput(string input, bool _)
-    {
-        var culture = Culture ?? CultureInfo.CurrentCulture;
-        char decSep = culture.NumberFormat.NumberDecimalSeparator[0];
-        var sb = new StringBuilder();
-        bool hasDecimal = false;
-        foreach (char c in input)
-        {
-            if (char.IsDigit(c))
-            {
-                sb.Append(c);
-            }
-            else if ((c == '.' || c == ',') && !hasDecimal)
-            {
-                sb.Append(decSep);
-                hasDecimal = true;
-            }
-            else if (c == '-' && sb.Length == 0 && AllowNegative)
-            {
-                sb.Append(c);
-            }
-        }
-        return sb.ToString();
-    }
-
-    private string FormatNumericEditing(string raw)
-    {
-        // While focused: keep user-friendly editable form (no thousands separators, no symbol/suffix).
-        return raw;
-    }
-
-    private string FormatCurrency(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return string.Empty;
-        var culture = Culture ?? CultureInfo.CurrentCulture;
-        if (decimal.TryParse(raw, NumberStyles.Any, culture, out var d))
-        {
-            var format = (NumberFormatInfo)culture.NumberFormat.Clone();
-            format.CurrencySymbol = CurrencySymbol;
-            if (!UseThousandsSeparator) format.CurrencyGroupSeparator = string.Empty;
-            return d.ToString("C" + DecimalPlaces, format);
-        }
-        return raw;
-    }
-
-    private string FormatPercent(string raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return string.Empty;
-        var culture = Culture ?? CultureInfo.CurrentCulture;
-        if (decimal.TryParse(raw, NumberStyles.Any, culture, out var d))
-        {
-            var format = (NumberFormatInfo)culture.NumberFormat.Clone();
-            if (!UseThousandsSeparator) format.NumberGroupSeparator = string.Empty;
-            return d.ToString($"N{DecimalPlaces}", format) + " %";
-        }
-        return raw;
-    }
-}

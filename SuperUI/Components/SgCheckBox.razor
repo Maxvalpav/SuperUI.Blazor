@@ -1,14 +1,14 @@
 @namespace SuperUI.Components
-@inherits SgInputBase<bool>
+@inherits SgFormFieldBase<bool>
 @inject IJSRuntime JS
 
-<div class="sgc-check-field @(Block ? "sgc-block" : "") @CssClass">
-    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(Indeterminate ? "sgc-indeterminate" : "") @(IsInvalid ? "sgc-check-invalid" : "")">
+<div class="@GetRootClasses()">
+    <label class="@GetCheckClasses()">
         <input type="checkbox"
                checked="@Value"
-               disabled="@Disabled"
+               disabled="@IsEffectivelyDisabled"
                aria-checked="@AriaChecked"
-               aria-invalid="@(IsInvalid ? "true" : null)"
+               aria-invalid="@(HasError ? "true" : null)"
                aria-describedby="@DescribedBy"
                @onchange="OnChangeAsync"
                @attributes="AdditionalAttributes"
@@ -16,7 +16,7 @@
         @if (ChildContent is not null) { @ChildContent }
         else if (!string.IsNullOrEmpty(Label)) { <span>@Label</span> }
     </label>
-    @if (IsInvalid)
+    @if (HasError)
     {
         <span id="@_errorId" class="sgc-error">@(!string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault())</span>
     }
@@ -33,45 +33,32 @@
     private ElementReference _inputRef;
     private IJSObjectReference? _module;
     private bool _lastIndeterminate;
-    private bool _isDisposed;
 
-    /// <summary>Label text shown next to the checkbox. Ignored when <see cref="ChildContent"/> is set.</summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>Hint text displayed below the checkbox.</summary>
-    [Parameter] public string? Hint { get; set; }
-
-    /// <summary>Override error text displayed below the checkbox. Takes precedence over EditContext validation messages.</summary>
-    [Parameter] public string? ErrorText { get; set; }
-
-    /// <summary>Whether the checkbox is in indeterminate (tri-state) state.</summary>
     [Parameter] public bool Indeterminate { get; set; }
-
-    /// <summary>Callback raised when <see cref="Indeterminate"/> changes. Supports <c>@bind-Indeterminate</c>.</summary>
     [Parameter] public EventCallback<bool> IndeterminateChanged { get; set; }
-
-    /// <summary>Custom content rendered next to the checkbox. Takes precedence over <see cref="Label"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>Whether the checkbox is disabled.</summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>Expand to full width of the container.</summary>
     [Parameter] public bool Block { get; set; }
 
-    /// <summary>Additional CSS class names applied to the outer field element.</summary>
-    [Parameter] public string? CssClass { get; set; }
+    protected override string ComponentPrefix => "chk";
 
-    /// <summary>Additional HTML attributes applied to the input element.</summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private bool IsInvalid => HasValidationErrors || !string.IsNullOrEmpty(ErrorText);
     private string AriaChecked => Indeterminate ? "mixed" : Value.ToString().ToLowerInvariant();
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+    private string? DescribedBy => HasError ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string GetRootClasses() => Css("sgc-check-field")
+        .AddIf("sgc-block", Block)
+        .Add(Class)
+        .ToString();
+
+    private string GetCheckClasses() => Css("sgc-check")
+        .AddIf("sgc-disabled", IsEffectivelyDisabled)
+        .AddIf("sgc-indeterminate", Indeterminate)
+        .AddIf("sgc-check-invalid", HasError)
+        .ToString();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_isDisposed) return;
+        await base.OnAfterRenderAsync(firstRender);
+        if (IsDisposed) return;
         if (firstRender || _lastIndeterminate != Indeterminate)
         {
             _lastIndeterminate = Indeterminate;
@@ -81,10 +68,11 @@
 
     private async Task SetIndeterminateAsync()
     {
+        if (IsStaticSSR) return;
         try
         {
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
-            if (_isDisposed) return;
+            if (IsDisposed) return;
             await _module.InvokeVoidAsync("setIndeterminate", _inputRef, Indeterminate);
         }
         catch (JSException) { }
@@ -93,8 +81,11 @@
 
     private async Task OnChangeAsync(ChangeEventArgs e)
     {
+        if (IsEffectivelyDisabled) return;
+
         if (Indeterminate)
         {
+            Indeterminate = false;
             await SetIndeterminateAsync();
             if (IndeterminateChanged.HasDelegate)
                 await IndeterminateChanged.InvokeAsync(false);
@@ -106,9 +97,12 @@
         }
     }
 
-    public override void Dispose()
+    protected override async ValueTask DisposeComponentAsync()
     {
-        _isDisposed = true;
-        base.Dispose();
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); } catch { }
+        }
+        await base.DisposeComponentAsync();
     }
 }

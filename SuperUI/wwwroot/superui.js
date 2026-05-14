@@ -1,3 +1,12 @@
+export function scrollToSelected(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    const selected = container.querySelector('.sgc-selected');
+    if (selected) {
+        selected.scrollIntoView({ block: 'center', behavior: 'instant' });
+    }
+}
+
 export function setIndeterminate(el, value) {
     if (el) el.indeterminate = value;
 }

@@ -1,0 +1,208 @@
+@page "/demo/multiselect"
+@using SuperUI.Components
+@using SuperUI.Demo.Components
+@using SuperUI.Demo.Models
+
+<div class="demo-page">
+    <div class="demo-hero">
+        <section class="demo-hero-main">
+            <div class="demo-header">
+                <div class="demo-kicker">Input Components</div>
+                <h1 class="demo-title">SgMultiSelect</h1>
+                <p class="demo-subtitle">
+                    Multi-select input for tags, teams, filters and permission sets with search, removable chips
+                    and optional enum-driven configuration.
+                </p>
+            </div>
+        </section>
+
+        <aside class="demo-hero-side">
+            <div class="demo-side-title">Highlights</div>
+            <div class="demo-pill-list">
+                <span class="demo-pill demo-pill-accent">Search</span>
+                <span class="demo-pill">Chip Selection</span>
+                <span class="demo-pill">Enum Mode</span>
+                <span class="demo-pill">Form Ready</span>
+            </div>
+
+            <div class="demo-meta-grid">
+                <div class="demo-meta-card">
+                    <span class="demo-meta-label">Sources</span>
+                    <span class="demo-meta-value">Item collections and enums</span>
+                </div>
+                <div class="demo-meta-card">
+                    <span class="demo-meta-label">Scenarios</span>
+                    <span class="demo-meta-value">Departments, tags, access scopes</span>
+                </div>
+                <div class="demo-meta-card">
+                    <span class="demo-meta-label">UX</span>
+                    <span class="demo-meta-value">Inline chips, filtering and fast remove</span>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <SgDemoSection Eyebrow="Usage" Title="Examples" Description="Multi-selection patterns for administration, filtering and team assignment.">
+        <div class="demo-showcase-grid">
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Basic Items</h3>
+                    <p class="demo-showcase-desc">Select several items from a mapped collection with search support.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgMultiSelect TItem="TeamOption" TKey="int"
+                                       Label="Project Team"
+                                       Items="_teamOptions"
+                                       Values="_selectedTeamIds"
+                                       ValuesChanged="OnTeamChanged"
+                                       KeySelector="@(item => item.Id)"
+                                       LabelSelector="@(item => $"{item.Name} ({item.Role})")"
+                                       Placeholder="Choose team members"
+                                       Hint="Search and pick multiple team members." />
+                        <div class="demo-inline-value">Selected IDs: @string.Join(", ", _selectedTeamIds)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Enum Mode</h3>
+                    <p class="demo-showcase-desc">Build a settings picker directly from enum metadata.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgMultiSelect TItem="string" TKey="string"
+                                       Label="Visible Departments"
+                                       EnumType="typeof(DepartmentType)"
+                                       Values="_selectedDepartments"
+                                       ValuesChanged="OnDepartmentsChanged"
+                                       Placeholder="Choose departments"
+                                       EmptyText="No matching departments"
+                                       EnumKeyMode="SgEnumKeyMode.Name" />
+                        <div class="demo-inline-value">Selected: @string.Join(", ", _selectedDepartments)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Tag-like Categories</h3>
+                    <p class="demo-showcase-desc">Use chips to manage a flexible set of category filters.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgMultiSelect TItem="CategoryOption" TKey="string"
+                                       Label="Active Categories"
+                                       Items="_categories"
+                                       Values="_selectedCategories"
+                                       ValuesChanged="OnCategoriesChanged"
+                                       KeySelector="@(item => item.Key)"
+                                       LabelSelector="@(item => item.Label)"
+                                       Placeholder="Select categories" />
+                        <div class="demo-inline-value">Filters: @string.Join(" | ", _selectedCategories)</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">States</h3>
+                    <p class="demo-showcase-desc">Required and disabled configurations for controlled workflows.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgMultiSelect TItem="CategoryOption" TKey="string"
+                                       Label="Required Categories"
+                                       Items="_categories"
+                                       Values="_requiredCategories"
+                                       ValuesChanged="OnRequiredCategoriesChanged"
+                                       KeySelector="@(item => item.Key)"
+                                       LabelSelector="@(item => item.Label)"
+                                       Required="true" />
+                        <SgMultiSelect TItem="CategoryOption" TKey="string"
+                                       Label="Disabled Selection"
+                                       Items="_categories"
+                                       Values="_disabledCategories"
+                                       ValuesChanged="OnDisabledCategoriesChanged"
+                                       KeySelector="@(item => item.Key)"
+                                       LabelSelector="@(item => item.Label)"
+                                       Disabled="true" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </SgDemoSection>
+
+    <SgDemoParams Title="MultiSelect Parameters" Description="Core public parameters for configuring the SgMultiSelect component.">
+        <SgDemoParam Name="Items" Type="IEnumerable&lt;TItem&gt;" Description="Collection of selectable items when not using enum mode." DefaultValue="Empty collection" />
+        <SgDemoParam Name="Values" Type="IEnumerable&lt;TKey&gt;" Description="Currently selected keys." DefaultValue="null" />
+        <SgDemoParam Name="KeySelector" Type="Func&lt;TItem, TKey&gt;" Description="Maps each item to a stable key." DefaultValue="required in item mode" />
+        <SgDemoParam Name="LabelSelector" Type="Func&lt;TItem, string&gt;" Description="Maps each item to chip and option text." DefaultValue="null" />
+        <SgDemoParam Name="EnumType" Type="Type" Description="Optional enum source used instead of Items." DefaultValue="null" />
+        <SgDemoParam Name="EnumKeyMode" Type="SgEnumKeyMode" Description="Determines whether enum keys use names or integer values." Values="Name, IntValue" DefaultValue="Name" />
+        <SgDemoParam Name="Placeholder" Type="string" Description="Text shown when nothing is selected." DefaultValue="null" />
+        <SgDemoParam Name="EmptyText" Type="string" Description="Message shown when the search yields no results." DefaultValue="localized default" />
+        <SgDemoParam Name="Required" Type="bool" Description="Marks the field as required." Values="true, false" DefaultValue="false" />
+        <SgDemoParam Name="Disabled" Type="bool" Description="Disables the control and chip removal." Values="true, false" DefaultValue="false" />
+    </SgDemoParams>
+</div>
+
+@code {
+    private readonly List<TeamOption> _teamOptions =
+    [
+        new(1, "Olivia Carter", "Product Manager"),
+        new(2, "Ethan Brooks", "Backend Engineer"),
+        new(3, "Mia Foster", "UX Designer"),
+        new(4, "Noah Reed", "QA Lead"),
+        new(5, "Sophia Lane", "Data Analyst")
+    ];
+
+    private readonly List<CategoryOption> _categories =
+    [
+        new("analytics", "Analytics"),
+        new("billing", "Billing"),
+        new("security", "Security"),
+        new("support", "Support"),
+        new("automation", "Automation")
+    ];
+
+    private List<int> _selectedTeamIds = [2, 3];
+    private List<string> _selectedDepartments = ["Engineering", "Product"];
+    private List<string> _selectedCategories = ["analytics", "security"];
+    private List<string> _requiredCategories = ["billing"];
+    private List<string> _disabledCategories = ["support", "automation"];
+
+    private Task OnTeamChanged(IEnumerable<int> values)
+    {
+        _selectedTeamIds = values.ToList();
+        return Task.CompletedTask;
+    }
+
+    private Task OnDepartmentsChanged(IEnumerable<string> values)
+    {
+        _selectedDepartments = values.ToList();
+        return Task.CompletedTask;
+    }
+
+    private Task OnCategoriesChanged(IEnumerable<string> values)
+    {
+        _selectedCategories = values.ToList();
+        return Task.CompletedTask;
+    }
+
+    private Task OnRequiredCategoriesChanged(IEnumerable<string> values)
+    {
+        _requiredCategories = values.ToList();
+        return Task.CompletedTask;
+    }
+
+    private Task OnDisabledCategoriesChanged(IEnumerable<string> values)
+    {
+        _disabledCategories = values.ToList();
+        return Task.CompletedTask;
+    }
+
+    private sealed record TeamOption(int Id, string Name, string Role);
+    private sealed record CategoryOption(string Key, string Label);
+}

@@ -1,27 +1,22 @@
 @namespace SuperUI.Components
-@using System.Linq.Expressions
-@inject ISuperUILocalizer Localizer
-@implements IDisposable
+@inherits SgFormFieldBase<TimeSpan?>
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="@GetFieldClasses()" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@EffectiveId">@Label</label>
     }
     
-    <div class="sgc-combo sgc-combo-time @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="@GetControlClasses()"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
-         aria-labelledby="@_labelId"
-         aria-required="@(Required ? "true" : null)"
-         aria-disabled="@(Disabled ? "true" : null)"
-         aria-invalid="@(IsInvalid ? "true" : null)"
-         aria-describedby="@DescribedBy"
-         aria-controls="@_listboxId"
-         tabindex="@(Disabled ? "-1" : "0")"
+         aria-disabled="@(IsEffectivelyDisabled ? "true" : null)"
+         aria-invalid="@(HasError ? "true" : null)"
+         tabindex="@(IsEffectivelyDisabled ? "-1" : "0")"
          @onfocusout="HandleFocusOutAsync"
          @onclick:stopPropagation="true">
+        
         <div class="sgc-combo-control" @onclick="ToggleAsync">
             @if (Value.HasValue)
             {
@@ -29,9 +24,10 @@
             }
             else
             {
-                <span class="sgc-combo-placeholder">@Placeholder</span>
+                <span class="sgc-combo-placeholder">@(Placeholder ?? "--:--")</span>
             }
-            @if (AllowClear && Value.HasValue && !Disabled && !ReadOnly)
+            
+            @if (AllowClear && Value.HasValue && !IsEffectivelyDisabled && !ReadOnly)
             {
                 <button class="sgc-combo-clear" type="button" aria-label="@ClearLabel" title="@ClearLabel"
                         @onclick:stopPropagation="true" @onclick="ClearAsync">
@@ -43,22 +39,24 @@
 
         @if (_open)
         {
-            <div id="@_listboxId" class="sgc-time-popup" role="listbox">
-                <div class="sgc-time-col">
+            <div class="sgc-time-popup" role="listbox" @onclick:stopPropagation="true">
+                <div class="sgc-time-col sgc-thin-scroll">
                     @for (int h = 0; h < 24; h++)
                     {
                         var hour = h;
                         <div class="sgc-time-unit @(Value?.Hours == hour ? "sgc-selected" : "")"
+                             @onmousedown:preventDefault="true"
                              @onclick="() => SetHour(hour)">
                             @hour.ToString("D2")
                         </div>
                     }
                 </div>
-                <div class="sgc-time-col">
+                <div class="sgc-time-col sgc-thin-scroll">
                     @for (int m = 0; m < 60; m++)
                     {
                         var min = m;
                         <div class="sgc-time-unit @(Value?.Minutes == min ? "sgc-selected" : "")"
+                             @onmousedown:preventDefault="true"
                              @onclick="() => SetMinute(min)">
                             @min.ToString("D2")
                         </div>
@@ -66,11 +64,12 @@
                 </div>
                 @if (ShowSeconds)
                 {
-                    <div class="sgc-time-col">
+                    <div class="sgc-time-col sgc-thin-scroll">
                         @for (int s = 0; s < 60; s++)
                         {
                             var sec = s;
                             <div class="sgc-time-unit @(Value?.Seconds == sec ? "sgc-selected" : "")"
+                                 @onmousedown:preventDefault="true"
                                  @onclick="() => SetSecond(sec)">
                                 @sec.ToString("D2")
                             </div>
@@ -81,171 +80,12 @@
         }
     </div>
 
-    @if (IsInvalid)
+    @if (HasError)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        <span class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
+        <span class="sgc-hint">@Hint</span>
     }
 </div>
-
-@code {
-    private readonly string _labelId = "sg-time-label-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _hintId = "sg-time-hint-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _errorId = "sg-time-err-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _listboxId = "sg-time-listbox-" + Guid.NewGuid().ToString("N")[..8];
-    private bool _open;
-    private SgEditContextBinder<TimeSpan?>? _binder;
-
-    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the expression that identifies the bound value for EditContext validation.
-    /// </summary>
-    [Parameter] public Expression<Func<TimeSpan?>>? ValueExpression { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the currently selected time.
-    /// </summary>
-    [Parameter] public TimeSpan? Value { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the selected time changes.
-    /// </summary>
-    [Parameter] public EventCallback<TimeSpan?> ValueChanged { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether to show the seconds column. Default is false.
-    /// </summary>
-    [Parameter] public bool ShowSeconds { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the time picker.
-    /// </summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>
-    /// Gets or sets the position of the label. Default is Top.
-    /// </summary>
-    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the time picker.
-    /// </summary>
-    [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
-    [Parameter] public string? ErrorText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the placeholder text shown when no time is selected. Default is "--:--".
-    /// </summary>
-    [Parameter] public string Placeholder { get; set; } = "--:--";
-
-    /// <summary>
-    /// Gets or sets whether a clear button is shown when a time is selected. Default is true.
-    /// </summary>
-    [Parameter] public bool AllowClear { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether the time picker is required.
-    /// </summary>
-    [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the time picker is disabled.
-    /// </summary>
-    [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the time picker is read-only.
-    /// </summary>
-    [Parameter] public bool ReadOnly { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the time picker should take full width of its container. Default is true.
-    /// </summary>
-    [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
-        ? ErrorText 
-        : _binder?.ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private string ClearLabel => Localizer["Clear"];
-
-    protected override void OnInitialized()
-    {
-        _binder = new SgEditContextBinder<TimeSpan?>(StateHasChanged);
-    }
-
-    protected override void OnParametersSet()
-    {
-        _binder?.Update(CascadedEditContext, ValueExpression);
-    }
-
-    private async Task ToggleAsync()
-    {
-        if (Disabled || ReadOnly) return;
-        _open = !_open;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task HandleFocusOutAsync(FocusEventArgs e)
-    {
-        await Task.Delay(200);
-        _open = false;
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task SetHour(int h)
-    {
-        var current = Value ?? TimeSpan.Zero;
-        var next = new TimeSpan(h, current.Minutes, current.Seconds);
-        await UpdateValue(next);
-    }
-
-    private async Task SetMinute(int m)
-    {
-        var current = Value ?? TimeSpan.Zero;
-        var next = new TimeSpan(current.Hours, m, current.Seconds);
-        await UpdateValue(next);
-        if (!ShowSeconds) _open = false;
-    }
-
-    private async Task SetSecond(int s)
-    {
-        var current = Value ?? TimeSpan.Zero;
-        var next = new TimeSpan(current.Hours, current.Minutes, s);
-        await UpdateValue(next);
-        _open = false;
-    }
-
-    private async Task ClearAsync()
-    {
-        _open = false;
-        Value = null;
-        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
-        _binder?.NotifyFieldChanged();
-        await InvokeAsync(StateHasChanged);
-    }
-
-    private async Task UpdateValue(TimeSpan next)
-    {
-        Value = next;
-        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(next);
-        _binder?.NotifyFieldChanged();
-        // We don't close the menu automatically to allow picking minutes after hours
-    }
-
-    public void Dispose() => _binder?.Dispose();
-}

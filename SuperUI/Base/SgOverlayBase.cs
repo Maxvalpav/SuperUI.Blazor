@@ -26,7 +26,8 @@ public abstract class SgOverlayBase : SgComponentBase
     [Inject] protected IFocusTrapService FocusTrapService { get; set; } = default!; 
  
     private bool _visible; 
-    private int _zIndex; 
+    private int _zIndex;
+    protected int CurrentZIndex => _zIndex;
     private bool _focusTrapActive; 
     private DotNetObjectReference<SgOverlayBase>? _dotNetRef; 
  
@@ -34,7 +35,7 @@ public abstract class SgOverlayBase : SgComponentBase
     // Параметры 
     // ────────────────────────────────────────────────────────────────────── 
  
-    [Parameter] public new bool Visible { get; set; } 
+    [Parameter] public override bool Visible { get; set; } 
     [Parameter] public EventCallback<bool> VisibleChanged { get; set; } 
     [Parameter] public bool TrapFocus { get; set; } = true; 
     [Parameter] public bool CloseOnEscape { get; set; } = true; 
@@ -80,10 +81,13 @@ public abstract class SgOverlayBase : SgComponentBase
     // Показ/скрытие 
     // ────────────────────────────────────────────────────────────────────── 
  
+    protected virtual int GetBaseZIndex() => 0;
+
     protected virtual async Task OnShowAsync() 
     { 
         // Получаем z-index 
-        _zIndex = ZIndexService.GetNext(); 
+        int baseZIndex = GetBaseZIndex();
+        _zIndex = baseZIndex > 0 ? ZIndexService.Allocate(baseZIndex) : ZIndexService.GetNext(); 
  
         // Focus trap 
         if (TrapFocus && !_focusTrapActive) 

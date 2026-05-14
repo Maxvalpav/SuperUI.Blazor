@@ -63,15 +63,6 @@ public enum SgInputVariant
     Borderless
 }
 
-// ── Avatar ───────────────────────────────────────────────────────────────────
-
-/// <summary>Форма аватара.</summary>
-public enum SgAvatarShape
-{
-    Circle,
-    Square
-}
-
 // ── DataGrid / Сортировка ────────────────────────────────────────────────────
 
 /// <summary>Направление сортировки.</summary>
@@ -106,6 +97,16 @@ public enum SgColumnType
     Date,
     Boolean,
     Custom
+}
+
+// ── DatePicker ───────────────────────────────────────────────────────────────
+
+/// <summary>Режим отображения календаря.</summary>
+public enum SgDatePickerMode
+{
+    Days,
+    Months,
+    Years
 }
 
 /// <summary>Режим выделения строк.</summary>

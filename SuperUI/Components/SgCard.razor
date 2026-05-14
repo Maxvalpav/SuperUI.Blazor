@@ -1,267 +1,89 @@
 @namespace SuperUI.Components
-@using Microsoft.AspNetCore.Components.Web
+@inherits SgReactiveComponentBase
 
-<div class="@RootClass" style="@RootStyle"
-     role="@(Selectable ? "button" : null)"
-     tabindex="@(Selectable && !Disabled ? "0" : null)"
-     aria-pressed="@(Selectable ? (Selected ? "true" : "false") : null)"
-     aria-disabled="@(Disabled ? "true" : null)"
-     @onclick="HandleClickAsync"
-     @onkeydown="HandleKeyDownAsync"
-     @attributes="AdditionalAttributes">
+@{
+    using var _ = EnterScope(this);
+    <div class="@GetRootClasses()" style="@Style"
+         role="@(Selectable ? "button" : null)"
+         tabindex="@(Selectable && !Disabled ? "0" : null)"
+         @onclick="HandleClickAsync"
+         @onkeydown="HandleKeyDownAsync"
+         @attributes="AdditionalAttributesFiltered">
 
-    @if (CoverContent is not null)
-    {
-        <div class="sgc-card-cover">@CoverContent</div>
-    }
+        @if (CoverContent is not null)
+        {
+            <div class="sgc-card-cover">@CoverContent</div>
+        }
 
-    @if (HasHeader)
-    {
-        <div class="sgc-card-header">
-            @if (HeaderContent is not null)
-            {
-                @HeaderContent
-            }
-            else
-            {
-                @if (!string.IsNullOrEmpty(Icon))
+        @if (HasHeader)
+        {
+            <div class="sgc-card-header">
+                @if (HeaderContent is not null)
                 {
-                    <div class="sgc-card-icon" aria-hidden="true">@((MarkupString)Icon)</div>
+                    @HeaderContent
                 }
-                <div class="sgc-card-header-group">
-                    @if (!string.IsNullOrEmpty(Title))
+                else
+                {
+                    @if (!string.IsNullOrEmpty(Icon))
                     {
-                        <span class="sgc-card-title">@Title</span>
+                        <div class="sgc-card-icon" aria-hidden="true">@((MarkupString)Icon)</div>
                     }
-                    @if (!string.IsNullOrEmpty(Subtitle))
-                    {
-                        <span class="sgc-card-subtitle">@Subtitle</span>
-                    }
-                </div>
-            }
+                    <div class="sgc-card-header-group">
+                        @if (!string.IsNullOrEmpty(Title))
+                        {
+                            <span class="sgc-card-title">@Title</span>
+                        }
+                        @if (!string.IsNullOrEmpty(Subtitle))
+                        {
+                            <span class="sgc-card-subtitle">@Subtitle</span>
+                        }
+                    </div>
+                }
 
-            @if (ActionContent is not null)
-            {
-                <div class="sgc-card-actions" @onclick:stopPropagation="true">@ActionContent</div>
-            }
+                @if (ActionContent is not null)
+                {
+                    <div class="sgc-card-actions" @onclick:stopPropagation="true">@ActionContent</div>
+                }
 
-            @if (Collapsible)
-            {
-                <button type="button"
-                        class="sgc-card-collapse-btn"
-                        aria-label="@(IsCollapsed ? "Expand" : "Collapse")"
-                        aria-expanded="@(!IsCollapsed)"
-                        @onclick="ToggleCollapsedAsync"
-                        @onclick:stopPropagation="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                         stroke-linecap="round" stroke-linejoin="round"
-                         style="@($"transform:rotate({(IsCollapsed ? "-90deg" : "0deg")});transition:transform .2s ease;")">
-                        <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                </button>
-            }
-        </div>
-    }
-
-    @if (!IsCollapsed)
-    {
-        <div class="sgc-card-body @(NoPadding ? "sgc-card-body-flush" : "")">
-            @if (Loading)
-            {
-                <div class="sgc-card-loading">
-                    <SgSkeleton Width="100%" Height="14px" CssClass="sgc-card-skel-line" />
-                    <SgSkeleton Width="100%" Height="14px" CssClass="sgc-card-skel-line" />
-                    <SgSkeleton Width="60%"  Height="14px" />
-                </div>
-            }
-            else
-            {
-                @ChildContent
-            }
-        </div>
-
-        @if (FooterContent is not null)
-        {
-            <div class="sgc-card-footer">@FooterContent</div>
+                @if (Collapsible)
+                {
+                    <button type="button"
+                            class="sgc-card-collapse-btn"
+                            aria-label="@(IsCollapsedValue ? "Expand" : "Collapse")"
+                            aria-expanded="@(!IsCollapsedValue)"
+                            @onclick="ToggleCollapsedAsync"
+                            @onclick:stopPropagation="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             stroke-linecap="round" stroke-linejoin="round"
+                             style="@($"transform:rotate({(IsCollapsedValue ? "-90deg" : "0deg")});transition:transform .2s ease;")">
+                            <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                    </button>
+                }
+            </div>
         }
-    }
-</div>
 
-@code {
-    /// <summary>Loading state — replaces body with skeleton placeholders.</summary>
-    [Parameter] public bool Loading { get; set; }
-
-    /// <summary>Card title shown in header.</summary>
-    [Parameter] public string? Title { get; set; }
-
-    /// <summary>Subtitle below the title.</summary>
-    [Parameter] public string? Subtitle { get; set; }
-
-    /// <summary>Optional inline-SVG icon shown in the header before the title.</summary>
-    [Parameter] public string? Icon { get; set; }
-
-    /// <summary>Visual variant. Default <see cref="SgCardVariant.Default"/>.</summary>
-    [Parameter] public SgCardVariant Variant { get; set; } = SgCardVariant.Default;
-
-    /// <summary>Card size affecting paddings and font sizes.</summary>
-    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
-
-    /// <summary>Optional accent stripe on the left side.</summary>
-    [Parameter] public SgCardStatus Status { get; set; } = SgCardStatus.None;
-
-    /// <summary>Whether to render a 1px border. Honoured for <see cref="SgCardVariant.Default"/>.</summary>
-    [Parameter] public bool Bordered { get; set; } = true;
-
-    /// <summary>Lift on hover (shadow + translate).</summary>
-    [Parameter] public bool Hoverable { get; set; }
-
-    /// <summary>Clip overflowing children (useful with <see cref="CoverContent"/>).</summary>
-    [Parameter] public bool OverflowHidden { get; set; }
-
-    /// <summary>Tighter paddings for dense UI.</summary>
-    [Parameter] public bool Compact { get; set; }
-
-    /// <summary>Disable internal body padding (use when child manages its own layout).</summary>
-    [Parameter] public bool NoPadding { get; set; }
-
-    /// <summary>Renders the card as a selectable/clickable surface (adds keyboard + role=button).</summary>
-    [Parameter] public bool Selectable { get; set; }
-
-    /// <summary>Selected state for a <see cref="Selectable"/> card.</summary>
-    [Parameter] public bool Selected { get; set; }
-
-    /// <summary>Two-way binding for <see cref="Selected"/>.</summary>
-    [Parameter] public EventCallback<bool> SelectedChanged { get; set; }
-
-    /// <summary>Disabled state — suppresses clicks and reduces opacity.</summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>Show a collapse/expand toggle button in the header.</summary>
-    [Parameter] public bool Collapsible { get; set; }
-
-    /// <summary>Current collapsed state.</summary>
-    [Parameter] public bool Collapsed { get; set; }
-
-    /// <summary>Two-way binding for <see cref="Collapsed"/>.</summary>
-    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
-
-    /// <summary>Click handler.</summary>
-    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
-
-    /// <summary>Optional content rendered above the header (image / banner).</summary>
-    [Parameter] public RenderFragment? CoverContent { get; set; }
-
-    /// <summary>Custom header content. Takes precedence over Title/Subtitle/Icon.</summary>
-    [Parameter] public RenderFragment? HeaderContent { get; set; }
-
-    /// <summary>Right-aligned actions in the header.</summary>
-    [Parameter] public RenderFragment? ActionContent { get; set; }
-
-    /// <summary>Body content.</summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>Footer content.</summary>
-    [Parameter] public RenderFragment? FooterContent { get; set; }
-
-    /// <summary>Extra CSS classes.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Inline styles appended to computed styles.</summary>
-    [Parameter] public string? Style { get; set; }
-
-    /// <summary>Captures unmatched HTML attributes (id, data-*, aria-*, …).</summary>
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private bool IsCollapsed => Collapsible && Collapsed;
-
-    private bool HasHeader =>
-        HeaderContent is not null
-        || !string.IsNullOrEmpty(Title)
-        || !string.IsNullOrEmpty(Subtitle)
-        || !string.IsNullOrEmpty(Icon)
-        || ActionContent is not null
-        || Collapsible;
-
-    private string RootClass
-    {
-        get
+        @if (!IsCollapsedValue)
         {
-            var cls = new List<string> { "sgc-card", $"sgc-card-{VariantKey}", $"sgc-card-size-{SizeKey}" };
-            if (Variant == SgCardVariant.Default && Bordered) cls.Add("sgc-bordered");
-            if (Variant == SgCardVariant.Outlined) cls.Add("sgc-bordered");
-            if (Hoverable && !Disabled) cls.Add("sgc-hoverable");
-            if (OverflowHidden) cls.Add("sgc-overflow-hidden");
-            if (Compact) cls.Add("sgc-card-compact");
-            if (Selectable) cls.Add("sgc-card-selectable");
-            if (Selected) cls.Add("sgc-card-selected");
-            if (Disabled) cls.Add("sgc-card-disabled");
-            if (Loading) cls.Add("sgc-card-loading-state");
-            if (Status != SgCardStatus.None) cls.Add($"sgc-card-status-{StatusKey}");
-            if (!string.IsNullOrWhiteSpace(CssClass)) cls.Add(CssClass!);
-            return string.Join(' ', cls);
+            <div class="sgc-card-body @(NoPadding ? "sgc-card-body-flush" : "")">
+                @if (Loading)
+                {
+                    <div class="sgc-card-loading">
+                        <SgSkeleton Width="100%" Height="14px" CssClass="sgc-card-skel-line" />
+                        <SgSkeleton Width="100%" Height="14px" CssClass="sgc-card-skel-line" />
+                        <SgSkeleton Width="60%"  Height="14px" />
+                    </div>
+                }
+                else
+                {
+                    @ChildContent
+                }
+            </div>
+
+            @if (FooterContent is not null)
+            {
+                <div class="sgc-card-footer">@FooterContent</div>
+            }
         }
-    }
-
-    private string? RootStyle => string.IsNullOrWhiteSpace(Style) ? null : Style;
-
-    private string VariantKey => Variant switch
-    {
-        SgCardVariant.Elevated => "elevated",
-        SgCardVariant.Outlined => "outlined",
-        SgCardVariant.Filled   => "filled",
-        SgCardVariant.Ghost    => "ghost",
-        _                      => "default"
-    };
-
-    private string SizeKey => Size switch
-    {
-        SgSize.Sm => "sm",
-        SgSize.Lg => "lg",
-        SgSize.Xl => "xl",
-        _         => "md"
-    };
-
-    private string StatusKey => Status switch
-    {
-        SgCardStatus.Info    => "info",
-        SgCardStatus.Success => "success",
-        SgCardStatus.Warning => "warning",
-        SgCardStatus.Danger  => "danger",
-        SgCardStatus.Muted   => "muted",
-        _                    => "none"
-    };
-
-    private async Task HandleClickAsync(MouseEventArgs args)
-    {
-        if (Disabled) return;
-        if (Selectable)
-        {
-            Selected = !Selected;
-            if (SelectedChanged.HasDelegate)
-                await SelectedChanged.InvokeAsync(Selected);
-        }
-        if (OnClick.HasDelegate)
-            await OnClick.InvokeAsync(args);
-    }
-
-    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
-    {
-        if (!Selectable || Disabled) return;
-        if (e.Key is "Enter" or " " or "Spacebar")
-        {
-            Selected = !Selected;
-            if (SelectedChanged.HasDelegate)
-                await SelectedChanged.InvokeAsync(Selected);
-            if (OnClick.HasDelegate)
-                await OnClick.InvokeAsync(new MouseEventArgs());
-        }
-    }
-
-    private async Task ToggleCollapsedAsync()
-    {
-        Collapsed = !Collapsed;
-        if (CollapsedChanged.HasDelegate)
-            await CollapsedChanged.InvokeAsync(Collapsed);
-    }
+    </div>
 }

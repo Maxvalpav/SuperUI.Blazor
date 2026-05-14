@@ -1,160 +1,84 @@
 @namespace SuperUI.Components
 @typeparam TValue
-@inherits SgInputBase<TValue>
+@inherits SgFormFieldBase<TValue>
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="@GetFieldClasses()" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        <label id="@($"{EffectiveId}-label")" class="sgc-label @(Required ? "sgc-required" : "")" for="@EffectiveId">@Label</label>
     }
-    <select class="sgc-select @(IsInvalid ? "sgc-invalid" : "")"
-            disabled="@Disabled"
+
+    <select id="@EffectiveId"
+            class="@GetSelectClasses()"
+            disabled="@IsEffectivelyDisabled"
             value="@ValueString"
-            aria-labelledby="@_labelId"
+            aria-labelledby="@(string.IsNullOrEmpty(Label) ? null : $"{EffectiveId}-label")"
             aria-required="@(Required ? "true" : null)"
-            aria-invalid="@(IsInvalid ? "true" : null)"
+            aria-invalid="@(HasError ? "true" : null)"
             aria-describedby="@DescribedBy"
             @onchange="OnChangeAsync"
-            @attributes="AdditionalAttributes">
+            @onfocus="HandleFocusAsync"
+            @onblur="HandleBlurAsync"
+            @attributes="AdditionalAttributesFiltered">
         @if (!string.IsNullOrEmpty(Placeholder))
         {
             <option value="" disabled="@(!AllowClear)" hidden="@(!AllowClear && Value is not null)" selected="@(Value is null)">@Placeholder</option>
         }
         @if (IsEnumMode)
         {
-            @foreach (var ei in EnumItems)
+            @foreach (var item in EnumItems)
             {
-                <option value="@ei.GetKey(EnumKeyMode)"
-                        selected="@IsEnumItemSelected(ei)"
-                        title="@ei.Description">@ei.Label</option>
+                <option value="@item.GetKey(EnumKeyMode)"
+                        selected="@IsEnumItemSelected(item)"
+                        title="@item.Description">@item.Label</option>
             }
         }
         else
         {
-            @foreach (var it in Items)
+            @foreach (var item in Items)
             {
-                var key = KeyFrom(it);
-                <option value="@key" selected="@(IsSelected(it))">@LabelFrom(it)</option>
+                var key = KeyFrom(item);
+                <option value="@key" selected="@IsSelected(item)">@LabelFrom(item)</option>
             }
         }
     </select>
-    @if (IsInvalid)
+
+    @if (HasError)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        <span id="@($"{EffectiveId}-err")" class="sgc-error">@DisplayedError</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
+        <span id="@($"{EffectiveId}-hint")" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
-    private readonly string _labelId = "sg-select-label-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _hintId = "sg-select-hint-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _errorId = "sg-select-err-" + Guid.NewGuid().ToString("N")[..8];
-
-    // cached enum items when EnumType is set
     private List<SgEnumItem>? _enumItems;
     private Type? _lastEnumType;
 
-    /// <summary>
-    /// Gets or sets the collection of items to display in the dropdown.
-    /// Ignored when <see cref="EnumType"/> is set.
-    /// </summary>
     [Parameter] public IEnumerable<TValue> Items { get; set; } = Array.Empty<TValue>();
-
-    /// <summary>
-    /// When set, populates the dropdown from the specified enum type instead of
-    /// <see cref="Items"/>. Supports <c>[Display]</c> and <c>[Description]</c> attributes.
-    /// </summary>
     [Parameter] public Type? EnumType { get; set; }
-
-    /// <summary>
-    /// Determines whether the enum key is the member <see cref="SgEnumKeyMode.Name"/> (default)
-    /// or the underlying <see cref="SgEnumKeyMode.IntValue"/>.
-    /// Only relevant when <see cref="EnumType"/> is set.
-    /// </summary>
     [Parameter] public SgEnumKeyMode EnumKeyMode { get; set; } = SgEnumKeyMode.Name;
-    
-    /// <summary>
-    /// Gets or sets the function to extract display text from each item.
-    /// If not specified, uses ToString() on the item (or the enum label when EnumType is set).
-    /// </summary>
     [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the function to extract the value from each item.
-    /// If not specified, uses the item itself as the value.
-    /// Ignored when <see cref="EnumType"/> is set.
-    /// </summary>
     [Parameter] public Func<TValue, object>? ValueSelector { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the placeholder text shown when no item is selected.
-    /// </summary>
-    [Parameter] public string? Placeholder { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the select.
-    /// </summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>
-    /// Gets or sets the position of the label. Default is Top.
-    /// </summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the select.
-    /// </summary>
-    [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
-    [Parameter] public string? ErrorText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the selection can be cleared by selecting the placeholder option.
-    /// </summary>
     [Parameter] public bool AllowClear { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the select is required.
-    /// </summary>
-    [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the select is disabled.
-    /// </summary>
-    [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the select should take full width of its container. Default is true.
-    /// </summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the select element.
-    /// </summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    protected override string ComponentPrefix => "sel";
 
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
-        ? ErrorText 
-        : ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-
-    // ── Enum support ──────────────────────────────────────────────────────────
+    private bool IsEnumMode => _enumItems is not null;
+    private List<SgEnumItem> EnumItems => _enumItems ?? [];
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => HasError ? $"{EffectiveId}-err" : (!string.IsNullOrEmpty(Hint) ? $"{EffectiveId}-hint" : null);
+    private string ValueString => Value is null ? string.Empty : KeyFrom(Value);
 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
+
         if (EnumType is not null && EnumType != _lastEnumType)
         {
             _lastEnumType = EnumType;
@@ -167,105 +91,113 @@
         }
     }
 
-    private bool IsEnumMode => _enumItems is not null;
+    private string GetFieldClasses() => Css("sgc-field")
+        .AddIf("sgc-block", Block)
+        .AddEnum(LabelPosition, "sgc-label-")
+        .Add(CssClass)
+        .Add(Class)
+        .ToString();
 
-    // Effective items when in enum mode — rendered directly in markup
-    private List<SgEnumItem> EnumItems => _enumItems ?? new();
+    private string GetSelectClasses() => Css("sgc-select")
+        .AddIf("sgc-invalid", HasError)
+        .ToString();
 
-    // ── Label / key helpers ───────────────────────────────────────────────────
-
-    private string LabelFrom(TValue v)
+    private string LabelFrom(TValue value)
     {
-        if (LabelSelector is not null) return LabelSelector(v);
+        if (LabelSelector is not null)
+            return LabelSelector(value);
+
         if (IsEnumMode)
         {
-            var key = v?.ToString() ?? "";
-            var ei = _enumItems!.FirstOrDefault(e =>
-                e.Name == key || e.IntValue.ToString() == key);
-            return ei?.Label ?? key;
+            var key = value?.ToString() ?? string.Empty;
+            var item = _enumItems!.FirstOrDefault(x => x.Name == key || x.IntValue.ToString() == key);
+            return item?.Label ?? key;
         }
-        return v?.ToString() ?? "";
+
+        return value?.ToString() ?? string.Empty;
     }
 
-    private string KeyFrom(TValue v)
+    private string KeyFrom(TValue value)
     {
         if (IsEnumMode)
         {
-            // Match by name or int value
-            var str = v?.ToString() ?? "";
-            var ei = _enumItems!.FirstOrDefault(e =>
-                e.Name == str || e.IntValue.ToString() == str);
-            return ei?.GetKey(EnumKeyMode) ?? str;
+            var key = value?.ToString() ?? string.Empty;
+            var item = _enumItems!.FirstOrDefault(x => x.Name == key || x.IntValue.ToString() == key);
+            return item?.GetKey(EnumKeyMode) ?? key;
         }
-        return (ValueSelector is not null ? ValueSelector(v) : v)?.ToString() ?? "";
+
+        return (ValueSelector is not null ? ValueSelector(value) : value)?.ToString() ?? string.Empty;
     }
 
-    private bool IsSelected(TValue v) => EqualityComparer<TValue>.Default.Equals(v, Value!);
+    private bool IsSelected(TValue value) => EqualityComparer<TValue>.Default.Equals(value, Value!);
 
-    private bool IsEnumItemSelected(SgEnumItem ei)
+    private bool IsEnumItemSelected(SgEnumItem item)
     {
         if (Value is null) return false;
-        var valStr = Value.ToString() ?? "";
-        return ei.Name == valStr || ei.IntValue.ToString() == valStr;
+
+        var valueText = Value.ToString() ?? string.Empty;
+        return item.Name == valueText || item.IntValue.ToString() == valueText;
     }
-
-    private string ValueString => Value is null ? "" : KeyFrom(Value);
-
-    // ── Change handler ────────────────────────────────────────────────────────
 
     private async Task OnChangeAsync(ChangeEventArgs e)
     {
         var key = e.Value?.ToString();
-        TValue? newValue = default;
+        TValue? next = default;
 
         if (!string.IsNullOrEmpty(key))
         {
             if (IsEnumMode)
             {
-                // Find enum item by key (name or int)
-                var ei = _enumItems!.FirstOrDefault(x => x.GetKey(EnumKeyMode) == key);
-                if (ei is not null)
-                {
-                    // Parse back to TValue (string or enum or int)
-                    newValue = ParseEnumValue(ei);
-                }
+                var item = _enumItems!.FirstOrDefault(x => x.GetKey(EnumKeyMode) == key);
+                if (item is not null)
+                    next = ParseEnumValue(item);
             }
             else
             {
-                foreach (var it in Items)
+                foreach (var item in Items)
                 {
-                    if (KeyFrom(it) == key)
+                    if (KeyFrom(item) == key)
                     {
-                        newValue = it;
+                        next = item;
                         break;
                     }
                 }
             }
         }
 
-        await SetValueAsync(newValue);
+        await SetValueAsync(next);
     }
 
-    private TValue? ParseEnumValue(SgEnumItem ei)
+    private TValue? ParseEnumValue(SgEnumItem item)
     {
-        var targetType = typeof(TValue);
-        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        var target = typeof(TValue);
+        var underlying = Nullable.GetUnderlyingType(target) ?? target;
 
         try
         {
             if (underlying == typeof(string))
-                return (TValue)(object)(EnumKeyMode == SgEnumKeyMode.IntValue
-                    ? ei.IntValue.ToString()
-                    : ei.Name);
+                return (TValue)(object)(EnumKeyMode == SgEnumKeyMode.IntValue ? item.IntValue.ToString() : item.Name);
 
             if (underlying == typeof(int))
-                return (TValue)(object)ei.IntValue;
+                return (TValue)(object)item.IntValue;
 
             if (underlying.IsEnum)
-                return (TValue)Enum.Parse(underlying, ei.Name);
+                return (TValue)Enum.Parse(underlying, item.Name);
         }
-        catch { /* fallback to default */ }
+        catch
+        {
+        }
 
         return default;
+    }
+
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
+    {
+        return new AriaBuilder()
+            .Label(Label)
+            .Required(Required)
+            .Invalid(HasError)
+            .Disabled(Disabled)
+            .Build();
     }
 }

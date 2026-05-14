@@ -1,116 +1,107 @@
 @namespace SuperUI.Components
 @typeparam TValue
-@inherits SgInputBase<TValue>
+@inherits SgFormFieldBase<TValue>
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass"
+<div class="@GetFieldClasses()"
+     style="@Style"
      role="radiogroup"
-     aria-labelledby="@(string.IsNullOrEmpty(Label) ? null : _labelId)"
+     aria-labelledby="@(string.IsNullOrEmpty(Label) ? null : $"{EffectiveId}-label")"
      aria-required="@(Required ? "true" : null)"
-     aria-invalid="@(IsInvalid ? "true" : null)"
-     @attributes="AdditionalAttributes">
+     aria-invalid="@(HasError ? "true" : null)"
+     aria-describedby="@DescribedBy"
+     @attributes="AdditionalAttributesFiltered">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        <label id="@($"{EffectiveId}-label")" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
+
     <div class="@RadioListClass" @onkeydown="OnKeyDownAsync">
         @{
             var optionList = Options as IList<RadioOption<TValue>> ?? Options.ToList();
         }
         @for (var i = 0; i < optionList.Count; i++)
         {
-            var idx = i;
-            var o = optionList[idx];
-            var checkedNow = EqualityComparer<TValue>.Default.Equals(Value, o.Value);
-            var optDisabled = Disabled || o.Disabled;
-            <label class="sgc-check @(ButtonGroup ? "sgc-radio-btn" : "") @(optDisabled ? "sgc-disabled" : "") @(checkedNow && ButtonGroup ? "sgc-radio-btn-active" : "")">
+            var index = i;
+            var option = optionList[index];
+            var isChecked = EqualityComparer<TValue>.Default.Equals(Value, option.Value);
+            var isDisabled = IsEffectivelyDisabled || option.Disabled;
+            <label class="@GetOptionClasses(isChecked, isDisabled)">
                 <input type="radio"
                        name="@_name"
-                       checked="@checkedNow"
-                       disabled="@optDisabled"
-                       tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
-                       data-sg-rg-index="@idx"
-                       @onchange="() => SelectAsync(o.Value)" />
-                <span>@o.Label</span>
+                       checked="@isChecked"
+                       disabled="@isDisabled"
+                       tabindex="@(isChecked || (Value is null && index == FirstEnabledIndex) ? 0 : -1)"
+                       data-sg-rg-index="@index"
+                       @onchange="() => SelectAsync(option.Value)"
+                       @onfocus="HandleFocusAsync"
+                       @onblur="HandleBlurAsync" />
+                <span>@option.Label</span>
             </label>
         }
     </div>
-    @if (IsInvalid)
+
+    @if (HasError)
     {
-        <span id="@_errorId" class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
+        <span id="@($"{EffectiveId}-err")" class="sgc-error">@DisplayedError</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
+        <span id="@($"{EffectiveId}-hint")" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
     private readonly string _name = "sgrg-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _labelId = "sgrg-lbl-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _hintId = "sgrg-hint-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _errorId = "sgrg-err-" + Guid.NewGuid().ToString("N")[..8];
 
-    private int _firstEnabledIndex
+    [Parameter] public IEnumerable<RadioOption<TValue>> Options { get; set; } = Array.Empty<RadioOption<TValue>>();
+    [Parameter] public SgRadioOrientation Orientation { get; set; } = SgRadioOrientation.Horizontal;
+    [Parameter] public bool ButtonGroup { get; set; }
+    [Parameter] public bool Block { get; set; } = true;
+    [Parameter] public string? CssClass { get; set; }
+
+    protected override string ComponentPrefix => "rg";
+
+    private string? DescribedBy => HasError ? $"{EffectiveId}-err" : (!string.IsNullOrEmpty(Hint) ? $"{EffectiveId}-hint" : null);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
+
+    private int FirstEnabledIndex
     {
         get
         {
-            var i = 0;
-            foreach (var o in Options)
+            var index = 0;
+            foreach (var option in Options)
             {
-                if (!(Disabled || o.Disabled)) return i;
-                i++;
+                if (!(IsEffectivelyDisabled || option.Disabled))
+                    return index;
+                index++;
             }
+
             return 0;
         }
     }
 
-    private string RadioListClass
-    {
-        get
-        {
-            if (ButtonGroup)
-                return $"sgc-radio-btn-group {(Block ? "sgc-block" : "")}";
-            return $"sgc-radio-list {(Orientation == SgRadioOrientation.Vertical ? "sgc-vertical" : "")}";
-        }
-    }
+    private string RadioListClass => ButtonGroup
+        ? $"sgc-radio-btn-group {(Block ? "sgc-block" : "")}"
+        : $"sgc-radio-list {(Orientation == SgRadioOrientation.Vertical ? "sgc-vertical" : "")}";
 
-    private bool IsInvalid => HasValidationErrors;
+    private string GetFieldClasses() => Css("sgc-field")
+        .AddIf("sgc-block", Block)
+        .Add(CssClass)
+        .Add(Class)
+        .ToString();
 
-    /// <summary>Gets or sets the collection of radio button options to display.</summary>
-    [Parameter] public IEnumerable<RadioOption<TValue>> Options { get; set; } = Array.Empty<RadioOption<TValue>>();
-
-    /// <summary>Gets or sets the label text displayed above the radio group.</summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>Hint text shown below the radio group.</summary>
-    [Parameter] public string? Hint { get; set; }
-
-    /// <summary>Gets or sets the layout direction of the options. Default is Horizontal.</summary>
-    [Parameter] public SgRadioOrientation Orientation { get; set; } = SgRadioOrientation.Horizontal;
-
-    /// <summary>When true, renders options as a connected segmented button group instead of radio buttons.</summary>
-    [Parameter] public bool ButtonGroup { get; set; }
-
-    /// <summary>Gets or sets whether the radio group should take full width of its container. Default is true.</summary>
-    [Parameter] public bool Block { get; set; } = true;
-
-    /// <summary>Gets or sets whether a selection is required.</summary>
-    [Parameter] public bool Required { get; set; }
-
-    /// <summary>Gets or sets whether all radio buttons are disabled.</summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Gets or sets additional HTML attributes applied to the field container.</summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    private string GetOptionClasses(bool isChecked, bool isDisabled) => Css("sgc-check")
+        .AddIf("sgc-radio-btn", ButtonGroup)
+        .AddIf("sgc-disabled", isDisabled)
+        .AddIf("sgc-radio-btn-active", isChecked && ButtonGroup)
+        .ToString();
 
     private Task SelectAsync(TValue? value) => SetValueAsync(value);
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (Disabled) return;
+        if (IsEffectivelyDisabled) return;
+
         var list = Options as IList<RadioOption<TValue>> ?? Options.ToList();
         if (list.Count == 0) return;
 
@@ -124,7 +115,7 @@
             }
         }
 
-        int next = current;
+        var next = current;
         switch (e.Key)
         {
             case "ArrowRight":
@@ -151,13 +142,26 @@
 
     private static int NextEnabled(IList<RadioOption<TValue>> list, int from, int step)
     {
-        var n = list.Count;
-        if (n == 0) return -1;
-        for (var k = 1; k <= n; k++)
+        var count = list.Count;
+        if (count == 0) return -1;
+
+        for (var stepIndex = 1; stepIndex <= count; stepIndex++)
         {
-            var i = ((from + step * k) % n + n) % n;
-            if (!list[i].Disabled) return i;
+            var index = ((from + step * stepIndex) % count + count) % count;
+            if (!list[index].Disabled)
+                return index;
         }
+
         return -1;
+    }
+
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
+    {
+        return new AriaBuilder()
+            .Label(Label)
+            .Required(Required)
+            .Invalid(HasError)
+            .Disabled(Disabled)
+            .Build();
     }
 }

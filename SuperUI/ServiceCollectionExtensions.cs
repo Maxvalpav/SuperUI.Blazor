@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
 
         // ── Prerendering Detector ─────────────────────────────────────────
         // ✅ Поддержка .NET 8/9/10: Server + WASM
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.TryAddSingleton<IPrerenderingDetector>(sp =>
         {
             if (OperatingSystem.IsBrowser())
@@ -72,6 +73,7 @@ public static class ServiceCollectionExtensions
 
         // ── Focus Trap ────────────────────────────────────────────────────
         services.AddScoped<IFocusTrapService, FocusTrapService>();
+        services.TryAddSingleton<FocusTrapStack>();
 
         // ── Keyboard ──────────────────────────────────────────────────────
         services.AddScoped<IKeyboardService, KeyboardService>();
@@ -145,6 +147,10 @@ public static class ServiceCollectionExtensions
         // ── Render Mode Detector ──────────────────────────────────────────
         // ✅ НОВОЕ: определение режима рендеринга
         services.TryAddScoped<SgRenderModeDetector>();
+        services.TryAddScoped<SgRenderModeResolver>();
+
+        // ── Diagnostics ───────────────────────────────────────────────────
+        services.TryAddScoped<ISgDiagnosticsCollector, SgDiagnosticsCollector>();
 
         // ── WASM Optimizer ────────────────────────────────────────────────
         // ✅ НОВОЕ: оптимизации для WASM

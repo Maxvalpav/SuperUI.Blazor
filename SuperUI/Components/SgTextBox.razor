@@ -1,13 +1,14 @@
 @namespace SuperUI.Components
 @typeparam TValue
-@inherits SgInputBase<TValue>
+@inherits SgFormFieldBase<TValue>
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="@GetFieldClasses()" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
+        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@EffectiveId">@Label</label>
     }
-    <div class="sgc-input-wrap @(HasPrefix ? "sgc-has-prefix" : "") @(HasSuffix ? "sgc-has-suffix" : "") @(IsPassword && !string.IsNullOrEmpty(CurrentText) && ShowClearButton ? "sgc-has-eye sgc-has-clear-eye" : (IsPassword ? "sgc-has-eye" : (ShowClearButton ? "" : "")))">
+    
+    <div class="sgc-input-wrap @(HasPrefix ? "sgc-has-prefix" : "") @(HasSuffix ? "sgc-has-suffix" : "") @(IsPassword ? "sgc-has-eye" : "")">
         @if (HasPrefix)
         {
             <span class="sgc-input-affix sgc-input-affix-prefix" aria-hidden="true">
@@ -15,44 +16,44 @@
                 else { @Prefix }
             </span>
         }
+
         @if (Multiline)
         {
-            <textarea id="@_id"
-                      class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "")"
+            <textarea id="@EffectiveId"
+                      class="@GetInputClasses()"
                       rows="@Rows"
                       placeholder="@Placeholder"
-                      disabled="@Disabled"
+                      disabled="@IsEffectivelyDisabled"
                       readonly="@ReadOnly"
                       required="@Required"
                       maxlength="@MaxLength"
-                      aria-required="@(Required ? "true" : null)"
-                      aria-invalid="@(IsInvalid ? "true" : null)"
-                      aria-describedby="@DescribedBy"
                       value="@CurrentText"
-                      @oninput="OnInput"
-                      @onchange="OnChangeAsync"
-                      @onkeydown="OnKeyDownAsync"
-                      @attributes="AdditionalAttributes"></textarea>
+                      @oninput="HandleInputAsync"
+                      @onchange="HandleChangeAsync"
+                      @onkeydown="HandleKeyDownAsync"
+                      @onfocus="HandleFocusAsync"
+                      @onblur="HandleBlurAsync"
+                      @attributes="AdditionalAttributesFiltered"></textarea>
         }
         else
         {
-            <input id="@_id"
+            <input id="@EffectiveId"
                    type="@CurrentInputType"
-                   class="sgc-input @(IsInvalid ? "sgc-invalid" : "")"
+                   class="@GetInputClasses()"
                    placeholder="@Placeholder"
-                   disabled="@Disabled"
+                   disabled="@IsEffectivelyDisabled"
                    readonly="@ReadOnly"
                    required="@Required"
                    maxlength="@MaxLength"
-                   aria-required="@(Required ? "true" : null)"
-                   aria-invalid="@(IsInvalid ? "true" : null)"
-                   aria-describedby="@DescribedBy"
                    value="@CurrentText"
-                   @oninput="OnInput"
-                   @onchange="OnChangeAsync"
-                   @onkeydown="OnKeyDownAsync"
-                   @attributes="AdditionalAttributes" />
+                   @oninput="HandleInputAsync"
+                   @onchange="HandleChangeAsync"
+                   @onkeydown="HandleKeyDownAsync"
+                   @onfocus="HandleFocusAsync"
+                   @onblur="HandleBlurAsync"
+                   @attributes="AdditionalAttributesFiltered" />
         }
+
         <div class="sgc-input-right-group">
             @if (HasSuffix && !IsPassword)
             {
@@ -61,6 +62,7 @@
                     else { @Suffix }
                 </span>
             }
+            
             @if (IsPassword)
             {
                 <button type="button"
@@ -86,9 +88,10 @@
                     }
                 </button>
             }
+            
             @if (ShowClearButton && !string.IsNullOrEmpty(CurrentText))
             {
-                <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="@Localizer["Clear"]" tabindex="-1">
+                <button type="button" class="sgc-input-clear" @onclick="HandleClearAsync" aria-label="@Localizer["Clear"]" tabindex="-1">
                     <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
                         <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
                     </svg>
@@ -96,137 +99,106 @@
             }
         </div>
     </div>
+
     @if (ShowCounter && MaxLength.HasValue)
     {
         <span class="sgc-input-counter">@(CurrentText?.Length ?? 0) / @MaxLength</span>
     }
-    @if (IsInvalid)
+
+    @if (HasError)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        <span class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
+        <span class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
-    private readonly string _id = "sg-" + Guid.NewGuid().ToString("N")[..8];
-    private string _hintId => _id + "-hint";
-    private string _errorId => _id + "-err";
-    private bool _showPassword;
-
-    [Parameter] public string? Label { get; set; }
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    [Parameter] public string? Placeholder { get; set; }
-    [Parameter] public string? Hint { get; set; }
-    [Parameter] public string? ErrorText { get; set; }
     [Parameter] public string Type { get; set; } = "text";
     [Parameter] public bool Multiline { get; set; }
     [Parameter] public int Rows { get; set; } = 3;
-    [Parameter] public bool Required { get; set; }
-    [Parameter] public bool Disabled { get; set; }
-    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public bool Block { get; set; } = true;
-    [Parameter] public string? CssClass { get; set; }
     [Parameter] public bool Immediate { get; set; } = true;
-    [Parameter] public EventCallback OnEnterPressed { get; set; }
     [Parameter] public int Debounce { get; set; }
-    [Parameter] public int? MaxLength { get; set; }
     [Parameter] public bool ShowClearButton { get; set; }
     [Parameter] public bool ShowCounter { get; set; }
-
-    /// <summary>Text prefix shown inside the input on the left side.</summary>
     [Parameter] public string? Prefix { get; set; }
-
-    /// <summary>Text suffix shown inside the input on the right side.</summary>
     [Parameter] public string? Suffix { get; set; }
-
-    /// <summary>Icon rendered on the left side inside the input. Takes precedence over <see cref="Prefix"/>.</summary>
     [Parameter] public RenderFragment? StartIcon { get; set; }
-
-    /// <summary>Icon rendered on the right side inside the input. Takes precedence over <see cref="Suffix"/>. Not shown when Type="password".</summary>
     [Parameter] public RenderFragment? EndIcon { get; set; }
+    [Parameter] public EventCallback OnEnterPressed { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Inject] protected ISuperUILocalizer Localizer { get; set; } = default!;
 
-    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
+    private bool _showPassword;
+    protected override string ComponentPrefix => "txt";
 
-    private CancellationTokenSource? _debounceCts;
+    private string GetFieldClasses() => Css("sgc-field")
+        .AddIf("sgc-block", Block)
+        .AddEnum(LabelPosition, "sgc-label-")
+        .AddIf("sgc-focused", IsFocused)
+        .AddIf("sgc-invalid", HasError)
+        .Add(Class)
+        .ToString();
 
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private string? CurrentText => Value is null ? string.Empty : Convert.ToString(Value, System.Globalization.CultureInfo.CurrentCulture);
+    private string GetInputClasses() => Css(Multiline ? "sgc-textarea" : "sgc-input")
+        .AddIf("sgc-invalid", HasError)
+        .ToString();
 
     private bool IsPassword => string.Equals(Type, "password", StringComparison.OrdinalIgnoreCase);
-    private bool ShowPassword { get => _showPassword; }
+    private bool ShowPassword => _showPassword;
     private string CurrentInputType => IsPassword && _showPassword ? "text" : Type;
-
     private bool HasPrefix => StartIcon is not null || !string.IsNullOrEmpty(Prefix);
     private bool HasSuffix => (EndIcon is not null || !string.IsNullOrEmpty(Suffix)) && !IsPassword;
 
     private void TogglePasswordVisibility() => _showPassword = !_showPassword;
 
-    private void OnInput(ChangeEventArgs e)
+    private async Task HandleInputAsync(ChangeEventArgs e)
     {
+        var val = e.Value?.ToString();
         if (Debounce > 0)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
-            _debounceCts = new CancellationTokenSource();
-            var token = _debounceCts.Token;
-            var raw = e.Value?.ToString();
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(Debounce, token);
-                    await InvokeAsync(() => CommitAsync(raw));
-                }
-                catch (TaskCanceledException) { }
-            });
+            await DebounceAsync(() => SetTextAsync(val), TimeSpan.FromMilliseconds(Debounce));
         }
         else if (Immediate)
         {
-            _ = SafeCommitAsync(e.Value?.ToString());
+            await SetTextAsync(val);
         }
     }
 
-    private Task OnChangeAsync(ChangeEventArgs e) => !Immediate && Debounce <= 0 ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
-
-    private async Task SafeCommitAsync(string? raw)
+    private async Task HandleChangeAsync(ChangeEventArgs e)
     {
-        try { await CommitAsync(raw); }
-        catch (Exception ex) { Console.Error.WriteLine($"[SgTextBox.CommitAsync] {ex}"); }
+        if (!Immediate && Debounce <= 0)
+        {
+            await SetTextAsync(e.Value?.ToString());
+        }
     }
 
-    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
     {
         if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
-            await OnEnterPressed.InvokeAsync();
-    }
-
-    private Task ClearAsync() => SetValueAsync(default);
-    private Task CommitAsync(string? raw) => SetValueAsync(ConvertValue(raw));
-
-    private static TValue? ConvertValue(string? raw)
-    {
-        var t = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
-        if (string.IsNullOrEmpty(raw)) return default;
-        try
         {
-            if (t == typeof(string)) return (TValue)(object)raw!;
-            if (t.IsEnum) return (TValue)Enum.Parse(t, raw, true);
-            return (TValue)Convert.ChangeType(raw, t, System.Globalization.CultureInfo.CurrentCulture);
+            await OnEnterPressed.InvokeAsync();
         }
-        catch { return default; }
     }
 
-    public override void Dispose()
+    private async Task HandleClearAsync()
     {
-        _debounceCts?.Cancel();
-        _debounceCts?.Dispose();
-        base.Dispose();
+        await SetTextAsync(null);
+    }
+
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
+    {
+        var builder = new AriaBuilder();
+        builder.Label(Label)
+               .Required(Required)
+               .Invalid(HasError)
+               .Disabled(Disabled)
+               .ReadOnly(ReadOnly);
+        
+        return builder.Build();
     }
 }

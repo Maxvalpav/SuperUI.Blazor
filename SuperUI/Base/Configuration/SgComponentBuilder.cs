@@ -39,7 +39,7 @@ public static class SgComponentBuilderExtensions
             services.Configure<SgLibraryOptions>(_ => { });
 
         // TimeProvider (.NET 8) — используется в рендер-планировщике
-        services.TryAddSingleton(TimeProvider.System);
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
         // ✅ FIX: регистрируем ISgComponentTypeRegistry — без этого [Inject] в SgComponentBase = null
         services.TryAddSingleton<Services.ISgComponentTypeRegistry, SgComponentRegistry>();
@@ -84,12 +84,6 @@ public static class SgComponentBuilderExtensions
 
         // Keyboard
         services.TryAddScoped<IKeyboardService, KeyboardService>();
-
-        // Batch renderer — Singleton на WASM, Scoped на Server
-        if (OperatingSystem.IsBrowser())
-            services.TryAddSingleton<SgThrottledBatchRenderer>();
-        else
-            services.TryAddScoped<SgThrottledBatchRenderer>();
 
         return builder;
     }

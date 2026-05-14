@@ -1,30 +1,34 @@
 @namespace SuperUI.Components
-@inherits SgInputBase<string>
+@inherits SgFormFieldBase<string>
 @inject IJSRuntime JS
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="@GetFieldClasses()" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
+        <label class="sgc-label @(Required ? "sgc-required" : "")" for="@EffectiveId">@Label</label>
     }
+
     <div class="sgc-input-wrap sgc-textarea-wrap">
-        <textarea id="@_id"
-                  class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "") @(AutoResize ? "sgc-auto-resize" : "") sgc-resize-@ResizeClass"
+        <textarea id="@EffectiveId"
+                  class="@GetTextAreaClasses()"
                   rows="@Rows"
                   placeholder="@Placeholder"
-                  disabled="@Disabled"
+                  disabled="@IsEffectivelyDisabled"
                   readonly="@ReadOnly"
                   required="@Required"
                   maxlength="@MaxLength"
                   aria-required="@(Required ? "true" : null)"
-                  aria-invalid="@(IsInvalid ? "true" : null)"
+                  aria-invalid="@(HasError ? "true" : null)"
                   aria-describedby="@DescribedBy"
-                  value="@Value"
+                  value="@CurrentText"
                   @oninput="OnInputAsync"
                   @onchange="OnChangeAsync"
+                  @onfocus="HandleFocusAsync"
+                  @onblur="HandleBlurAsync"
                   @ref="_textareaRef"
-                  @attributes="AdditionalAttributes"></textarea>
-        @if (ShowClearButton && !string.IsNullOrEmpty(Value))
+                  @attributes="AdditionalAttributesFiltered"></textarea>
+
+        @if (ShowClearButton && !string.IsNullOrEmpty(CurrentText))
         {
             <button type="button" class="sgc-textarea-clear" @onclick="ClearAsync" aria-label="Clear" tabindex="-1">
                 <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
@@ -32,136 +36,139 @@
                 </svg>
             </button>
         }
+
         @if (ShowCounter && MaxLength.HasValue)
         {
-            <span class="sgc-textarea-counter">@(Value?.Length ?? 0)<span class="sgc-textarea-counter-max"> / @MaxLength</span></span>
+            <span class="sgc-textarea-counter">@(CurrentText?.Length ?? 0)<span class="sgc-textarea-counter-max"> / @MaxLength</span></span>
         }
     </div>
-    @if (IsInvalid)
+
+    @if (HasError)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        <span id="@($"{EffectiveId}-err")" class="sgc-error">@DisplayedError</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
+        <span id="@($"{EffectiveId}-hint")" class="sgc-hint">@Hint</span>
     }
 </div>
 
 @code {
-    private readonly string _id = "sg-ta-" + Guid.NewGuid().ToString("N")[..8];
-    private string _hintId => _id + "-hint";
-    private string _errorId => _id + "-err";
     private ElementReference _textareaRef;
     private IJSObjectReference? _module;
-    private bool _isDisposed;
 
-    [Parameter] public string? Label { get; set; }
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    [Parameter] public string? Placeholder { get; set; }
-    [Parameter] public string? Hint { get; set; }
-    [Parameter] public string? ErrorText { get; set; }
-    [Parameter] public bool Required { get; set; }
-    [Parameter] public bool Disabled { get; set; }
-    [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public bool Block { get; set; } = true;
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public bool Immediate { get; set; } = true;
     [Parameter] public int Debounce { get; set; }
-    [Parameter] public int? MaxLength { get; set; }
     [Parameter] public bool ShowClearButton { get; set; }
     [Parameter] public bool ShowCounter { get; set; }
     [Parameter] public int Rows { get; set; } = 3;
-
-    /// <summary>Maximum number of visible rows when <see cref="AutoResize"/> is true. 0 = unlimited.</summary>
     [Parameter] public int MaxRows { get; set; }
-
-    /// <summary>Automatically grow the textarea to fit content.</summary>
     [Parameter] public bool AutoResize { get; set; }
-
-    /// <summary>Controls the resize handle direction. Default is Vertical.</summary>
     [Parameter] public SgTextResize Resize { get; set; } = SgTextResize.Vertical;
 
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    protected override string ComponentPrefix => "ta";
 
-    private CancellationTokenSource? _debounceCts;
-
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? DescribedBy => HasError ? $"{EffectiveId}-err" : (!string.IsNullOrEmpty(Hint) ? $"{EffectiveId}-hint" : null);
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string GetFieldClasses() => Css("sgc-field")
+        .AddIf("sgc-block", Block)
+        .AddEnum(LabelPosition, "sgc-label-")
+        .AddIf("sgc-focused", IsFocused)
+        .Add(CssClass)
+        .Add(Class)
+        .ToString();
+
+    private string GetTextAreaClasses() => Css("sgc-textarea")
+        .AddIf("sgc-invalid", HasError)
+        .AddIf("sgc-auto-resize", AutoResize)
+        .Add($"sgc-resize-{ResizeClass}")
+        .ToString();
 
     private string ResizeClass => AutoResize ? "none" : Resize switch
     {
-        SgTextResize.None       => "none",
+        SgTextResize.None => "none",
         SgTextResize.Horizontal => "horizontal",
-        SgTextResize.Both       => "both",
-        _                       => "vertical"
+        SgTextResize.Both => "both",
+        _ => "vertical"
     };
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && AutoResize)
+        await base.OnAfterRenderAsync(firstRender);
+        if (AutoResize && IsInteractive)
             await CallAutoResizeAsync();
     }
 
     private async Task CallAutoResizeAsync()
     {
-        if (_isDisposed) return;
+        if (IsDisposed || IsStaticSSR) return;
+
         try
         {
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
-            if (_isDisposed) return;
+            if (IsDisposed) return;
             await _module.InvokeVoidAsync("autoResizeTextarea", _textareaRef, Rows, MaxRows);
         }
         catch (JSException) { }
         catch (TaskCanceledException) { }
     }
 
-    private void OnInputAsync(ChangeEventArgs e)
+    private async Task OnInputAsync(ChangeEventArgs e)
     {
+        var raw = e.Value?.ToString();
+
         if (Debounce > 0)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
-            _debounceCts = new CancellationTokenSource();
-            var token = _debounceCts.Token;
-            var raw = e.Value?.ToString();
-            _ = Task.Run(async () =>
+            await DebounceAsync(async () =>
             {
-                try
-                {
-                    await Task.Delay(Debounce, token);
-                    await InvokeAsync(async () =>
-                    {
-                        await CommitAsync(raw);
-                        if (AutoResize) await CallAutoResizeAsync();
-                    });
-                }
-                catch (TaskCanceledException) { }
-            });
+                await SetTextAsync(raw);
+                if (AutoResize) await CallAutoResizeAsync();
+            }, TimeSpan.FromMilliseconds(Debounce));
         }
         else if (Immediate)
         {
-            _ = SafeCommitAsync(e.Value?.ToString());
-            if (AutoResize) _ = CallAutoResizeAsync();
+            await SetTextAsync(raw);
+            if (AutoResize) await CallAutoResizeAsync();
         }
     }
 
-    private Task OnChangeAsync(ChangeEventArgs e) => !Immediate && Debounce <= 0 ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
-
-    private async Task SafeCommitAsync(string? raw)
+    private async Task OnChangeAsync(ChangeEventArgs e)
     {
-        try { await CommitAsync(raw); }
-        catch (Exception ex) { Console.Error.WriteLine($"[SgTextArea.CommitAsync] {ex}"); }
+        if (!Immediate && Debounce <= 0)
+        {
+            await SetTextAsync(e.Value?.ToString());
+            if (AutoResize) await CallAutoResizeAsync();
+        }
     }
 
-    private Task ClearAsync() => SetValueAsync(string.Empty);
-    private Task CommitAsync(string? raw) => SetValueAsync(raw ?? string.Empty);
-
-    public override void Dispose()
+    private async Task ClearAsync()
     {
-        _isDisposed = true;
-        _debounceCts?.Cancel();
-        _debounceCts?.Dispose();
-        base.Dispose();
+        await SetTextAsync(string.Empty);
+        if (AutoResize) await CallAutoResizeAsync();
+    }
+
+    protected override async ValueTask DisposeComponentAsync()
+    {
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); } catch { }
+        }
+
+        await base.DisposeComponentAsync();
+    }
+
+    protected override IReadOnlyDictionary<string, object> BuildAriaAttributes()
+    {
+        return new AriaBuilder()
+            .Label(Label)
+            .Required(Required)
+            .Invalid(HasError)
+            .Disabled(Disabled)
+            .ReadOnly(ReadOnly)
+            .Build();
     }
 }

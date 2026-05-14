@@ -79,7 +79,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     // ── Параметры ───────────────────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
-    [Parameter] public bool Visible { get; set; } = true;
+    [Parameter] public virtual bool Visible { get; set; } = true;
     [Parameter] public string? Id { get; set; }
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }

@@ -1,0 +1,163 @@
+@page "/demo/datepicker"
+@using SuperUI.Demo.Components
+
+<div class="demo-page">
+    <div class="demo-hero">
+        <section class="demo-hero-main">
+            <div class="demo-header">
+                <div class="demo-kicker">Input Components</div>
+                <h1 class="demo-title">SgDatePicker</h1>
+                <p class="demo-subtitle">
+                    Date picker for forms, filters and scheduling scenarios with clear actions, min/max range support
+                    and validation-friendly behavior across SSR and interactive render modes.
+                </p>
+            </div>
+        </section>
+
+        <aside class="demo-hero-side">
+            <div class="demo-side-title">Highlights</div>
+            <div class="demo-pill-list">
+                <span class="demo-pill demo-pill-accent">Calendar Popup</span>
+                <span class="demo-pill">Min / Max</span>
+                <span class="demo-pill">Clearable</span>
+                <span class="demo-pill">Form Ready</span>
+            </div>
+
+            <div class="demo-meta-grid">
+                <div class="demo-meta-card">
+                    <span class="demo-meta-label">Scenarios</span>
+                    <span class="demo-meta-value">Booking, delivery dates, reporting filters</span>
+                </div>
+                <div class="demo-meta-card">
+                    <span class="demo-meta-label">Display</span>
+                    <span class="demo-meta-value">Localized formatting with configurable pattern</span>
+                </div>
+                <div class="demo-meta-card">
+                    <span class="demo-meta-label">Accessibility</span>
+                    <span class="demo-meta-value">Combobox semantics with validation messaging</span>
+                </div>
+            </div>
+        </aside>
+    </div>
+
+    <SgDemoSection Eyebrow="Usage" Title="Examples" Description="Date selection patterns for workflows, onboarding and reporting.">
+        <div class="demo-showcase-grid">
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Basic Selection</h3>
+                    <p class="demo-showcase-desc">Standard date selection with placeholder, hint and clear action.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgDatePicker @bind-Value="_startDate"
+                                      Label="Start Date"
+                                      Placeholder="Select start date"
+                                      Hint="Choose the project kickoff day"
+                                      AllowClear="true" />
+                        <div class="demo-inline-value">Selected: @(_startDate?.ToString("D") ?? "none")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Date Range Guard</h3>
+                    <p class="demo-showcase-desc">Limit user choice to an allowed scheduling window.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgDatePicker @bind-Value="_deliveryDate"
+                                      Label="Delivery Date"
+                                      Hint="Available only during the next 30 days"
+                                      Min="_today"
+                                      Max="_today.AddDays(30)" />
+                        <div class="demo-inline-value">Window: @_today.ToString("d") - @_today.AddDays(30).ToString("d")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Custom Format</h3>
+                    <p class="demo-showcase-desc">Useful for compact dashboards or export-oriented filters.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgDatePicker @bind-Value="_reportDate"
+                                      Label="Report Date"
+                                      Format="yyyy-MM-dd"
+                                      Placeholder="YYYY-MM-DD" />
+                        <div class="demo-inline-value">API format: @(_reportDate?.ToString("yyyy-MM-dd") ?? "none")</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">States</h3>
+                    <p class="demo-showcase-desc">Required, disabled and validation-oriented configurations.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgDatePicker Label="Required Date" Required="true" Hint="This field is mandatory." />
+                        <SgDatePicker Label="Disabled Date" Disabled="true" Value="@_today.AddDays(7)" />
+                    </div>
+                </div>
+            </div>
+            <div class="demo-showcase-card">
+                <div class="demo-showcase-header">
+                    <h3 class="demo-showcase-title">Advanced Constraints</h3>
+                    <p class="demo-showcase-desc">Functional constraints and custom rendering.</p>
+                </div>
+                <div class="demo-preview">
+                    <div class="demo-preview-surface demo-stack">
+                        <SgDatePicker Label="No Weekends" 
+                                      DisabledDateFunc="@((DateTime d) => d.DayOfWeek == DayOfWeek.Saturday || d.DayOfWeek == DayOfWeek.Sunday)"
+                                      HighlightDays="@(new[] { DayOfWeek.Friday })"
+                                      Hint="Only weekdays selectable. Fridays highlighted." />
+                        
+                        <SgDatePicker Label="Week Numbers" 
+                                      ShowWeekNumbers="true" />
+                        
+                        <SgDatePicker Label="Custom Cell Rendering" 
+                                      ShowWeekNumbers="true">
+                            <DayTemplate>
+                                <div style="display:flex; flex-direction:column; align-items:center; line-height:1;">
+                                    <span style="font-size:10px;">@context.Day</span>
+                                    @if (context.Day % 5 == 0)
+                                    {
+                                        <div style="width:4px; height:4px; border-radius:50%; background:var(--sui-success); margin-top:2px;"></div>
+                                    }
+                                </div>
+                            </DayTemplate>
+                        </SgDatePicker>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </SgDemoSection>
+
+    <SgDemoParams Title="DatePicker Parameters" Description="Core public parameters for configuring the SgDatePicker component.">
+        <SgDemoParam Name="Value" Type="DateTime?" Description="Currently selected date." DefaultValue="null" />
+        <SgDemoParam Name="Format" Type="string" Description="Display format string used for the selected date." Values="Any valid .NET date format" DefaultValue="d" />
+        <SgDemoParam Name="Placeholder" Type="string" Description="Text shown when no date is selected." DefaultValue="null" />
+        <SgDemoParam Name="AllowClear" Type="bool" Description="Shows a clear button when a value exists." Values="true, false" DefaultValue="true" />
+        <SgDemoParam Name="Min" Type="DateTime?" Description="Minimum selectable date." DefaultValue="null" />
+        <SgDemoParam Name="Max" Type="DateTime?" Description="Maximum selectable date." DefaultValue="null" />
+        <SgDemoParam Name="DisabledDateFunc" Type="Func<DateTime, bool>" Description="Custom function to disable specific dates (e.g., weekends or holidays)." />
+        <SgDemoParam Name="ShowWeekNumbers" Type="bool" Description="Display week numbers in the calendar grid." DefaultValue="false" />
+        <SgDemoParam Name="HighlightDays" Type="DayOfWeek[]" Description="Array of days to highlight visually (e.g., specific work days)." />
+        <SgDemoParam Name="DayTemplate" Type="RenderFragment<DateTime>" Description="Custom template for rendering day cells." />
+        <SgDemoParam Name="Required" Type="bool" Description="Marks the field as required." Values="true, false" DefaultValue="false" />
+        <SgDemoParam Name="Disabled" Type="bool" Description="Disables interaction with the picker." Values="true, false" DefaultValue="false" />
+        <SgDemoParam Name="Label" Type="string" Description="Field label displayed near the control." DefaultValue="null" />
+        <SgDemoParam Name="Hint" Type="string" Description="Helper text shown below the control." DefaultValue="null" />
+    </SgDemoParams>
+</div>
+
+@code {
+    private readonly DateTime _today = DateTime.Today;
+    private DateTime? _startDate = DateTime.Today.AddDays(3);
+    private DateTime? _deliveryDate = DateTime.Today.AddDays(10);
+    private DateTime? _reportDate = DateTime.Today;
+}
