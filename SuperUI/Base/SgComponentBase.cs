@@ -1,8 +1,11 @@
-// SuperUI/Base/SgComponentBase.cs — ИСПРАВЛЕНО v6
-// ✅ FIX CS1061: добавлен InvokeStateHasChangedAsync
-// ✅ FIX: IsPrerendering определение через RendererInfo.Name
-// ✅ FIX: IComponentRegistry → IComponentRegistry? (nullable)
-// ✅ NET8/9/10: AssignedRenderMode используется
+// SuperUI/Base/SgComponentBase.cs
+// ИСПРАВЛЕНО:
+// ✅ ShouldSetParameters не прерывает base.SetParametersAsync — только пропускает OnParametersChanged
+// ✅ _isPrerendering объявлен volatile
+// ✅ DisposeAsync идемпотентен через Interlocked
+// ✅ RefreshAsync безопасен при IsStaticSSR
+// ✅ Hooks: snapshot под lock, вызов вне lock (deadlock prevention)
+// ✅ .NET 8/9/10: AssignedRenderMode, RendererInfo
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
@@ -21,8 +24,7 @@ using CssBuilder = SuperUI.Base.Utilities.SgCssBuilder;
 namespace SuperUI.Base;
 
 /// <summary>
-/// Интерфейс для lifecycle-регистрации компонентов (добавить/убрать из дерева).
-/// ПЕРЕИМЕНОВАН из IComponentRegistry → ISgComponentLifetimeRegistry для устранения CS0104.
+/// Интерфейс для lifecycle-регистрации компонентов.
 /// </summary>
 public interface ISgComponentLifetimeRegistry
 {
@@ -32,31 +34,26 @@ public interface ISgComponentLifetimeRegistry
 
 public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDisposable
 {
-    // ── Инъекции ──────────────────────────────────────────────────────────
+    // ── Инъекции ────────────────────────────────────────────────────────────
     [Inject] protected ILoggerFactory LoggerFactory { get; set; } = null!;
     protected ILogger? _logger;
     protected ILogger Logger => _logger ??= LoggerFactory.CreateLogger(GetType());
 
     [Inject] protected IComponentOptionsService? OptionsService { get; set; }
     [Inject] protected IServiceProvider ServiceProvider { get; set; } = null!;
-
-    // ✅ FIX CS0104: используем ISgComponentLifetimeRegistry (не IComponentRegistry)
     [Inject] protected ISgComponentLifetimeRegistry? ComponentLifetimeRegistry { get; set; }
-
-    // ✅ FIX CS0104: используем ISgComponentTypeRegistry из Services namespace
     [Inject] protected Services.ISgComponentTypeRegistry? ComponentTypeRegistry { get; set; }
-
     [Inject] protected TimeProvider TimeProvider { get; set; } = TimeProvider.System;
     [Inject] protected PersistentComponentState? PersistentComponentState { get; set; }
 
     protected PersistentComponentState? PersistentState => PersistentComponentState;
 
-    // ── Каскадные параметры ───────────────────────────────────────────────
+    // ── Каскадные параметры ─────────────────────────────────────────────────
     [CascadingParameter] protected SgThemeContext? ThemeContext { get; set; }
     [CascadingParameter] protected SgConfigContext? ConfigContext { get; set; }
     [CascadingParameter] protected IComponentRenderMode? RenderMode { get; set; }
 
-    // ── Render mode helpers ───────────────────────────────────────────────
+    // ── Render mode helpers ─────────────────────────────────────────────────
     protected bool IsStaticSSR => RenderMode is null;
 
     protected bool IsInteractive =>
@@ -67,13 +64,11 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 #endif
 
     /// <summary>
-    /// Корректное определение prerendering для .NET 8+.
-    /// .NET 8: первый рендер + Static SSR.
-    /// .NET 9+: !RendererInfo.IsInteractive.
-    /// .NET 10+: то же что .NET 9.
+    /// ✅ ИСПРАВЛЕНО: volatile гарантирует видимость между потоками (Server circuits).
     /// </summary>
-    public bool IsPrerendering => _isPrerendering;
+    private volatile bool _isPrerendering;
 
+    public bool IsPrerendering => _isPrerendering;
     protected bool IsInteractiveServer => RenderMode is InteractiveServerRenderMode;
     protected bool IsInteractiveWebAssembly => RenderMode is InteractiveWebAssemblyRenderMode;
     protected bool IsInteractiveAuto => RenderMode is InteractiveAutoRenderMode;
@@ -81,7 +76,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     [CascadingParameter(Name = "IsStreamingRendering")]
     protected bool IsStreamingRendering { get; set; }
 
-    // ── Параметры ─────────────────────────────────────────────────────────
+    // ── Параметры ───────────────────────────────────────────────────────────
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? Style { get; set; }
     [Parameter] public bool Visible { get; set; } = true;
@@ -89,7 +84,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     [Parameter(CaptureUnmatchedValues = true)]
     public IReadOnlyDictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // ── Публичные свойства ────────────────────────────────────────────────
+    // ── Публичные свойства ──────────────────────────────────────────────────
     public string ComponentId { get; }
     public SgRenderMode CurrentRenderMode => RenderMode switch
     {
@@ -109,25 +104,19 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     protected static bool IsBrowser => OperatingSystem.IsBrowser();
     protected static bool IsServer => !OperatingSystem.IsBrowser();
-
     protected internal virtual CancellationToken ComponentToken => _cts.Token;
     protected CancellationToken LifecycleToken => ComponentToken;
     protected string EffectiveId => !string.IsNullOrWhiteSpace(Id) ? Id! : ComponentId;
 
-    // ── Renderer info (для .NET 9+) ──────────────────────────────────────
 #if NET9_0_OR_GREATER
-    /// <summary>Имя текущего рендерера: "Static", "Server", "WebAssembly".</summary>
     protected string RendererName => RendererInfo.Name ?? "Unknown";
-
-    /// <summary>Целевой render mode компонента после prerendering.</summary>
     protected new IComponentRenderMode? AssignedRenderMode => base.AssignedRenderMode;
 #endif
 
-    // ── Приватные поля ────────────────────────────────────────────────────
+    // ── Приватные поля ──────────────────────────────────────────────────────
     private int _disposed;
     private int _previousVisible = 1;
     private bool _isFirstRender = true;
-    private bool _isPrerendering;
     private bool _isInitialized;
     private int _renderCount;
     private readonly HashSet<IComponentHook> _hooksSet = new(ReferenceEqualityComparer.Instance);
@@ -176,13 +165,13 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
 
     public void Subscribe(IComponentHook hook)
     {
-        if (hook == null) return;
+        if (hook is null) return;
         AddHook(hook);
     }
 
     public void Unsubscribe(IComponentHook hook)
     {
-        if (hook == null) return;
+        if (hook is null) return;
         lock (_hooksSet)
         {
             if (_hooksSet.Remove(hook))
@@ -190,6 +179,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         }
     }
 
+    // ✅ ИСПРАВЛЕНО: snapshot вне lock → hooks вызываются вне lock (deadlock prevention)
     private void RunHooks(Action<IComponentHook> action)
     {
         IComponentHook[] snapshot;
@@ -198,7 +188,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         foreach (var hook in snapshot)
         {
             try { action(hook); }
-            catch (Exception ex) { Logger.LogError(ex, "Hook {Hook} failed", hook.GetType().Name); }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Hook {Hook} failed", hook.GetType().Name);
+            }
         }
     }
 
@@ -210,7 +203,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         foreach (var hook in snapshot)
         {
             try { await action(hook); }
-            catch (Exception ex) { Logger.LogError(ex, "Hook {Hook} failed async", hook.GetType().Name); }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Hook {Hook} failed async", hook.GetType().Name);
+            }
         }
     }
 
@@ -256,24 +252,28 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         Interlocked.Increment(ref _ariaGeneration);
         Volatile.Write(ref _filteredAttrsCacheGen, -1);
 
-        if (_lastParametersSnapshot.HasValue && !ShouldSetParameters(parameters))
-            return;
-
 #if NET9_0_OR_GREATER
         _isPrerendering = !RendererInfo.IsInteractive;
 #else
         _isPrerendering = _isFirstRender && IsStaticSSR;
 #endif
 
-        _lastParametersSnapshot = new SgParameterSnapshot(parameters);
-        await OnParametersChangedAsync(parameters);
+        bool parametersChanged = ShouldSetParameters(parameters);
 
-        // ✅ FIX: передаём оригинальные parameters, не ParameterView.Empty!
-        // ParameterView.Empty ломает каскадные параметры и SSR
+        if (parametersChanged)
+        {
+            _lastParametersSnapshot = new SgParameterSnapshot(parameters);
+            await OnParametersChangedAsync(parameters);
+        }
+
+        // ✅ ИСПРАВЛЕНО: base.SetParametersAsync вызывается ВСЕГДА.
+        // Пропуск base — критическая ошибка: каскадные параметры не обновятся.
+        // ShouldSetParameters влияет только на вызов OnParametersChangedAsync.
         await base.SetParametersAsync(parameters);
     }
 
-    protected virtual ValueTask OnParametersChangedAsync(ParameterView parameters) => ValueTask.CompletedTask;
+    protected virtual ValueTask OnParametersChangedAsync(ParameterView parameters)
+        => ValueTask.CompletedTask;
 
     // ═══════════════════════════════════════════════════════════════════
     // Lifecycle
@@ -300,7 +300,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     protected override void OnParametersSet()
     {
 #if DEBUG
-        _diagnostics.ParameterChangeCount++;
+        _diagnostics.IncrementParameterChangeCount();
 #endif
         RunHooks(h => h.OnParametersSet(this));
         base.OnParametersSet();
@@ -326,9 +326,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         if (_renderStartTick > 0)
         {
             var elapsed = Stopwatch.GetElapsedTime(_renderStartTick).TotalMilliseconds;
-            _diagnostics.RenderCount++;
+            _diagnostics.IncrementRenderCount();
             _diagnostics.LastRenderMs = elapsed;
-            if (elapsed > _diagnostics.MaxRenderMs) _diagnostics.MaxRenderMs = elapsed;
+            if (elapsed > _diagnostics.MaxRenderMs)
+                _diagnostics.MaxRenderMs = elapsed;
             _diagnostics.AverageRenderMs =
                 (_diagnostics.AverageRenderMs * (_diagnostics.RenderCount - 1) + elapsed)
                 / _diagnostics.RenderCount;
@@ -346,8 +347,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         _renderStartTick = Stopwatch.GetTimestamp();
 #endif
         await base.OnAfterRenderAsync(firstRender);
+
         if (firstRender)
             await OnFirstRenderAsync();
+
         await RunHooksAsync(h => h.OnAfterRenderAsync(this, firstRender));
     }
 
@@ -357,23 +360,12 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     // Refresh / StateHasChanged helpers
     // ═══════════════════════════════════════════════════════════════════
 
-    /// <summary>
-    /// ✅ FIX CS1061: асинхронно вызывает StateHasChanged через InvokeAsync.
-    /// Безопасен при вызове из не-UI потоков (Server: circuit; WASM: UI thread).
-    /// Используется планировщиками рендеринга и трекерами сигналов.
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public Task InvokeStateHasChangedAsync()
     {
         if (IsDisposed) return Task.CompletedTask;
-        try
-        {
-            return InvokeAsync(StateHasChanged);
-        }
-        catch (ObjectDisposedException)
-        {
-            return Task.CompletedTask;
-        }
+        try { return InvokeAsync(StateHasChanged); }
+        catch (ObjectDisposedException) { return Task.CompletedTask; }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -398,7 +390,7 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     protected void NotifyStateChanged()
     {
         if (IsDisposed) return;
-        try { InvokeAsync(StateHasChanged); }
+        try { _ = InvokeAsync(StateHasChanged); }
         catch (ObjectDisposedException) { }
     }
 
@@ -448,11 +440,11 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     // Streaming Rendering
     // ═══════════════════════════════════════════════════════════════════
 
-    protected virtual RenderFragment DefaultStreamingPlaceholder =>
-        builder => builder.AddMarkupContent(0, "&#8203;");
+    protected virtual RenderFragment DefaultStreamingPlaceholder
+        => builder => builder.AddMarkupContent(0, "&#8203;");
 
-    protected RenderFragment StreamingPlaceholder(RenderFragment? placeholder = null) =>
-        builder =>
+    protected RenderFragment StreamingPlaceholder(RenderFragment? placeholder = null)
+        => builder =>
         {
             if (IsStreamingRendering && IsStaticSSR)
                 builder.AddContent(0, placeholder ?? DefaultStreamingPlaceholder);
@@ -470,8 +462,11 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             if (_filteredAttrsCache is not null && _filteredAttrsCacheGen == gen)
                 return _filteredAttrsCache;
 
-            if (IsBrowser) return RefreshFilteredAttrsCache(gen);
-            lock (_ariaCacheLock) return RefreshFilteredAttrsCache(gen);
+            if (IsBrowser)
+                return RefreshFilteredAttrsCache(gen);
+
+            lock (_ariaCacheLock)
+                return RefreshFilteredAttrsCache(gen);
         }
     }
 
@@ -498,8 +493,11 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     protected virtual IReadOnlyDictionary<string, object> BuildAriaAttributes()
     {
         var gen = Volatile.Read(ref _ariaGeneration);
-        if (IsBrowser) return BuildAriaAttributesCore(gen);
-        lock (_ariaCacheLock) return BuildAriaAttributesCore(gen);
+        if (IsBrowser)
+            return BuildAriaAttributesCore(gen);
+
+        lock (_ariaCacheLock)
+            return BuildAriaAttributesCore(gen);
     }
 
     private IReadOnlyDictionary<string, object> BuildAriaAttributesCore(int gen)
@@ -518,10 +516,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         return attrs;
     }
 
-    private static bool IsAriaAttribute(string key) =>
-        key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("role", StringComparison.OrdinalIgnoreCase) ||
-        key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
+    private static bool IsAriaAttribute(string key)
+        => key.StartsWith("aria-", StringComparison.OrdinalIgnoreCase)
+           || key.Equals("role", StringComparison.OrdinalIgnoreCase)
+           || key.Equals("tabindex", StringComparison.OrdinalIgnoreCase);
 
     // ═══════════════════════════════════════════════════════════════════
     // Service helpers
@@ -535,23 +533,23 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
             value = result;
             return true;
         }
-
         value = default;
         return false;
     }
 
-    protected void PersistState<T>(string key, T value) =>
-        PersistentComponentState?.PersistAsJson(key, value);
+    protected void PersistState<T>(string key, T value)
+        => PersistentComponentState?.PersistAsJson(key, value);
 
-    protected T? TryGetService<T>() where T : class =>
-        ServiceProvider.GetService<T>();
+    protected T? TryGetService<T>() where T : class
+        => ServiceProvider.GetService<T>();
 
-    protected T TryGetRequiredService<T>() where T : class =>
-        ServiceProvider.GetService<T>()?? throw new InvalidOperationException(
-            $"Service {typeof(T).Name} is not registered. Call builder.Services.AddSuperUI().");
+    protected T TryGetRequiredService<T>() where T : class
+        => ServiceProvider.GetService<T>()
+           ?? throw new InvalidOperationException(
+               $"Service {typeof(T).Name} is not registered. Call builder.Services.AddSuperUI().");
 
-    protected void ThrowIfDisposed([CallerMemberName] string? caller = null) =>
-        ObjectDisposedException.ThrowIf(IsDisposed, $"{ComponentId}.{caller}");
+    protected void ThrowIfDisposed([System.Runtime.CompilerServices.CallerMemberName] string? caller = null)
+        => ObjectDisposedException.ThrowIf(IsDisposed, $"{ComponentId}.{caller}");
 
     // ═══════════════════════════════════════════════════════════════════
     // Context helpers
@@ -617,13 +615,14 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
     private void DisposeReactiveResources()
     {
         if (_reactiveDisposables is null) return;
-
         foreach (var rd in _reactiveDisposables)
         {
             try { rd.Dispose(); }
-            catch (Exception ex) { Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId); }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "[{Id}] Reactive dispose error", ComponentId);
+            }
         }
-
         _reactiveDisposables.Clear();
     }
 
@@ -633,10 +632,15 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
         {
             foreach (var hook in _hooks)
             {
-                try { if (hook is IDisposable d) d.Dispose(); }
-                catch (Exception ex) { Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId); }
+                try
+                {
+                    if (hook is IDisposable d) d.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId);
+                }
             }
-
             _hooks.Clear();
             _hooksSet.Clear();
         }
@@ -659,7 +663,10 @@ public abstract class SgComponentBase : ComponentBase, ISgComponent, IAsyncDispo
                 if (hook is IAsyncDisposable ad) await ad.DisposeAsync();
                 else if (hook is IDisposable d) d.Dispose();
             }
-            catch (Exception ex) { Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId); }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "[{Id}] Hook dispose error", ComponentId);
+            }
         }
     }
 

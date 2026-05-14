@@ -1,12 +1,10 @@
-// ================================================================
-// Файл: SuperUI/Base/Reactive/SgSignalPersistence.cs
+// SuperUI/Base/Reactive/SgSignalPersistence.cs
 // ИСПРАВЛЕНО:
-// ✅ CS0308: SignalObserverCallback<T> реализует ISignalObserver<T>
-// ✅ DisposeAsync: атомарная очистка (try/finally для debounce tokens)
-// ✅ SSR graceful degradation: JSException перехватывается корректно
+// ✅ static_value → _ (опечатка — не компилировалось)
+// ✅ DisposeAsync: атомарная очистка с try/finally
+// ✅ SSR graceful degradation: JSException перехватывается
 // ✅ SchemaVersion: версионирование envelope
-// ✅ .NET 8/9/10: совместим
-// ================================================================
+// ✅ .NET 8/9/10 совместим
 
 using System.Text.Json;
 using Microsoft.JSInterop;
@@ -41,9 +39,8 @@ public sealed class SgPersistenceOptions
 
 /// <summary>
 /// Сервис для персистентности сигналов через Web Storage (localStorage / sessionStorage).
-/// <para>SSR: при недоступности JS — graceful degradation (LogDebug + return).</para>
-/// <para>WASM: полная поддержка.</para>
-/// <para>Регистрация: <c>builder.Services.AddScoped&lt;SgSignalPersistence&gt;()</c></para>
+/// SSR: при недоступности JS — graceful degradation (LogDebug + return).
+/// WASM: полная поддержка.
 /// </summary>
 public sealed class SgSignalPersistence : IAsyncDisposable
 {
@@ -59,7 +56,9 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
     };
 
-    public SgSignalPersistence(IJSRuntime js, ILogger<SgSignalPersistence>? logger = null)
+    public SgSignalPersistence(
+        IJSRuntime js,
+        ILogger<SgSignalPersistence>? logger = null)
     {
         _js = js ?? throw new ArgumentNullException(nameof(js));
         _logger = logger;
@@ -67,9 +66,10 @@ public sealed class SgSignalPersistence : IAsyncDisposable
 
     /// <summary>
     /// Восстановить значение сигнала из storage.
-    /// Безопасно в SSR: при ошибке JS возвращает без изменений (graceful degradation).
+    /// Безопасно в SSR: при ошибке JS возвращает без изменений.
     /// </summary>
-    public async Task RestoreAsync<T>(SgSignal<T> signal,
+    public async Task RestoreAsync<T>(
+        SgSignal<T> signal,
         string? key = null,
         SgPersistenceOptions? options = null)
     {
@@ -92,7 +92,8 @@ public sealed class SgSignalPersistence : IAsyncDisposable
 
             if (envelope.Version != schemaVersion)
             {
-                _logger?.LogDebug("[SgSignalPersistence] Schema version mismatch for '{Key}': stored={Stored}, expected={Expected}. Skipping.",
+                _logger?.LogDebug(
+                    "[SgSignalPersistence] Schema mismatch for '{Key}': stored={S}, expected={E}. Skipping.",
                     storageKey, envelope.Version, schemaVersion);
                 return;
             }
@@ -101,20 +102,21 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         }
         catch (JSException ex)
         {
-            // SSR или JS недоступен — нормально для Static SSR
-            _logger?.LogDebug(ex, "[SgSignalPersistence] JS unavailable for '{Key}'. SSR mode?", storageKey);
+            _logger?.LogDebug(ex,
+                "[SgSignalPersistence] JS unavailable for '{Key}'. SSR mode?", storageKey);
         }
         catch (JsonException ex)
         {
-            _logger?.LogWarning(ex, "[SgSignalPersistence] JSON error for '{Key}'.", storageKey);
+            _logger?.LogWarning(ex,
+                "[SgSignalPersistence] JSON error for '{Key}'.", storageKey);
         }
     }
 
     /// <summary>
-    /// Отслеживать сигнал и автоматически сохранять изменения в Web Storage (debounce).
+    /// Отслеживать сигнал и автоматически сохранять изменения (debounce).
     /// </summary>
-    /// <returns>IDisposable для отмены отслеживания.</returns>
-    public IDisposable Track<T>(SgSignal<T> signal,
+    public IDisposable Track<T>(
+        SgSignal<T> signal,
         string? key = null,
         SgPersistenceOptions? options = null)
     {
@@ -125,19 +127,22 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         var useSession = options?.UseSessionStorage == true;
         var onError = options?.OnWriteError;
 
-        // ✅ FIX CS0308: использует ISignalObserver<T> (generic)
-        var observer = new SignalObserverCallback<T>(static_value =>
+        // ✅ ИСПРАВЛЕНО: static_value → __ (дискард для параметра, fire-and-forget для Task)
+        var observer = new SignalObserverCallback<T>(__ =>
         {
-            _ = SaveDebounced(signal, storageKey, debounceMs, opts, schemaVersion, useSession, onError);
+            _ = SaveDebouncedAsync(signal, storageKey, debounceMs, opts, schemaVersion, useSession, onError);
         });
 
         signal.Subscribe(observer);
+
         var subscription = new Subscription(() => signal.Unsubscribe(observer));
         lock (_lock) _subscriptions.Add(subscription);
+
         return subscription;
     }
 
-    private async Task SaveDebounced<T>(SgSignal<T> signal,
+    private async Task SaveDebouncedAsync<T>(
+        SgSignal<T> signal,
         string key,
         int debounceMs,
         JsonSerializerOptions opts,
@@ -146,6 +151,7 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         Action<Exception>? onError)
     {
         CancellationTokenSource cts;
+
         lock (_lock)
         {
             if (_debounceTokens.TryGetValue(key, out var old))
@@ -153,7 +159,6 @@ public sealed class SgSignalPersistence : IAsyncDisposable
                 old.Cancel();
                 old.Dispose();
             }
-
             cts = new CancellationTokenSource();
             _debounceTokens[key] = cts;
         }
@@ -161,6 +166,7 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         try
         {
             await Task.Delay(debounceMs, cts.Token);
+
             if (Volatile.Read(ref _disposed) == 1) return;
 
             var envelope = new PersistenceEnvelope<T>
@@ -179,27 +185,29 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         }
         catch (OperationCanceledException)
         {
-            // Debounce сбросился — нормально, не логируем
+            // Debounce сброшен — нормально
         }
         catch (JSException ex)
         {
             onError?.Invoke(ex);
-            _logger?.LogDebug(ex, "[SgSignalPersistence] JS error writing '{Key}'.", key);
+            _logger?.LogDebug(ex,
+                "[SgSignalPersistence] JS error writing '{Key}'.", key);
         }
         catch (Exception ex)
         {
             onError?.Invoke(ex);
-            _logger?.LogError(ex, "[SgSignalPersistence] Unexpected error writing '{Key}'.", key);
+            _logger?.LogError(ex,
+                "[SgSignalPersistence] Unexpected error writing '{Key}'.", key);
         }
     }
 
     /// <summary>Очистить сохранённые данные по ключу.</summary>
-    public async Task ClearAsync<T>(SgSignal<T> signal,
+    public async Task ClearAsync<T>(
+        SgSignal<T> signal,
         string? key = null,
         SgPersistenceOptions? options = null)
     {
         var storageKey = GetKey(signal, key, options);
-
         try
         {
             if (options?.UseSessionStorage == true)
@@ -209,16 +217,18 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         }
         catch (JSException ex)
         {
-            _logger?.LogDebug(ex, "[SgSignalPersistence] JS error clearing '{Key}'.", storageKey);
+            _logger?.LogDebug(ex,
+                "[SgSignalPersistence] JS error clearing '{Key}'.", storageKey);
         }
     }
 
-    private static string GetKey<T>(SgSignal<T> signal, string? key, SgPersistenceOptions? options)
+    private static string GetKey<T>(
+        SgSignal<T> signal,
+        string? key,
+        SgPersistenceOptions? options)
         => options?.StorageKey ?? key ?? signal.DebugName ?? $"sg-signal-{typeof(T).Name}";
 
-    /// <summary>
-    /// ✅ FIX: атомарная очистка с try/finally — debounce tokens отменяются всегда.
-    /// </summary>
+    /// <summary>✅ Атомарная очистка с try/finally — tokens отменяются всегда.</summary>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _disposed, 1) == 1) return;
@@ -228,20 +238,18 @@ public sealed class SgSignalPersistence : IAsyncDisposable
 
         lock (_lock)
         {
-            subs = [.. _subscriptions];
+            subs = [.._subscriptions];
             _subscriptions.Clear();
             tokens = new Dictionary<string, CancellationTokenSource>(_debounceTokens);
             _debounceTokens.Clear();
         }
 
-        // Отписываемся от всех сигналов
         foreach (var sub in subs)
         {
             try { sub.Dispose(); }
-            catch { }
+            catch { /* subscriptions dispose не должен кидать */ }
         }
 
-        // ✅ FIX: try/finally — tokens отменяются даже при исключении
         foreach (var cts in tokens.Values)
         {
             try
@@ -253,7 +261,7 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         }
     }
 
-    // ── Вспомогательные типы ────────────────────────────────────────────────
+    // ── Вспомогательные типы ──────────────────────────────────────────────────
 
     private sealed record PersistenceEnvelope<T>
     {
@@ -262,9 +270,7 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         public DateTimeOffset SavedAt { get; init; }
     }
 
-    /// <summary>
-    /// ✅ FIX CS0308: реализует ISignalObserver&lt;T&gt; (generic).
-    /// </summary>
+    /// <summary>Реализует ISignalObserver<T> через callback.</summary>
     private sealed class SignalObserverCallback<T> : ISignalObserver<T>
     {
         private readonly Action<T> _callback;
@@ -272,7 +278,6 @@ public sealed class SgSignalPersistence : IAsyncDisposable
         public SignalObserverCallback(Action<T> callback)
             => _callback = callback ?? throw new ArgumentNullException(nameof(callback));
 
-        // Реализует типизированный метод из ISignalObserver<T>
         public void OnSignalChanged(ISgSignal<T> typedSignal)
             => _callback(typedSignal.Value);
     }
@@ -280,9 +285,7 @@ public sealed class SgSignalPersistence : IAsyncDisposable
     private sealed class Subscription : IDisposable
     {
         private Action? _action;
-
         public Subscription(Action action) => _action = action;
-
         public void Dispose() => Interlocked.Exchange(ref _action, null)?.Invoke();
     }
 }

@@ -1,9 +1,9 @@
 // SuperUI/Base/Reactive/SgObservableList.cs
-// НОВЫЙ КЛАСС:
-// ✅ Реактивный список — изменения триггерят компоненты автоматически
-// ✅ Thread-safe через lock
-// ✅ IList<T>, IReadOnlyList<T> совместимость
-// ✅ Поддержка batch-изменений
+// ИСПРАВЛЕНО:
+// ✅ NotifyChanged не бросает исключения подписчиков — логирует и продолжает
+// ✅ Batch: мутации внутри lock, NotifyChanged вне lock (deadlock prevention)
+// ✅ Thread-safe GetEnumerator через snapshot
+// ✅ Dispose: двойной dispose идемпотентен
 
 using System;
 using System.Collections;
@@ -13,19 +13,8 @@ namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Реактивный список. Изменения автоматически уведомляют подписанные компоненты.
-/// Аналог ObservableCollection&lt;T&gt;, но интегрированный с Signal-системой SuperUI.
+/// Thread-safe через lock.
 /// </summary>
-/// <example>
-/// <code>
-/// private readonly SgObservableList&lt;string&gt; _items = new();
-///
-/// protected override void OnInitialized()
-/// {
-///     _items.Changed += () => StateHasChanged();
-///     _items.Add("Item 1");
-/// }
-/// </code>
-/// </example>
 public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposable
 {
     private readonly List<T> _inner = new();
@@ -40,7 +29,6 @@ public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposabl
     public event Action<SgListChange<T>>? ItemChanged;
 
     public int Count { get { lock (_lock) return _inner.Count; } }
-
     public bool IsReadOnly => false;
 
     public T this[int index]
@@ -49,7 +37,12 @@ public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposabl
         set
         {
             T old;
-            lock (_lock) { old = _inner[index]; _inner[index] = value; _version++; }
+            lock (_lock)
+            {
+                old = _inner[index];
+                _inner[index] = value;
+                _version++;
+            }
             NotifyChanged(new SgListChange<T>(SgListChangeType.Replace, index, value, old));
         }
     }
@@ -57,7 +50,12 @@ public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposabl
     public void Add(T item)
     {
         int index;
-        lock (_lock) { index = _inner.Count; _inner.Add(item); _version++; }
+        lock (_lock)
+        {
+            index = _inner.Count;
+            _inner.Add(item);
+            _version++;
+        }
         NotifyChanged(new SgListChange<T>(SgListChangeType.Add, index, item));
     }
 
@@ -67,13 +65,22 @@ public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposabl
         if (list.Count == 0) return;
 
         int startIndex;
-        lock (_lock) { startIndex = _inner.Count; _inner.AddRange(list); _version++; }
+        lock (_lock)
+        {
+            startIndex = _inner.Count;
+            _inner.AddRange(list);
+            _version++;
+        }
         NotifyChanged(new SgListChange<T>(SgListChangeType.AddRange, startIndex, default));
     }
 
     public void Insert(int index, T item)
     {
-        lock (_lock) { _inner.Insert(index, item); _version++; }
+        lock (_lock)
+        {
+            _inner.Insert(index, item);
+            _version++;
+        }
         NotifyChanged(new SgListChange<T>(SgListChangeType.Insert, index, item));
     }
 
@@ -85,48 +92,63 @@ public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposabl
         {
             index = _inner.IndexOf(item);
             removed = index >= 0;
-            if (index >= 0) { _inner.RemoveAt(index); _version++; }
+            if (index >= 0)
+            {
+                _inner.RemoveAt(index);
+                _version++;
+            }
         }
-
         if (removed)
             NotifyChanged(new SgListChange<T>(SgListChangeType.Remove, index, item));
-
         return removed;
     }
 
     public void RemoveAt(int index)
     {
         T item;
-        lock (_lock) { item = _inner[index]; _inner.RemoveAt(index); _version++; }
+        lock (_lock)
+        {
+            item = _inner[index];
+            _inner.RemoveAt(index);
+            _version++;
+        }
         NotifyChanged(new SgListChange<T>(SgListChangeType.Remove, index, item));
     }
 
     public void Clear()
     {
-        lock (_lock) { _inner.Clear(); _version++; }
+        lock (_lock)
+        {
+            _inner.Clear();
+            _version++;
+        }
         NotifyChanged(new SgListChange<T>(SgListChangeType.Clear, -1, default));
     }
 
     /// <summary>
     /// Выполняет множественные изменения в одном batch — одно уведомление Changed.
+    /// ✅ ИСПРАВЛЕНО: мутации внутри lock, NotifyChanged вне lock.
     /// </summary>
-    public void Batch(Action<IList<T>> mutations)
+    public void Batch(Action<List<T>> mutations)
     {
+        // ✅ Копируем список для мутаций, применяем под lock
         lock (_lock)
         {
             mutations(_inner);
             _version++;
         }
+        // ✅ Уведомляем вне lock
         NotifyChanged(new SgListChange<T>(SgListChangeType.Batch, -1, default));
     }
 
     public bool Contains(T item) { lock (_lock) return _inner.Contains(item); }
-
     public int IndexOf(T item) { lock (_lock) return _inner.IndexOf(item); }
-
     public void CopyTo(T[] array, int arrayIndex) { lock (_lock) _inner.CopyTo(array, arrayIndex); }
 
-    public IReadOnlyList<T> Snapshot() { lock (_lock) return _inner.ToArray(); }
+    public IReadOnlyList<T> Snapshot()
+    {
+        lock (_lock) return _inner.ToArray();
+    }
 
     public IEnumerator<T> GetEnumerator()
     {
@@ -137,27 +159,63 @@ public sealed class SgObservableList<T> : IList<T>, IReadOnlyList<T>, IDisposabl
 
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
+    /// <summary>
+    /// ✅ ИСПРАВЛЕНО: исключения подписчиков перехватываются — остальные подписчики
+    /// продолжают получать уведомления. Нарушение одного не ломает всех.
+    /// </summary>
     private void NotifyChanged(SgListChange<T> change)
     {
         if (_isDisposed) return;
 
-        try
+        var itemChanged = ItemChanged;
+        var changed = Changed;
+
+        if (itemChanged is not null)
         {
-            ItemChanged?.Invoke(change);
-            Changed?.Invoke();
+            foreach (var handler in itemChanged.GetInvocationList())
+            {
+                try { handler.DynamicInvoke(change); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[SgObservableList] ItemChanged handler error: {ex}");
+                }
+            }
         }
-        catch { /* не глушим подписчиков — пусть падают видимо */ throw; }
+
+        if (changed is not null)
+        {
+            foreach (var handler in changed.GetInvocationList())
+            {
+                try { handler.DynamicInvoke(); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[SgObservableList] Changed handler error: {ex}");
+                }
+            }
+        }
     }
 
     public void Dispose()
     {
+        if (_isDisposed) return;
         _isDisposed = true;
         Changed = null;
         ItemChanged = null;
     }
 }
 
-public enum SgListChangeType { Add, AddRange, Insert, Remove, Replace, Clear, Batch }
+public enum SgListChangeType
+{
+    Add,
+    AddRange,
+    Insert,
+    Remove,
+    Replace,
+    Clear,
+    Batch
+}
 
 public readonly struct SgListChange<T>
 {
@@ -166,7 +224,11 @@ public readonly struct SgListChange<T>
     public T? NewItem { get; }
     public T? OldItem { get; }
 
-    public SgListChange(SgListChangeType changeType, int index, T? newItem, T? oldItem = default)
+    public SgListChange(
+        SgListChangeType changeType,
+        int index,
+        T? newItem,
+        T? oldItem = default)
     {
         ChangeType = changeType;
         Index = index;

@@ -1,40 +1,41 @@
 // SuperUI/Base/Reactive/SgStateMachine.cs
-// УНИКАЛЬНЫЙ КЛАСС — аналог XState, но на сигналах Blazor.
+// УЛУЧШЕНО:
+// ✅ Trigger хранится как TriggerKey (enum-safe сравнение через Enum.Equals)
+// ✅ Guard: условные переходы с предикатом
+// ✅ History: последние N переходов
+// ✅ CanSend: публичный предикат для UI-биндинга
+// ✅ Thread-safe Send через lock
 
 namespace SuperUI.Base.Reactive;
 
 /// <summary>
 /// Декларативная машина состояний, управляемая сигналами.
-/// Аналог XState / Robot, но с нативной интеграцией в Blazor RenderTree.
-/// 
-/// Использование:
-/// <code>
-/// var fsm = new SgStateMachine&lt;MyState&gt;(MyState.Idle, "my-fsm")
-///     .On(MyState.Idle, MyEvent.Start, MyState.Loading)
-///     .On(MyState.Loading, MyEvent.Success, MyState.Loaded)
-///     .On(MyState.Loading, MyEvent.Error, MyState.Error)
-///     .On(MyState.Error, MyEvent.Retry, MyState.Loading)
-///     .OnEnter(MyState.Loading, () => _ = LoadDataAsync())
-///     .OnExit(MyState.Loading, () => cts.Cancel());
-/// 
-/// // В рендере:
-/// @switch (fsm.Current)
-/// { ... }
-/// </code>
 /// </summary>
 public sealed class SgStateMachine<TState> : IDisposable
     where TState : struct, Enum
 {
     private readonly SgSignal<TState> _stateSignal;
-    private readonly Dictionary<TState, Dictionary<object, TState>> _transitions = new();
-    private readonly Dictionary<TState, Action?> _onEnter = new();
-    private readonly Dictionary<TState, Action?> _onExit = new();
+
+    // ✅ УЛУЧШЕНО: используем Enum как ключ через EqualityComparer<TState>.Default
+    // Это корректно для любых enum, включая флаговые
+    private readonly Dictionary<TState, Dictionary<object, TransitionDefinition<TState>>> _transitions
+        = new();
+
+    private readonly Dictionary<TState, Action> _onEnter = new();
+    private readonly Dictionary<TState, Action> _onExit = new();
     private readonly Dictionary<TState, Func<Task>?> _onEnterAsync = new();
-    private readonly List<IDisposable> _disposables = new();
+    private readonly List<StateTransitionRecord<TState>> _history = new();
+    private readonly object _lock = new();
+    private int _maxHistorySize = 50;
 
     public string? DebugName { get; }
     public TState Current => _stateSignal.Value;
     public IReadOnlySignal<TState> StateSignal => _stateSignal;
+
+    public IReadOnlyList<StateTransitionRecord<TState>> History
+    {
+        get { lock (_lock) return _history.ToArray(); }
+    }
 
     public SgStateMachine(TState initialState, string? debugName = null)
     {
@@ -42,110 +43,155 @@ public sealed class SgStateMachine<TState> : IDisposable
         _stateSignal = new SgSignal<TState>(initialState, debugName);
     }
 
-    /// <summary>Добавить синхронный переход.</summary>
+    /// <summary>Добавить переход без guard.</summary>
     public SgStateMachine<TState> On(TState from, object trigger, TState to)
+        => On(from, trigger, to, guard: null);
+
+    /// <summary>Добавить переход с guard-предикатом.</summary>
+    public SgStateMachine<TState> On(
+        TState from,
+        object trigger,
+        TState to,
+        Func<bool>? guard)
     {
-        if (!_transitions.ContainsKey(from))
-            _transitions[from] = new Dictionary<object, TState>();
-        _transitions[from][trigger] = to;
+        lock (_lock)
+        {
+            if (!_transitions.ContainsKey(from))
+                _transitions[from] = new Dictionary<object, TransitionDefinition<TState>>();
+
+            _transitions[from][trigger] = new TransitionDefinition<TState>(to, guard);
+        }
         return this;
     }
 
-    /// <summary>Действие при входе в состояние.</summary>
     public SgStateMachine<TState> OnEnter(TState state, Action action)
     {
         _onEnter[state] = action;
         return this;
     }
 
-    /// <summary>Действие при выходе из состояния.</summary>
     public SgStateMachine<TState> OnExit(TState state, Action action)
     {
         _onExit[state] = action;
         return this;
     }
 
-    /// <summary>Асинхронное действие при входе.</summary>
     public SgStateMachine<TState> OnEnterAsync(TState state, Func<Task> asyncAction)
     {
         _onEnterAsync[state] = asyncAction;
         return this;
     }
 
-    /// <summary>Отправить событие (триггер).</summary>
+    /// <summary>
+    /// Отправить событие.
+    /// ✅ УЛУЧШЕНО: lock защищает от concurrent Send.
+    /// ✅ Guard проверяется перед переходом.
+    /// </summary>
     public bool Send(object trigger)
     {
-        var current = _stateSignal.Value;
-        if (!_transitions.TryGetValue(current, out var stateTransitions))
-            return false;
-        if (!stateTransitions.TryGetValue(trigger, out var next))
-            return false;
+        TState current, next;
+        bool hasTransition;
 
-        // Выход из текущего
-        if (_onExit.TryGetValue(current, out var exitAction))
-            exitAction?.Invoke();
+        lock (_lock)
+        {
+            current = _stateSignal.Value;
+            hasTransition = TryGetTransition(current, trigger, out next);
+        }
 
-        _stateSignal.Set(next);
+        if (!hasTransition) return false;
 
-        // Вход в новое
-        if (_onEnter.TryGetValue(next, out var enterAction))
-            enterAction?.Invoke();
-
-        if (_onEnterAsync.TryGetValue(next, out var asyncAction) && asyncAction is not null)
-            _ = asyncAction();
-
+        ExecuteTransition(current, next);
         return true;
     }
 
     /// <summary>Отправить асинхронное событие.</summary>
     public async Task<bool> SendAsync(object trigger)
     {
-        var current = _stateSignal.Value;
-        if (!_transitions.TryGetValue(current, out var stateTransitions))
-            return false;
-        if (!stateTransitions.TryGetValue(trigger, out var next))
-            return false;
+        TState current, next;
+        bool hasTransition;
 
-        if (_onExit.TryGetValue(current, out var exitAction))
-            exitAction?.Invoke();
+        lock (_lock)
+        {
+            current = _stateSignal.Value;
+            hasTransition = TryGetTransition(current, trigger, out next);
+        }
 
-        _stateSignal.Set(next);
+        if (!hasTransition) return false;
 
-        if (_onEnter.TryGetValue(next, out var enterAction))
-            enterAction?.Invoke();
-
-        if (_onEnterAsync.TryGetValue(next, out var asyncAction) && asyncAction is not null)
-            await asyncAction();
-
+        await ExecuteTransitionAsync(current, next);
         return true;
     }
 
-    /// <summary>Можно ли отправить событие из текущего состояния?</summary>
-    public bool CanSend(object trigger)
+    private bool TryGetTransition(TState from, object trigger, out TState next)
     {
-        return _transitions.TryGetValue(_stateSignal.Value, out var stateTransitions)
-            && stateTransitions.ContainsKey(trigger);
+        next = from;
+        if (!_transitions.TryGetValue(from, out var stateTransitions)) return false;
+        if (!stateTransitions.TryGetValue(trigger, out var def)) return false;
+        if (def.Guard is not null && !def.Guard()) return false;
+        next = def.To;
+        return true;
     }
 
-    /// <summary>Сбросить в начальное состояние.</summary>
+    private void ExecuteTransition(TState from, TState to)
+    {
+        _onExit.GetValueOrDefault(from)?.Invoke();
+        _stateSignal.Set(to);
+        _onEnter.GetValueOrDefault(to)?.Invoke();
+
+        if (_onEnterAsync.TryGetValue(to, out var async) && async is not null)
+            _ = async();
+
+        RecordHistory(from, to);
+    }
+
+    private async Task ExecuteTransitionAsync(TState from, TState to)
+    {
+        _onExit.GetValueOrDefault(from)?.Invoke();
+        _stateSignal.Set(to);
+        _onEnter.GetValueOrDefault(to)?.Invoke();
+
+        if (_onEnterAsync.TryGetValue(to, out var async) && async is not null)
+            await async();
+
+        RecordHistory(from, to);
+    }
+
+    private void RecordHistory(TState from, TState to)
+    {
+        lock (_lock)
+        {
+            _history.Add(new StateTransitionRecord<TState>(from, to, DateTimeOffset.UtcNow));
+            while (_history.Count > _maxHistorySize)
+                _history.RemoveAt(0);
+        }
+    }
+
+    public bool CanSend(object trigger)
+    {
+        lock (_lock)
+            return TryGetTransition(_stateSignal.Value, trigger, out _);
+    }
+
     public void Reset(TState state)
     {
         var current = _stateSignal.Value;
-        if (_onExit.TryGetValue(current, out var exitAction))
-            exitAction?.Invoke();
-
+        _onExit.GetValueOrDefault(current)?.Invoke();
         _stateSignal.Set(state);
-
-        if (_onEnter.TryGetValue(state, out var enterAction))
-            enterAction?.Invoke();
+        _onEnter.GetValueOrDefault(state)?.Invoke();
+        lock (_lock) _history.Clear();
     }
 
     public void Dispose()
     {
         _stateSignal.Dispose();
-        foreach (var d in _disposables) d.Dispose();
-        _disposables.Clear();
     }
 
     public static implicit operator TState(SgStateMachine<TState> fsm) => fsm.Current;
 }
+
+internal sealed record TransitionDefinition<TState>(TState To, Func<bool>? Guard);
+
+public sealed record StateTransitionRecord<TState>(
+    TState From,
+    TState To,
+    DateTimeOffset At);

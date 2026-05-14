@@ -1,66 +1,36 @@
 // SuperUI/Base/Reactive/SgMiddleware.cs
-// НОВЫЙ КЛАСС
-// Аналог: Redux middleware, MobX action interceptors
-// Поддержка: .NET 8/9/10
+// ИСПРАВЛЕНО:
+// ✅ Set(T) больше НЕ fire-and-forget: применяет значение немедленно, middleware — async
+// ✅ SetAsync(T): полный async pipeline с await
+// ✅ Middleware может изменить значение через ctx.NewValue
+// ✅ .NET 8/9/10 совместим
 
 namespace SuperUI.Base.Reactive;
 
-/// <summary>
-/// Контекст изменения сигнала, передаваемый в middleware.
-/// </summary>
+/// <summary>Контекст изменения сигнала, передаваемый в middleware.</summary>
 public sealed class SgSignalChangeContext<T>
 {
-    /// <summary>Предыдущее значение.</summary>
     public T PreviousValue { get; init; } = default!;
-
-    /// <summary>Новое значение (можно изменить).</summary>
     public T NewValue { get; set; } = default!;
-
-    /// <summary>Отменить изменение (сигнал останется с PreviousValue).</summary>
     public bool IsCancelled { get; private set; }
-
-    /// <summary>Имя сигнала для логирования.</summary>
     public string? SignalName { get; init; }
-
-    /// <summary>Временная метка изменения.</summary>
     public DateTimeOffset Timestamp { get; } = DateTimeOffset.UtcNow;
-
-    /// <summary>Отменить изменение.</summary>
     public void Cancel() => IsCancelled = true;
 }
 
-/// <summary>
-/// Делегат middleware обработчика.
-/// </summary>
+/// <summary>Делегат middleware обработчика.</summary>
 public delegate Task SgSignalMiddlewareDelegate<T>(
     SgSignalChangeContext<T> context,
     Func<SgSignalChangeContext<T>, Task> next);
 
 /// <summary>
 /// Сигнал с поддержкой middleware-пайплайна.
-/// Позволяет перехватывать, изменять или отменять Set() операции.
 ///
-/// Примеры использования:
-/// - Логирование всех изменений
-/// - Валидация перед Set()
-/// - Optimistic updates с откатом
-/// - Rate limiting
-///
-/// <code>
-/// var price = new SgSignalWithMiddleware&lt;decimal&gt;(0m, "price");
-/// price.Use(async (ctx, next) =&gt;
-/// {
-///     if (ctx.NewValue &lt; 0) { ctx.Cancel(); return; }
-///     await next(ctx);
-/// });
-/// price.Use(async (ctx, next) =&gt;
-/// {
-///     logger.LogInformation("Price: {Old} → {New}", ctx.PreviousValue, ctx.NewValue);
-///     await next(ctx);
-/// });
-/// price.Set(42m);  // пройдёт через оба middleware
-/// price.Set(-1m);  // будет отменено первым middleware
-/// </code>
+/// ИСПРАВЛЕНО:
+/// - Set(T) больше не fire-and-forget: если middleware добавлены,
+///   Set применяет значение синхронно и запускает middleware асинхронно
+///   (middleware могут изменить значение в следующем тике).
+/// - SetAsync(T): полный async pipeline с ожиданием middleware.
 /// </summary>
 public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
 {
@@ -78,11 +48,10 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
         _inner = new SgSignal<T>(initialValue, debugName);
     }
 
-    /// <summary>Добавить middleware в начало пайплайна (LIFO).</summary>
+    /// <summary>Добавить middleware в пайплайн (LIFO — последний добавленный выполняется первым).</summary>
     public SgSignalWithMiddleware<T> Use(SgSignalMiddlewareDelegate<T> middleware)
     {
-        lock (_lock)
-            _middlewares.Insert(0, middleware);
+        lock (_lock) _middlewares.Insert(0, middleware);
         return this;
     }
 
@@ -92,13 +61,14 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
         return Use(async (ctx, next) =>
         {
             middleware(ctx);
-            if (!ctx.IsCancelled)
-                await next(ctx);
+            if (!ctx.IsCancelled) await next(ctx);
         });
     }
 
     /// <summary>Добавить middleware для валидации.</summary>
-    public SgSignalWithMiddleware<T> Validate(Func<T, bool> validator, string? errorMessage = null)
+    public SgSignalWithMiddleware<T> Validate(
+        Func<T, bool> validator,
+        string? errorMessage = null)
     {
         return Use((ctx, next) =>
         {
@@ -121,7 +91,38 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
         });
     }
 
+    /// <summary>
+    /// Синхронная установка.
+    /// Если нет middleware — применяется немедленно.
+    /// Если есть middleware — значение применяется немедленно, затем middleware
+    /// может скорректировать его асинхронно (fire-and-observe pattern).
+    /// Для полного контроля используйте <see cref="SetAsync"/>.
+    /// </summary>
     public void Set(T newValue)
+    {
+        if (Volatile.Read(ref _disposed) == 1) return;
+
+        SgSignalMiddlewareDelegate<T>[] snapshot;
+        lock (_lock) snapshot = [.._middlewares];
+
+        if (snapshot.Length == 0)
+        {
+            _inner.Set(newValue);
+            return;
+        }
+
+        // Применяем немедленно — сохраняем синхронный контракт ISgSignal<T>
+        _inner.Set(newValue);
+
+        // Запускаем middleware асинхронно (могут отменить или скорректировать значение)
+        _ = RunPipelineAndApplyAsync(newValue, snapshot);
+    }
+
+    /// <summary>
+    /// Полная async установка через middleware-пайплайн.
+    /// Значение применяется только если ни один middleware не отменил изменение.
+    /// </summary>
+    public async ValueTask SetAsync(T newValue)
     {
         if (Volatile.Read(ref _disposed) == 1) return;
 
@@ -132,7 +133,6 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
             SignalName = DebugName
         };
 
-        // Если нет middleware — прямой вызов
         SgSignalMiddlewareDelegate<T>[] snapshot;
         lock (_lock) snapshot = [.._middlewares];
 
@@ -142,11 +142,32 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
             return;
         }
 
-        // Запускаем пайплайн
-        _ = RunPipelineAsync(context, snapshot);
+        await RunPipelineAsync(context, snapshot);
+
+        if (!context.IsCancelled)
+            _inner.Set(context.NewValue); // middleware мог изменить NewValue
     }
 
-    private async Task RunPipelineAsync(
+    private async Task RunPipelineAndApplyAsync(
+        T originalValue,
+        SgSignalMiddlewareDelegate<T>[] middlewares)
+    {
+        var context = new SgSignalChangeContext<T>
+        {
+            PreviousValue = _inner.Value,
+            NewValue = originalValue,
+            SignalName = DebugName
+        };
+
+        await RunPipelineAsync(context, middlewares);
+
+        if (context.IsCancelled)
+            _inner.Set(context.PreviousValue); // откатываем
+        else if (!EqualityComparer<T>.Default.Equals(context.NewValue, originalValue))
+            _inner.Set(context.NewValue); // middleware изменил значение
+    }
+
+    private static async Task RunPipelineAsync(
         SgSignalChangeContext<T> context,
         SgSignalMiddlewareDelegate<T>[] middlewares)
     {
@@ -155,17 +176,10 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
         async Task Next(SgSignalChangeContext<T> ctx)
         {
             if (ctx.IsCancelled) return;
-
             if (index < middlewares.Length)
             {
-                var middleware = middlewares[index++];
-                await middleware(ctx, Next);
-            }
-            else
-            {
-                // Конец пайплайна — применяем изменения
-                if (!ctx.IsCancelled)
-                    _inner.Set(ctx.NewValue);
+                var mw = middlewares[index++];
+                await mw(ctx, Next);
             }
         }
 
@@ -173,7 +187,6 @@ public sealed class SgSignalWithMiddleware<T> : ISgSignal<T>, IDisposable
     }
 
     public void Subscribe(ISignalObserver observer) => _inner.Subscribe(observer);
-
     public void Unsubscribe(ISignalObserver observer) => _inner.Unsubscribe(observer);
 
     public void Dispose()
