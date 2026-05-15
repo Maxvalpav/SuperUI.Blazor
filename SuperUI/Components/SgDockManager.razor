@@ -3,6 +3,10 @@
 
 <div class="@Css("sgc-dock").Build()" style="@Styles().NullIfEmpty()" @ref="RootRef">
 
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
+
     @* ── Top toolbar ── *@
     @if (ToolbarContent is not null)
     {
@@ -18,43 +22,56 @@
         @{ var botPanels   = VisiblePanels(SgDockPosition.Bottom);}
         @{ var cenPanels   = VisiblePanels(SgDockPosition.Center);}
 
-        @if (leftPanels.Count > 0 && !_leftCollapsed)
+        @if ((leftPanels.Count > 0 && !_leftCollapsed) || (DesignerMode && !_leftCollapsed))
         {
-            <div class="sgc-dock-side sgc-dock-left" style="width: @(_leftSize.ToString("F0"))px; min-width: @MinSideSize px;">
+            <div class="@Css("sgc-dock-side sgc-dock-left").AddClass("sgc-dock-empty", leftPanels.Count == 0).Build()" 
+                 style="width: @(_leftSize.ToString("F0"))px; min-width: @MinSideSize px;">
                 @RenderPaneGroup(leftPanels, SgDockPosition.Left)
             </div>
-            <div class="sgc-dock-sash sgc-dock-sash-v"
-                 data-sash="left"
-                 @ref="_leftSash"
-                 title="Drag to resize"></div>
+            @if (leftPanels.Count > 0)
+            {
+                <div class="sgc-dock-sash sgc-dock-sash-v"
+                     data-sash="left"
+                     @ref="_leftSash"
+                     title="Drag to resize"></div>
+            }
         }
 
         @* CENTER + BOTTOM column *@
         <div class="sgc-dock-center-col">
-            <div class="sgc-dock-center" style="@(botPanels.Count > 0 && !_bottomCollapsed ? $"height: calc(100% - {_bottomSize:F0}px - 4px)" : "height: 100%")">
+            <div class="@Css("sgc-dock-center").AddClass("sgc-dock-empty", cenPanels.Count == 0).Build()" 
+                 style="@(botPanels.Count > 0 && !_bottomCollapsed ? $"height: calc(100% - {_bottomSize:F0}px - 4px)" : "height: 100%")">
                 @RenderPaneGroup(cenPanels, SgDockPosition.Center)
             </div>
 
-            @if (botPanels.Count > 0 && !_bottomCollapsed)
+            @if ((botPanels.Count > 0 && !_bottomCollapsed) || (DesignerMode && !_bottomCollapsed))
             {
-                <div class="sgc-dock-sash sgc-dock-sash-h"
-                     data-sash="bottom"
-                     @ref="_bottomSash"
-                     title="Drag to resize"></div>
-                <div class="sgc-dock-side sgc-dock-bottom" style="height: @(_bottomSize.ToString("F0"))px; min-height: @MinSideSize px;">
+                @if (botPanels.Count > 0)
+                {
+                    <div class="sgc-dock-sash sgc-dock-sash-h"
+                         data-sash="bottom"
+                         @ref="_bottomSash"
+                         title="Drag to resize"></div>
+                }
+                <div class="@Css("sgc-dock-side sgc-dock-bottom").AddClass("sgc-dock-empty", botPanels.Count == 0).Build()" 
+                     style="height: @(_bottomSize.ToString("F0"))px; min-height: @MinSideSize px;">
                     @RenderPaneGroup(botPanels, SgDockPosition.Bottom)
                 </div>
             }
         </div>
 
         @* RIGHT panel *@
-        @if (rightPanels.Count > 0 && !_rightCollapsed)
+        @if ((rightPanels.Count > 0 && !_rightCollapsed) || (DesignerMode && !_rightCollapsed))
         {
-            <div class="sgc-dock-sash sgc-dock-sash-v"
-                 data-sash="right"
-                 @ref="_rightSash"
-                 title="Drag to resize"></div>
-            <div class="sgc-dock-side sgc-dock-right" style="width: @(_rightSize.ToString("F0"))px; min-width: @MinSideSize px;">
+            @if (rightPanels.Count > 0)
+            {
+                <div class="sgc-dock-sash sgc-dock-sash-v"
+                     data-sash="right"
+                     @ref="_rightSash"
+                     title="Drag to resize"></div>
+            }
+            <div class="@Css("sgc-dock-side sgc-dock-right").AddClass("sgc-dock-empty", rightPanels.Count == 0).Build()" 
+                 style="width: @(_rightSize.ToString("F0"))px; min-width: @MinSideSize px;">
                 @RenderPaneGroup(rightPanels, SgDockPosition.Right)
             </div>
         }
@@ -106,6 +123,15 @@
     /// <summary>Callback when the active panel changes.</summary>
     [Parameter] public EventCallback<SgDockPanel?> ActivePanelChanged { get; set; }
 
+    /// <summary>Content where <see cref="SgDockPane"/> components can be placed.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Whether to show the UI constructor (add panel button).</summary>
+    [Parameter] public bool EnableConstructor { get; set; }
+
+    /// <summary>Whether the manager is in designer mode (shows empty drop zones).</summary>
+    [Parameter] public bool DesignerMode { get; set; }
+
     // ── State ─────────────────────────────────────────────────────────────────
 
     private ElementReference _leftSash;
@@ -122,8 +148,30 @@
     private bool _rightCollapsed;
     private bool _bottomCollapsed;
 
+    private readonly List<SgDockPanel> _registeredPanels = new();
+
     // active tab per position
     private readonly Dictionary<SgDockPosition, string?> _activeTab = new();
+
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    internal void RegisterPanel(SgDockPanel panel)
+    {
+        if (!_registeredPanels.Contains(panel))
+        {
+            _registeredPanels.Add(panel);
+            StateHasChanged();
+        }
+    }
+
+    internal void UnregisterPanel(SgDockPanel panel)
+    {
+        if (_registeredPanels.Contains(panel))
+        {
+            _registeredPanels.Remove(panel);
+            StateHasChanged();
+        }
+    }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -172,10 +220,31 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    [JSInvokable]
+    public async Task JsMovePanel(string panelId, string targetPos)
+    {
+        if (Enum.TryParse<SgDockPosition>(targetPos, true, out var newPos))
+        {
+            var panel = Panels.FirstOrDefault(p => p.Id == panelId);
+            if (panel != null)
+            {
+                panel.Position = newPos;
+                SetActiveTab(newPos, panelId);
+                
+                if (PanelsChanged.HasDelegate)
+                    await PanelsChanged.InvokeAsync(Panels);
+                
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    private IEnumerable<SgDockPanel> AllPanels => Panels.Concat(_registeredPanels);
+
     private List<SgDockPanel> VisiblePanels(SgDockPosition pos)
-        => Panels.Where(p => p.Position == pos && p.Visible).ToList();
+        => AllPanels.Where(p => p.Position == pos && p.Visible).ToList();
 
     private string? GetActiveTab(SgDockPosition pos)
     {
@@ -190,7 +259,7 @@
     private void SetActiveTab(SgDockPosition pos, string id)
     {
         _activeTab[pos] = id;
-        var panel = Panels.FirstOrDefault(p => p.Id == id);
+        var panel = AllPanels.FirstOrDefault(p => p.Id == id);
         if (panel != null && ActivePanelChanged.HasDelegate)
             _ = ActivePanelChanged.InvokeAsync(panel);
     }
@@ -213,6 +282,42 @@
         }
     }
 
+    private string _newPanelTitle = "";
+    private string _newPanelIcon = SgIcons.FileText;
+    private SgDockPosition? _constructorPos;
+
+    private void OpenConstructor(SgDockPosition pos)
+    {
+        _newPanelTitle = "";
+        _newPanelIcon = SgIcons.FileText;
+        _constructorPos = pos;
+    }
+
+    private async Task AddPanelFromConstructor(string title, SgDockPosition pos)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return;
+
+        var newPanel = SgDockPanel.Create(title)
+            .WithIcon(_newPanelIcon)
+            .At(pos)
+            .Build();
+        
+        Panels.Add(newPanel);
+        _constructorPos = null;
+        SetActiveTab(pos, newPanel.Id);
+        
+        if (PanelsChanged.HasDelegate)
+            await PanelsChanged.InvokeAsync(Panels);
+            
+        StateHasChanged();
+    }
+
+    private readonly string[] _availableIcons = new[] { 
+        SgIcons.FileText, SgIcons.Search, SgIcons.Settings, SgIcons.BarChart, 
+        SgIcons.Database, SgIcons.Calendar, SgIcons.Clock, SgIcons.Edit,
+        SgIcons.Sigma, SgIcons.Flame
+    };
+
     // ── Render helpers ────────────────────────────────────────────────────────
 
     private RenderFragment RenderPaneGroup(List<SgDockPanel> panels, SgDockPosition pos) => __builder =>
@@ -222,6 +327,7 @@
         // Tab bar
         __builder.OpenElement(0, "div");
         __builder.AddAttribute(1, "class", "sgc-dock-tabbar");
+        __builder.AddAttribute(2, "data-pos", pos.ToString().ToLowerInvariant());
 
         foreach (var p in panels)
         {
@@ -231,7 +337,9 @@
             __builder.OpenElement(10, "div");
             __builder.AddAttribute(11, "class", "sgc-dock-tab" + (isActive ? " sgc-dock-tab-active" : ""));
             __builder.AddAttribute(12, "title", pLocal.Title);
-            __builder.AddAttribute(13, "onclick",
+            __builder.AddAttribute(13, "draggable", "true");
+            __builder.AddAttribute(14, "data-panel-id", pLocal.Id);
+            __builder.AddAttribute(15, "onclick",
                 EventCallback.Factory.Create(this, () => SetActiveTab(pos, pLocal.Id)));
 
             // icon
@@ -266,16 +374,28 @@
             __builder.CloseElement(); // tab
         }
 
+        // constructor button
+        if (EnableConstructor)
+        {
+            __builder.OpenElement(47, "button");
+            __builder.AddAttribute(48, "type", "button");
+            __builder.AddAttribute(49, "class", "sgc-dock-tabbar-add");
+            __builder.AddAttribute(50, "title", "Add panel to this group");
+            __builder.AddAttribute(51, "onclick", EventCallback.Factory.Create(this, () => OpenConstructor(pos)));
+            __builder.AddContent(52, (MarkupString)SgIcons.Plus);
+            __builder.CloseElement();
+        }
+
         // collapse button (not for center)
         if (pos != SgDockPosition.Center)
         {
-            __builder.OpenElement(50, "button");
-            __builder.AddAttribute(51, "type", "button");
-            __builder.AddAttribute(52, "class", "sgc-dock-tabbar-collapse");
-            __builder.AddAttribute(53, "title", "Collapse panel");
-            __builder.AddAttribute(54, "onclick",
+            __builder.OpenElement(53, "button");
+            __builder.AddAttribute(54, "type", "button");
+            __builder.AddAttribute(55, "class", "sgc-dock-tabbar-collapse");
+            __builder.AddAttribute(56, "title", "Collapse panel");
+            __builder.AddAttribute(57, "onclick",
                 EventCallback.Factory.Create(this, () => { ToggleCollapse(pos); StateHasChanged(); }));
-            __builder.AddContent(55, pos == SgDockPosition.Bottom
+            __builder.AddContent(58, pos == SgDockPosition.Bottom
                 ? (MarkupString)SgIcons.ChevronDown
                 : pos == SgDockPosition.Left
                     ? (MarkupString)SgIcons.ChevronRight
@@ -285,16 +405,66 @@
 
         __builder.CloseElement(); // tabbar
 
+        // Visual Constructor form
+        if (_constructorPos == pos)
+        {
+            <div class="sgc-dock-visual-constructor">
+                <div class="sgc-constructor-title">Новая панель (@pos)</div>
+                
+                <div class="sgc-constructor-field">
+                    <label>Название</label>
+                    <input type="text" placeholder="Введите название..." @bind="_newPanelTitle" @onkeyup="HandleConstructorKey" autofocus />
+                </div>
+
+                <div class="sgc-constructor-field">
+                    <label>Иконка</label>
+                    <div class="sgc-icon-grid">
+                        @foreach (var icon in _availableIcons)
+                        {
+                            <div class="@Css("sgc-icon-item").AddClass("sgc-active", _newPanelIcon == icon).Build()" 
+                                 @onclick="() => _newPanelIcon = icon">
+                                @((MarkupString)icon)
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div class="sgc-constructor-actions">
+                    <SgButton Text="Отмена" Size="SgSize.Sm" OnClick="() => _constructorPos = null" />
+                    <SgButton Text="Создать" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="() => AddPanelFromConstructor(_newPanelTitle, pos)" />
+                </div>
+            </div>
+        }
+
         // Panel body — only active tab
         var activePanel = panels.FirstOrDefault(p => p.Id == activeId);
-        if (activePanel != null && PanelTemplate != null)
+        if (activePanel != null)
         {
-            __builder.OpenElement(60, "div");
-            __builder.AddAttribute(61, "class", "sgc-dock-pane-body");
-            __builder.AddContent(62, PanelTemplate(activePanel));
-            __builder.CloseElement();
+            <div class="sgc-dock-pane-body">
+                @if (activePanel.Tag is RenderFragment rf)
+                {
+                    @rf
+                }
+                else if (PanelTemplate != null)
+                {
+                    @PanelTemplate(activePanel)
+                }
+                else
+                {
+                    <div style="padding: 16px; color: var(--sui-muted);">@activePanel.Title</div>
+                }
+            </div>
         }
     };
+
+    private async Task HandleConstructorKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_newPanelTitle))
+            await AddPanelFromConstructor(_newPanelTitle, _constructorPos!.Value);
+        else if (e.Key == "Escape")
+            _constructorPos = null;
+    }
+
 
     // ── Disposal ──────────────────────────────────────────────────────────────
 
