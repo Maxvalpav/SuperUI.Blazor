@@ -1,50 +1,86 @@
-﻿@page "/scheduler-demo"
+@page "/scheduler-demo"
 @using SuperUI.Components
+@using SuperUI.Demo.Models
 
 <PageTitle>Планировщик - SUI</PageTitle>
 
 <SgCard Title="SgScheduler - Планировщик" 
-        Subtitle="Полнофункциональный компонент планировщика с поддержкой Day, Week, Month и Agenda видов, создания, редактирования и удаления событий.">
-    
-    <div style="margin-top: 24px;">
-        <SgScheduler View="_currentView"
-                     @bind-Value="_selectedDate"
-                     Events="_events"
-                     Height="700px"
-                     OnAddEvent="HandleAddEvent"
-                     OnUpdateEvent="HandleUpdateEvent"
-                     OnDeleteEvent="HandleDeleteEvent" />
-    </div>
+        Subtitle="Комплексный компонент для управления расписанием, событиями и временем.">
 
+    <!-- Базовый планировщик -->
     <div style="margin-top: 32px;">
-        <h3>📋 Параметры SgScheduler</h3>
-        <div style="margin-top: 16px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; font-size: 12px; line-height: 2;">
-            <div><strong>View:</strong> SgSchedulerView (Day, Week, Month, Agenda) - вид планировщика</div>
-            <div><strong>Value:</strong> DateTime - выбранная дата</div>
-            <div><strong>Events:</strong> IEnumerable&lt;SgSchedulerEvent&gt; - список событий</div>
-            <div><strong>Height:</strong> string - высота компонента</div>
-            <div><strong>EnableCreation:</strong> bool - разрешить создание событий</div>
-            <div><strong>EnableEditing:</strong> bool - разрешить редактирование событий</div>
-            <div><strong>OnAddEvent:</strong> EventCallback&lt;SgSchedulerEvent&gt; - при добавлении события</div>
-            <div><strong>OnUpdateEvent:</strong> EventCallback&lt;SgSchedulerEvent&gt; - при обновлении события</div>
-            <div><strong>OnDeleteEvent:</strong> EventCallback&lt;SgSchedulerEvent&gt; - при удалении события</div>
-            <div><strong>OnEventClick:</strong> EventCallback&lt;SgSchedulerEvent&gt; - при клике на событие</div>
+        <h2>Базовое использование</h2>
+        <p>Планировщик с поддержкой перетаскивания, создания событий и различными режимами отображения.</p>
+        
+        <div style="display: grid; grid-template-columns: 1.5fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Интерактивный пример">
+                <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 12px; color: var(--sui-text-muted);">Часы:</span>
+                        <div style="width: 80px;">
+                            <SgNumberInput TValue="int" @bind-Value="_startHour" Min="0" Max="23" Size="SgSize.Sm" />
+                        </div>
+                        <div style="width: 80px;">
+                            <SgNumberInput TValue="int" @bind-Value="_endHour" Min="1" Max="24" Size="SgSize.Sm" />
+                        </div>
+                    </div>
+                    <SgCheckBox @bind-Value="_enableDnd" Label="D&D" />
+                    
+                    <div style="margin-left: auto; display: flex; gap: 4px;">
+                        <SgButton Text="День" Variant="@(_currentView == SgSchedulerView.Day ? SgButtonVariant.Primary : SgButtonVariant.Default)" Size="SgSize.Sm" OnClick="() => _currentView = SgSchedulerView.Day" />
+                        <SgButton Text="Неделя" Variant="@(_currentView == SgSchedulerView.Week ? SgButtonVariant.Primary : SgButtonVariant.Default)" Size="SgSize.Sm" OnClick="() => _currentView = SgSchedulerView.Week" />
+                        <SgButton Text="Месяц" Variant="@(_currentView == SgSchedulerView.Month ? SgButtonVariant.Primary : SgButtonVariant.Default)" Size="SgSize.Sm" OnClick="() => _currentView = SgSchedulerView.Month" />
+                        <SgButton Text="Таймлайн" Variant="@(_currentView == SgSchedulerView.Timeline ? SgButtonVariant.Primary : SgButtonVariant.Default)" Size="SgSize.Sm" OnClick="() => _currentView = SgSchedulerView.Timeline" />
+                        <SgButton Text="Повестка" Variant="@(_currentView == SgSchedulerView.Agenda ? SgButtonVariant.Primary : SgButtonVariant.Default)" Size="SgSize.Sm" OnClick="() => _currentView = SgSchedulerView.Agenda" />
+                    </div>
+                </div>
+
+                <SgScheduler @bind-View="_currentView"
+                             @bind-Value="_selectedDate"
+                             Events="_events"
+                             Height="500px"
+                             EnableDragAndDrop="_enableDnd"
+                             StartHour="_startHour"
+                             EndHour="_endHour"
+                             OnAddEvent="HandleAddEvent"
+                             OnUpdateEvent="HandleUpdateEvent"
+                             OnDeleteEvent="HandleDeleteEvent" />
+            </SgCard>
+
+            <SgCard Title="Свойства SgScheduler">
+                <PropertyTable Items="_schedulerProperties" />
+            </SgCard>
         </div>
     </div>
 
+    <!-- События и данные -->
     <div style="margin-top: 32px;">
-        <h3>📊 SgSchedulerEvent Properties</h3>
-        <div style="margin-top: 16px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; font-size: 12px; line-height: 2;">
-            <div><strong>Id:</strong> string - уникальный идентификатор</div>
-            <div><strong>Title:</strong> string - название события</div>
-            <div><strong>Description:</strong> string? - описание</div>
-            <div><strong>Start:</strong> DateTime - время начала</div>
-            <div><strong>End:</strong> DateTime - время окончания</div>
-            <div><strong>IsAllDay:</strong> bool - событие на весь день</div>
-            <div><strong>Color:</strong> string? - цвет события</div>
-            <div><strong>Icon:</strong> string? - иконка</div>
-            <div><strong>RecurrenceRule:</strong> string? - правило повторения</div>
-            <div><strong>Data:</strong> object? - пользовательские данные</div>
+        <h2>События и данные</h2>
+        <p>Настройка внешнего вида и метаданных отдельных событий в календаре.</p>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Информация о событии">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgAlert Variant="SgAlertVariant.Info" Title="Подсказка">
+                        Двойной клик по дню в режиме месяца создает новое событие. 
+                        События можно перетаскивать между слотами времени.
+                    </SgAlert>
+                    
+                    <div style="font-size: 13px; line-height: 1.6;">
+                        <strong>SgSchedulerEvent</strong> поддерживает:
+                        <ul style="margin-top: 8px;">
+                            <li>Произвольные цвета через CSS переменные или HEX</li>
+                            <li>Вставку SVG иконок из <code>SgIcons</code></li>
+                            <li>Привязку любых пользовательских данных через <code>Data</code></li>
+                            <li>Флаг <code>IsAllDay</code> для событий на весь день</li>
+                        </ul>
+                    </div>
+                </div>
+            </SgCard>
+
+            <SgCard Title="Свойства SgSchedulerEvent">
+                <PropertyTable Items="_eventProperties" />
+            </SgCard>
         </div>
     </div>
 
@@ -54,6 +90,9 @@
     private SgSchedulerView _currentView = SgSchedulerView.Week;
     private DateTime _selectedDate = DateTime.Today;
     private List<SgSchedulerEvent> _events = new();
+    private bool _enableDnd = true;
+    private int _startHour = 8;
+    private int _endHour = 19;
 
     protected override void OnInitialized()
     {
@@ -62,49 +101,50 @@
         {
             new()
             {
+                Id = Guid.NewGuid().ToString(),
                 Title = "Встреча с командой",
-                Description = "Ежедневная стендап",
+                Description = "Обсуждение планов на неделю",
                 Start = today.AddHours(10),
                 End = today.AddHours(11),
-                Color = "#006fee"
+                Color = "var(--sui-primary)",
+                Icon = SgIcons.Database
             },
             new()
             {
-                Title = "Обед",
+                Id = Guid.NewGuid().ToString(),
+                Title = "Обед с клиентом",
                 Start = today.AddHours(13),
                 End = today.AddHours(14),
-                Color = "#10b981"
+                Color = "var(--sui-success)",
+                Icon = SgIcons.Check
             },
             new()
             {
+                Id = Guid.NewGuid().ToString(),
                 Title = "Ревью кода",
-                Description = "Проверить PR #123",
+                Description = "Проверить PR в репозитории SuperUI",
                 Start = today.AddHours(15),
-                End = today.AddHours(16),
-                Color = "#f59e0b"
+                End = today.AddHours(17),
+                Color = "var(--sui-warn)",
+                Icon = SgIcons.FileText
             },
             new()
             {
-                Title = "Конференция",
-                Description = "Tech Conf 2024",
-                Start = today.AddDays(2),
-                End = today.AddDays(2).AddHours(3),
+                Id = Guid.NewGuid().ToString(),
+                Title = "Конференция SUI 2026",
+                Description = "Главное событие года",
+                Start = today.AddDays(2).AddHours(9),
+                End = today.AddDays(2).AddHours(18),
                 IsAllDay = true,
-                Color = "#8b5cf6"
-            },
-            new()
-            {
-                Title = "День рождения",
-                Start = today.AddDays(5),
-                End = today.AddDays(5),
-                IsAllDay = true,
-                Color = "#ec4899"
+                Color = "var(--sui-danger)",
+                Icon = SgIcons.TrendingUp
             }
         };
     }
 
     private void HandleAddEvent(SgSchedulerEvent ev)
     {
+        if (string.IsNullOrEmpty(ev.Id)) ev.Id = Guid.NewGuid().ToString();
         _events.Add(ev);
         StateHasChanged();
     }
@@ -112,11 +152,8 @@
     private void HandleUpdateEvent(SgSchedulerEvent ev)
     {
         var index = _events.FindIndex(e => e.Id == ev.Id);
-        if (index >= 0)
-        {
-            _events[index] = ev;
-            StateHasChanged();
-        }
+        if (index >= 0) _events[index] = ev;
+        StateHasChanged();
     }
 
     private void HandleDeleteEvent(SgSchedulerEvent ev)
@@ -124,4 +161,29 @@
         _events.RemoveAll(e => e.Id == ev.Id);
         StateHasChanged();
     }
+
+    private List<PropertyPanelItem> _schedulerProperties = new()
+    {
+        new() { Label = "View", Value = "SgSchedulerView", BadgeText = "Режим отображения", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Value", Value = "DateTime", BadgeText = "Выбранная дата", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Events", Value = "IEnumerable<SgSchedulerEvent>", BadgeText = "Список событий", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Height", Value = "string", BadgeText = "Высота компонента", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "StartHour", Value = "int", BadgeText = "Час начала дня", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EndHour", Value = "int", BadgeText = "Час конца дня", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EnableDragAndDrop", Value = "bool", BadgeText = "Перетаскивание", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "OnAddEvent", Value = "EventCallback", BadgeText = "Добавление", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnUpdateEvent", Value = "EventCallback", BadgeText = "Обновление", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnDeleteEvent", Value = "EventCallback", BadgeText = "Удаление", BadgeVariant = SgBadgeVariant.Success }
+    };
+
+    private List<PropertyPanelItem> _eventProperties = new()
+    {
+        new() { Label = "Id", Value = "string", BadgeText = "Уникальный ID", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Start / End", Value = "DateTime", BadgeText = "Временные рамки", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "IsAllDay", Value = "bool", BadgeText = "Весь день", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Color", Value = "string?", BadgeText = "Цвет карточки", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Icon", Value = "string?", BadgeText = "SVG иконка", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Data", Value = "object?", BadgeText = "Польз. данные", BadgeVariant = SgBadgeVariant.Default }
+    };
 }
