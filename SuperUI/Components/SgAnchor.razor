@@ -1,10 +1,10 @@
 @namespace SuperUI.Components
-@inject IJSRuntime JS
-@implements IDisposable
-@implements IAsyncDisposable
+@inherits SgJsComponentBase
 
-<div class="sgc-anchor @CssClass @(Position.ToLowerInvariant()) @(Orientation.ToLowerInvariant())" 
-     style="@Style" @attributes="AdditionalAttributes">
+<div class="@Css("sgc-anchor").AddClass(Position.ToLowerInvariant()).AddClass(Orientation.ToLowerInvariant()).Build()" 
+     style="@Styles().NullIfEmpty()" 
+     @ref="RootRef"
+     @attributes="AdditionalAttributes">
     
     @if (!string.IsNullOrEmpty(Title))
     {
@@ -42,10 +42,11 @@
 </div>
 
 @code {
-    private DotNetObjectReference<SgAnchor>? _dotNetRef;
-    private IJSObjectReference? _module;
     private string? _activeId;
     private double _scrollProgress;
+
+    protected override string ModulePath => "./_content/SuperUI/Components/SgAnchor.razor.js";
+    protected override string IdPrefix   => "sg-anchor";
     
     [Parameter] public string? Title { get; set; }
     [Parameter] public List<AnchorItem> Items { get; set; } = new();
@@ -56,62 +57,37 @@
     [Parameter] public string Orientation { get; set; } = "Vertical";
     [Parameter] public bool ShowBadge { get; set; } = false;
     [Parameter] public bool ShowScrollProgress { get; set; } = false;
-    [Parameter] public string? CssClass { get; set; }
-    [Parameter] public string? Style { get; set; }
     [Parameter] public EventCallback<string> OnAnchorChanged { get; set; }
-    [Parameter] public Dictionary<string, object>? AdditionalAttributes { get; set; }
     
     public List<AnchorItem> ProcessedItems { get; private set; } = new();
     
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (firstRender)
+        if (AutoScan && Items.Count == 0)
         {
-            _dotNetRef = DotNetObjectReference.Create(this);
-            
-            // Import JS module - correct path for co-located JS file
-            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/Components/SgAnchor.razor.js");
-            
-            if (AutoScan && Items.Count == 0)
-            {
-                await ScanHeadersAsync();
-            }
-            else
-            {
-                ProcessedItems = Items.Select(x => x.WithIsActive(false)).ToList();
-            }
-            
-            // Initialize anchor with DotNet reference
-            if (_module != null)
-            {
-                await _module.InvokeVoidAsync("init", _dotNetRef, Selector, Offset);
-            }
+            await ScanHeadersAsync();
         }
+        else
+        {
+            ProcessedItems = Items.Select(x => x.WithIsActive(false)).ToList();
+        }
+        
+        await SafeInvokeVoidAsync("init", SelfRef, Selector, Offset);
     }
     
-    private int GetIndent(int level)
-    {
-        return Math.Max(0, level - 2);
-    }
+    private int GetIndent(int level) => Math.Max(0, level - 2);
     
-    public async Task ScrollToAsync(string id)
-    {
-        if (_module != null)
-        {
-            await _module.InvokeVoidAsync("scrollTo", id, Offset);
-        }
-    }
+    public async Task ScrollToAsync(string id) =>
+        await SafeInvokeVoidAsync("scrollTo", id, Offset);
     
     public async Task ScanHeadersAsync()
     {
-        if (_module != null)
+        if (!IsInteractive) return;
+        var headers = await SafeInvokeAsync<List<AnchorItem>>("scanHeaders", Selector);
+        if (headers != null)
         {
-            var headers = await _module.InvokeAsync<List<AnchorItem>>("scanHeaders", Selector);
-            if (headers != null)
-            {
-                ProcessedItems = headers.Select(x => x.WithIsActive(false)).ToList();
-                StateHasChanged();
-            }
+            ProcessedItems = headers.Select(x => x.WithIsActive(false)).ToList();
+            StateHasChanged();
         }
     }
     
@@ -136,19 +112,8 @@
         }
     }
     
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        _dotNetRef?.Dispose();
-        
-        if (_module != null)
-        {
-            await _module.InvokeVoidAsync("dispose");
-            await _module.DisposeAsync();
-        }
-    }
-    
-    void IDisposable.Dispose()
-    {
-        DisposeAsync().AsTask().Wait();
+        await SafeInvokeVoidAsync("dispose");
     }
 }

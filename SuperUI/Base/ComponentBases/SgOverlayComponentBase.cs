@@ -47,7 +47,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     private bool _previousVisible;
     private bool _isOpening;
     private bool _isClosing;
-    private int _zIndexValue;
+    protected int _zIndexValue;
     private CancellationTokenSource? _animationCts;
 
     // ── Параметры ─────────────────────────────────────────────────────────────
@@ -156,6 +156,18 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
             await VisibleChanged.InvokeAsync(false);
 
         await OnClosedAsync();
+    }
+
+    // ── Override OnInteractiveAsync ──────────────────────────────────────────
+
+    /// <inheritdoc/>
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (Visible)
+        {
+            await OnOpeningAsync();
+            await OnOpenedAsync();
+        }
     }
 
     // ── Override OnAfterRenderSafeAsync ───────────────────────────────────────

@@ -45,7 +45,7 @@ public readonly struct StyleBuilder
     /// <summary>Добавляет CSS-свойство безусловно.</summary>
     /// <param name="property">Имя свойства (e.g. <c>"display"</c>).</param>
     /// <param name="value">Значение (e.g. <c>"flex"</c>).</param>
-    public StyleBuilder AddStyle(string property, string? value)
+    public StyleBuilder Add(string property, string? value)
     {
         if (string.IsNullOrWhiteSpace(property) || string.IsNullOrWhiteSpace(value))
             return this;
@@ -56,8 +56,14 @@ public readonly struct StyleBuilder
     /// <param name="property">Имя свойства.</param>
     /// <param name="value">Значение.</param>
     /// <param name="when"><c>true</c> — свойство добавляется.</param>
-    public StyleBuilder AddStyle(string property, string? value, bool when)
-        => when ? AddStyle(property, value) : this;
+    public StyleBuilder Add(string property, string? value, bool when)
+        => when ? Add(property, value) : this;
+
+    /// <summary>Добавляет CSS-свойство безусловно.</summary>
+    public StyleBuilder AddStyle(string property, string? value) => Add(property, value);
+
+    /// <summary>Добавляет CSS-свойство при выполнении условия.</summary>
+    public StyleBuilder AddStyle(string property, string? value, bool when) => Add(property, value, when);
 
     /// <summary>Добавляет CSS-свойство при выполнении условия (lazy value).</summary>
     /// <param name="property">Имя свойства.</param>

@@ -1,8 +1,7 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@inherits SgJsComponentBase
 
-<div class="sgc-dock @CssClass" style="@RootStyle" @ref="_root">
+<div class="@Css("sgc-dock").Build()" style="@Styles().NullIfEmpty()" @ref="RootRef">
 
     @* ── Top toolbar ── *@
     @if (ToolbarContent is not null)
@@ -69,6 +68,9 @@
 </div>
 
 @code {
+    protected override string ModulePath => "./_content/SuperUI/superui-dockmanager.js";
+    protected override string IdPrefix => "sg-dock";
+
     // ── Parameters ────────────────────────────────────────────────────────────
 
     /// <summary>List of panels managed by the dock.</summary>
@@ -101,25 +103,15 @@
     /// <summary>Maximum size (px) for side panels. Default 600.</summary>
     [Parameter] public double MaxSideSize { get; set; } = 600;
 
-    /// <summary>Additional CSS class for the root element.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Inline style for the root element (e.g. height).</summary>
-    [Parameter] public string? Style { get; set; }
-
     /// <summary>Callback when the active panel changes.</summary>
     [Parameter] public EventCallback<SgDockPanel?> ActivePanelChanged { get; set; }
 
     // ── State ─────────────────────────────────────────────────────────────────
 
-    private ElementReference _root;
     private ElementReference _leftSash;
     private ElementReference _rightSash;
     private ElementReference _bottomSash;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgDockManager>? _self;
     private bool _attached;
-    private bool _isDisposed;
     private bool _initDone;
 
     private double _leftSize;
@@ -132,8 +124,6 @@
 
     // active tab per position
     private readonly Dictionary<SgDockPosition, string?> _activeTab = new();
-
-    private string RootStyle => string.IsNullOrEmpty(Style) ? "" : Style;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -148,16 +138,11 @@
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (_isDisposed || !firstRender) return;
         try
         {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>(
-                "import", "./_content/SuperUI/superui-dockmanager.js");
-            if (_isDisposed) return;
-            _self ??= DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync("attach", _root, _self);
+            await SafeInvokeVoidAsync("attach", RootRef, SelfRef);
             _attached = true;
         }
         catch (JSException) { }
@@ -313,30 +298,14 @@
 
     // ── Disposal ──────────────────────────────────────────────────────────────
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null && _attached)
+        if (_attached)
         {
-            try { await _module.InvokeVoidAsync("detach", _root); }
+            try { await SafeInvokeVoidAsync("detach", RootRef); }
             catch (JSException) { }
             catch (TaskCanceledException) { }
             catch { }
-        }
-
-        var self = _self;
-        _self = null;
-        self?.Dispose();
-
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
-            _module = null;
         }
     }
 }

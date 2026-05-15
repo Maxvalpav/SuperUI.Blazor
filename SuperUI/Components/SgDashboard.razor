@@ -1,8 +1,8 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@using SuperUI.Enums
+@inherits SgJsComponentBase
 
-<div class="sgc-dashboard @(Compact ? "sgc-dashboard-compact" : "") @CssClass"
+<div class="@Css("sgc-dashboard").AddClass("sgc-dashboard-compact", Compact).Build()"
      style="--dashboard-columns: @Columns; --sgc-dashboard-row-min: @(RowMinHeight)px;"
      data-columns="@Columns"
      data-min-col="@MinColumnSpan"
@@ -12,7 +12,7 @@
      data-allow-drag="@(AllowDrag ? "1" : "0")"
      role="grid"
      aria-label="@(AriaLabel ?? "Dashboard")"
-     @ref="_root">
+     @ref="RootRef">
 
     @if (Items.Count == 0)
     {
@@ -147,97 +147,32 @@
 </div>
 
 @code {
-    /// <summary>
-    /// Gets or sets the list of widgets displayed on the dashboard.
-    /// </summary>
-    [Parameter] public List<SgDashboardWidgetItem> Items { get; set; } = new();
-
-    /// <summary>
-    /// Callback invoked when the widget list is reordered, resized, or deleted.
-    /// </summary>
-    [Parameter] public EventCallback<List<SgDashboardWidgetItem>> ItemsChanged { get; set; }
-
-    /// <summary>
-    /// Number of grid columns. Default is 3.
-    /// </summary>
-    [Parameter] public int Columns { get; set; } = 3;
-
-    /// <summary>
-    /// Minimum height (px) reserved for a single grid row. Default is 120.
-    /// </summary>
-    [Parameter] public int RowMinHeight { get; set; } = 120;
-
-    /// <summary>
-    /// Compact density: smaller header and body padding.
-    /// </summary>
-    [Parameter] public bool Compact { get; set; }
-
-    /// <summary>
-    /// Template used to render the body of each widget.
-    /// </summary>
-    [Parameter] public RenderFragment<SgDashboardWidgetItem>? WidgetTemplate { get; set; }
-
-    /// <summary>
-    /// Optional content rendered when <see cref="Items"/> is empty.
-    /// </summary>
-    [Parameter] public RenderFragment? EmptyContent { get; set; }
-
-    /// <summary>Title displayed in the default empty-state.</summary>
-    [Parameter] public string EmptyTitle { get; set; } = "No widgets";
-
-    /// <summary>Description displayed in the default empty-state.</summary>
-    [Parameter] public string? EmptyDescription { get; set; } = "Add widgets to start building your dashboard.";
-
-    /// <summary>Accessible name for the dashboard region.</summary>
-    [Parameter] public string? AriaLabel { get; set; }
-
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>
-    /// When true, widgets can be dragged to reorder. Default is true.
-    /// </summary>
-    [Parameter] public bool AllowDrag { get; set; } = true;
-
-    /// <summary>
-    /// When true, shows +/- buttons and a corner resize handle.
-    /// </summary>
-    [Parameter] public bool AllowResize { get; set; }
-
-    /// <summary>
-    /// When true, shows a delete button on each widget header.
-    /// </summary>
-    [Parameter] public bool AllowDelete { get; set; }
-
-    /// <summary>Minimum column span for resize. Default is 1.</summary>
-    [Parameter] public int MinColumnSpan { get; set; } = 1;
-
-    /// <summary>Maximum column span for resize. Default is 6.</summary>
-    [Parameter] public int MaxColumnSpan { get; set; } = 6;
-
-    /// <summary>Minimum row span for resize. Default is 1.</summary>
-    [Parameter] public int MinRowSpan { get; set; } = 1;
-
-    /// <summary>Maximum row span for resize. Default is 6.</summary>
-    [Parameter] public int MaxRowSpan { get; set; } = 6;
-
-    /// <summary>Reorder callback. Receives source and target ids.</summary>
-    [Parameter] public EventCallback<(string SourceId, string TargetId)> OnReorder { get; set; }
-
-    /// <summary>Resize callback. Receives the resized widget.</summary>
-    [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetResized { get; set; }
-
-    /// <summary>Delete callback. Receives the deleted widget.</summary>
-    [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetDeleted { get; set; }
-
-    private ElementReference _root;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgDashboard>? _self;
-    private bool _attached;
-    private bool _isDisposed;
+    protected override string ModulePath => "./_content/SuperUI/superui-dashboard.js";
+    protected override string IdPrefix   => "sg-dashboard";
 
     private int EffectiveMaxColumnSpan => Math.Min(MaxColumnSpan, Math.Max(1, Columns));
 
-    // ── Inline icons (kept local to avoid library churn) ──────────────────
+    [Parameter] public List<SgDashboardWidgetItem> Items { get; set; } = new();
+    [Parameter] public EventCallback<List<SgDashboardWidgetItem>> ItemsChanged { get; set; }
+    [Parameter] public int Columns { get; set; } = 3;
+    [Parameter] public int RowMinHeight { get; set; } = 120;
+    [Parameter] public bool Compact { get; set; }
+    [Parameter] public RenderFragment<SgDashboardWidgetItem>? WidgetTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public string EmptyTitle { get; set; } = "No widgets";
+    [Parameter] public string? EmptyDescription { get; set; } = "Add widgets to start building your dashboard.";
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public bool AllowDrag { get; set; } = true;
+    [Parameter] public bool AllowResize { get; set; }
+    [Parameter] public bool AllowDelete { get; set; }
+    [Parameter] public int MinColumnSpan { get; set; } = 1;
+    [Parameter] public int MaxColumnSpan { get; set; } = 6;
+    [Parameter] public int MinRowSpan { get; set; } = 1;
+    [Parameter] public int MaxRowSpan { get; set; } = 6;
+    [Parameter] public EventCallback<(string SourceId, string TargetId)> OnReorder { get; set; }
+    [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetResized { get; set; }
+    [Parameter] public EventCallback<SgDashboardWidgetItem> OnWidgetDeleted { get; set; }
+
     private const string IconPlus =
         "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"></line><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"></line></svg>";
     private const string IconMinus =
@@ -247,30 +182,24 @@
     private const string IconGrid =
         "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"></rect></svg>";
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (_isDisposed || !firstRender) return;
-        try
-        {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-dashboard.js");
-            if (_isDisposed) return;
-            _self ??= DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync("attach", _root, _self);
-            _attached = true;
-        }
-        catch (JSException) { }
-        catch (TaskCanceledException) { }
+        await SafeInvokeVoidAsync("attach", RootRef, SelfRef);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("detach", RootRef);
     }
 
     [JSInvokable]
     public async Task JsReorder(string sourceId, string targetId)
     {
-        if (_isDisposed || string.IsNullOrEmpty(sourceId) || string.IsNullOrEmpty(targetId)) return;
+        if (string.IsNullOrEmpty(sourceId) || string.IsNullOrEmpty(targetId)) return;
         var srcIndex = Items.FindIndex(i => i.Id == sourceId);
         var tgtIndex = Items.FindIndex(i => i.Id == targetId);
         if (srcIndex < 0 || tgtIndex < 0 || srcIndex == tgtIndex) return;
 
-        // Refuse to reorder if source or target is locked.
         if (Items[srcIndex].Locked || Items[tgtIndex].Locked) return;
 
         var item = Items[srcIndex];
@@ -287,7 +216,7 @@
     [JSInvokable]
     public async Task JsResize(string id, int colSpan, int rowSpan)
     {
-        if (_isDisposed || string.IsNullOrEmpty(id)) return;
+        if (string.IsNullOrEmpty(id)) return;
         var item = Items.FirstOrDefault(i => i.Id == id);
         if (item is null || item.Locked) return;
 
@@ -361,32 +290,5 @@
             await OnWidgetDeleted.InvokeAsync(item);
         if (ItemsChanged.HasDelegate)
             await ItemsChanged.InvokeAsync(Items);
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null && _attached)
-        {
-            try { await _module.InvokeVoidAsync("detach", _root); }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch { }
-        }
-
-        var self = _self;
-        _self = null;
-        self?.Dispose();
-
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
-            _module = null;
-        }
     }
 }

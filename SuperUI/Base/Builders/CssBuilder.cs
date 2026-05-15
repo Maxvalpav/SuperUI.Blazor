@@ -46,7 +46,7 @@ public readonly struct CssBuilder
 
     /// <summary>Добавляет CSS-класс безусловно.</summary>
     /// <param name="cssClass">Класс (пустые/null игнорируются).</param>
-    public CssBuilder AddClass(string? cssClass)
+    public CssBuilder Add(string? cssClass)
         => string.IsNullOrWhiteSpace(cssClass)
             ? this
             : new CssBuilder(Append(_value, cssClass.Trim()));
@@ -54,8 +54,17 @@ public readonly struct CssBuilder
     /// <summary>Добавляет CSS-класс при выполнении условия.</summary>
     /// <param name="cssClass">Класс.</param>
     /// <param name="when"><c>true</c> — класс добавляется.</param>
-    public CssBuilder AddClass(string? cssClass, bool when)
-        => when ? AddClass(cssClass) : this;
+    public CssBuilder Add(string? cssClass, bool when)
+        => when ? Add(cssClass) : this;
+
+    /// <summary>Добавляет CSS-класс безусловно.</summary>
+    /// <param name="cssClass">Класс (пустые/null игнорируются).</param>
+    public CssBuilder AddClass(string? cssClass) => Add(cssClass);
+
+    /// <summary>Добавляет CSS-класс при выполнении условия.</summary>
+    /// <param name="cssClass">Класс.</param>
+    /// <param name="when"><c>true</c> — класс добавляется.</param>
+    public CssBuilder AddClass(string? cssClass, bool when) => Add(cssClass, when);
 
     /// <summary>Добавляет CSS-класс при выполнении условия (lazy evaluation).</summary>
     /// <param name="cssClass">Класс.</param>
