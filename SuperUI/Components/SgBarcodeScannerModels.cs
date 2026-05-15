@@ -1,37 +1,11 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
-/// <summary>Supported barcode/QR code formats.</summary>
-public enum SgBarcodeFormat
-{
-    /// <summary>QR Code </summary>
-    QRCode,
-    /// <summary>Code 128</summary>
-    Code128,
-    /// <summary>Code 39</summary>
-    Code39,
-    /// <summary>EAN-13</summary>
-    EAN13,
-    /// <summary>EAN-8</summary>
-    EAN8,
-    /// <summary>UPC-A</summary>
-    UPCA,
-    /// <summary>UPC-E</summary>
-    UPCE,
-    /// <summary>ITF</summary>
-    ITF,
-    /// <summary>PDF417</summary>
-    PDF417,
-    /// <summary>Data Matrix</summary>
-    DataMatrix,
-    /// <summary>Aztec</summary>
-    Aztec,
-    /// <summary>Codabar</summary>
-    Codabar,
-    /// <summary>All supported formats</summary>
-    All
-}
+// ── Supported barcode/QR code formats ──────────────────────────────────────────
+// SgBarcodeFormat — moved to SuperUI.Enums.SgBarcodeFormat
 
-/// <summary>Event arguments for barcode/QR code received event.</summary>
+// ── Event arguments ───────────────────────────────────────────────────────────
 public class SgBarcodeReceivedEventArgs : EventArgs
 {
     /// <summary>Scanned barcode/QR code text.</summary>

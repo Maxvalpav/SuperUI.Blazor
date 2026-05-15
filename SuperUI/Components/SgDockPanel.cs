@@ -1,22 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 /// <summary>
-/// Defines the dock position of a panel inside <see cref="SgDockManager"/>.
-/// </summary>
-public enum SgDockPosition
-{
-    /// <summary>Left side panel.</summary>
-    Left,
-    /// <summary>Right side panel.</summary>
-    Right,
-    /// <summary>Bottom panel.</summary>
-    Bottom,
-    /// <summary>Center editor / main area (tab group).</summary>
-    Center
-}
-
-/// <summary>
-/// Represents a single panel (tab) registered in <see cref="SgDockManager"/>.
+/// Defines the dock position of a panel inside <see cref="Components.SgDockManager"/>.
 /// </summary>
 public sealed class SgDockPanel
 {

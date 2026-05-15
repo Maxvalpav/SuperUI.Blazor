@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
@@ -15,7 +16,7 @@ public partial class SgTable<TItem> : ComponentBase
     private bool _autoColumnsGenerated;
     private string? _searchText;
     private string? _sortColumnKey;
-    private SortDirection _sortDirection = SortDirection.None;
+    private SgDataGridSortDirection _sortDirection = SgDataGridSortDirection.None;
     private int _pageNumber = 1;
     private readonly HashSet<TItem> _selectedItems = new();
     private bool _selectAll;
@@ -139,7 +140,7 @@ public partial class SgTable<TItem> : ComponentBase
                 var col = cols.FirstOrDefault(c => c.Key == _sortColumnKey);
                 if (col != null)
                 {
-                    filtered = _sortDirection == SortDirection.Ascending
+                    filtered =                     _sortDirection == SgDataGridSortDirection.Ascending
                         ? filtered.OrderBy(item => col.GetValue(item))
                         : filtered.OrderByDescending(item => col.GetValue(item));
                 }
@@ -316,18 +317,18 @@ public partial class SgTable<TItem> : ComponentBase
         {
             _sortDirection = _sortDirection switch
             {
-                SortDirection.None => SortDirection.Ascending,
-                SortDirection.Ascending => SortDirection.Descending,
-                SortDirection.Descending => SortDirection.None,
-                _ => SortDirection.None
+                SgDataGridSortDirection.None => SgDataGridSortDirection.Ascending,
+                SgDataGridSortDirection.Ascending => SgDataGridSortDirection.Descending,
+                SgDataGridSortDirection.Descending => SgDataGridSortDirection.None,
+                _ => SgDataGridSortDirection.None
             };
-            if (_sortDirection == SortDirection.None)
+            if (_sortDirection == SgDataGridSortDirection.None)
                 _sortColumnKey = null;
         }
         else
         {
             _sortColumnKey = columnKey;
-            _sortDirection = SortDirection.Ascending;
+            _sortDirection = SgDataGridSortDirection.Ascending;
         }
     }
 

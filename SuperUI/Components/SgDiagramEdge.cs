@@ -1,3 +1,5 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 /// <summary>
@@ -17,22 +19,9 @@ public class SgDiagramEdge
     /// <summary>Optional label shown on the edge.</summary>
     public string? Label { get; set; }
 
-    /// <summary>Edge line style. Default is Straight.</summary>
+    /// <summary>Edge line style (moved to SuperUI.Enums.SgDiagramEdgeType).</summary>
     public SgDiagramEdgeType Type { get; set; } = SgDiagramEdgeType.Straight;
 
-    /// <summary>Accent color for the edge.</summary>
+    /// <summary>Optional stroke colour for the edge line (default = none = use theme border colour).</summary>
     public string? Color { get; set; }
-}
-
-/// <summary>
-/// Edge routing style.
-/// </summary>
-public enum SgDiagramEdgeType
-{
-    /// <summary>Straight line from source to target.</summary>
-    Straight,
-    /// <summary>Curved bezier line.</summary>
-    Curved,
-    /// <summary>Orthogonal line with right angles.</summary>
-    Orthogonal
 }

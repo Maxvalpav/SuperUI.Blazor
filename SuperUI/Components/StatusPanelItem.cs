@@ -1,3 +1,5 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 public sealed class StatusPanelItem

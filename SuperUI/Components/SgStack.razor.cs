@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 

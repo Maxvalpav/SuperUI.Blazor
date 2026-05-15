@@ -1,26 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Chart type ────────────────────────────────────────────────────────────────
-
-/// <summary>Supported ECharts chart types.</summary>
-public enum SgEChartsType
-{
-    Line,
-    Bar,
-    BarHorizontal,
-    Area,
-    Pie,
-    Donut,
-    Scatter,
-    Radar,
-    Heatmap,
-    Gauge,
-    Funnel,
-    Sankey,
-    Tree,
-    Sunburst,
-    Candlestick,
-}
+// SgEChartsType — moved to SuperUI.Enums.SgEChartsType
 
 // ── Data models ───────────────────────────────────────────────────────────────
 

@@ -1,62 +1,6 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
-
-// ── Enums ─────────────────────────────────────────────────────────────────────
-
-/// <summary>Functional zone type inside a warehouse.</summary>
-public enum SgWhZoneType
-{
-    Storage,
-    Receiving,
-    Shipping,
-    Picking,
-    Staging,
-    Returns,
-    Quarantine,
-    Cold,
-    Hazard,
-    Office,
-}
-
-/// <summary>State of a single storage cell.</summary>
-public enum SgWhCellStatus
-{
-    Empty,
-    Occupied,
-    Reserved,
-    Picking,
-    Blocked,
-    Damaged,
-    Expired,
-}
-
-/// <summary>ABC inventory class (Pareto).</summary>
-public enum SgWhAbcClass
-{
-    None,
-    A,
-    B,
-    C,
-}
-
-/// <summary>How cells are coloured in the visualisation.</summary>
-public enum SgWhColorMode
-{
-    Status,
-    Occupancy,
-    Abc,
-    Turnover,
-    Temperature,
-    Zone,
-}
-
-/// <summary>Storage temperature regime.</summary>
-public enum SgWhTemperature
-{
-    Ambient,
-    Cool,
-    Cold,
-    Frozen,
-}
 
 // ── Layout entities ───────────────────────────────────────────────────────────
 

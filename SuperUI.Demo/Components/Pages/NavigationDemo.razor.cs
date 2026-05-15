@@ -1,4 +1,5 @@
 using SuperUI.Components;
+using SuperUI.Enums;
 using SuperUI.Demo.Models;
 using Microsoft.AspNetCore.Components;
 

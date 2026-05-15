@@ -1,29 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Language ──────────────────────────────────────────────────────────────────
-
-/// <summary>Supported OCR recognition languages.</summary>
-public enum SgOcrLanguage
-{
-    /// <summary>English</summary>
-    Eng,
-    /// <summary>Russian</summary>
-    Rus,
-    /// <summary>English + Russian</summary>
-    EngRus,
-    /// <summary>German</summary>
-    Deu,
-    /// <summary>French</summary>
-    Fra,
-    /// <summary>Spanish</summary>
-    Spa,
-    /// <summary>Chinese Simplified</summary>
-    Chi_Sim,
-    /// <summary>Japanese</summary>
-    Jpn,
-    /// <summary>Arabic</summary>
-    Ara,
-}
+// SgOcrLanguage — moved to SuperUI.Enums.SgOcrLanguage
 
 // ── Result ────────────────────────────────────────────────────────────────────
 

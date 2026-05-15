@@ -1,20 +1,9 @@
 using System;
 using System.Collections.Generic;
+using SuperUI.Enums;
 
 namespace SuperUI.Components
 {
-    public enum SgChartType
-    {
-        Line,
-        Bar,
-        BarHorizontal,
-        Area,
-        Pie,
-        Doughnut,
-        Scatter,
-        Heatmap
-    }
-
     public class SgChartDataset
     {
         public string Label { get; set; } = "";

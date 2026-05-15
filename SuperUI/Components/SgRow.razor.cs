@@ -1,28 +1,9 @@
 using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
-
-/// <summary>How <see cref="SgRow"/> should wrap its children.</summary>
-public enum SgFlexWrap
-{
-    /// <summary>Default — wrap to next line as needed (CSS <c>wrap</c>).</summary>
-    Wrap,
-    /// <summary>Never wrap (CSS <c>nowrap</c>).</summary>
-    NoWrap,
-    /// <summary>Wrap in reverse direction.</summary>
-    WrapReverse
-}
-
-/// <summary>Main-axis direction for <see cref="SgRow"/>.</summary>
-public enum SgFlexDirection
-{
-    Row,
-    RowReverse,
-    Column,
-    ColumnReverse
-}
 
 /// <summary>
 /// Cascading context shared from <see cref="SgRow"/> to its <see cref="SgCol"/> children.

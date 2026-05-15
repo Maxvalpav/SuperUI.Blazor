@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
@@ -31,7 +32,7 @@ public class PersistedConditionFilter
 public class PersistedSortRule
 {
     public string Key { get; set; } = string.Empty;
-    public SortDirection Dir { get; set; }
+    public SgDataGridSortDirection Dir { get; set; }
 }
 
 public class SgGridSavedView

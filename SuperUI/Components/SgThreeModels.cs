@@ -1,36 +1,10 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
-
-// ── Scene type ────────────────────────────────────────────────────────────────
-
-/// <summary>Built-in scene presets for <see cref="SgThree"/>.</summary>
-public enum SgThreeScene
-{
-    /// <summary>Empty scene — user provides scene via JS callback.</summary>
-    Custom,
-    /// <summary>Interactive warehouse floor-plan with rack cells.</summary>
-    Warehouse,
-    /// <summary>Factory floor with machines and conveyor belt.</summary>
-    Factory,
-    /// <summary>Pipeline / process flow diagram in 3D.</summary>
-    Pipeline,
-    /// <summary>3-D bar chart built from box geometries.</summary>
-    BarChart3D,
-    /// <summary>Rotating 3-D cube with Phong shading.</summary>
-    RotatingCube,
-    /// <summary>Particle field / star field.</summary>
-    ParticleField,
-}
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 
-/// <summary>Camera projection type.</summary>
-public enum SgThreeCameraType
-{
-    Perspective,
-    Orthographic,
-}
-
-// ── Options ───────────────────────────────────────────────────────────────────
+/// <summary>Camera type configuration (moved to SuperUI.Enums.SgThreeCameraType).</summary>
 
 /// <summary>Configuration options for <see cref="SgThree"/>.</summary>
 public class SgThreeOptions
@@ -83,15 +57,6 @@ public class SgThreeOptions
 
 // ── Warehouse data ────────────────────────────────────────────────────────────
 
-/// <summary>Status of a warehouse rack cell.</summary>
-public enum SgWarehouseCellStatus
-{
-    Empty,
-    Occupied,
-    Reserved,
-    Blocked,
-}
-
 /// <summary>A single rack cell in the warehouse floor-plan.</summary>
 public class SgWarehouseCell
 {
@@ -108,7 +73,7 @@ public class SgWarehouseCell
     public int Level { get; set; } = 1;
 
     /// <summary>Cell occupancy status.</summary>
-    public SgWarehouseCellStatus Status { get; set; } = SgWarehouseCellStatus.Empty;
+    public SgWhCellStatus Status { get; set; } = SgWhCellStatus.Empty;
 
     /// <summary>Optional label shown on the cell.</summary>
     public string? Label { get; set; }

@@ -1,20 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Vehicle profiles ──────────────────────────────────────────────────────────
-
-/// <summary>Routing vehicle profile.</summary>
-public enum SgGhProfile
-{
-    Car,
-    Bike,
-    Foot,
-    Hike,
-    Mtb,
-    Racingbike,
-    Scooter,
-    Truck,
-    SmallTruck,
-}
+// SgGhProfile — moved to SuperUI.Enums.SgGhProfile
 
 // ── Request ───────────────────────────────────────────────────────────────────
 

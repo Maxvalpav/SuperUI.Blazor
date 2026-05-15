@@ -4,6 +4,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using SuperUI.Localization;
 using System.Collections;
+using SuperUI.Enums;
+using SortDirection = SuperUI.Enums.SgDataGridSortDirection;
 using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Globalization;
@@ -1302,11 +1304,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             .Select(col =>
             {
                 var type = ResolveColumnType(col);
-                IReadOnlyList<QueryFieldEnumOption>? enumOptions = null;
+                IReadOnlyList<SuperUI.Enums.QueryFieldEnumOption>? enumOptions = null;
                 if (type.IsEnum)
                 {
                     enumOptions = SgEnumHelper.GetItems(type)
-                        .Select(ei => new QueryFieldEnumOption(ei.Name, ei.Label))
+                        .Select(ei => new SuperUI.Enums.QueryFieldEnumOption(ei.Name, ei.Label))
                         .ToList();
                 }
                 return new QueryField
@@ -2212,9 +2214,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             QueryFieldOperator.StartsWith => display.StartsWith(rule.Value?.ToString() ?? string.Empty, StringComparison.CurrentCultureIgnoreCase),
             QueryFieldOperator.EndsWith => display.EndsWith(rule.Value?.ToString() ?? string.Empty, StringComparison.CurrentCultureIgnoreCase),
             QueryFieldOperator.GreaterThan => CompareQueryValue(rawValue, rule.Value, targetType) > 0,
-            QueryFieldOperator.GreaterThanOrEqual => CompareQueryValue(rawValue, rule.Value, targetType) >= 0,
+            QueryFieldOperator.GreaterOrEqual => CompareQueryValue(rawValue, rule.Value, targetType) >= 0,
             QueryFieldOperator.LessThan => CompareQueryValue(rawValue, rule.Value, targetType) < 0,
-            QueryFieldOperator.LessThanOrEqual => CompareQueryValue(rawValue, rule.Value, targetType) <= 0,
+            QueryFieldOperator.LessOrEqual => CompareQueryValue(rawValue, rule.Value, targetType) <= 0,
             QueryFieldOperator.In => MatchesQuerySet(rawValue, rule.Value, targetType, true),
             QueryFieldOperator.NotIn => MatchesQuerySet(rawValue, rule.Value, targetType, false),
             QueryFieldOperator.IsNull => rawValue is null || string.IsNullOrWhiteSpace(display),
@@ -3766,24 +3768,26 @@ private static object? ConvertFromString(string? text, Type type)
 
         // Horizontal alignment — numeric columns default to right, others to left
         var hAlign = col.HAlign;
-        if (hAlign == SgHAlign.Default && isNumeric)
-            hAlign = SgHAlign.Right;
+        if (hAlign == SgColumnAlign.Default && isNumeric)
+            hAlign = SgColumnAlign.Right;
 
         css += hAlign switch
         {
-            SgHAlign.Left   => " sg-align-left",
-            SgHAlign.Center => " sg-align-center",
-            SgHAlign.Right  => " sg-align-right",
+            SgColumnAlign.Left   => " sg-align-left",
+            SgColumnAlign.Center => " sg-align-center",
+            SgColumnAlign.Right  => " sg-align-right",
             _               => string.Empty
         };
 
         // Vertical alignment
-        css += col.VAlign switch
+        var valign = (int)col.VAlign;
+        css += valign switch
         {
-            SgVAlign.Top    => " sg-valign-top",
-            SgVAlign.Middle => " sg-valign-middle",
-            SgVAlign.Bottom => " sg-valign-bottom",
-            _               => string.Empty
+            0 => string.Empty,  // Default
+            1 => " sg-valign-top",
+            2 => " sg-valign-middle",
+            3 => " sg-valign-bottom",
+            _ => string.Empty
         };
 
         return css;
@@ -5740,7 +5744,7 @@ public sealed class SgDataGridCellClickEventArgs<TItem> where TItem : notnull
     public required MouseEventArgs MouseArgs { get; init; }
 }
 
-public enum AutoDetailKind { Object, Collection }
+// ── Auto-detail helpers ───────────────────────────────────────────────────────
 
 public sealed class AutoDetailProperty
 {

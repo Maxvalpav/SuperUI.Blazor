@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+
+using SuperUI.Enums;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 
