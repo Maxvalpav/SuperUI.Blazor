@@ -23,13 +23,13 @@
     private RenderFragment RenderWindow() => __builder =>
     {
         <div id="@ResolvedId"
-             class="@Css("sgc-win").AddClass("sgc-win-maximized", _maximized).AddClass("sgc-win-minimized", _minimized).AddClass("sgc-closing", IsClosing).Build()"
+             class="@Css("sgc-win").AddClass("sgc-win-maximized", _maximized).AddClass("sgc-win-minimized", _minimized).AddClass("sgc-win-focus", IsFocused).AddClass("sgc-closing", IsClosing).Build()"
              style="@GetWindowStyle()"
              @ref="RootRef"
              @attributes="AdditionalAttributes">
             <div class="sgc-win-header" @ref="_titlebarRef">
                 <span class="sgc-win-title">@Title</span>
-                <div class="sgc-win-controls">
+                <div class="sgc-win-actions">
                     @if (ShowMinimize)
                     {
                         <button class="sgc-win-btn" title="@Localizer["Minimize"]"
@@ -69,6 +69,8 @@
     private ElementReference _titlebarRef;
     private bool _minimized;
     private bool _maximized;
+
+    private bool IsFocused => ZIndex.GetTopOwner() == this;
 
     protected override string ModulePath  => "./_content/SuperUI/superui-window.js";
     protected override int ZIndexBase     => SgZIndexService.WindowBase;
@@ -143,6 +145,26 @@
     [Parameter] public bool UsePortal { get; set; } = true;
 
     /// <summary>
+    /// Gets or sets whether the window is minimized.
+    /// </summary>
+    [Parameter] public bool Minimized { get; set; }
+
+    /// <summary>
+    /// Callback invoked when minimized state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> MinimizedChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the window is maximized.
+    /// </summary>
+    [Parameter] public bool Maximized { get; set; }
+
+    /// <summary>
+    /// Callback invoked when maximized state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> MaximizedChanged { get; set; }
+
+    /// <summary>
     /// Callback invoked when the window is closed.
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
@@ -153,6 +175,29 @@
     [Parameter] public EventCallback<WindowBounds> BoundsChanged { get; set; }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        ZIndex.TopOwnerChanged += OnTopOwnerChanged;
+        _minimized = Minimized;
+        _maximized = Maximized;
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (Minimized != _minimized) _minimized = Minimized;
+        if (Maximized != _maximized) _maximized = Maximized;
+    }
+
+    private void OnTopOwnerChanged(object? topOwner) => StateHasChanged();
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        ZIndex.TopOwnerChanged -= OnTopOwnerChanged;
+        await base.OnDisposingAsync();
+    }
 
     protected override async ValueTask OnOpeningAsync()
     {
@@ -175,26 +220,69 @@
     private string GetWindowStyle() =>
         Styles()
             .AddStyle("z-index",  ZIndexValue.ToString(), ZIndexValue > 0)
-            .AddStyle("left",     Left)
-            .AddStyle("top",      Top)
-            .AddStyle("width",    Width)
-            .AddStyle("height",   Height,  !_minimized && !_maximized)
+            .AddStyle("left",     FormatUnit(Left))
+            .AddStyle("top",      FormatUnit(Top))
+            .AddStyle("width",    FormatUnit(Width))
+            .AddStyle("height",   FormatUnit(Height),  !_minimized && !_maximized)
+            .AddStyle("display",  "none", !Visible && !IsClosing)
             .Build();
+
+    private static string FormatUnit(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "0px";
+        if (double.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+            return value + "px";
+        return value;
+    }
 
     // ── Handlers ─────────────────────────────────────────────────────────
 
-    private Task ToggleMinimizeAsync()
+    /// <summary>
+    /// Opens the window and brings it to front.
+    /// </summary>
+    public async Task OpenAsync()
     {
-        _minimized = !_minimized;
-        StateHasChanged();
-        return Task.CompletedTask;
+        bool changed = false;
+        if (!Visible)
+        {
+            Visible = true;
+            if (VisibleChanged.HasDelegate)
+                await VisibleChanged.InvokeAsync(true);
+        }
+        if (_minimized)
+        {
+            _minimized = false;
+            changed = true;
+            if (MinimizedChanged.HasDelegate)
+                await MinimizedChanged.InvokeAsync(false);
+        }
+        await FocusAsync();
+        if (changed) StateHasChanged();
     }
 
-    private Task ToggleMaximizeAsync()
+    /// <summary>
+    /// Maximizes or restores the window.
+    /// </summary>
+    public async Task ToggleMaximizeAsync()
     {
         _maximized = !_maximized;
+        _minimized = false;
+        if (MaximizedChanged.HasDelegate)
+            await MaximizedChanged.InvokeAsync(_maximized);
+        if (MinimizedChanged.HasDelegate)
+            await MinimizedChanged.InvokeAsync(_minimized);
         StateHasChanged();
-        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Minimizes or restores the window.
+    /// </summary>
+    public async Task ToggleMinimizeAsync()
+    {
+        _minimized = !_minimized;
+        if (MinimizedChanged.HasDelegate)
+            await MinimizedChanged.InvokeAsync(_minimized);
+        StateHasChanged();
     }
 
     [JSInvokable]
@@ -217,6 +305,9 @@
     [JSInvokable]
     public async Task MinimizeAsync() => await ToggleMinimizeAsync();
 
+    /// <summary>
+    /// Brings the window to the front of the stacking order.
+    /// </summary>
     [JSInvokable]
     public async Task FocusAsync()
     {
