@@ -713,11 +713,11 @@
                                                  <input class="sg-quick-filter-input sg-filter-search-input"
                                                         placeholder="@Localizer["DataGrid_QuickFilter"]..."
                                                         value="@_filterMenuSearchText"
-                                                        @oninput="@(e => { _filterMenuSearchText = e.Value?.ToString() ?? string.Empty; })" />
+                                                        @oninput="@(async e => await HandleFilterMenuSearchInputAsync(e.Value?.ToString()))" />
                                                  @if (!string.IsNullOrEmpty(_filterMenuSearchText))
                                                  {
                                                      <button type="button" class="sg-filter-search-clear" title="Очистить"
-                                                             @onclick="@(() => _filterMenuSearchText = string.Empty)"
+                                                             @onclick="@(async () => await HandleFilterMenuSearchInputAsync(string.Empty))"
                                                              @onclick:stopPropagation="true">
                                                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                                      </button>
@@ -732,16 +732,79 @@
                                                   </label>
                                              </div>
                                               <div class="sg-filter-list">
-                                                  @foreach (var val in distinctValues)
+                                                  @if (_filterTree != null && _filterTree.Count > 0)
                                                   {
-                                                      var display = GetDisplayLabelForFilterValue(key, val);
-                                                      var selected = IsPendingValueSelected(val);
-                                                      <label class="sg-filter-item" @key="val">
-                                                          <input type="checkbox"
-                                                                 checked="@selected"
-                                                                 @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
-                                                          <span>@display</span>
-                                                      </label>
+                                                      @foreach (var year in _filterTree)
+                                                      {
+                                                          <div class="sg-filter-tree-node">
+                                                              <div class="sg-filter-tree-row">
+                                                                  <button type="button" class="sg-filter-tree-toggle" @onclick="@(() => year.IsExpanded = !year.IsExpanded)">
+                                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform: rotate(@(year.IsExpanded ? "90deg" : "0deg"))">
+                                                                          <polyline points="9 18 15 12 9 6"></polyline>
+                                                                      </svg>
+                                                                  </button>
+                                                                  <label class="sg-filter-item">
+                                                                      <input type="checkbox"
+                                                                             checked="@year.IsSelected"
+                                                                             @onchange="@(e => ToggleFilterTreeNode(year, e.Value is true))"
+                                                                             indeterminate="@(year.IsSelected == null)" />
+                                                                      <span>@year.Label</span>
+                                                                  </label>
+                                                              </div>
+                                                              @if (year.IsExpanded && year.Children != null)
+                                                              {
+                                                                  <div class="sg-filter-tree-children">
+                                                                      @foreach (var month in year.Children)
+                                                                      {
+                                                                          <div class="sg-filter-tree-node">
+                                                                              <div class="sg-filter-tree-row">
+                                                                                  <button type="button" class="sg-filter-tree-toggle" @onclick="@(() => month.IsExpanded = !month.IsExpanded)">
+                                                                                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="transform: rotate(@(month.IsExpanded ? "90deg" : "0deg"))">
+                                                                                          <polyline points="9 18 15 12 9 6"></polyline>
+                                                                                      </svg>
+                                                                                  </button>
+                                                                                  <label class="sg-filter-item">
+                                                                                      <input type="checkbox"
+                                                                                             checked="@month.IsSelected"
+                                                                                             @onchange="@(e => ToggleFilterTreeNode(month, e.Value is true))"
+                                                                                             indeterminate="@(month.IsSelected == null)" />
+                                                                                      <span>@month.Label</span>
+                                                                                  </label>
+                                                                              </div>
+                                                                              @if (month.IsExpanded && month.Children != null)
+                                                                              {
+                                                                                  <div class="sg-filter-tree-children">
+                                                                                      @foreach (var day in month.Children)
+                                                                                      {
+                                                                                          <label class="sg-filter-item sg-filter-tree-row" @key="day.Value">
+                                                                                              <input type="checkbox"
+                                                                                                     checked="@(day.IsSelected == true)"
+                                                                                                     @onchange="@(e => ToggleFilterTreeNode(day, e.Value is true))" />
+                                                                                              <span>@day.Label</span>
+                                                                                          </label>
+                                                                                      }
+                                                                                  </div>
+                                                                              }
+                                                                          </div>
+                                                                      }
+                                                                  </div>
+                                                              }
+                                                          </div>
+                                                      }
+                                                  }
+                                                  else
+                                                  {
+                                                      @foreach (var val in distinctValues)
+                                                      {
+                                                          var display = GetDisplayLabelForFilterValue(key, val);
+                                                          var selected = IsPendingValueSelected(val);
+                                                          <label class="sg-filter-item" @key="val">
+                                                              <input type="checkbox"
+                                                                     checked="@selected"
+                                                                     @onchange="@(e => TogglePendingValueAsync(val, e.Value is true))" />
+                                                              <span>@display</span>
+                                                          </label>
+                                                      }
                                                   }
                                               </div>@* end sg-filter-list *@
                                          }

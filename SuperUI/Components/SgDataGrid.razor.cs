@@ -55,6 +55,21 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private SortDirection? _pendingSort;
     private string? _search;
     private string _filterMenuSearchText = string.Empty;
+    private async Task HandleFilterMenuSearchInputAsync(string? value)
+    {
+        _filterMenuSearchText = value ?? string.Empty;
+        if (_openFilterColumn != null)
+        {
+            var filterType = GetColumnFilterType(_openFilterColumn);
+            if (filterType == "date" || filterType == "datetime")
+            {
+                var narrowedItems = GetFilteredRowsExcept(_openFilterColumn);
+                var narrowedValues = GetDistinctValuesForColumn(_openFilterColumn, narrowedItems);
+                _filterTree = BuildFilterTree(_openFilterColumn, narrowedValues);
+            }
+        }
+    }
+    private List<SgFilterTreeNode>? _filterTree;
     private string? _openFilterColumn;
     private bool _showChooser;
     private bool _showExportMenu;
@@ -1765,6 +1780,55 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
     private readonly Dictionary<TItem, int> _rowLevels = new();
 
+    private List<TItem> GetFilteredRowsExcept(string? skipKey)
+    {
+        var hasSearch = !string.IsNullOrWhiteSpace(_search);
+
+        var preparedQuickFilters = new List<(SgDataGridColumn<TItem> Column, string Value)>();
+        foreach (var quickFilter in _quickFilters)
+        {
+            if (quickFilter.Key == skipKey) continue;
+            var col = GetColumnByKey(quickFilter.Key);
+            if (col != null) preparedQuickFilters.Add((col, quickFilter.Value));
+        }
+
+        var preparedValueFilters = new List<(SgDataGridColumn<TItem> Column, HashSet<string> Values)>();
+        foreach (var valueFilter in _filters)
+        {
+            if (valueFilter.Key == skipKey) continue;
+            var col = GetColumnByKey(valueFilter.Key);
+            if (col != null) preparedValueFilters.Add((col, valueFilter.Value));
+        }
+
+        var preparedConditionFilters = new List<(SgDataGridColumn<TItem> Column, ColumnFilter Filter)>();
+        foreach (var conditionFilter in _conditionFilters)
+        {
+            if (conditionFilter.Key == skipKey) continue;
+            var col = GetColumnByKey(conditionFilter.Key);
+            if (col != null) preparedConditionFilters.Add((col, conditionFilter.Value));
+        }
+
+        var preparedQueryRules = new List<(SgDataGridColumn<TItem> Column, QueryRule Rule, Type TargetType)>();
+        foreach (var queryRule in _queryRules)
+        {
+            if (queryRule.FieldName == skipKey) continue;
+            var col = GetColumnByKey(queryRule.FieldName ?? "");
+            if (col != null) preparedQueryRules.Add((col, queryRule, ResolveColumnType(col)));
+        }
+
+        var result = new List<TItem>();
+        var source = IsTree && TreeChildren != null ? GetAllTreeItems() : (Items ?? Enumerable.Empty<TItem>());
+
+        foreach (var item in source)
+        {
+            if (hasSearch && !MatchesSearch(item)) continue;
+            if (!ItemPassesFilters(item, preparedQuickFilters, preparedValueFilters, preparedConditionFilters, preparedQueryRules)) continue;
+            result.Add(item);
+        }
+
+        return result;
+    }
+
     private List<TItem> GetFilteredRows()
     {
         // Check if cache is valid for current items and filter versions
@@ -2760,9 +2824,16 @@ private static object? ConvertFromString(string? text, Type type)
         _openFilterColumn = key;
         _pendingFilterKey = key;
         _filterMenuSearchText = string.Empty;
+        
+        // Get narrowed items (ignoring only the current column filter)
+        var narrowedItems = GetFilteredRowsExcept(key);
+        var narrowedValues = GetDistinctValuesForColumn(key, narrowedItems);
+        var narrowedNormalized = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var v in narrowedValues) narrowedNormalized.Add(NormalizeFilterValue(v));
+
         _pendingSelectedValues = _filters.TryGetValue(key, out var current)
             ? current.ToHashSet(StringComparer.Ordinal)
-            : GetDistinctNormalizedValuesForColumn(key);
+            : narrowedNormalized.ToHashSet(StringComparer.Ordinal);
 
         if (_conditionFilters.TryGetValue(key, out var condition))
         {
@@ -2778,7 +2849,149 @@ private static object? ConvertFromString(string? text, Type type)
         // Initialize pending sort from current sort
         _pendingSort = GetSort(key);
 
+        var filterType = GetColumnFilterType(key);
+        if (filterType == "date" || filterType == "datetime")
+        {
+            _filterTree = BuildFilterTree(key, narrowedValues);
+        }
+        else
+        {
+            _filterTree = null;
+        }
+
         await InvokeAsync(StateHasChanged);
+    }
+
+    private List<SgFilterTreeNode>? BuildFilterTree(string key, List<string?> rawValues)
+    {
+        var filterType = GetColumnFilterType(key);
+        if (filterType != "date" && filterType != "datetime") return null;
+
+        var root = new List<SgFilterTreeNode>();
+        var years = new Dictionary<int, SgFilterTreeNode>();
+        var hasSearch = !string.IsNullOrWhiteSpace(_filterMenuSearchText);
+        var currentFilter = _filters.TryGetValue(key, out var f) ? f : new HashSet<string>();
+
+        foreach (var raw in rawValues)
+        {
+            if (raw == null) continue;
+            if (DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var dt))
+            {
+                if (hasSearch)
+                {
+                    var display = dt.ToString("dd.MM.yyyy HH:mm:ss", CultureInfo.CurrentCulture);
+                    if (!display.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                }
+
+                if (!years.TryGetValue(dt.Year, out var yearNode))
+                {
+                    yearNode = new SgFilterTreeNode { Label = dt.Year.ToString(), Year = dt.Year, Children = new List<SgFilterTreeNode>(), IsExpanded = false };
+                    years[dt.Year] = yearNode;
+                    root.Add(yearNode);
+                }
+
+                var monthName = dt.ToString("MMMM", CultureInfo.CurrentCulture);
+                var monthNode = yearNode.Children!.FirstOrDefault(m => m.Month == dt.Month);
+                if (monthNode == null)
+                {
+                    monthNode = new SgFilterTreeNode { Label = char.ToUpper(monthName[0]) + monthName.Substring(1), Month = dt.Month, Children = new List<SgFilterTreeNode>(), Year = dt.Year, IsExpanded = false };
+                    yearNode.Children!.Add(monthNode);
+                }
+
+                var isSelected = currentFilter.Contains(NormalizeFilterValue(raw));
+                if (isSelected)
+                {
+                    yearNode.IsExpanded = true;
+                    monthNode.IsExpanded = true;
+                }
+
+                monthNode.Children!.Add(new SgFilterTreeNode 
+                { 
+                    Label = dt.Day.ToString("D2"), 
+                    Value = raw, 
+                    Day = dt.Day,
+                    Month = dt.Month,
+                    Year = dt.Year,
+                    IsSelected = isSelected
+                });
+            }
+        }
+
+        // Sort: Year desc, Month asc, Day asc
+        root.Sort((a, b) => b.Year!.Value.CompareTo(a.Year!.Value));
+        foreach (var y in root)
+        {
+            y.Children!.Sort((a, b) => a.Month!.Value.CompareTo(b.Month!.Value));
+            foreach (var m in y.Children)
+            {
+                m.Children!.Sort((a, b) => a.Day!.Value.CompareTo(b.Day!.Value));
+            }
+        }
+
+        SyncFilterTreeSelectionState(root);
+        return root;
+    }
+
+    private void SyncFilterTreeSelectionState(List<SgFilterTreeNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Children != null && node.Children.Count > 0)
+            {
+                SyncFilterTreeSelectionState(node.Children);
+                var allChecked = node.Children.All(c => c.IsSelected == true);
+                var allUnchecked = node.Children.All(c => c.IsSelected == false);
+                
+                if (allChecked) node.IsSelected = true;
+                else if (allUnchecked) node.IsSelected = false;
+                else node.IsSelected = null;
+            }
+            else
+            {
+                node.IsSelected = _pendingSelectedValues.Contains(NormalizeFilterValue(node.Value));
+            }
+        }
+    }
+
+    private void ToggleFilterTreeNode(SgFilterTreeNode node, bool isChecked)
+    {
+        node.IsSelected = isChecked;
+        SetChildrenSelection(node, isChecked);
+        
+        // Update _pendingSelectedValues based on leaf nodes
+        UpdatePendingFromTree(_filterTree);
+        
+        // Recalculate indeterminate states for parents
+        if (_filterTree != null) SyncFilterTreeSelectionState(_filterTree);
+    }
+
+    private void SetChildrenSelection(SgFilterTreeNode node, bool isChecked)
+    {
+        if (node.Children == null) return;
+        foreach (var child in node.Children)
+        {
+            child.IsSelected = isChecked;
+            SetChildrenSelection(child, isChecked);
+        }
+    }
+
+    private void UpdatePendingFromTree(List<SgFilterTreeNode>? nodes)
+    {
+        if (nodes == null) return;
+        foreach (var node in nodes)
+        {
+            if (node.Children != null && node.Children.Count > 0)
+            {
+                UpdatePendingFromTree(node.Children);
+            }
+            else if (node.Value != null)
+            {
+                var norm = NormalizeFilterValue(node.Value);
+                if (node.IsSelected == true) _pendingSelectedValues.Add(norm);
+                else _pendingSelectedValues.Remove(norm);
+            }
+        }
     }
 
     private Task CloseFilterMenuAsync()
@@ -2873,36 +3086,21 @@ private static object? ConvertFromString(string? text, Type type)
     {
         if (selected)
         {
-            // Get all distinct values for the column
-            var allValues = GetDistinctValuesForColumn(key);
-            
-            // Filter by search text if present
-            var filteredValues = allValues
-                .Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || 
-                           (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
-                .ToList();
-            
-            // Normalize and add to pending selection
-            var normalized = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var val in filteredValues)
-            {
-                var norm = NormalizeFilterValue(val);
-                if (norm is not null)
-                    normalized.Add(norm);
-            }
-            _pendingSelectedValues = normalized;
+            _pendingSelectedValues = GetDistinctNormalizedValuesForColumn(key);
         }
         else
         {
             _pendingSelectedValues = new HashSet<string>(StringComparer.Ordinal);
         }
+
+        if (_filterTree != null) SyncFilterTreeSelectionState(_filterTree);
         
         await InvokeAsync(StateHasChanged);
     }
 
-    private List<string?> GetDistinctValuesForColumn(string key)
+    private List<string?> GetDistinctValuesForColumn(string key, IEnumerable<TItem>? customItems = null)
     {
-        if (_distinctValuesCacheItemsVersion != _itemsVersion)
+        if (customItems == null && _distinctValuesCacheItemsVersion != _itemsVersion)
         {
             _distinctValuesCache.Clear();
             _distinctNormalizedValuesCache.Clear();
@@ -2910,7 +3108,7 @@ private static object? ConvertFromString(string? text, Type type)
             _distinctValuesCacheItemsVersion = _itemsVersion;
         }
 
-        if (_distinctValuesCache.TryGetValue(key, out var cachedValues))
+        if (customItems == null && _distinctValuesCache.TryGetValue(key, out var cachedValues))
             return cachedValues;
 
         var col = GetColumnByKey(key);
@@ -2926,7 +3124,7 @@ private static object? ConvertFromString(string? text, Type type)
         var seen = new HashSet<string?>(StringComparer.Ordinal);
         var values = new List<string?>();
 
-        var itemsToIterate = IsTree && TreeChildren != null ? GetAllTreeItems() : (Items ?? Enumerable.Empty<TItem>());
+        var itemsToIterate = customItems ?? (IsTree && TreeChildren != null ? GetAllTreeItems() : (Items ?? Enumerable.Empty<TItem>()));
 
         foreach (var item in itemsToIterate)
         {
@@ -2999,19 +3197,23 @@ private static object? ConvertFromString(string? text, Type type)
 
     private HashSet<string> GetDistinctNormalizedValuesForColumn(string key)
     {
-        if (_distinctValuesCacheItemsVersion == _itemsVersion &&
-            _distinctNormalizedValuesCache.TryGetValue(key, out var cachedSet))
-        {
-            return new HashSet<string>(cachedSet, StringComparer.Ordinal);
-        }
-
-        var values = GetDistinctValuesForColumn(key);
+        var narrowedItems = GetFilteredRowsExcept(key);
+        var values = GetDistinctValuesForColumn(key, narrowedItems);
         var normalized = new HashSet<string>(StringComparer.Ordinal);
-        for (var i = 0; i < values.Count; i++)
-            normalized.Add(NormalizeFilterValue(values[i]));
+        var hasSearch = !string.IsNullOrWhiteSpace(_filterMenuSearchText);
 
-        _distinctNormalizedValuesCache[key] = normalized;
-        return new HashSet<string>(normalized, StringComparer.Ordinal);
+        for (int i = 0; i < values.Count; i++)
+        {
+            var val = values[i];
+            if (hasSearch)
+            {
+                var display = GetDisplayLabelForFilterValue(key, val);
+                if (!(display?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
+                    continue;
+            }
+            normalized.Add(NormalizeFilterValue(val));
+        }
+        return normalized;
     }
 
     private bool IsPendingValueSelected(string? value) =>
