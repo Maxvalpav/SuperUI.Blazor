@@ -383,7 +383,9 @@ export function downloadExcel(fileName, htmlContent) {
         </body>
         </html>`;
 
-    const blob = new Blob([template], { type: 'application/vnd.ms-excel' });
+    // Add UTF-8 BOM for Excel to recognize Cyrillic correctly
+    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const blob = new Blob([bom, template], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

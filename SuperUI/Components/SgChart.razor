@@ -119,23 +119,13 @@
 
     protected override void OnParametersSet()
     {
-        if (!_chartReady) return;
-
-        var changed =
-            ChartType != _lastChartType ||
-            !ReferenceEquals(Data, _lastDataRef) ||
-            !ReferenceEquals(Options, _lastOptionsRef) ||
-            !string.Equals(Title, _lastTitle, StringComparison.Ordinal);
-
-        if (changed && !_refreshScheduled)
-        {
-            _refreshScheduled = true;
-            _ = ScheduleRefreshAsync();
-        }
     }
 
     private async Task ScheduleRefreshAsync()
     {
+        await Task.Delay(16); // Small debounce (approx 1 frame at 60fps)
+        if (_refreshScheduled) return; // redundant but safe
+        
         try
         {
             await RefreshAsync();
@@ -154,8 +144,27 @@
 
     protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        if (IsDisposed || !firstRender) return;
+        if (IsDisposed) return;
 
+        // If data changed after initialization, schedule a refresh.
+        if (!firstRender && _chartReady)
+        {
+            var changed =
+                ChartType != _lastChartType ||
+                !ReferenceEquals(Data, _lastDataRef) ||
+                !ReferenceEquals(Options, _lastOptionsRef) ||
+                !string.Equals(Title, _lastTitle, StringComparison.Ordinal);
+
+            if (changed && !_refreshScheduled)
+            {
+                _refreshScheduled = true;
+                _ = ScheduleRefreshAsync();
+            }
+        }
+    }
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
         try
         {
             await InitializeChartAsync();
@@ -312,11 +321,14 @@
 
     private object BuildDataset(SeriesData series, string color, SgChartOptions options)
     {
-        if (ChartType == SgChartType.Scatter)
+        var dsType = series.Type ?? ChartType;
+
+        if (dsType == SgChartType.Scatter)
         {
-            var scatter = series.Values.Select((v, i) => new { x = i, y = v }).ToList();
+            object scatter = series.ScatterData ?? (object)series.Values.Select((v, i) => new { x = (double)i, y = v }).ToList();
             return new
             {
+                type = "scatter",
                 label = series.Name,
                 data = scatter,
                 borderColor = color,
@@ -327,22 +339,26 @@
             };
         }
 
-        if (ChartType == SgChartType.Heatmap)
+        if (dsType == SgChartType.Heatmap)
         {
             return new
             {
+                type = "matrix",
                 label = series.Name,
-                data = series.Values,
+                data = series.MatrixData ?? new List<SgChartMatrixPoint>(),
+                backgroundColor = WithAlpha(color, 0.6),
                 borderColor = color,
-                backgroundColor = WithAlpha(color, 0.5),
-                borderWidth = 2
+                borderWidth = 1,
+                width = 0.95,
+                height = 0.95
             };
         }
 
-        if (ChartType == SgChartType.Area)
+        if (dsType == SgChartType.Area)
         {
             return new
             {
+                type = "line",
                 label = series.Name,
                 data = series.Values,
                 borderColor = color,
@@ -356,10 +372,11 @@
             };
         }
 
-        if (ChartType == SgChartType.Line)
+        if (dsType == SgChartType.Line)
         {
             return new
             {
+                type = "line",
                 label = series.Name,
                 data = series.Values,
                 borderColor = color,
@@ -376,6 +393,7 @@
         // Bar / BarHorizontal
         return new
         {
+            type = "bar",
             label = series.Name,
             data = series.Values,
             borderColor = color,
@@ -394,7 +412,7 @@
         if (Series is { Count: > 0 })
         {
             return Series
-                .Select(s => new SeriesData(s.Name, data.Select(s.Value).ToList()))
+                .Select(s => new SeriesData(s.Name, data.Select(s.Value).ToList(), s.Type, null, null))
                 .ToList();
         }
 
@@ -416,23 +434,28 @@
             }
             if (byName.Count > 0)
             {
-                return byName.Select(kv => new SeriesData(kv.Key, kv.Value)).ToList();
+                return byName.Select(kv => new SeriesData(kv.Key, kv.Value, null, null, null)).ToList();
             }
         }
 
         // 3) Default: single Value property.
         var valueProp = typeof(TItem).GetProperty("Value");
-        if (valueProp == null) return new List<SeriesData>();
+        var scatterProp = typeof(TItem).GetProperty("ScatterData");
+        var matrixProp = typeof(TItem).GetProperty("MatrixData");
 
-        var values = data.Select(item => ToDouble(valueProp.GetValue(item))).ToList();
+        if (valueProp == null && scatterProp == null && matrixProp == null) return new List<SeriesData>();
+
+        var values = valueProp != null ? data.Select(item => ToDouble(valueProp.GetValue(item))).ToList() : new List<double>();
+        var scatter = scatterProp != null ? (List<SgChartScatterPoint>?)scatterProp.GetValue(data.FirstOrDefault()) : null;
+        var matrix = matrixProp != null ? (List<SgChartMatrixPoint>?)matrixProp.GetValue(data.FirstOrDefault()) : null;
 
         var opts = Options ?? new SgChartOptions();
-        if (opts.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, opts.DecimationThreshold))
+        if (valueProp != null && opts.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, opts.DecimationThreshold))
         {
             values = DataDecimation.DecimateValues(values, opts.DecimationTargetPoints ?? 1000);
         }
 
-        return new List<SeriesData> { new("Data", values) };
+        return new List<SeriesData> { new("Data", values, null, scatter, matrix) };
     }
 
     private static double ToDouble(object? value) => value switch
@@ -458,7 +481,7 @@
         return palette[index % palette.Count];
     }
 
-    private readonly record struct SeriesData(string Name, List<double> Values);
+    private readonly record struct SeriesData(string Name, List<double> Values, SgChartType? Type, List<SgChartScatterPoint>? ScatterData, List<SgChartMatrixPoint>? MatrixData);
 
     private static readonly List<string> DefaultPalette = new()
     {
@@ -503,6 +526,15 @@
         if (ChartType is SgChartType.Pie or SgChartType.Doughnut)
         {
             return new { };
+        }
+
+        if (ChartType == SgChartType.Heatmap)
+        {
+            return new
+            {
+                y = new { type = "category", offset = true, grid = new { display = false } },
+                x = new { type = "category", offset = true, grid = new { display = false } }
+            };
         }
 
         var (yType, xType) = ChartType == SgChartType.BarHorizontal

@@ -140,8 +140,10 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
 
         await OnAfterRenderSafeAsync(firstRender);
 
-        // Инициализация JS только при первом интерактивном рендере.
-        if (firstRender && IsInteractive && !_initialized)
+        // Инициализация JS только в интерактивном режиме.
+        // Если при первом рендере (SSR/Prerender) интерактивности не было, 
+        // инициализируем при первом же интерактивном рендере.
+        if (IsInteractive && !_initialized)
         {
             _initialized = true;
             await InitializeJsAsync();
