@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using SuperUI.Base.Utilities;
 using SuperUI.Components;
 using SuperUI.Localization;
 using SuperUI.Services;
@@ -47,6 +48,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<SgZIndexService>();
         services.TryAddScoped<SgThemeService>();
         services.TryAddScoped<SgRagService>();
+        services.TryAddScoped<SgJsModuleCache>();
 
         return services;
     }

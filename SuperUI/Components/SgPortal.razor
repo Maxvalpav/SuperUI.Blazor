@@ -1,48 +1,22 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@inherits SgJsComponentBase
 
-<div @ref="_container" style="display: contents;">
+<div @ref="RootRef" style="display: contents;">
     @ChildContent
 </div>
 
 @code {
-    private ElementReference _container;
-    private IJSObjectReference? _module;
-    private bool _isDisposed;
-
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override string ModulePath => "./_content/SuperUI/superui-portal.js";
+
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (firstRender)
-        {
-            try
-            {
-                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-portal.js");
-                if (_isDisposed) return;
-                await _module.InvokeVoidAsync("teleport", _container);
-            }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-        }
+        await SafeInvokeVoidAsync("teleport", RootRef);
     }
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null)
-        {
-            try
-            {
-                await _module.InvokeVoidAsync("remove", _container);
-                await _module.DisposeAsync();
-            }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
-        }
+        await SafeInvokeVoidAsync("remove", RootRef);
     }
 }

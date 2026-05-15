@@ -1,9 +1,13 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
+@inherits SgComponentBase
+@implements IDisposable
 
 <button type="@Type.ToString().ToLowerInvariant()"
-        class="sgc-btn @VariantClass @SizeClass @(Block ? "sgc-block" : "") @(_isDebouncing ? "sgc-debouncing" : "") @CssClass"
-        style="@Style"
+        class="@Css("sgc-btn").AddClass(VariantClass).AddClass(SizeClass)
+                   .AddClass("sgc-block", Block)
+                   .AddClass("sgc-pressed", IsToggle && Pressed)
+                   .AddClass("sgc-debouncing", _isDebouncing)
+                   .Build()"
         disabled="@(Disabled || Loading || _isDebouncing)"
         title="@Title"
         @onclick="OnClickAsync"
@@ -31,8 +35,7 @@
 
 @code {
     private bool _isDebouncing;
-    private CancellationTokenSource? _debounceCts;
-    private bool _disposed;
+    private readonly SgDebouncer _debouncer = new();
 
     /// <summary>
     /// Gets or sets the button text content.
@@ -106,25 +109,10 @@
     [Parameter] public int DebounceInterval { get; set; } = 300;
     
     /// <summary>
-    /// Gets or sets additional CSS class names to apply to the button.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>
-    /// Gets or sets additional inline styles to apply to the button.
-    /// </summary>
-    [Parameter] public string? Style { get; set; }
-
-    /// <summary>
     /// Gets or sets the callback invoked when the button is clicked.
     /// </summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
     
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the button element.
-    /// </summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
     private string VariantClass => Variant switch
     {
         SgButtonVariant.Primary  => "sgc-btn-primary",
@@ -168,30 +156,11 @@
 
         if (DebounceInterval > 0)
         {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
-            _debounceCts = new CancellationTokenSource();
-            var token = _debounceCts.Token;
-            try
-            {
-                await Task.Delay(DebounceInterval, token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            if (_disposed || token.IsCancellationRequested) return;
-            _isDebouncing = false;
-            StateHasChanged();
+            await _debouncer.RunAsync(
+                _ => { _isDebouncing = false; return InvokeAsync(StateHasChanged); },
+                TimeSpan.FromMilliseconds(DebounceInterval));
         }
     }
 
-    public ValueTask DisposeAsync()
-    {
-        _disposed = true;
-        _debounceCts?.Cancel();
-        _debounceCts?.Dispose();
-        _debounceCts = null;
-        return ValueTask.CompletedTask;
-    }
+    public void Dispose() => _debouncer.Dispose();
 }

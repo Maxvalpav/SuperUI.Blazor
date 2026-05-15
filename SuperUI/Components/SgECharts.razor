@@ -1,9 +1,8 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
-@inject ISuperUILocalizer Localizer
+@using SuperUI.Localization
+@inherits SgJsComponentBase
 
-<div class="sg-echarts-container @CssClass"
+<div class="sg-echarts-container"
      style="height: @Height; width: @Width;"
      @attributes="AdditionalAttributes">
 
@@ -34,9 +33,7 @@
 
 @code {
     private ElementReference _containerRef;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgECharts>? _selfRef;
-    private readonly string _instanceId = $"sg-ec-{Guid.NewGuid():N}";
+    private readonly string _instanceId = SgIdGenerator.NewId("sg-ec");
     private bool _ready;
     private string? _error;
     private bool _isDisposed;
@@ -49,8 +46,6 @@
     private object? _lastOptsRef;
     private bool _refreshScheduled;
     private bool _refreshPending;
-
-    // ── Parameters ────────────────────────────────────────────────────────────
 
     /// <summary>Chart type.</summary>
     [Parameter] public SgEChartsType ChartType { get; set; } = SgEChartsType.Line;
@@ -76,14 +71,14 @@
     /// <summary>ECharts source URL override.</summary>
     [Parameter] public SgEChartsSources? Sources { get; set; }
 
-    /// <summary>Additional CSS class.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
     /// <summary>Fired when a data point is clicked.</summary>
     [Parameter] public EventCallback<SgEChartsClickEventArgs> OnDataPointClick { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    [Inject]
+    private ISuperUILocalizer Localizer { get; set; } = default!;
+
+    protected override string ModulePath => "./_content/SuperUI/sg-echarts.js";
+    protected override string IdPrefix   => "sg-ec";
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -118,44 +113,28 @@
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (_isDisposed || !firstRender) return;
-        try
-        {
-            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-echarts.js");
-            if (_isDisposed) return;
-            _selfRef = DotNetObjectReference.Create(this);
-            await InitAsync();
-        }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch (Exception ex)
-        {
-            _error = $"{Localizer["ECharts_FailedToLoad"]}: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
-        }
+        await InitAsync();
     }
 
     private async Task InitAsync()
     {
-        if (_module is null || _selfRef is null) return;
+        if (Module is null || SelfRef is null) return;
         try
         {
             var opts   = BuildOpts();
             var data   = Data?.ToList();
             var graph  = GraphData;
             var candle = CandleData?.ToList();
-            await _module.InvokeVoidAsync("initECharts",
-                _selfRef, _containerRef, _instanceId,
+            await SafeInvokeVoidAsync("initECharts",
+                SelfRef, _containerRef, _instanceId,
                 ChartType.ToString(), data, graph, candle, opts,
                 Sources ?? new SgEChartsSources());
             CaptureSnapshot();
             _ready = true;
             await InvokeAsync(StateHasChanged);
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
         catch (Exception ex)
         {
             _error = $"{Localizer["ECharts_FailedToInitialize"]}: {ex.Message}";
@@ -202,20 +181,18 @@
     /// <summary>Redraws the chart with current parameters.</summary>
     public async Task RefreshAsync()
     {
-        if (_module is null || !_ready) { _refreshPending = true; return; }
+        if (Module is null || !_ready) { _refreshPending = true; return; }
         try
         {
             var opts   = BuildOpts();
             var data   = Data?.ToList();
             var graph  = GraphData;
             var candle = CandleData?.ToList();
-            await _module.InvokeVoidAsync("updateECharts",
+            await SafeInvokeVoidAsync("updateECharts",
                 _instanceId, ChartType.ToString(), data, graph, candle, opts);
             CaptureSnapshot();
             await InvokeAsync(StateHasChanged);
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
         catch (Exception ex)
         {
             _error = $"{Localizer["ECharts_FailedToRefresh"]}: {ex.Message}";
@@ -226,11 +203,8 @@
     /// <summary>Downloads the chart as a PNG file.</summary>
     public async Task ExportImageAsync()
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("exportImage", _instanceId); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
+        if (Module is null) return;
+        await SafeInvokeVoidAsync("exportImage", _instanceId);
     }
 
     /// <summary>Retries loading after an error.</summary>
@@ -252,30 +226,11 @@
 
     // ── Dispose ───────────────────────────────────────────────────────────────
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null)
+        if (Module is not null)
         {
-            try { await _module.InvokeVoidAsync("disposeECharts", _instanceId); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException)   { }
-            catch { }
-        }
-
-        var selfRef = _selfRef;
-        _selfRef = null;
-        selfRef?.Dispose();
-
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException)   { }
-            catch { }
-            _module = null;
+            await SafeInvokeVoidAsync("disposeECharts", _instanceId);
         }
     }
 }
