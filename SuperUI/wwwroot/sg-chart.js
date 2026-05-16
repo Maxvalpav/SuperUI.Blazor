@@ -269,103 +269,113 @@ export async function initChart(dotnetRef, canvasRef, config, sources) {
 }
 
 export async function updateChart(chartId, config) {
-    const chartData = chartInstances.get(chartId);
-    // Возвращаем false, чтобы .NET-сторона могла сделать полный re-init вместо тихого
-    // отвала (типичный кейс — переключение SgTabs пересоздало DOM и старый instance
-    // потерян).
-    if (!chartData) return false;
+    try {
+        const Chart = window.Chart;
+        if (!Chart) return false;
 
-    installFormatters(config);
-    const { instance: chart, canvasRef, dotnetRef, onClick, onMove, resizeObserver } = chartData;
+        const chartData = chartInstances.get(chartId);
+        // Возвращаем false, чтобы .NET-сторона могла сделать полный re-init вместо тихого
+        // отвала (типичный кейс — переключение SgTabs пересоздало DOM и старый instance
+        // потерян).
+        if (!chartData) return false;
 
-    const clickable = !!config.options?.__sgClickable;
-    if (config.options) delete config.options.__sgClickable;
+        installFormatters(config);
+        const { instance: chart, canvasRef, dotnetRef, onClick, onMove, resizeObserver } = chartData;
 
-    // If chart type is the same, we can update data smoothly.
-    // In Chart.js v4, it's best to update properties on chart.data directly.
-    if (chart.config.type === config.type) {
-        chart.data.labels = config.data.labels;
-        chart.data.datasets = config.data.datasets;
+        const clickable = !!config.options?.__sgClickable;
+        if (config.options) delete config.options.__sgClickable;
 
-        // Update options - merging is safer than replacing
-        if (config.options) {
-            chart.options = Chart.helpers.merge(chart.options, [config.options]);
+        // If chart type is the same, we can update data smoothly.
+        // In Chart.js v4, it's best to update properties on chart.data directly.
+        if (chart.config.type === config.type) {
+            chart.data.labels = config.data.labels;
+            chart.data.datasets = config.data.datasets;
+
+            // Update options - merging into config.options is safer in v4
+            if (config.options) {
+                if (Chart.helpers && typeof Chart.helpers.merge === 'function') {
+                    // Update the configuration options; Chart.js will resolve them during update()
+                    Chart.helpers.merge(chart.config.options, [config.options]);
+                } else {
+                    chart.config.options = { ...chart.config.options, ...config.options };
+                }
+            }
+
+            chart.update(config.options?.animation?.duration === 0 ? 'none' : 'default');
+
+            // Update stored handlers if needed
+            chartData.onClick = clickable ? chartData.onClick : null;
+            chartData.onMove = clickable ? chartData.onMove : null;
+            return true;
         }
 
-        chart.update(config.options?.animation?.duration === 0 ? 'none' : 'default');
-
-        // Update stored handlers if needed
-        chartData.onClick = clickable ? chartData.onClick : null;
-        chartData.onMove = clickable ? chartData.onMove : null;
-        return true;
-    }
-
-    // If type or scales changed significantly, recreation is safer.
-    try { resizeObserver?.disconnect(); } catch {}
-    try {
-        canvasRef.removeEventListener('click', onClick);
-        canvasRef.removeEventListener('mousemove', onMove);
-        chart.destroy();
-    } catch {}
-
-    const Chart = window.Chart;
-    if (!Chart) throw new Error('Chart.js not available');
-
-    applyOptionalPlugins(Chart, config);
-
-    const ctx = canvasRef.getContext('2d');
-    const newChart = new Chart(ctx, config);
-
-    const newOnClick = clickable ? (e) => {
-        const points = newChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
-        if (points.length === 0) return;
-        const point = points[0];
-        const datasetIndex = point.datasetIndex;
-        const index = point.index;
-        const ds = newChart.data.datasets[datasetIndex];
-        const raw = ds?.data?.[index];
-        const value = typeof raw === 'object' && raw !== null ? (raw.y ?? raw.v ?? 0) : (raw ?? 0);
-        const label = newChart.data.labels?.[index] ?? '';
+        // If type or scales changed significantly, recreation is safer.
+        try { resizeObserver?.disconnect(); } catch {}
         try {
-            dotnetRef.invokeMethodAsync('OnDataPointClickedAsync', {
-                datasetIndex,
-                dataPointIndex: index,
-                value,
-                label
+            canvasRef.removeEventListener('click', onClick);
+            canvasRef.removeEventListener('mousemove', onMove);
+            chart.destroy();
+        } catch {}
+
+        applyOptionalPlugins(Chart, config);
+
+        const ctx = canvasRef.getContext('2d');
+        const newChart = new Chart(ctx, config);
+
+        const newOnClick = clickable ? (e) => {
+            const points = newChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+            if (points.length === 0) return;
+            const point = points[0];
+            const datasetIndex = point.datasetIndex;
+            const index = point.index;
+            const ds = newChart.data.datasets[datasetIndex];
+            const raw = ds?.data?.[index];
+            const value = typeof raw === 'object' && raw !== null ? (raw.y ?? raw.v ?? 0) : (raw ?? 0);
+            const label = newChart.data.labels?.[index] ?? '';
+            try {
+                dotnetRef.invokeMethodAsync('OnDataPointClickedAsync', {
+                    datasetIndex,
+                    dataPointIndex: index,
+                    value,
+                    label
+                });
+            } catch { }
+        } : null;
+
+        const newOnMove = clickable ? (e) => {
+            const points = newChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+            canvasRef.style.cursor = points.length > 0 ? 'pointer' : 'default';
+        } : null;
+
+        if (clickable) {
+            canvasRef.addEventListener('click', newOnClick);
+            canvasRef.addEventListener('mousemove', newOnMove);
+        }
+
+        let newResizeObs = null;
+        const parent = canvasRef.parentElement;
+        if (parent && typeof ResizeObserver !== 'undefined') {
+            let raf = 0;
+            newResizeObs = new ResizeObserver(() => {
+                cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(() => { try { newChart.resize(); } catch {} });
             });
-        } catch { }
-    } : null;
+            newResizeObs.observe(parent);
+        }
 
-    const newOnMove = clickable ? (e) => {
-        const points = newChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
-        canvasRef.style.cursor = points.length > 0 ? 'pointer' : 'default';
-    } : null;
-
-    if (clickable) {
-        canvasRef.addEventListener('click', newOnClick);
-        canvasRef.addEventListener('mousemove', newOnMove);
-    }
-
-    let newResizeObs = null;
-    const parent = canvasRef.parentElement;
-    if (parent && typeof ResizeObserver !== 'undefined') {
-        let raf = 0;
-        newResizeObs = new ResizeObserver(() => {
-            cancelAnimationFrame(raf);
-            raf = requestAnimationFrame(() => { try { newChart.resize(); } catch {} });
+        chartInstances.set(chartId, {
+            instance: newChart,
+            dotnetRef,
+            canvasRef,
+            onClick: newOnClick,
+            onMove: newOnMove,
+            resizeObserver: newResizeObs,
         });
-        newResizeObs.observe(parent);
+        return true;
+    } catch (err) {
+        console.error('[SgChart] updateChart failed for ' + chartId + ':', err);
+        return false;
     }
-
-    chartInstances.set(chartId, {
-        instance: newChart,
-        dotnetRef,
-        canvasRef,
-        onClick: newOnClick,
-        onMove: newOnMove,
-        resizeObserver: newResizeObs,
-    });
-    return true;
 }
 
 export function resizeChart(chartId) {

@@ -61,9 +61,9 @@ public sealed class SgConfirmService : IAsyncDisposable
     {
         _localizer = localizer;
         var o = options?.Value;
-        _defaultTitle = o?.DefaultConfirmTitle ?? _localizer["ConfirmationTitle"];
-        _defaultConfirmText = o?.DefaultConfirmText ?? _localizer["Confirm"];
-        _defaultCancelText = o?.DefaultCancelText ?? _localizer["Cancel"];
+        _defaultTitle = o?.DefaultConfirmTitle ?? _localizer["Common_Confirmation"];
+        _defaultConfirmText = o?.DefaultConfirmText ?? _localizer["Common_Confirm"];
+        _defaultCancelText = o?.DefaultCancelText ?? _localizer["Common_Cancel"];
     }
 
     /// <summary>

@@ -1,8 +1,11 @@
 namespace SuperUI.Enums;
 
-public enum SgKPICardVariant
+public enum SgKPIVariant
 {
     Default,
-    Elevated,
-    Outlined
+    Primary,
+    Success,
+    Warning,
+    Danger,
+    Info
 }

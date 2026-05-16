@@ -1,0 +1,147 @@
+@namespace SuperUI.Components.SgGantCanvas
+@inherits SuperUI.Base.ComponentBases.SgJsComponentBase
+@using SuperUI.Components.SgGantCanvas.Models
+
+<div class="sg-gantt-canvas-container" style="height: @Height; width: @Width; display: flex; flex-direction: column;" @ref="RootRef">
+    @if (ShowToolbar)
+    {
+        <div class="sg-gantt-toolbar" style="flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--sui-border, #eee); background: #fff;">
+            @if (ToolbarTemplate != null)
+            {
+                @ToolbarTemplate
+            }
+            else
+            {
+                <SgButtonGroup>
+                    <SgButton Size="SgSize.Sm" OnClick="ZoomIn" Tooltip="Zoom In (Ctrl++)"><Icon>+</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="ZoomOut" Tooltip="Zoom Out (Ctrl+-)"><Icon>−</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="FitToScreen" Tooltip="Fit to Screen"><Icon>fit_screen</Icon></SgButton>
+                </SgButtonGroup>
+
+                <SgButtonGroup Style="margin-left: 8px;">
+                    <SgButton Size="SgSize.Sm" OnClick="Undo" Disabled="@(!CanUndo)" Tooltip="Undo (Ctrl+Z)"><Icon>undo</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="Redo" Disabled="@(!CanRedo)" Tooltip="Redo (Ctrl+Y)"><Icon>redo</Icon></SgButton>
+                </SgButtonGroup>
+
+                <SgButtonGroup Style="margin-left: 8px;">
+                    <SgButton Size="SgSize.Sm" OnClick="ExpandAll" Tooltip="Expand All"><Icon>unfold_more</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="CollapseAll" Tooltip="Collapse All"><Icon>unfold_less</Icon></SgButton>
+                </SgButtonGroup>
+
+                <SgButton Size="SgSize.Sm" OnClick="ScrollToToday" Text="Today" Style="margin-left: 8px;" />
+
+                <div style="flex: 1"></div>
+
+                <SgDropdown CssClass="sg-dropdown-generate" Size="SgSize.Sm" Text="Generate">
+                    <Icon>add_chart</Icon>
+                    <ChildContent>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(100)">100 Tasks</SgDropdownItem>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(1000)">1,000 Tasks</SgDropdownItem>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(5000)">5,000 Tasks</SgDropdownItem>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(10000)">10,000 Tasks</SgDropdownItem>
+                        <SgDropdownItem Divider="true" />
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(0)">Clear All</SgDropdownItem>
+                    </ChildContent>
+                </SgDropdown>
+
+                <SgDropdown CssClass="sg-dropdown-export" Size="SgSize.Sm">
+                    <Icon>download</Icon>
+                    <ChildContent>
+                        <SgDropdownItem Text="Export as PNG" />
+                        <SgDropdownItem Text="Export as PDF" />
+                        <SgDropdownItem Text="Export as Excel" />
+                    </ChildContent>
+                </SgDropdown>
+
+                <SgDropdown Size="SgSize.Sm">
+                    <Icon>settings</Icon>
+                    <ChildContent>
+                        <div style="padding: 16px; min-width: 240px;">
+                            <div style="font-weight: bold; margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px;">Display Settings</div>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 8px;">
+                                <SgCheckBox Checked="ViewOptions.ShowCriticalPath" CheckedChanged="async (bool val) => { ViewOptions.ShowCriticalPath = val; await RefreshDataAsync(); }" Label="Show Critical Path" />
+                                <SgCheckBox Checked="ViewOptions.ShowDependencies" CheckedChanged="async (bool val) => { ViewOptions.ShowDependencies = val; await RefreshDataAsync(); }" Label="Show Dependencies" />
+                                <SgCheckBox Checked="ViewOptions.ShowBaselines" CheckedChanged="async (bool val) => { ViewOptions.ShowBaselines = val; await RefreshDataAsync(); }" Label="Show Baselines" />
+                                <SgCheckBox Checked="ViewOptions.ShowTodayLine" CheckedChanged="async (bool val) => { ViewOptions.ShowTodayLine = val; await RefreshDataAsync(); }" Label="Show Today Line" />
+                                <SgCheckBox Checked="ViewOptions.ShowGrid" CheckedChanged="async (bool val) => { ViewOptions.ShowGrid = val; await RefreshDataAsync(); }" Label="Show Grid" />
+                                <SgCheckBox Checked="ViewOptions.FlatMode" CheckedChanged="async (bool val) => { ViewOptions.FlatMode = val; await RefreshDataAsync(); }" Label="Flat Mode" />
+                            </div>
+                            
+                            <div style="font-weight: bold; margin: 16px 0 8px 0; font-size: 12px; color: #666; text-transform: uppercase;">Theme & Style</div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <span style="font-size: 12px; flex: 1;">Color Theme:</span>
+                                <SgButtonGroup>
+                                    <SgButton Size="SgSize.Sm" OnClick='() => OnThemeChanged.InvokeAsync("Light")' Text="Light" Variant='@(Theme.Type == GanttThemeType.Light ? SgButtonVariant.Primary : SgButtonVariant.Default)' />
+                                    <SgButton Size="SgSize.Sm" OnClick='() => OnThemeChanged.InvokeAsync("Dark")' Text="Dark" Variant='@(Theme.Type == GanttThemeType.Dark ? SgButtonVariant.Primary : SgButtonVariant.Default)' />
+                                </SgButtonGroup>
+                            </div>
+
+                            <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 12px; flex: 1;">Row Height:</span>
+                                <input type="range" min="20" max="60" value="@ViewOptions.RowHeight" @onchange='async (ChangeEventArgs e) => { ViewOptions.RowHeight = int.Parse(e.Value?.ToString() ?? "40"); await RefreshDataAsync(); }' style="width: 80px;" />
+                            </div>
+                        </div>
+                    </ChildContent>
+                </SgDropdown>
+            }
+        </div>
+    }
+
+    <div class="sg-gantt-main" style="flex: 1; display: flex; min-height: 0; position: relative;">
+        <div class="sg-gantt-left" style="width: @(ViewOptions.FlatMode ? "300px" : "400px"); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--sui-border, #eee); background: #fff; z-index: 10;">
+            <div class="sg-gantt-left-header" style="height: 60px; border-bottom: 1px solid var(--sui-border, #eee); display: flex; align-items: center; font-weight: bold; background: #fafafa;">
+                <div style="width: 40px; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--sui-border, #eee);">№</div>
+                <div style="flex: 1; height: 100%; display: flex; align-items: center; padding: 0 12px;">Task Name</div>
+            </div>
+            <div class="sg-gantt-left-body" style="overflow-y: auto; overflow-x: hidden; flex: 1; border-bottom: 1px solid var(--sui-border, #eee);" @ref="_leftPanelRef" @onscroll="OnLeftPanelScroll">
+                <div style="height: @(_visibleTasks.Count * ViewOptions.RowHeight)px; position: relative;">
+                    @foreach (var task in _visibleTasks.Skip(_scrollRowIndex).Take(_visibleRowCount + 5))
+                    {
+                        <div style="position: absolute; top: @(task.RowIndex * ViewOptions.RowHeight)px; left: 0; right: 0; height: @(ViewOptions.RowHeight)px; display: flex; align-items: center; border-bottom: 1px solid var(--sui-border, #eee); font-size: 13px; white-space: nowrap; overflow: hidden; background: @(task.RowIndex % 2 == 0 ? "#fff" : "#fafafa")"
+                             @ondblclick="() => HandleTaskDoubleClick(task)">
+                            <div style="width: 40px; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--sui-border, #eee); color: #888;">@(task.RowIndex + 1)</div>
+                            <div style="flex: 1; height: 100%; display: flex; align-items: center; padding-left: @(task.Level * 20 + 8)px; text-overflow: ellipsis; overflow: hidden;">
+                                @if (task.IsSummary)
+                                {
+                                    <span style="cursor: pointer; margin-right: 4px; font-size: 10px; width: 14px; display: inline-block; text-align: center;" @onclick="() => ToggleCollapse(task)" @onclick:stopPropagation>
+                                        @(task.IsCollapsed ? "▶" : "▼")
+                                    </span>
+                                    <span style="font-weight: bold;">📁 @task.Name</span>
+                                }
+                                else if (task.IsMilestone)
+                                {
+                                    <span style="margin-left: 18px;">◆ @task.Name</span>
+                                }
+                                else
+                                {
+                                    <span style="margin-left: 18px;">@task.Name</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="sg-gantt-canvas-wrapper" @ref="_canvasWrapperRef">
+            <canvas class="sg-gantt-canvas-element"></canvas>
+            
+            @if (_isLoading)
+            {
+                <div class="sg-gantt-loading-overlay">
+                    <SgLoader />
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (ShowStatusBar)
+    {
+        <div class="sg-gantt-status-bar">
+            <span>Tasks: @Tasks.Count</span>
+            <span>Zoom: @TimeScale.ZoomLevel (1-7)</span>
+            <span>@_statusText</span>
+        </div>
+    }
+</div>

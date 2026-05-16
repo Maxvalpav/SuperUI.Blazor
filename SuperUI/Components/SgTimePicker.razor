@@ -2,7 +2,8 @@
 @using System.Linq.Expressions
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
-@implements IDisposable
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -56,6 +57,14 @@
                                 @onclick="() => _mode = PickerMode.Minutes">
                             @GetDisplayMinute()
                         </button>
+                        @if (ShowSeconds)
+                        {
+                            <span class="sgc-time-separator">:</span>
+                            <button type="button" class="sgc-time-input-btn @(_mode == PickerMode.Seconds ? "active" : "")" 
+                                    @onclick="() => _mode = PickerMode.Seconds">
+                                @GetDisplaySecond()
+                            </button>
+                        }
                     </div>
                     @if (UseAmPm)
                     {
@@ -69,11 +78,8 @@
                 <div class="sgc-time-content">
                     @if (_viewType == ViewType.Clock)
                     {
-                        <div class="sgc-clock-face" 
-                             @onmousedown="HandleClockMouseDown" 
-                             @onmousemove="HandleClockMouseMove" 
-                             @onmouseup="HandleClockMouseUp"
-                             @onmouseleave="HandleClockMouseUp">
+                        <div class="sgc-clock-face" @ref="_clockFaceRef">
+                            <div class="sgc-clock-inner-ring"></div>
                             <div class="sgc-clock-center"></div>
                             <div class="sgc-clock-hand @(_isDragging ? "sgc-no-transition" : "")" style="transform: rotate(@(GetHandRotation())deg)">
                                 <div class="sgc-clock-hand-dot"></div>
@@ -84,19 +90,21 @@
                                 {
                                     var hour = h;
                                     var angle = (hour * 30);
-                                    <div class="sgc-clock-number" style="transform: translate(-50%, -50%) rotate(@(angle)deg) translateY(-85px) rotate(@(-angle)deg)">
+                                    var isSelected = IsHourSelected(hour);
+                                    <div class="sgc-clock-number @(isSelected ? "selected" : "")" style="transform: translate(-50%, -50%) rotate(@(angle)deg) translateY(-82px) rotate(@(-angle)deg)">
                                         @hour
                                     </div>
                                 }
                             }
                             else
                             {
-                                @for (int m = 0; m < 60; m += 5)
+                                @for (int i = 0; i < 60; i += 5)
                                 {
-                                    var min = m;
-                                    var angle = (min * 6);
-                                    <div class="sgc-clock-number" style="transform: translate(-50%, -50%) rotate(@(angle)deg) translateY(-85px) rotate(@(-angle)deg)">
-                                        @min.ToString("D2")
+                                    var val = i;
+                                    var angle = (val * 6);
+                                    var isSelected = (_mode == PickerMode.Minutes ? _pendingValue.Minutes : _pendingValue.Seconds) == val;
+                                    <div class="sgc-clock-number @(isSelected ? "selected" : "")" style="transform: translate(-50%, -50%) rotate(@(angle)deg) translateY(-82px) rotate(@(-angle)deg)">
+                                        @val.ToString("D2")
                                     </div>
                                 }
                             }
@@ -108,10 +116,11 @@
                              <div class="sgc-time-list-col">
                                 @for (int h = 0; h < (UseAmPm ? 12 : 24); h++)
                                 {
-                                    var hour = h + (UseAmPm ? 0 : 0);
-                                    if (UseAmPm && h == 0) hour = 12; // 12 AM/PM
+                                    var hour = h;
+                                    if (UseAmPm && h == 0) hour = 12;
                                     var currentH = hour;
-                                    <div class="sgc-time-list-item @(IsHourSelected(currentH) ? "sgc-selected" : "")" @onclick="() => SetHour(currentH)">
+                                    <div class="sgc-time-list-item @(IsHourSelected(currentH) ? "sgc-selected" : "")" 
+                                         @onclick="() => { SetHour(currentH); _mode = PickerMode.Minutes; }">
                                         @currentH.ToString("D2")
                                     </div>
                                 }
@@ -120,17 +129,31 @@
                                 @for (int m = 0; m < 60; m += MinuteStep)
                                 {
                                     var min = m;
-                                    <div class="sgc-time-list-item @(Value?.Minutes == min ? "sgc-selected" : "")" @onclick="() => SetMinute(min)">
+                                    <div class="sgc-time-list-item @(_pendingValue.Minutes == min ? "sgc-selected" : "")" 
+                                         @onclick="() => { SetMinute(min); if(ShowSeconds) _mode = PickerMode.Seconds; }">
                                         @min.ToString("D2")
                                     </div>
                                 }
                             </div>
+                            @if (ShowSeconds)
+                            {
+                                <div class="sgc-time-list-col">
+                                    @for (int s = 0; s < 60; s += 5)
+                                    {
+                                        var sec = s;
+                                        <div class="sgc-time-list-item @(_pendingValue.Seconds == sec ? "sgc-selected" : "")" 
+                                             @onclick="() => SetSecond(sec)">
+                                            @sec.ToString("D2")
+                                        </div>
+                                    }
+                                </div>
+                            }
                         </div>
                     }
                 </div>
 
                 <div class="sgc-time-footer">
-                    <button type="button" class="sgc-time-toggle-btn" @onclick="ToggleViewType">
+                    <button type="button" class="sgc-time-toggle-btn" @onclick="ToggleViewTypeAsync">
                         @if (_viewType == ViewType.Clock)
                         {
                             <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 15H2.75A1.75 1.75 0 011 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H2.75zM4 5.5a1 1 0 112 0 1 1 0 01-2 0zM7.75 5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5zM4 8.5a1 1 0 112 0 1 1 0 01-2 0zM7.75 8a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5zm-3.75 3a1 1 0 112 0 1 1 0 01-2 0zm3.75-.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg>
@@ -141,8 +164,8 @@
                         }
                     </button>
                     <div style="flex:1"></div>
-                    <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="CloseAsync">@Localizer["Cancel"]</button>
-                    <button type="button" class="sgc-btn sgc-sm" @onclick="ConfirmAsync">@Localizer["OK"]</button>
+                    <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="CloseAsync">@Localizer["Common_Cancel"]</button>
+                    <button type="button" class="sgc-btn sgc-sm" @onclick="ConfirmAsync">@Localizer["Common_OK"]</button>
                 </div>
             </div>
         }
@@ -159,7 +182,7 @@
 </div>
 
 @code {
-    private enum PickerMode { Hours, Minutes }
+    private enum PickerMode { Hours, Minutes, Seconds }
     private enum ViewType { Clock, List }
 
     private readonly string _labelId = "sg-time-label-" + Guid.NewGuid().ToString("N")[..8];
@@ -172,6 +195,11 @@
     private ViewType _viewType = ViewType.List;
     private TimeSpan _pendingValue;
     private bool _isDragging;
+    
+    private ElementReference _clockFaceRef;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _clockInstance;
+    private DotNetObjectReference<SgTimePicker>? _selfRef;
 
     private SgEditContextBinder<TimeSpan?>? _binder;
 
@@ -200,7 +228,7 @@
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private string ClearLabel => Localizer["Clear"];
+    private string ClearLabel => Localizer["Common_Clear"];
 
     private bool IsAm => _pendingValue.Hours < 12;
 
@@ -220,14 +248,22 @@
         if (!Value.HasValue) return "";
         var h = Value.Value.Hours;
         var m = Value.Value.Minutes;
+        var s = Value.Value.Seconds;
+        
+        string time;
         if (UseAmPm)
         {
             var ampm = h >= 12 ? "PM" : "AM";
             h = h % 12;
             if (h == 0) h = 12;
-            return $"{h:D2}:{m:D2} {ampm}";
+            time = $"{h:D2}:{m:D2}";
+            if (ShowSeconds) time += $":{s:D2}";
+            return $"{time} {ampm}";
         }
-        return $"{h:D2}:{m:D2}";
+        
+        time = $"{h:D2}:{m:D2}";
+        if (ShowSeconds) time += $":{s:D2}";
+        return time;
     }
 
     private string GetDisplayHour()
@@ -242,6 +278,7 @@
     }
 
     private string GetDisplayMinute() => _pendingValue.Minutes.ToString("D2");
+    private string GetDisplaySecond() => _pendingValue.Seconds.ToString("D2");
 
     private bool IsHourSelected(int h)
     {
@@ -259,29 +296,31 @@
         var h = _pendingValue.Hours;
         if (am && h >= 12) h -= 12;
         else if (!am && h < 12) h += 12;
-        _pendingValue = new TimeSpan(h, _pendingValue.Minutes, 0);
+        _pendingValue = new TimeSpan(h, _pendingValue.Minutes, _pendingValue.Seconds);
     }
 
     private void SetHour(int h)
     {
+        int finalH = h;
         if (UseAmPm)
         {
             var isPm = _pendingValue.Hours >= 12;
-            var finalH = h % 12;
+            finalH = h % 12;
             if (isPm) finalH += 12;
             else if (finalH == 12) finalH = 0; // 12 AM is 0
-            _pendingValue = new TimeSpan(finalH, _pendingValue.Minutes, 0);
         }
-        else
-        {
-            _pendingValue = new TimeSpan(h, _pendingValue.Minutes, 0);
-        }
-        _mode = PickerMode.Minutes;
+        _pendingValue = new TimeSpan(finalH, _pendingValue.Minutes, _pendingValue.Seconds);
+        // Не переключаем режим здесь, так как SetHour вызывается при каждом OnClockMove
     }
 
     private void SetMinute(int m)
     {
-        _pendingValue = new TimeSpan(_pendingValue.Hours, m, 0);
+        _pendingValue = new TimeSpan(_pendingValue.Hours, m, _pendingValue.Seconds);
+    }
+
+    private void SetSecond(int s)
+    {
+        _pendingValue = new TimeSpan(_pendingValue.Hours, _pendingValue.Minutes, s);
     }
 
     private double GetHandRotation()
@@ -291,44 +330,41 @@
             var h = _pendingValue.Hours % 12;
             return h * 30;
         }
-        return _pendingValue.Minutes * 6;
+        if (_mode == PickerMode.Minutes) return _pendingValue.Minutes * 6;
+        return _pendingValue.Seconds * 6;
     }
 
-    private void HandleClockMouseDown(MouseEventArgs e)
+    [JSInvokable]
+    public void OnClockMove(double angle)
     {
         _isDragging = true;
-        UpdateFromPoint(e.OffsetX, e.OffsetY);
+        UpdateFromAngle(angle);
     }
 
-    private void HandleClockMouseMove(MouseEventArgs e)
+    [JSInvokable]
+    public async Task OnClockUp()
     {
-        if (_isDragging) UpdateFromPoint(e.OffsetX, e.OffsetY);
-    }
-
-    private void HandleClockMouseUp(MouseEventArgs e)
-    {
-        if (_isDragging)
+        _isDragging = false;
+        if (_mode == PickerMode.Hours)
         {
-            _isDragging = false;
-            if (_mode == PickerMode.Hours) _mode = PickerMode.Minutes;
+            _mode = PickerMode.Minutes;
         }
+        else if (_mode == PickerMode.Minutes && ShowSeconds)
+        {
+            _mode = PickerMode.Seconds;
+        }
+        await InvokeAsync(StateHasChanged);
     }
 
-    private void UpdateFromPoint(double x, double y)
+    private void UpdateFromAngle(double angle)
     {
-        // Center is 100, 100 (assuming 200x200 face)
-        var dx = x - 100;
-        var dy = y - 100;
-        var angle = Math.Atan2(dy, dx) * (180 / Math.PI) + 90;
-        if (angle < 0) angle += 360;
-
         if (_mode == PickerMode.Hours)
         {
             var h = (int)Math.Round(angle / 30);
             if (h == 0) h = 12;
             SetHour(h);
         }
-        else
+        else if (_mode == PickerMode.Minutes)
         {
             var m = (int)Math.Round(angle / 6);
             if (m == 60) m = 0;
@@ -342,6 +378,13 @@
             
             SetMinute(m);
         }
+        else if (_mode == PickerMode.Seconds)
+        {
+            var s = (int)Math.Round(angle / 6);
+            if (s == 60) s = 0;
+            SetSecond(s);
+        }
+        StateHasChanged();
     }
 
     private void ToggleViewType() => _viewType = _viewType == ViewType.Clock ? ViewType.List : ViewType.Clock;
@@ -354,8 +397,49 @@
         {
             _pendingValue = Value ?? DateTime.Now.TimeOfDay;
             _mode = PickerMode.Hours;
+            
+            // Initialize JS clock if in clock mode
+            if (_viewType == ViewType.Clock)
+            {
+                await Task.Delay(50); // Wait for popup to render
+                await InitJsClockAsync();
+            }
         }
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task InitJsClockAsync()
+    {
+        try
+        {
+            if (_module == null)
+            {
+                _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-timepicker.js");
+            }
+            
+            if (_clockInstance != null)
+            {
+                await _clockInstance.InvokeVoidAsync("dispose");
+                _clockInstance = null;
+            }
+            
+            _selfRef ??= DotNetObjectReference.Create(this);
+            _clockInstance = await _module.InvokeAsync<IJSObjectReference>("initClock", _selfRef, _clockFaceRef);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to init clock JS: {ex.Message}");
+        }
+    }
+
+    private async Task ToggleViewTypeAsync()
+    {
+        _viewType = _viewType == ViewType.Clock ? ViewType.List : ViewType.Clock;
+        if (_viewType == ViewType.Clock)
+        {
+            await Task.Delay(50);
+            await InitJsClockAsync();
+        }
     }
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
@@ -387,6 +471,16 @@
         _binder?.NotifyFieldChanged();
     }
 
-    public void Dispose() => _binder?.Dispose();
+    public async ValueTask DisposeAsync()
+    {
+        if (_clockInstance != null)
+        {
+            try { await _clockInstance.InvokeVoidAsync("dispose"); } catch { }
+            await _clockInstance.DisposeAsync();
+        }
+        if (_module != null) await _module.DisposeAsync();
+        _selfRef?.Dispose();
+        _binder?.Dispose();
+    }
 }
 

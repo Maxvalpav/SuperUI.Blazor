@@ -16,7 +16,7 @@
     {
         <div class="sg-chart-error" role="alert">
             <p>@_error</p>
-            <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Chart_Retry"]</button>
+            <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Common_Retry"]</button>
         </div>
     }
     else
@@ -24,14 +24,14 @@
         @if (Options?.ShowToolbar == true && _chartReady)
         {
             <div class="sg-chart-toolbar" role="toolbar">
-                <button type="button" class="sg-chart-tool" title="@Localizer["Chart_ResetZoom"]"
-                        @onclick="ResetZoomAsync" aria-label="@Localizer["Chart_ResetZoom"]">
+                <button type="button" class="sg-chart-tool" title="@Localizer["Common_Reset"]"
+                        @onclick="ResetZoomAsync" aria-label="@Localizer["Common_Reset"]">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                         <path fill="currentColor" d="M3 8a5 5 0 1 1 1.46 3.54l1-1A3.5 3.5 0 1 0 4.5 8H6L4 10.5 2 8h1Z"/>
                     </svg>
                 </button>
-                <button type="button" class="sg-chart-tool" title="@Localizer["Chart_ExportPng"]"
-                        @onclick="@(() => ExportImageAsync("png"))" aria-label="@Localizer["Chart_ExportPng"]">
+                <button type="button" class="sg-chart-tool" title="@Localizer["Common_Export"]"
+                        @onclick="@(() => ExportImageAsync("png"))" aria-label="@Localizer["Common_Export"]">
                     <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
                         <path fill="currentColor" d="M8 1v8.6L5.7 7.3 4.3 8.7 8 12.4l3.7-3.7-1.4-1.4L9 9.6V1H8Zm-6 12h12v2H2v-2Z"/>
                     </svg>
@@ -51,12 +51,12 @@
                 <div class="sg-chart-skeleton">
                     <span></span><span></span><span></span><span></span><span></span>
                 </div>
-                <span class="sg-chart-loading-text">@Localizer["Chart_Loading"]</span>
+                <span class="sg-chart-loading-text">@Localizer["Common_Loading"]</span>
             </div>
         }
         else if (_isEmpty)
         {
-            <div class="sg-chart-empty">@Localizer["Chart_NoData"]</div>
+            <div class="sg-chart-empty">@Localizer["Common_NoData"]</div>
         }
     }
 </div>
@@ -624,7 +624,7 @@
     /// <summary>Refreshes the chart with current parameters.</summary>
     public async Task RefreshAsync()
     {
-        if (!_chartReady)
+        if (!_chartReady || IsDisposed)
         {
             _refreshPending = true;
             return;
@@ -634,25 +634,34 @@
         {
             _error = null;
             var config = BuildChartConfig();
-            // JS-сторона возвращает false, если chartId не найден в кеше
-            // (типичный кейс — переключение SgTabs пересоздало DOM, а .NET-объект
-            // считает себя «готовым»). В этом случае делаем полный re-init.
-            var ok = await SafeInvokeAsync<bool>("updateChart", ResolvedId, config);
+            
+            // Try smooth update first. 
+            // If it fails (JS exception) or returns false (instance lost or type changed),
+            // we fall back to full re-initialization.
+            bool ok = false;
+            try
+            {
+                ok = await SafeInvokeAsync<bool>("updateChart", ResolvedId, config);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "SgChart: smooth update failed for {ChartId}, falling back to full re-init.", ResolvedId);
+            }
+
             if (!ok)
             {
-                _chartReady = false;
+                // Fallback to full re-initialization (destroy & recreate).
+                // InitializeChartAsync has its own error handling and shows Chart_FailedToInitialize.
                 await InitializeChartAsync();
                 return;
             }
+
             CaptureSnapshot();
             await InvokeAsync(StateHasChanged);
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "SgChart: failed to refresh chart (id={ChartId}).", ResolvedId);
+            Logger.LogError(ex, "SgChart: unexpected error during refresh (id={ChartId}).", ResolvedId);
             _error = Localizer["Chart_FailedToRefresh"];
             await InvokeAsync(StateHasChanged);
         }

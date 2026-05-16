@@ -1,0 +1,226 @@
+@page "/gantt-canvas"
+@using SuperUI.Components.SgGantCanvas
+@using SuperUI.Components.SgGantCanvas.Models
+
+<PageTitle>SgGantCanvas - Canvas Gantt Chart</PageTitle>
+
+<SgCard Title="SgGantCanvas - High-Performance Canvas Gantt">
+    
+    <div style="height: calc(100vh - 150px); margin: -16px; background: #fff; position: relative;">
+        <SgGantCanvas @bind-Tasks="_tasks" 
+                      @bind-Dependencies="_dependencies"
+                      ViewOptions="_viewOptions"
+                      Theme="_theme"
+                      OnTaskClick="OnTaskClick"
+                      OnTaskDoubleClick="OpenEditDialog"
+                      OnSelectionChanged="OnSelectionChanged"
+                      OnGenerateData="GenerateData"
+                      OnThemeChanged="HandleThemeChanged"
+                      Height="100%" />
+    </div>
+
+    <SgModal @bind-Visible="_showEditDialog" Title="Edit Task" Width="500px">
+        <div style="padding: 16px;">
+            @if (_editingTask != null)
+            {
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 4px;">Task Name</label>
+                    <SgTextBox @bind-Value="_editingTask.Name" />
+                </div>
+                <div style="display: flex; gap: 16px; margin-bottom: 16px;">
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 4px;">Start Date</label>
+                        <SgDatePicker @bind-Value="_editStart" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; margin-bottom: 4px;">End Date</label>
+                        <SgDatePicker @bind-Value="_editEnd" />
+                    </div>
+                </div>
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 4px;">Progress (@(Math.Round(_editingTask.Progress * 100))%)</label>
+                    <input type="range" style="width: 100%;" min="0" max="1" step="0.01" @bind-value="_editingTask.Progress" />
+                </div>
+            }
+        </div>
+        <div slot="footer" style="display: flex; justify-content: flex-end; gap: 8px; padding: 16px; border-top: 1px solid #eee;">
+            <SgButton Text="Cancel" OnClick="() => _showEditDialog = false" />
+            <SgButton Text="Save" Variant="SgButtonVariant.Primary" OnClick="SaveTask" />
+        </div>
+    </SgModal>
+
+    <div style="margin-top: 24px;">
+        <h3>Event Log</h3>
+        <div style="height: 150px; overflow-y: auto; background: #f5f5f5; padding: 12px; border-radius: 4px; font-family: monospace; font-size: 12px;">
+            @foreach (var log in _logs)
+            {
+                <div>@log</div>
+            }
+        </div>
+    </div>
+</SgCard>
+
+@code {
+    private List<GanttTask> _tasks = new();
+    private List<GanttDependency> _dependencies = new();
+    private List<string> _logs = new();
+    private GanttViewOptions _viewOptions = new() { ShowCriticalPath = true };
+    private GanttTheme _theme = new();
+
+    private bool _showEditDialog;
+    private GanttTask? _editingTask;
+    private DateTime? _editStart;
+    private DateTime? _editEnd;
+
+    protected override void OnInitialized()
+    {
+        GenerateData(100);
+    }
+
+    private void GenerateData(int count)
+    {
+        var newTasks = new List<GanttTask>();
+        var newDependencies = new List<GanttDependency>();
+        _logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] Generating {count} tasks...");
+
+        var now = DateTime.Today;
+        var random = new Random();
+
+        int currentRow = 0;
+        for (int i = 0; i < count / 10; i++)
+        {
+            // Create a Summary Task
+            var summaryId = $"S{i}";
+            var summaryStart = now.AddDays(random.Next(-5, 20));
+            var summary = new GanttTask
+            {
+                Id = summaryId,
+                Name = $"Phase {i + 1} (Summary)",
+                Start = summaryStart,
+                End = summaryStart.AddDays(random.Next(20, 40)),
+                IsSummary = true,
+                RowIndex = currentRow++,
+                Color = "#333333"
+            };
+            newTasks.Add(summary);
+
+            // Create subtasks
+            for (int j = 0; j < 9; j++)
+            {
+                var start = summary.Start.AddDays(random.Next(0, 15));
+                var duration = random.Next(2, 10);
+                var isMilestone = random.NextDouble() < 0.1;
+                
+                var subtask = new GanttTask
+                {
+                    Id = $"T{i}_{j}",
+                    ParentId = summaryId,
+                    Name = isMilestone ? $"Milestone {i}.{j}" : $"Task {i}.{j}",
+                    Start = start,
+                    End = isMilestone ? start : start.AddDays(duration),
+                    Progress = isMilestone ? 0 : random.NextDouble(),
+                    RowIndex = currentRow++,
+                    IsMilestone = isMilestone,
+                    Level = 1,
+                    Color = GetRandomColor(random)
+                };
+                newTasks.Add(subtask);
+
+                if (j > 0 && random.NextDouble() < 0.4)
+                {
+                    newDependencies.Add(new GanttDependency
+                    {
+                        FromTaskId = $"T{i}_{j - 1}",
+                        ToTaskId = subtask.Id,
+                        Type = DependencyType.FinishToStart
+                    });
+                }
+            }
+        }
+        
+        _tasks = newTasks;
+        _dependencies = newDependencies;
+        _logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] Data generated: {_tasks.Count} tasks.");
+    }
+
+    private string? GetRandomColor(Random r)
+    {
+        string[] colors = { "#1890ff", "#52c41a", "#faad14", "#f5222d", "#722ed1", "#13c2c2", null };
+        return colors[r.Next(colors.Length)];
+    }
+
+    private void HandleThemeChanged(string themeName)
+    {
+        if (themeName == "Dark")
+        {
+            _theme = new GanttTheme
+            {
+                Type = GanttThemeType.Dark,
+                BackgroundColor = "#1e1e2e",
+                TextColor = "#ffffff",
+                GridColor = "#333344"
+            };
+        }
+        else
+        {
+            _theme = new GanttTheme { Type = GanttThemeType.Light };
+        }
+        StateHasChanged();
+    }
+
+    private void OnTaskClick(GanttTask task)
+    {
+        _logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] Clicked: {task.Name}");
+        StateHasChanged();
+    }
+
+    private void OnTaskDoubleClick(GanttTask task)
+    {
+        _logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] Double Clicked: {task.Name}");
+        StateHasChanged();
+    }
+
+    private void OpenEditDialog(GanttTask task)
+    {
+        // Clone task for editing
+        _editingTask = new GanttTask
+        {
+            Id = task.Id,
+            Name = task.Name,
+            Start = task.Start,
+            End = task.End,
+            Progress = task.Progress,
+            IsSummary = task.IsSummary,
+            IsMilestone = task.IsMilestone
+        };
+        _editStart = _editingTask.Start;
+        _editEnd = _editingTask.End;
+        _showEditDialog = true;
+        StateHasChanged();
+    }
+
+    private void SaveTask()
+    {
+        if (_editingTask != null)
+        {
+            var original = _tasks.FirstOrDefault(t => t.Id == _editingTask.Id);
+            if (original != null)
+            {
+                original.Name = _editingTask.Name;
+                original.Start = _editStart ?? original.Start;
+                original.End = _editEnd ?? original.End;
+                original.Progress = _editingTask.Progress;
+                
+                // Force refresh
+                _tasks = new List<GanttTask>(_tasks);
+            }
+        }
+        _showEditDialog = false;
+    }
+
+    private void OnSelectionChanged(List<GanttTask> tasks)
+    {
+        _logs.Insert(0, $"[{DateTime.Now:HH:mm:ss}] Selection Changed: {tasks.Count} tasks");
+        StateHasChanged();
+    }
+}
