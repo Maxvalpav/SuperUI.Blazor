@@ -1,0 +1,167 @@
+@namespace SuperUI.Components.Llm
+@inherits ComponentBase
+
+<div class="sg-chat sg-puter-chat @CssClass" @attributes="AdditionalAttributes">
+    <div class="sg-chat-main">
+        @* Mode switcher bar - Structured like SgChat *@
+        <div class="sg-chat-modebar">
+            <div class="sg-chat-mode-group">
+                <button type="button" class="sg-chat-mode-btn active">
+                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                    Puter AI
+                </button>
+            </div>
+
+            @if (_messages.Count > 0)
+            {
+                <button type="button" class="sg-chat-mode-clear" @onclick="ClearHistory" title="@Localizer["Common_Clear"]" disabled="@_isThinking">
+                    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                        <path fill="currentColor" d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
+                        <path fill="currentColor" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
+                    </svg>
+                    @Localizer["Common_Clear"]
+                </button>
+            }
+
+            <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+                @if (_messages.Count > 0 && !_isThinking)
+                {
+                    <div class="sg-chat-export-wrap">
+                        <button type="button" class="sg-chat-export-btn" @onclick="ToggleExportMenu" title="@Localizer["Common_Export"]">
+                            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                                <path fill="currentColor" d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+                                <path fill="currentColor" d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/>
+                            </svg>
+                            @Localizer["Common_Export"]
+                        </button>
+                        @if (_showExportMenu)
+                        {
+                            <div class="sg-chat-export-menu" @onclick:stopPropagation="true">
+                                <button type="button" @onclick="@(() => ExportAsync("md"))">📄 Markdown</button>
+                                <button type="button" @onclick="@(() => ExportAsync("txt"))">📝 Text</button>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (_isSignedIn)
+                {
+                    <SgButton Text="Sign Out" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="SignOut" />
+                }
+                else
+                {
+                    <SgButton Text="Sign In" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="SignIn" />
+                }
+                
+                <span class="sg-chat-mode-badge direct">
+                    <span style="display: flex; align-items: center; gap: 4px;">
+                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                        </svg>
+                        <select @bind="_selectedModel" class="sg-puter-model-select" title="Select Model">
+                            @foreach (var group in _puterModels.GroupBy(x => x.Description))
+                            {
+                                <optgroup label="@group.Key">
+                                    @foreach (var model in group)
+                                    {
+                                        <option value="@model.Id">@model.Name</option>
+                                    }
+                                </optgroup>
+                            }
+                        </select>
+                    </span>
+                </span>
+            </div>
+        </div>
+
+        <div class="sg-chat-messages" @ref="_messagesRef">
+            @if (_messages.Count == 0)
+            {
+                <div class="sg-chat-empty">
+                    <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <p>Welcome to Puter AI. Cloud-native assistant.</p>
+                    <div class="sg-puter-quick-actions">
+                        <SgButton Text="/img" Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@(() => _userInput = "/img A futuristic city")" />
+                        <SgButton Text="/kv_set" Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@(() => _userInput = "/kv_set key val")" />
+                        <SgButton Text="/kv_get" Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="@(() => _userInput = "/kv_get key")" />
+                    </div>
+                </div>
+            }
+            else
+            {
+                @foreach (var msg in _messages)
+                {
+                    <div class="sg-chat-msg @(msg.Role == "user" ? "sg-chat-msg-user" : "sg-chat-msg-bot")">
+                        <div class="sg-chat-msg-bubble @(msg.Role != "user" ? "sg-chat-md" : "")">
+                            @((MarkupString)GetHtml(msg))
+                        </div>
+                    </div>
+                }
+                
+                @if (_streamingMsg != null)
+                {
+                    <div class="sg-chat-msg sg-chat-msg-bot sg-chat-msg-streaming">
+                        <div class="sg-chat-msg-bubble sg-chat-md">
+                            @((MarkupString)GetHtml(_streamingMsg))
+                        </div>
+                    </div>
+                }
+
+                @if (_isThinking)
+                {
+                    <div class="sg-chat-msg sg-chat-msg-bot">
+                        <div class="sg-chat-msg-bubble sg-chat-thinking">
+                            <span class="sg-chat-dot"></span>
+                            <span class="sg-chat-dot"></span>
+                            <span class="sg-chat-dot"></span>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (_error != null)
+        {
+            <div class="sg-chat-alert error">@_error</div>
+        }
+
+        @* Streaming progress bar *@
+        @if (_streaming)
+        {
+            <div class="sg-chat-stream-bar" role="status" aria-live="polite">
+                <div class="sg-chat-stream-fill"></div>
+                <span class="sg-chat-stream-label">
+                    @if (_tokenCount > 0)
+                    {
+                        <span>@_tokenCount tokens</span>
+                        <span class="sg-chat-stream-sep">·</span>
+                    }
+                    <span class="sg-chat-stream-pulse">@Localizer["Rag_Generating"]</span>
+                </span>
+            </div>
+        }
+
+        <div class="sg-chat-footer">
+            <div class="sg-chat-input-row">
+                <textarea class="sg-chat-textarea @(_isThinking ? "busy" : "")" 
+                          placeholder="Ask anything or use commands..." 
+                          @bind="_userInput" 
+                          @bind:event="oninput"
+                          @onkeydown="HandleKeyDown"
+                          disabled="@_isThinking"></textarea>
+                
+                <SgIconButton Icon="@(_isThinking ? null : SgIcons.Send)" 
+                              Loading="_isThinking"
+                              Variant="SgButtonVariant.Primary"
+                              Size="SgSize.Md"
+                              OnClick="SendMessage" 
+                              Disabled="@(string.IsNullOrWhiteSpace(_userInput) || _isThinking)"
+                              CssClass="sg-chat-send-btn" />
+            </div>
+        </div>
+    </div>
+</div>

@@ -1,0 +1,46 @@
+@namespace SuperUI.Components.Llm.SubComponents.FieldComponents
+@using SuperUI.Components.Llm.Models
+@using SuperUI.Components
+
+<div class="sg-extractor-field">
+    <SgNumberEdit TValue="double"
+                  Label="@Field.Label"
+                  Required="@Field.Required"
+                  Min="@Field.Min"
+                  Max="@Field.Max"
+                  Step="@(Field.Type == FieldType.Integer ? 1 : 0.01)"
+                  Placeholder="@Field.Placeholder"
+                  Hint="@Field.Description"
+                  ErrorText="@Error"
+                  Value="@CurrentValue"
+                  ValueChanged="HandleChanged"
+                  Block="true" />
+</div>
+
+@code {
+    [Parameter] public FieldDefinition Field { get; set; } = default!;
+    [Parameter] public object? Value { get; set; }
+    [Parameter] public EventCallback<object?> ValueChanged { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private double? CurrentValue
+    {
+        get
+        {
+            if (Value is null) return null;
+            if (Value is double d) return d;
+            if (Value is int i) return i;
+            if (Value is decimal m) return (double)m;
+            if (double.TryParse(Value.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+                return v;
+            return null;
+        }
+    }
+
+    private Task HandleChanged(double? value)
+    {
+        if (value is null) return ValueChanged.InvokeAsync(null);
+        if (Field.Type == FieldType.Integer) return ValueChanged.InvokeAsync((int)Math.Round(value.Value));
+        return ValueChanged.InvokeAsync(value.Value);
+    }
+}

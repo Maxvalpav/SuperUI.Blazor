@@ -1,0 +1,134 @@
+@namespace SuperUI.Components.Llm.SubComponents
+@using SuperUI.Components.Llm.Models
+@using SuperUI.Components.Llm.SubComponents.FieldComponents
+
+<div class="sg-dynamic-form">
+    @foreach (var formSection in Schema.Sections.OrderBy(s => s.Order))
+    {
+        <div class="sg-form-section">
+            <h3 class="sg-section-title">@formSection.Title</h3>
+            <div class="sg-section-grid">
+                @foreach (var fieldKey in formSection.FieldKeys)
+                {
+                    var field = Schema.Fields.FirstOrDefault(f => f.Key == fieldKey);
+                    if (field != null)
+                    {
+                        @RenderField(field)
+                    }
+                }
+            </div>
+        </div>
+    }
+
+    @* Fields not in any section *@
+    @{
+        var allSectionFieldKeys = Schema.Sections.SelectMany(s => s.FieldKeys).ToHashSet();
+        var orphanFields = Schema.Fields.Where(f => !allSectionFieldKeys.Contains(f.Key)).OrderBy(f => f.Order ?? 999);
+    }
+    
+    @if (orphanFields.Any())
+    {
+        <div class="sg-form-section">
+            <h3 class="sg-section-title">Other Information</h3>
+            <div class="sg-section-grid">
+                @foreach (var field in orphanFields)
+                {
+                    @RenderField(field)
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public DocumentSchema Schema { get; set; } = new();
+    [Parameter] public Dictionary<string, object?> Values { get; set; } = new();
+    [Parameter] public EventCallback<Dictionary<string, object?>> ValuesChanged { get; set; }
+    [Parameter] public Dictionary<string, string> ValidationErrors { get; set; } = new();
+
+    private RenderFragment RenderField(FieldDefinition field) => builder =>
+    {
+        var value = Values.TryGetValue(field.Key, out var val) ? val : field.DefaultValue;
+        var error = ValidationErrors.TryGetValue(field.Key, out var validationError) ? validationError : null;
+        
+        builder.OpenRegion(field.Key.GetHashCode());
+        
+        switch (field.Type)
+        {
+            case FieldType.TextArea:
+            case FieldType.Address:
+                builder.OpenComponent<TextAreaField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+
+            case FieldType.Number:
+            case FieldType.Integer:
+                builder.OpenComponent<NumberField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+                
+            case FieldType.Date:
+            case FieldType.DateTime:
+                builder.OpenComponent<DateField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+
+            case FieldType.Boolean:
+                builder.OpenComponent<CheckboxField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+
+            case FieldType.Select:
+            case FieldType.MultiSelect:
+                builder.OpenComponent<SelectField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+
+            case FieldType.Table:
+                builder.OpenComponent<TableField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+
+            default:
+                builder.OpenComponent<TextField>(0);
+                builder.AddAttribute(1, "Field", field);
+                builder.AddAttribute(2, "Value", value);
+                builder.AddAttribute(3, "Error", error);
+                builder.AddAttribute(4, "ValueChanged", EventCallback.Factory.Create<object?>(this, v => HandleFieldChanged(field.Key, v)));
+                builder.CloseComponent();
+                break;
+        }
+        
+        builder.CloseRegion();
+    };
+
+    private async Task HandleFieldChanged(string key, object? value)
+    {
+        Values[key] = value;
+        await ValuesChanged.InvokeAsync(Values);
+    }
+}

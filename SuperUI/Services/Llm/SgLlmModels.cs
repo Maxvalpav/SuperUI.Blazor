@@ -15,6 +15,8 @@ public class SgLlmAttachment
     public string Base64 { get; set; } = string.Empty;
     public bool IsImage { get; set; }
     public bool IsPdf { get; set; }
+    public bool IsVideo { get; set; }
+    public bool IsText { get; set; }
 }
 
 public class SgLlmMessage

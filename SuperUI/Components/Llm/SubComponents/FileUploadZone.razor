@@ -1,0 +1,82 @@
+@namespace SuperUI.Components.Llm.SubComponents
+@using SuperUI.Components.Llm.Models
+@using Microsoft.AspNetCore.Components.Forms
+@inject IJSRuntime JS
+
+<div class="sg-upload-zone @(isDragOver ? "drag-over" : "")"
+     @ondragover="HandleDragOver"
+     @ondragover:preventDefault="true"
+     @ondragleave="HandleDragLeave"
+     @ondrop="HandleDrop"
+     @ondrop:preventDefault="true"
+     @onclick="TriggerPicker">
+    
+    <InputFile @ref="inputFile" 
+               OnChange="OnFilesSelected" 
+               multiple 
+               style="display:none" 
+               accept=".pdf,.docx,.jpg,.jpeg,.png,.webp" />
+
+    <div class="sg-upload-content">
+        <div class="sg-upload-icon">📁</div>
+        <div class="sg-upload-text">
+            <strong>Click or drag files here to upload</strong>
+            <span>Supports PDF, Word, Images</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public EventCallback<List<UploadedFile>> OnFilesUploaded { get; set; }
+
+    private InputFile? inputFile;
+    private bool isDragOver;
+
+    private void HandleDragOver() => isDragOver = true;
+    private void HandleDragLeave() => isDragOver = false;
+
+    private async Task HandleDrop(DragEventArgs e)
+    {
+        isDragOver = false;
+        // Native drag-drop for InputFile is tricky in Blazor without a hidden input,
+        // so we usually rely on the click trigger or JS interop for full drag-drop support.
+    }
+
+    private async Task TriggerPicker()
+    {
+        await JS.InvokeVoidAsync("eval", "document.querySelector('.sg-upload-zone input').click()");
+    }
+
+    private async Task OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        var uploadedFiles = new List<UploadedFile>();
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            using var stream = file.OpenReadStream(10 * 1024 * 1024); // 10MB limit
+            using var ms = new System.IO.MemoryStream();
+            await stream.CopyToAsync(ms);
+            
+            uploadedFiles.Add(new UploadedFile
+            {
+                FileName = file.Name,
+                ContentType = file.ContentType,
+                Content = ms.ToArray(),
+                Size = file.Size,
+                Category = MapCategory(file.ContentType)
+            });
+        }
+
+        if (uploadedFiles.Any())
+        {
+            await OnFilesUploaded.InvokeAsync(uploadedFiles);
+        }
+    }
+
+    private FileCategory MapCategory(string contentType) => contentType switch
+    {
+        "application/pdf" => FileCategory.Pdf,
+        string s when s.Contains("word") || s.Contains("officedocument") => FileCategory.Word,
+        string s when s.StartsWith("image/") => FileCategory.Image,
+        _ => FileCategory.Unknown
+    };
+}

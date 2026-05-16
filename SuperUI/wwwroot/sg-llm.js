@@ -43,8 +43,15 @@ function _buildMultimodalContent(text, attachments) {
   for (const att of attachments) {
     if (att.isImage) {
       parts.push({ type: 'image_url', image_url: { url: `data:${att.mimeType};base64,${att.base64}` } });
-    } else if (att.isPdf) {
-      parts.push({ type: 'file', file: { filename: att.name, file_data: `data:${att.mimeType};base64,${att.base64}` } });
+    } else if (att.isPdf || att.isVideo) {
+      // Pass as file part (OpenRouter/OpenAI-compatible)
+      parts.push({ 
+        type: 'file', 
+        file: { 
+          name: att.name, 
+          data: `data:${att.mimeType};base64,${att.base64}` 
+        } 
+      });
     } else {
       try {
         const decoded = atob(att.base64);

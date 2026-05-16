@@ -1,0 +1,127 @@
+@namespace SuperUI.Components.Llm.SubComponents.FieldComponents
+@using SuperUI.Components.Llm.Models
+@using SuperUI.Components
+@using System.Text.Json
+
+<div class="sg-extractor-field sg-extractor-table-field">
+    <label class="sgc-label">
+        @Field.Label
+        @if (Field.Required) { <span class="sg-required">*</span> }
+    </label>
+
+    <div class="sg-table-container">
+        <table class="sg-extractor-table">
+            <thead>
+                <tr>
+                    @foreach (var col in Field.Columns ?? new())
+                    {
+                        <th>@col.Label</th>
+                    }
+                    <th class="sg-table-actions-col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (!Rows.Any())
+                {
+                    <tr>
+                        <td colspan="@((Field.Columns?.Count ?? 0) + 1)" class="sg-table-empty">No rows yet</td>
+                    </tr>
+                }
+                @foreach (var row in Rows)
+                {
+                    <tr>
+                        @foreach (var col in Field.Columns ?? new())
+                        {
+                            <td>
+                                <input type="@CellInputType(col)"
+                                       class="sg-table-input"
+                                       value="@GetRowValue(row, col.Key)"
+                                       @onchange="@(e => UpdateRowValue(row, col.Key, e.Value))" />
+                            </td>
+                        }
+                        <td class="sg-table-actions-col">
+                            <SgIconButton Icon="✕"
+                                          OnClick="() => RemoveRow(row)"
+                                          Size="SgSize.Sm"
+                                          Title="Remove row" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div class="sg-table-toolbar">
+        <SgButton Text="+ Add row"
+                  Variant="SgButtonVariant.Outlined"
+                  Size="SgSize.Sm"
+                  OnClick="AddRow" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <span class="sgc-error">@Error</span>
+    }
+</div>
+
+@code {
+    [Parameter] public FieldDefinition Field { get; set; } = default!;
+    [Parameter] public object? Value { get; set; }
+    [Parameter] public EventCallback<object?> ValueChanged { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private List<Dictionary<string, object?>> Rows = new();
+
+    protected override void OnParametersSet()
+    {
+        if (Value is string json)
+        {
+            try { Rows = JsonSerializer.Deserialize<List<Dictionary<string, object?>>>(json) ?? new(); }
+            catch { Rows = new(); }
+        }
+        else if (Value is List<Dictionary<string, object?>> list)
+        {
+            Rows = list;
+        }
+        else if (Value is JsonElement je && je.ValueKind == JsonValueKind.Array)
+        {
+            try { Rows = JsonSerializer.Deserialize<List<Dictionary<string, object?>>>(je.GetRawText()) ?? new(); }
+            catch { Rows = new(); }
+        }
+    }
+
+    private string CellInputType(FieldDefinition col) => col.Type switch
+    {
+        FieldType.Number or FieldType.Integer => "number",
+        FieldType.Date => "date",
+        FieldType.DateTime => "datetime-local",
+        FieldType.Email => "email",
+        FieldType.Phone => "tel",
+        _ => "text"
+    };
+
+    private object? GetRowValue(Dictionary<string, object?> row, string key) =>
+        row.TryGetValue(key, out var val) ? val : null;
+
+    private async Task UpdateRowValue(Dictionary<string, object?> row, string key, object? val)
+    {
+        row[key] = val;
+        await NotifyChanged();
+    }
+
+    private async Task AddRow()
+    {
+        var newRow = new Dictionary<string, object?>();
+        foreach (var col in Field.Columns ?? new()) newRow[col.Key] = col.DefaultValue;
+        Rows.Add(newRow);
+        await NotifyChanged();
+    }
+
+    private async Task RemoveRow(Dictionary<string, object?> row)
+    {
+        Rows.Remove(row);
+        await NotifyChanged();
+    }
+
+    private Task NotifyChanged() => ValueChanged.InvokeAsync(Rows);
+}

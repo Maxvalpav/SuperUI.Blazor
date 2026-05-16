@@ -1,0 +1,32 @@
+@namespace SuperUI.Components.Llm.SubComponents.FieldComponents
+@using SuperUI.Components.Llm.Models
+@using SuperUI.Components
+
+<div class="sg-extractor-field">
+    <SgCheckBox Label="@LabelText"
+                Hint="@Field.Description"
+                ErrorText="@Error"
+                Value="@CurrentValue"
+                ValueChanged="HandleChanged" />
+</div>
+
+@code {
+    [Parameter] public FieldDefinition Field { get; set; } = default!;
+    [Parameter] public object? Value { get; set; }
+    [Parameter] public EventCallback<object?> ValueChanged { get; set; }
+    [Parameter] public string? Error { get; set; }
+
+    private string LabelText => Field.Required ? $"{Field.Label} *" : Field.Label;
+
+    private bool CurrentValue
+    {
+        get
+        {
+            if (Value is bool b) return b;
+            if (Value is string s) return bool.TryParse(s, out var p) && p;
+            return false;
+        }
+    }
+
+    private Task HandleChanged(bool value) => ValueChanged.InvokeAsync(value);
+}

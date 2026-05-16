@@ -1,0 +1,278 @@
+@namespace SuperUI.Components.Llm
+@using SuperUI.Components
+@using SuperUI.Components.Llm.Models
+@using SuperUI.Components.Llm.SubComponents
+@using SuperUI.Services.Llm
+@inject IOpenAiService OpenAiService
+@inject ILlmService LlmService
+@inject IPdfExportService PdfExportService
+@inject IWordExportService WordExportService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="sg-document-extractor @CssClass">
+    <div class="sg-extractor-header">
+        <h2>Document AI Extractor</h2>
+        <p>Upload documents to automatically extract data and generate forms.</p>
+    </div>
+
+    @if (_state == ExtractorState.Idle || _state == ExtractorState.FilesLoaded)
+    {
+        <SettingsPanel Settings="_settings"
+                       OpenRouterModels="_openRouterModels"
+                       LoadModelsRequested="LoadOpenRouterModels" />
+
+        <FileUploadZone OnFilesUploaded="HandleFilesUploaded" />
+
+        @if (_uploadedFiles.Any())
+        {
+            <div class="sg-file-preview-section">
+                <div class="sg-file-preview-head">
+                    <h4>Uploaded Files (@_uploadedFiles.Count)</h4>
+                    <SgButton Text="Clear All"
+                              Variant="SgButtonVariant.Ghost"
+                              Size="SgSize.Sm"
+                              OnClick="ClearFiles" />
+                </div>
+
+                <FilePreview Files="_uploadedFiles" OnRemove="RemoveFile" />
+
+                <div class="sg-action-bar">
+                    <SgButton Text="Extract Data from All"
+                              Variant="SgButtonVariant.Primary"
+                              Disabled="@(string.IsNullOrEmpty(_settings.ApiKey))"
+                              OnClick="StartExtraction">
+                        <Icon>🚀</Icon>
+                    </SgButton>
+                </div>
+            </div>
+        }
+    }
+
+    @if (_state == ExtractorState.Extracting)
+    {
+        <div class="sg-extractor-loading">
+            <SgSpinner Size="SgSize.Lg" />
+            <p>@_progressMessage</p>
+        </div>
+    }
+
+    @if (_state == ExtractorState.SchemaReady && _extractedData != null)
+    {
+        <div class="sg-extractor-results">
+            <div class="sg-results-toolbar">
+                <h3>@_extractedData.Schema.Title</h3>
+                <div class="sg-toolbar-actions">
+                    <SgButton Text="Start Over"
+                              Variant="SgButtonVariant.Outlined"
+                              OnClick="Reset" />
+                </div>
+            </div>
+
+            @if (_validationErrors.Count > 0)
+            {
+                <SgAlert Variant="SgAlertVariant.Danger"
+                         Title="Please complete required fields before exporting"
+                         Text="@($"{_validationErrors.Count} issue(s) found")" />
+            }
+
+            <DynamicFormRenderer Schema="_extractedData.Schema"
+                                 Values="_extractedData.Values"
+                                 ValidationErrors="_validationErrors"
+                                 ValuesChanged="HandleValuesChanged" />
+
+            <ExportPanel Disabled="@(_extractedData is null)"
+                         UseTemplateMode="_exportOptions.UseTemplateMode"
+                         UseTemplateModeChanged="@((bool value) => _exportOptions.UseTemplateMode = value)"
+                         ExportJsonRequested="ExportJsonAsync"
+                         ExportRequested="ExportBinaryAsync" />
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger"
+                 Text="@_error"
+                 Dismissible="true" />
+    }
+</div>
+
+@code {
+    [Parameter] public string? CssClass { get; set; }
+
+    private enum ExtractorState { Idle, FilesLoaded, Extracting, SchemaReady, Error }
+    private ExtractorState _state = ExtractorState.Idle;
+    
+    private OpenAiSettings _settings = new();
+    private ExportOptions _exportOptions = new();
+    private List<UploadedFile> _uploadedFiles = new();
+    private ExtractedData? _extractedData;
+    private string _progressMessage = "";
+    private string? _error;
+    private List<SgLlmModelInfo> _openRouterModels = new();
+    private Dictionary<string, string> _validationErrors = new();
+
+    private IJSObjectReference? _module;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try 
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/js/documentExtractor.js");
+            var saved = await _module.InvokeAsync<OpenAiSettings?>("loadExtractorSettings");
+            if (saved != null) _settings = saved;
+        }
+        catch { }
+    }
+
+    private async Task LoadOpenRouterModels()
+    {
+        _openRouterModels = await LlmService.GetOpenRouterModelsAsync();
+        if (_openRouterModels.Any()) _settings.Model = _openRouterModels[0].Id;
+        StateHasChanged();
+    }
+
+    private void HandleFilesUploaded(List<UploadedFile> files)
+    {
+        _uploadedFiles.AddRange(files);
+        _state = ExtractorState.FilesLoaded;
+        _error = null;
+    }
+
+    private Task RemoveFile(UploadedFile file)
+    {
+        _uploadedFiles.Remove(file);
+        if (!_uploadedFiles.Any()) _state = ExtractorState.Idle;
+        return Task.CompletedTask;
+    }
+
+    private void ClearFiles()
+    {
+        _uploadedFiles.Clear();
+        _state = ExtractorState.Idle;
+    }
+
+    private async Task StartExtraction()
+    {
+        _state = ExtractorState.Extracting;
+        _error = null;
+        var progress = new Progress<string>(m => { _progressMessage = m; InvokeAsync(StateHasChanged); });
+
+        try
+        {
+            if (_module != null) await _module.InvokeVoidAsync("saveExtractorSettings", _settings);
+            
+            var result = await OpenAiService.ExtractSchemaAsync(_uploadedFiles, _settings, progress);
+            _extractedData = new ExtractedData
+            {
+                Schema = result.Schema,
+                Values = result.ExtractedValues,
+                SourceFiles = new List<UploadedFile>(_uploadedFiles)
+            };
+            _validationErrors.Clear();
+            _state = ExtractorState.SchemaReady;
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _state = ExtractorState.FilesLoaded;
+        }
+    }
+
+    private void HandleValuesChanged(Dictionary<string, object?> values)
+    {
+        if (_extractedData != null)
+        {
+            _extractedData.Values = values;
+            _extractedData.IsModified = true;
+            ValidateExtractedData();
+        }
+    }
+
+    private void Reset()
+    {
+        _uploadedFiles.Clear();
+        _extractedData = null;
+        _validationErrors.Clear();
+        _state = ExtractorState.Idle;
+    }
+
+    private async Task ExportJsonAsync()
+    {
+        if (_extractedData == null || _module == null) return;
+        if (!ValidateExtractedData()) return;
+
+        var json = System.Text.Json.JsonSerializer.Serialize(_extractedData.Values, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        await _module.InvokeVoidAsync("downloadFile", "extracted_data.json", Convert.ToBase64String(bytes), "application/json");
+    }
+
+    private async Task ExportBinaryAsync(ExportFormat format)
+    {
+        if (_extractedData == null || _module == null) return;
+        if (!ValidateExtractedData()) return;
+
+        _exportOptions.Format = format;
+
+        switch (format)
+        {
+            case ExportFormat.Pdf:
+                await DownloadExportedFileAsync(await PdfExportService.ExportAsync(_extractedData, _exportOptions));
+                break;
+            case ExportFormat.Word:
+                await DownloadExportedFileAsync(await WordExportService.ExportAsync(_extractedData, _exportOptions));
+                break;
+            case ExportFormat.Both:
+                await DownloadExportedFileAsync(await PdfExportService.ExportAsync(_extractedData, _exportOptions));
+                await DownloadExportedFileAsync(await WordExportService.ExportAsync(_extractedData, _exportOptions));
+                break;
+        }
+    }
+
+    private async Task DownloadExportedFileAsync(ExportedFile file)
+    {
+        if (_module is null)
+        {
+            return;
+        }
+
+        await _module.InvokeVoidAsync("downloadFile", file.FileName, Convert.ToBase64String(file.Content), file.MimeType);
+    }
+
+    private bool ValidateExtractedData()
+    {
+        _validationErrors.Clear();
+        if (_extractedData is null)
+        {
+            return true;
+        }
+
+        foreach (var field in _extractedData.Schema.Fields.Where(x => x.Required))
+        {
+            _extractedData.Values.TryGetValue(field.Key, out var value);
+            if (IsEmptyValue(value))
+            {
+                _validationErrors[field.Key] = $"{field.Label} is required.";
+            }
+        }
+
+        StateHasChanged();
+        return _validationErrors.Count == 0;
+    }
+
+    private static bool IsEmptyValue(object? value)
+    {
+        return value switch
+        {
+            null => true,
+            string s => string.IsNullOrWhiteSpace(s),
+            IEnumerable<object?> items => !items.Any(),
+            _ => false
+        };
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null) await _module.DisposeAsync();
+    }
+}

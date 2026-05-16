@@ -167,7 +167,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
                     MimeType = file.ContentType,
                     Base64 = Convert.ToBase64String(bytes),
                     IsImage = file.ContentType.StartsWith("image/"),
-                    IsPdf = file.ContentType == "application/pdf"
+                    IsPdf = file.ContentType == "application/pdf",
+                    IsVideo = file.ContentType.StartsWith("video/"),
+                    IsText = file.ContentType.StartsWith("text/") || file.Name.EndsWith(".cs") || file.Name.EndsWith(".js") || file.Name.EndsWith(".md")
                 };
                 _attachments.Add(attachment);
             }
@@ -317,7 +319,15 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     {
         try
         {
-            await JS.InvokeVoidAsync("eval", "const el = document.querySelector('.sg-chat-messages'); if(el) el.scrollTop = el.scrollHeight;");
+            await JS.InvokeVoidAsync("eval", @"
+                const el = document.querySelector('.sg-chat-messages');
+                if (el) {
+                    el.scrollTo({
+                        top: el.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+            ");
         }
         catch { }
     }
