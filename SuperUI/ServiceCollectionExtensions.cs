@@ -51,11 +51,6 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.Llm.ILlmService, Services.Llm.SgLlmService>();
         services.TryAddScoped<Services.Llm.SgChatHistoryService>();
         services.TryAddScoped<Services.Llm.SgPuterService>();
-        services.TryAddScoped<Services.Llm.ISchemaGeneratorService, Services.Llm.SchemaGeneratorService>();
-        services.TryAddScoped<Services.Llm.IOpenAiService, Services.Llm.OpenAiService>();
-        services.TryAddScoped<Services.Llm.IDocumentParserService, Services.Llm.DocumentParserService>();
-        services.TryAddScoped<Services.Llm.IPdfExportService, Services.Llm.PdfExportService>();
-        services.TryAddScoped<Services.Llm.IWordExportService, Services.Llm.WordExportService>();
         services.TryAddScoped<SgJsModuleCache>();
 
         return services;
