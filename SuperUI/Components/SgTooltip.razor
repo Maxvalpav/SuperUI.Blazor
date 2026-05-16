@@ -11,13 +11,13 @@
       @onblur="OnBlurAsync"
       @onclick="OnClickAsync">
     @ChildContent
-    @if (_visible)
+    @if (Visible)
     {
-        <span class="sgc-tt" 
-              @ref="_tooltipRef" 
+        <span class="sgc-tt"
+              @ref="_tooltipRef"
               role="tooltip"
-              aria-hidden="@(!_visible)"
-              style="@_tooltipStyle">
+              aria-hidden="@(!Visible)"
+              style="@TooltipStyle">
             @Text
         </span>
     }
@@ -25,8 +25,7 @@
 
 @code {
     private ElementReference _tooltipRef;
-    private bool _visible;
-    private string _tooltipStyle = "";
+    private bool _attached;
 
     private readonly SgDebouncer _showDebouncer = new();
     private readonly SgDebouncer _hideDebouncer = new();
@@ -35,12 +34,12 @@
     /// Gets or sets the tooltip text to display. Required.
     /// </summary>
     [Parameter, EditorRequired] public string Text { get; set; } = default!;
-    
+
     /// <summary>
     /// Gets or sets the content that triggers the tooltip on hover.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the preferred placement of the tooltip. Default is <see cref="SgPlacement.Top"/>.
     /// </summary>
@@ -52,25 +51,26 @@
     [Parameter] public SgTrigger Trigger { get; set; } = SgTrigger.Hover;
 
     /// <summary>
-    /// Gets or sets the delay in milliseconds before showing the tooltip.
-    /// Default is 0 (no delay).
+    /// Gets or sets the delay in milliseconds before showing the tooltip. Default 0.
     /// </summary>
     [Parameter] public int OpenDelay { get; set; }
 
     /// <summary>
-    /// Gets or sets the delay in milliseconds before hiding the tooltip.
-    /// Default is 0 (no delay).
+    /// Gets or sets the delay in milliseconds before hiding the tooltip. Default 0.
     /// </summary>
     [Parameter] public int CloseDelay { get; set; }
 
     /// <summary>
     /// Gets or sets whether the tooltip is disabled.
-    /// Default is false.
     /// </summary>
     [Parameter] public bool Disabled { get; set; }
 
     protected override string ModulePath => "./_content/SuperUI/superui-tooltip.js";
     protected override int    ZIndexBase => SgZIndexService.TooltipBase;
+    protected override int    ClosingAnimationMs => 0; // мгновенное скрытие тултипа
+
+    private string TooltipStyle =>
+        $"position:fixed;pointer-events:none;opacity:0;transition:opacity .15s;z-index:{ZIndexValue};";
 
     private string PlacementString => Placement switch
     {
@@ -80,80 +80,77 @@
         _                  => "top"
     };
 
-    protected override async ValueTask OnInteractiveAsync()
+    // ── Триггеры ──────────────────────────────────────────────────────────────
+
+    private Task OnMouseEnterAsync() => HandleTriggerAsync(SgTrigger.Hover, true);
+    private Task OnMouseLeaveAsync() => HandleTriggerAsync(SgTrigger.Hover, false);
+    private Task OnFocusAsync()      => HandleTriggerAsync(SgTrigger.Focus, true);
+    private Task OnBlurAsync()       => HandleTriggerAsync(SgTrigger.Focus, false);
+    private Task OnClickAsync()      => HandleTriggerAsync(SgTrigger.Click, !Visible);
+
+    private Task HandleTriggerAsync(SgTrigger triggerType, bool show)
     {
-        await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef,
-            PlacementString, SelfRef);
+        if (Trigger != triggerType) return Task.CompletedTask;
+        return show ? ShowAsync() : HideAsync();
+    }
+
+    /// <summary>Manually shows the tooltip. For use when Trigger is "manual".</summary>
+    public async Task ShowAsync()
+    {
+        if (IsDisposed || Visible || Disabled) return;
+        _hideDebouncer.Cancel();
+
+        if (OpenDelay > 0)
+            await _showDebouncer.RunAsync(
+                _ => InvokeAsync(SetVisibleTrueAsync),
+                TimeSpan.FromMilliseconds(OpenDelay));
+        else
+            await SetVisibleTrueAsync();
+    }
+
+    /// <summary>Manually hides the tooltip. For use when Trigger is "manual".</summary>
+    public async Task HideAsync()
+    {
+        if (IsDisposed || !Visible) return;
+        _showDebouncer.Cancel();
+
+        if (CloseDelay > 0)
+            await _hideDebouncer.RunAsync(
+                _ => InvokeAsync(SetVisibleFalseAsync),
+                TimeSpan.FromMilliseconds(CloseDelay));
+        else
+            await SetVisibleFalseAsync();
+    }
+
+    private async Task SetVisibleTrueAsync()
+    {
+        if (Visible) return;
+        Visible = true;
+        if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(true);
+        StateHasChanged(); // OnAfterRenderSafeAsync базы выполнит OnOpeningAsync/OnOpenedAsync
+    }
+
+    private Task SetVisibleFalseAsync() =>
+        CloseAsync(); // CloseAsync вызовет OnClosingAsync и поднимет VisibleChanged(false)
+
+    // ── Lifecycle (контракт SgOverlayComponentBase) ───────────────────────────
+
+    protected override async ValueTask OnOpeningAsync()
+    {
+        // Сначала рендерим (Visible=true → шаблон создал _tooltipRef),
+        // потом attach. OnAfterRenderSafeAsync базы вызывается после очередного
+        // рендера, так что _tooltipRef уже валиден.
+        if (!_attached)
+        {
+            await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef, PlacementString, SelfRef);
+            _attached = true;
+        }
+        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString);
     }
 
     protected override async ValueTask OnClosingAsync()
     {
-        await SafeInvokeVoidAsync("detach");
-    }
-
-    private async Task OnMouseEnterAsync() => await HandleTriggerAsync(SgTrigger.Hover, true);
-    private async Task OnMouseLeaveAsync() => await HandleTriggerAsync(SgTrigger.Hover, false);
-    private async Task OnFocusAsync() => await HandleTriggerAsync(SgTrigger.Focus, true);
-    private async Task OnBlurAsync() => await HandleTriggerAsync(SgTrigger.Focus, false);
-    private async Task OnClickAsync() => await HandleTriggerAsync(SgTrigger.Click, !_visible);
-
-    private async Task HandleTriggerAsync(SgTrigger triggerType, bool show)
-    {
-        if (Trigger != triggerType) return;
-        if (show) await ShowAsync();
-        else await HideAsync();
-    }
-
-    /// <summary>
-    /// Manually shows the tooltip. For use when Trigger is "manual".
-    /// </summary>
-    public async Task ShowAsync()
-    {
-        if (IsDisposed || _visible || Disabled) return;
-        _hideDebouncer.Cancel();
-        if (OpenDelay > 0)
-            await _showDebouncer.RunAsync(
-                _ => InvokeAsync(DoShowAsync),
-                TimeSpan.FromMilliseconds(OpenDelay));
-        else
-            await DoShowAsync();
-    }
-
-    private async Task DoShowAsync()
-    {
-        _visible = true;
-        ZIndex.Allocate(this, ZIndexBase);
-        _tooltipStyle = "position: fixed; pointer-events: none; opacity: 0; transition: opacity 0.15s;";
-
-        StateHasChanged();
-
-        // Wait for render to complete so _tooltipRef is populated
-        await Task.Yield();
-
-        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString);
-    }
-
-    /// <summary>
-    /// Manually hides the tooltip. For use when Trigger is "manual".
-    /// </summary>
-    public async Task HideAsync()
-    {
-        if (IsDisposed || !_visible) return;
-        _showDebouncer.Cancel();
-        if (CloseDelay > 0)
-            await _hideDebouncer.RunAsync(
-                _ => InvokeAsync(DoHideAsync),
-                TimeSpan.FromMilliseconds(CloseDelay));
-        else
-            await DoHideAsync();
-    }
-
-    private async Task DoHideAsync()
-    {
-        _visible = false;
-        ZIndex.Release(this);
         await SafeInvokeVoidAsync("hide", _tooltipRef);
-        await InvokeAsync(StateHasChanged);
     }
 
     [JSInvokable]
@@ -163,7 +160,12 @@
     {
         _showDebouncer.Dispose();
         _hideDebouncer.Dispose();
-        ZIndex.Release(this);
+
+        if (_attached)
+        {
+            _ = SafeInvokeVoidAsync("detach");
+            _attached = false;
+        }
         return base.OnDisposingAsync();
     }
 }

@@ -4,6 +4,7 @@
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using SuperUI.Base.Builders;
 using SuperUI.Base.Utilities;
 
@@ -66,9 +67,11 @@ public abstract class SgComponentBase : ComponentBase
 
     /// <summary>
     /// Фабрика логгеров. Используйте через свойство <see cref="Logger"/>.
+    /// Помечена <c>[Inject(...)]</c>, но <see cref="Logger"/> устойчиво обрабатывает
+    /// случай отсутствия DI (например, в юнит-тестах) — возвращает <see cref="NullLogger.Instance"/>.
     /// </summary>
     [Inject]
-    protected ILoggerFactory LoggerFactory { get; set; } = default!;
+    protected ILoggerFactory? LoggerFactory { get; set; }
 
     // ── Защищённые члены ──────────────────────────────────────────────────────
 
@@ -96,18 +99,26 @@ public abstract class SgComponentBase : ComponentBase
 
     /// <summary>
     /// Типизированный логгер для текущего компонента.
-    /// Создаётся лениво при первом обращении.
+    /// Создаётся лениво при первом обращении. В тестовом контексте без DI
+    /// возвращает <see cref="NullLogger.Instance"/>.
     /// </summary>
-    protected ILogger Logger => _logger ??= LoggerFactory.CreateLogger(GetType());
+    protected ILogger Logger =>
+        _logger ??= LoggerFactory?.CreateLogger(GetType()) ?? NullLogger.Instance;
 
     // ── CSS / Style factory methods ───────────────────────────────────────────
 
     /// <summary>
     /// Создаёт <see cref="CssBuilder"/> с корневым классом и автоматически
-    /// добавляет <see cref="CssClass"/> из параметра.
+    /// добавляет <see cref="CssClass"/> из параметра и <c>class</c> из
+    /// <see cref="AdditionalAttributes"/>.
     /// </summary>
     /// <param name="rootClass">Базовый CSS-класс компонента.</param>
     /// <returns>Настроенный <see cref="CssBuilder"/>.</returns>
+    /// <remarks>
+    /// <para>Чтобы избежать дублирования при <c>@attributes="AdditionalAttributes"</c>
+    /// в шаблоне, корневой элемент должен либо не использовать splatting <c>class</c>,
+    /// либо передавать в splatting отфильтрованный словарь. См. <see cref="AttributesWithoutClassAndStyle"/>.</para>
+    /// </remarks>
     /// <example>
     /// <code>
     /// // В razor-файле:
@@ -115,14 +126,50 @@ public abstract class SgComponentBase : ComponentBase
     /// </code>
     /// </example>
     protected CssBuilder Css(string? rootClass = null)
-        => CssBuilder.Default(rootClass).AddClass(CssClass);
+        => CssBuilder.Default(rootClass)
+                     .AddClass(CssClass)
+                     .AddClassFromAttributes(AdditionalAttributes);
 
     /// <summary>
-    /// Создаёт <see cref="StyleBuilder"/> с параметром <see cref="Style"/>.
+    /// Создаёт <see cref="StyleBuilder"/> с параметром <see cref="Style"/>
+    /// и <c>style</c> из <see cref="AdditionalAttributes"/>.
     /// </summary>
     /// <returns>Настроенный <see cref="StyleBuilder"/>.</returns>
     protected StyleBuilder Styles()
-        => StyleBuilder.Default(Style);
+        => StyleBuilder.Default(Style)
+                       .AddStyleFromAttributes(AdditionalAttributes);
+
+    /// <summary>
+    /// Возвращает <see cref="AdditionalAttributes"/> без ключей <c>class</c> и <c>style</c>.
+    /// Используйте в <c>@attributes</c>, чтобы не дублировать значения,
+    /// уже учтённые в <see cref="Css"/>/<see cref="Styles"/>.
+    /// </summary>
+    /// <remarks>
+    /// <code>
+    /// &lt;div class="@Css("sg-foo").Build()"
+    ///      style="@Styles().Build()"
+    ///      @attributes="AttributesWithoutClassAndStyle"&gt;
+    /// </code>
+    /// </remarks>
+    protected IReadOnlyDictionary<string, object>? AttributesWithoutClassAndStyle
+    {
+        get
+        {
+            if (AdditionalAttributes is null) return null;
+            var hasClass = AdditionalAttributes.ContainsKey("class");
+            var hasStyle = AdditionalAttributes.ContainsKey("style");
+            if (!hasClass && !hasStyle) return AdditionalAttributes;
+
+            var dict = new Dictionary<string, object>(AdditionalAttributes.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in AdditionalAttributes)
+            {
+                if (kv.Key.Equals("class", StringComparison.OrdinalIgnoreCase)) continue;
+                if (kv.Key.Equals("style", StringComparison.OrdinalIgnoreCase)) continue;
+                dict[kv.Key] = kv.Value;
+            }
+            return dict;
+        }
+    }
 
     /// <summary>
     /// Объединяет несколько CSS-классов через пробел, игнорируя пустые.

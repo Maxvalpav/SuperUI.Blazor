@@ -195,8 +195,25 @@ export async function initChart(dotnetRef, canvasRef, config, sources) {
     const clickable = !!config.options?.__sgClickable;
     if (config.options) delete config.options.__sgClickable;
 
-    const chart = new Chart(ctx, config);
+    // Chart.js v4 бросает "Canvas is already in use" при создании нового графика
+    // на canvas, к которому уже привязан chart. Это случается при:
+    //   1) повторном rendering canvas с тем же id (например, после переключения SgTabs)
+    //   2) ручном Retry
+    //   3) race между init и dispose
+    // Поэтому перед созданием явно убиваем предыдущий instance — и из нашего кеша,
+    // и из глобального реестра Chart.js (на случай если кеш не синхронен с DOM).
     const chartId = canvasRef.id;
+    const existing = chartInstances.get(chartId);
+    if (existing) {
+        try { existing.instance?.destroy(); } catch { }
+        chartInstances.delete(chartId);
+    }
+    const stray = Chart.getChart?.(canvasRef);
+    if (stray) {
+        try { stray.destroy(); } catch { }
+    }
+
+    const chart = new Chart(ctx, config);
 
     const onClick = (e) => {
         const points = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
@@ -253,7 +270,10 @@ export async function initChart(dotnetRef, canvasRef, config, sources) {
 
 export async function updateChart(chartId, config) {
     const chartData = chartInstances.get(chartId);
-    if (!chartData) return;
+    // Возвращаем false, чтобы .NET-сторона могла сделать полный re-init вместо тихого
+    // отвала (типичный кейс — переключение SgTabs пересоздало DOM и старый instance
+    // потерян).
+    if (!chartData) return false;
 
     installFormatters(config);
     const { instance: chart, canvasRef, dotnetRef, onClick, onMove, resizeObserver } = chartData;
@@ -266,18 +286,18 @@ export async function updateChart(chartId, config) {
     if (chart.config.type === config.type) {
         chart.data.labels = config.data.labels;
         chart.data.datasets = config.data.datasets;
-        
+
         // Update options - merging is safer than replacing
         if (config.options) {
             chart.options = Chart.helpers.merge(chart.options, [config.options]);
         }
-        
+
         chart.update(config.options?.animation?.duration === 0 ? 'none' : 'default');
-        
+
         // Update stored handlers if needed
         chartData.onClick = clickable ? chartData.onClick : null;
         chartData.onMove = clickable ? chartData.onMove : null;
-        return;
+        return true;
     }
 
     // If type or scales changed significantly, recreation is safer.
@@ -345,6 +365,7 @@ export async function updateChart(chartId, config) {
         onMove: newOnMove,
         resizeObserver: newResizeObs,
     });
+    return true;
 }
 
 export function resizeChart(chartId) {

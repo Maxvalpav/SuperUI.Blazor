@@ -3,6 +3,7 @@
 // Решает проблему 10 модалов = 10 import() на один файл.
 // Регистрируется в DI через AddSuperUI().
 
+using System.Collections.Concurrent;
 using Microsoft.JSInterop;
 
 namespace SuperUI.Base.Utilities;
@@ -22,8 +23,8 @@ namespace SuperUI.Base.Utilities;
 public sealed class SgJsModuleCache : IAsyncDisposable
 {
     // Task<IJSObjectReference> — coalescing: параллельные GetAsync получат один Task.
-    private readonly Dictionary<string, Task<IJSObjectReference>> _cache = new();
-    private readonly SemaphoreSlim _sem = new(1, 1);
+    // ConcurrentDictionary: lock-free чтение в fast-path, GetOrAdd с фабрикой для slow-path.
+    private readonly ConcurrentDictionary<string, Task<IJSObjectReference>> _cache = new();
     private bool _disposed;
 
     /// <summary>
@@ -43,35 +44,24 @@ public sealed class SgJsModuleCache : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(js);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
 
-        // Fast path без блокировки (кеш уже содержит успешный Task).
-        if (_cache.TryGetValue(path, out var existing) && existing.IsCompletedSuccessfully)
-        {
-            return await existing;
-        }
+        // GetOrAdd с lambda гарантирует, что параллельные вызовы получат один и тот же
+        // Task<IJSObjectReference> (хотя сама фабрика теоретически может быть вызвана
+        // дважды — для import() это безопасно, потому что лишний import просто пропадёт
+        // вместе с проигравшим Task'ом).
+        var task = _cache.GetOrAdd(path, p =>
+            js.InvokeAsync<IJSObjectReference>("import", p).AsTask());
 
-        // Slow path с блокировкой для coalescing параллельных вызовов.
-        await _sem.WaitAsync(ct);
         try
         {
-            if (_cache.TryGetValue(path, out existing))
-            {
-                return await existing;
-            }
-
-            var importTask = js.InvokeAsync<IJSObjectReference>("import", path)
-                               .AsTask();
-            _cache[path] = importTask;
-            return await importTask;
+            return await task.WaitAsync(ct).ConfigureAwait(false);
         }
         catch
         {
-            // При ошибке — удаляем из кеша, чтобы следующий вызов попробовал снова.
-            _cache.Remove(path);
+            // При ошибке — удаляем из кеша только если в нём всё ещё лежит наш упавший
+            // Task (другой поток мог уже подложить рабочий).
+            ((ICollection<KeyValuePair<string, Task<IJSObjectReference>>>)_cache)
+                .Remove(new KeyValuePair<string, Task<IJSObjectReference>>(path, task));
             throw;
-        }
-        finally
-        {
-            _sem.Release();
         }
     }
 
@@ -81,19 +71,12 @@ public sealed class SgJsModuleCache : IAsyncDisposable
     /// <param name="path">Путь к модулю.</param>
     public async ValueTask InvalidateAsync(string path)
     {
-        await _sem.WaitAsync();
-        try
+        if (_cache.TryRemove(path, out var task) && task.IsCompletedSuccessfully)
         {
-            if (_cache.Remove(path, out var task) && task.IsCompletedSuccessfully)
-            {
-                try { await (await task).DisposeAsync(); }
-                catch (JSDisconnectedException) { }
-                catch (TaskCanceledException) { }
-            }
-        }
-        finally
-        {
-            _sem.Release();
+            try { await (await task).DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -105,23 +88,14 @@ public sealed class SgJsModuleCache : IAsyncDisposable
         if (_disposed) return;
         _disposed = true;
 
-        await _sem.WaitAsync();
-        try
+        foreach (var task in _cache.Values)
         {
-            foreach (var task in _cache.Values)
-            {
-                if (!task.IsCompletedSuccessfully) continue;
-                try { await (await task).DisposeAsync(); }
-                catch (JSDisconnectedException) { }
-                catch (TaskCanceledException) { }
-                catch (ObjectDisposedException) { }
-            }
-            _cache.Clear();
+            if (!task.IsCompletedSuccessfully) continue;
+            try { await (await task).DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
-        finally
-        {
-            _sem.Release();
-            _sem.Dispose();
-        }
+        _cache.Clear();
     }
 }

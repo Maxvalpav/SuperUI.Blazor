@@ -154,9 +154,14 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
 
     /// <summary>
     /// Вызывает JS-функцию модуля, возвращающую значение.
-    /// Перехватывает <see cref="JSDisconnectedException"/>,
-    /// <see cref="TaskCanceledException"/> и <see cref="ObjectDisposedException"/>.
     /// </summary>
+    /// <remarks>
+    /// Перехватывает <see cref="JSDisconnectedException"/>, <see cref="TaskCanceledException"/>
+    /// и <see cref="ObjectDisposedException"/> — это нормальные сигналы окончания circuit'а.
+    /// Любые другие исключения <b>пробрасываются вверх</b>, чтобы вызвавший код мог
+    /// показать локализованную ошибку (Chart_FailedToInitialize и т.п.), а Logger получил
+    /// полный stack trace вместо немого «return default».
+    /// </remarks>
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
         if (_isDisposed || Module is null) return default;
@@ -165,14 +170,14 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
             return await Module.InvokeAsync<T>(identifier, args);
         }
         catch (JSDisconnectedException) { return default; }
-        catch (TaskCanceledException) { return default; }
+        catch (TaskCanceledException)   { return default; }
         catch (ObjectDisposedException) { return default; }
     }
 
     /// <summary>
     /// Вызывает JS-функцию модуля без возвращаемого значения.
-    /// Перехватывает типичные исключения disconnected/disposed.
     /// </summary>
+    /// <remarks>См. <see cref="SafeInvokeAsync{T}"/>.</remarks>
     protected async ValueTask SafeInvokeVoidAsync(string identifier, params object?[] args)
     {
         if (_isDisposed || Module is null) return;
@@ -181,8 +186,31 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
             await Module.InvokeVoidAsync(identifier, args);
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
+        catch (TaskCanceledException)   { }
         catch (ObjectDisposedException) { }
+    }
+
+    /// <summary>
+    /// Вызывает JS-функцию модуля без проглатывания ошибок JS.
+    /// Используйте, когда нужно увидеть точное JS-исключение в catch вызывающего кода.
+    /// </summary>
+    protected async ValueTask TryInvokeVoidAsync(string identifier, params object?[] args)
+    {
+        if (_isDisposed) throw new ObjectDisposedException(GetType().Name);
+        if (Module is null) throw new InvalidOperationException(
+            $"JS module '{ModulePath}' is not loaded yet. Did you call this before OnInteractiveAsync?");
+        await Module.InvokeVoidAsync(identifier, args);
+    }
+
+    /// <summary>
+    /// Вызывает JS-функцию модуля с результатом, без проглатывания ошибок JS.
+    /// </summary>
+    protected async ValueTask<T> TryInvokeAsync<T>(string identifier, params object?[] args)
+    {
+        if (_isDisposed) throw new ObjectDisposedException(GetType().Name);
+        if (Module is null) throw new InvalidOperationException(
+            $"JS module '{ModulePath}' is not loaded yet. Did you call this before OnInteractiveAsync?");
+        return await Module.InvokeAsync<T>(identifier, args);
     }
 
     /// <summary>
@@ -196,7 +224,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
             return await JS.InvokeAsync<T>(identifier, args);
         }
         catch (JSDisconnectedException) { return default; }
-        catch (TaskCanceledException) { return default; }
+        catch (TaskCanceledException)   { return default; }
         catch (ObjectDisposedException) { return default; }
     }
 
@@ -211,7 +239,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
             await JS.InvokeVoidAsync(identifier, args);
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
+        catch (TaskCanceledException)   { }
         catch (ObjectDisposedException) { }
     }
 
@@ -252,17 +280,45 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
         try
         {
             Module = await ModuleCache.GetAsync(JS, ModulePath, ComponentLifetime);
-            if (_isDisposed) return;
-            SelfRef = DotNetObjectReference.Create(this);
+        }
+        catch (JSDisconnectedException) { return; }
+        catch (TaskCanceledException)   { return; }
+        catch (ObjectDisposedException) { return; }
+        catch (Exception ex)
+        {
+            // Не удалось импортировать модуль — это уже фатально для компонента,
+            // дальнейший вызов OnInteractiveAsync бессмыслен.
+            Logger.LogError(ex, "SgJs: failed to import module '{ModulePath}' for {ComponentType}.",
+                ModulePath, GetType().Name);
+            await OnJsInitializationFailedAsync(ex);
+            return;
+        }
+
+        if (_isDisposed) return;
+        SelfRef = DotNetObjectReference.Create(this);
+
+        try
+        {
             await OnInteractiveAsync();
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
+        catch (TaskCanceledException)   { }
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to initialize JS module '{ModulePath}' for {ComponentType}.",
-                ModulePath, GetType().Name);
+            // Ошибка в OnInteractiveAsync (часто — упавший JS-метод компонента).
+            // Логируем полный stack trace, чтобы причина была видна в консоли.
+            Logger.LogError(ex, "SgJs: OnInteractiveAsync failed for {ComponentType} (module='{ModulePath}').",
+                GetType().Name, ModulePath);
+            await OnJsInitializationFailedAsync(ex);
         }
     }
+
+    /// <summary>
+    /// Вызывается, когда инициализация JS (импорт модуля или <see cref="OnInteractiveAsync"/>)
+    /// бросила исключение. По умолчанию — no-op. Переопределите, чтобы показать локализованную
+    /// ошибку (<c>_error = …</c>) и вызвать <see cref="ComponentBase.StateHasChanged"/>.
+    /// </summary>
+    /// <param name="exception">Исходное исключение.</param>
+    protected virtual ValueTask OnJsInitializationFailedAsync(Exception exception) => default;
 }

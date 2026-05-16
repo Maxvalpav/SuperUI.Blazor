@@ -47,7 +47,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     private bool _previousVisible;
     private bool _isOpening;
     private bool _isClosing;
-    protected int _zIndexValue;
+    private int _zIndexValue;
     private CancellationTokenSource? _animationCts;
 
     // ── Параметры ─────────────────────────────────────────────────────────────
@@ -163,8 +163,13 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
     /// <inheritdoc/>
     protected override async ValueTask OnInteractiveAsync()
     {
-        if (Visible)
+        // Если компонент уже создан с Visible=true (типичный кейс prerender→interactive
+        // или просто открытый по умолчанию модал), выполняем полный цикл открытия здесь
+        // и помечаем _previousVisible, чтобы OnAfterRenderSafeAsync не запустил его повторно.
+        if (Visible && !_previousVisible)
         {
+            _previousVisible = true;
+            _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
             await OnOpeningAsync();
             await OnOpenedAsync();
         }
@@ -207,6 +212,18 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
         _animationCts?.Dispose();
         ReleaseZIndex();
         return default;
+    }
+
+    /// <summary>
+    /// Перевыделяет z-index для оверлея — освобождает текущий и берёт новый,
+    /// который окажется поверх остальных оверлеев того же базового уровня.
+    /// Используйте для реализации «bring to front» (например, в плавающих окнах).
+    /// </summary>
+    protected void BringToFront()
+    {
+        if (!Visible || IsDisposed) return;
+        if (_zIndexValue > 0) ZIndex.Release(this);
+        _zIndexValue = ZIndex.Allocate(this, ZIndexBase);
     }
 
     // ── Private ───────────────────────────────────────────────────────────────

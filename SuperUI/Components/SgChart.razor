@@ -1,12 +1,13 @@
 @namespace SuperUI.Components
 @typeparam TItem where TItem : class
 @using SuperUI.Enums
+@using Microsoft.Extensions.Logging
 @inherits SgJsComponentBase
 @inject ISuperUILocalizer Localizer
 
 <div class="@Css("sg-chart-container").Add("sg-chart-state-message", !_chartReady).Build()"
      style="@Styles().Add("height", Height).Add("width", Width).NullIfEmpty()"
-     @attributes="AdditionalAttributes">
+     @attributes="AttributesWithoutClassAndStyle">
     <CascadingValue Value="this">
         @ChildContent
     </CascadingValue>
@@ -117,23 +118,20 @@
     /// </summary>
     [Parameter] public SgChartSources? Sources { get; set; }
 
-    protected override void OnParametersSet()
-    {
-    }
-
     private async Task ScheduleRefreshAsync()
     {
-        await Task.Delay(16); // Small debounce (approx 1 frame at 60fps)
-        if (_refreshScheduled) return; // redundant but safe
-        
         try
         {
+            // Small debounce (~1 frame at 60fps), чтобы коалесировать пачку
+            // OnParametersSet/OnAfterRenderSafe-обновлений в один RefreshAsync.
+            await Task.Delay(16);
+            if (IsDisposed) return;
             await RefreshAsync();
         }
         finally
         {
             _refreshScheduled = false;
-            if (_refreshPending)
+            if (_refreshPending && !IsDisposed)
             {
                 _refreshPending = false;
                 _refreshScheduled = true;
@@ -155,24 +153,49 @@
                 !ReferenceEquals(Options, _lastOptionsRef) ||
                 !string.Equals(Title, _lastTitle, StringComparison.Ordinal);
 
-            if (changed && !_refreshScheduled)
+            if (changed)
             {
-                _refreshScheduled = true;
-                _ = ScheduleRefreshAsync();
+                if (_refreshScheduled)
+                {
+                    // Refresh уже в полёте — пометим, что данные снова изменились,
+                    // чтобы текущий ScheduleRefreshAsync перезапустился по завершении.
+                    _refreshPending = true;
+                }
+                else
+                {
+                    _refreshScheduled = true;
+                    _ = ScheduleRefreshAsync();
+                }
             }
         }
+
+        await Task.CompletedTask;
     }
 
-    protected override async ValueTask OnInteractiveAsync()
+    protected override ValueTask OnInteractiveAsync() => InitializeChartCoreAsync();
+
+    /// <summary>
+    /// Срабатывает, когда импорт sg-chart.js или OnInteractiveAsync кинули исключение.
+    /// Показывает локализованную ошибку — пользователь увидит её и сможет нажать Retry.
+    /// </summary>
+    protected override async ValueTask OnJsInitializationFailedAsync(Exception exception)
+    {
+        _error = Localizer["Chart_FailedToInitialize"];
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async ValueTask InitializeChartCoreAsync()
     {
         try
         {
             await InitializeChartAsync();
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (Exception)
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "SgChart: failed to load Chart.js bundle (id={ChartId}).", ResolvedId);
             _error = Localizer["Chart_FailedToLoad"];
             await InvokeAsync(StateHasChanged);
         }
@@ -183,15 +206,21 @@
         try
         {
             var config = BuildChartConfig();
-            await SafeInvokeVoidAsync("initChart", SelfRef, _canvasRef, config, Sources ?? new SgChartSources());
+            // TryInvoke — НЕ глотает JS-исключение, поэтому реальная причина
+            // (например, "Canvas is already in use" или "Failed to fetch chart.js")
+            // долетает до catch и попадает в лог.
+            await TryInvokeVoidAsync("initChart", SelfRef, _canvasRef, config, Sources ?? new SgChartSources());
             CaptureSnapshot();
             _chartReady = true;
             await InvokeAsync(StateHasChanged);
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (Exception)
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "SgChart: failed to initialize chart (id={ChartId}). JS message: {Message}",
+                ResolvedId, ex.Message);
             _error = Localizer["Chart_FailedToInitialize"];
             await InvokeAsync(StateHasChanged);
         }
@@ -276,8 +305,7 @@
     private List<string> ExtractLabels(List<TItem> data)
     {
         if (data.Count == 0) return new List<string>();
-        var labelProp = typeof(TItem).GetProperty("Label");
-        if (labelProp != null)
+        if (TypeAccessors.Label is { } labelProp)
         {
             return data.Select(item => labelProp.GetValue(item)?.ToString() ?? string.Empty).ToList();
         }
@@ -438,10 +466,10 @@
             }
         }
 
-        // 3) Default: single Value property.
-        var valueProp = typeof(TItem).GetProperty("Value");
-        var scatterProp = typeof(TItem).GetProperty("ScatterData");
-        var matrixProp = typeof(TItem).GetProperty("MatrixData");
+        // 3) Default: single Value property. PropertyInfo кешируется на TItem.
+        var valueProp = TypeAccessors.Value;
+        var scatterProp = TypeAccessors.Scatter;
+        var matrixProp = TypeAccessors.Matrix;
 
         if (valueProp == null && scatterProp == null && matrixProp == null) return new List<SeriesData>();
 
@@ -482,6 +510,17 @@
     }
 
     private readonly record struct SeriesData(string Name, List<double> Values, SgChartType? Type, List<SgChartScatterPoint>? ScatterData, List<SgChartMatrixPoint>? MatrixData);
+
+    // Кеш PropertyInfo — один раз на закрытый generic-тип (TItem). Reflection-вызовы
+    // GetProperty стоят дорого; их вынос в static-инициализатор экономит ~µс на каждом
+    // BuildChartConfig (вызывается при каждом RefreshAsync).
+    private static class TypeAccessors
+    {
+        public static readonly System.Reflection.PropertyInfo? Label   = typeof(TItem).GetProperty("Label");
+        public static readonly System.Reflection.PropertyInfo? Value   = typeof(TItem).GetProperty("Value");
+        public static readonly System.Reflection.PropertyInfo? Scatter = typeof(TItem).GetProperty("ScatterData");
+        public static readonly System.Reflection.PropertyInfo? Matrix  = typeof(TItem).GetProperty("MatrixData");
+    }
 
     private static readonly List<string> DefaultPalette = new()
     {
@@ -593,16 +632,27 @@
 
         try
         {
-            _error = null; // clear any previous error before attempting refresh
+            _error = null;
             var config = BuildChartConfig();
-            await SafeInvokeVoidAsync("updateChart", ResolvedId, config);
+            // JS-сторона возвращает false, если chartId не найден в кеше
+            // (типичный кейс — переключение SgTabs пересоздало DOM, а .NET-объект
+            // считает себя «готовым»). В этом случае делаем полный re-init.
+            var ok = await SafeInvokeAsync<bool>("updateChart", ResolvedId, config);
+            if (!ok)
+            {
+                _chartReady = false;
+                await InitializeChartAsync();
+                return;
+            }
             CaptureSnapshot();
             await InvokeAsync(StateHasChanged);
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (Exception)
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "SgChart: failed to refresh chart (id={ChartId}).", ResolvedId);
             _error = Localizer["Chart_FailedToRefresh"];
             await InvokeAsync(StateHasChanged);
         }
@@ -678,6 +728,9 @@
         _error = null;
         _chartReady = false;
         await InvokeAsync(StateHasChanged);
+        // Дать Blazor завершить рендер шаблона, иначе _canvasRef ещё указывает
+        // на удалённый узел (либо вообще default(ElementReference)).
+        await Task.Yield();
         await InitializeChartAsync();
     }
 
