@@ -1,0 +1,298 @@
+@namespace SuperUI.Components.Llm
+@using SuperUI.Services.Llm
+@using Microsoft.AspNetCore.Components.Forms
+@implements IAsyncDisposable
+
+<div class="sg-chat @CssClass @(_showSidebar ? "with-sidebar" : "")" @attributes="AdditionalAttributes">
+
+    @* Sidebar - Chat History *@
+    @if (_showSidebar)
+    {
+        <div class="sg-chat-sidebar">
+            <div class="sg-chat-sidebar-header">
+                <SgButton Text="New Chat" Variant="SgButtonVariant.Outlined" OnClick="NewSessionAsync" Block="true" Size="SgSize.Sm">
+                    <Icon>+</Icon>
+                </SgButton>
+            </div>
+            <div class="sg-chat-sidebar-list">
+                @foreach (var session in _sessions)
+                {
+                    <div class="sg-chat-session-item @(session.Id == _currentSession?.Id ? "active" : "")" @onclick="@(() => SelectSessionAsync(session))">
+                        <div class="sg-chat-session-title">@session.Title</div>
+                        <div class="sg-chat-session-meta">@session.UpdatedAt.ToLocalTime().ToString("g")</div>
+                        <button class="sg-chat-session-delete" @onclick="@(() => DeleteSessionAsync(session))" @onclick:stopPropagation="true">✕</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    <div class="sg-chat-main">
+        @* Toolbar - Styled exactly like RAG *@
+        <div class="sg-chat-modebar">
+            <div class="sg-chat-mode-group" role="group" aria-label="Chat mode">
+                <button type="button" class="sg-chat-mode-clear" @onclick="ToggleSidebar" title="Toggle History">
+                    <svg viewBox="0 0 16 16" width="13" height="13"><path fill="currentColor" d="M2 2.75A.75.75 0 0 1 2.75 2h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 2.75Zm0 5A.75.75 0 0 1 2.75 7h10.5a.75.75 0 0 1 0 1.5H2.75A.75.75 0 0 1 2 7.75ZM2.75 12h10.5a.75.75 0 0 1 0 1.5H2.75a.75.75 0 0 1 0-1.5Z"/></svg>
+                </button>
+                <button type="button" class="sg-chat-mode-btn active">
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                    <path fill="currentColor" d="M2.678 11.894a1 1 0 0 1 .287.801 11 11 0 0 1-.398 2c1.395-.323 2.247-.697 2.634-.893a1 1 0 0 1 .71-.074A8 8 0 0 0 8 14c3.996 0 7-2.807 7-6s-3.004-6-7-6-7 2.808-7 6c0 1.468.617 2.83 1.678 3.894m-.493 3.905a22 22 0 0 1-.713.129c-.2.032-.352-.176-.273-.362a10 10 0 0 0 .244-.637l.003-.01c.248-.72.45-1.548.524-2.319C.743 11.37 0 9.76 0 8c0-3.866 3.582-7 8-7s8 3.134 8 7-3.582 7-8 7a9 9 0 0 1-2.347-.306c-.52.263-1.639.742-3.468 1.105"/>
+                </svg>
+                @Localizer["Rag_ModeDirect"]
+            </button>
+        </div>
+
+        @if (_messages.Count > 0)
+        {
+            <button type="button" class="sg-chat-mode-clear" @onclick="ClearHistory" title="@Localizer["Rag_ClearHistory"]" disabled="@_streaming">
+                <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                    <path fill="currentColor" d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5m3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0z"/>
+                    <path fill="currentColor" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4zM2.5 3h11V2h-11z"/>
+                </svg>
+                @Localizer["Common_Clear"]
+            </button>
+        }
+
+        <span class="sg-chat-mode-badge direct">
+            <span>💬 @(_config.ModelId ?? "None")</span>
+        </span>
+
+        <button type="button" class="sg-chat-mode-clear" @onclick="ToggleSettings" title="@Localizer["Llm_Settings"]" style="margin-left: 8px;">
+            <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                <path fill="currentColor" d="M8 4.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Zm0 4a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Zm0 4a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z"/>
+            </svg>
+            @Localizer["Llm_Settings"]
+        </button>
+
+        @if (_messages.Count > 0 && !_streaming)
+        {
+            <div class="sg-chat-export-wrap">
+                <button type="button" class="sg-chat-export-btn" @onclick="ToggleExportMenu" title="@Localizer["Common_Export"]">
+                    <svg viewBox="0 0 16 16" width="13" height="13" aria-hidden="true">
+                        <path fill="currentColor" d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5"/>
+                        <path fill="currentColor" d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708z"/>
+                    </svg>
+                    @Localizer["Common_Export"]
+                </button>
+                @if (_showExportMenu)
+                {
+                    <div class="sg-chat-export-menu" @onclick:stopPropagation="true">
+                        <button type="button" @onclick="@(() => ExportAsync("md"))">📄 Markdown</button>
+                        <button type="button" @onclick="@(() => ExportAsync("txt"))">📝 Text</button>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+
+    @* Settings Overlay *@
+    @if (_showSettings)
+    {
+        <div class="sg-chat-settings-overlay">
+            <div class="sg-chat-settings-panel">
+                <div class="sg-chat-settings-header">
+                    <h3>@Localizer["Llm_Settings"]</h3>
+                    <SgIconButton Variant="SgButtonVariant.Ghost" OnClick="ToggleSettings" Size="SgSize.Sm">
+                        <Icon>✕</Icon>
+                    </SgIconButton>
+                </div>
+                <div class="sg-chat-settings-body">
+                    <div class="sg-chat-field">
+                        <label>@Localizer["Llm_Provider"]</label>
+                        <select @bind="_config.Provider" class="sg-chat-select">
+                            <option value="@SgLlmProvider.OpenAiCompatible">OpenAI / Compatible</option>
+                            <option value="@SgLlmProvider.OpenRouter">OpenRouter</option>
+                            <option value="@SgLlmProvider.WebLlm">WebLLM (Local GPU)</option>
+                        </select>
+                    </div>
+
+                    @if (_config.Provider == SgLlmProvider.OpenRouter)
+                    {
+                        <div class="sg-chat-field">
+                            <label>@Localizer["Llm_ModelId"]</label>
+                            <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+                                <input type="checkbox" id="manualModel" @bind="_useManualModel" />
+                                <label for="manualModel" style="margin:0;font-weight:normal">@Localizer["Rag_ManualModel"]</label>
+                            </div>
+                            
+                            @if (_useManualModel)
+                            {
+                                <input type="text" @bind="_manualModelId" class="sg-chat-input" placeholder="e.g. meta-llama/llama-3-8b-instruct" />
+                            }
+                            else
+                            {
+                                @if (_openRouterModels.Count == 0)
+                            {
+                                <div class="sg-chat-loading-models">
+                                    <span class="sg-chat-spinner sm"></span>
+                                    <span>Loading models...</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <select @bind="_config.ModelId" class="sg-chat-select">
+                                    <optgroup label="Free Models">
+                                        @foreach (var m in _openRouterModels.Where(x => x.IsFree))
+                                        {
+                                            <option value="@m.Id">@m.Name</option>
+                                        }
+                                    </optgroup>
+                                    <optgroup label="Paid Models">
+                                        @foreach (var m in _openRouterModels.Where(x => !x.IsFree))
+                                        {
+                                            <option value="@m.Id">@m.Name</option>
+                                        }
+                                    </optgroup>
+                                </select>
+                            }
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="sg-chat-field">
+                            <label>@Localizer["Llm_ModelId"]</label>
+                            <input type="text" @bind="_config.ModelId" class="sg-chat-input" placeholder="gpt-4o-mini" />
+                        </div>
+                    }
+
+                    @if (_config.Provider != SgLlmProvider.WebLlm)
+                    {
+                        <div class="sg-chat-field">
+                            <label>@Localizer["Llm_BaseUrl"]</label>
+                            <input type="text" @bind="_config.BaseUrl" class="sg-chat-input" placeholder="https://api.openai.com/v1" />
+                        </div>
+                        <div class="sg-chat-field">
+                            <label>@Localizer["Llm_ApiKey"]</label>
+                            <input type="password" @bind="_config.ApiKey" class="sg-chat-input" placeholder="sk-..." />
+                        </div>
+                    }
+
+                    <div class="sg-chat-settings-footer">
+                        <SgButton Text="@Localizer["Common_Apply"]" 
+                                  Variant="SgButtonVariant.Primary" 
+                                  OnClick="InitializeAsync" 
+                                  Loading="_isInitializing" 
+                                  Block="true" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+
+    @* Messages Area *@
+    @if (_messages.Count == 0)
+    {
+        <div class="sg-chat-empty">
+            <svg viewBox="0 0 24 24" width="36" height="36" fill="none" stroke="currentColor" stroke-width="1.2" opacity="0.4" aria-hidden="true">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <p>@Localizer["Rag_DirectHint"]</p>
+        </div>
+    }
+    else
+    {
+        <div class="sg-chat-messages" @ref="_messagesRef">
+            @foreach (var msg in _messages)
+            {
+                <div class="sg-chat-msg @(msg.Role == "user" ? "sg-chat-msg-user" : "sg-chat-msg-bot") @(msg == _streamingMsg ? "sg-chat-msg-streaming" : "")">
+                    
+                    @if (msg.Role != "user" && msg == _streamingMsg && string.IsNullOrEmpty(msg.Content))
+                    {
+                        <div class="sg-chat-msg-bubble sg-chat-thinking" aria-label="@Localizer["Rag_Thinking"]">
+                            <span class="sg-chat-dot"></span>
+                            <span class="sg-chat-dot"></span>
+                            <span class="sg-chat-dot"></span>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="sg-chat-msg-bubble @(msg.Role != "user" ? "sg-chat-md" : "")">
+                            @if (msg.Attachments?.Count > 0)
+                            {
+                                <div class="sg-chat-msg-attachments">
+                                    @foreach (var att in msg.Attachments)
+                                    {
+                                        @if (att.IsImage)
+                                        {
+                                            <img src="data:@att.MimeType;base64,@att.Base64" class="sg-chat-att-img" />
+                                        }
+                                        else
+                                        {
+                                            <div class="sg-chat-att-file">📎 @att.Name</div>
+                                        }
+                                    }
+                                </div>
+                            }
+                            @((MarkupString)GetHtml(msg))
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @if (_error is not null)
+    {
+        <div class="sg-chat-alert error" role="alert">@_error</div>
+    }
+
+    @* Streaming progress bar *@
+    @if (_streaming)
+    {
+        <div class="sg-chat-stream-bar" role="status" aria-live="polite">
+            <div class="sg-chat-stream-fill"></div>
+            <span class="sg-chat-stream-label">
+                @if (_tokenCount > 0)
+                {
+                    <span>@_tokenCount tokens</span>
+                    <span class="sg-chat-stream-sep">·</span>
+                }
+                <span class="sg-chat-stream-pulse">@Localizer["Rag_Generating"]</span>
+            </span>
+        </div>
+    }
+
+    @* Footer Input *@
+    <div class="sg-chat-footer">
+        @if (_attachments.Count > 0)
+        {
+            <div class="sg-chat-attachments">
+                @foreach (var att in _attachments)
+                {
+                    <div class="sg-chat-att-chip">
+                        <span class="sg-chat-att-name">@att.Name</span>
+                        <button type="button" class="sg-chat-att-remove" @onclick="@(() => _attachments.Remove(att))">✕</button>
+                    </div>
+                }
+            </div>
+        }
+
+        <div class="sg-chat-input-row">
+            <label class="sg-chat-attach-btn" title="@Localizer["Rag_AttachFile"]">
+                <svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true">
+                    <path fill="currentColor" d="M4.5 3a2.5 2.5 0 0 1 5 0v9a1.5 1.5 0 0 1-3 0V5a.5.5 0 0 1 1 0v7a.5.5 0 0 0 1 0V3a1.5 1.5 0 1 0-3 0v9a2.5 2.5 0 0 0 5 0V5a.5.5 0 0 1 1 0v7a3.5 3.5 0 1 1-7 0z"/>
+                </svg>
+                <InputFile OnChange="HandleFileSelected" multiple style="display:none" />
+            </label>
+
+            <textarea class="sg-chat-textarea @(_streaming ? "busy" : "")"
+                      rows="1"
+                      placeholder="@(_streaming ? Localizer["Rag_Generating"] + "..." : Localizer["Rag_DirectPlaceholder"])"
+                      @bind="_userInput"
+                      @bind:event="oninput"
+                      @onkeydown="HandleKeyDown"
+                      disabled="@(_streaming || !_isReady)"></textarea>
+
+            <button type="button" class="sg-chat-send"
+                    disabled="@((string.IsNullOrWhiteSpace(_userInput) && _attachments.Count == 0) || _streaming || !_isReady)"
+                    @onclick="SendMessage"
+                    title="@Localizer["Rag_Send"]">
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                    <path fill="currentColor" d="M1.724 1.053a.5.5 0 0 0-.714.545l1.403 4.85a.5.5 0 0 0 .397.354l5.69.953c.268.053.268.437 0 .49l-5.69.953a.5.5 0 0 0-.397.354l-1.403 4.85a.5.5 0 0 0 .714.545l13-6.5a.5.5 0 0 0 0-.894l-13-6.5Z"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+    </div>
+</div>

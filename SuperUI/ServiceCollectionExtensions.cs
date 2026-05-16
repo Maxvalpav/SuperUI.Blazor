@@ -48,6 +48,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<SgZIndexService>();
         services.TryAddScoped<SgThemeService>();
         services.TryAddScoped<SgRagService>();
+        services.TryAddScoped<Services.Llm.ILlmService, Services.Llm.SgLlmService>();
+        services.TryAddScoped<Services.Llm.SgChatHistoryService>();
         services.TryAddScoped<SgJsModuleCache>();
 
         return services;
