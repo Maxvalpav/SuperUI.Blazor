@@ -11,6 +11,9 @@ public interface IThemeSemantic
     string BgMuted { get; }
     string BgEmphasized { get; }
     string BgOverlay { get; }
+    string BgGlass { get; }
+    string BorderGlass { get; }
+    string BlurGlass { get; }
 
     string Surface { get; }
     string SurfaceRaised { get; }

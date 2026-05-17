@@ -492,6 +492,9 @@ internal class TailwindSemanticLight : IThemeSemantic
     public string BgMuted      => "#F1F5F9";   // slate-100
     public string BgEmphasized => "#E2E8F0";   // slate-200
     public string BgOverlay    => "rgba(15, 23, 42, 0.5)";
+    public string BgGlass      => "rgba(255, 255, 255, 0.60)";
+    public string BorderGlass  => "rgba(255, 255, 255, 0.50)";
+    public string BlurGlass    => "12px";
 
     // Surfaces
     public string Surface        => "#FFFFFF";
@@ -591,6 +594,9 @@ internal class TailwindSemanticDark : IThemeSemantic
     public string BgMuted      => "#334155";   // slate-700
     public string BgEmphasized => "#475569";   // slate-600
     public string BgOverlay    => "rgba(0, 0, 0, 0.8)";
+    public string BgGlass      => "rgba(30, 41, 59, 0.60)";
+    public string BorderGlass  => "rgba(255, 255, 255, 0.10)";
+    public string BlurGlass    => "12px";
 
     public string Surface        => "#1E293B";  // slate-800
     public string SurfaceRaised  => "#334155";  // slate-700

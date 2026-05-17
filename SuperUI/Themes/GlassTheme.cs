@@ -287,6 +287,9 @@ internal class GlassSemanticLight : IThemeSemantic
     public string BgMuted       => "rgba(255, 255, 255, 0.08)";
     public string BgEmphasized  => "rgba(255, 255, 255, 0.22)";
     public string BgOverlay     => "rgba(0, 40, 100, 0.60)";
+    public string BgGlass       => "rgba(255, 255, 255, 0.20)";
+    public string BorderGlass   => "rgba(255, 255, 255, 0.40)";
+    public string BlurGlass     => "12px";
 
     // Surfaces
     public string Surface        => "rgba(255, 255, 255, 0.18)";
@@ -377,6 +380,9 @@ internal class GlassSemanticDark : IThemeSemantic
     public string BgMuted       => "rgba(30, 20, 65, 0.50)";
     public string BgEmphasized  => "rgba(45, 30, 90, 0.45)";
     public string BgOverlay     => "rgba(0, 0, 0, 0.75)";
+    public string BgGlass       => "rgba(255, 255, 255, 0.07)";
+    public string BorderGlass   => "rgba(255, 255, 255, 0.15)";
+    public string BlurGlass     => "12px";
 
     public string Surface        => "rgba(255, 255, 255, 0.07)";
     public string SurfaceRaised  => "rgba(255, 255, 255, 0.12)";

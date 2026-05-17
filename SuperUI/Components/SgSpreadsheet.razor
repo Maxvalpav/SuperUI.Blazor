@@ -34,7 +34,7 @@
                     <button class="sgc-btn sgc-sm" @onclick="ItalicSelectedAsync" title="@Localizer["Spreadsheet_Italic"]">@((MarkupString)IconItalic)</button>
                     <button class="sgc-btn sgc-sm" @onclick="UnderlineSelectedAsync" title="@Localizer["Spreadsheet_Underline"]">@((MarkupString)IconUnderline)</button>
                     <div class="sgc-spreadsheet-separator"></div>
-                    <button class="sgc-btn sgc-sm" @onclick="ToggleFormulaBuilder" title="@Localizer["Spreadsheet_FormulaBuilder"]">fx</button>
+                    <button class="sgc-btn sgc-sm" @onclick="ToggleFormulaBuilder" title="@Localizer["Spreadsheet_FormulaBuilder"]">@Localizer["Spreadsheet_Fx"]</button>
                 }
                 @if (ToolbarContent is not null)
                 {
@@ -84,7 +84,7 @@
     else
     {
         <div class="sgc-spreadsheet-wrapper" tabindex="0" @onkeydown="HandleKeyDownAsync">
-            <table class="sgc-spreadsheet-table" role="grid" aria-label="@(Title ?? "Spreadsheet")">
+            <table class="sgc-spreadsheet-table" role="grid" aria-label="@(Title ?? Localizer["Spreadsheet_AriaLabel"])">
                 <thead>
                     <tr>
                         <th class="sgc-spreadsheet-corner"></th>
@@ -150,7 +150,7 @@
         @if (ShowFormulaBar && !ReadOnly)
         {
             <div class="sgc-spreadsheet-formula-bar">
-                <span class="sgc-spreadsheet-formula-label">fx</span>
+                <span class="sgc-spreadsheet-formula-label">@Localizer["Spreadsheet_Fx"]</span>
                 <input type="text"
                        class="sgc-spreadsheet-formula-input"
                        placeholder="@Localizer["Spreadsheet_FormulaPlaceholder"]"
@@ -168,12 +168,12 @@
                 </div>
                     <div class="sgc-spreadsheet-formula-builder-body">
                     <div class="sgc-spreadsheet-formula-functions">
-                        <button class="sgc-btn sgc-sm" @onclick="InsertSum">СУММ</button>
-                        <button class="sgc-btn sgc-sm" @onclick="InsertAverage">СРЗНАЧ</button>
-                        <button class="sgc-btn sgc-sm" @onclick="InsertMin">МИН</button>
-                        <button class="sgc-btn sgc-sm" @onclick="InsertMax">МАКС</button>
-                        <button class="sgc-btn sgc-sm" @onclick="InsertCount">СЧЁТ</button>
-                        <button class="sgc-btn sgc-sm" @onclick="InsertIf">ЕСЛИ</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertSum">@Localizer["Spreadsheet_FunctionSum"]</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertAverage">@Localizer["Spreadsheet_FunctionAverage"]</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertMin">@Localizer["Spreadsheet_FunctionMin"]</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertMax">@Localizer["Spreadsheet_FunctionMax"]</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertCount">@Localizer["Spreadsheet_FunctionCount"]</button>
+                        <button class="sgc-btn sgc-sm" @onclick="InsertIf">@Localizer["Spreadsheet_FunctionIf"]</button>
                     </div>
                     <div class="sgc-spreadsheet-formula-description">
                         @_formulaDescription
@@ -224,8 +224,8 @@
     [Parameter] public string? Description { get; set; }
     [Parameter] public bool Compact { get; set; }
     [Parameter] public bool Loading { get; set; }
-    [Parameter] public string EmptyTitle { get; set; } = "Нет данных";
-    [Parameter] public string? EmptyDescription { get; set; } = "Создайте новую таблицу, чтобы начать работу.";
+    [Parameter] public string EmptyTitle { get; set; } = "";
+    [Parameter] public string? EmptyDescription { get; set; } = "";
     [Parameter] public string? CssClass { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
     
@@ -263,6 +263,11 @@
         {
             _selectedCol = Columns.Keys.First();
         }
+
+        if (string.IsNullOrEmpty(EmptyTitle))
+            EmptyTitle = Localizer["Spreadsheet_EmptyTitle"];
+        if (string.IsNullOrEmpty(EmptyDescription))
+            EmptyDescription = Localizer["Spreadsheet_EmptyDescription"];
     }
     
     private SpreadsheetCellData? GetCell(int row, string col)
@@ -479,7 +484,7 @@
     private async Task AddColumnAsync()
     {
         var newCol = $"Column{Columns.Count + 1}";
-        Columns[newCol] = $"Column {Columns.Count + 1}";
+        Columns[newCol] = Localizer.GetString("Spreadsheet_ColumnLabel", Columns.Count + 1);
         if (CellDataChanged.HasDelegate)
             await CellDataChanged.InvokeAsync(_cells);
         StateHasChanged();

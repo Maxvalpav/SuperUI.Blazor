@@ -59,6 +59,9 @@ public sealed class DefaultTheme : ThemeBase
             --sui-shadow-lg: var(--sg-shadow-lg);
 
             --sui-overlay-bg: var(--sg-bg-overlay);
+            --sui-glass-bg:     var(--sg-bg-glass);
+            --sui-glass-border: var(--sg-border-glass);
+            --sui-glass-blur:   var(--sg-blur-glass);
 
             --sui-hover-bg:    rgba(0, 0, 0, 0.04);
             --sui-active-bg:   rgba(0, 0, 0, 0.08);
@@ -146,6 +149,9 @@ internal class DefaultSemanticLight : IThemeSemantic
     public string BgMuted => "#f1f5f9";
     public string BgEmphasized => "#e2e8f0";
     public string BgOverlay => "rgba(0, 0, 0, 0.4)";
+    public string BgGlass => "rgba(255, 255, 255, 0.6)";
+    public string BorderGlass => "rgba(255, 255, 255, 0.5)";
+    public string BlurGlass => "12px";
 
     public string Surface => "#ffffff";
     public string SurfaceRaised => "#ffffff";
@@ -231,6 +237,9 @@ internal class DefaultSemanticDark : IThemeSemantic
     public string BgMuted => "#262626";
     public string BgEmphasized => "#383838";
     public string BgOverlay => "rgba(0, 0, 0, 0.75)";
+    public string BgGlass => "rgba(20, 20, 20, 0.6)";
+    public string BorderGlass => "rgba(255, 255, 255, 0.15)";
+    public string BlurGlass => "12px";
 
     public string Surface => "#171717";
     public string SurfaceRaised => "#1c1c1c";
