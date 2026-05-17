@@ -110,15 +110,15 @@ function applyThemeDefaults(Chart) {
     if (Chart.__sgThemed) return;
     Chart.__sgThemed = true;
 
-    const text = readCssVar('--sui-text', '#1f2937');
-    const muted = readCssVar('--sui-text-secondary', '#6b7280');
-    const grid = readCssVar('--sui-border', 'rgba(127,127,127,0.18)');
-    const cardBg = readCssVar('--sui-card-bg', '#ffffff');
+    const text = readCssVar('--sg-fg', '#1f2937');
+    const muted = readCssVar('--sg-fg-subtle', '#6b7280');
+    const grid = readCssVar('--sg-border', 'rgba(127,127,127,0.18)');
+    const cardBg = readCssVar('--sgc-card-bg', '#ffffff');
 
     Chart.defaults.color = muted;
     Chart.defaults.borderColor = grid;
-    Chart.defaults.font.family = readCssVar('--sui-font-family', Chart.defaults.font.family);
-    Chart.defaults.plugins.tooltip.backgroundColor = readCssVar('--sui-tooltip-bg', 'rgba(17,24,39,0.92)');
+    Chart.defaults.font.family = readCssVar('--sg-font', Chart.defaults.font.family);
+    Chart.defaults.plugins.tooltip.backgroundColor = readCssVar('--sg-bg-muted', 'rgba(17,24,39,0.92)');
     Chart.defaults.plugins.tooltip.titleColor = '#fff';
     Chart.defaults.plugins.tooltip.bodyColor = '#f3f4f6';
     Chart.defaults.plugins.tooltip.borderColor = 'transparent';

@@ -104,7 +104,7 @@ function _tileLayerConfig(opts) {
 // ── Marker icon (canvas-based pin with tail) ──────────────────────────────────
 
 function _markerIcon(L, color, emoji, size) {
-    const accent = _cssVar('--sui-accent', '#006fee');
+    const accent = _cssVar('--sg-color-primary', '#006fee');
     const c      = color  || accent;
     const s      = size   || 32;
     const icon   = emoji  || '';

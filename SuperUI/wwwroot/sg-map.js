@@ -65,7 +65,7 @@ function _buildTileSource(ol, opts) {
 // ── Marker style ──────────────────────────────────────────────────────────────
 
 function _markerStyle(ol, marker) {
-    const accent = _cssVar('--sui-accent', '#006fee');
+    const accent = _cssVar('--sg-color-primary', '#006fee');
     const color  = marker.color ?? accent;
     const size   = marker.size  ?? 32;
     const icon   = marker.icon  ?? '';

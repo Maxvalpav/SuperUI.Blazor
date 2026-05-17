@@ -37,11 +37,11 @@ function _cssVar(name, fallback) {
 // ── Theme variables ───────────────────────────────────────────────────────────
 
 function _buildThemeVars(opts) {
-    const bg     = _cssVar('--sui-card-bg',        '#ffffff');
-    const text   = _cssVar('--sui-text-primary',   '#1e293b');
-    const border = _cssVar('--sui-border',         '#e2e8f0');
-    const accent = _cssVar('--sui-accent',         '#006fee');
-    const muted  = _cssVar('--sui-text-secondary', '#64748b');
+    const bg     = _cssVar('--sgc-card-bg',        '#ffffff');
+    const text   = _cssVar('--sg-fg',   '#1e293b');
+    const border = _cssVar('--sg-border',         '#e2e8f0');
+    const accent = _cssVar('--sg-color-primary',         '#006fee');
+    const muted  = _cssVar('--sg-fg-subtle', '#64748b');
 
     if (opts.theme !== 'Base') return {};
 
@@ -50,17 +50,17 @@ function _buildThemeVars(opts) {
         primaryTextColor:   '#ffffff',
         primaryBorderColor: accent,
         lineColor:          border,
-        secondaryColor:     _cssVar('--sui-bg-secondary', '#f8fafc'),
-        tertiaryColor:      _cssVar('--sui-bg-tertiary',  '#f1f5f9'),
+        secondaryColor:     _cssVar('--sg-bg-subtle', '#f8fafc'),
+        tertiaryColor:      _cssVar('--sg-bg-muted',  '#f1f5f9'),
         background:         bg,
         mainBkg:            bg,
         nodeBorder:         border,
-        clusterBkg:         _cssVar('--sui-bg-secondary', '#f8fafc'),
+        clusterBkg:         _cssVar('--sg-bg-subtle', '#f8fafc'),
         titleColor:         text,
         edgeLabelBackground:bg,
-        attributeBackgroundColorEven: _cssVar('--sui-bg-secondary', '#f8fafc'),
+        attributeBackgroundColorEven: _cssVar('--sg-bg-subtle', '#f8fafc'),
         attributeBackgroundColorOdd:  bg,
-        fontFamily:         _cssVar('--sui-font-family', 'system-ui, sans-serif'),
+        fontFamily:         _cssVar('--sg-font', 'system-ui, sans-serif'),
         fontSize:           `${opts.fontSize ?? 14}px`,
     };
 }
@@ -81,7 +81,7 @@ async function _render(mermaid, instanceId, containerRef, definition, opts, dotn
         theme,
         themeVariables: _buildThemeVars(opts),
         securityLevel:  opts.securityLevel ?? 'strict',
-        fontFamily:     _cssVar('--sui-font-family', 'system-ui, sans-serif'),
+        fontFamily:     _cssVar('--sg-font', 'system-ui, sans-serif'),
         fontSize:       opts.fontSize ?? 14,
         flowchart:      { curve: opts.flowchartCurve ?? 'basis', htmlLabels: opts.securityLevel !== 'strict' },
         sequence:       { mirrorActors: opts.sequenceMirrorActors ?? false },

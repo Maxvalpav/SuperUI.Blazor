@@ -1,108 +1,143 @@
 using Microsoft.JSInterop;
+using SuperUI.Themes;
 
 namespace SuperUI.Services;
 
 /// <summary>
-/// Manages theme (light/dark mode) for SuperUI components.
+/// Extended theme management service for SuperUI.
+/// Supports multiple themes and light/dark modes.
 /// </summary>
 public sealed class SgThemeService : IAsyncDisposable
 {
-    private readonly IJSRuntime _js;
-    private IJSObjectReference? _module;
+    private const string StorageKeyThemeId   = "superui-theme-id";
+    private const string StorageKeyDarkMode  = "superui-dark-mode";
+
+    private readonly IJSRuntime  _js;
+    private readonly ThemeRegistry _registry;
+    private IJSObjectReference?  _module;
     private bool _isDisposed;
 
-    /// <summary>
-    /// Event raised when the theme changes.
-    /// </summary>
-    public event Action<string>? ThemeChanged;
+    /// <summary>Current active theme definition.</summary>
+    public IThemeDefinition CurrentTheme { get; private set; }
 
-    /// <summary>
-    /// Gets the current theme: "light", "dark", or "auto".
-    /// </summary>
-    public string CurrentTheme { get; private set; } = "light";
+    /// <summary>Current mode: "light" | "dark" | "auto".</summary>
+    public string CurrentMode { get; private set; } = "light";
 
-    /// <summary>
-    /// Initializes a new instance of <see cref="SgThemeService"/>.
-    /// </summary>
-    public SgThemeService(IJSRuntime js)
+    /// <summary>true if currently in dark mode.</summary>
+    public bool IsDark => CurrentMode == "dark" || (CurrentMode == "auto" && _systemPrefersDark);
+
+    private bool _systemPrefersDark;
+
+    /// <summary>Event raised when theme or mode changes.</summary>
+    public event Action<IThemeDefinition, string>? ThemeChanged;
+
+    public SgThemeService(IJSRuntime js, ThemeRegistry registry)
     {
         _js = js;
+        _registry = registry;
+        CurrentTheme = registry.GetDefault();
     }
 
-    /// <summary>
-    /// Initializes the theme service and loads the saved theme preference.
-    /// </summary>
+    /// <summary>Initializes theme service and loads saved preferences.</summary>
     public async Task InitializeAsync()
     {
         if (_isDisposed) return;
-
         try
         {
             _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-theme.js");
-            CurrentTheme = await _module.InvokeAsync<string>("getTheme");
+
+            // Load saved settings
+            var savedThemeId = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyThemeId);
+            var savedMode = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyDarkMode);
+
+            // Determine system preference
+            _systemPrefersDark = await _js.InvokeAsync<bool>("eval", "window.matchMedia('(prefers-color-scheme: dark)').matches");
+
+            // Apply saved theme
+            if (!string.IsNullOrEmpty(savedThemeId) && _registry.TryGet(savedThemeId, out var theme))
+            {
+                CurrentTheme = theme!;
+            }
+
+            CurrentMode = savedMode ?? "light";
+
+            await ApplyThemeAsync();
         }
-        catch (JSException) { }
-        catch (TaskCanceledException) { }
+        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
     }
 
-    /// <summary>
-    /// Sets the theme to "light", "dark", or "auto".
-    /// </summary>
-    /// <param name="theme">The theme to set.</param>
-    public async Task SetThemeAsync(string theme)
+    /// <summary>Sets theme by ID.</summary>
+    public async Task SetThemeAsync(string themeId)
     {
-        if (_isDisposed || _module is null) return;
+        if (_isDisposed) return;
+        if (!_registry.TryGet(themeId, out var theme)) return;
+
+        CurrentTheme = theme!;
+        await SaveAndApplyAsync();
+    }
+
+    /// <summary>Sets theme by object.</summary>
+    public async Task SetThemeAsync(IThemeDefinition theme)
+    {
+        if (_isDisposed) return;
+        CurrentTheme = theme;
+        await SaveAndApplyAsync();
+    }
+
+    /// <summary>Sets mode: "light" | "dark" | "auto".</summary>
+    public async Task SetModeAsync(string mode)
+    {
+        if (_isDisposed) return;
+        CurrentMode = mode;
+        await SaveAndApplyAsync();
+    }
+
+    /// <summary>Toggles light ↔ dark.</summary>
+    public async Task ToggleModeAsync()
+    {
+        var newMode = IsDark ? "light" : "dark";
+        await SetModeAsync(newMode);
+    }
+
+    private async Task SaveAndApplyAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyThemeId, CurrentTheme.Id);
+            await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyDarkMode, CurrentMode);
+            await ApplyThemeAsync();
+        }
+        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
+    }
+
+    private async Task ApplyThemeAsync()
+    {
+        if (_isDisposed) return;
+
+        var effectiveDark = IsDark;
+        var css = CurrentTheme.GenerateCss();
+        var dataTheme = effectiveDark ? "dark" : "light";
 
         try
         {
-            await _module.InvokeVoidAsync("setTheme", theme);
-            CurrentTheme = theme;
-            ThemeChanged?.Invoke(theme);
+            await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{dataTheme}')");
+            await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme-id', '{CurrentTheme.Id}')");
+            await _js.InvokeVoidAsync("SuperUI.applyThemeCss", css);
+
+            ThemeChanged?.Invoke(CurrentTheme, CurrentMode);
         }
-        catch (JSException) { }
-        catch (TaskCanceledException) { }
+        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
     }
 
-    /// <summary>
-    /// Toggles between light and dark themes.
-    /// </summary>
-    public async Task ToggleThemeAsync()
-    {
-        var newTheme = CurrentTheme == "dark" ? "light" : "dark";
-        await SetThemeAsync(newTheme);
-    }
-
-    /// <summary>
-    /// Gets the effective theme (resolves "auto" to "light" or "dark").
-    /// </summary>
-    public async Task<string> GetEffectiveThemeAsync()
-    {
-        if (_isDisposed || _module is null) return "light";
-
-        try
-        {
-            return await _module.InvokeAsync<string>("getEffectiveTheme");
-        }
-        catch
-        {
-            return "light";
-        }
-    }
+    public IReadOnlyList<IThemeDefinition> GetAvailableThemes() => _registry.GetAll();
 
     public async ValueTask DisposeAsync()
     {
         if (_isDisposed) return;
         _isDisposed = true;
-
         if (_module is not null)
         {
-            try
-            {
-                await _module.DisposeAsync();
-            }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
+            try { await _module.DisposeAsync(); } catch { }
         }
     }
 }

@@ -7,6 +7,8 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using SuperUI.Base.Builders;
 using SuperUI.Base.Utilities;
+using SuperUI.Services;
+using SuperUI.Themes;
 
 namespace SuperUI.Base.ComponentBases;
 
@@ -21,7 +23,7 @@ namespace SuperUI.Base.ComponentBases;
 /// Миграция — только аддитивная: удалить дублированные объявления параметров
 /// и перейти на <c>Css()</c>/<c>Styles()</c>.</para>
 /// </remarks>
-public abstract class SgComponentBase : ComponentBase
+public abstract class SgComponentBase : ComponentBase, IDisposable
 {
     private string? _autoId;
     private ILogger? _logger;
@@ -72,6 +74,45 @@ public abstract class SgComponentBase : ComponentBase
     /// </summary>
     [Inject]
     protected ILoggerFactory? LoggerFactory { get; set; }
+
+    /// <summary>
+    /// Сервис управления темами.
+    /// </summary>
+    [Inject]
+    protected SgThemeService ThemeService { get; set; } = default!;
+
+    /// <summary>
+    /// Возвращает текущий режим темы ("light", "dark", "auto").
+    /// </summary>
+    protected string CurrentMode => ThemeService.CurrentMode;
+
+    /// <summary>
+    /// true, если сейчас активен тёмный режим (с учётом системных настроек для "auto").
+    /// </summary>
+    protected bool IsDark => ThemeService.IsDark;
+
+    /// <summary>
+    /// Текущая активная тема.
+    /// </summary>
+    protected IThemeDefinition CurrentTheme => ThemeService.CurrentTheme;
+
+    // ── Жизненный цикл ────────────────────────────────────────────────────────
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        ThemeService.ThemeChanged += HandleThemeChanged;
+    }
+
+    private void HandleThemeChanged(IThemeDefinition theme, string mode)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public virtual void Dispose()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+    }
 
     // ── Защищённые члены ──────────────────────────────────────────────────────
 

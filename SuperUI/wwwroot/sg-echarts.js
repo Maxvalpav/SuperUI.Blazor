@@ -35,11 +35,11 @@ function _cssVar(name, fallback) {
 
 function _theme() {
     return {
-        text:    _cssVar('--sui-text-primary',   '#1e293b'),
-        muted:   _cssVar('--sui-text-secondary', '#64748b'),
-        border:  _cssVar('--sui-border',         '#e2e8f0'),
-        bg:      _cssVar('--sui-card-bg',        '#ffffff'),
-        accent:  _cssVar('--sui-accent',         '#006fee'),
+        text:    _cssVar('--sg-fg',   '#1e293b'),
+        muted:   _cssVar('--sg-fg-subtle', '#64748b'),
+        border:  _cssVar('--sg-border',         '#e2e8f0'),
+        bg:      _cssVar('--sgc-card-bg',        '#ffffff'),
+        accent:  _cssVar('--sg-color-primary',         '#006fee'),
     };
 }
 
@@ -60,7 +60,7 @@ function _baseOption(opts, t) {
         animationDuration: opts.animationDuration ?? 800,
         backgroundColor: opts.backgroundColor ?? 'transparent',
         color: opts.colors ?? ['#006fee','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#84cc16','#ec4899','#f97316','#0ea5e9'],
-        textStyle: { color: t.text, fontFamily: _cssVar('--sui-font-family', 'system-ui') },
+        textStyle: { color: t.text, fontFamily: _cssVar('--sg-font', 'system-ui') },
         tooltip: {
             trigger: 'axis',
             backgroundColor: t.bg,

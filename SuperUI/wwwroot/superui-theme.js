@@ -3,6 +3,19 @@
 const THEME_KEY = 'superui-theme';
 const DEFAULT_THEME = 'light';
 
+// Global namespace for SuperUI runtime operations
+window.SuperUI = window.SuperUI || {};
+
+window.SuperUI.applyThemeCss = function(css) {
+    let styleEl = document.getElementById('sg-dynamic-theme');
+    if (!styleEl) {
+        styleEl = document.createElement('style');
+        styleEl.id = 'sg-dynamic-theme';
+        document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = css;
+};
+
 export function getTheme() {
     try {
         if (typeof localStorage !== 'undefined') {

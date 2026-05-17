@@ -66,7 +66,7 @@ function _cssVar(name, fallback) {
 // ── Canvas marker ─────────────────────────────────────────────────────────────
 
 function _makeMarkerIcon(color, emoji) {
-    const c = color ?? _cssVar('--sui-accent', '#006fee');
+    const c = color ?? _cssVar('--sg-color-primary', '#006fee');
     const size = 36;
     const cv = document.createElement('canvas');
     cv.width = size; cv.height = size + 8;
