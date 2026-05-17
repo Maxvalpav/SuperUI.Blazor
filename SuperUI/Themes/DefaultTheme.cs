@@ -16,17 +16,10 @@ public sealed class DefaultTheme : ThemeBase
     protected override IThemeComponents? CreateComponents() => new DefaultComponents();
 
     public override string? AdditionalCss => """
-        /* ═══════════════════════════════════════════════════════════════════════════ 
-           superui-components.css 
-           Глобальные стили и общие паттерны компонентов SuperUI. 
-           Использует семантические токены --sg-*. 
-           ═══════════════════════════════════════════════════════════════════════════ */ 
-        
-        /* ── Алиасы токенов для обратной совместимости ───────────────────────────── */ 
+        /* Backward-compat aliases: --sui-* → --sg-* */
         :root,
         [data-theme="light"],
-        [data-theme="dark"] { 
-            /* Backward-compat aliases: --sui-* → --sg-* (mapping to internal theme tokens) */
+        [data-theme="dark"] {
             --sui-bg-primary:   var(--sg-bg);
             --sui-bg-secondary: var(--sg-bg-subtle);
             --sui-bg-tertiary:  var(--sg-bg-muted);
@@ -81,526 +74,56 @@ public sealed class DefaultTheme : ThemeBase
             --sui-radius-md:   var(--sg-radius-md);
             --sui-radius-lg:   var(--sg-radius-lg);
             --sui-radius-full: var(--sg-radius-full);
-
-            /* Legacy variable aliases - map to new theme system */ 
-            --sui-bg: var(--sui-bg-primary);
-            --sui-bg-alt: var(--sui-bg-secondary); 
-            --sui-bg-hover: var(--sui-hover-bg);
-            --sui-fg: var(--sui-text-primary); 
-            --sui-text: var(--sui-text-primary); 
-            --sui-muted: var(--sui-text-muted); 
-            --sui-border-strong: var(--sui-border-hover); 
-            --sui-border-soft: var(--sui-border); 
-            --sui-accent-soft: var(--sui-selected-bg); 
-            --sui-toolbar-bg: var(--sui-bg-secondary); 
-            --sui-hover: var(--sui-hover-bg); 
-            --sui-danger-hover: #e11d48; 
-            --sui-disabled: var(--sui-text-disabled); 
-            --sui-focus: 0 0 0 2px rgba(0, 111, 238, 0.2); 
-            --sui-primary: var(--sui-accent); 
-            --sui-font: var(--sui-font-family); 
-            --sui-radius: var(--sui-radius-md); 
-            --sui-end-translate: 100%; 
-            --sui-start-translate: -100%; 
-
-            /* Shared design tokens for components using --sg-* naming */ 
-            --sg-bg-primary:      var(--sg-bg); 
-            --sg-bg-secondary:    var(--sg-bg-subtle); 
-            --sg-bg-tertiary:     var(--sg-bg-muted); 
-            --sg-text-primary:    var(--sg-fg); 
-            --sg-text-secondary:  var(--sg-fg-subtle); 
-            --sg-border-color:    var(--sg-border); 
-            --sg-border-radius:   var(--sg-radius-md); 
-            --sg-border-radius-sm: var(--sg-radius-sm); 
-            --sg-font-family:     var(--sg-font); 
-            --sg-primary:         var(--sg-color-primary); 
-            --sg-primary-hover:   var(--sg-color-primary-hover); 
-            --sg-danger:          var(--sg-color-danger); 
-            --sg-success:         var(--sg-color-success); 
-            --sg-warn:            var(--sg-color-warning); 
-            --sg-muted:           var(--sg-fg-muted); 
-        } 
-        
-        [dir="rtl"] { 
-            --sui-end-translate: -100%; 
-            --sui-start-translate: 100%; 
-        } 
-
-        /* ── Контейнер с рамкой и тенью (карточка-обёртка) ──────────────────────── */ 
-        .sg-panel-container { 
-            position: relative; 
-            border: 1px solid var(--sg-border); 
-            border-radius: var(--sg-radius-lg); 
-            overflow: hidden; 
-            box-shadow: var(--sg-shadow-sm); 
-            transition: box-shadow var(--sg-transition-base), transform var(--sg-transition-base); 
-            box-sizing: border-box; 
-            background: var(--sg-surface);
-        } 
-        
-        .sg-panel-container:hover { 
-            box-shadow: var(--sg-shadow-md); 
-        } 
-        
-        /* ── Абсолютный оверлей (loading / error поверх canvas) ──────────────────── */ 
-        .sg-overlay { 
-            position: absolute; 
-            inset: 0; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            gap: 16px; 
-        } 
-        
-        /* ── Skeleton-анимация (5 баров) ─────────────────────────────────────────── */ 
-        .sg-skeleton-bars { 
-            display: flex; 
-            align-items: flex-end; 
-            gap: 6px; 
-            height: 48px; 
-        } 
-        
-        .sg-skeleton-bars span { 
-            width: 10px; 
-            border-radius: 3px 3px 0 0; 
-            background: var(--sg-border); 
-            animation: sg-bar-pulse 1.2s ease-in-out infinite; 
-        } 
-        
-        .sg-skeleton-bars span:nth-child(1) { height: 60%; animation-delay: 0s;   } 
-        .sg-skeleton-bars span:nth-child(2) { height: 90%; animation-delay: 0.1s; } 
-        .sg-skeleton-bars span:nth-child(3) { height: 45%; animation-delay: 0.2s; } 
-        .sg-skeleton-bars span:nth-child(4) { height: 75%; animation-delay: 0.3s; } 
-        .sg-skeleton-bars span:nth-child(5) { height: 55%; animation-delay: 0.4s; } 
-        
-        @keyframes sg-bar-pulse { 
-            0%, 100% { opacity: 0.3; } 
-            50%       { opacity: 1;   } 
-        } 
-        
-        /* ── Текст под skeleton ──────────────────────────────────────────────────── */ 
-        .sg-loading-text { 
-            color: var(--sg-fg-subtle, #6b7280); 
-            font-size: 13px; 
-        } 
-        
-        /* ── Toolbar (fade-in при hover на контейнер) ────────────────────────────── */ 
-        .sg-hover-toolbar { 
-            position: absolute; 
-            top: 8px; 
-            right: 8px; 
-            display: flex; 
-            gap: 4px; 
-            z-index: 2; 
-            opacity: 0; 
-            transform: translateY(-4px); 
-            transition: opacity 0.18s ease, transform 0.18s ease; 
-            pointer-events: none; 
-        } 
-        
-        .sg-panel-container:hover .sg-hover-toolbar, 
-        .sg-panel-container:focus-within .sg-hover-toolbar { 
-            opacity: 1; 
-            transform: translateY(0); 
-            pointer-events: auto; 
-        } 
-        
-        @media (max-width: 480px) { 
-            .sg-hover-toolbar { 
-                opacity: 1; 
-                transform: none; 
-                pointer-events: auto; 
-            } 
-        } 
-        
-        /* ── Кнопка-иконка в toolbar ─────────────────────────────────────────────── */ 
-        .sg-tool-btn { 
-            display: inline-flex; 
-            align-items: center; 
-            justify-content: center; 
-            width: 28px; 
-            height: 28px; 
-            border: 1px solid var(--sg-border); 
-            background: var(--sgc-card-bg, var(--sg-bg)); 
-            color: var(--sg-fg-subtle); 
-            border-radius: var(--sg-radius-md, 4px); 
-            cursor: pointer; 
-            transition: background 0.15s, color 0.15s, border-color 0.15s; 
-            padding: 0; 
-        } 
-        
-        .sg-tool-btn:hover, 
-        .sg-tool-btn:focus-visible { 
-            background: var(--sg-color-primary); 
-            color: #fff; 
-            border-color: var(--sg-color-primary); 
-            outline: none; 
-        } 
-        
-        /* ── CSS Spinner ─────────────────────────────────────────────────────────── */ 
-        .sg-spinner { 
-            display: inline-block; 
-            width: 20px; 
-            height: 20px; 
-            border: 2px solid var(--sg-border, #e5e7eb); 
-            border-top-color: var(--sg-color-primary, #006fee); 
-            border-radius: 50%; 
-            animation: sg-spin 0.7s linear infinite; 
-            flex-shrink: 0; 
-        } 
-        
-        .sg-spinner-sm { 
-            width: 13px; 
-            height: 13px; 
-            border-width: 2px; 
-            border-color: rgba(255,255,255,0.35); 
-            border-top-color: #fff; 
-        } 
-        
-        @keyframes sg-spin { 
-            to { transform: rotate(360deg); } 
-        } 
-        
-        /* ── Блок ошибки ─────────────────────────────────────────────────────────── */ 
-        .sg-error-state { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            gap: 12px; 
-            padding: 24px; 
-            height: 100%; 
-            color: var(--sg-color-danger, #ef4444); 
-            font-size: 13px; 
-            text-align: center; 
-        } 
-        
-        /* ── Блок ошибки (строчный, с иконкой) ──────────────────────────────────── */ 
-        .sg-error-alert { 
-            display: flex; 
-            align-items: center; 
-            gap: 8px; 
-            padding: 10px 14px; 
-            background: rgba(239, 68, 68, 0.08); 
-            border: 1px solid rgba(239, 68, 68, 0.3); 
-            border-radius: var(--sg-radius-md, 6px); 
-            color: var(--sg-color-danger, #ef4444); 
-            font-size: 13px; 
-        } 
-        
-        .sg-error-alert-icon { flex-shrink: 0; } 
-        
-        /* ── Кнопка "Retry" внутри ошибки ────────────────────────────────────────── */ 
-        .sg-retry-btn { 
-            margin-left: auto; 
-            padding: 3px 10px; 
-            font-size: 12px; 
-            border: 1px solid currentColor; 
-            border-radius: 4px; 
-            background: transparent; 
-            color: inherit; 
-            cursor: pointer; 
-            transition: background 0.15s; 
-        } 
-        
-        .sg-retry-btn:hover { background: rgba(239, 68, 68, 0.12); } 
-        
-        /* ── Пустое состояние ────────────────────────────────────────────────────── */ 
-        .sg-empty-state { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            gap: 10px; 
-            padding: 40px 20px; 
-            color: var(--sg-fg-subtle, #6b7280); 
-            font-size: 13px; 
-            text-align: center; 
-        } 
-        
-        /* ── Shimmer (горизонтальный) ────────────────────────────────────────────── */ 
-        @keyframes sg-shimmer { 
-            0%   { background-position: 200% 0; } 
-            100% { background-position: -200% 0; } 
-        } 
-        
-        .sg-shimmer { 
-            background: linear-gradient( 
-                90deg, 
-                var(--sg-bg-subtle, #f3f4f6) 25%, 
-                var(--sg-bg, #fff) 50%, 
-                var(--sg-bg-subtle, #f3f4f6) 75% 
-            ); 
-            background-size: 200% 100%; 
-            animation: sg-shimmer 1.5s infinite; 
-        } 
-        
-        /* ── Тонкий scrollbar (для overflow-контейнеров) ─────────────────────────── */ 
-        .sg-thin-scroll,
-        .sg-scroll, 
-        [data-scroll], 
-        body { 
-            scrollbar-width: thin; 
-            scrollbar-color: var(--sg-border-strong, #b0b0b0) transparent; 
-        } 
-        
-        .sg-thin-scroll::-webkit-scrollbar,
-        ::-webkit-scrollbar { width: 6px; height: 6px; } 
-        
-        .sg-thin-scroll::-webkit-scrollbar-track,
-        ::-webkit-scrollbar-track { background: transparent; } 
-        
-        .sg-thin-scroll::-webkit-scrollbar-thumb,
-        ::-webkit-scrollbar-thumb { 
-            background: var(--sg-border-strong, #b0b0b0); 
-            border-radius: 3px; 
-            transition: background 0.15s;
-        } 
-        
-        .sg-thin-scroll::-webkit-scrollbar-thumb:hover,
-        ::-webkit-scrollbar-thumb:hover { 
-            background: var(--sg-fg-muted, #7a7a7a); 
-        } 
-        
-        .sg-thin-scroll::-webkit-scrollbar-corner,
-        ::-webkit-scrollbar-corner { background: transparent; } 
-        
-        /* ── Tooltip (тёмный) ────────────────────────────────────────────────────── */ 
-        .sg-tooltip-dark { 
-            position: absolute; 
-            pointer-events: none; 
-            background: var(--sg-bg-muted, rgba(17,24,39,.92)); 
-            color: #f3f4f6; 
-            padding: 7px 10px; 
-            border-radius: 6px; 
-            font-size: 12px; 
-            line-height: 1.5; 
-            white-space: nowrap; 
-            opacity: 0; 
-            transition: opacity 0.12s ease; 
-            z-index: 10; 
-            box-shadow: 0 4px 12px rgba(0,0,0,.18); 
-        } 
-        
-        /* ── Левая акцентная полоса (декор карточки) ─────────────────────────────── */ 
-        .sg-accent-bar { 
-            position: relative; 
-        } 
-        
-        .sg-accent-bar::before { 
-            content: ""; 
-            position: absolute; 
-            left: 0; 
-            top: 0; 
-            bottom: 0; 
-            width: 3px; 
-            background: transparent; 
-            transition: background 0.15s; 
-        } 
-        
-        .sg-accent-bar:hover::before { 
-            background: var(--sg-color-primary, #1568c6); 
-        } 
-        
-        /* ── Группа кнопок (segmented / button-group) ────────────────────────────── */ 
-        .sg-btn-group-inline { 
-            display: inline-flex; 
-            border: 1px solid var(--sg-border-strong, #b0b0b0); 
-            border-radius: var(--sg-radius-md, 4px); 
-            overflow: hidden; 
-        } 
-        
-        .sg-btn-group-inline > * { 
-            border-radius: 0; 
-            border: none; 
-            border-right: 1px solid var(--sg-border-strong, #b0b0b0); 
-        } 
-        
-        .sg-btn-group-inline > *:last-child { 
-            border-right: none; 
-        } 
-        
-        /* ── Бейдж (pill) ────────────────────────────────────────────────────────── */ 
-        .sg-badge { 
-            display: inline-flex; 
-            align-items: center; 
-            padding: 2px 8px; 
-            font-size: 11px; 
-            font-weight: 500; 
-            border-radius: 10px; 
-            border: 1px solid transparent; 
-        } 
-        
-        .sg-badge-success { background: rgba(16,185,129,.1);  color: #059669; border-color: rgba(16,185,129,.25); } 
-        .sg-badge-warn    { background: rgba(245,158,11,.1);  color: #d97706; border-color: rgba(245,158,11,.25); } 
-        .sg-badge-danger  { background: rgba(239,68,68,.1);   color: #dc2626; border-color: rgba(239,68,68,.25);  } 
-        .sg-badge-info    { background: rgba(0,111,238,.08);  color: var(--sg-color-primary, #006fee); border-color: rgba(0,111,238,.2); } 
-        .sg-badge-neutral { background: var(--sg-bg-subtle, #f3f4f6); color: var(--sg-fg-subtle, #6b7280); border-color: var(--sg-border, #e5e7eb); } 
-        
-        /* ── Прогресс-бар ────────────────────────────────────────────────────────── */ 
-        .sg-progress-wrap { 
-            display: flex; 
-            flex-direction: column; 
-            gap: 4px; 
-        } 
-        
-        .sg-progress-bar { 
-            height: 4px; 
-            background: var(--sg-border, #e5e7eb); 
-            border-radius: 2px; 
-            overflow: hidden; 
-        } 
-        
-        .sg-progress-fill { 
-            height: 100%; 
-            background: var(--sg-color-primary, #006fee); 
-            border-radius: 2px; 
-            transition: width 0.3s ease; 
-        } 
-        
-        .sg-progress-wrap.sgc-vertical .sgc-progress-bar { 
-            width: 4px; 
-            height: 100%; 
-            border-radius: 2px; 
-        } 
-        
-        .sg-progress-wrap.sgc-vertical .sgc-progress-fill { 
-            width: 100%; 
-            height: 100%; 
-            transition: height 0.3s ease; 
-        } 
-        
-        .sg-progress-wrap.sgc-vertical .sgc-progress-buffer { 
-            width: 100%; 
-            height: 100%; 
-        } 
-        
-        .sgc-progress-buffer { 
-            background: var(--sg-border-strong, rgba(229, 231, 235, 1)); 
-            border-radius: 2px; 
-            opacity: 0.8; 
-        } 
-        
-        .sg-progress-indeterminate { 
-            width: 40% !important; 
-            animation: sg-indeterminate 1.4s ease-in-out infinite; 
-        } 
-        
-        @keyframes sg-indeterminate { 
-            0%   { transform: translateX(-100%); } 
-            100% { transform: translateX(250%); } 
-        } 
-        
-        .sg-progress-label { 
-            font-size: 11px; 
-            color: var(--sg-fg-subtle, #6b7280); 
-        } 
-        
-        @media (prefers-reduced-motion: reduce) { 
-            .sgc-progress-indeterminate, 
-            .sgc-progress-fill, 
-            .sgc-striped { 
-                animation: none !important; 
-                transition: none !important; 
-            } 
-        } 
-        
-        /* ── Drag-and-drop зона ──────────────────────────────────────────────────── */ 
-        .sg-dropzone { 
-            border: 2px dashed var(--sg-border, #e5e7eb); 
-            border-radius: var(--sg-radius-md, 8px); 
-            background: var(--sg-bg-subtle, #f9fafb); 
-            transition: border-color 0.2s, background 0.2s; 
-        } 
-        
-        .sg-dropzone-drag { 
-            border-color: var(--sg-color-primary, #006fee); 
-            background: rgba(0, 111, 238, 0.04); 
-        } 
-        
-        .sg-dropzone-hint { 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            gap: 8px; 
-            padding: 32px 24px; 
-            text-align: center; 
-        } 
-        
-        /* ── Кнопка "выбрать файл" ───────────────────────────────────────────────── */ 
-        .sg-file-btn { 
-            display: inline-flex; 
-            align-items: center; 
-            gap: 6px; 
-            padding: 6px 16px; 
-            font-size: 13px; 
-            font-weight: 500; 
-            border: 1px solid var(--sg-color-primary, #006fee); 
-            border-radius: var(--sg-radius-sm, 6px); 
-            color: var(--sg-color-primary, #006fee); 
-            background: transparent; 
-            cursor: pointer; 
-            transition: background 0.15s, color 0.15s; 
-            user-select: none; 
-            margin-top: 4px; 
-        } 
-        
-        .sg-file-btn:hover { 
-            background: var(--sg-color-primary, #006fee); 
-            color: #fff; 
-        } 
+        }
         """;
 }
 
 internal class DefaultPrimitives : IThemePrimitives
 {
-    
     public string Neutral0 => "#ffffff";
-    public string Neutral50 => "#fafafa";
-    public string Neutral100 => "#f5f5f5";
-    public string Neutral200 => "#f0f0f0";
-    public string Neutral300 => "#d9d9d9";
-    public string Neutral400 => "#bfbfbf";
-    public string Neutral500 => "#8c8c8c";
-    public string Neutral600 => "#595959";
-    public string Neutral700 => "#434343";
-    public string Neutral800 => "#262626";
-    public string Neutral900 => "#000000";
+    public string Neutral50 => "#f9fafb";
+    public string Neutral100 => "#f3f4f6";
+    public string Neutral200 => "#e5e7eb";
+    public string Neutral300 => "#d1d5db";
+    public string Neutral400 => "#9ca3af";
+    public string Neutral500 => "#6b7280";
+    public string Neutral600 => "#4b5563";
+    public string Neutral700 => "#374151";
+    public string Neutral800 => "#1f2937";
+    public string Neutral900 => "#111827";
 
-    // Ant Design Blue Palette
-    public string Primary50 => "#e6f7ff";
-    public string Primary100 => "#bae7ff";
-    public string Primary200 => "#91d5ff";
-    public string Primary300 => "#69c0ff";
-    public string Primary400 => "#40a9ff";
-    public string Primary500 => "#1890ff";
-    public string Primary600 => "#096dd9";
-    public string Primary700 => "#0050b3";
-    public string Primary800 => "#003a8c";
-    public string Primary900 => "#002329";
+    public string Primary50 => "#eff6ff";
+    public string Primary100 => "#dbeafe";
+    public string Primary200 => "#bfdbfe";
+    public string Primary300 => "#93c5fd";
+    public string Primary400 => "#60a5fa";
+    public string Primary500 => "#3b82f6";
+    public string Primary600 => "#2563eb";
+    public string Primary700 => "#1d4ed8";
+    public string Primary800 => "#1e40af";
+    public string Primary900 => "#1e3a8a";
 
-    public string Success50 => "#f6ffed";
-    public string Success100 => "#d9f7be";
-    public string Success500 => "#52c41a";
-    public string Success600 => "#389e0d";
-    public string Success700 => "#237804";
+    public string Success50 => "#f0fdf4";
+    public string Success100 => "#dcfce7";
+    public string Success500 => "#22c55e";
+    public string Success600 => "#16a34a";
+    public string Success700 => "#15803d";
 
-    public string Danger50 => "#fff1f0";
-    public string Danger100 => "#fff1f0";
-    public string Danger500 => "#ff4d4f";
-    public string Danger600 => "#cf1322";
-    public string Danger700 => "#a8071a";
+    public string Danger50 => "#fef2f2";
+    public string Danger100 => "#fee2e2";
+    public string Danger500 => "#ef4444";
+    public string Danger600 => "#dc2626";
+    public string Danger700 => "#b91c1c";
 
-    public string Warning50 => "#fffbe6";
-    public string Warning100 => "#fff7e6";
-    public string Warning500 => "#faad14";
-    public string Warning600 => "#d48806";
+    public string Warning50 => "#fffbeb";
+    public string Warning100 => "#fef3c7";
+    public string Warning500 => "#f59e0b";
+    public string Warning600 => "#d97706";
 
-    public string Info50 => "#e6f7ff";
-    public string Info100 => "#bae7ff";
-    public string Info500 => "#1890ff";
-    public string Info600 => "#096dd9";
+    public string Info50 => "#ecfeff";
+    public string Info100 => "#cffafe";
+    public string Info500 => "#0ea5e9";
+    public string Info600 => "#0284c7";
 
     public string FontSans => "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
     public string FontMono => "'JetBrains Mono', 'Fira Code', ui-monospace, monospace";
@@ -608,69 +131,69 @@ internal class DefaultPrimitives : IThemePrimitives
 
     public string RadiusNone => "0";
     public string RadiusXs => "2px";
-    public string RadiusSm => "3px";
-    public string RadiusMd => "4px";
-    public string RadiusLg => "5px";
-    public string RadiusXl => "7px";
-    public string Radius2Xl => "9px";
+    public string RadiusSm => "4px";
+    public string RadiusMd => "6px";
+    public string RadiusLg => "8px";
+    public string RadiusXl => "12px";
+    public string Radius2Xl => "16px";
     public string RadiusFull => "9999px";
 }
 
 internal class DefaultSemanticLight : IThemeSemantic
 {
-    public string BgDefault => "var(--sg-p-neutral-0)";
-    public string BgSubtle => "#f0f2f5"; // Specific classic background
-    public string BgMuted => "var(--sg-p-neutral-100)";
-    public string BgEmphasized => "var(--sg-p-neutral-200)";
-    public string BgOverlay => "rgba(0, 0, 0, 0.45)";
+    public string BgDefault => "#ffffff";
+    public string BgSubtle => "#f8fafc";
+    public string BgMuted => "#f1f5f9";
+    public string BgEmphasized => "#e2e8f0";
+    public string BgOverlay => "rgba(0, 0, 0, 0.4)";
 
-    public string Surface => "var(--sg-p-neutral-0)";
-    public string SurfaceRaised => "var(--sg-p-neutral-0)";
-    public string SurfaceOverlay => "var(--sg-p-neutral-0)";
+    public string Surface => "#ffffff";
+    public string SurfaceRaised => "#ffffff";
+    public string SurfaceOverlay => "#ffffff";
 
-    public string FgDefault => "rgba(0, 0, 0, 0.85)";
-    public string FgSubtle => "rgba(0, 0, 0, 0.65)"; // More visible
-    public string FgMuted => "rgba(0, 0, 0, 0.45)"; // More visible
-    public string FgDisabled => "rgba(0, 0, 0, 0.25)";
-    public string FgInverse => "var(--sg-p-neutral-0)";
-    public string FgLink => "var(--sg-p-blue-500)";
-    public string FgLinkHover => "var(--sg-p-blue-400)";
+    public string FgDefault => "#1e293b";
+    public string FgSubtle => "#64748b";
+    public string FgMuted => "#94a3b8";
+    public string FgDisabled => "#cbd5e1";
+    public string FgInverse => "#ffffff";
+    public string FgLink => "#006fee";
+    public string FgLinkHover => "#3b82f6";
 
-    public string BorderDefault => "var(--sg-p-neutral-300)"; // #d9d9d9 (Classic visible border)
-    public string BorderSubtle => "var(--sg-p-neutral-200)"; // #f0f0f0
-    public string BorderStrong => "var(--sg-p-neutral-400)"; // #bfbfbf
-    public string BorderFocus => "var(--sg-p-blue-400)";
-    public string Divider => "#e8e8e8"; // Classic Ant Design divider color (slightly lighter than border)
+    public string BorderDefault => "#e2e8f0";
+    public string BorderSubtle => "#f1f5f9";
+    public string BorderStrong => "#cbd5e1";
+    public string BorderFocus => "#006fee";
+    public string Divider => "#f1f5f9";
 
-    public string ColorPrimary => "var(--sg-p-blue-500)"; // #1890ff
-    public string ColorPrimarySubtle => "var(--sg-p-blue-50)";
-    public string ColorPrimaryMuted => "var(--sg-p-blue-100)";
-    public string ColorPrimaryHover => "var(--sg-p-blue-400)";
-    public string ColorPrimaryActive => "var(--sg-p-blue-600)";
-    public string ColorPrimaryFg => "var(--sg-p-neutral-0)";
+    public string ColorPrimary => "#006fee";
+    public string ColorPrimarySubtle => "#eff6ff";
+    public string ColorPrimaryMuted => "#dbeafe";
+    public string ColorPrimaryHover => "#3b82f6";
+    public string ColorPrimaryActive => "#2563eb";
+    public string ColorPrimaryFg => "#ffffff";
 
-    public string ColorSuccess => "var(--sg-p-emerald-500)";
-    public string ColorSuccessSubtle => "var(--sg-p-emerald-50)";
-    public string ColorSuccessHover => "var(--sg-p-emerald-600)";
-    public string ColorSuccessFg => "var(--sg-p-neutral-0)";
+    public string ColorSuccess => "#52c41a";
+    public string ColorSuccessSubtle => "#f6ffed";
+    public string ColorSuccessHover => "#73d13d";
+    public string ColorSuccessFg => "#ffffff";
 
-    public string ColorDanger => "var(--sg-p-rose-500)";
-    public string ColorDangerSubtle => "var(--sg-p-rose-50)";
-    public string ColorDangerHover => "var(--sg-p-rose-600)";
-    public string ColorDangerFg => "var(--sg-p-neutral-0)";
+    public string ColorDanger => "#ff4d4f";
+    public string ColorDangerSubtle => "#fff1f0";
+    public string ColorDangerHover => "#ff7875";
+    public string ColorDangerFg => "#ffffff";
 
-    public string ColorWarning => "var(--sg-p-amber-500)";
-    public string ColorWarningSubtle => "var(--sg-p-amber-50)";
-    public string ColorWarningHover => "var(--sg-p-amber-600)";
-    public string ColorWarningFg => "var(--sg-p-neutral-0)";
+    public string ColorWarning => "#faad14";
+    public string ColorWarningSubtle => "#fffbe6";
+    public string ColorWarningHover => "#ffc53d";
+    public string ColorWarningFg => "#ffffff";
 
-    public string ColorInfo => "var(--sg-p-sky-500)";
-    public string ColorInfoSubtle => "var(--sg-p-sky-50)";
-    public string ColorInfoHover => "var(--sg-p-sky-600)";
-    public string ColorInfoFg => "var(--sg-p-neutral-0)";
+    public string ColorInfo => "#1890ff";
+    public string ColorInfoSubtle => "#e6f7ff";
+    public string ColorInfoHover => "#40a9ff";
+    public string ColorInfoFg => "#ffffff";
 
-    public string Font => "var(--sg-p-font-sans)";
-    public string FontMono => "var(--sg-p-font-mono)";
+    public string Font => "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    public string FontMono => "'JetBrains Mono', 'Fira Code', ui-monospace, monospace";
     public string TextSm => "0.8125rem";
     public string TextBase => "0.875rem";
     public string TextLg => "1rem";
@@ -681,81 +204,81 @@ internal class DefaultSemanticLight : IThemeSemantic
     public string ShadowLg => "0 10px 15px -3px rgba(0, 0, 0, 0.1)";
     public string ShadowXl => "0 20px 25px -5px rgba(0, 0, 0, 0.1)";
 
-    public string RadiusSm => "var(--sg-p-radius-sm)";
-    public string RadiusMd => "var(--sg-p-radius-md)";
-    public string RadiusLg => "var(--sg-p-radius-lg)";
-    public string RadiusXl => "var(--sg-p-radius-xl)";
-    public string RadiusFull => "var(--sg-p-radius-full)";
+    public string RadiusSm => "4px";
+    public string RadiusMd => "6px";
+    public string RadiusLg => "8px";
+    public string RadiusXl => "12px";
+    public string RadiusFull => "9999px";
 
     public string TransitionFast => "100ms cubic-bezier(0, 0, 0.2, 1)";
     public string TransitionBase => "150ms cubic-bezier(0.4, 0, 0.2, 1)";
     public string TransitionSlow => "300ms cubic-bezier(0.4, 0, 0.2, 1)";
 
-    public string FocusRing => "0 0 0 2px var(--sg-p-blue-100), 0 0 0 4px var(--sg-p-blue-500)";
-    public string FocusRingDanger => "0 0 0 2px var(--sg-p-rose-100), 0 0 0 4px var(--sg-p-rose-500)";
+    public string FocusRing => "0 0 0 2px rgba(0, 111, 238, 0.12), 0 0 0 4px #006fee";
+    public string FocusRingDanger => "0 0 0 2px rgba(244, 63, 94, 0.12), 0 0 0 4px #f43f5e";
 
-    public int ZDropdown => 1000;
-    public int ZSticky => 100;
-    public int ZModal => 2000;
-    public int ZToast => 3000;
-    public int ZTooltip => 4000;
+    public int ZDropdown => 100;
+    public int ZSticky => 200;
+    public int ZModal => 300;
+    public int ZToast => 400;
+    public int ZTooltip => 500;
 }
 
 internal class DefaultSemanticDark : IThemeSemantic
 {
-    public string BgDefault => "var(--sg-p-neutral-900)";
-    public string BgSubtle => "var(--sg-p-neutral-800)";
-    public string BgMuted => "var(--sg-p-neutral-700)";
-    public string BgEmphasized => "var(--sg-p-neutral-600)";
+    public string BgDefault => "#0a0a0a";
+    public string BgSubtle => "#171717";
+    public string BgMuted => "#262626";
+    public string BgEmphasized => "#383838";
     public string BgOverlay => "rgba(0, 0, 0, 0.75)";
 
-    public string Surface => "var(--sg-p-neutral-800)";
-    public string SurfaceRaised => "var(--sg-p-neutral-700)";
-    public string SurfaceOverlay => "var(--sg-p-neutral-700)";
+    public string Surface => "#171717";
+    public string SurfaceRaised => "#1c1c1c";
+    public string SurfaceOverlay => "#1c1c1c";
 
-    public string FgDefault => "var(--sg-p-neutral-50)";
-    public string FgSubtle => "var(--sg-p-neutral-400)";
-    public string FgMuted => "var(--sg-p-neutral-500)";
-    public string FgDisabled => "var(--sg-p-neutral-600)";
-    public string FgInverse => "var(--sg-p-neutral-900)";
-    public string FgLink => "var(--sg-p-blue-400)";
-    public string FgLinkHover => "var(--sg-p-blue-300)";
+    public string FgDefault => "#fafafa";
+    public string FgSubtle => "#a3a3a3";
+    public string FgMuted => "#737373";
+    public string FgDisabled => "#404040";
+    public string FgInverse => "#0a0a0a";
+    public string FgLink => "#60a5fa";
+    public string FgLinkHover => "#93c5fd";
 
-    public string BorderDefault => "var(--sg-p-neutral-600)";
-    public string BorderSubtle => "var(--sg-p-neutral-700)";
-    public string BorderStrong => "var(--sg-p-neutral-500)";
-    public string BorderFocus => "var(--sg-p-blue-500)";
-    public string Divider => "var(--sg-p-neutral-700)";
+    public string BorderDefault => "#404040";
+    public string BorderSubtle => "#262626";
+    public string BorderStrong => "#525252";
+    public string BorderFocus => "#3b82f6";
+    public string Divider => "#1f1f1f";
 
-    public string ColorPrimary => "var(--sg-p-blue-500)";
-    public string ColorPrimarySubtle => "rgba(24, 144, 255, 0.15)";
-    public string ColorPrimaryMuted => "rgba(24, 144, 255, 0.25)";
-    public string ColorPrimaryHover => "var(--sg-p-blue-400)";
-    public string ColorPrimaryActive => "var(--sg-p-blue-300)";
+    public string ColorPrimary => "#3b82f6";
+    public string ColorPrimarySubtle => "rgba(59, 130, 246, 0.12)";
+    public string ColorPrimaryMuted => "rgba(59, 130, 246, 0.20)";
+    public string ColorPrimaryHover => "#60a5fa";
+    public string ColorPrimaryActive => "#93c5fd";
     public string ColorPrimaryFg => "#ffffff";
 
-    public string ColorSuccess => "var(--sg-p-emerald-500)";
-    public string ColorSuccessSubtle => "rgba(82, 196, 26, 0.15)";
-    public string ColorSuccessHover => "var(--sg-p-emerald-400)";
+    public string ColorSuccess => "#10b981";
+    public string ColorSuccessSubtle => "rgba(16, 185, 129, 0.12)";
+    public string ColorSuccessHover => "#34d399";
     public string ColorSuccessFg => "#ffffff";
 
-    public string ColorDanger => "var(--sg-p-rose-500)";
-    public string ColorDangerSubtle => "rgba(255, 77, 79, 0.15)";
-    public string ColorDangerHover => "var(--sg-p-rose-400)";
+    public string ColorDanger => "#f43f5e";
+    public string ColorDangerSubtle => "rgba(244, 63, 94, 0.12)";
+    public string ColorDangerHover => "#fb7185";
     public string ColorDangerFg => "#ffffff";
 
-    public string ColorWarning => "var(--sg-p-amber-500)";
-    public string ColorWarningSubtle => "rgba(250, 173, 20, 0.15)";
-    public string ColorWarningHover => "var(--sg-p-amber-400)";
-    public string ColorWarningFg => "var(--sg-p-neutral-900)";
+    public string ColorWarning => "#f59e0b";
+    public string ColorWarningSubtle => "rgba(245, 158, 11, 0.12)";
+    public string ColorWarningHover => "#fbbf24";
+    public string ColorWarningFg => "#0a0a0a";
 
-    public string ColorInfo => "var(--sg-p-sky-500)";
-    public string ColorInfoSubtle => "rgba(24, 144, 255, 0.15)";
-    public string ColorInfoHover => "var(--sg-p-sky-400)";
+    public string ColorInfo => "#38bdf8";
+    public string ColorInfoSubtle => "rgba(56, 189, 248, 0.12)";
+    public string ColorInfoHover => "#7dd3fc";
     public string ColorInfoFg => "#ffffff";
 
-    public string Font => "var(--sg-p-font-sans)";
-    public string FontMono => "var(--sg-p-font-mono)";
+    public string Font => "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+    public string FontMono => "'JetBrains Mono', 'Fira Code', ui-monospace, monospace";
     public string TextSm => "0.8125rem";
     public string TextBase => "0.875rem";
     public string TextLg => "1rem";
@@ -766,18 +289,18 @@ internal class DefaultSemanticDark : IThemeSemantic
     public string ShadowLg => "0 10px 15px -3px rgba(0, 0, 0, 0.7)";
     public string ShadowXl => "0 20px 25px -5px rgba(0, 0, 0, 0.8)";
 
-    public string RadiusSm => "var(--sg-p-radius-sm)";
-    public string RadiusMd => "var(--sg-p-radius-md)";
-    public string RadiusLg => "var(--sg-p-radius-lg)";
-    public string RadiusXl => "var(--sg-p-radius-xl)";
-    public string RadiusFull => "var(--sg-p-radius-full)";
+    public string RadiusSm => "4px";
+    public string RadiusMd => "6px";
+    public string RadiusLg => "8px";
+    public string RadiusXl => "12px";
+    public string RadiusFull => "9999px";
 
     public string TransitionFast => "100ms cubic-bezier(0, 0, 0.2, 1)";
     public string TransitionBase => "150ms cubic-bezier(0.4, 0, 0.2, 1)";
     public string TransitionSlow => "300ms cubic-bezier(0.4, 0, 0.2, 1)";
 
-    public string FocusRing => "0 0 0 2px rgba(24, 144, 255, 0.20), 0 0 0 4px var(--sg-p-blue-500)";
-    public string FocusRingDanger => "0 0 0 2px rgba(255, 77, 79, 0.20), 0 0 0 4px var(--sg-p-rose-500)";
+    public string FocusRing => "0 0 0 2px rgba(59, 130, 246, 0.20), 0 0 0 4px #3b82f6";
+    public string FocusRingDanger => "0 0 0 2px rgba(244, 63, 94, 0.20), 0 0 0 4px #f43f5e";
 
     public int ZDropdown => 100;
     public int ZSticky => 200;

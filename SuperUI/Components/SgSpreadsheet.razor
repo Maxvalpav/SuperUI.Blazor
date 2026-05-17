@@ -1,6 +1,8 @@
 @namespace SuperUI.Components
 @using System.ComponentModel.DataAnnotations
 @implements IAsyncDisposable
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
 @inject IJSRuntime JS
 
 <div class="sgc-spreadsheet @(Compact ? "sgc-spreadsheet-compact" : "") @(Loading ? "sgc-spreadsheet-loading" : "") @CssClass"
@@ -23,16 +25,16 @@
             <div class="sgc-spreadsheet-toolbar">
                 @if (ShowToolbar && !ReadOnly)
                 {
-                    <button class="sgc-btn sgc-sm" @onclick="AddRowAsync" title="Добавить строку">@((MarkupString)IconPlus) Строка</button>
-                    <button class="sgc-btn sgc-sm" @onclick="AddColumnAsync" title="Добавить столбец">@((MarkupString)IconPlus) Столбец</button>
-                    <button class="sgc-btn sgc-sm" @onclick="DeleteSelectedRowsAsync" disabled="@(SelectedRows.Count == 0)" title="Удалить выбранные строки">@((MarkupString)IconTrash) Удалить строки</button>
-                    <button class="sgc-btn sgc-sm" @onclick="DeleteSelectedColumnsAsync" disabled="@(SelectedColumns.Count == 0)" title="Удалить выбранные столбцы">@((MarkupString)IconTrash) Удалить столбцы</button>
+                    <button class="sgc-btn sgc-sm" @onclick="AddRowAsync" title="@Localizer["Spreadsheet_AddRow"]">@((MarkupString)IconPlus) @Localizer["Spreadsheet_AddRow"]</button>
+                    <button class="sgc-btn sgc-sm" @onclick="AddColumnAsync" title="@Localizer["Spreadsheet_AddColumn"]">@((MarkupString)IconPlus) @Localizer["Spreadsheet_AddColumn"]</button>
+                    <button class="sgc-btn sgc-sm" @onclick="DeleteSelectedRowsAsync" disabled="@(SelectedRows.Count == 0)" title="@Localizer["Spreadsheet_DeleteRows"]">@((MarkupString)IconTrash) @Localizer["Spreadsheet_DeleteRows"]</button>
+                    <button class="sgc-btn sgc-sm" @onclick="DeleteSelectedColumnsAsync" disabled="@(SelectedColumns.Count == 0)" title="@Localizer["Spreadsheet_DeleteColumns"]">@((MarkupString)IconTrash) @Localizer["Spreadsheet_DeleteColumns"]</button>
                     <div class="sgc-spreadsheet-separator"></div>
-                    <button class="sgc-btn sgc-sm" @onclick="BoldSelectedAsync" title="Полужирный (Ctrl+B)">@((MarkupString)IconBold)</button>
-                    <button class="sgc-btn sgc-sm" @onclick="ItalicSelectedAsync" title="Курсив (Ctrl+I)">@((MarkupString)IconItalic)</button>
-                    <button class="sgc-btn sgc-sm" @onclick="UnderlineSelectedAsync" title="Подчеркнутый (Ctrl+U)">@((MarkupString)IconUnderline)</button>
+                    <button class="sgc-btn sgc-sm" @onclick="BoldSelectedAsync" title="@Localizer["Spreadsheet_Bold"]">@((MarkupString)IconBold)</button>
+                    <button class="sgc-btn sgc-sm" @onclick="ItalicSelectedAsync" title="@Localizer["Spreadsheet_Italic"]">@((MarkupString)IconItalic)</button>
+                    <button class="sgc-btn sgc-sm" @onclick="UnderlineSelectedAsync" title="@Localizer["Spreadsheet_Underline"]">@((MarkupString)IconUnderline)</button>
                     <div class="sgc-spreadsheet-separator"></div>
-                    <button class="sgc-btn sgc-sm" @onclick="ToggleFormulaBuilder" title="Конструктор формул">fx</button>
+                    <button class="sgc-btn sgc-sm" @onclick="ToggleFormulaBuilder" title="@Localizer["Spreadsheet_FormulaBuilder"]">fx</button>
                 }
                 @if (ToolbarContent is not null)
                 {
@@ -74,7 +76,7 @@
                 }
                 @if (!ReadOnly)
                 {
-                    <button class="sgc-btn sgc-primary sgc-sm" @onclick="InitializeDefaultAsync">Создать таблицу</button>
+                    <button class="sgc-btn sgc-primary sgc-sm" @onclick="InitializeDefaultAsync">@Localizer["Spreadsheet_CreateTable"]</button>
                 }
             }
         </div>
@@ -151,7 +153,7 @@
                 <span class="sgc-spreadsheet-formula-label">fx</span>
                 <input type="text"
                        class="sgc-spreadsheet-formula-input"
-                       placeholder="Введите значение или формулу (например: =СУММ(A1:A5))"
+                       placeholder="@Localizer["Spreadsheet_FormulaPlaceholder"]"
                        value="@GetSelectedCellFormula()"
                        @onchange="OnFormulaChanged" />
             </div>
@@ -161,7 +163,7 @@
         {
             <div class="sgc-spreadsheet-formula-builder">
                 <div class="sgc-spreadsheet-formula-builder-header">
-                    <span>Конструктор формул</span>
+                    <span>@Localizer["Spreadsheet_FormulaBuilder"]</span>
                     <button class="sgc-btn sgc-sm sgc-ghost" @onclick="() => _showFormulaBuilder = false">✕</button>
                 </div>
                     <div class="sgc-spreadsheet-formula-builder-body">
@@ -185,7 +187,7 @@
             <div class="sgc-spreadsheet-status-bar">
                 <span class="sgc-spreadsheet-status">@GetSelectedCellReference()</span>
                 <span class="sgc-spreadsheet-status">@GetSelectionInfo()</span>
-                <span class="sgc-spreadsheet-status">@GetSummaryInfoRussian()</span>
+                <span class="sgc-spreadsheet-status">@GetSummaryInfo()</span>
             </div>
         }
     }
@@ -206,7 +208,7 @@
     private string _editingCol = "";
     private string? _editValue;
     private bool _showFormulaBuilder = false;
-    private string _formulaDescription = "Выберите функцию для вставки";
+    private string _formulaDescription = "";
     
     [Parameter] public Dictionary<string, string> Columns { get; set; } = new();
     [Parameter] public int Rows { get; set; } = 0;
@@ -246,6 +248,8 @@
             {
                 _cells = new Dictionary<string, SpreadsheetCellData>(CellData);
             }
+
+            _formulaDescription = Localizer["Spreadsheet_SelectFunction"].ToString();
         }
     }
     
@@ -295,7 +299,7 @@
     private string GetSelectionInfo()
     {
         var cellCount = SelectedRows.Count * SelectedColumns.Count;
-        if (cellCount > 1) return $"{cellCount} cells selected";
+        if (cellCount > 1) return Localizer.GetString("Grid_CellsSelected", cellCount);
         return "";
     }
     
@@ -308,19 +312,7 @@
                 values.Add(val);
         }
         if (values.Count == 0) return "";
-        return $"Sum: {values.Sum():N0} | Avg: {values.Average():N1} | Count: {values.Count}";
-    }
-    
-    private string GetSummaryInfoRussian()
-    {
-        var values = new List<decimal>();
-        foreach (var cell in _cells.Values)
-        {
-            if (decimal.TryParse(cell.Value, out var val))
-                values.Add(val);
-        }
-        if (values.Count == 0) return "";
-        return $"Сумма: {values.Sum():N0} | Среднее: {values.Average():N1} | Кол-во: {values.Count}";
+        return Localizer.GetString("Spreadsheet_Summary", values.Sum(), values.Average(), values.Count);
     }
     
     private string GetSelectedCellFormula()
@@ -585,7 +577,7 @@
     {
         var cellRef = GetSelectedCellReference();
         var formula = $"={functionName}()";
-        _formulaDescription = $"Вставьте аргументы для функции {functionName}. Пример: ={functionName}(A1:A5)";
+        _formulaDescription = Localizer.GetString("Spreadsheet_InsertArgs", functionName);
         
         if (_editingRow >= 0)
         {
