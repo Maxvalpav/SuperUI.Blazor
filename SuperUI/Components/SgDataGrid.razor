@@ -696,17 +696,21 @@
 
                                      @* Divider *@
                                      @{
-                                         var distinctValues = GetDistinctValuesForColumn(key)
-                                             .Where(v => string.IsNullOrEmpty(_filterMenuSearchText) || 
-                                                        (GetDisplayLabelForFilterValue(key, v)?.Contains(_filterMenuSearchText, StringComparison.OrdinalIgnoreCase) ?? false))
-                                             .ToList();
+                                         var distinctValues = _filterMenuVisibleValues;
                                      }
 
                                      <div class="sg-filter-divider">@Localizer["DataGrid_FilterOrValues"]</div>
 
                                      @* Checkbox list - always render container to prevent menu collapse *@
                                      <div class="sg-filter-list-wrap">
-                                         @if (distinctValues.Count > 0)
+                                         @if (_filterMenuLoading)
+                                         {
+                                             <div class="sg-filter-loading">
+                                                 <span class="sg-filter-spinner" aria-hidden="true"></span>
+                                                 <span>@Localizer["Common_Loading"]</span>
+                                             </div>
+                                         }
+                                         else if (distinctValues.Count > 0)
                                          {
                                              <div class="sg-filter-search">
                                                  <svg class="sg-filter-search-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
@@ -791,6 +795,17 @@
                                                               }
                                                           </div>
                                                       }
+                                                  }
+                                                  else if (distinctValues.Count > 200)
+                                                  {
+                                                      <Virtualize TItem="string" Items="@distinctValues!" ItemSize="24">
+                                                          <label class="sg-filter-item" @key="context">
+                                                              <input type="checkbox"
+                                                                     checked="@IsPendingValueSelected(context)"
+                                                                     @onchange="@(e => TogglePendingValueAsync(context, e.Value is true))" />
+                                                              <span>@GetDisplayLabelForFilterValue(key, context)</span>
+                                                          </label>
+                                                      </Virtualize>
                                                   }
                                                   else
                                                   {

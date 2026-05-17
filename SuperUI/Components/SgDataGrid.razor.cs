@@ -58,19 +58,78 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private async Task HandleFilterMenuSearchInputAsync(string? value)
     {
         _filterMenuSearchText = value ?? string.Empty;
-        if (_openFilterColumn != null)
+
+        // Debounce — avoid rebuilding the date tree / filtering long value lists on every keystroke.
+        _filterMenuSearchDebounceCts?.Cancel();
+        _filterMenuSearchDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _filterMenuSearchDebounceCts = cts;
+
+        try
         {
-            var filterType = GetColumnFilterType(_openFilterColumn);
-            if (filterType == "date" || filterType == "datetime")
-            {
-                var narrowedItems = GetFilteredRowsExcept(_openFilterColumn);
-                var narrowedValues = GetDistinctValuesForColumn(_openFilterColumn, narrowedItems);
-                _filterTree = BuildFilterTree(_openFilterColumn, narrowedValues);
-            }
+            await Task.Delay(FilterMenuSearchDebounceMs, cts.Token);
         }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (cts.IsCancellationRequested || _openFilterColumn is null)
+            return;
+
+        ApplyFilterMenuSearch();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ApplyFilterMenuSearch()
+    {
+        if (_openFilterColumn is null) return;
+
+        var key = _openFilterColumn;
+        var filterType = GetColumnFilterType(key);
+        var hasSearch = !string.IsNullOrEmpty(_filterMenuSearchText);
+
+        if (filterType == "date" || filterType == "datetime")
+        {
+            // Tree rebuild reads from _filterMenuSearchText directly.
+            _filterTree = BuildFilterTree(key, _filterMenuAllValues);
+            _filterMenuVisibleValues = _filterMenuAllValues;
+            return;
+        }
+
+        if (!hasSearch)
+        {
+            _filterMenuVisibleValues = _filterMenuAllValues;
+            return;
+        }
+
+        var search = _filterMenuSearchText;
+        var visible = new List<string?>(Math.Min(_filterMenuAllValues.Count, 256));
+        for (int i = 0; i < _filterMenuAllValues.Count; i++)
+        {
+            var v = _filterMenuAllValues[i];
+            var display = GetDisplayLabelForFilterValue(key, v);
+            if (display?.Contains(search, StringComparison.OrdinalIgnoreCase) == true)
+                visible.Add(v);
+        }
+        _filterMenuVisibleValues = visible;
     }
     private List<SgFilterTreeNode>? _filterTree;
     private string? _openFilterColumn;
+
+    // ── Filter menu async load / cache ────────────────────────────────────────
+    // True while distinct values / filter tree for the currently opened column are being computed.
+    private bool _filterMenuLoading;
+    // Narrowed distinct values for the currently opened column (computed once per open + on search).
+    private List<string?> _filterMenuAllValues = new();
+    // The slice currently shown given the search text (subset of _filterMenuAllValues).
+    private List<string?> _filterMenuVisibleValues = new();
+    // Token used to abort outdated async loads when user opens another column quickly.
+    private int _filterMenuLoadToken;
+    // Debounce cts for filter menu search.
+    private CancellationTokenSource? _filterMenuSearchDebounceCts;
+    private const int FilterMenuSearchDebounceMs = 180;
+
     private bool _showChooser;
     private bool _showExportMenu;
     private bool _showSortBuilder;
@@ -2818,23 +2877,23 @@ private static object? ConvertFromString(string? text, Type type)
         if (_openFilterColumn == key)
         {
             _openFilterColumn = null;
+            _filterMenuLoading = false;
+            _filterMenuAllValues = new List<string?>();
+            _filterMenuVisibleValues = new List<string?>();
+            _filterTree = null;
             return;
         }
 
+        // Open immediately with loading state — heavy work runs after a yield so the popup paints first.
         _openFilterColumn = key;
         _pendingFilterKey = key;
         _filterMenuSearchText = string.Empty;
-        
-        // Get narrowed items (ignoring only the current column filter)
-        var narrowedItems = GetFilteredRowsExcept(key);
-        var narrowedValues = GetDistinctValuesForColumn(key, narrowedItems);
-        var narrowedNormalized = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var v in narrowedValues) narrowedNormalized.Add(NormalizeFilterValue(v));
+        _filterMenuLoading = true;
+        _filterMenuAllValues = new List<string?>();
+        _filterMenuVisibleValues = new List<string?>();
+        _filterTree = null;
 
-        _pendingSelectedValues = _filters.TryGetValue(key, out var current)
-            ? current.ToHashSet(StringComparer.Ordinal)
-            : narrowedNormalized.ToHashSet(StringComparer.Ordinal);
-
+        // Reset condition rules + sort synchronously — these are cheap and the user sees them right away.
         if (_conditionFilters.TryGetValue(key, out var condition))
         {
             _pendingRules = condition.Rules.Select(x => x with { }).ToList();
@@ -2845,20 +2904,57 @@ private static object? ConvertFromString(string? text, Type type)
             _pendingRules = [new()];
             _pendingRulesAnd = true;
         }
-
-        // Initialize pending sort from current sort
         _pendingSort = GetSort(key);
 
-        var filterType = GetColumnFilterType(key);
-        if (filterType == "date" || filterType == "datetime")
-        {
-            _filterTree = BuildFilterTree(key, narrowedValues);
-        }
+        // Seed pending selection from current filter (without distinct yet) — we patch "All" case after load.
+        if (_filters.TryGetValue(key, out var current))
+            _pendingSelectedValues = current.ToHashSet(StringComparer.Ordinal);
         else
+            _pendingSelectedValues = new HashSet<string>(StringComparer.Ordinal);
+
+        var token = ++_filterMenuLoadToken;
+
+        // Paint the popup with spinner first.
+        await InvokeAsync(StateHasChanged);
+
+        // Yield so the spinner becomes visible before the heavy computation starts.
+        await Task.Yield();
+
+        // Heavy work — distinct values over the narrowed dataset and date tree build.
+        List<string?> narrowedValues;
+        List<SgFilterTreeNode>? tree = null;
+        try
         {
-            _filterTree = null;
+            var narrowedItems = GetFilteredRowsExcept(key);
+            narrowedValues = GetDistinctValuesForColumn(key, narrowedItems);
+
+            var filterType = GetColumnFilterType(key);
+            if (filterType == "date" || filterType == "datetime")
+                tree = BuildFilterTree(key, narrowedValues);
+        }
+        catch
+        {
+            narrowedValues = new List<string?>();
         }
 
+        // If user has since closed/reopened, drop results.
+        if (token != _filterMenuLoadToken || _openFilterColumn != key)
+            return;
+
+        _filterMenuAllValues = narrowedValues;
+        _filterMenuVisibleValues = narrowedValues;
+        _filterTree = tree;
+
+        // If no filter was previously applied, default to "All selected" using the freshly computed distinct set.
+        if (!_filters.ContainsKey(key))
+        {
+            var narrowedNormalized = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < narrowedValues.Count; i++)
+                narrowedNormalized.Add(NormalizeFilterValue(narrowedValues[i]));
+            _pendingSelectedValues = narrowedNormalized;
+        }
+
+        _filterMenuLoading = false;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -2997,6 +3093,11 @@ private static object? ConvertFromString(string? text, Type type)
     private Task CloseFilterMenuAsync()
     {
         _openFilterColumn = null;
+        _filterMenuLoading = false;
+        _filterMenuAllValues = new List<string?>();
+        _filterMenuVisibleValues = new List<string?>();
+        _filterTree = null;
+        _filterMenuLoadToken++;
         return Task.CompletedTask;
     }
 
@@ -3078,6 +3179,19 @@ private static object? ConvertFromString(string? text, Type type)
 
     private bool IsPendingAllSelected(string key)
     {
+        // Fast path: when the filter popup is open we already have the narrowed values cached.
+        if (_openFilterColumn == key && !_filterMenuLoading)
+        {
+            var visible = _filterMenuVisibleValues;
+            if (visible.Count == 0) return false;
+            for (int i = 0; i < visible.Count; i++)
+            {
+                if (!_pendingSelectedValues.Contains(NormalizeFilterValue(visible[i])))
+                    return false;
+            }
+            return true;
+        }
+
         var distinct = GetDistinctNormalizedValuesForColumn(key);
         return distinct.SetEquals(_pendingSelectedValues);
     }
@@ -3086,7 +3200,19 @@ private static object? ConvertFromString(string? text, Type type)
     {
         if (selected)
         {
-            _pendingSelectedValues = GetDistinctNormalizedValuesForColumn(key);
+            // Use the cached narrowed values when the popup is open — otherwise recompute.
+            if (_openFilterColumn == key && !_filterMenuLoading)
+            {
+                var visible = _filterMenuVisibleValues;
+                var set = new HashSet<string>(StringComparer.Ordinal);
+                for (int i = 0; i < visible.Count; i++)
+                    set.Add(NormalizeFilterValue(visible[i]));
+                _pendingSelectedValues = set;
+            }
+            else
+            {
+                _pendingSelectedValues = GetDistinctNormalizedValuesForColumn(key);
+            }
         }
         else
         {
@@ -3094,7 +3220,7 @@ private static object? ConvertFromString(string? text, Type type)
         }
 
         if (_filterTree != null) SyncFilterTreeSelectionState(_filterTree);
-        
+
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3197,10 +3323,20 @@ private static object? ConvertFromString(string? text, Type type)
 
     private HashSet<string> GetDistinctNormalizedValuesForColumn(string key)
     {
+        // When the filter popup for this key is open and already loaded, reuse the cached narrowed set.
+        var hasSearch = !string.IsNullOrWhiteSpace(_filterMenuSearchText);
+        if (_openFilterColumn == key && !_filterMenuLoading)
+        {
+            var source = hasSearch ? _filterMenuVisibleValues : _filterMenuAllValues;
+            var set = new HashSet<string>(StringComparer.Ordinal);
+            for (int i = 0; i < source.Count; i++)
+                set.Add(NormalizeFilterValue(source[i]));
+            return set;
+        }
+
         var narrowedItems = GetFilteredRowsExcept(key);
         var values = GetDistinctValuesForColumn(key, narrowedItems);
         var normalized = new HashSet<string>(StringComparer.Ordinal);
-        var hasSearch = !string.IsNullOrWhiteSpace(_filterMenuSearchText);
 
         for (int i = 0; i < values.Count; i++)
         {
@@ -5736,6 +5872,10 @@ private static object? ConvertFromString(string? text, Type type)
                 cts.Dispose();
             }
             _quickFilterDebounceCts.Clear();
+
+            _filterMenuSearchDebounceCts?.Cancel();
+            _filterMenuSearchDebounceCts?.Dispose();
+            _filterMenuSearchDebounceCts = null;
         }
         catch (ObjectDisposedException) { }
 
