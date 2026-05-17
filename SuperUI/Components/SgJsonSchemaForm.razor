@@ -1,6 +1,8 @@
 @namespace SuperUI.Components
 @using System.Text.Json
 @using System.Text.Json.Nodes
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
 
 <div class="sg-jsf-root @CssClass">
 
@@ -11,14 +13,14 @@
             <span class="sg-jsf-schema-title">@Schema.Title</span>
         }
         <div class="sg-jsf-toolbar-actions">
-            <SgButton Text="Форматировать" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
-                      OnClick="@(_ => FormatJsonAsync())" Title="Форматировать JSON" />
-            <SgButton Text="Копировать" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
-                      OnClick="@(_ => CopyJsonAsync())" Title="Копировать JSON" />
-            <SgButton Text="Сбросить" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
-                      OnClick="@(_ => ResetAsync())" Title="Сбросить к значениям по умолчанию" />
-            <SgButton Text="Проверить" Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
-                      OnClick="@(_ => ValidateAsync())" Title="Проверить JSON" />
+            <SgButton Text="@Localizer["JsonSchema_FormatJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(_ => FormatJsonAsync())" Title="@Localizer["JsonSchema_FormatJSON"]" />
+            <SgButton Text="@Localizer["JsonSchema_CopyJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(_ => CopyJsonAsync())" Title="@Localizer["JsonSchema_CopyJSON"]" />
+            <SgButton Text="@Localizer["JsonSchema_ResetDefaults"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(_ => ResetAsync())" Title="@Localizer["JsonSchema_ResetDefaults"]" />
+            <SgButton Text="@Localizer["JsonSchema_ValidateJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
+                      OnClick="@(_ => ValidateAsync())" Title="@Localizer["JsonSchema_ValidateJSON"]" />
         </div>
     </div>
 
@@ -26,7 +28,7 @@
     @if (_validationErrors.Count > 0)
     {
         <div class="sg-jsf-validation">
-            <SgAlert Variant="SgAlertVariant.Danger" Title="Ошибки валидации" Dismissible="true"
+            <SgAlert Variant="SgAlertVariant.Danger" Title="@Localizer["JsonSchema_ValidationErrors"]" Dismissible="true"
                      OnClose="@(() => { _validationErrors.Clear(); StateHasChanged(); })">
                 <ul class="sg-jsf-error-list">
                     @foreach (var err in _validationErrors)
@@ -40,7 +42,7 @@
     @if (_validationOk)
     {
         <div class="sg-jsf-validation">
-            <SgAlert Variant="SgAlertVariant.Success" Text="JSON валиден" Dismissible="true"
+            <SgAlert Variant="SgAlertVariant.Success" Text="@Localizer["JsonSchema_ValidJSON"]" Dismissible="true"
                      OnClose="@(() => { _validationOk = false; StateHasChanged(); })" />
         </div>
     }
@@ -56,7 +58,7 @@
             }
             else
             {
-                <div class="sg-jsf-empty">Схема не задана или не содержит свойств</div>
+                <div class="sg-jsf-empty">@Localizer["JsonSchema_EmptySchema"]</div>
             }
         </div>
 
@@ -67,8 +69,8 @@
                 <div class="sg-jsf-editor-header">
                     <span class="sg-jsf-editor-label">JSON</span>
                     <span class="sg-jsf-editor-meta">
-                        <span class="sg-jsf-editor-stat" title="Символов">@(_jsonValue?.Length ?? 0) симв.</span>
-                        <span class="sg-jsf-editor-stat" title="Строк">@CountLines(_jsonValue) стр.</span>
+                        <span class="sg-jsf-editor-stat" title="@Localizer["JsonSchema_Characters"]">@(_jsonValue?.Length ?? 0) @Localizer["JsonSchema_Characters"]</span>
+                        <span class="sg-jsf-editor-stat" title="@Localizer["JsonSchema_Strings"]">@CountLines(_jsonValue) @Localizer["JsonSchema_Strings"]</span>
                     </span>
                 </div>
                 <SgMonaco @ref="_monaco"
@@ -746,7 +748,7 @@
         {
             builder.OpenElement(seq++, "div");
             builder.AddAttribute(seq++, "class", "sg-jsf-list-empty-msg");
-            builder.AddContent(seq++, "— список пуст —");
+                    builder.AddContent(seq++, Localizer["JsonSchema_EmptyList"]);
             builder.CloseElement();
         }
         else
@@ -795,7 +797,7 @@
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-val");
                     if (!readOnly)
                     {
-                        builder.AddAttribute(seq++, "title", "Нажмите, чтобы изменить");
+                        builder.AddAttribute(seq++, "title", @Localizer["JsonSchema_ClickToEdit"]);
                         builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                         {
                             _editingRow = rowKey;
@@ -807,7 +809,7 @@
                     {
                         builder.OpenElement(seq++, "em");
                         builder.AddAttribute(seq++, "class", "sg-jsf-list-val-empty");
-                        builder.AddContent(seq++, "(пусто)");
+                        builder.AddContent(seq++, Localizer["JsonSchema_EmptyValue"]);
                         builder.CloseElement();
                     }
                     else
@@ -827,7 +829,7 @@
                     builder.OpenElement(seq++, "button");
                     builder.AddAttribute(seq++, "type", "button");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-act");
-                    builder.AddAttribute(seq++, "title", "Выше");
+                    builder.AddAttribute(seq++, "title", @Localizer["JsonSchema_MoveUp"]);
                     builder.AddAttribute(seq++, "disabled", capturedIdx == 0);
                     builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                     {
@@ -843,7 +845,7 @@
                     builder.OpenElement(seq++, "button");
                     builder.AddAttribute(seq++, "type", "button");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-act");
-                    builder.AddAttribute(seq++, "title", "Ниже");
+                    builder.AddAttribute(seq++, "title", @Localizer["JsonSchema_MoveDown"]);
                     builder.AddAttribute(seq++, "disabled", capturedIdx >= items.Count - 1);
                     builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                     {
@@ -859,7 +861,7 @@
                     builder.OpenElement(seq++, "button");
                     builder.AddAttribute(seq++, "type", "button");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-act sg-jsf-list-act-del");
-                    builder.AddAttribute(seq++, "title", "Удалить");
+                    builder.AddAttribute(seq++, "title", @Localizer["Common_Delete"]);
                     builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                     {
                         var newList = new List<string>(items);
@@ -892,7 +894,7 @@
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "text");
             builder.AddAttribute(seq++, "class", "sg-jsf-list-add-input");
-            builder.AddAttribute(seq++, "placeholder", "Добавить элемент… (Enter)");
+            builder.AddAttribute(seq++, "placeholder", @Localizer["JsonSchema_AddItemPlaceholder"]);
             builder.AddAttribute(seq++, "value", _tagInputs[key]);
             builder.AddAttribute(seq++, "oninput", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
             {

@@ -555,7 +555,7 @@ public sealed class DefaultTheme : ThemeBase
 
 internal class DefaultPrimitives : IThemePrimitives
 {
-    // Ant Design Neutral Palette
+    
     public string Neutral0 => "#ffffff";
     public string Neutral50 => "#fafafa";
     public string Neutral100 => "#f5f5f5";
@@ -608,11 +608,11 @@ internal class DefaultPrimitives : IThemePrimitives
 
     public string RadiusNone => "0";
     public string RadiusXs => "2px";
-    public string RadiusSm => "4px";
-    public string RadiusMd => "6px";
-    public string RadiusLg => "8px";
-    public string RadiusXl => "12px";
-    public string Radius2Xl => "16px";
+    public string RadiusSm => "3px";
+    public string RadiusMd => "4px";
+    public string RadiusLg => "5px";
+    public string RadiusXl => "7px";
+    public string Radius2Xl => "9px";
     public string RadiusFull => "9999px";
 }
 
