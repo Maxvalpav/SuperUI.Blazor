@@ -53,6 +53,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.Llm.SgPuterService>();
         services.TryAddScoped<SgJsModuleCache>();
 
+        Components.DocumentExtractor.Services.DocumentExtractorServiceCollectionExtensions.AddSgDocumentExtractor(services);
+
         return services;
     }
 }

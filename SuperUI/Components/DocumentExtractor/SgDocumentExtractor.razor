@@ -1,0 +1,140 @@
+@namespace SuperUI.Components.DocumentExtractor
+@using Microsoft.AspNetCore.Components.Forms
+@using SuperUI.Components
+@using SuperUI.Components.DocumentExtractor.Models
+@using SuperUI.Components.DocumentExtractor.Services
+@inject IJSRuntime JS
+
+<div class="sg-doc-extractor @CssClass">
+    <div class="sg-doc-extractor-toolbar">
+        <SgFileUpload Label="@UploadLabel"
+                      Accept=".pdf,.docx,.txt,image/*"
+                      MaxFileSizeBytes="@MaxFileSizeBytes"
+                      ValueChanged="OnFilesPicked" />
+
+        <div class="sg-doc-extractor-config">
+            <SgSelect TValue="string"
+                      Label="LLM provider"
+                      Items="@_providerOptions"
+                      Value="@_endpoint.Kind.ToString()"
+                      ValueChanged="OnProviderChanged" />
+
+            <SgTextBox TValue="string"
+                       Label="Base URL"
+                       @bind-Value="_endpoint.BaseUrl" />
+
+            <SgTextBox TValue="string"
+                       Label="API key"
+                       Type="password"
+                       @bind-Value="_endpoint.ApiKey" />
+
+            <div class="sg-doc-extractor-model">
+                <SgTextBox TValue="string"
+                           Label="Model id (manual)"
+                           Placeholder="e.g. gpt-4o-mini or openrouter/auto"
+                           @bind-Value="_endpoint.Model" />
+                <SgButton Text="Fetch models" Variant="SgButtonVariant.Default" OnClick="FetchModelsAsync" Loading="_fetchingModels" />
+            </div>
+
+            @if (_models.Count > 0)
+            {
+                <SgSelect TValue="string"
+                          Label="Model (from provider)"
+                          Items="@_models.Select(m => m.Id)"
+                          Value="@_endpoint.Model"
+                          ValueChanged="OnModelPicked" />
+            }
+
+            <SgSelect TValue="string"
+                      Label="Extractor"
+                      Items="@Extractors.Select(e => e.Id)"
+                      Value="@_selectedExtractorId"
+                      ValueChanged="OnExtractorPicked" />
+        </div>
+
+        <div class="sg-doc-extractor-actions">
+            <SgButton Text="Extract"
+                      Variant="SgButtonVariant.Primary"
+                      Disabled="@(_source is null || _busy)"
+                      Loading="_busy"
+                      OnClick="ExtractAsync" />
+            <SgButton Text="Save"
+                      Variant="SgButtonVariant.Default"
+                      Disabled="@(_result is null || _busy)"
+                      OnClick="SaveAsync" />
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_status))
+    {
+        <SgAlert Variant="@(_isError ? SgAlertVariant.Danger : SgAlertVariant.Info)" Text="@_status" />
+    }
+
+    @if (_result is not null)
+    {
+        <div class="sg-doc-extractor-form">
+            <h3>Edit fields</h3>
+            @if (_result.Fields.Count == 0)
+            {
+                <SgAlert Variant="SgAlertVariant.Warn" Text="No fields were extracted. You can still save the original document." />
+            }
+            @foreach (var field in _result.Fields)
+            {
+                var f = field;
+                <div class="sg-doc-extractor-field">
+                    @switch (f.Type)
+                    {
+                        case SgDocumentFieldType.MultilineText:
+                            <SgTextBox TValue="string"
+                                       Label="@f.Label"
+                                       Multiline="true"
+                                       Rows="4"
+                                       Hint="@f.Hint"
+                                       Placeholder="@f.Placeholder"
+                                       Required="@f.Required"
+                                       Value="@(f.Value as string)"
+                                       ValueChanged="(string? v) => f.Value = v" />
+                            break;
+                        case SgDocumentFieldType.Number:
+                            <SgNumberInput TValue="double?"
+                                           Label="@f.Label"
+                                           Hint="@f.Hint"
+                                           Required="@f.Required"
+                                           Value="@AsNullableDouble(f.Value)"
+                                           ValueChanged="(double? v) => f.Value = v" />
+                            break;
+                        case SgDocumentFieldType.Date:
+                            <SgDatePicker Label="@f.Label"
+                                          Hint="@f.Hint"
+                                          Required="@f.Required"
+                                          Value="@AsNullableDate(f.Value)"
+                                          ValueChanged="(DateTime? v) => f.Value = v" />
+                            break;
+                        case SgDocumentFieldType.Boolean:
+                            <SgCheckBox Label="@f.Label"
+                                        Hint="@f.Hint"
+                                        Value="@AsBool(f.Value)"
+                                        ValueChanged="(bool v) => f.Value = v" />
+                            break;
+                        case SgDocumentFieldType.Select:
+                            <SgSelect TValue="string"
+                                      Label="@f.Label"
+                                      Items="@(f.Options ?? new List<string>())"
+                                      Value="@(f.Value as string)"
+                                      ValueChanged="(string? v) => f.Value = v" />
+                            break;
+                        default:
+                            <SgTextBox TValue="string"
+                                       Label="@f.Label"
+                                       Hint="@f.Hint"
+                                       Placeholder="@f.Placeholder"
+                                       Required="@f.Required"
+                                       Value="@(f.Value as string)"
+                                       ValueChanged="(string? v) => f.Value = v" />
+                            break;
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
