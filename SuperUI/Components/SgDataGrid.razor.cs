@@ -36,6 +36,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     /// <summary>Incremented on every quick-filter keystroke so ShouldRender sees UI changes before debounced _filterVersion.</summary>
     private int _quickFilterUiVersion;
     private int _lastRenderedQuickFilterUiVersion = -1;
+
+    /// <summary>Incremented on any filter-menu UI state change (open/close, loading, search, pending rules/values).
+    /// ShouldRender consults this so the popup actually re-renders even though no row/filter version moved.</summary>
+    private int _filterMenuUiVersion;
+    private int _lastRenderedFilterMenuUiVersion = -1;
     private readonly List<QueryRule> _queryRules = new();
     private readonly List<PersistedSortRule> _sort = new();
     private readonly List<RowHighlightRule> _rowHighlightRules = new();
@@ -78,6 +83,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             return;
 
         ApplyFilterMenuSearch();
+        _filterMenuUiVersion++;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -129,6 +135,9 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     // Debounce cts for filter menu search.
     private CancellationTokenSource? _filterMenuSearchDebounceCts;
     private const int FilterMenuSearchDebounceMs = 180;
+    // Debounce cts for typing into the "value" input of a pending condition rule.
+    private CancellationTokenSource? _pendingRuleValueDebounceCts;
+    private const int PendingRuleValueDebounceMs = 150;
 
     private bool _showChooser;
     private bool _showExportMenu;
@@ -222,6 +231,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     private readonly Dictionary<string, bool> _numericColumnCache = new(StringComparer.Ordinal);
     private int _columnFilterTypeCacheColumnsVersion = -1;
     private int _columnFilterTypeCacheItemsVersion = -1;
+
+    // Cache for GetColumnEnumItems — invalidated when columns/items version changes.
+    private readonly Dictionary<string, List<SgEnumItem>> _columnEnumItemsCache = new(StringComparer.Ordinal);
+    private int _columnEnumItemsCacheColumnsVersion = -1;
+    private int _columnEnumItemsCacheItemsVersion = -1;
 
     private int _preparedSortsCacheSortVersion = -1;
     private int _preparedSortsCacheColumnsVersion = -1;
@@ -892,6 +906,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             return;
 
         _lastRenderedQuickFilterUiVersion = _quickFilterUiVersion;
+        _lastRenderedFilterMenuUiVersion = _filterMenuUiVersion;
 
         if (firstRender)
         {
@@ -954,9 +969,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
         var columnsChanged = _columnsVersion != _visibleRowsCacheColumnsVersion;
         var groupChanged = _groupVersion != _groupTreeCacheGroupVersion;
         var quickFilterTyping = _quickFilterUiVersion != _lastRenderedQuickFilterUiVersion;
+        var filterMenuChanged = _filterMenuUiVersion != _lastRenderedFilterMenuUiVersion;
 
         // Only render if content has actually changed
-        return itemsChanged || filterChanged || sortChanged || columnsChanged || groupChanged || quickFilterTyping;
+        return itemsChanged || filterChanged || sortChanged || columnsChanged || groupChanged
+            || quickFilterTyping || filterMenuChanged;
     }
 
     internal void RegisterColumn(SgDataGridColumn<TItem> column)
@@ -2881,6 +2898,8 @@ private static object? ConvertFromString(string? text, Type type)
             _filterMenuAllValues = new List<string?>();
             _filterMenuVisibleValues = new List<string?>();
             _filterTree = null;
+            _filterMenuUiVersion++;
+            await InvokeAsync(StateHasChanged);
             return;
         }
 
@@ -2914,23 +2933,24 @@ private static object? ConvertFromString(string? text, Type type)
 
         var token = ++_filterMenuLoadToken;
 
-        // Paint the popup with spinner first.
+        // Paint the popup with spinner first — bump the UI version so ShouldRender lets the spinner through.
+        _filterMenuUiVersion++;
         await InvokeAsync(StateHasChanged);
 
-        // Yield so the spinner becomes visible before the heavy computation starts.
-        await Task.Yield();
-
         // Heavy work — distinct values over the narrowed dataset and date tree build.
+        // GetDistinctValuesForColumn for a column not yet cached is the slow piece; run it on a worker
+        // thread so the UI keeps painting. We avoid touching _filterMenuSearchText / _pendingSelectedValues
+        // off-thread (BuildFilterTree reads those) — that step is done after we return to the UI context.
         List<string?> narrowedValues;
         List<SgFilterTreeNode>? tree = null;
+        var filterType = GetColumnFilterType(key);
         try
         {
-            var narrowedItems = GetFilteredRowsExcept(key);
-            narrowedValues = GetDistinctValuesForColumn(key, narrowedItems);
-
-            var filterType = GetColumnFilterType(key);
-            if (filterType == "date" || filterType == "datetime")
-                tree = BuildFilterTree(key, narrowedValues);
+            narrowedValues = await Task.Run(() =>
+            {
+                var narrowedItems = GetFilteredRowsExcept(key);
+                return GetDistinctValuesForColumn(key, narrowedItems);
+            });
         }
         catch
         {
@@ -2940,6 +2960,14 @@ private static object? ConvertFromString(string? text, Type type)
         // If user has since closed/reopened, drop results.
         if (token != _filterMenuLoadToken || _openFilterColumn != key)
             return;
+
+        // Tree build touches _filterMenuSearchText / _pendingSelectedValues — keep it on the UI thread.
+        try
+        {
+            if (filterType == "date" || filterType == "datetime")
+                tree = BuildFilterTree(key, narrowedValues);
+        }
+        catch { tree = null; }
 
         _filterMenuAllValues = narrowedValues;
         _filterMenuVisibleValues = narrowedValues;
@@ -2955,6 +2983,7 @@ private static object? ConvertFromString(string? text, Type type)
         }
 
         _filterMenuLoading = false;
+        _filterMenuUiVersion++;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -3054,12 +3083,15 @@ private static object? ConvertFromString(string? text, Type type)
     {
         node.IsSelected = isChecked;
         SetChildrenSelection(node, isChecked);
-        
+
         // Update _pendingSelectedValues based on leaf nodes
         UpdatePendingFromTree(_filterTree);
-        
+
         // Recalculate indeterminate states for parents
         if (_filterTree != null) SyncFilterTreeSelectionState(_filterTree);
+
+        // The auto re-render after @onchange would be skipped by ShouldRender otherwise.
+        _filterMenuUiVersion++;
     }
 
     private void SetChildrenSelection(SgFilterTreeNode node, bool isChecked)
@@ -3090,7 +3122,7 @@ private static object? ConvertFromString(string? text, Type type)
         }
     }
 
-    private Task CloseFilterMenuAsync()
+    private async Task CloseFilterMenuAsync()
     {
         _openFilterColumn = null;
         _filterMenuLoading = false;
@@ -3098,62 +3130,87 @@ private static object? ConvertFromString(string? text, Type type)
         _filterMenuVisibleValues = new List<string?>();
         _filterTree = null;
         _filterMenuLoadToken++;
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task SetPendingSortAsync(SortDirection dir)
+    private async Task SetPendingSortAsync(SortDirection dir)
     {
         _pendingSort = dir;
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task ClearPendingSortAsync()
+    private async Task ClearPendingSortAsync()
     {
         _pendingSort = null;
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task SetPendingRulesAndAsync(bool and)
+    private async Task SetPendingRulesAndAsync(bool and)
     {
         _pendingRulesAnd = and;
-        // No StateHasChanged - will be called when filter is applied
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task SetPendingRuleConditionAsync(int index, FilterCondition condition)
+    private async Task SetPendingRuleConditionAsync(int index, FilterCondition condition)
     {
         if (index < 0 || index >= _pendingRules.Count)
-            return Task.CompletedTask;
+            return;
 
         _pendingRules[index] = _pendingRules[index] with { Condition = condition };
-        // No StateHasChanged during typing
-        return Task.CompletedTask;
+        // Condition switch may change the value input type — re-render now.
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task SetPendingRuleValueAsync(int index, string? value)
+    private async Task SetPendingRuleValueAsync(int index, string? value)
     {
         if (index < 0 || index >= _pendingRules.Count)
-            return Task.CompletedTask;
+            return;
 
+        // Update the model immediately so Apply / further callbacks see the latest value.
         _pendingRules[index] = _pendingRules[index] with { Value = value };
-        // No StateHasChanged during typing - prevents UI lag
-        return Task.CompletedTask;
+
+        // Debounce the re-render — typing into a text input shouldn't re-paint the whole popup
+        // (with potentially long value list / date tree) on every keystroke.
+        _pendingRuleValueDebounceCts?.Cancel();
+        _pendingRuleValueDebounceCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _pendingRuleValueDebounceCts = cts;
+
+        try
+        {
+            await Task.Delay(PendingRuleValueDebounceMs, cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (cts.IsCancellationRequested) return;
+
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task RemovePendingRuleAsync(int index)
+    private async Task RemovePendingRuleAsync(int index)
     {
         if (_pendingRules.Count <= 1 || index < 0 || index >= _pendingRules.Count)
-            return Task.CompletedTask;
+            return;
 
         _pendingRules.RemoveAt(index);
-        // No StateHasChanged - will be called when filter is applied
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task AddPendingRuleAsync()
+    private async Task AddPendingRuleAsync()
     {
         _pendingRules.Add(new FilterRule());
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ApplyConditionFilterAsync(string key)
@@ -3355,7 +3412,7 @@ private static object? ConvertFromString(string? text, Type type)
     private bool IsPendingValueSelected(string? value) =>
         _pendingSelectedValues.Contains(NormalizeFilterValue(value));
 
-    private Task TogglePendingValueAsync(string? value, bool selected)
+    private async Task TogglePendingValueAsync(string? value, bool selected)
     {
         var normalized = NormalizeFilterValue(value);
         if (selected)
@@ -3363,18 +3420,18 @@ private static object? ConvertFromString(string? text, Type type)
         else
             _pendingSelectedValues.Remove(normalized);
 
-        // No StateHasChanged - will be called when filter is applied
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task ClearPendingAsync(string key)
+    private async Task ClearPendingAsync(string key)
     {
         _pendingSelectedValues = GetDistinctNormalizedValuesForColumn(key);
         _pendingRules = [new()];
         _pendingRulesAnd = true;
         _pendingSort = null;
-        // No StateHasChanged - will be called when filter is applied
-        return Task.CompletedTask;
+        _filterMenuUiVersion++;
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task ApplyFilterAsync()
@@ -3516,8 +3573,24 @@ private static object? ConvertFromString(string? text, Type type)
     /// <summary>Returns enum items for a column, or empty list if not an enum column.</summary>
     private List<SgEnumItem> GetColumnEnumItems(string key)
     {
+        // Cache is invalidated by column/items version — same pattern as _columnFilterTypeCache.
+        if (_columnEnumItemsCacheColumnsVersion != _columnsVersion ||
+            _columnEnumItemsCacheItemsVersion != _itemsVersion)
+        {
+            _columnEnumItemsCache.Clear();
+            _columnEnumItemsCacheColumnsVersion = _columnsVersion;
+            _columnEnumItemsCacheItemsVersion = _itemsVersion;
+        }
+
+        if (_columnEnumItemsCache.TryGetValue(key, out var cached))
+            return cached;
+
         var col = GetColumnByKey(key);
-        if (col is null) return new();
+        if (col is null)
+        {
+            _columnEnumItemsCache[key] = new();
+            return _columnEnumItemsCache[key];
+        }
         var type = col.ValueType;
         if (type is null)
         {
@@ -3527,9 +3600,18 @@ private static object? ConvertFromString(string? text, Type type)
             if (sample is not null)
                 type = Nullable.GetUnderlyingType(sample.GetType()) ?? sample.GetType();
         }
-        if (type is null) return new();
-        type = Nullable.GetUnderlyingType(type) ?? type;
-        return type.IsEnum ? SgEnumHelper.GetItems(type) : new();
+        List<SgEnumItem> result;
+        if (type is null)
+        {
+            result = new();
+        }
+        else
+        {
+            type = Nullable.GetUnderlyingType(type) ?? type;
+            result = type.IsEnum ? SgEnumHelper.GetItems(type) : new();
+        }
+        _columnEnumItemsCache[key] = result;
+        return result;
     }
 
     private static bool IsNumericType(Type type) =>
@@ -5876,6 +5958,10 @@ private static object? ConvertFromString(string? text, Type type)
             _filterMenuSearchDebounceCts?.Cancel();
             _filterMenuSearchDebounceCts?.Dispose();
             _filterMenuSearchDebounceCts = null;
+
+            _pendingRuleValueDebounceCts?.Cancel();
+            _pendingRuleValueDebounceCts?.Dispose();
+            _pendingRuleValueDebounceCts = null;
         }
         catch (ObjectDisposedException) { }
 
