@@ -412,10 +412,13 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     /// </summary>
     [Parameter] public bool EnablePaging { get; set; } = true;
 
+    private int _pageSize = 25;
     /// <summary>
     /// Gets or sets the number of rows per page. Default is 25.
     /// </summary>
     [Parameter] public int PageSize { get; set; } = 25;
+
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
 
     /// <summary>
     /// Gets or sets the available page size options. Default is [10, 25, 50, 100].
@@ -754,7 +757,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     internal bool CanCreateInlineItem => CreateItemFactory is not null || typeof(TItem).GetConstructor(Type.EmptyTypes) is not null;
     internal int CurrentPage => _currentPage;
     internal int TotalFilteredCount => GetFilteredRows().Count;
-    internal int TotalPages => !EnablePaging ? 1 : Math.Max(1, (int)Math.Ceiling(TotalFilteredCount / (double)Math.Max(1, PageSize)));
+    internal int TotalPages => !EnablePaging ? 1 : Math.Max(1, (int)Math.Ceiling(TotalFilteredCount / (double)Math.Max(1, _pageSize)));
     internal string EffectiveEmptyText => string.IsNullOrWhiteSpace(EmptyText) ? Localizer["DataGrid_EmptyText"] : EmptyText!;
     internal string EffectiveDetailDrawerTitle => string.IsNullOrWhiteSpace(DetailDrawerTitle) ? Localizer["DataGrid_DetailDrawerTitle"] : DetailDrawerTitle!;
     internal string EffectiveDetailWindowTitle => string.IsNullOrWhiteSpace(DetailWindowTitle) ? Localizer["DataGrid_DetailWindowTitle"] : DetailWindowTitle!;
@@ -825,9 +828,16 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
     private bool _rowHighlightRulesInitialized;
 
+    private int _lastPageSize = -1;
+
     protected override void OnParametersSet()
     {
-        PageSize = Math.Max(1, PageSize);
+        if (_lastPageSize != PageSize)
+        {
+            _pageSize = PageSize > 0 ? PageSize : 25;
+            _lastPageSize = PageSize;
+        }
+
         _estimatedRowHeight = EstimatedRowHeight > 0 ? EstimatedRowHeight : 32;
 
         var currentCount = Items is ICollection col ? col.Count : -1;
@@ -1142,7 +1152,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             ColumnWidths = new Dictionary<string, int>(_columnWidths, StringComparer.Ordinal),
             ColumnOrder = new Dictionary<string, int>(_columnOrder, StringComparer.Ordinal),
             GroupBy = _groupByKeys.ToList(),
-            PageSize = PageSize,
+            PageSize = _pageSize,
             ColumnAggregates = _columns
                 .Where(c => c.Aggregate != Aggregate.None)
                 .ToDictionary(c => c.Key, c => c.Aggregate.ToString(), StringComparer.Ordinal),
@@ -1229,7 +1239,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             _groupByKeys.Add(key);
 
         _collapsedGroups.Clear();
-        PageSize = state.PageSize > 0 ? state.PageSize : PageSize;
+        _pageSize = state.PageSize > 0 ? state.PageSize : _pageSize;
 
         // Restore column aggregates
         if (state.ColumnAggregates is { Count: > 0 })
@@ -1726,7 +1736,7 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
             return rows;
         }
 
-        var pageSize = Math.Max(1, PageSize);
+        var pageSize = Math.Max(1, _pageSize);
         var skip = Math.Max(0, (_currentPage - 1) * pageSize);
         if (skip >= rows.Count)
         {
@@ -5089,8 +5099,13 @@ private static object? ConvertFromString(string? text, Type type)
     {
         if (int.TryParse(args.Value?.ToString(), out var pageSize) && pageSize > 0)
         {
-            PageSize = pageSize;
+            _pageSize = pageSize;
             _currentPage = 1;
+            
+            if (PageSizeChanged.HasDelegate)
+            {
+                await PageSizeChanged.InvokeAsync(pageSize);
+            }
         }
 
         InvalidateComputedRowsCache();
