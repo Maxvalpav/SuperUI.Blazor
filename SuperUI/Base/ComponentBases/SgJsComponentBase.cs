@@ -164,7 +164,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
     /// </remarks>
     protected async ValueTask<T?> SafeInvokeAsync<T>(string identifier, params object?[] args)
     {
-        if (_isDisposed || Module is null) return default;
+        if (Module is null) return default;
         try
         {
             return await Module.InvokeAsync<T>(identifier, args);
@@ -180,7 +180,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
     /// <remarks>См. <see cref="SafeInvokeAsync{T}"/>.</remarks>
     protected async ValueTask SafeInvokeVoidAsync(string identifier, params object?[] args)
     {
-        if (_isDisposed || Module is null) return;
+        if (Module is null) return;
         try
         {
             await Module.InvokeVoidAsync(identifier, args);
@@ -218,7 +218,6 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
     /// </summary>
     protected async ValueTask<T?> SafeInvokeAsyncGlobal<T>(string identifier, params object?[] args)
     {
-        if (_isDisposed) return default;
         try
         {
             return await JS.InvokeAsync<T>(identifier, args);
@@ -233,7 +232,6 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
     /// </summary>
     protected async ValueTask SafeInvokeVoidAsyncGlobal(string identifier, params object?[] args)
     {
-        if (_isDisposed) return;
         try
         {
             await JS.InvokeVoidAsync(identifier, args);

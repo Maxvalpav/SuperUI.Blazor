@@ -4,6 +4,8 @@
 const tooltipInstances = new WeakMap();
 
 export function attach(trigger, tooltip, placement = 'top', dotnet) {
+    if (!trigger) return;
+
     // Cleanup previous instance on same trigger
     const existing = tooltipInstances.get(trigger);
     if (existing) {
@@ -20,9 +22,7 @@ export function attach(trigger, tooltip, placement = 'top', dotnet) {
         }
     };
     
-    if (trigger) {
-        trigger.addEventListener('blur', handleTriggerBlur);
-    }
+    trigger.addEventListener('blur', handleTriggerBlur);
     
     const instance = {
         trigger,
@@ -50,8 +50,12 @@ export function detach(trigger) {
     }
 }
 
-export function show(trigger, tooltip, placement = 'top') {
+export function show(trigger, tooltip, placement = 'top', zIndex) {
     if (!trigger || !tooltip) return;
+
+    if (zIndex) {
+        tooltip.style.zIndex = zIndex;
+    }
 
     tooltip.style.display = 'block';
     tooltip.style.visibility = 'hidden';

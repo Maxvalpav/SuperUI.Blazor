@@ -139,15 +139,11 @@
 
     protected override async ValueTask OnOpeningAsync()
     {
-        // Сначала рендерим (Visible=true → шаблон создал _tooltipRef),
-        // потом attach. OnAfterRenderSafeAsync базы вызывается после очередного
-        // рендера, так что _tooltipRef уже валиден.
-        if (!_attached)
-        {
-            await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef, PlacementString, SelfRef);
-            _attached = true;
-        }
-        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString);
+        // Всегда attach перед show, чтобы гарантировать актуальность ссылки на элемент,
+        // так как при Visible=false -> true _tooltipRef может измениться.
+        await SafeInvokeVoidAsync("attach", RootRef, _tooltipRef, PlacementString, SelfRef);
+        _attached = true;
+        await SafeInvokeVoidAsync("show", RootRef, _tooltipRef, PlacementString, ZIndexValue);
     }
 
     protected override async ValueTask OnClosingAsync()
@@ -165,7 +161,7 @@
 
         if (_attached)
         {
-            _ = SafeInvokeVoidAsync("detach");
+            _ = SafeInvokeVoidAsync("detach", RootRef);
             _attached = false;
         }
         return base.OnDisposingAsync();

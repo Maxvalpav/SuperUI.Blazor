@@ -206,69 +206,6 @@ export function init(dotnetRef, gridRoot) {
     gridRoot.addEventListener('drop', onDrop);
     gridRoot.addEventListener('dragend', onDragEnd);
 
-    // Filter menu anchored positioning: keep it visible even when the
-    // scroll container has limited height / overflow:auto.
-    const positionFilterMenu = (menu) => {
-        const th = menu.closest('th');
-        if (!th) {
-            return;
-        }
-        const thRect = th.getBoundingClientRect();
-        const menuW = menu.offsetWidth || 280;
-        const margin = 4;
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        const isRight = menu.classList.contains('sg-filter-menu--right');
-        let left = isRight ? thRect.right - menuW : thRect.left;
-        left = Math.max(margin, Math.min(left, vw - menuW - margin));
-
-        // Prefer below; if not enough room, flip above. Cap to whichever side has room.
-        const spaceBelow = vh - thRect.bottom - margin - 2;
-        const spaceAbove = thRect.top - margin - 2;
-        const desired = 450;
-        let top, maxH;
-        if (spaceBelow >= 220 || spaceBelow >= spaceAbove) {
-            top = thRect.bottom + 2;
-            maxH = Math.min(desired, spaceBelow);
-        } else {
-            maxH = Math.min(desired, spaceAbove);
-            top = Math.max(margin, thRect.top - 2 - maxH);
-        }
-        // Final guard: never exceed viewport.
-        maxH = Math.max(120, Math.min(maxH, vh - top - margin));
-
-        menu.style.position = 'fixed';
-        menu.style.left = left + 'px';
-        menu.style.top = top + 'px';
-        menu.style.right = 'auto';
-        menu.style.maxHeight = maxH + 'px';
-        menu.style.height = maxH + 'px';
-        menu.style.zIndex = '1000';
-        // Write body max-height as CSS custom property — Blazor won't reset it
-        // body max = total - footer (~37px) - body top+bottom padding (~12px)
-        menu.style.setProperty('--sg-filter-body-h', Math.max(80, maxH - 49) + 'px');
-    };
-
-    const repositionAll = () => {
-        gridRoot.querySelectorAll('.sg-filter-menu').forEach(positionFilterMenu);
-    };
-
-    const menuObserver = new MutationObserver((records) => {
-        for (const r of records) {
-            r.addedNodes.forEach(n => {
-                if (n.nodeType !== 1) return;
-                if (n.classList?.contains('sg-filter-menu')) {
-                    positionFilterMenu(n);
-                }
-                n.querySelectorAll?.('.sg-filter-menu').forEach(positionFilterMenu);
-            });
-        }
-    });
-    menuObserver.observe(gridRoot, { childList: true, subtree: true });
-
-    window.addEventListener('resize', repositionAll);
-    window.addEventListener('scroll', repositionAll, true);
-
     // Keep handles so DisposeAsync can clean up.
     init._cleanup = init._cleanup || new Map();
     init._cleanup.set(dotnetRef, () => {
@@ -278,9 +215,6 @@ export function init(dotnetRef, gridRoot) {
         gridRoot.removeEventListener('dragleave', onDragLeave);
         gridRoot.removeEventListener('drop', onDrop);
         gridRoot.removeEventListener('dragend', onDragEnd);
-        menuObserver.disconnect();
-        window.removeEventListener('resize', repositionAll);
-        window.removeEventListener('scroll', repositionAll, true);
     });
 }
 
@@ -516,38 +450,4 @@ export function disposeDataGridVirtualization(dotNetRef) {
     }
 }
 
-export function positionFilterMenu(gridRoot, colKey) {
-    if (!gridRoot) return;
-
-    function tryPosition() {
-        const th = gridRoot.querySelector(`th[data-col-key="${CSS.escape(colKey)}"]`);
-        const menu = th ? th.querySelector('.sg-filter-menu') : null;
-        if (!menu) return;
-
-        const thRect = th.getBoundingClientRect();
-
-        // Find the scroll container — it clips the menu
-        const scroll = gridRoot.querySelector('.sg-scroll');
-        const foot = gridRoot.querySelector('.sg-foot');
-
-        // Bottom boundary = top of footer bar (pagination)
-        let bottomBoundary;
-        if (foot) {
-            bottomBoundary = foot.getBoundingClientRect().top;
-        } else if (scroll) {
-            bottomBoundary = scroll.getBoundingClientRect().bottom;
-        } else {
-            bottomBoundary = gridRoot.getBoundingClientRect().bottom;
-        }
-
-        // Available height: from bottom of th header to bottom boundary
-        const availableH = Math.max(150, bottomBoundary - thRect.bottom - 4);
-        menu.style.maxHeight = availableH + 'px';
-        menu.style.setProperty('--sg-filter-max-h', availableH + 'px');
-    }
-
-    // Run immediately and after DOM flush
-    tryPosition();
-    requestAnimationFrame(() => requestAnimationFrame(tryPosition));
-}
 

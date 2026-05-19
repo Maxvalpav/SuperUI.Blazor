@@ -2899,6 +2899,31 @@ private static object? ConvertFromString(string? text, Type type)
         await InvokeAsync(StateHasChanged);
     }
 
+    private async Task OnFilterOpenChanged(string key, bool open)
+    {
+        if (open)
+        {
+            if (_openFilterColumn != key)
+            {
+                // ToggleFilterMenuAsync handles the loading logic and sets _openFilterColumn
+                await ToggleFilterMenuAsync(key);
+            }
+        }
+        else
+        {
+            if (_openFilterColumn == key)
+            {
+                _openFilterColumn = null;
+                _filterMenuLoading = false;
+                _filterMenuAllValues = new List<string?>();
+                _filterMenuVisibleValues = new List<string?>();
+                _filterTree = null;
+                _filterMenuUiVersion++;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
     private async Task ToggleFilterMenuAsync(string key)
     {
         if (_openFilterColumn == key)

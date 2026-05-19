@@ -335,6 +335,8 @@ public partial class SgTable<TItem> : ComponentBase
             _sortColumnKey = columnKey;
             _sortDirection = SgDataGridSortDirection.Ascending;
         }
+        
+        CurrentPage = 1; // Reset to first page when sort changes
     }
 
     private void OnPageSizeChange(ChangeEventArgs e)
