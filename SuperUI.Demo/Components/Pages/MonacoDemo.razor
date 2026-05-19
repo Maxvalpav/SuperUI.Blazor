@@ -1,0 +1,197 @@
+@page "/monaco-demo"
+@using SuperUI.Components
+@using SuperUI.Demo.Models
+
+<PageTitle>Monaco Editor - SUI</PageTitle>
+
+<SgCard Title="Monaco Editor"
+        Subtitle="Мощный редактор кода на базе Monaco Editor (движок VS Code) для Blazor.">
+
+    @* ── Basic Usage ────────────────────────────────────────────────────── *@
+    <div style="margin-top: 32px;">
+        <h2>Базовое использование</h2>
+        <p>Редактор поддерживает подсветку синтаксиса, автодополнение и множество других функций VS Code.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Пример (JSON)">
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <SgMonaco Value="@_jsonCode" Height="300px" Options="@_jsonOptions" />
+                </div>
+            </SgCard>
+            <SgCard Title="Свойства компонента">
+                <PropertyTable Items="_monacoProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    @* ── Languages & Themes ─────────────────────────────────────────────── *@
+    <div style="margin-top: 32px;">
+        <h2>Языки и темы</h2>
+        <p>Вы можете переключать языки программирования и темы оформления на лету.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Демонстрация">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <SgSelect Label="Язык" TValue="string" @bind-Value="_selectedLang" Items="_languages" style="width: 150px;" />
+                        <SgSelect Label="Тема" TValue="string" @bind-Value="_selectedTheme" Items="_themes" style="width: 150px;" />
+                    </div>
+
+                    <SgMonaco @bind-Value="_dynamicCode" 
+                              Height="300px" 
+                              Options="@(new SgMonacoOptions { Language = _selectedLang, Theme = _selectedTheme, Minimap = true })" />
+                </div>
+            </SgCard>
+            <SgCard Title="Опции SgMonacoOptions">
+                <PropertyTable Items="_optionsProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    @* ── Two-way Binding ────────────────────────────────────────────────── *@
+    <div style="margin-top: 32px;">
+        <h2>Двустороннее связывание</h2>
+        <p>Значение редактора синхронизируется с переменной в Blazor через <code>@@bind-Value</code>.</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Редактор">
+                <SgMonaco @bind-Value="_syncCode" Height="200px" Options="@(new SgMonacoOptions { Language = "markdown" })" />
+            </SgCard>
+            <SgCard Title="Результат (Синхронизация)">
+                <div style="padding: 12px; border: 1px solid var(--sui-border); border-radius: 4px; height: 200px; overflow: auto; background: var(--sui-bg-secondary); white-space: pre-wrap; font-family: monospace;">
+                    @_syncCode
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    @* ── IDE Demo ───────────────────────────────────────────────────────── *@
+    <div style="margin-top: 32px;">
+        <h2>IDE-style Dock Layout</h2>
+        <p>Пример использования Monaco Editor внутри <code>SgDockManager</code> для создания полноценного рабочего пространства.</p>
+        
+        <div style="height: 500px; border: 1px solid var(--sui-border); border-radius: 8px; overflow: hidden; margin-top: 16px;">
+            <SgDockManager Panels="_idePanels" 
+                           EnableConstructor="true"
+                           StatusBarContent="@RenderStatusBar()">
+                <PanelTemplate>
+                    @if (context.Id == "editor")
+                    {
+                        <SgMonaco Value="@_ideCode" Height="100%" Options="@(new SgMonacoOptions { Language = "csharp", Theme = "vs" })" />
+                    }
+                    else
+                    {
+                        <div style="padding: 16px; color: var(--sui-text-secondary);">
+                            Содержимое панели: @context.Title
+                        </div>
+                    }
+                </PanelTemplate>
+            </SgDockManager>
+        </div>
+    </div>
+
+    @* ── Glassmorphism Demo ─────────────────────────────────────────────── *@
+    <div style="margin-top: 32px;">
+        <h2>Glassmorphism</h2>
+        <p>Эффект «матового стекла» для современных интерфейсов. Лучше всего проявляется на ярком или текстурированном фоне.</p>
+        
+        <div style="padding: 40px; border-radius: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); position: relative; overflow: hidden;">
+            @* Декоративные круги для фона *@
+            <div style="position: absolute; width: 200px; height: 200px; background: rgba(255,255,255,0.2); border-radius: 50%; top: -50px; left: -50px;"></div>
+            <div style="position: absolute; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%; bottom: -30px; right: 20px;"></div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; position: relative; z-index: 1;">
+                <SgCard Title="Glass Editor" Glass="true" Subtitle="Редактор с эффектом стекла">
+                    <SgMonaco Value="@_glassCode" Height="200px" 
+                              Options="@(new SgMonacoOptions { Language = "javascript", Theme = "vs-dark" })" 
+                              style="border-radius: 8px; overflow: hidden;" />
+                </SgCard>
+
+                <SgCard Title="Glass Info" Glass="true" Subtitle="Характеристики эффекта">
+                    <div style="color: #fff; display: flex; flex-direction: column; gap: 12px;">
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                            <span>Transparency</span>
+                            <span>60%</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                            <span>Blur</span>
+                            <span>12px</span>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
+                            <span>Border</span>
+                            <span>1px Solid</span>
+                        </div>
+                        <p style="font-size: 13px; opacity: 0.8; margin-top: 8px;">
+                            Используйте параметр <code>Glass="true"</code> для активации этого стиля в компоненте <code>SgCard</code>.
+                        </p>
+                    </div>
+                </SgCard>
+            </div>
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private string _glassCode = "// Glassmorphism is cool!\nfunction hello() {\n  console.log('Hello from glass editor');\n}";
+    private string _ideCode = "using System;\n\npublic class Program\n{\n    public static void Main()\n    {\n        Console.WriteLine(\"Hello from SgMonaco IDE Demo!\");\n    }\n}";
+    
+    private List<SgDockPanel> _idePanels = new()
+    {
+        SgDockPanel.Create("Explorer").WithIcon(SgIcons.Search).At(SgDockPosition.Left).Build(),
+        SgDockPanel.Create("Program.cs").WithIcon(SgIcons.FileText).At(SgDockPosition.Center).WithId("editor").Build(),
+        SgDockPanel.Create("Properties").WithIcon(SgIcons.Settings).At(SgDockPosition.Right).Build(),
+        SgDockPanel.Create("Output").WithIcon(SgIcons.BarChart).At(SgDockPosition.Bottom).Build(),
+    };
+
+    private RenderFragment RenderStatusBar() => __builder =>
+    {
+        <div style="display: flex; gap: 16px; align-items: center; width: 100%; height: 100%; color: #fff; font-size: 11px;">
+            <div style="display: flex; align-items: center; gap: 6px; padding: 0 8px; background: rgba(0,0,0,0.1); height: 100%;">
+                <SgIcon Icon="@SgIcons.Sigma" Size="12px" />
+                <span>Ready</span>
+            </div>
+            <span>main*</span>
+            <span>0 ↓ 1 ↑</span>
+            <div style="margin-left: auto; display: flex; gap: 12px; align-items: center; padding-right: 8px;">
+                <span>Ln 1, Col 1</span>
+                <span>Spaces: 4</span>
+                <span>UTF-8</span>
+                <span>C#</span>
+                <SgIcon Icon="@SgIcons.Bell" Size="12px" />
+            </div>
+        </div>
+    };
+
+    private string _jsonCode = "{\n  \"name\": \"SuperUI\",\n  \"version\": \"1.0.0\",\n  \"features\": [\n    \"Fast\",\n    \"Modern\",\n    \"Blazor\"\n  ]\n}";
+    private string _dynamicCode = "public class Hello {\n    public void Say() => Console.WriteLine(\"Hello World\");\n}";
+    private string? _syncCode = "# Hello Monaco\n\nTry typing here and see the preview on the right!\n\n- List item 1\n- List item 2";
+
+    private string _selectedLang = "csharp";
+    private string _selectedTheme = "vs-dark";
+
+    private List<string> _languages = new() { "json", "csharp", "sql", "markdown", "javascript", "typescript", "html", "css" };
+    private List<string> _themes = new() { "vs", "vs-dark", "hc-black" };
+
+    private SgMonacoOptions _jsonOptions = new() { Language = "json", Minimap = false };
+
+    private List<PropertyPanelItem> _monacoProperties = new()
+    {
+        new() { Label = "Value", Value = "string?", BadgeText = "Текущее значение редактора." },
+        new() { Label = "Height", Value = "string", BadgeText = "Высота контейнера." },
+        new() { Label = "Width", Value = "string", BadgeText = "Ширина контейнера." },
+        new() { Label = "Glass", Value = "bool", BadgeText = "Включить эффект матового стекла." },
+        new() { Label = "Options", Value = "SgMonacoOptions", BadgeText = "Настройки редактора." },
+        new() { Label = "Sources", Value = "SgMonacoSources", BadgeText = "Источники CDN для скриптов Monaco." },
+        new() { Label = "ValueChanged", Value = "EventCallback<string?>", BadgeText = "Событие при изменении текста." }
+    };
+
+    private List<PropertyPanelItem> _optionsProperties = new()
+    {
+        new() { Label = "Language", Value = "string", BadgeText = "Язык подсветки (json, csharp, sql, etc.)." },
+        new() { Label = "Theme", Value = "string", BadgeText = "Тема (vs, vs-dark, hc-black)." },
+        new() { Label = "FontSize", Value = "int", BadgeText = "Размер шрифта." },
+        new() { Label = "ReadOnly", Value = "bool", BadgeText = "Только для чтения." },
+        new() { Label = "Minimap", Value = "bool", BadgeText = "Отображать мини-карту кода." },
+        new() { Label = "LineNumbers", Value = "bool", BadgeText = "Отображать номера строк." },
+        new() { Label = "WordWrap", Value = "bool", BadgeText = "Перенос строк." },
+        new() { Label = "AutoFormat", Value = "bool", BadgeText = "Автоматическое форматирование при вставке." }
+    };
+}

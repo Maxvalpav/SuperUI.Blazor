@@ -1,37 +1,35 @@
 using System;
 using System.Collections.Generic;
+using SuperUI.Enums;
 
 namespace SuperUI.Components
 {
-    public enum SgChartType
-    {
-        Line,
-        Bar,
-        BarHorizontal,
-        Area,
-        Pie,
-        Doughnut,
-        Scatter,
-        Heatmap
-    }
-
     public class SgChartDataset
     {
         public string Label { get; set; } = "";
         public List<double> Data { get; set; } = new();
         public List<SgChartScatterPoint>? ScatterData { get; set; }
+        public List<SgChartMatrixPoint>? MatrixData { get; set; }
         public string Color { get; set; } = "#2196f3";
         public List<string>? Colors { get; set; } // For Pie/Donut
         public string? FillColor { get; set; }
         public double BorderWidth { get; set; } = 2;
         public bool ShowPoints { get; set; } = true;
         public string? Stack { get; set; } // For stacked bar
+        public SgChartType? Type { get; set; } // For mixed charts
     }
 
     public class SgChartScatterPoint
     {
         public double X { get; set; }
         public double Y { get; set; }
+    }
+
+    public class SgChartMatrixPoint
+    {
+        public string X { get; set; } = "";
+        public string Y { get; set; } = "";
+        public double V { get; set; }
     }
 
     public class SgChartData
@@ -87,13 +85,15 @@ namespace SuperUI.Components
     {
         public string Name { get; set; } = "";
         public Func<TItem, double> Value { get; set; } = _ => 0;
+        public SgChartType? Type { get; set; }
 
         public SgChartSeries() { }
 
-        public SgChartSeries(string name, Func<TItem, double> value)
+        public SgChartSeries(string name, Func<TItem, double> value, SgChartType? type = null)
         {
             Name = name;
             Value = value;
+            Type = type;
         }
     }
 

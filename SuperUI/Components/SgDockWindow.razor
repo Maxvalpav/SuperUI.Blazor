@@ -1,315 +1,321 @@
 @namespace SuperUI.Components
 @using SuperUI.Services
 @using SuperUI.Localization
+@using SuperUI.Enums
+@inherits SgOverlayComponentBase
 @inject ISuperUILocalizer Localizer
-@implements IAsyncDisposable
-@inject IJSRuntime JS
-@inject SgZIndexService ZIndex
 
-@if (Visible)
+@if (Visible || IsClosing)
 {
-    <div class="sgc-win @(_maximized ? "sgc-win-maximized" : "") @(_minimized ? "sgc-win-minimized" : "") @(_isFocused ? "sgc-win-focus" : "") @CssClass"
-         style="@ComputedStyle"
-         role="dialog"
-         aria-label="@(Title ?? "Window")"
-         aria-modal="false"
-         @ref="_el"
-         @attributes="AdditionalAttributes">
-        <div class="sgc-win-header">
-            <span class="sgc-win-title">@Title</span>
-            <div class="sgc-win-actions">
-                @if (ShowMinimize)
-                {
-                    <button type="button" class="sgc-win-btn"
-                            title="@(_minimized ? Localizer["Restore"] : Localizer["Minimize"])"
-                            aria-label="@(_minimized ? Localizer["Restore"] : Localizer["Minimize"])"
-                            @onclick="MinimizeAsync">@(_minimized ? "▣" : "—")</button>
-                }
-                @if (ShowMaximize)
-                {
-                    <button type="button" class="sgc-win-btn"
-                            title="@(_maximized ? Localizer["Restore"] : Localizer["Maximize"])"
-                            aria-label="@(_maximized ? Localizer["Restore"] : Localizer["Maximize"])"
-                            @onclick="ToggleMaximizeAsync">@(_maximized ? "❐" : "▢")</button>
-                }
-                @if (ShowClose)
-                {
-                    <button type="button" class="sgc-win-btn sgc-win-close"
-                            title="@Localizer["Close"]"
-                            aria-label="@Localizer["Close"]"
-                            @onclick="CloseAsync">×</button>
-                }
-            </div>
-        </div>
-        @if (!_minimized)
-        {
-            <div class="sgc-win-body">@ChildContent</div>
-            @if (FooterContent is not null)
-            {
-                <div class="sgc-win-footer">@FooterContent</div>
-            }
-            <div class="sgc-win-resize"></div>
-        }
-    </div>
+    if (UsePortal)
+    {
+        <SgPortal>
+            @RenderWindow()
+        </SgPortal>
+    }
+    else
+    {
+        @RenderWindow()
+    }
 }
 
 @code {
-    private ElementReference _el;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgDockWindow>? _self;
-    private bool _attached;
-    private bool _maximized;
-    private bool _minimized;
-    private bool _isFocused;
-    private bool _isDisposed;
-    private int _zIndex;
-    private double _savedLeft;
-    private double _savedTop;
-    private double _savedWidth;
-    private double _savedHeight;
-    private double _lastParentLeft = double.NaN;
-    private double _lastParentTop = double.NaN;
-    private double _lastParentWidth = double.NaN;
-    private double _lastParentHeight = double.NaN;
+    private RenderFragment RenderWindow() => __builder =>
+    {
+        <div id="@ResolvedId"
+             class="@Css("sgc-win").AddClass("sgc-win-maximized", _maximized).AddClass("sgc-win-minimized", _minimized).AddClass("sgc-win-focus", IsFocused).AddClass("sgc-closing", IsClosing).Build()"
+             style="@GetWindowStyle()"
+             @ref="RootRef"
+             @attributes="AdditionalAttributes">
+            <div class="sgc-win-header" @ref="_titlebarRef">
+                <span class="sgc-win-title">@Title</span>
+                <div class="sgc-win-actions">
+                    @if (ShowMinimize)
+                    {
+                        <button class="sgc-win-btn" title="@Localizer["Minimize"]"
+                                @onclick="ToggleMinimizeAsync" @onclick:stopPropagation>─</button>
+                    }
+                    @if (ShowMaximize)
+                    {
+                        <button class="sgc-win-btn" title="@Localizer["Maximize"]"
+                                @onclick="ToggleMaximizeAsync" @onclick:stopPropagation>□</button>
+                    }
+                    @if (ShowClose)
+                    {
+                        <button class="sgc-win-btn sgc-win-close"
+                                title="@Localizer["Close"]" @onclick="CloseAsync" @onclick:stopPropagation>×</button>
+                    }
+                </div>
+            </div>
+            @if (!_minimized)
+            {
+                <div class="sgc-win-body">
+                    @ChildContent
+                </div>
+                @if (FooterContent is not null)
+                {
+                    <div class="sgc-win-footer">
+                        @FooterContent
+                    </div>
+                }
+                @if (Resizable && !_maximized)
+                {
+                    <div class="sgc-win-resize"></div>
+                }
+            }
+        </div>
+    };
 
-    [Parameter] public bool Visible { get; set; } = true;
-    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+    private ElementReference _titlebarRef;
+    private bool _minimized;
+    private bool _maximized;
+
+    private bool IsFocused => ZIndex.GetTopOwner() == this;
+
+    protected override string ModulePath  => "./_content/SuperUI/superui-window.js";
+    protected override int ZIndexBase     => SgZIndexService.WindowBase;
+    protected override string IdPrefix    => "sg-dock-window";
+    protected override int ClosingAnimationMs => 150;
+
+    // ── Параметры ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets the window title.
+    /// </summary>
     [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets the window body content.
+    /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the footer content.
+    /// </summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
-    [Parameter] public double Left { get; set; } = 80;
-    [Parameter] public double Top { get; set; } = 80;
-    [Parameter] public double Width { get; set; } = 420;
-    [Parameter] public double Height { get; set; } = 300;
-    [Parameter] public bool ShowClose { get; set; } = true;
-    [Parameter] public bool ShowMaximize { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the left position. Default is "100px".
+    /// </summary>
+    [Parameter] public string Left { get; set; } = "100px";
+
+    /// <summary>
+    /// Gets or sets the top position. Default is "100px".
+    /// </summary>
+    [Parameter] public string Top { get; set; } = "100px";
+
+    /// <summary>
+    /// Gets or sets the window width. Default is "400px".
+    /// </summary>
+    [Parameter] public string Width { get; set; } = "400px";
+
+    /// <summary>
+    /// Gets or sets the window height. Default is "300px".
+    /// </summary>
+    [Parameter] public string Height { get; set; } = "300px";
+
+    /// <summary>
+    /// Gets or sets whether the window is draggable.
+    /// </summary>
+    [Parameter] public bool Draggable { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the window is resizable.
+    /// </summary>
+    [Parameter] public bool Resizable { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the minimize button is shown.
+    /// </summary>
     [Parameter] public bool ShowMinimize { get; set; } = true;
-    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the maximize button is shown.
+    /// </summary>
+    [Parameter] public bool ShowMaximize { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the close button is shown.
+    /// </summary>
+    [Parameter] public bool ShowClose { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the window should be rendered through a portal (to the body). Default is true.
+    /// </summary>
+    [Parameter] public bool UsePortal { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the window is minimized.
+    /// </summary>
+    [Parameter] public bool Minimized { get; set; }
+
+    /// <summary>
+    /// Callback invoked when minimized state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> MinimizedChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the window is maximized.
+    /// </summary>
+    [Parameter] public bool Maximized { get; set; }
+
+    /// <summary>
+    /// Callback invoked when maximized state changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> MaximizedChanged { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the window is closed.
+    /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
-    [Parameter] public EventCallback<double> LeftChanged { get; set; }
-    [Parameter] public EventCallback<double> TopChanged { get; set; }
-    [Parameter] public EventCallback<double> WidthChanged { get; set; }
-    [Parameter] public EventCallback<double> HeightChanged { get; set; }
-    /// <summary>Fired once after drag/resize ends with all four updated bounds.</summary>
+    /// <summary>
+    /// Callback invoked when window bounds change.
+    /// </summary>
     [Parameter] public EventCallback<WindowBounds> BoundsChanged { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private string ComputedStyle
-    {
-        get
-        {
-            var styles = new List<string>();
-            if (_zIndex > 0) styles.Add($"z-index: {_zIndex}");
-
-            if (_maximized)
-            {
-                styles.Add("left:0;top:0;right:0;bottom:0;width:auto;height:auto;");
-            }
-            else
-            {
-                var ci = System.Globalization.CultureInfo.InvariantCulture;
-                var h = _minimized ? "auto" : Height.ToString(ci) + "px";
-                styles.Add($"left:{Left.ToString(ci)}px");
-                styles.Add($"top:{Top.ToString(ci)}px");
-                styles.Add($"width:{Width.ToString(ci)}px");
-                styles.Add($"height:{h}");
-            }
-            return string.Join("; ", styles);
-        }
-    }
+    // ── Lifecycle ─────────────────────────────────────────────────────────
 
     protected override void OnInitialized()
     {
-        ZIndex.TopOwnerChanged += HandleTopOwnerChanged;
-        _lastParentLeft = Left;
-        _lastParentTop = Top;
-        _lastParentWidth = Width;
-        _lastParentHeight = Height;
+        base.OnInitialized();
+        ZIndex.TopOwnerChanged += OnTopOwnerChanged;
+        _minimized = Minimized;
+        _maximized = Maximized;
     }
 
-    // Track parent-supplied parameter values separately from JS-driven runtime state.
-    // Without this, any parent re-render (e.g. typing in an unrelated input) resets
-    // Left/Top back to the literal values supplied in markup, undoing user drag/resize.
     protected override void OnParametersSet()
     {
-        var leftChangedByParent   = !double.IsNaN(_lastParentLeft)   && Left   != _lastParentLeft;
-        var topChangedByParent    = !double.IsNaN(_lastParentTop)    && Top    != _lastParentTop;
-        var widthChangedByParent  = !double.IsNaN(_lastParentWidth)  && Width  != _lastParentWidth;
-        var heightChangedByParent = !double.IsNaN(_lastParentHeight) && Height != _lastParentHeight;
-
-        // Snapshot what the parent actually sent before we overwrite the properties.
-        var parentLeft   = Left;
-        var parentTop    = Top;
-        var parentWidth  = Width;
-        var parentHeight = Height;
-
-        if (!leftChangedByParent   && _runtimeLeft   is { } rl) Left   = rl;
-        if (!topChangedByParent    && _runtimeTop    is { } rt) Top    = rt;
-        if (!widthChangedByParent  && _runtimeWidth  is { } rw) Width  = rw;
-        if (!heightChangedByParent && _runtimeHeight is { } rh) Height = rh;
-
-        // Always track the parent-supplied value, not the runtime-overridden one.
-        _lastParentLeft   = parentLeft;
-        _lastParentTop    = parentTop;
-        _lastParentWidth  = parentWidth;
-        _lastParentHeight = parentHeight;
+        base.OnParametersSet();
+        if (Minimized != _minimized) _minimized = Minimized;
+        if (Maximized != _maximized) _maximized = Maximized;
     }
 
-    private double? _runtimeLeft;
-    private double? _runtimeTop;
-    private double? _runtimeWidth;
-    private double? _runtimeHeight;
+    private void OnTopOwnerChanged(object? topOwner) => StateHasChanged();
 
-    private void HandleTopOwnerChanged(object? topOwner)
+    protected override async ValueTask OnDisposingAsync()
     {
-        var isTop = ReferenceEquals(topOwner, this);
-        if (_isFocused != isTop)
-        {
-            _isFocused = isTop;
-            InvokeAsync(StateHasChanged);
-        }
+        ZIndex.TopOwnerChanged -= OnTopOwnerChanged;
+        await base.OnDisposingAsync();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnOpeningAsync()
     {
-        if (_isDisposed) return;
+        await SafeInvokeVoidAsync("attach", RootRef, SelfRef);
+    }
+
+    protected override async ValueTask OnClosingAsync()
+    {
+        await SafeInvokeVoidAsync("detach", RootRef);
+    }
+
+    protected override async ValueTask OnClosedAsync()
+    {
+        if (OnClose.HasDelegate)
+            await OnClose.InvokeAsync();
+    }
+
+    // ── Computed ─────────────────────────────────────────────────────────
+
+    private string GetWindowStyle() =>
+        Styles()
+            .AddStyle("z-index",  ZIndexValue.ToString(), ZIndexValue > 0)
+            .AddStyle("left",     FormatUnit(Left))
+            .AddStyle("top",      FormatUnit(Top))
+            .AddStyle("width",    FormatUnit(Width))
+            .AddStyle("height",   FormatUnit(Height),  !_minimized && !_maximized)
+            .AddStyle("display",  "none", !Visible && !IsClosing)
+            .Build();
+
+    private static string FormatUnit(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "0px";
+        if (double.TryParse(value, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out _))
+            return value + "px";
+        return value;
+    }
+
+    // ── Handlers ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Opens the window and brings it to front.
+    /// </summary>
+    public async Task OpenAsync()
+    {
+        bool changed = false;
         if (!Visible)
         {
-            if (_zIndex > 0)
-            {
-                ZIndex.Release(this);
-                _zIndex = 0;
-                _isFocused = false;
-            }
-            _attached = false;
-            return;
+            Visible = true;
+            if (VisibleChanged.HasDelegate)
+                await VisibleChanged.InvokeAsync(true);
         }
-
-        if (_zIndex == 0)
+        if (_minimized)
         {
-            _zIndex = ZIndex.Allocate(this, SgZIndexService.WindowBase);
+            _minimized = false;
+            changed = true;
+            if (MinimizedChanged.HasDelegate)
+                await MinimizedChanged.InvokeAsync(false);
         }
-
-        if (_attached) return;
-        try
-        {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-window.js");
-            if (_isDisposed) return;
-            
-            _self ??= DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync("attach", _el, _self);
-            _attached = true;
-        }
-        catch (JSException) { }
-        catch (TaskCanceledException) { }
+        await FocusAsync();
+        if (changed) StateHasChanged();
     }
 
-    [JSInvokable]
-    public async Task FocusAsync()
+    /// <summary>
+    /// Maximizes or restores the window.
+    /// </summary>
+    public async Task ToggleMaximizeAsync()
     {
-        if (_isDisposed || _isFocused) return;
-        _zIndex = ZIndex.Allocate(this, SgZIndexService.WindowBase);
-        _isFocused = true;
-        await InvokeAsync(StateHasChanged);
+        _maximized = !_maximized;
+        _minimized = false;
+        if (MaximizedChanged.HasDelegate)
+            await MaximizedChanged.InvokeAsync(_maximized);
+        if (MinimizedChanged.HasDelegate)
+            await MinimizedChanged.InvokeAsync(_minimized);
+        StateHasChanged();
     }
 
-    [JSInvokable]
-    public Task MinimizeAsync()
+    /// <summary>
+    /// Minimizes or restores the window.
+    /// </summary>
+    public async Task ToggleMinimizeAsync()
     {
         _minimized = !_minimized;
-        if (_minimized && _maximized) _maximized = false;
-        return InvokeAsync(StateHasChanged);
+        if (MinimizedChanged.HasDelegate)
+            await MinimizedChanged.InvokeAsync(_minimized);
+        StateHasChanged();
     }
 
     [JSInvokable]
-    public Task ToggleMaximizeAsync()
-    {
-        if (!_maximized)
-        {
-            _savedLeft = Left;
-            _savedTop = Top;
-            _savedWidth = Width;
-            _savedHeight = Height;
-        }
-        else
-        {
-            Left = _savedLeft;
-            Top = _savedTop;
-            Width = _savedWidth;
-            Height = _savedHeight;
-        }
-        _maximized = !_maximized;
-        return InvokeAsync(StateHasChanged);
-    }
+    public override Task RequestCloseAsync() => CloseAsync();
 
     [JSInvokable]
     public async Task UpdateBoundsAsync(double left, double top, double width, double height)
     {
-        Left = left;
-        Top = top;
-        Width = width;
-        Height = height;
-        _runtimeLeft = left;
-        _runtimeTop = top;
-        _runtimeWidth = width;
-        _runtimeHeight = height;
-        if (LeftChanged.HasDelegate) await LeftChanged.InvokeAsync(left);
-        if (TopChanged.HasDelegate) await TopChanged.InvokeAsync(top);
-        if (WidthChanged.HasDelegate) await WidthChanged.InvokeAsync(width);
-        if (HeightChanged.HasDelegate) await HeightChanged.InvokeAsync(height);
-        if (BoundsChanged.HasDelegate) await BoundsChanged.InvokeAsync(new WindowBounds(left, top, width, height));
+        Left   = $"{left}px";
+        Top    = $"{top}px";
+        Width  = $"{width}px";
+        Height = $"{height}px";
+        
+        if (BoundsChanged.HasDelegate)
+            await BoundsChanged.InvokeAsync(new WindowBounds(left, top, width, height));
+        
+        StateHasChanged();
     }
 
     [JSInvokable]
-    public async Task CloseAsync()
+    public async Task MinimizeAsync() => await ToggleMinimizeAsync();
+
+    /// <summary>
+    /// Brings the window to the front of the stacking order.
+    /// </summary>
+    [JSInvokable]
+    public async Task FocusAsync()
     {
-        _attached = false;
-        if (_zIndex > 0) { ZIndex.Release(this); _zIndex = 0; }
-        if (VisibleChanged.HasDelegate) await VisibleChanged.InvokeAsync(false);
-        if (OnClose.HasDelegate) await OnClose.InvokeAsync();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        if (_isDisposed) return;
-        _isDisposed = true;
-        _attached = false;
-
-        ZIndex.TopOwnerChanged -= HandleTopOwnerChanged;
-
-        if (_zIndex > 0)
+        if (Visible)
         {
-            ZIndex.Release(this);
-            _zIndex = 0;
+            BringToFront();
+            StateHasChanged();
         }
-
-        // 1. Уведомить JS о dispose
-        if (_module is not null && _attached)
-        {
-            try { await _module.InvokeVoidAsync("detach", _el); }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch { }
-        }
-
-        // 2. Очистить DotNetObjectReference
-        var self = _self;
-        _self = null;
-        self?.Dispose();
-
-        // 3. Очистить JS модуль
-        if (_module is not null)
-        {
-            try
-            {
-                await _module.DisposeAsync();
-            }
-            catch (JSException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
-            _module = null;
-        }
+        await Task.CompletedTask;
     }
 }

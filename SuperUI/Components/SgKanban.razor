@@ -6,9 +6,9 @@
     <div class="sgc-kanban-header">
         <div class="sgc-kanban-toolbar">
             <div style="display:flex; gap:8px; align-items:center;">
-                <SgTextBox TValue="string" Placeholder="Поиск задач..." Value="@SearchText" ValueChanged="@OnSearchChanged" />
+                <SgTextBox TValue="string" Placeholder="@Localizer["Kanban_SearchPlaceholder"]" Value="@SearchText" ValueChanged="@OnSearchChanged" />
                 <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="OnAddColumn">
-                    <span class="sgc-kanban-icon" style="margin-right:4px;">@((MarkupString)SgIcons.Plus)</span> Добавить колонку
+                     <span class="sgc-kanban-icon" style="margin-right:4px;">@((MarkupString)SgIcons.Plus)</span> @Localizer["Kanban_AddColumn"]
                 </SgButton>
             </div>
         </div>
@@ -58,7 +58,7 @@
         }
 
         <div class="sgc-kanban-col-header @(isWipExceeded ? "sgc-wip-exceeded" : "")" 
-             style="border-top-color: @(column.Color ?? "var(--sui-border)")">
+             style="border-top-color: @(column.Color ?? "var(--sg-border)")">
             <span class="sgc-kanban-col-drag-handle" draggable="true" @ondragstart="() => OnColumnDragStart(column)">
                 @((MarkupString)SgIcons.GripVertical)
             </span>
@@ -140,7 +140,7 @@
                     </div>
 
                     <div class="sgc-kanban-task-actions">
-                        <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Title="Дублировать" OnClick="() => OnDuplicateTask(currentTask)">
+                        <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Title="@Localizer["Kanban_Duplicate"]" OnClick="() => OnDuplicateTask(currentTask)">
                             <span class="sgc-kanban-icon">@((MarkupString)SgIcons.Copy)</span>
                         </SgButton>
                         <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnDeleteTask(currentTask)">
@@ -153,36 +153,36 @@
             <button type="button" class="sgc-kanban-add-task"
                     @onclick="() => OnAddTask(column.Id, swimlane)">
                 <span class="sgc-kanban-icon" style="margin-right: 4px;">@((MarkupString)SgIcons.Plus)</span> 
-                <span>Добавить задачу</span>
+                 <span>@Localizer["Kanban_AddTask"]</span>
             </button>
         </div>
     </div>;
 }
 
 @* Modal for Task Edit *@
-<SgModal @bind-Visible="_taskModalVisible" Title="@(_isNewTask ? "Новая задача" : "Редактировать задачу")" Width="400px">
+ <SgModal @bind-Visible="_taskModalVisible" Title="@(_isNewTask ? Localizer["Kanban_NewTask"] : Localizer["Kanban_EditTask"])" Width="400px">
     <ChildContent>
         @if (_editingTask != null)
         {
             <div style="display:flex; flex-direction:column; gap:12px; padding: 4px;">
-                <SgTextBox Label="Заголовок" @bind-Value="_editingTask.Title" />
-                <SgTextBox Label="Описание" @bind-Value="_editingTask.Description" Multiline="true" />
-                
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <SgSelect TValue="string" Label="Колонка" 
-                              Items="@Columns.Select(c => c.Id).ToList()"
-                              LabelSelector="@(id => Columns.FirstOrDefault(c => c.Id == id)?.Title ?? "")"
-                              @bind-Value="_editingTask.ColumnId" />
-                    <SgColorPicker Label="Цвет" @bind-Value="_editingTask.Color" />
-                </div>
+                 <SgTextBox Label="@Localizer["Kanban_FieldTitle"]" @bind-Value="_editingTask.Title" />
+                 <SgTextBox Label="@Localizer["Kanban_FieldDescription"]" @bind-Value="_editingTask.Description" Multiline="true" />
+                 
+                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                     <SgSelect TValue="string" Label="@Localizer["Kanban_FieldColumn"]" 
+                               Items="@Columns.Select(c => c.Id).ToList()"
+                               LabelSelector="@(id => Columns.FirstOrDefault(c => c.Id == id)?.Title ?? "")"
+                               @bind-Value="_editingTask.ColumnId" />
+                     <SgColorPicker Label="@Localizer["Kanban_FieldColor"]" @bind-Value="_editingTask.Color" />
+                 </div>
 
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                    <SgTextBox Label="Исполнитель" @bind-Value="_editingTask.Assignee" />
-                    <SgDatePicker Label="Срок" Value="_editingTask.DueDate" ValueChanged="@(v => _editingTask.DueDate = v)" />
-                </div>
+                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                     <SgTextBox Label="@Localizer["Kanban_FieldAssignee"]" @bind-Value="_editingTask.Assignee" />
+                     <SgDatePicker Label="@Localizer["Kanban_FieldDueDate"]" Value="_editingTask.DueDate" ValueChanged="@(v => _editingTask.DueDate = v)" />
+                 </div>
                 
                 <div style="display:flex; flex-direction:column; gap:4px;">
-                    <label class="sgc-label">Теги (через запятую)</label>
+                     <label class="sgc-label">@Localizer["Kanban_FieldTags"]</label>
                     <SgTextBox TValue="string" Value="@(string.Join(", ", _editingTask.Tags))" 
                                ValueChanged="@(v => _editingTask.Tags = (v as string ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToList())" />
                 </div>
@@ -196,12 +196,12 @@
 </SgModal>
 
 @* Modal for Column Edit *@
-<SgModal @bind-Visible="_columnModalVisible" Title="@(_isNewColumn ? "Новая колонка" : "Редактировать колонку")" Width="320px">
+ <SgModal @bind-Visible="_columnModalVisible" Title="@(_isNewColumn ? Localizer["Kanban_NewColumn"] : Localizer["Kanban_EditColumn"])" Width="320px">
     <ChildContent>
         @if (_editingColumn != null)
         {
             <div style="display:flex; flex-direction:column; gap:12px; padding: 4px;">
-                <SgTextBox Label="Название" @bind-Value="_editingColumn.Title" />
+                 <SgTextBox Label="@Localizer["Kanban_FieldColumnName"]" @bind-Value="_editingColumn.Title" />
                 <SgColorPicker Label="Цвет" @bind-Value="_editingColumn.Color" />
             </div>
         }
@@ -457,7 +457,7 @@
     {
         var copy = new SgKanbanTask
         {
-            Title = $"{task.Title} (копия)",
+            Title = Localizer.GetString("Kanban_TaskCopy", task.Title),
             Description = task.Description,
             Color = task.Color,
             ColumnId = task.ColumnId,

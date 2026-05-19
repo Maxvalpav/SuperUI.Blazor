@@ -1,4 +1,4 @@
-using System;
+using SuperUI.Enums;
 
 namespace SuperUI.Components
 {
@@ -59,25 +59,7 @@ namespace SuperUI.Components
         public bool IsReadOnly { get; set; }
     }
 
-    /// <summary>Workflow state for <see cref="SgCalendarEvent"/>.</summary>
-    public enum SgCalendarEventStatus
-    {
-        /// <summary>The event is confirmed and rendered with full intensity.</summary>
-        Confirmed,
-        /// <summary>The event is tentatively scheduled and rendered with reduced opacity / hatched border.</summary>
-        Tentative,
-        /// <summary>The event was cancelled — rendered struck-through and dimmed.</summary>
-        Cancelled
-    }
-
-    /// <summary>Priority hint for <see cref="SgCalendarEvent"/>.</summary>
-    public enum SgCalendarEventPriority
-    {
-        /// <summary>No special treatment.</summary>
-        Normal,
-        /// <summary>Renders an "important" pip on the chip.</summary>
-        High,
-        /// <summary>Renders a stronger urgent pip on the chip.</summary>
-        Urgent
-    }
+    // ── Workflow state ──────────────────────────────────────────────────────────
+    // SgCalendarEventStatus — moved to SuperUI.Enums.SgCalendarEventStatus
+    // SgCalendarEventPriority — moved to SuperUI.Enums.SgCalendarEventPriority
 }

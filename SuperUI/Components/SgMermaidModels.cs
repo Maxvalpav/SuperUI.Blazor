@@ -1,51 +1,12 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Diagram type ──────────────────────────────────────────────────────────────
-
-/// <summary>Mermaid diagram type hint (used for validation and tooling only — the actual type is inferred from the definition string).</summary>
-public enum SgMermaidDiagramType
-{
-    /// <summary>Flowchart / graph.</summary>
-    Flowchart,
-    /// <summary>Sequence diagram.</summary>
-    Sequence,
-    /// <summary>Class diagram.</summary>
-    ClassDiagram,
-    /// <summary>State diagram.</summary>
-    StateDiagram,
-    /// <summary>Entity-relationship diagram.</summary>
-    ErDiagram,
-    /// <summary>Gantt chart.</summary>
-    Gantt,
-    /// <summary>Pie chart.</summary>
-    Pie,
-    /// <summary>Git graph.</summary>
-    GitGraph,
-    /// <summary>Journey / user journey.</summary>
-    Journey,
-    /// <summary>Mindmap.</summary>
-    Mindmap,
-    /// <summary>Timeline.</summary>
-    Timeline,
-    /// <summary>Quadrant chart.</summary>
-    Quadrant,
-    /// <summary>C4 context diagram.</summary>
-    C4Context,
-    /// <summary>Custom / unknown type.</summary>
-    Custom,
-}
+// SgMermaidDiagramType — moved to SuperUI.Enums.SgMermaidDiagramType
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
-
-/// <summary>Mermaid built-in theme.</summary>
-public enum SgMermaidTheme
-{
-    Default,
-    Dark,
-    Forest,
-    Neutral,
-    Base,
-}
+// SgMermaidTheme — moved to SuperUI.Enums.SgMermaidTheme
 
 // ── Options ───────────────────────────────────────────────────────────────────
 

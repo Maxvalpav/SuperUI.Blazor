@@ -44,14 +44,14 @@ function _cssVar(name, fallback) {
 
 function _theme() {
     return {
-        text:       _cssVar('--sui-text',           '#1f2937'),
-        textMuted:  _cssVar('--sui-text-secondary', '#6b7280'),
-        border:     _cssVar('--sui-border',         'rgba(127,127,127,0.18)'),
-        bg:         _cssVar('--sui-card-bg',        '#ffffff'),
-        accent:     _cssVar('--sui-accent',         '#2563eb'),
-        font:       _cssVar('--sui-font-family',    'system-ui,sans-serif'),
+        text:       _cssVar('--sg-fg',           '#1f2937'),
+        textMuted:  _cssVar('--sg-fg-subtle', '#6b7280'),
+        border:     _cssVar('--sg-border',         'rgba(127,127,127,0.18)'),
+        bg:         _cssVar('--sgc-card-bg',        '#ffffff'),
+        accent:     _cssVar('--sg-color-primary',         '#2563eb'),
+        font:       _cssVar('--sg-font',    'system-ui,sans-serif'),
         palette: [
-            _cssVar('--sui-accent',  '#2563eb'),
+            _cssVar('--sg-color-primary',  '#2563eb'),
             '#10b981','#f59e0b','#ef4444','#8b5cf6',
             '#06b6d4','#84cc16','#ec4899','#f97316','#0ea5e9'
         ]

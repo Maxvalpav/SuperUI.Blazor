@@ -1,28 +1,37 @@
 @namespace SuperUI.Components
 @using System.Globalization
+@using SuperUI.Localization
+@using SuperUI.Enums
 @inject ISuperUILocalizer Localizer
 
 <div class="sg-scheduler" style="height: @Height;">
     <div class="sg-scheduler-header">
         <div class="sg-scheduler-title">@GetHeaderTitle()</div>
         <div class="sg-scheduler-actions">
-            <div style="width: 200px;">
-                <SgTextBox Placeholder="@Localizer["Scheduler_SearchEvents"]" @bind-Value="_searchText" />
+            <div style="width: 240px;">
+                <SgTextBox Placeholder="@Localizer["Scheduler_SearchEvents"]" @bind-Value="_searchText" Immediate="true" />
             </div>
-            <div class="sg-scheduler-view-switch">
+            <div class="sgc-icon-btn-group">
                 @foreach (var viewType in Enum.GetValues<SgSchedulerView>())
                 {
-                    <button type="button" class="@GetViewButtonClass(viewType)" @onclick="() => View = viewType">
-                        @Localizer[$"Scheduler_{viewType}"]
-                    </button>
+                    <SgButton @key="viewType" 
+                              Text="@Localizer[$"Scheduler_{viewType}"]" 
+                              Variant="@(View == viewType ? SgButtonVariant.Primary : SgButtonVariant.Default)"
+                              Size="SgSize.Sm"
+                              OnClick="@(async () => { View = viewType; await ViewChanged.InvokeAsync(viewType); })" />
                 }
             </div>
-            <button type="button" class="sg-scheduler-btn" aria-label="@Localizer["Scheduler_PreviousPeriod"]" @onclick="PreviousRange">&lt;</button>
-            <button type="button" class="sg-scheduler-btn" @onclick="GoToToday">@Localizer["Scheduler_Today"]</button>
-            <button type="button" class="sg-scheduler-btn" aria-label="@Localizer["Scheduler_NextPeriod"]" @onclick="NextRange">&gt;</button>
+            <div class="sgc-icon-btn-group">
+                <SgIconButton Icon="@SgIcons.ChevronLeft" Title="@Localizer["Scheduler_PreviousPeriod"]" Size="SgSize.Sm" OnClick="async () => await PreviousRange()" />
+                <SgButton Text="@Localizer["Scheduler_Today"]" Size="SgSize.Sm" OnClick="async () => await GoToToday()" />
+                <SgIconButton Icon="@SgIcons.ChevronRight" Title="@Localizer["Scheduler_NextPeriod"]" Size="SgSize.Sm" OnClick="async () => await NextRange()" />
+            </div>
             @if (OnAddEvent.HasDelegate || EnableCreation)
             {
-                <button type="button" class="sg-scheduler-btn sg-scheduler-btn-primary" @onclick="() => HandleAddClick(DateTime.Today)">@Localizer["Scheduler_AddEvent"]</button>
+                <SgButton Text="@Localizer["Scheduler_AddEvent"]" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" 
+                          OnClick="() => HandleAddClick(DateTime.Today)">
+                    <Icon>@((MarkupString)SgIcons.Plus)</Icon>
+                </SgButton>
             }
         </div>
     </div>
@@ -40,6 +49,9 @@
                 break;
             case SgSchedulerView.Agenda:
                 @RenderAgendaView()
+                break;
+            case SgSchedulerView.Timeline:
+                @RenderTimelineView()
                 break;
         }
     </div>
@@ -77,12 +89,16 @@
 
 @code {
     [Parameter] public SgSchedulerView View { get; set; } = SgSchedulerView.Week;
+    [Parameter] public EventCallback<SgSchedulerView> ViewChanged { get; set; }
     [Parameter] public DateTime Value { get; set; } = DateTime.Today;
     [Parameter] public EventCallback<DateTime> ValueChanged { get; set; }
     [Parameter] public IEnumerable<SgSchedulerEvent>? Events { get; set; }
     [Parameter] public string Height { get; set; } = "600px";
     [Parameter] public bool EnableCreation { get; set; } = true;
     [Parameter] public bool EnableEditing { get; set; } = true;
+    [Parameter] public bool EnableDragAndDrop { get; set; } = true;
+    [Parameter] public int StartHour { get; set; } = 0;
+    [Parameter] public int EndHour { get; set; } = 24;
     [Parameter] public EventCallback<SgSchedulerEvent> OnAddEvent { get; set; }
     [Parameter] public EventCallback<SgSchedulerEvent> OnUpdateEvent { get; set; }
     [Parameter] public EventCallback<SgSchedulerEvent> OnDeleteEvent { get; set; }
@@ -112,13 +128,24 @@
         SgSchedulerView.Week => $"{GetWeekStart():dd MMMM} - {GetWeekEnd():dd MMMM yyyy}",
         SgSchedulerView.Month => Value.ToString("MMMM yyyy", CultureInfo.CurrentCulture),
         SgSchedulerView.Agenda => Localizer["Scheduler_AgendaTitle"],
+        SgSchedulerView.Timeline => $"{Value:dd MMMM yyyy}",
         _ => ""
     };
 
-    private string GetViewButtonClass(SgSchedulerView view) => 
-        View == view ? "sg-scheduler-view-btn sg-scheduler-view-btn-active" : "sg-scheduler-view-btn";
+    private async Task SetView(SgSchedulerView view)
+    {
+        if (View == view) return;
+        await ViewChanged.InvokeAsync(view);
+        // We don't set View = view here; we let the parent do it via the parameter
+        // But if the parent doesn't have a binding, we should update it locally to remain functional
+        if (!ViewChanged.HasDelegate)
+        {
+            View = view;
+            StateHasChanged();
+        }
+    }
 
-    private void PreviousRange()
+    private async Task PreviousRange()
     {
         Value = View switch
         {
@@ -127,10 +154,11 @@
             SgSchedulerView.Month => Value.AddMonths(-1),
             _ => Value
         };
-        ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(Value);
+        StateHasChanged();
     }
 
-    private void NextRange()
+    private async Task NextRange()
     {
         Value = View switch
         {
@@ -139,10 +167,16 @@
             SgSchedulerView.Month => Value.AddMonths(1),
             _ => Value
         };
-        ValueChanged.InvokeAsync(Value);
+        await ValueChanged.InvokeAsync(Value);
+        StateHasChanged();
     }
 
-    private void GoToToday() { Value = DateTime.Today; ValueChanged.InvokeAsync(Value); }
+    private async Task GoToToday() 
+    { 
+        Value = DateTime.Today; 
+        await ValueChanged.InvokeAsync(Value); 
+        StateHasChanged();
+    }
 
     private DateTime GetWeekStart()
     {
@@ -176,14 +210,19 @@
         if (date.Month != Value.Month) classes.Add("sg-scheduler-day-other-month");
         if (date.Date == DateTime.Today) classes.Add("sg-scheduler-day-today");
         if (date.Date == Value.Date) classes.Add("sg-scheduler-day-selected");
+        if (date.DayOfWeek == DayOfWeek.Saturday || date.DayOfWeek == DayOfWeek.Sunday) classes.Add("sg-scheduler-day-weekend");
         return string.Join(" ", classes);
     }
 
-    private void SelectDate(DateTime date)
+    private async Task SelectDate(DateTime date)
     {
         Value = date;
-        ValueChanged.InvokeAsync(Value);
-        if (View == SgSchedulerView.Month) View = SgSchedulerView.Day;
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private void HandleDayDoubleClick(DateTime date)
+    {
+        if (OnAddEvent.HasDelegate || EnableCreation) HandleAddClick(date);
     }
 
     private List<SgSchedulerEvent> FilterEvents(List<SgSchedulerEvent> events)
@@ -302,9 +341,9 @@
 
     private RenderFragment RenderEvent(SgSchedulerEvent ev, bool showTime = false) => __builder =>
     {
-        <SgTooltip Text="@GetTooltipText(ev)">
-            <div class="sg-scheduler-event" draggable="true"
-                 @ondragstart="() => _draggedEvent = ev"
+        <SgTooltip Text="@GetTooltipText(ev, showTime)">
+            <div class="sg-scheduler-event" draggable="@(EnableDragAndDrop ? "true" : "false")"
+                 @ondragstart="() => { if(EnableDragAndDrop) _draggedEvent = ev; }"
                  style="@GetEventStyle(ev)"
                  @onclick:stopPropagation="true"
                  @onclick="() => HandleEventClick(ev)">
@@ -312,7 +351,13 @@
                 {
                     <span class="sg-scheduler-event-time">@ev.Start.ToString("HH:mm") - @ev.End.ToString("HH:mm")</span>
                 }
-                <span class="sg-scheduler-event-title">@ev.Title</span>
+                <div style="display: flex; align-items: center; gap: 4px;">
+                    @if (!string.IsNullOrEmpty(ev.Icon))
+                    {
+                        <span class="sg-scheduler-event-icon">@((MarkupString)ev.Icon)</span>
+                    }
+                    <span class="sg-scheduler-event-title">@ev.Title</span>
+                </div>
             </div>
         </SgTooltip>
     };
@@ -320,7 +365,7 @@
     private RenderFragment RenderTimeColumn() => __builder =>
     {
         <div class="sg-scheduler-time-column">
-            @for (int hour = 0; hour < 24; hour++)
+            @for (int hour = StartHour; hour < EndHour; hour++)
             {
                 <div class="sg-scheduler-time-slot">
                     <span class="sg-scheduler-time-label">@hour.ToString("00"):00</span>
@@ -338,7 +383,7 @@
             <div class="sg-scheduler-day-grid">
                 @RenderTimeColumn()
                 <div class="sg-scheduler-events-column">
-                    @for (int hour = 0; hour < 24; hour++)
+                    @for (int hour = StartHour; hour < EndHour; hour++)
                     {
                         var slotStart = Value.Date.AddHours(hour);
                         <div class="sg-scheduler-time-slot" @onclick="() => HandleSlotClick(slotStart)"
@@ -372,7 +417,7 @@
                 @foreach (var date in GetWeekDays())
                 {
                     <div class="sg-scheduler-day-column">
-                        @for (int hour = 0; hour < 24; hour++)
+                        @for (int hour = StartHour; hour < EndHour; hour++)
                         {
                             var slotStart = date.Date.AddHours(hour);
                             <div class="sg-scheduler-time-slot" @onclick="() => HandleSlotClick(slotStart)"
@@ -401,7 +446,9 @@
             <div class="sg-scheduler-month-grid">
                 @foreach (var date in GetDays())
                 {
-                    <div class="@GetDayClass(date)" @onclick="() => SelectDate(date)"
+                    <div class="@GetDayClass(date)" 
+                         @onclick="() => SelectDate(date)"
+                         @ondblclick="() => HandleDayDoubleClick(date)"
                          ondragover="event.preventDefault();" @ondrop="() => HandleDropOnDate(date)">
                         <div class="sg-scheduler-date-header">
                             <span class="sg-scheduler-date-value">@date.Day</span>
@@ -454,6 +501,13 @@
             {
                 <div class="sg-scheduler-empty">@Localizer["Scheduler_NoEvents"]</div>
             }
+        </div>
+    };
+
+    private RenderFragment RenderTimelineView() => __builder =>
+    {
+        <div class="sg-scheduler-timeline-view" style="padding: 20px; text-align: center; color: var(--sg-fg-muted);">
+            @Localizer["Scheduler_TimelineNotImplemented"]
         </div>
     };
 }

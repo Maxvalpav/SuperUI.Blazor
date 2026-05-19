@@ -1,38 +1,6 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
-
-/// <summary>Supported MIME types for recording.</summary>
-public enum SgRecorderMimeType
-{
-    /// <summary>WebM video (default).</summary>
-    VideoWebM,
-    /// <summary>WebM with VP9 codec.</summary>
-    VideoWebM_VP9,
-    /// <summary>WebM with H.264 codec.</summary>
-    VideoWebM_H264,
-    /// <summary>WAV audio.</summary>
-    AudioWAV,
-    /// <summary>OGG audio (Firefox only).</summary>
-    AudioOGG
-}
-
-/// <summary>Recording state.</summary>
-public enum SgRecorderState
-{
-    /// <summary>Idle, not recording.</summary>
-    Idle,
-    /// <summary>Requesting permissions.</summary>
-    RequestingPermission,
-    /// <summary>Permission granted, ready to record.</summary>
-    Ready,
-    /// <summary>Recording in progress.</summary>
-    Recording,
-    /// <summary>Recording paused.</summary>
-    Paused,
-    /// <summary>Stopped, finalizing.</summary>
-    Stopping,
-    /// <summary>Error state.</summary>
-    Error
-}
 
 /// <summary>Event arguments when permissions are granted.</summary>
 public class SgRecorderPermissionGrantedEventArgs : EventArgs

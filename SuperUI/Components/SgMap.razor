@@ -1,10 +1,11 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@using SuperUI.Enums
+@inherits SgJsComponentBase
 @inject ISuperUILocalizer Localizer
 
-<div class="sg-map-container @CssClass"
-     style="height: @Height; width: @Width;"
+<div class="@Css("sg-map-container").Build()"
+     style="@Styles().AddStyle("height", Height).AddStyle("width", Width).Build()"
+     @ref="RootRef"
      @attributes="AdditionalAttributes">
 
     @if (_error is not null)
@@ -35,14 +36,8 @@
 
 @code {
     private ElementReference _containerRef;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgMap>? _selfRef;
-    private readonly string _instanceId = $"sg-map-{Guid.NewGuid():N}";
     private bool _ready;
     private string? _error;
-    private bool _isDisposed;
-
-    // Change-detection snapshots
     private object? _lastMarkersRef;
     private object? _lastPolylinesRef;
     private object? _lastPolygonsRef;
@@ -50,45 +45,19 @@
     private bool _refreshScheduled;
     private bool _refreshPending;
 
-    // ── Parameters ────────────────────────────────────────────────────────────
+    protected override string ModulePath => "./_content/SuperUI/sg-map.js";
+    protected override string IdPrefix   => "sg-map";
 
-    /// <summary>Map options (centre, zoom, tile layer, controls).</summary>
     [Parameter] public SgMapOptions? Options { get; set; }
-
-    /// <summary>Markers to display on the map.</summary>
     [Parameter] public IEnumerable<SgMapMarker>? Markers { get; set; }
-
-    /// <summary>Polylines (routes / paths) to display.</summary>
     [Parameter] public IEnumerable<SgMapPolyline>? Polylines { get; set; }
-
-    /// <summary>Polygons (areas) to display.</summary>
     [Parameter] public IEnumerable<SgMapPolygon>? Polygons { get; set; }
-
-    /// <summary>Container height. Default "400px".</summary>
     [Parameter] public string Height { get; set; } = "400px";
-
-    /// <summary>Container width. Default "100%".</summary>
     [Parameter] public string Width { get; set; } = "100%";
-
-    /// <summary>OpenLayers source URL override.</summary>
     [Parameter] public SgMapSources? Sources { get; set; }
-
-    /// <summary>Additional CSS class for the container.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Fired when a marker is clicked.</summary>
     [Parameter] public EventCallback<SgMapMarkerClickEventArgs> OnMarkerClick { get; set; }
-
-    /// <summary>Fired when the map background is clicked (not on a marker).</summary>
     [Parameter] public EventCallback<SgMapClickEventArgs> OnMapClick { get; set; }
-
-    /// <summary>Fired when the map view (centre / zoom) changes.</summary>
     [Parameter] public EventCallback<SgMapViewChangedEventArgs> OnViewChanged { get; set; }
-
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     protected override void OnParametersSet()
     {
@@ -120,18 +89,12 @@
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (_isDisposed || !firstRender) return;
         try
         {
-            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-map.js");
-            if (_isDisposed) return;
-            _selfRef = DotNetObjectReference.Create(this);
             await InitAsync();
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
         catch (Exception ex)
         {
             _error = $"{Localizer["Map_FailedToLoad"]}: {ex.Message}";
@@ -141,23 +104,20 @@
 
     private async Task InitAsync()
     {
-        if (_module is null || _selfRef is null) return;
         try
         {
             var opts      = BuildOpts();
             var markers   = Markers?.ToList();
             var polylines = Polylines?.ToList();
             var polygons  = Polygons?.ToList();
-            await _module.InvokeVoidAsync("initMap",
-                _selfRef, _containerRef, _instanceId,
+            await SafeInvokeVoidAsync("initMap",
+                SelfRef, _containerRef, ResolvedId,
                 opts, markers, polylines, polygons,
                 Sources ?? new SgMapSources());
             CaptureSnapshot();
             _ready = true;
             await InvokeAsync(StateHasChanged);
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
         catch (Exception ex)
         {
             _error = $"{Localizer["Map_FailedToInitialize"]}: {ex.Message}";
@@ -194,119 +154,47 @@
         };
     }
 
-    // ── Public methods ────────────────────────────────────────────────────────
-
-    /// <summary>Updates only the markers layer without full map reinit.</summary>
     public async Task RefreshMarkersAsync()
     {
-        if (_module is null || !_ready) { _refreshPending = true; return; }
-        try
-        {
-            await _module.InvokeVoidAsync("updateMarkers", _instanceId, Markers?.ToList());
-            CaptureSnapshot();
-        }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
+        if (!IsInteractive || !_ready) { _refreshPending = true; return; }
+        await SafeInvokeVoidAsync("updateMarkers", ResolvedId, Markers?.ToList());
+        CaptureSnapshot();
     }
 
-    /// <summary>Animates the map to the specified coordinates and zoom.</summary>
-    public async Task SetCenterAsync(double lon, double lat, int? zoom = null)
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("setCenter", _instanceId, lon, lat, zoom ?? (Options?.Zoom ?? 10)); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+    public async Task SetCenterAsync(double lon, double lat, int? zoom = null) =>
+        await SafeInvokeVoidAsync("setCenter", ResolvedId, lon, lat, zoom);
 
-    /// <summary>Fits the view to all current markers.</summary>
-    public async Task FitToMarkersAsync()
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("fitToMarkers", _instanceId, new[] { 60, 60, 60, 60 }); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+    public async Task FitToMarkersAsync() =>
+        await SafeInvokeVoidAsync("fitToMarkers", ResolvedId);
 
-    /// <summary>Returns the current map centre and zoom.</summary>
     public async Task<SgMapViewChangedEventArgs?> GetCenterAsync()
     {
-        if (_module is null) return null;
-        try
-        {
-            return await _module.InvokeAsync<SgMapViewChangedEventArgs?>("getCenter", _instanceId);
-        }
-        catch { return null; }
+        return await SafeInvokeAsync<SgMapViewChangedEventArgs>("getCenter", ResolvedId);
     }
 
-    /// <summary>Downloads the current map view as a PNG.</summary>
-    public async Task ExportPngAsync()
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("exportPng", _instanceId); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+    public async Task ExportPngAsync() =>
+        await SafeInvokeVoidAsync("exportPng", ResolvedId);
 
-    /// <summary>Draws a route polyline between coordinates with start/end markers.</summary>
     public async Task DrawRouteAsync(string routeId, IEnumerable<SgMapCoord> coordinates,
-        string color = "#2563eb", double width = 4, bool dashed = false,
-        bool noMarkers = false, bool noFit = false, int routeIndex = -1)
-    {
-        if (_module is null) return;
-        try
-        {
-            await _module.InvokeVoidAsync("drawRoute", _instanceId, routeId,
-                coordinates.ToList(),
-                new { color, width, dashed, noMarkers, noFit, routeIndex });
-        }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+        string color = "#3b82f6", double width = 4, bool dashed = false,
+        bool noMarkers = false, bool noFit = false, int? routeIndex = null) =>
+        await SafeInvokeVoidAsync("drawRoute", ResolvedId, routeId, coordinates.ToList(), new { color, width, dashed, noMarkers, noFit, routeIndex });
 
-    /// <summary>Highlights the selected route and dims all others. Uses routeIndex set via DrawRouteAsync.</summary>
-    public async Task HighlightRouteAsync(int selectedIndex, string routePrefix = "gh-route-")
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("highlightRoute", _instanceId, selectedIndex, routePrefix); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+    public async Task HighlightRouteAsync(int selectedIndex, string routePrefix = "gh-route-") =>
+        await SafeInvokeVoidAsync("highlightRoute", ResolvedId, selectedIndex, routePrefix);
 
-    /// <summary>Fits the view to a bounding box [minLon, minLat, maxLon, maxLat].</summary>
-    public async Task FitToBboxAsync(double minLon, double minLat, double maxLon, double maxLat)
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("fitToBbox", _instanceId, minLon, minLat, maxLon, maxLat); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+    public async Task FitToBboxAsync(double minLon, double minLat, double maxLon, double maxLat) =>
+        await SafeInvokeVoidAsync("fitToBbox", ResolvedId, minLon, minLat, maxLon, maxLat);
 
-    /// <summary>Removes a previously drawn route.</summary>
-    public async Task ClearRouteAsync(string routeId)
-    {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("clearRoute", _instanceId, routeId); }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException)   { }
-        catch { }
-    }
+    public async Task ClearRouteAsync(string routeId) =>
+        await SafeInvokeVoidAsync("clearRoute", ResolvedId, routeId);
 
-    /// <summary>Retries loading after an error.</summary>
     public async Task RetryAsync()
     {
         _error = null; _ready = false;
         await InvokeAsync(StateHasChanged);
         await InitAsync();
     }
-
-    // ── JS callbacks ──────────────────────────────────────────────────────────
 
     [JSInvokable]
     public async Task OnMarkerClickedAsync(SgMapMarkerClickEventArgs args)
@@ -329,32 +217,8 @@
             await OnViewChanged.InvokeAsync(args);
     }
 
-    // ── Dispose ───────────────────────────────────────────────────────────────
-
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null)
-        {
-            try { await _module.InvokeVoidAsync("disposeMap", _instanceId); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException)   { }
-            catch { }
-        }
-
-        var selfRef = _selfRef;
-        _selfRef = null;
-        selfRef?.Dispose();
-
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException)   { }
-            catch { }
-            _module = null;
-        }
+        await SafeInvokeVoidAsync("disposeMap", ResolvedId);
     }
 }

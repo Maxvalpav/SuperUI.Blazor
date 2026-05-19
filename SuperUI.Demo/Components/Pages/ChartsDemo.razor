@@ -39,33 +39,21 @@
                      Height="320px" Width="100%" />
         </SgCard>
 
-        <SgCard Title="Площадной — трафик сайта">
+        <SgCard Title="Смешанный график — План vs Факт">
             <div class="charts-gen-bar">
-                <span class="charts-gen-label">Тип:</span>
-                @foreach (var c in new[]{ "Монотонный","Ступенчатый","Линейный" })
-                {
-                    var cc = c;
-                    <button class="charts-gen-btn @(_trafficCurve == cc ? "active" : "")"
-                            @onclick="@(() => { _trafficCurve = cc; RegenerateTraffic(); })">@cc</button>
-                }
+                <button class="charts-gen-btn charts-gen-btn-refresh" @onclick="RegenerateMixed">↻ Обновить</button>
             </div>
-            <SgChart TItem="ChartDataPoint"
-                     ChartType="SgChartType.Area"
-                     Data="@_trafficData"
-                     Options="@_trafficOpts"
+            <SgChart TItem="MixedPoint"
+                     Data="@_mixedData"
+                     Series="@_mixedSeries"
+                     Options="@_mixedOpts"
                      Height="320px" Width="100%" />
         </SgCard>
 
-        <SgCard Title="Мониторинг CPU / RAM / Disk">
+        <SgCard Title="Мониторинг CPU / RAM (Real-time)">
             <div class="charts-gen-bar">
-                <span class="charts-gen-label">Точек:</span>
-                @foreach (var n in new[]{ 20, 50, 100 })
-                {
-                    var nn = n;
-                    <button class="charts-gen-btn @(_monitorPoints == nn ? "active" : "")"
-                            @onclick="@(() => { _monitorPoints = nn; RegenerateMonitor(); })">@nn</button>
-                }
-                <button class="charts-gen-btn charts-gen-btn-refresh" @onclick="RegenerateMonitor">↻</button>
+                <span class="charts-gen-label">Интервал: 1 сек</span>
+                <button class="charts-gen-btn @(_rtEnabled ? "active" : "")" @onclick="ToggleRT">@(_rtEnabled ? "Stop" : "Start")</button>
             </div>
             <SgChart TItem="ServerMetric"
                      ChartType="SgChartType.Line"
@@ -91,9 +79,9 @@
 </SgTabPanel>
 
 <!-- ══════════════════════════════════════════════════════════
-     Столбчатые
+     Столбчатые / Тепловые
 ══════════════════════════════════════════════════════════ -->
-<SgTabPanel Title="📊 Столбчатые">
+<SgTabPanel Title="📊 Столбчатые & Heatmap">
     <div class="charts-grid-2">
 
         <SgCard Title="Продажи по регионам — grouped">
@@ -112,6 +100,17 @@
                      Data="@_regionData"
                      Series="@_regionSeries"
                      Options="@_regionOpts"
+                     Height="320px" Width="100%" />
+        </SgCard>
+
+        <SgCard Title="Heatmap — Активность по часам">
+            <div class="charts-gen-bar">
+                <button class="charts-gen-btn charts-gen-btn-refresh" @onclick="RegenerateHeatmap">↻ Обновить</button>
+            </div>
+            <SgChart TItem="HeatmapData"
+                     ChartType="SgChartType.Heatmap"
+                     Data="@_heatmapData"
+                     Options="@_heatmapOpts"
                      Height="320px" Width="100%" />
         </SgCard>
 
@@ -146,24 +145,6 @@
                      ChartType="SgChartType.BarHorizontal"
                      Data="@_rankingData"
                      Options="@_rankingOpts"
-                     Height="320px" Width="100%" />
-        </SgCard>
-
-        <SgCard Title="Аномалии в данных">
-            <div class="charts-gen-bar">
-                <span class="charts-gen-label">Аномалий:</span>
-                @foreach (var n in new[]{ 1, 3, 5 })
-                {
-                    var nn = n;
-                    <button class="charts-gen-btn @(_anomalyCount == nn ? "active" : "")"
-                            @onclick="@(() => { _anomalyCount = nn; RegenerateAnomalies(); })">@nn</button>
-                }
-                <button class="charts-gen-btn charts-gen-btn-refresh" @onclick="RegenerateAnomalies">↻</button>
-            </div>
-            <SgChart TItem="ChartDataPoint"
-                     ChartType="SgChartType.Bar"
-                     Data="@_anomalyData"
-                     Options="@_anomalyOpts"
                      Height="320px" Width="100%" />
         </SgCard>
 
@@ -332,6 +313,7 @@
 </SgTabs>
 </div>
 
+@implements IDisposable
 @code {
     // ── Model types ───────────────────────────────────────────────────────────
     public record ChartDataPoint(string? Label = null, double Value = 0);
@@ -340,8 +322,65 @@
     public record ForecastPoint(string? Label, double Actual, double Forecast, double Upper, double Lower);
     public record RegionSales(string? Label, double North, double South, double East, double West, double Central);
     public record BudgetItem(string? Label, double Plan, double Fact, double Delta);
+    public record MixedPoint(string Label, double Plan, double Fact);
+    public record HeatmapData(List<SgChartMatrixPoint> MatrixData);
 
     private static readonly Random _rnd = new(Environment.TickCount);
+    private System.Timers.Timer? _rtTimer;
+    private bool _rtEnabled;
+
+    protected override void OnInitialized()
+    {
+        RegenerateStock();
+        RegenerateMixed();
+        RegenerateMonitor();
+        RegenerateForecast();
+        RegenerateRegions();
+        RegenerateHeatmap();
+        RegenerateBudget();
+        RegenerateRanking();
+        RegeneratePie();
+        RegenerateClusters();
+        RegenerateBigData();
+
+        _rtTimer = new System.Timers.Timer(1000);
+        _rtTimer.Elapsed += async (s, e) => await TickRT();
+    }
+
+    public void Dispose()
+    {
+        _rtTimer?.Stop();
+        _rtTimer?.Dispose();
+    }
+
+    private void ToggleRT()
+    {
+        _rtEnabled = !_rtEnabled;
+        if (_rtEnabled) _rtTimer?.Start();
+        else _rtTimer?.Stop();
+    }
+
+    private async Task TickRT()
+    {
+        if (!_rtEnabled) return;
+        
+        var last = _monitorData.LastOrDefault();
+        double cpu = last?.Cpu ?? 30;
+        double ram = last?.Ram ?? 55;
+        double disk = last?.Disk ?? 40;
+
+        cpu = Math.Clamp(cpu + (_rnd.NextDouble() - 0.5) * 15, 5, 95);
+        ram = Math.Clamp(ram + (_rnd.NextDouble() - 0.5) * 5, 20, 90);
+        
+        // Ensure we don't grow the list indefinitely
+        var newData = _monitorData.ToList();
+        while (newData.Count >= _monitorPoints) newData.RemoveAt(0);
+        
+        newData.Add(new($"{DateTime.Now:HH:mm:ss}", Math.Round(cpu), Math.Round(ram), Math.Round(disk)));
+        _monitorData = newData;
+        
+        await InvokeAsync(StateHasChanged);
+    }
 
     // ── Stock chart ───────────────────────────────────────────────────────────
     private int _stockPeriod = 90;
@@ -379,46 +418,63 @@
         _stockData = list;
     }
 
-    // ── Traffic area ──────────────────────────────────────────────────────────
-    private string _trafficCurve = "Монотонный";
-    private List<ChartDataPoint> _trafficData = new();
-    private SgChartOptions _trafficOpts = new()
+    // ── Mixed Chart ───────────────────────────────────────────────────────────
+    private List<MixedPoint> _mixedData = new();
+    private List<SgChartSeries<MixedPoint>> _mixedSeries = new()
     {
-        ShowLegend = false, Responsive = true, ShowPoints = false,
-        LineTension = 0.4, ShowToolbar = true,
-        Colors = ["#10b981"], ValueSuffix = " тыс.", ValueDecimals = 1,
+        new("План (линия)", x => x.Plan, SgChartType.Line),
+        new("Факт (столбцы)", x => x.Fact, SgChartType.Bar),
+    };
+    private SgChartOptions _mixedOpts = new()
+    {
+        ShowLegend = true, Responsive = true,
+        Colors = ["#ef4444", "#3b82f6"],
+        ValueSuffix = " шт.",
     };
 
-    private void RegenerateTraffic()
+    private void RegenerateMixed()
     {
-        _trafficOpts.LineTension = _trafficCurve switch { "Ступенчатый" => 0, "Линейный" => 0, _ => 0.4 };
-        var list = new List<ChartDataPoint>(24);
-        double v = 10 + _rnd.NextDouble() * 20;
-        for (int h = 0; h < 24; h++)
+        _mixedData = Enumerable.Range(1, 12).Select(i => new MixedPoint(
+            $"{i} мес.",
+            Math.Round(100 + i * 10 + _rnd.NextDouble() * 20),
+            Math.Round(90 + i * 10 + _rnd.NextDouble() * 40)
+        )).ToList();
+    }
+
+    // ── Heatmap ───────────────────────────────────────────────────────────────
+    private List<HeatmapData> _heatmapData = new();
+    private SgChartOptions _heatmapOpts = new() { ShowLegend = false, Responsive = true };
+    private void RegenerateHeatmap()
+    {
+        var points = new List<SgChartMatrixPoint>();
+        var days = new[] { "Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс" };
+        for (int d = 0; d < 7; d++)
         {
-            double peak = h is >= 9 and <= 11 or >= 14 and <= 16 or >= 20 and <= 22 ? 2.5 : 1.0;
-            v = Math.Max(2, v + (_rnd.NextDouble() - 0.4) * 8 * peak);
-            list.Add(new($"{h:D2}:00", Math.Round(v, 1)));
+            for (int h = 0; h < 24; h += 2)
+            {
+                double val = _rnd.NextDouble() * 100;
+                if (d >= 5) val *= 0.3; // Weekends lower
+                if (h >= 9 && h <= 18) val *= 1.5; // Business hours higher
+                points.Add(new SgChartMatrixPoint { X = $"{h}:00", Y = days[d], V = Math.Round(val) });
+            }
         }
-        _trafficData = list;
+        _heatmapData = new List<HeatmapData> { new(points) };
     }
 
     // ── Monitor ───────────────────────────────────────────────────────────────
-    private int _monitorPoints = 50;
+    private int _monitorPoints = 30;
     private List<ServerMetric> _monitorData = new();
     private List<SgChartSeries<ServerMetric>> _monitorSeries = new()
     {
         new("CPU %",  x => x.Cpu),
         new("RAM %",  x => x.Ram),
-        new("Disk %", x => x.Disk),
     };
     private SgChartOptions _monitorOpts = new()
     {
         ShowLegend = true, Responsive = true, SharedTooltip = true,
-        LineTension = 0.2, ShowPoints = false, ShowToolbar = true,
-        EnableZoom = true, ValueSuffix = "%", ValueDecimals = 0,
+        LineTension = 0.4, ShowPoints = true,
         MinValue = 0, MaxValue = 100,
-        Colors = ["#ef4444", "#3b82f6", "#f59e0b"],
+        Colors = ["#ef4444", "#3b82f6"],
     };
 
     private void RegenerateMonitor()
@@ -432,7 +488,6 @@
             disk = Math.Clamp(disk + (_rnd.NextDouble() - 0.5) * 3,  30, 85);
             list.Add(new($"T-{_monitorPoints - i}", Math.Round(cpu), Math.Round(ram), Math.Round(disk)));
         }
-        list.Reverse();
         _monitorData = list;
     }
 
@@ -657,21 +712,5 @@
             list.Add(new(i.ToString(), Math.Round(v, 1)));
         }
         _bigData = list;
-    }
-
-    // ── Init ──────────────────────────────────────────────────────────────────
-    protected override void OnInitialized()
-    {
-        RegenerateStock();
-        RegenerateTraffic();
-        RegenerateMonitor();
-        RegenerateForecast();
-        RegenerateRegions();
-        RegenerateBudget();
-        RegenerateRanking();
-        RegenerateAnomalies();
-        RegeneratePie();
-        RegenerateClusters();
-        RegenerateBigData();
     }
 }

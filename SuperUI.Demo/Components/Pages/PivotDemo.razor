@@ -9,7 +9,14 @@
     
     <!-- 1. Сводная таблица с конструктором -->
     <div style="margin-top: 32px;">
-        <h2>1. Сводная таблица с конструктором полей</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>1. Сводная таблица с конструктором полей</h2>
+            <SgButton Text="Обновить данные (Асинхронно)" 
+                      OnClick="ReloadDataAsync" 
+                      Loading="_loading">
+                <Icon>@((MarkupString)SgIcons.RefreshCw)</Icon>
+            </SgButton>
+        </div>
         <p>Интерактивная сводная таблица с конструктором для настройки строк, столбцов и значений. Перетаскивайте поля между областями.</p>
         
         <SgCard Title="Сводная таблица с конструктором" Style="margin-top: 16px;">
@@ -19,7 +26,8 @@
                               State="_pivotState" 
                               Fields="_pivotFields" 
                               ShowDesigner="true" 
-                              ShowTotal="true" />
+                              ShowTotal="true"
+                              Loading="_loading" />
             </div>
         </SgCard>
     </div>
@@ -93,12 +101,14 @@
     private SgPivotState<Product> _pivotStateByCategoryAvailability = new();
     private SgPivotState<Product> _pivotStateByCategory = new();
     private List<SgPivotField<Product>> _pivotFields = new();
+    private bool _loading = false;
 
     private List<PropertyPanelItem> _mainProperties = new()
     {
         new() { Label = "Items", Value = "IEnumerable<TItem>", BadgeText = "Данные", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "State", Value = "SgPivotState<TItem>", BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "Fields", Value = "List<SgPivotField<TItem>>", BadgeText = "Поля", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Loading", Value = "bool", BadgeText = "Состояние загрузки", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "CssClass", Value = "string", BadgeText = "CSS класс", BadgeVariant = SgBadgeVariant.Info }
     };
 
@@ -122,9 +132,9 @@
         new() { Label = "Max", Value = "Максимум", BadgeText = "Числовые", BadgeVariant = SgBadgeVariant.Info }
     };
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _products = SampleDataService.GenerateProducts(5000);
+        await ReloadDataAsync();
         
         // Инициализируем доступные поля для сводной таблицы
         _pivotFields = new()
@@ -188,6 +198,19 @@
             ColumnFields = new() { _pivotFields[1] }, // Доступность в столбцы
             ValueFields = new() { _pivotFields[2] } // Цена в значения
         };
+    }
+
+    private async Task ReloadDataAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        // Симулируем задержку сети и генерацию большого объема данных
+        await Task.Delay(1500);
+        _products = SampleDataService.GenerateProducts(15000);
+
+        _loading = false;
+        StateHasChanged();
     }
 }
 

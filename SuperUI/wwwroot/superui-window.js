@@ -122,22 +122,55 @@ export function attach(el, dotnetRef) {
                 if (isDisposed || !dotnetRef) return;
                 const ww = window.innerWidth, wh = window.innerHeight;
                 let nx = ev.clientX - offX, ny = ev.clientY - offY;
-                nx = Math.max(0, Math.min(ww - rect.width,  nx));
-                ny = Math.max(0, Math.min(wh - rect.height, ny));
-                if (nx < SNAP_THRESHOLD) nx = 0;
-                if (ny < SNAP_THRESHOLD) ny = 0;
-                if (ww - rect.width  - nx < SNAP_THRESHOLD) nx = ww - rect.width;
-                if (wh - rect.height - ny < SNAP_THRESHOLD) ny = wh - rect.height;
-                for (const other of document.querySelectorAll('.sgc-win')) {
-                    if (other === el || other.classList.contains('sgc-win-maximized')) continue;
+
+                // --- Improved Snapping Logic ---
+                let bestSnapX = nx;
+                let minDistX = SNAP_THRESHOLD;
+                let bestSnapY = ny;
+                let minDistY = SNAP_THRESHOLD;
+
+                // Viewport edges
+                if (Math.abs(nx) < minDistX) { bestSnapX = 0; minDistX = Math.abs(nx); }
+                if (Math.abs(nx + rect.width - ww) < minDistX) { bestSnapX = ww - rect.width; minDistX = Math.abs(nx + rect.width - ww); }
+                if (Math.abs(ny) < minDistY) { bestSnapY = 0; minDistY = Math.abs(ny); }
+                if (Math.abs(ny + rect.height - wh) < minDistY) { bestSnapY = wh - rect.height; minDistY = Math.abs(ny + rect.height - wh); }
+
+                // Other windows
+                const others = document.querySelectorAll('.sgc-win:not(.sgc-win-dragging):not(.sgc-win-maximized)');
+                for (const other of others) {
+                    if (other === el) continue;
                     const o = other.getBoundingClientRect();
-                    if (Math.abs(nx - o.right)              < SNAP_THRESHOLD) nx = o.right;
-                    if (Math.abs(nx + rect.width - o.left)  < SNAP_THRESHOLD) nx = o.left - rect.width;
-                    if (Math.abs(ny - o.bottom)             < SNAP_THRESHOLD) ny = o.bottom;
-                    if (Math.abs(ny + rect.height - o.top)  < SNAP_THRESHOLD) ny = o.top - rect.height;
-                    if (Math.abs(ny - o.top)                < SNAP_THRESHOLD) ny = o.top;
-                    if (Math.abs(nx - o.left)               < SNAP_THRESHOLD) nx = o.left;
+                    
+                    // Check if windows overlap in Y to snap in X
+                    const overlapY = (ny < o.bottom + SNAP_THRESHOLD) && (ny + rect.height > o.top - SNAP_THRESHOLD);
+                    if (overlapY) {
+                        // Snap left to right
+                        if (Math.abs(nx - o.right) < minDistX) { bestSnapX = o.right; minDistX = Math.abs(nx - o.right); }
+                        // Snap right to left
+                        if (Math.abs(nx + rect.width - o.left) < minDistX) { bestSnapX = o.left - rect.width; minDistX = Math.abs(nx + rect.width - o.left); }
+                        // Snap left to left
+                        if (Math.abs(nx - o.left) < minDistX) { bestSnapX = o.left; minDistX = Math.abs(nx - o.left); }
+                        // Snap right to right
+                        if (Math.abs(nx + rect.width - o.right) < minDistX) { bestSnapX = o.right - rect.width; minDistX = Math.abs(nx + rect.width - o.right); }
+                    }
+
+                    // Check if windows overlap in X to snap in Y
+                    const overlapX = (nx < o.right + SNAP_THRESHOLD) && (nx + rect.width > o.left - SNAP_THRESHOLD);
+                    if (overlapX) {
+                        // Snap top to bottom
+                        if (Math.abs(ny - o.bottom) < minDistY) { bestSnapY = o.bottom; minDistY = Math.abs(ny - o.bottom); }
+                        // Snap bottom to top
+                        if (Math.abs(ny + rect.height - o.top) < minDistY) { bestSnapY = o.top - rect.height; minDistY = Math.abs(ny + rect.height - o.top); }
+                        // Snap top to top
+                        if (Math.abs(ny - o.top) < minDistY) { bestSnapY = o.top; minDistY = Math.abs(ny - o.top); }
+                        // Snap bottom to bottom
+                        if (Math.abs(ny + rect.height - o.bottom) < minDistY) { bestSnapY = o.bottom - rect.height; minDistY = Math.abs(ny + rect.height - o.bottom); }
+                    }
                 }
+
+                nx = bestSnapX;
+                ny = bestSnapY;
+
                 pendingX = nx; pendingY = ny;
                 if (!rafId) rafId = requestAnimationFrame(apply);
             };

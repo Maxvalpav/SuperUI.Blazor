@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using System.Text;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
@@ -15,7 +16,7 @@ public partial class SgTable<TItem> : ComponentBase
     private bool _autoColumnsGenerated;
     private string? _searchText;
     private string? _sortColumnKey;
-    private SortDirection _sortDirection = SortDirection.None;
+    private SgDataGridSortDirection _sortDirection = SgDataGridSortDirection.None;
     private int _pageNumber = 1;
     private readonly HashSet<TItem> _selectedItems = new();
     private bool _selectAll;
@@ -27,14 +28,17 @@ public partial class SgTable<TItem> : ComponentBase
     private int? _draggedColumnIndex;
     private int? _dropTargetIndex;
     private List<SgTableHeaderGroup<TItem>> _headerGroups = new();
+    private bool _showExportMenu;
+    private ElementReference _exportRef;
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
+    [Parameter] public bool Loading { get; set; }
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public bool ShowSearch { get; set; } = true;
-    [Parameter] public string SearchPlaceholder { get; set; } = "Поиск...";
+    [Parameter] public string? SearchPlaceholder { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Height { get; set; }
     [Parameter] public bool FullWidth { get; set; }
@@ -52,6 +56,8 @@ public partial class SgTable<TItem> : ComponentBase
     [Parameter] public EventCallback<TItem> RowClicked { get; set; }
     [Parameter] public EventCallback<TItem> RowDoubleClicked { get; set; }
     [Parameter] public bool ShowExport { get; set; }
+    [Parameter] public bool ShowExportCsv { get; set; }
+    [Parameter] public bool ShowExportExcel { get; set; }
     [Parameter] public bool AllowPageSizeChange { get; set; }
     [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 20, 50, 100 };
     [Parameter] public bool AllowColumnResize { get; set; } = true;
@@ -139,7 +145,7 @@ public partial class SgTable<TItem> : ComponentBase
                 var col = cols.FirstOrDefault(c => c.Key == _sortColumnKey);
                 if (col != null)
                 {
-                    filtered = _sortDirection == SortDirection.Ascending
+                    filtered =                     _sortDirection == SgDataGridSortDirection.Ascending
                         ? filtered.OrderBy(item => col.GetValue(item))
                         : filtered.OrderByDescending(item => col.GetValue(item));
                 }
@@ -316,19 +322,21 @@ public partial class SgTable<TItem> : ComponentBase
         {
             _sortDirection = _sortDirection switch
             {
-                SortDirection.None => SortDirection.Ascending,
-                SortDirection.Ascending => SortDirection.Descending,
-                SortDirection.Descending => SortDirection.None,
-                _ => SortDirection.None
+                SgDataGridSortDirection.None => SgDataGridSortDirection.Ascending,
+                SgDataGridSortDirection.Ascending => SgDataGridSortDirection.Descending,
+                SgDataGridSortDirection.Descending => SgDataGridSortDirection.None,
+                _ => SgDataGridSortDirection.None
             };
-            if (_sortDirection == SortDirection.None)
+            if (_sortDirection == SgDataGridSortDirection.None)
                 _sortColumnKey = null;
         }
         else
         {
             _sortColumnKey = columnKey;
-            _sortDirection = SortDirection.Ascending;
+            _sortDirection = SgDataGridSortDirection.Ascending;
         }
+        
+        CurrentPage = 1; // Reset to first page when sort changes
     }
 
     private void OnPageSizeChange(ChangeEventArgs e)
@@ -418,6 +426,7 @@ public partial class SgTable<TItem> : ComponentBase
 
     private async Task ExportToCsv()
     {
+        _showExportMenu = false;
         var csv = new StringBuilder();
         var cols = Columns.ToList();
 
@@ -432,15 +441,123 @@ public partial class SgTable<TItem> : ComponentBase
         }
 
         var fileName = $"{Title ?? "export"}_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
-        var bytes = Encoding.UTF8.GetBytes(csv.ToString());
-        var base64 = Convert.ToBase64String(bytes);
+        var content = csv.ToString();
+        
+        // Add UTF-8 BOM for Excel to recognize Cyrillic
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+        var bytes = Encoding.UTF8.GetBytes(content);
+        var finalBytes = new byte[bom.Length + bytes.Length];
+        Buffer.BlockCopy(bom, 0, finalBytes, 0, bom.Length);
+        Buffer.BlockCopy(bytes, 0, finalBytes, bom.Length, bytes.Length);
+        
+        var base64 = Convert.ToBase64String(finalBytes);
 
         await JS.InvokeVoidAsync("eval", $@"
-            const link = document.createElement('a');
-            link.href = 'data:text/csv;charset=utf-8;base64,{base64}';
-            link.download = '{fileName}';
-            link.click();
+            (function() {{
+                const base64 = '{base64}';
+                const binary = atob(base64);
+                const len = binary.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {{
+                    bytes[i] = binary.charCodeAt(i);
+                }}
+                const blob = new Blob([bytes], {{ type: 'text/csv;charset=utf-8;' }});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = '{fileName}';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }})();
         ");
+    }
+
+    private async Task ExportToExcel()
+    {
+        _showExportMenu = false;
+        var sb = new StringBuilder();
+        var cols = Columns.ToList();
+
+        sb.AppendLine("<html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:x='urn:schemas-microsoft-com:office:excel' xmlns='http://www.w3.org/TR/REC-html40'>");
+        sb.AppendLine("<head><meta http-equiv='Content-Type' content='text/html; charset=utf-8'></head>");
+        sb.AppendLine("<body>");
+        sb.AppendLine("<table border='1'>");
+        
+        // Header
+        sb.AppendLine("  <thead>");
+        sb.AppendLine("    <tr style='background-color: #f2f2f2;'>");
+        foreach (var col in cols)
+        {
+            sb.AppendLine($"      <th>{System.Net.WebUtility.HtmlEncode(col.Title)}</th>");
+        }
+        sb.AppendLine("    </tr>");
+        sb.AppendLine("  </thead>");
+
+        // Body
+        sb.AppendLine("  <tbody>");
+        foreach (var item in FilteredAndSortedItems)
+        {
+            sb.AppendLine("    <tr>");
+            foreach (var col in cols)
+            {
+                var val = col.GetDisplay(item);
+                sb.AppendLine($"      <td>{System.Net.WebUtility.HtmlEncode(val)}</td>");
+            }
+            sb.AppendLine("    </tr>");
+        }
+        sb.AppendLine("  </tbody>");
+        sb.AppendLine("</table>");
+        sb.AppendLine("</body></html>");
+
+        var fileName = $"{Title ?? "export"}_{DateTime.Now:yyyyMMdd_HHmmss}.xls";
+        var content = sb.ToString();
+
+        // Add UTF-8 BOM
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF };
+        var bytes = Encoding.UTF8.GetBytes(content);
+        var finalBytes = new byte[bom.Length + bytes.Length];
+        Buffer.BlockCopy(bom, 0, finalBytes, 0, bom.Length);
+        Buffer.BlockCopy(bytes, 0, finalBytes, bom.Length, bytes.Length);
+
+        var base64 = Convert.ToBase64String(finalBytes);
+
+        await JS.InvokeVoidAsync("eval", $@"
+            (function() {{
+                const base64 = '{base64}';
+                const binary = atob(base64);
+                const len = binary.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {{
+                    bytes[i] = binary.charCodeAt(i);
+                }}
+                const blob = new Blob([bytes], {{ type: 'application/vnd.ms-excel' }});
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = '{fileName}';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+            }})();
+        ");
+    }
+
+    private void ToggleExportMenu()
+    {
+        _showExportMenu = !_showExportMenu;
+    }
+
+    private void HandleExportFocusOut()
+    {
+        // Delay to allow button click to process before hiding menu
+        _ = Task.Delay(200).ContinueWith(_ => 
+        {
+            _showExportMenu = false;
+            InvokeAsync(StateHasChanged);
+        });
     }
 
     private static string EscapeCsv(string value)

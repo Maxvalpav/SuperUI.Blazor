@@ -61,7 +61,7 @@ function _cssVar(name, fallback) {
 // ── Marker icon ───────────────────────────────────────────────────────────────
 
 function _makeMarkerIcon(color, emoji) {
-    const accent = _cssVar('--sui-accent', '#006fee');
+    const accent = _cssVar('--sg-color-primary', '#006fee');
     const c = color ?? accent;
     const size = 36;
     const cv = document.createElement('canvas');
@@ -118,7 +118,7 @@ export async function initMap(dotnetRef, containerRef, instanceId, opts, markers
         marker._data = m;
         marker.addListener('click', () => {
             infoWindow.setContent(`
-                <div style="font-family:var(--sui-font-family,system-ui);padding:4px 2px;min-width:120px">
+                <div style="font-family:var(--sg-font,system-ui);padding:4px 2px;min-width:120px">
                     <div style="font-weight:600;font-size:13px;margin-bottom:2px">${m.title ?? ''}</div>
                     ${m.description ? `<div style="font-size:11px;color:#6b7280">${m.description}</div>` : ''}
                     <div style="font-size:10px;color:#9ca3af;margin-top:4px;font-family:monospace">${m.latitude.toFixed(5)}, ${m.longitude.toFixed(5)}</div>

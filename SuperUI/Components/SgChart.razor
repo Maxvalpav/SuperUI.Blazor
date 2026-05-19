@@ -1,12 +1,13 @@
 @namespace SuperUI.Components
 @typeparam TItem where TItem : class
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@using SuperUI.Enums
+@using Microsoft.Extensions.Logging
+@inherits SgJsComponentBase
 @inject ISuperUILocalizer Localizer
 
-<div class="sg-chart-container @(_chartReady ? null : "sg-chart-state-message") @CssClass"
-     style="height: @Height; width: @Width;"
-     @attributes="AdditionalAttributes">
+<div class="@Css("sg-chart-container").Add("sg-chart-state-message", !_chartReady).Build()"
+     style="@Styles().Add("height", Height).Add("width", Width).NullIfEmpty()"
+     @attributes="AttributesWithoutClassAndStyle">
     <CascadingValue Value="this">
         @ChildContent
     </CascadingValue>
@@ -15,7 +16,7 @@
     {
         <div class="sg-chart-error" role="alert">
             <p>@_error</p>
-            <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Chart_Retry"]</button>
+            <button type="button" class="sg-btn" @onclick="RetryAsync">@Localizer["Common_Retry"]</button>
         </div>
     }
     else
@@ -23,23 +24,19 @@
         @if (Options?.ShowToolbar == true && _chartReady)
         {
             <div class="sg-chart-toolbar" role="toolbar">
-                <button type="button" class="sg-chart-tool" title="@Localizer["Chart_ResetZoom"]"
-                        @onclick="ResetZoomAsync" aria-label="@Localizer["Chart_ResetZoom"]">
-                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                        <path fill="currentColor" d="M3 8a5 5 0 1 1 1.46 3.54l1-1A3.5 3.5 0 1 0 4.5 8H6L4 10.5 2 8h1Z"/>
-                    </svg>
+                <button type="button" class="sg-chart-tool" title="@Localizer["Common_Reset"]"
+                        @onclick="ResetZoomAsync" aria-label="@Localizer["Common_Reset"]">
+                    <SgIcon Icon="@SgIcons.Refresh" Size="14px" />
                 </button>
-                <button type="button" class="sg-chart-tool" title="@Localizer["Chart_ExportPng"]"
-                        @onclick="@(() => ExportImageAsync("png"))" aria-label="@Localizer["Chart_ExportPng"]">
-                    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
-                        <path fill="currentColor" d="M8 1v8.6L5.7 7.3 4.3 8.7 8 12.4l3.7-3.7-1.4-1.4L9 9.6V1H8Zm-6 12h12v2H2v-2Z"/>
-                    </svg>
+                <button type="button" class="sg-chart-tool" title="@Localizer["Common_Export"]"
+                        @onclick="@(() => ExportImageAsync("png"))" aria-label="@Localizer["Common_Export"]">
+                    <SgIcon Icon="@SgIcons.Download" Size="14px" />
                 </button>
             </div>
         }
 
         <canvas @ref="_canvasRef"
-                id="@_chartId"
+                id="@ResolvedId"
                 role="img"
                 aria-label="@(Title ?? "Chart")"
                 style="@(_chartReady ? null : "visibility:hidden;")"></canvas>
@@ -50,28 +47,27 @@
                 <div class="sg-chart-skeleton">
                     <span></span><span></span><span></span><span></span><span></span>
                 </div>
-                <span class="sg-chart-loading-text">@Localizer["Chart_Loading"]</span>
+                <span class="sg-chart-loading-text">@Localizer["Common_Loading"]</span>
             </div>
         }
         else if (_isEmpty)
         {
-            <div class="sg-chart-empty">@Localizer["Chart_NoData"]</div>
+            <div class="sg-chart-empty">@Localizer["Common_NoData"]</div>
         }
     }
 </div>
 
 @code {
+    protected override string ModulePath => "./_content/SuperUI/sg-chart.js";
+    protected override string IdPrefix => "sg-chart";
+
     private ElementReference _canvasRef;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgChart<TItem>>? _selfRef;
-    private readonly string _chartId = $"sg-chart-{Guid.NewGuid():N}";
     private readonly List<SgChartDataset> _datasets = new();
     private SgChartXAxis? _xAxis;
     private SgChartYAxis? _yAxis;
     private bool _chartReady;
     private bool _isEmpty;
     private string? _error;
-    private bool _isDisposed;
 
     // Snapshots used to detect parameter changes worth re-rendering the chart.
     private SgChartType _lastChartType;
@@ -102,9 +98,6 @@
     /// <summary>Child content containing axes / datasets.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Additional CSS class for the container.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
     /// <summary>Callback invoked when a data point is clicked.</summary>
     [Parameter] public EventCallback<SgChartClickEventArgs> OnDataPointClick { get; set; }
 
@@ -121,36 +114,20 @@
     /// </summary>
     [Parameter] public SgChartSources? Sources { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    protected override void OnParametersSet()
-    {
-        if (!_chartReady) return;
-
-        var changed =
-            ChartType != _lastChartType ||
-            !ReferenceEquals(Data, _lastDataRef) ||
-            !ReferenceEquals(Options, _lastOptionsRef) ||
-            !string.Equals(Title, _lastTitle, StringComparison.Ordinal);
-
-        if (changed && !_refreshScheduled)
-        {
-            _refreshScheduled = true;
-            _ = ScheduleRefreshAsync();
-        }
-    }
-
     private async Task ScheduleRefreshAsync()
     {
         try
         {
+            // Small debounce (~1 frame at 60fps), чтобы коалесировать пачку
+            // OnParametersSet/OnAfterRenderSafe-обновлений в один RefreshAsync.
+            await Task.Delay(16);
+            if (IsDisposed) return;
             await RefreshAsync();
         }
         finally
         {
             _refreshScheduled = false;
-            if (_refreshPending)
+            if (_refreshPending && !IsDisposed)
             {
                 _refreshPending = false;
                 _refreshScheduled = true;
@@ -159,21 +136,62 @@
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        if (_isDisposed || !firstRender) return;
+        if (IsDisposed) return;
 
+        // If data changed after initialization, schedule a refresh.
+        if (!firstRender && _chartReady)
+        {
+            var changed =
+                ChartType != _lastChartType ||
+                !ReferenceEquals(Data, _lastDataRef) ||
+                !ReferenceEquals(Options, _lastOptionsRef) ||
+                !string.Equals(Title, _lastTitle, StringComparison.Ordinal);
+
+            if (changed)
+            {
+                if (_refreshScheduled)
+                {
+                    // Refresh уже в полёте — пометим, что данные снова изменились,
+                    // чтобы текущий ScheduleRefreshAsync перезапустился по завершении.
+                    _refreshPending = true;
+                }
+                else
+                {
+                    _refreshScheduled = true;
+                    _ = ScheduleRefreshAsync();
+                }
+            }
+        }
+
+        await Task.CompletedTask;
+    }
+
+    protected override ValueTask OnInteractiveAsync() => InitializeChartCoreAsync();
+
+    /// <summary>
+    /// Срабатывает, когда импорт sg-chart.js или OnInteractiveAsync кинули исключение.
+    /// Показывает локализованную ошибку — пользователь увидит её и сможет нажать Retry.
+    /// </summary>
+    protected override async ValueTask OnJsInitializationFailedAsync(Exception exception)
+    {
+        _error = Localizer["Chart_FailedToInitialize"];
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async ValueTask InitializeChartCoreAsync()
+    {
         try
         {
-            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-chart.js");
-            if (_isDisposed) return;
-            _selfRef = DotNetObjectReference.Create(this);
             await InitializeChartAsync();
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (Exception)
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "SgChart: failed to load Chart.js bundle (id={ChartId}).", ResolvedId);
             _error = Localizer["Chart_FailedToLoad"];
             await InvokeAsync(StateHasChanged);
         }
@@ -181,20 +199,24 @@
 
     private async Task InitializeChartAsync()
     {
-        if (_module is null || _selfRef is null) return;
-
         try
         {
             var config = BuildChartConfig();
-            await _module.InvokeVoidAsync("initChart", _selfRef, _canvasRef, config, Sources ?? new SgChartSources());
+            // TryInvoke — НЕ глотает JS-исключение, поэтому реальная причина
+            // (например, "Canvas is already in use" или "Failed to fetch chart.js")
+            // долетает до catch и попадает в лог.
+            await TryInvokeVoidAsync("initChart", SelfRef, _canvasRef, config, Sources ?? new SgChartSources());
             CaptureSnapshot();
             _chartReady = true;
             await InvokeAsync(StateHasChanged);
         }
         catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (Exception)
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "SgChart: failed to initialize chart (id={ChartId}). JS message: {Message}",
+                ResolvedId, ex.Message);
             _error = Localizer["Chart_FailedToInitialize"];
             await InvokeAsync(StateHasChanged);
         }
@@ -279,8 +301,7 @@
     private List<string> ExtractLabels(List<TItem> data)
     {
         if (data.Count == 0) return new List<string>();
-        var labelProp = typeof(TItem).GetProperty("Label");
-        if (labelProp != null)
+        if (TypeAccessors.Label is { } labelProp)
         {
             return data.Select(item => labelProp.GetValue(item)?.ToString() ?? string.Empty).ToList();
         }
@@ -324,11 +345,14 @@
 
     private object BuildDataset(SeriesData series, string color, SgChartOptions options)
     {
-        if (ChartType == SgChartType.Scatter)
+        var dsType = series.Type ?? ChartType;
+
+        if (dsType == SgChartType.Scatter)
         {
-            var scatter = series.Values.Select((v, i) => new { x = i, y = v }).ToList();
+            object scatter = series.ScatterData ?? (object)series.Values.Select((v, i) => new { x = (double)i, y = v }).ToList();
             return new
             {
+                type = "scatter",
                 label = series.Name,
                 data = scatter,
                 borderColor = color,
@@ -339,22 +363,26 @@
             };
         }
 
-        if (ChartType == SgChartType.Heatmap)
+        if (dsType == SgChartType.Heatmap)
         {
             return new
             {
+                type = "matrix",
                 label = series.Name,
-                data = series.Values,
+                data = series.MatrixData ?? new List<SgChartMatrixPoint>(),
+                backgroundColor = WithAlpha(color, 0.6),
                 borderColor = color,
-                backgroundColor = WithAlpha(color, 0.5),
-                borderWidth = 2
+                borderWidth = 1,
+                width = 0.95,
+                height = 0.95
             };
         }
 
-        if (ChartType == SgChartType.Area)
+        if (dsType == SgChartType.Area)
         {
             return new
             {
+                type = "line",
                 label = series.Name,
                 data = series.Values,
                 borderColor = color,
@@ -368,10 +396,11 @@
             };
         }
 
-        if (ChartType == SgChartType.Line)
+        if (dsType == SgChartType.Line)
         {
             return new
             {
+                type = "line",
                 label = series.Name,
                 data = series.Values,
                 borderColor = color,
@@ -388,6 +417,7 @@
         // Bar / BarHorizontal
         return new
         {
+            type = "bar",
             label = series.Name,
             data = series.Values,
             borderColor = color,
@@ -406,7 +436,7 @@
         if (Series is { Count: > 0 })
         {
             return Series
-                .Select(s => new SeriesData(s.Name, data.Select(s.Value).ToList()))
+                .Select(s => new SeriesData(s.Name, data.Select(s.Value).ToList(), s.Type, null, null))
                 .ToList();
         }
 
@@ -428,23 +458,28 @@
             }
             if (byName.Count > 0)
             {
-                return byName.Select(kv => new SeriesData(kv.Key, kv.Value)).ToList();
+                return byName.Select(kv => new SeriesData(kv.Key, kv.Value, null, null, null)).ToList();
             }
         }
 
-        // 3) Default: single Value property.
-        var valueProp = typeof(TItem).GetProperty("Value");
-        if (valueProp == null) return new List<SeriesData>();
+        // 3) Default: single Value property. PropertyInfo кешируется на TItem.
+        var valueProp = TypeAccessors.Value;
+        var scatterProp = TypeAccessors.Scatter;
+        var matrixProp = TypeAccessors.Matrix;
 
-        var values = data.Select(item => ToDouble(valueProp.GetValue(item))).ToList();
+        if (valueProp == null && scatterProp == null && matrixProp == null) return new List<SeriesData>();
+
+        var values = valueProp != null ? data.Select(item => ToDouble(valueProp.GetValue(item))).ToList() : new List<double>();
+        var scatter = scatterProp != null ? (List<SgChartScatterPoint>?)scatterProp.GetValue(data.FirstOrDefault()) : null;
+        var matrix = matrixProp != null ? (List<SgChartMatrixPoint>?)matrixProp.GetValue(data.FirstOrDefault()) : null;
 
         var opts = Options ?? new SgChartOptions();
-        if (opts.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, opts.DecimationThreshold))
+        if (valueProp != null && opts.EnableDecimation && DataDecimation.ShouldDecimate(values.Count, opts.DecimationThreshold))
         {
             values = DataDecimation.DecimateValues(values, opts.DecimationTargetPoints ?? 1000);
         }
 
-        return new List<SeriesData> { new("Data", values) };
+        return new List<SeriesData> { new("Data", values, null, scatter, matrix) };
     }
 
     private static double ToDouble(object? value) => value switch
@@ -470,7 +505,18 @@
         return palette[index % palette.Count];
     }
 
-    private readonly record struct SeriesData(string Name, List<double> Values);
+    private readonly record struct SeriesData(string Name, List<double> Values, SgChartType? Type, List<SgChartScatterPoint>? ScatterData, List<SgChartMatrixPoint>? MatrixData);
+
+    // Кеш PropertyInfo — один раз на закрытый generic-тип (TItem). Reflection-вызовы
+    // GetProperty стоят дорого; их вынос в static-инициализатор экономит ~µс на каждом
+    // BuildChartConfig (вызывается при каждом RefreshAsync).
+    private static class TypeAccessors
+    {
+        public static readonly System.Reflection.PropertyInfo? Label   = typeof(TItem).GetProperty("Label");
+        public static readonly System.Reflection.PropertyInfo? Value   = typeof(TItem).GetProperty("Value");
+        public static readonly System.Reflection.PropertyInfo? Scatter = typeof(TItem).GetProperty("ScatterData");
+        public static readonly System.Reflection.PropertyInfo? Matrix  = typeof(TItem).GetProperty("MatrixData");
+    }
 
     private static readonly List<string> DefaultPalette = new()
     {
@@ -515,6 +561,15 @@
         if (ChartType is SgChartType.Pie or SgChartType.Doughnut)
         {
             return new { };
+        }
+
+        if (ChartType == SgChartType.Heatmap)
+        {
+            return new
+            {
+                y = new { type = "category", offset = true, grid = new { display = false } },
+                x = new { type = "category", offset = true, grid = new { display = false } }
+            };
         }
 
         var (yType, xType) = ChartType == SgChartType.BarHorizontal
@@ -565,7 +620,7 @@
     /// <summary>Refreshes the chart with current parameters.</summary>
     public async Task RefreshAsync()
     {
-        if (_module is null || !_chartReady)
+        if (!_chartReady || IsDisposed)
         {
             _refreshPending = true;
             return;
@@ -573,16 +628,36 @@
 
         try
         {
-            _error = null; // clear any previous error before attempting refresh
+            _error = null;
             var config = BuildChartConfig();
-            await _module.InvokeVoidAsync("updateChart", _chartId, config);
+            
+            // Try smooth update first. 
+            // If it fails (JS exception) or returns false (instance lost or type changed),
+            // we fall back to full re-initialization.
+            bool ok = false;
+            try
+            {
+                ok = await SafeInvokeAsync<bool>("updateChart", ResolvedId, config);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "SgChart: smooth update failed for {ChartId}, falling back to full re-init.", ResolvedId);
+            }
+
+            if (!ok)
+            {
+                // Fallback to full re-initialization (destroy & recreate).
+                // InitializeChartAsync has its own error handling and shows Chart_FailedToInitialize.
+                await InitializeChartAsync();
+                return;
+            }
+
             CaptureSnapshot();
             await InvokeAsync(StateHasChanged);
         }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Logger.LogError(ex, "SgChart: unexpected error during refresh (id={ChartId}).", ResolvedId);
             _error = Localizer["Chart_FailedToRefresh"];
             await InvokeAsync(StateHasChanged);
         }
@@ -598,8 +673,7 @@
     /// <summary>Zooms the Y-axis to the specified range.</summary>
     public async Task ZoomYAsync(double min, double max)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("zoomY", _chartId, min, max); }
+        try { await SafeInvokeVoidAsync("zoomY", ResolvedId, min, max); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
         catch (Exception)
@@ -612,8 +686,7 @@
     /// <summary>Resets the Y-axis zoom to original range.</summary>
     public async Task ResetZoomAsync()
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("resetZoom", _chartId); }
+        try { await SafeInvokeVoidAsync("resetZoom", ResolvedId); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
         catch (Exception)
@@ -626,8 +699,7 @@
     /// <summary>Exports the chart as an image (png|jpg).</summary>
     public async Task ExportImageAsync(string format = "png")
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("exportImage", _chartId, format); }
+        try { await SafeInvokeVoidAsync("exportImage", ResolvedId, format); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
         catch (Exception)
@@ -640,8 +712,7 @@
     /// <summary>Returns the chart's data URL for the given format.</summary>
     public async Task<string?> GetImageDataUrlAsync(string format = "png")
     {
-        if (_module is null) return null;
-        try { return await _module.InvokeAsync<string?>("getImageDataUrl", _chartId, format); }
+        try { return await SafeInvokeAsync<string?>("getImageDataUrl", ResolvedId, format); }
         catch (JSDisconnectedException) { return null; }
         catch (TaskCanceledException) { return null; }
         catch { return null; }
@@ -650,8 +721,7 @@
     /// <summary>Triggers a manual resize. Useful when the container changes outside of a parameter update.</summary>
     public async Task ResizeAsync()
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("resizeChart", _chartId); }
+        try { await SafeInvokeVoidAsync("resizeChart", ResolvedId); }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
         catch { }
@@ -663,6 +733,9 @@
         _error = null;
         _chartReady = false;
         await InvokeAsync(StateHasChanged);
+        // Дать Blazor завершить рендер шаблона, иначе _canvasRef ещё указывает
+        // на удалённый узел (либо вообще default(ElementReference)).
+        await Task.Yield();
         await InitializeChartAsync();
     }
 
@@ -681,30 +754,11 @@
     internal void RegisterXAxis(SgChartXAxis axis) => _xAxis = axis;
     internal void RegisterYAxis(SgChartYAxis axis) => _yAxis = axis;
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null)
-        {
-            try { await _module.InvokeVoidAsync("dispose", _chartId); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch { }
-        }
-
-        var selfRef = _selfRef;
-        _selfRef = null;
-        selfRef?.Dispose();
-
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch { }
-            _module = null;
-        }
+        try { await SafeInvokeVoidAsync("dispose", ResolvedId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch { }
     }
 }

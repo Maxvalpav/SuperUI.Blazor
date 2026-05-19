@@ -52,7 +52,7 @@ export function attach(modalElement, dotnetRef, closeOnEscape) {
                     e.preventDefault();
                     e.stopPropagation();
                     try {
-                        top.dotnet.invokeMethodAsync('CloseFromJsAsync').catch(() => {});
+                        top.dotnet.invokeMethodAsync('RequestCloseAsync').catch(() => {});
                     } catch { }
                 }
             }
@@ -155,15 +155,17 @@ export function initDrag(modalElement, headerElement) {
     });
 }
 
-export function detach() {
-    const entry = modalStack.pop();
-    if (!entry) return;
+export function detach(modalElement) {
+    const index = modalStack.findIndex(x => x.element === modalElement);
+    if (index === -1) return;
+
+    const entry = modalStack.splice(index, 1)[0];
 
     // Mark as disposed first
     if (entry.dispose) entry.dispose();
 
-    // Restore previous focus
-    if (entry.previousFocus && typeof entry.previousFocus.focus === 'function') {
+    // Restore previous focus if this was the top modal
+    if (index === modalStack.length && entry.previousFocus && typeof entry.previousFocus.focus === 'function') {
         try {
             entry.previousFocus.focus();
         } catch (e) { }

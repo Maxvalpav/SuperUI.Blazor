@@ -2,27 +2,23 @@
 @inject ISuperUILocalizer Localizer
 
 <div class="sg-rag-search-panel @CssClass" @attributes="AdditionalAttributes">
-
-    <div class="sg-rag-search-bar">
-        <input type="search"
-               class="sg-rag-search-input"
-               placeholder="@Localizer["Rag_SearchPlaceholder"]"
-               @bind="_query"
-               @bind:event="oninput"
-               @onkeydown="OnKeyDown"
-               aria-label="@Localizer["Rag_SearchPlaceholder"]" />
-        <button type="button" class="sg-rag-btn sg-rag-btn-primary"
-                disabled="@(_searching || string.IsNullOrWhiteSpace(_query))"
-                @onclick="SearchAsync">
-            @if (_searching)
-            {
-                <span class="sg-rag-spinner" aria-hidden="true"></span>
-            }
-            else
-            {
-                <span>@Localizer["Rag_Search"]</span>
-            }
-        </button>
+    <div class="sg-rag-search-header">
+        <div class="sg-rag-search-input-wrap">
+            <input type="text" class="sg-rag-search-input" 
+                   @bind="_query" @bind:event="oninput" 
+                   @onkeydown="@(e => { if(e.Key == "Enter") SearchAsync(); })"
+                   placeholder="@Localizer["Rag_SearchPlaceholder"]" />
+            <button class="sg-rag-search-btn" @onclick="SearchAsync" disabled="@_searching">
+                @if (_searching)
+                {
+                    <div class="sg-rag-spinner-sm"></div>
+                }
+                else
+                {
+                    <span>🔍 @Localizer["Rag_Search"]</span>
+                }
+            </button>
+        </div>
     </div>
 
     @if (_error is not null)
@@ -44,10 +40,10 @@
                     <div class="sg-rag-result-item" role="listitem">
                         <div class="sg-rag-result-header">
                             <span class="sg-rag-result-title">@hit.Document.Title</span>
-                            <span class="sg-rag-badge sg-rag-badge-neutral">chunk #@hit.Chunk.Index</span>
+                            <span class="sg-rag-badge sg-rag-badge-neutral">@Localizer.GetString("Rag_ChunkNum", hit.Chunk.Index)</span>
                             @if (hit.Chunk.Metadata.TryGetValue("language", out var lang))
                             {
-                                <span class="sg-rag-badge sg-rag-badge-neutral" style="color:var(--sui-accent,#006fee)">@lang</span>
+                                <span class="sg-rag-badge sg-rag-badge-neutral" style="color:var(--sg-color-primary,#006fee)">@lang</span>
                             }
                             @if (hit.Chunk.Metadata.TryGetValue("startLine", out var sl) &&
                                  hit.Chunk.Metadata.TryGetValue("endLine",   out var el))

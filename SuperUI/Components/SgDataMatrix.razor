@@ -1,4 +1,6 @@
 @namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
 @typeparam TItem
 
 <div class="sgc-matrix @(Compact ? "sgc-matrix-compact" : "") @(Heatmap ? "sgc-matrix-heatmap" : "") @CssClass">
@@ -30,8 +32,8 @@
                         {
                             <button type="button"
                                     class="sgc-matrix-search-clear"
-                                    title="Clear"
-                                    aria-label="Clear"
+                                    title="@Localizer["DataMatrix_Clear"]"
+                                    aria-label="@Localizer["DataMatrix_Clear"]"
                                     @onclick="ClearSearch">@((MarkupString)IconX)</button>
                         }
                     </div>
@@ -76,7 +78,7 @@
     else
     {
         <div class="sgc-matrix-wrap" @onmouseleave="ClearHover">
-            <table class="sgc-matrix-table" role="grid" aria-label="@(Title ?? "Data matrix")">
+            <table class="sgc-matrix-table" role="grid" aria-label="@(Title ?? Localizer["DataMatrix_AriaLabel"])">
                 <thead>
                     <tr>
                         <th class="sgc-matrix-corner @(_sortBy == SortMode.Total ? "sgc-matrix-sorted" : "")"
@@ -232,8 +234,8 @@
     /// <summary>Numeric format string. Default "N0".</summary>
     [Parameter] public string Format { get; set; } = "N0";
 
-    /// <summary>Text shown when a cell has no value. Default "—".</summary>
-    [Parameter] public string EmptyValue { get; set; } = "—";
+    /// <summary>Text shown when a cell has no value. Default "(empty)".</summary>
+    [Parameter] public string EmptyValue { get; set; } = "";
 
     /// <summary>Show totals row/column. Default true.</summary>
     [Parameter] public bool ShowTotals { get; set; } = true;
@@ -250,14 +252,14 @@
     /// <summary>Header text for columns (top-left corner).</summary>
     [Parameter] public string ColumnTitle { get; set; } = "";
 
-    /// <summary>Total label. Default "Total".</summary>
-    [Parameter] public string TotalLabel { get; set; } = "Total";
+    /// <summary>Total label.</summary>
+    [Parameter] public string TotalLabel { get; set; } = "";
 
     /// <summary>Show search box for filtering rows. Default false.</summary>
     [Parameter] public bool ShowSearch { get; set; }
 
-    /// <summary>Search placeholder. Default "Search rows…".</summary>
-    [Parameter] public string SearchPlaceholder { get; set; } = "Search rows…";
+    /// <summary>Search placeholder.</summary>
+    [Parameter] public string SearchPlaceholder { get; set; } = "";
 
     /// <summary>Allow sorting rows by clicking column headers. Default true (when <see cref="ValueField"/> is set).</summary>
     [Parameter] public bool AllowSort { get; set; } = true;
@@ -275,10 +277,10 @@
     [Parameter] public bool Loading { get; set; }
 
     /// <summary>Empty-state title.</summary>
-    [Parameter] public string EmptyTitle { get; set; } = "No data";
+    [Parameter] public string EmptyTitle { get; set; } = "";
 
     /// <summary>Empty-state description.</summary>
-    [Parameter] public string? EmptyDescription { get; set; } = "Adjust filters or add new records to populate the matrix.";
+    [Parameter] public string? EmptyDescription { get; set; } = "";
 
     /// <summary>Explicit row order (filters out unknown keys, appends remaining rows alphabetically).</summary>
     [Parameter] public IEnumerable<string>? RowOrder { get; set; }
@@ -314,6 +316,15 @@
     {
         BuildMatrix();
         ApplyView();
+
+        if (string.IsNullOrEmpty(TotalLabel))
+            TotalLabel = Localizer["DataMatrix_Total"];
+        if (string.IsNullOrEmpty(SearchPlaceholder))
+            SearchPlaceholder = Localizer["DataMatrix_SearchPlaceholder"];
+        if (string.IsNullOrEmpty(EmptyTitle))
+            EmptyTitle = Localizer["DataMatrix_EmptyTitle"];
+        if (string.IsNullOrEmpty(EmptyDescription))
+            EmptyDescription = Localizer["DataMatrix_EmptyDescription"];
     }
 
     private void BuildMatrix()
@@ -446,7 +457,7 @@
 
     private string? FormatValue(decimal? val)
     {
-        if (!val.HasValue) return EmptyValue;
+        if (!val.HasValue) return string.IsNullOrEmpty(EmptyValue) ? "—" : EmptyValue;
         try { return val.Value.ToString(Format); }
         catch { return val.Value.ToString(); }
     }
@@ -458,7 +469,7 @@
         if (double.IsNaN(t) || double.IsInfinity(t)) t = 0;
         t = Math.Clamp(t, 0.0, 1.0);
         var pct = (int)Math.Round(t * 80) + 8; // 8% .. 88%
-        return $"background: color-mix(in srgb, var(--sui-accent) {pct}%, transparent);";
+        return $"background: color-mix(in srgb, var(--sg-color-primary) {pct}%, transparent);";
     }
 
     private void SetHover(int rowIndex, int colIndex)

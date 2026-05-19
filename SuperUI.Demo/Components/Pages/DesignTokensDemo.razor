@@ -1,0 +1,597 @@
+@page "/design-tokens-demo"
+@using SuperUI.Components
+@using SuperUI.Services
+@using SuperUI.Themes
+@inject SgThemeService ThemeService
+
+<PageTitle>Design Tokens System - SuperUI</PageTitle>
+
+<div class="design-tokens-container">
+    <div class="demo-header">
+        <h1 class="demo-title">Design Tokens System</h1>
+        <p class="demo-subtitle">
+            Наша дизайн-система построена на трехуровневой архитектуре токенов, что обеспечивает 
+            максимальную гибкость, масштабируемость и легкую поддержку тем (Light/Dark/Custom).
+        </p>
+    </div>
+
+    <div class="demo-toolbar">
+        <div class="toolbar-section">
+            <label class="toolbar-label">Активная тема</label>
+            <div class="theme-selector">
+                @foreach (var theme in ThemeService.GetAvailableThemes())
+                {
+                    <SgButton Text="@theme.Name" 
+                              Variant="@(ThemeService.CurrentTheme.Id == theme.Id ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                              OnClick="() => ThemeService.SetThemeAsync(theme.Id)" 
+                              Size="SgSize.Sm" />
+                }
+            </div>
+        </div>
+
+        <SgDivider Vertical="true" Height="32px" />
+
+        <div class="toolbar-section">
+            <label class="toolbar-label">Цветовой режим</label>
+            <div class="mode-selector">
+                <SgButton Variant="@(ThemeService.CurrentMode == "light" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                          OnClick='() => ThemeService.SetModeAsync("light")' 
+                          Size="SgSize.Sm">
+                    ☀️ Light
+                </SgButton>
+                <SgButton Variant="@(ThemeService.CurrentMode == "dark" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                          OnClick='() => ThemeService.SetModeAsync("dark")' 
+                          Size="SgSize.Sm">
+                    🌙 Dark
+                </SgButton>
+                <SgButton Variant="@(ThemeService.CurrentMode == "auto" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                          OnClick='() => ThemeService.SetModeAsync("auto")' 
+                          Size="SgSize.Sm">
+                    🌓 Auto
+                </SgButton>
+            </div>
+        </div>
+        
+        <div class="toolbar-info">
+             <div class="status-pill">
+                <span class="pill-label">ID:</span>
+                <span class="pill-value">@ThemeService.CurrentTheme.Id</span>
+             </div>
+             <div class="status-pill">
+                <span class="pill-label">Mode:</span>
+                <span class="pill-value">@(ThemeService.IsDark ? "Dark" : "Light")</span>
+             </div>
+        </div>
+    </div>
+
+    <SgTabs>
+        <SgTabPanel Title="Semantic (L1)" Icon="@IconLayout">
+            <div class="tab-content">
+                <div class="section-intro">
+                    <h2>Semantic Tokens</h2>
+                    <p>Абстракции над примитивами. Они описывают <strong>роль</strong> цвета в интерфейсе, а не его физический оттенок.</p>
+                </div>
+
+                <div class="token-grid">
+                    <TokenGroup Title="Backgrounds" Description="Фоны страниц, контейнеров и слоев.">
+                        <TokenRow Name="--sg-bg" Description="Основной фон страницы" />
+                        <TokenRow Name="--sg-bg-subtle" Description="Вторичный фон (карточки, боковые панели)" />
+                        <TokenRow Name="--sg-bg-muted" Description="Приглушенный фон (инпуты, теги)" />
+                        <TokenRow Name="--sg-bg-emphasized" Description="Акцентный фон" />
+                    </TokenGroup>
+
+                    <TokenGroup Title="Typography" Description="Цвета текста и иконок.">
+                        <TokenRow Name="--sg-fg" Description="Основной текст" />
+                        <TokenRow Name="--sg-fg-subtle" Description="Вторичный текст" />
+                        <TokenRow Name="--sg-fg-muted" Description="Деактивированный или пояснительный текст" />
+                        <TokenRow Name="--sg-fg-link" Description="Ссылки и интерактивные элементы" />
+                    </TokenGroup>
+
+                    <TokenGroup Title="Borders" Description="Разделители и границы элементов.">
+                        <TokenRow Name="--sg-border" Description="Стандартная граница" />
+                        <TokenRow Name="--sg-border-subtle" Description="Тонкая/светлая граница" />
+                        <TokenRow Name="--sg-border-strong" Description="Контрастная граница" />
+                        <TokenRow Name="--sg-border-focus" Description="Граница при фокусе" />
+                    </TokenGroup>
+
+                    <TokenGroup Title="Brand & Status" Description="Основные цвета бренда и индикация состояний.">
+                        <TokenRow Name="--sg-color-primary" Description="Брендовый цвет" />
+                        <TokenRow Name="--sg-color-success" Description="Успех / Положительный результат" />
+                        <TokenRow Name="--sg-color-danger" Description="Ошибка / Опасное действие" />
+                        <TokenRow Name="--sg-color-warning" Description="Предупреждение" />
+                    </TokenGroup>
+                </div>
+            </div>
+        </SgTabPanel>
+
+        <SgTabPanel Title="Primitives (L0)" Icon="@IconPalette">
+            <div class="tab-content">
+                <div class="section-intro">
+                    <h2>Primitive Tokens</h2>
+                    <p>Базовые строительные блоки (цветовые шкалы, шрифты, радиусы). Не должны использоваться в компонентах напрямую.</p>
+                </div>
+                
+                <div class="palette-container">
+                    <PaletteRow Title="Neutral (Gray)" Prefix="--sg-p-neutral-" Steps="@(new[] { 0, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000 })" />
+                    <PaletteRow Title="Blue (Primary)" Prefix="--sg-p-blue-" Steps="@(new[] { 50, 100, 200, 300, 400, 500, 600, 700, 800, 900 })" />
+                    <PaletteRow Title="Emerald (Success)" Prefix="--sg-p-emerald-" Steps="@(new[] { 50, 100, 200, 300, 400, 500, 600, 700, 800, 900 })" />
+                    <PaletteRow Title="Rose (Danger)" Prefix="--sg-p-rose-" Steps="@(new[] { 50, 100, 200, 300, 400, 500, 600, 700, 800, 900 })" />
+                    <PaletteRow Title="Amber (Warning)" Prefix="--sg-p-amber-" Steps="@(new[] { 50, 100, 200, 300, 400, 500, 600, 700, 800, 900 })" />
+                </div>
+
+                <div class="misc-primitives">
+                    <div class="primitive-card">
+                        <h3>Border Radii</h3>
+                        <div class="radius-list">
+                            @foreach (var r in new[] { "none", "xs", "sm", "md", "lg", "xl", "2xl", "full" })
+                            {
+                                var token = $"--sg-radius-{r}";
+                                <div class="radius-item">
+                                    <div class="radius-box" style="border-radius: var(@token);"></div>
+                                    <span class="token-name">@r</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </SgTabPanel>
+
+        <SgTabPanel Title="Components (L2)" Icon="@IconZap">
+            <div class="tab-content">
+                <div class="section-intro">
+                    <h2>Component Overrides</h2>
+                    <p>Токены специфичные для конкретных компонентов. Позволяют точечно настраивать UI без изменения общей темы.</p>
+                </div>
+
+                <div class="component-showcase">
+                    <div class="showcase-card">
+                        <h3>Buttons & Inputs</h3>
+                        <div class="demo-box">
+                            <div style="display: flex; flex-direction: column; gap: 16px; width: 100%;">
+                                <SgTextBox TValue="string" Label="Input Field" Placeholder="Placeholder..." />
+                                <div style="display: flex; gap: 8px;">
+                                    <SgButton Text="Primary" Variant="SgButtonVariant.Primary" />
+                                    <SgButton Text="Default" Variant="SgButtonVariant.Default" />
+                                    <SgButton Text="Ghost" Variant="SgButtonVariant.Ghost" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="token-list">
+                            <TokenRow Name="--sgc-btn-radius" Description="Скругление кнопок" />
+                            <TokenRow Name="--sgc-input-radius" Description="Скругление инпутов" />
+                        </div>
+                    </div>
+
+                    <div class="showcase-card">
+                        <h3>Cards & Containers</h3>
+                        <div class="demo-box">
+                            <SgCard Title="Sample Card" Subtitle="Testing tokens">
+                                <p style="font-size: 14px; color: var(--sg-fg-subtle);">
+                                    Карточка использует --sgc-card-radius и --sgc-card-padding.
+                                </p>
+                            </SgCard>
+                        </div>
+                        <div class="token-list">
+                            <TokenRow Name="--sgc-card-radius" Description="Скругление карточек" />
+                            <TokenRow Name="--sgc-card-padding" Description="Внутренний отступ" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </SgTabPanel>
+    </SgTabs>
+</div>
+
+<style>
+    .design-tokens-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 40px 24px;
+        color: var(--sg-fg);
+    }
+
+    .demo-header {
+        margin-bottom: 32px;
+    }
+
+    .demo-title {
+        font-size: 32px;
+        font-weight: 800;
+        margin: 0 0 12px 0;
+        letter-spacing: -0.02em;
+    }
+
+    .demo-subtitle {
+        font-size: 16px;
+        color: var(--sg-fg-subtle);
+        max-width: 800px;
+        line-height: 1.6;
+    }
+
+    .demo-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        padding: 20px;
+        background: var(--sg-surface);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-lg);
+        box-shadow: var(--sg-shadow-sm);
+        margin-bottom: 40px;
+    }
+
+    .toolbar-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .toolbar-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: var(--sg-fg-muted);
+        letter-spacing: 0.05em;
+    }
+
+    .theme-selector, .mode-selector {
+        display: flex;
+        gap: 4px;
+    }
+
+    .toolbar-info {
+        margin-left: auto;
+        display: flex;
+        gap: 12px;
+    }
+
+    .status-pill {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 12px;
+        background: var(--sg-bg-subtle);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-full);
+        font-size: 12px;
+    }
+
+    .pill-label {
+        color: var(--sg-fg-muted);
+        font-weight: 600;
+    }
+
+    .pill-value {
+        color: var(--sg-color-primary);
+        font-weight: 700;
+    }
+
+    .tab-content {
+        padding: 32px 0;
+    }
+
+    .section-intro {
+        margin-bottom: 32px;
+    }
+
+    .section-intro h2 {
+        font-size: 24px;
+        font-weight: 700;
+        margin: 0 0 8px 0;
+    }
+
+    .section-intro p {
+        color: var(--sg-fg-subtle);
+        font-size: 15px;
+    }
+
+    .token-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        gap: 24px;
+    }
+
+    .token-group {
+        background: var(--sg-surface);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-md);
+        padding: 20px;
+    }
+
+    .group-header {
+        margin-bottom: 6px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--sg-border);
+    }
+
+    .group-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 700;
+    }
+
+    .group-header p {
+        margin: 4px 0 0 0;
+        font-size: 12px;
+        color: var(--sg-fg-muted);
+    }
+
+    .group-rows {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .token-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 40px;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--sg-border);
+        transition: background 0.2s ease;
+    }
+
+    .token-row:hover {
+        background: var(--sg-bg-subtle);
+    }
+
+    .token-row:last-child {
+        border-bottom: none;
+    }
+
+    .swatch {
+        width: 40px;
+        height: 24px;
+        border-radius: 6px;
+        border: 1px solid var(--sg-border);
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        background: var(--sg-surface);
+    }
+
+    .swatch-inner {
+        display: block;
+        width: 100%;
+        height: 100%;
+    }
+
+    .swatch-color .swatch-inner {
+        background: var(--token-preview);
+    }
+
+    .swatch-line .swatch-inner {
+        width: 100%;
+        height: 1px;
+        background: var(--token-preview);
+    }
+
+    .swatch-radius .swatch-inner {
+        width: 28px;
+        height: 16px;
+        border: 1px solid var(--sg-border);
+        border-radius: var(--token-preview-radius);
+        background: var(--sg-color-primary-subtle);
+    }
+
+    .swatch-padding .swatch-inner {
+        background: var(--sg-surface);
+        box-shadow: inset 0 0 0 var(--token-preview-space) var(--sg-color-primary-subtle);
+    }
+
+    .token-details {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        overflow: hidden;
+    }
+
+    .token-name {
+        font-family: var(--sg-font-mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--sg-fg);
+    }
+
+    .token-desc {
+        font-size: 11px;
+        color: var(--sg-fg-muted);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .palette-container {
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+        background: var(--sg-surface);
+        padding: 24px;
+        border-radius: var(--sg-radius-lg);
+        border: 1px solid var(--sg-border);
+    }
+
+    .palette-row-container {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .palette-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: var(--sg-fg-subtle);
+    }
+
+    .palette-steps {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
+    .step-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        width: 50px;
+    }
+
+    .step-box {
+        width: 50px;
+        height: 50px;
+        border-radius: 6px;
+        border: 1px solid var(--sg-border);
+    }
+
+    .step-label {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--sg-fg-muted);
+    }
+
+    .radius-list {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 16px;
+    }
+
+    .radius-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .radius-box {
+        width: 60px;
+        height: 60px;
+        background: var(--sg-color-primary);
+        border: 1px solid var(--sg-border);
+    }
+
+    .component-showcase {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 32px;
+    }
+
+    .showcase-card {
+        background: var(--sg-surface);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-lg);
+        padding: 24px;
+    }
+
+    .demo-box {
+        padding: 32px;
+        background: var(--sg-bg-subtle);
+        border-radius: var(--sg-radius-md);
+        margin: 16px 0;
+        display: flex;
+        justify-content: center;
+        min-height: 150px;
+    }
+</style>
+
+@code {
+    protected override void OnInitialized()
+    {
+        ThemeService.ThemeChanged += HandleThemeChanged;
+    }
+
+    private void HandleThemeChanged(IThemeDefinition theme, string mode)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+    }
+
+    // --- Helper Components ---
+
+    private RenderFragment TokenGroup(string Title, string Description, RenderFragment ChildContent) => __builder => {
+        <div class="token-group">
+            <div class="group-header">
+                <h3>@Title</h3>
+                <p>@Description</p>
+            </div>
+            <div class="group-rows">
+                @ChildContent
+            </div>
+        </div>
+    };
+
+    private RenderFragment TokenRow(string Name, string Description) => __builder => {
+        <div class="token-row" title="@Name">
+            <div class="@GetTokenPreviewClass(Name)" style="@GetTokenPreviewStyle(Name)">
+                <span class="swatch-inner"></span>
+            </div>
+            <div class="token-details">
+                <span class="token-name">@Name</span>
+                <span class="token-desc">@Description</span>
+            </div>
+        </div>
+    };
+
+    private static string GetTokenPreviewClass(string tokenName)
+    {
+        if (tokenName.Contains("border", StringComparison.OrdinalIgnoreCase))
+            return "swatch swatch-line";
+
+        if (tokenName.Contains("radius", StringComparison.OrdinalIgnoreCase))
+            return "swatch swatch-radius";
+
+        if (tokenName.Contains("padding", StringComparison.OrdinalIgnoreCase))
+            return "swatch swatch-padding";
+
+        return "swatch swatch-color";
+    }
+
+    private static string GetTokenPreviewStyle(string tokenName)
+    {
+        if (tokenName.Contains("border", StringComparison.OrdinalIgnoreCase))
+            return $"--token-preview: var({tokenName});";
+
+        if (tokenName.Contains("radius", StringComparison.OrdinalIgnoreCase))
+            return $"--token-preview-radius: var({tokenName});";
+
+        if (tokenName.Contains("padding", StringComparison.OrdinalIgnoreCase))
+            return $"--token-preview-space: var({tokenName});";
+
+        return $"--token-preview: var({tokenName});";
+    }
+
+    private RenderFragment PaletteRow(string Title, string Prefix, int[] Steps) => __builder => {
+        <div class="palette-row-container">
+            <div class="palette-title">@Title</div>
+            <div class="palette-steps">
+                @foreach (var step in Steps)
+                {
+                    var token = Prefix + step;
+                    <div class="step-item">
+                        <div class="step-box" style="background: var(@token);" title="@token"></div>
+                        <span class="step-label">@step</span>
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    private RenderFragment IconLayout => builder => builder.AddMarkupContent(0, Icons.Layout);
+    private RenderFragment IconPalette => builder => builder.AddMarkupContent(0, Icons.Palette);
+    private RenderFragment IconZap => builder => builder.AddMarkupContent(0, Icons.Zap);
+
+    public static class Icons
+    {
+        public const string Layout = @"<svg width=""16"" height=""16"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><rect width=""18"" height=""18"" x=""3"" y=""3"" rx=""2""/><path d=""M3 9h18""/><path d=""M9 21V9""/></svg>";
+        public const string Palette = @"<svg width=""16"" height=""16"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><circle cx=""13.5"" cy=""6.5"" r=""1.5""/><circle cx=""17.5"" cy=""10.5"" r=""1.5""/><circle cx=""17.5"" cy=""17.5"" r=""1.5""/><circle cx=""13.5"" cy=""21.5"" r=""1.5""/><circle cx=""6.5"" cy=""18.5"" r=""1.5""/><circle cx=""4.5"" cy=""12.5"" r=""1.5""/><circle cx=""8.5"" cy=""7.5"" r=""1.5""/><path d=""M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z""/></svg>";
+        public const string Zap = @"<svg width=""16"" height=""16"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M13 2 3 14h9l-1 8 10-12h-9l1-8z""/></svg>";
+    }
+}

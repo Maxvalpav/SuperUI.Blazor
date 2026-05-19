@@ -1,0 +1,44 @@
+@namespace SuperUI.Components
+@using SuperUI.Enums
+@implements IDisposable
+
+@code {
+    [CascadingParameter] public SgDockManager? Manager { get; set; }
+
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string? Icon { get; set; }
+    [Parameter] public SgDockPosition Position { get; set; } = SgDockPosition.Center;
+    [Parameter] public bool Closable { get; set; } = true;
+    [Parameter] public bool Visible { get; set; } = true;
+    [Parameter] public object? Tag { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private SgDockPanel? _panel;
+
+    protected override void OnInitialized()
+    {
+        if (Manager != null)
+        {
+            _panel = new SgDockPanel
+            {
+                Id = Id ?? Guid.NewGuid().ToString("N")[..8],
+                Title = Title,
+                Icon = Icon,
+                Position = Position,
+                Closable = Closable,
+                Visible = Visible,
+                Tag = Tag ?? ChildContent // Store the content in Tag if not provided otherwise
+            };
+            Manager.RegisterPanel(_panel);
+        }
+    }
+
+    public void Dispose()
+    {
+        if (Manager != null && _panel != null)
+        {
+            Manager.UnregisterPanel(_panel);
+        }
+    }
+}

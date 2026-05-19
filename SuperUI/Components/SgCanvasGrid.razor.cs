@@ -12,6 +12,7 @@ namespace SuperUI.Components
     using System.Text;
     using System.Globalization;
     using Microsoft.AspNetCore.Components.Web;
+    using SuperUI.Enums;
 
     public partial class SgCanvasGrid<TItem> : ComponentBase, IAsyncDisposable
     {

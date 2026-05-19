@@ -1,0 +1,149 @@
+@namespace SuperUI.Components.SgGantCanvas
+@inherits SuperUI.Base.ComponentBases.SgJsComponentBase
+@using SuperUI.Components.SgGantCanvas.Models
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-gantt-canvas-container" style="height: @Height; width: @Width; display: flex; flex-direction: column;" @ref="RootRef">
+    @if (ShowToolbar)
+    {
+        <div class="sg-gantt-toolbar" style="flex-shrink: 0; display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-bottom: 1px solid var(--sg-border, #eee); background: #fff;">
+            @if (ToolbarTemplate != null)
+            {
+                @ToolbarTemplate
+            }
+            else
+            {
+                <SgButtonGroup>
+                    <SgButton Size="SgSize.Sm" OnClick="ZoomIn" Tooltip="@Localizer["GantCanvas_ZoomIn"]"><Icon>+</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="ZoomOut" Tooltip="@Localizer["GantCanvas_ZoomOut"]"><Icon>−</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="FitToScreen" Tooltip="@Localizer["GantCanvas_FitScreen"]"><Icon>fit_screen</Icon></SgButton>
+                </SgButtonGroup>
+
+                <SgButtonGroup Style="margin-left: 8px;">
+                    <SgButton Size="SgSize.Sm" OnClick="Undo" Disabled="@(!CanUndo)" Tooltip="@Localizer["GantCanvas_Undo"]"><Icon>undo</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="Redo" Disabled="@(!CanRedo)" Tooltip="@Localizer["GantCanvas_Redo"]"><Icon>redo</Icon></SgButton>
+                </SgButtonGroup>
+
+                <SgButtonGroup Style="margin-left: 8px;">
+                    <SgButton Size="SgSize.Sm" OnClick="ExpandAll" Tooltip="@Localizer["Common_ExpandAll"]"><Icon>unfold_more</Icon></SgButton>
+                    <SgButton Size="SgSize.Sm" OnClick="CollapseAll" Tooltip="@Localizer["Common_CollapseAll"]"><Icon>unfold_less</Icon></SgButton>
+                </SgButtonGroup>
+
+                <SgButton Size="SgSize.Sm" OnClick="ScrollToToday" Text="@Localizer["GantCanvas_TodayLabel"]" Style="margin-left: 8px;" />
+
+                <div style="flex: 1"></div>
+
+                <SgDropdown CssClass="sg-dropdown-generate" Size="SgSize.Sm" Text="@Localizer["GantCanvas_Generate"]">
+                    <Icon>add_chart</Icon>
+                    <ChildContent>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(100)">@Localizer["GantCanvas_Generate100"]</SgDropdownItem>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(1000)">@Localizer["GantCanvas_Generate1000"]</SgDropdownItem>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(5000)">@Localizer["GantCanvas_Generate5000"]</SgDropdownItem>
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(10000)">@Localizer["GantCanvas_Generate10000"]</SgDropdownItem>
+                        <SgDropdownItem Divider="true" />
+                        <SgDropdownItem OnClick="() => OnGenerateData.InvokeAsync(0)">@Localizer["GantCanvas_ClearAll"]</SgDropdownItem>
+                    </ChildContent>
+                </SgDropdown>
+
+                <SgDropdown CssClass="sg-dropdown-export" Size="SgSize.Sm">
+                    <Icon>download</Icon>
+                    <ChildContent>
+                        <SgDropdownItem Text="@Localizer["GantCanvas_ExportPng"]" />
+                        <SgDropdownItem Text="@Localizer["GantCanvas_ExportPdf"]" />
+                        <SgDropdownItem Text="@Localizer["GantCanvas_ExportExcel"]" />
+                    </ChildContent>
+                </SgDropdown>
+
+                <SgDropdown Size="SgSize.Sm">
+                    <Icon>settings</Icon>
+                    <ChildContent>
+                            <div style="padding: 16px; min-width: 240px;">
+                                <div style="font-weight: bold; margin-bottom: 12px; font-size: 14px; border-bottom: 1px solid #eee; padding-bottom: 4px;">@Localizer["GantCanvas_DisplaySettings"]</div>
+                                
+                                <div style="display: flex; flex-direction: column; gap: 8px;">
+                                    <SgCheckBox Checked="ViewOptions.ShowCriticalPath" CheckedChanged="async (bool val) => { ViewOptions.ShowCriticalPath = val; await RefreshDataAsync(); }" Label="@Localizer["GantCanvas_ShowCriticalPath"]" />
+                                    <SgCheckBox Checked="ViewOptions.ShowDependencies" CheckedChanged="async (bool val) => { ViewOptions.ShowDependencies = val; await RefreshDataAsync(); }" Label="@Localizer["GantCanvas_ShowDependencies"]" />
+                                    <SgCheckBox Checked="ViewOptions.ShowBaselines" CheckedChanged="async (bool val) => { ViewOptions.ShowBaselines = val; await RefreshDataAsync(); }" Label="@Localizer["GantCanvas_ShowBaselines"]" />
+                                    <SgCheckBox Checked="ViewOptions.ShowTodayLine" CheckedChanged="async (bool val) => { ViewOptions.ShowTodayLine = val; await RefreshDataAsync(); }" Label="@Localizer["GantCanvas_ShowTodayLine"]" />
+                                    <SgCheckBox Checked="ViewOptions.ShowGrid" CheckedChanged="async (bool val) => { ViewOptions.ShowGrid = val; await RefreshDataAsync(); }" Label="@Localizer["GantCanvas_ShowGrid"]" />
+                                    <SgCheckBox Checked="ViewOptions.FlatMode" CheckedChanged="async (bool val) => { ViewOptions.FlatMode = val; await RefreshDataAsync(); }" Label="@Localizer["GantCanvas_ShowFlatMode"]" />
+                                </div>
+                                
+                                <div style="font-weight: bold; margin: 16px 0 8px 0; font-size: 12px; color: #666; text-transform: uppercase;">@Localizer["GantCanvas_ThemeStyle"]</div>
+                                <div style="display: flex; gap: 8px; align-items: center;">
+                                    <span style="font-size: 12px; flex: 1;">@Localizer["GantCanvas_ColorTheme"]</span>
+                                    <SgButtonGroup>
+                                        <SgButton Size="SgSize.Sm" OnClick='() => OnThemeChanged.InvokeAsync("Light")' Text="@Localizer["GantCanvas_ThemeLight"]" Variant='@(Theme.Type == GanttThemeType.Light ? SgButtonVariant.Primary : SgButtonVariant.Default)' />
+                                        <SgButton Size="SgSize.Sm" OnClick='() => OnThemeChanged.InvokeAsync("Dark")' Text="@Localizer["GantCanvas_ThemeDark"]" Variant='@(Theme.Type == GanttThemeType.Dark ? SgButtonVariant.Primary : SgButtonVariant.Default)' />
+                                    </SgButtonGroup>
+                                </div>
+
+                                <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px;">
+                                    <span style="font-size: 12px; flex: 1;">@Localizer["GantCanvas_RowHeight"]</span>
+                                <input type="range" min="20" max="60" value="@ViewOptions.RowHeight" @onchange='async (ChangeEventArgs e) => { ViewOptions.RowHeight = int.Parse(e.Value?.ToString() ?? "40"); await RefreshDataAsync(); }' style="width: 80px;" />
+                            </div>
+                        </div>
+                    </ChildContent>
+                </SgDropdown>
+            }
+        </div>
+    }
+
+    <div class="sg-gantt-main" style="flex: 1; display: flex; min-height: 0; position: relative;">
+        <div class="sg-gantt-left" style="width: @(ViewOptions.FlatMode ? "300px" : "400px"); flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid var(--sg-border, #eee); background: #fff; z-index: 10;">
+            <div class="sg-gantt-left-header" style="height: 60px; border-bottom: 1px solid var(--sg-border, #eee); display: flex; align-items: center; font-weight: bold; background: #fafafa;">
+                <div style="width: 40px; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--sg-border, #eee);">№</div>
+                <div style="flex: 1; height: 100%; display: flex; align-items: center; padding: 0 12px;">Task Name</div>
+            </div>
+            <div class="sg-gantt-left-body" style="overflow-y: auto; overflow-x: hidden; flex: 1; border-bottom: 1px solid var(--sg-border, #eee);" @ref="_leftPanelRef" @onscroll="OnLeftPanelScroll">
+                <div style="height: @(_visibleTasks.Count * ViewOptions.RowHeight)px; position: relative;">
+                    @foreach (var task in _visibleTasks.Skip(_scrollRowIndex).Take(_visibleRowCount + 5))
+                    {
+                        <div style="position: absolute; top: @(task.RowIndex * ViewOptions.RowHeight)px; left: 0; right: 0; height: @(ViewOptions.RowHeight)px; display: flex; align-items: center; border-bottom: 1px solid var(--sg-border, #eee); font-size: 13px; white-space: nowrap; overflow: hidden; background: @(task.RowIndex % 2 == 0 ? "#fff" : "#fafafa")"
+                             @ondblclick="() => HandleTaskDoubleClick(task)">
+                            <div style="width: 40px; height: 100%; display: flex; align-items: center; justify-content: center; border-right: 1px solid var(--sg-border, #eee); color: #888;">@(task.RowIndex + 1)</div>
+                            <div style="flex: 1; height: 100%; display: flex; align-items: center; padding-left: @(task.Level * 20 + 8)px; text-overflow: ellipsis; overflow: hidden;">
+                                @if (task.IsSummary)
+                                {
+                                    <span style="cursor: pointer; margin-right: 4px; font-size: 10px; width: 14px; display: inline-block; text-align: center;" @onclick="() => ToggleCollapse(task)" @onclick:stopPropagation>
+                                        @(task.IsCollapsed ? "▶" : "▼")
+                                    </span>
+                                    <span style="font-weight: bold;">📁 @task.Name</span>
+                                }
+                                else if (task.IsMilestone)
+                                {
+                                    <span style="margin-left: 18px;">◆ @task.Name</span>
+                                }
+                                else
+                                {
+                                    <span style="margin-left: 18px;">@task.Name</span>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        <div class="sg-gantt-canvas-wrapper" @ref="_canvasWrapperRef">
+            <canvas class="sg-gantt-canvas-element"></canvas>
+            
+            @if (_isLoading)
+            {
+                <div class="sg-gantt-loading-overlay">
+                    <SgLoader />
+                </div>
+            }
+        </div>
+    </div>
+
+    @if (ShowStatusBar)
+    {
+        <div class="sg-gantt-status-bar">
+            <span>Tasks: @Tasks.Count</span>
+            <span>Zoom: @TimeScale.ZoomLevel (1-7)</span>
+            <span>@_statusText</span>
+        </div>
+    }
+</div>

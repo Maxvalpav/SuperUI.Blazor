@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
 @typeparam TItem where TItem : notnull
 @using SuperUI.Localization
+@using SuperUI.Enums
 @using Microsoft.AspNetCore.Components
 @implements IHandleEvent
 @inject ISuperUILocalizer Localizer
@@ -28,7 +29,7 @@
                     var allDisabled = _rules.All(r => !r.IsEnabled);
                     <button type="button" class="sgc-btn @(allDisabled ? "" : "sgc-btn-danger-outline")"
                             @onclick="ClearAllRules"
-                            title="@(allDisabled ? "Включить все правила" : "Отключить раскраску")">
+                            title="@(allDisabled ? Localizer["DataGrid_EnableAllRulesHint"] : Localizer["DataGrid_DisableAllRulesHint"])">
                         @if (allDisabled)
                         {
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
@@ -36,7 +37,7 @@
                                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
                                 <circle cx="12" cy="12" r="3"/>
                             </svg>
-                            <span>Включить все</span>
+                            <span>@Localizer["DataGrid_EnableAllRules"]</span>
                         }
                         else
                         {
@@ -46,7 +47,7 @@
                                 <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
                                 <line x1="1" y1="1" x2="23" y2="23"/>
                             </svg>
-                            <span>Отключить все</span>
+                            <span>@Localizer["DataGrid_DisableAllRules"]</span>
                         }
                     </button>
                 }
@@ -75,7 +76,7 @@
                             <div class="sgrh-rule-head">
                                 @* Color preview swatch *@
                                 <div class="sgrh-swatch"
-                                     style="background:@(rule.BackgroundColor ?? "transparent"); color:@(rule.TextColor ?? "inherit"); border: 1px solid var(--sui-border);"
+                                     style="background:@(rule.BackgroundColor ?? "transparent"); color:@(rule.TextColor ?? "inherit"); border: 1px solid var(--sg-border);"
                                      title="@Localizer["DataGrid_BackgroundColor"]">
                                     <span>Aa</span>
                                 </div>
@@ -139,19 +140,19 @@
 
                             @* ── Target: whole row or specific column ── *@
                             <div class="sgrh-target-row">
-                                <span class="sgrh-color-label">Применить к:</span>
+                                <span class="sgrh-color-label">@Localizer["DataGrid_ApplyTo"]</span>
                                 <div class="sgrh-target-btns">
                                     <button type="button"
                                             class="sgc-btn sgc-sm @(string.IsNullOrEmpty(rule.TargetColumnKey) ? "sgrh-logic-active" : "")"
                                             @onclick="() => SetRuleTarget(rule, null)">
                                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
-                                        Вся строка
+                                        @Localizer["DataGrid_WholeRow"]
                                     </button>
                                     <button type="button"
                                             class="sgc-btn sgc-sm @(!string.IsNullOrEmpty(rule.TargetColumnKey) ? "sgrh-logic-active" : "")"
                                             @onclick="() => EnableCellTarget(rule)">
                                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sgc-btn-icon"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
-                                        Ячейка колонки
+                                        @Localizer["DataGrid_CellOnly"]
                                     </button>
                                 </div>
                                 @if (!string.IsNullOrEmpty(rule.TargetColumnKey))
@@ -237,7 +238,7 @@
                                                                 value="@(condition.Value?.ToString() ?? "")"
                                                                 @onchange="e => SetConditionValue(rule, idx, e.Value?.ToString())">
                                                             <option value="">@Localizer["SelectValue"]</option>
-                                                            @foreach (var opt in GetField(condition.FieldName)?.EnumOptions ?? Array.Empty<QueryFieldEnumOption>())
+                                                            @foreach (var opt in GetField(condition.FieldName)?.EnumOptions ?? Array.Empty<SuperUI.Enums.QueryFieldEnumOption>())
                                                             {
                                                                 <option value="@opt.Name">@opt.Label</option>
                                                             }
@@ -513,8 +514,8 @@
 
         if (IsDateLikeType(t) || IsNumericType(t))
             return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
-                    QueryFieldOperator.GreaterThan, QueryFieldOperator.GreaterThanOrEqual,
-                    QueryFieldOperator.LessThan, QueryFieldOperator.LessThanOrEqual,
+                    QueryFieldOperator.GreaterThan, QueryFieldOperator.GreaterOrEqual,
+                    QueryFieldOperator.LessThan, QueryFieldOperator.LessOrEqual,
                     QueryFieldOperator.IsNull, QueryFieldOperator.IsNotNull];
 
         return [QueryFieldOperator.Equals, QueryFieldOperator.NotEquals,
@@ -531,8 +532,8 @@
         QueryFieldOperator.EndsWith           => Localizer["Operator_EndsWith"],
         QueryFieldOperator.GreaterThan        => Localizer["Operator_GreaterThan"],
         QueryFieldOperator.LessThan           => Localizer["Operator_LessThan"],
-        QueryFieldOperator.GreaterThanOrEqual => Localizer["Operator_GreaterThanOrEqual"],
-        QueryFieldOperator.LessThanOrEqual    => Localizer["Operator_LessThanOrEqual"],
+        QueryFieldOperator.GreaterOrEqual => Localizer["Operator_GreaterThanOrEqual"],
+        QueryFieldOperator.LessOrEqual    => Localizer["Operator_LessThanOrEqual"],
         QueryFieldOperator.In                 => Localizer["Operator_In"],
         QueryFieldOperator.NotIn              => Localizer["Operator_NotIn"],
         QueryFieldOperator.IsNull             => Localizer["Operator_IsNull"],

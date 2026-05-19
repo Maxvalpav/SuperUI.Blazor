@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 

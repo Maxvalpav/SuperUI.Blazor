@@ -7,44 +7,92 @@ const chartInstances = new Map();
 
 const _loadedScripts = new Set();
 
-function _loadScript(url) {
+function _loadScript(url, timeoutMs = 10000) {
     if (!url) return Promise.resolve();
     if (_loadedScripts.has(url)) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-        if (document.querySelector(`script[src="${url}"]`)) {
+
+    const existing = document.querySelector(`script[src="${url}"]`);
+    if (existing) {
+        // If script exists but we don't track it as loaded, it might be from index.html
+        // or still loading. We'll assume it's loading or loaded.
+        if (existing.dataset.loaded === 'true') {
             _loadedScripts.add(url);
-            resolve();
-            return;
+            return Promise.resolve();
         }
+        return new Promise((resolve, reject) => {
+            const onOk = () => { resolve(); };
+            const onErr = () => reject(new Error(`Script failed: ${url}`));
+            existing.addEventListener('load', onOk, { once: true });
+            existing.addEventListener('error', onErr, { once: true });
+            // Fallback for already loaded scripts that didn't set data-loaded
+            setTimeout(onOk, 2000); 
+        });
+    }
+
+    return new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.src = url;
-        script.onload = () => { _loadedScripts.add(url); resolve(); };
-        script.onerror = () => reject(new Error(`Failed to load script: ${url}`));
+        script.async = true;
+        
+        const timeout = setTimeout(() => {
+            script.onload = script.onerror = null;
+            reject(new Error(`Timeout loading script: ${url}`));
+        }, timeoutMs);
+
+        script.onload = () => {
+            clearTimeout(timeout);
+            script.dataset.loaded = 'true';
+            _loadedScripts.add(url);
+            resolve();
+        };
+        script.onerror = () => {
+            clearTimeout(timeout);
+            reject(new Error(`Failed to load script: ${url}`));
+        };
         document.head.appendChild(script);
     });
 }
 
 async function _ensureChart(sources) {
-    // Load Chart.js first (required), then optional plugins in parallel.
+    console.log('[SgChart] Ensuring Chart.js and plugins...', sources);
+
+    // 1. Load Chart.js first
     if (sources?.chartScript) {
+        console.log('[SgChart] Loading Chart.js:', sources.chartScript);
         await _loadScript(sources.chartScript);
     }
 
-    // After Chart.js is available, load plugins (they register themselves on window.Chart).
-    const pluginLoads = [];
-    if (sources?.zoomScript)   pluginLoads.push(_loadScript(sources.zoomScript));
-    if (sources?.matrixScript) pluginLoads.push(_loadScript(sources.matrixScript));
-    if (pluginLoads.length) await Promise.all(pluginLoads);
-
-    // Fallback: wait up to 5 s for window.Chart if loaded externally (e.g. index.html).
+    // 2. Wait for window.Chart to be available (mandatory for plugins)
     let Chart = window.Chart;
     let attempts = 0;
-    while (!Chart && attempts < 50) {
+    while (!Chart && attempts < 60) {
+        if (attempts % 10 === 0) console.log('[SgChart] Waiting for window.Chart...', attempts);
         await new Promise(r => setTimeout(r, 100));
         Chart = window.Chart;
         attempts++;
     }
-    if (!Chart) throw new Error('Chart.js library not loaded');
+    
+    if (!Chart) {
+        console.error('[SgChart] Chart.js NOT found after 6s');
+        throw new Error('Chart.js library not loaded');
+    }
+
+    // 3. Load optional plugins ONLY after Chart.js is ready
+    const pluginLoads = [];
+    if (sources?.zoomScript)   {
+        console.log('[SgChart] Loading Zoom plugin:', sources.zoomScript);
+        pluginLoads.push(_loadScript(sources.zoomScript).catch(e => console.warn(e)));
+    }
+    if (sources?.matrixScript) {
+        console.log('[SgChart] Loading Matrix plugin:', sources.matrixScript);
+        pluginLoads.push(_loadScript(sources.matrixScript).catch(e => console.warn(e)));
+    }
+    
+    if (pluginLoads.length) {
+        await Promise.all(pluginLoads);
+        console.log('[SgChart] Plugins loaded');
+    }
+
     return Chart;
 }
 
@@ -62,15 +110,15 @@ function applyThemeDefaults(Chart) {
     if (Chart.__sgThemed) return;
     Chart.__sgThemed = true;
 
-    const text = readCssVar('--sui-text', '#1f2937');
-    const muted = readCssVar('--sui-text-secondary', '#6b7280');
-    const grid = readCssVar('--sui-border', 'rgba(127,127,127,0.18)');
-    const cardBg = readCssVar('--sui-card-bg', '#ffffff');
+    const text = readCssVar('--sg-fg', '#1f2937');
+    const muted = readCssVar('--sg-fg-subtle', '#6b7280');
+    const grid = readCssVar('--sg-border', 'rgba(127,127,127,0.18)');
+    const cardBg = readCssVar('--sgc-card-bg', '#ffffff');
 
     Chart.defaults.color = muted;
     Chart.defaults.borderColor = grid;
-    Chart.defaults.font.family = readCssVar('--sui-font-family', Chart.defaults.font.family);
-    Chart.defaults.plugins.tooltip.backgroundColor = readCssVar('--sui-tooltip-bg', 'rgba(17,24,39,0.92)');
+    Chart.defaults.font.family = readCssVar('--sg-font', Chart.defaults.font.family);
+    Chart.defaults.plugins.tooltip.backgroundColor = readCssVar('--sg-bg-muted', 'rgba(17,24,39,0.92)');
     Chart.defaults.plugins.tooltip.titleColor = '#fff';
     Chart.defaults.plugins.tooltip.bodyColor = '#f3f4f6';
     Chart.defaults.plugins.tooltip.borderColor = 'transparent';
@@ -147,8 +195,25 @@ export async function initChart(dotnetRef, canvasRef, config, sources) {
     const clickable = !!config.options?.__sgClickable;
     if (config.options) delete config.options.__sgClickable;
 
-    const chart = new Chart(ctx, config);
+    // Chart.js v4 бросает "Canvas is already in use" при создании нового графика
+    // на canvas, к которому уже привязан chart. Это случается при:
+    //   1) повторном rendering canvas с тем же id (например, после переключения SgTabs)
+    //   2) ручном Retry
+    //   3) race между init и dispose
+    // Поэтому перед созданием явно убиваем предыдущий instance — и из нашего кеша,
+    // и из глобального реестра Chart.js (на случай если кеш не синхронен с DOM).
     const chartId = canvasRef.id;
+    const existing = chartInstances.get(chartId);
+    if (existing) {
+        try { existing.instance?.destroy(); } catch { }
+        chartInstances.delete(chartId);
+    }
+    const stray = Chart.getChart?.(canvasRef);
+    if (stray) {
+        try { stray.destroy(); } catch { }
+    }
+
+    const chart = new Chart(ctx, config);
 
     const onClick = (e) => {
         const points = chart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
@@ -204,50 +269,113 @@ export async function initChart(dotnetRef, canvasRef, config, sources) {
 }
 
 export async function updateChart(chartId, config) {
-    const chartData = chartInstances.get(chartId);
-    if (!chartData) return;
+    try {
+        const Chart = window.Chart;
+        if (!Chart) return false;
 
-    installFormatters(config);
-    if (config.options) delete config.options.__sgClickable;
+        const chartData = chartInstances.get(chartId);
+        // Возвращаем false, чтобы .NET-сторона могла сделать полный re-init вместо тихого
+        // отвала (типичный кейс — переключение SgTabs пересоздало DOM и старый instance
+        // потерян).
+        if (!chartData) return false;
 
-    const { instance: chart, canvasRef, dotnetRef, onClick, onMove, resizeObserver } = chartData;
+        installFormatters(config);
+        const { instance: chart, canvasRef, dotnetRef, onClick, onMove, resizeObserver } = chartData;
 
-    // Always destroy and recreate — safest approach across all data shape changes.
-    try { resizeObserver?.disconnect(); } catch {}
-    try { chart.destroy(); } catch {}
+        const clickable = !!config.options?.__sgClickable;
+        if (config.options) delete config.options.__sgClickable;
 
-    const Chart = window.Chart;
-    if (!Chart) throw new Error('Chart.js not available');
+        // If chart type is the same, we can update data smoothly.
+        // In Chart.js v4, it's best to update properties on chart.data directly.
+        if (chart.config.type === config.type) {
+            chart.data.labels = config.data.labels;
+            chart.data.datasets = config.data.datasets;
 
-    applyOptionalPlugins(Chart, config);
+            // Update options - merging into config.options is safer in v4
+            if (config.options) {
+                if (Chart.helpers && typeof Chart.helpers.merge === 'function') {
+                    // Update the configuration options; Chart.js will resolve them during update()
+                    Chart.helpers.merge(chart.config.options, [config.options]);
+                } else {
+                    chart.config.options = { ...chart.config.options, ...config.options };
+                }
+            }
 
-    const ctx = canvasRef.getContext('2d');
-    if (!ctx) throw new Error('Failed to get canvas context');
+            chart.update(config.options?.animation?.duration === 0 ? 'none' : 'default');
 
-    const newChart = new Chart(ctx, config);
+            // Update stored handlers if needed
+            chartData.onClick = clickable ? chartData.onClick : null;
+            chartData.onMove = clickable ? chartData.onMove : null;
+            return true;
+        }
 
-    if (onClick) canvasRef.addEventListener('click', onClick);
-    if (onMove)  canvasRef.addEventListener('mousemove', onMove);
+        // If type or scales changed significantly, recreation is safer.
+        try { resizeObserver?.disconnect(); } catch {}
+        try {
+            canvasRef.removeEventListener('click', onClick);
+            canvasRef.removeEventListener('mousemove', onMove);
+            chart.destroy();
+        } catch {}
 
-    let newResizeObs = null;
-    const parent = canvasRef.parentElement;
-    if (parent && typeof ResizeObserver !== 'undefined') {
-        let raf = 0;
-        newResizeObs = new ResizeObserver(() => {
-            cancelAnimationFrame(raf);
-            raf = requestAnimationFrame(() => { try { newChart.resize(); } catch {} });
+        applyOptionalPlugins(Chart, config);
+
+        const ctx = canvasRef.getContext('2d');
+        const newChart = new Chart(ctx, config);
+
+        const newOnClick = clickable ? (e) => {
+            const points = newChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+            if (points.length === 0) return;
+            const point = points[0];
+            const datasetIndex = point.datasetIndex;
+            const index = point.index;
+            const ds = newChart.data.datasets[datasetIndex];
+            const raw = ds?.data?.[index];
+            const value = typeof raw === 'object' && raw !== null ? (raw.y ?? raw.v ?? 0) : (raw ?? 0);
+            const label = newChart.data.labels?.[index] ?? '';
+            try {
+                dotnetRef.invokeMethodAsync('OnDataPointClickedAsync', {
+                    datasetIndex,
+                    dataPointIndex: index,
+                    value,
+                    label
+                });
+            } catch { }
+        } : null;
+
+        const newOnMove = clickable ? (e) => {
+            const points = newChart.getElementsAtEventForMode(e, 'nearest', { intersect: true }, true);
+            canvasRef.style.cursor = points.length > 0 ? 'pointer' : 'default';
+        } : null;
+
+        if (clickable) {
+            canvasRef.addEventListener('click', newOnClick);
+            canvasRef.addEventListener('mousemove', newOnMove);
+        }
+
+        let newResizeObs = null;
+        const parent = canvasRef.parentElement;
+        if (parent && typeof ResizeObserver !== 'undefined') {
+            let raf = 0;
+            newResizeObs = new ResizeObserver(() => {
+                cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(() => { try { newChart.resize(); } catch {} });
+            });
+            newResizeObs.observe(parent);
+        }
+
+        chartInstances.set(chartId, {
+            instance: newChart,
+            dotnetRef,
+            canvasRef,
+            onClick: newOnClick,
+            onMove: newOnMove,
+            resizeObserver: newResizeObs,
         });
-        newResizeObs.observe(parent);
+        return true;
+    } catch (err) {
+        console.error('[SgChart] updateChart failed for ' + chartId + ':', err);
+        return false;
     }
-
-    chartInstances.set(chartId, {
-        instance: newChart,
-        dotnetRef,
-        canvasRef,
-        onClick,
-        onMove,
-        resizeObserver: newResizeObs,
-    });
 }
 
 export function resizeChart(chartId) {

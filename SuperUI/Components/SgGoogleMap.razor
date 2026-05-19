@@ -1,10 +1,9 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@inherits SgJsComponentBase
 @inject ISuperUILocalizer Localizer
 
-<div class="sg-gmap-container @CssClass"
-     style="height:@Height;width:@Width;"
+<div class="@Css("sg-gmap-container").Build()"
+     style="@Styles().Add("height", Height).Add("width", Width).NullIfEmpty()"
      @attributes="AdditionalAttributes">
 
     @if (_error is not null)
@@ -20,7 +19,7 @@
     else
     {
         <div @ref="_containerRef"
-             id="@_mapId"
+             id="@ResolvedId"
              class="sg-gmap-canvas"
              style="@(_ready ? null : "visibility:hidden;") width:100%;height:100%;"></div>
 
@@ -35,14 +34,12 @@
 </div>
 
 @code {
+    protected override string ModulePath => "./_content/SuperUI/sg-google-map.js";
+    protected override string IdPrefix => "sg-gmap";
+
     private ElementReference _containerRef;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgGoogleMap>? _selfRef;
-    private readonly string _mapId   = $"sg-gmap-{Guid.NewGuid():N}";
-    private readonly string _instanceId = $"sg-gmap-{Guid.NewGuid():N}";
     private bool _ready;
     private string? _error;
-    private bool _isDisposed;
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -53,14 +50,10 @@
     [Parameter] public IEnumerable<SgMapPolygon>?       Polygons  { get; set; }
     [Parameter] public string Height { get; set; } = "400px";
     [Parameter] public string Width  { get; set; } = "100%";
-    [Parameter] public string? CssClass { get; set; }
 
     [Parameter] public EventCallback<SgGoogleMapMarkerClickEventArgs> OnMarkerClick { get; set; }
     [Parameter] public EventCallback<SgMapClickEventArgs>             OnMapClick    { get; set; }
     [Parameter] public EventCallback<SgMapViewChangedEventArgs>       OnViewChanged { get; set; }
-
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -69,7 +62,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!_ready || _module is null) return;
+        if (!_ready) return;
 
         var src    = Sources ?? new SgGoogleMapSources();
         var typeId = (Options ?? new SgGoogleMapOptions()).MapTypeId.ToString().ToLowerInvariant();
@@ -89,19 +82,15 @@
         if (typeId != _lastMapTypeId)
         {
             _lastMapTypeId = typeId;
-            try { await _module.InvokeVoidAsync("setMapType", _instanceId, typeId); }
+            try { await SafeInvokeVoidAsync("setMapType", ResolvedId, typeId); }
             catch { }
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (_isDisposed || !firstRender) return;
         try
         {
-            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-google-map.js");
-            if (_isDisposed) return;
-            _selfRef = DotNetObjectReference.Create(this);
             await InitAsync();
         }
         catch (JSDisconnectedException) { }
@@ -111,13 +100,12 @@
 
     private async Task InitAsync()
     {
-        if (_module is null || _selfRef is null) return;
         try
         {
             var src = Sources ?? new SgGoogleMapSources();
             var o   = Options  ?? new SgGoogleMapOptions();
-            await _module.InvokeVoidAsync("initMap",
-                _selfRef, _containerRef, _instanceId,
+            await SafeInvokeVoidAsync("initMap",
+                SelfRef, _containerRef, ResolvedId,
                 new {
                     apiKey       = src.ApiKey,
                     centerLat    = o.CenterLat,
@@ -144,44 +132,38 @@
 
     public async Task SetCenterAsync(double lat, double lon, int? zoom = null)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("setCenter", _instanceId, lat, lon, zoom); }
+        try { await SafeInvokeVoidAsync("setCenter", ResolvedId, lat, lon, zoom); }
         catch { }
     }
 
     public async Task AddMarkerAsync(SgGoogleMapMarker marker)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("addMarker", _instanceId, marker); }
+        try { await SafeInvokeVoidAsync("addMarker", ResolvedId, marker); }
         catch { }
     }
 
     public async Task ClearMarkersAsync()
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("clearMarkers", _instanceId); }
+        try { await SafeInvokeVoidAsync("clearMarkers", ResolvedId); }
         catch { }
     }
 
     public async Task DrawPolylineAsync(string id, IEnumerable<SgMapCoord> coords,
         string color = "#2563eb", double width = 4, bool dashed = false)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("drawPolyline", _instanceId, id, coords.ToList(), new { color, width, dashed }); }
+        try { await SafeInvokeVoidAsync("drawPolyline", ResolvedId, id, coords.ToList(), new { color, width, dashed }); }
         catch { }
     }
 
     public async Task ClearPolylineAsync(string id)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("clearPolyline", _instanceId, id); }
+        try { await SafeInvokeVoidAsync("clearPolyline", ResolvedId, id); }
         catch { }
     }
 
     public async Task FitBoundsAsync(double south, double west, double north, double east)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("fitBounds", _instanceId, south, west, north, east); }
+        try { await SafeInvokeVoidAsync("fitBounds", ResolvedId, south, west, north, east); }
         catch { }
     }
 
@@ -191,11 +173,10 @@
     /// </summary>
     public async Task<SgMapRouteResult> BuildRouteAsync(double fromLat, double fromLon, double toLat, double toLon, string? apiKey = null, bool alternatives = false)
     {
-        if (_module is null) return new SgMapRouteResult { Ok = false, Error = "Map not ready" };
         try
         {
-            var raw = await _module.InvokeAsync<System.Text.Json.JsonElement>(
-                "buildRoute", _instanceId, fromLat, fromLon, toLat, toLon, apiKey, alternatives);
+            var raw = await SafeInvokeAsync<System.Text.Json.JsonElement>(
+                "buildRoute", ResolvedId, fromLat, fromLon, toLat, toLon, apiKey, alternatives);
             return ParseRouteResult(raw);
         }
         catch (Exception ex) { return new SgMapRouteResult { Ok = false, Error = ex.Message }; }
@@ -203,8 +184,7 @@
 
     public async Task SelectRouteAsync(int index)
     {
-        if (_module is null) return;
-        try { await _module.InvokeVoidAsync("selectRoute", _instanceId, index); }
+        try { await SafeInvokeVoidAsync("selectRoute", ResolvedId, index); }
         catch { }
     }
 
@@ -271,16 +251,8 @@
 
     // ── Dispose ───────────────────────────────────────────────────────────────
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-        if (_module is not null)
-        {
-            try { await _module.InvokeVoidAsync("disposeMap", _instanceId); } catch { }
-            try { await _module.DisposeAsync(); } catch { }
-            _module = null;
-        }
-        _selfRef?.Dispose();
+        await SafeInvokeVoidAsync("disposeMap", ResolvedId);
     }
 }

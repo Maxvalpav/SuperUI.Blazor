@@ -1,8 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Map type ──────────────────────────────────────────────────────────────────
-
-public enum SgGoogleMapType { Roadmap, Satellite, Hybrid, Terrain }
+// SgGoogleMapType — moved to SuperUI.Enums.SgGoogleMapType
 
 // ── Options ───────────────────────────────────────────────────────────────────
 

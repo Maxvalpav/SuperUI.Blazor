@@ -19,7 +19,7 @@
     <div class="sgc-pivot-designer-section">
         <div class="sgc-pivot-designer-label">@Localizer["PivotDesigner_AvailableFields"]</div>
         <div class="sgc-pivot-designer-search">
-            <SgTextBox TValue="string" Placeholder="@Localizer["PivotDesigner_SearchFields"]" Value="@_searchText" ValueChanged="@OnSearchChanged" />
+            <SgTextBox TValue="string" Placeholder="@Localizer["PivotDesigner_SearchFields"]" Value="@_searchText" ValueChanged="@OnSearchChanged" Size="SgSize.Sm" />
         </div>
         <div class="sgc-pivot-field-list">
             @foreach (var field in Fields.Where(f => !State.RowFields.Contains(f) && !State.ColumnFields.Contains(f) && !State.ValueFields.Contains(f) && (string.IsNullOrEmpty(_searchText) || f.Label.Contains(_searchText, StringComparison.OrdinalIgnoreCase))))
@@ -27,9 +27,9 @@
                 <div class="sgc-pivot-field-item">
                     <span>@field.Label</span>
                     <div class="sgc-pivot-field-actions">
-                        <button type="button" @onclick="() => AddToRows(field)" title="@Localizer["PivotDesigner_ToRows"]" aria-label="@Localizer["PivotDesigner_ToRows"]">R</button>
-                        <button type="button" @onclick="() => AddToCols(field)" title="@Localizer["PivotDesigner_ToColumns"]" aria-label="@Localizer["PivotDesigner_ToColumns"]">C</button>
-                        <button type="button" @onclick="() => AddToValues(field)" title="@Localizer["PivotDesigner_ToValues"]" aria-label="@Localizer["PivotDesigner_ToValues"]">@((MarkupString)SgIcons.Sigma)</button>
+                        <button type="button" @onclick="() => AddToRows(field)" title="@Localizer["PivotDesigner_ToRows"]">R</button>
+                        <button type="button" @onclick="() => AddToCols(field)" title="@Localizer["PivotDesigner_ToColumns"]">C</button>
+                        <button type="button" @onclick="() => AddToValues(field)" title="@Localizer["PivotDesigner_ToValues"]">Σ</button>
                     </div>
                 </div>
             }
@@ -79,15 +79,17 @@
                 @foreach (var field in State.ValueFields)
                 {
                     <div class="sgc-pivot-field-item sgc-active-field sgc-value-field">
-                        <div style="display: flex; align-items: center; gap: 4px; flex: 1; min-width: 0;">
+                        <div class="sgc-value-field-content">
                             <span class="sgc-label" title="@field.Label">@field.Label</span>
-                            <select class="sgc-aggr-select" @onchange="@(e => UpdateAggr(field, e))">
-                                <option value="@SgPivotAggregateType.Sum" selected="@(field.AggregateType == SgPivotAggregateType.Sum)">Sum</option>
-                                <option value="@SgPivotAggregateType.Count" selected="@(field.AggregateType == SgPivotAggregateType.Count)">Count</option>
-                                <option value="@SgPivotAggregateType.Average" selected="@(field.AggregateType == SgPivotAggregateType.Average)">Avg</option>
-                                <option value="@SgPivotAggregateType.Min" selected="@(field.AggregateType == SgPivotAggregateType.Min)">Min</option>
-                                <option value="@SgPivotAggregateType.Max" selected="@(field.AggregateType == SgPivotAggregateType.Max)">Max</option>
-                            </select>
+                            <div class="sgc-aggr-badge">
+                                <select class="sgc-aggr-select" @onchange="@(e => UpdateAggr(field, e))">
+                                    <option value="@SgPivotAggregateType.Sum" selected="@(field.AggregateType == SgPivotAggregateType.Sum)">@Localizer["DataGrid_AggregateSum"]</option>
+                                    <option value="@SgPivotAggregateType.Count" selected="@(field.AggregateType == SgPivotAggregateType.Count)">@Localizer["DataGrid_AggregateCount"]</option>
+                                    <option value="@SgPivotAggregateType.Average" selected="@(field.AggregateType == SgPivotAggregateType.Average)">@Localizer["DataGrid_AggregateAverage"]</option>
+                                    <option value="@SgPivotAggregateType.Min" selected="@(field.AggregateType == SgPivotAggregateType.Min)">@Localizer["DataGrid_AggregateMin"]</option>
+                                    <option value="@SgPivotAggregateType.Max" selected="@(field.AggregateType == SgPivotAggregateType.Max)">@Localizer["DataGrid_AggregateMax"]</option>
+                                </select>
+                            </div>
                         </div>
                         <button type="button" class="sgc-remove" aria-label="@Localizer["Remove"]" @onclick="() => RemoveField(field, State.ValueFields)">
                             @((MarkupString)SgIcons.X)
@@ -148,10 +150,41 @@
 
     private void OnSearchChanged(string val) => _searchText = val;
 
-    private void AddToRows(SgPivotField<TItem> f) { State.RowFields.Add(f); State.NotifyChanged(); }
-    private void AddToCols(SgPivotField<TItem> f) { State.ColumnFields.Add(f); State.NotifyChanged(); }
-    private void AddToValues(SgPivotField<TItem> f) { State.ValueFields.Add(f); State.NotifyChanged(); }
-    private void RemoveField(SgPivotField<TItem> f, List<SgPivotField<TItem>> list) { list.Remove(f); State.NotifyChanged(); }
+    private void AddToRows(SgPivotField<TItem> f) 
+    { 
+        RemoveFromAll(f);
+        State.RowFields.Add(f); 
+        State.NotifyChanged(); 
+        StateHasChanged(); 
+    }
+    private void AddToCols(SgPivotField<TItem> f) 
+    { 
+        RemoveFromAll(f);
+        State.ColumnFields.Add(f); 
+        State.NotifyChanged(); 
+        StateHasChanged(); 
+    }
+    private void AddToValues(SgPivotField<TItem> f) 
+    { 
+        RemoveFromAll(f);
+        State.ValueFields.Add(f); 
+        State.NotifyChanged(); 
+        StateHasChanged(); 
+    }
+
+    private void RemoveFromAll(SgPivotField<TItem> f)
+    {
+        State.RowFields.Remove(f);
+        State.ColumnFields.Remove(f);
+        State.ValueFields.Remove(f);
+    }
+
+    private void RemoveField(SgPivotField<TItem> f, List<SgPivotField<TItem>> list) 
+    { 
+        list.Remove(f); 
+        State.NotifyChanged(); 
+        StateHasChanged(); 
+    }
     private void ToggleCollapsed() => _isCollapsed = !_isCollapsed;
     
     private void UpdateAggr(SgPivotField<TItem> f, ChangeEventArgs e) 

@@ -1,7 +1,8 @@
 using System.Globalization;
-using System.Text;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using SuperUI.Base.ComponentBases;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
@@ -9,7 +10,7 @@ namespace SuperUI.Components;
 /// Linear flex layout container that arranges its children either horizontally or vertically
 /// with full control over gap, alignment, wrapping, sizing, padding and flex-grow/shrink.
 /// </summary>
-public partial class SgStack : ComponentBase
+public partial class SgStack : SgComponentBase
 {
     /// <summary>Child content to render inside the stack.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -86,18 +87,8 @@ public partial class SgStack : ComponentBase
     /// <summary>If <c>true</c>, the stack fills the full height of its parent.</summary>
     [Parameter] public bool FullHeight { get; set; }
 
-    /// <summary>Additional CSS classes appended to the root element.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Additional inline styles appended to the root element.</summary>
-    [Parameter] public string? Style { get; set; }
-
     /// <summary>Click event on the stack root.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
-
-    /// <summary>Captures any unmatched HTML attributes (id, data-*, aria-*, role, etc.).</summary>
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string AlignCss => Align switch
     {
@@ -127,22 +118,12 @@ public partial class SgStack : ComponentBase
         }
     }
 
-    private string ComputedClass
-    {
-        get
-        {
-            var sb = new StringBuilder("sg-stack");
-            if (Inline) sb.Append(" sg-stack-inline");
-            if (Wrap) sb.Append(" sg-stack-wrap");
-            if (Orientation == SgOrientation.Vertical) sb.Append(" sg-stack-vertical");
-            else sb.Append(" sg-stack-horizontal");
-            if (!string.IsNullOrWhiteSpace(CssClass))
-            {
-                sb.Append(' ').Append(CssClass);
-            }
-            return sb.ToString();
-        }
-    }
+    private string ComputedClass => Css("sg-stack")
+        .AddClass("sg-stack-inline",    Inline)
+        .AddClass("sg-stack-wrap",      Wrap)
+        .AddClass("sg-stack-vertical",  Orientation == SgOrientation.Vertical)
+        .AddClass("sg-stack-horizontal",Orientation != SgOrientation.Vertical)
+        .Build();
 
     private string FixUnit(string? value)
     {
@@ -154,51 +135,29 @@ public partial class SgStack : ComponentBase
         return value;
     }
 
-    private string ComputedStyle
-    {
-        get
-        {
-            var sb = new StringBuilder();
-            sb.Append("display:").Append(Inline ? "inline-flex" : "flex").Append(';');
-            sb.Append("flex-direction:").Append(FlexDirectionCss).Append(';');
-
-            var gapVal = FixUnit(Gap);
-            var rowGapVal = !string.IsNullOrWhiteSpace(RowGap) ? FixUnit(RowGap) : gapVal;
-            var colGapVal = !string.IsNullOrWhiteSpace(ColumnGap) ? FixUnit(ColumnGap) : gapVal;
-
-            if (rowGapVal != "0px" || colGapVal != "0px")
-            {
-                sb.Append("row-gap:").Append(rowGapVal).Append(';');
-                sb.Append("column-gap:").Append(colGapVal).Append(';');
-            }
-
-            sb.Append("align-items:").Append(AlignCss).Append(';');
-            sb.Append("justify-content:").Append(JustifyCss).Append(';');
-            sb.Append("flex-wrap:").Append(Wrap ? "wrap" : "nowrap").Append(';');
-
-            if (FlexGrow is { } g) sb.Append("flex-grow:").Append(g.ToString(CultureInfo.InvariantCulture)).Append(';');
-            else if (Grow) sb.Append("flex:1 1 auto;");
-            if (FlexShrink is { } s) sb.Append("flex-shrink:").Append(s.ToString(CultureInfo.InvariantCulture)).Append(';');
-
-            if (FullWidth) sb.Append("width:100%;");
-            else if (!string.IsNullOrWhiteSpace(Width)) sb.Append("width:").Append(Width).Append(';');
-
-            if (FullHeight) sb.Append("height:100%;");
-            else if (!string.IsNullOrWhiteSpace(Height)) sb.Append("height:").Append(Height).Append(';');
-
-            if (!string.IsNullOrWhiteSpace(MinWidth))  sb.Append("min-width:").Append(MinWidth).Append(';');
-            if (!string.IsNullOrWhiteSpace(MinHeight)) sb.Append("min-height:").Append(MinHeight).Append(';');
-            if (!string.IsNullOrWhiteSpace(MaxWidth))  sb.Append("max-width:").Append(MaxWidth).Append(';');
-            if (!string.IsNullOrWhiteSpace(MaxHeight)) sb.Append("max-height:").Append(MaxHeight).Append(';');
-
-            if (!string.IsNullOrWhiteSpace(Padding))    sb.Append("padding:").Append(Padding).Append(';');
-            if (!string.IsNullOrWhiteSpace(Margin))     sb.Append("margin:").Append(Margin).Append(';');
-            if (!string.IsNullOrWhiteSpace(Background)) sb.Append("background:").Append(Background).Append(';');
-
-            if (!string.IsNullOrWhiteSpace(Style)) sb.Append(Style);
-            return sb.ToString();
-        }
-    }
+    private string ComputedStyle => Styles()
+        .AddStyle("display",          Inline ? "inline-flex" : "flex")
+        .AddStyle("flex-direction",   FlexDirectionCss)
+        .AddStyle("row-gap",          FixUnit(RowGap ?? Gap), !string.IsNullOrWhiteSpace(Gap))
+        .AddStyle("column-gap",       FixUnit(ColumnGap ?? Gap), !string.IsNullOrWhiteSpace(Gap))
+        .AddStyle("align-items",      AlignCss)
+        .AddStyle("justify-content",  JustifyCss)
+        .AddStyle("flex-wrap",        Wrap ? "wrap" : "nowrap")
+        .AddStyle("flex-grow",        FlexGrow?.ToString(), FlexGrow.HasValue)
+        .AddStyle("flex",             "1 1 auto", Grow && !FlexGrow.HasValue)
+        .AddStyle("flex-shrink",      FlexShrink?.ToString(), FlexShrink.HasValue)
+        .AddStyle("width",            "100%",  FullWidth)
+        .AddStyle("width",            Width,   !FullWidth && !string.IsNullOrWhiteSpace(Width))
+        .AddStyle("height",           "100%",  FullHeight)
+        .AddStyle("height",           Height,  !FullHeight && !string.IsNullOrWhiteSpace(Height))
+        .AddStyle("min-width",        MinWidth,  !string.IsNullOrWhiteSpace(MinWidth))
+        .AddStyle("min-height",       MinHeight, !string.IsNullOrWhiteSpace(MinHeight))
+        .AddStyle("max-width",        MaxWidth,  !string.IsNullOrWhiteSpace(MaxWidth))
+        .AddStyle("max-height",       MaxHeight, !string.IsNullOrWhiteSpace(MaxHeight))
+        .AddStyle("padding",          Padding,   !string.IsNullOrWhiteSpace(Padding))
+        .AddStyle("margin",           Margin,    !string.IsNullOrWhiteSpace(Margin))
+        .AddStyle("background",       Background,!string.IsNullOrWhiteSpace(Background))
+        .Build();
 
     private Task HandleClick(MouseEventArgs args) =>
         OnClick.HasDelegate ? OnClick.InvokeAsync(args) : Task.CompletedTask;

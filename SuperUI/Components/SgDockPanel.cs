@@ -1,22 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 /// <summary>
-/// Defines the dock position of a panel inside <see cref="SgDockManager"/>.
-/// </summary>
-public enum SgDockPosition
-{
-    /// <summary>Left side panel.</summary>
-    Left,
-    /// <summary>Right side panel.</summary>
-    Right,
-    /// <summary>Bottom panel.</summary>
-    Bottom,
-    /// <summary>Center editor / main area (tab group).</summary>
-    Center
-}
-
-/// <summary>
-/// Represents a single panel (tab) registered in <see cref="SgDockManager"/>.
+/// Defines the dock position of a panel inside <see cref="Components.SgDockManager"/>.
 /// </summary>
 public sealed class SgDockPanel
 {
@@ -40,4 +27,61 @@ public sealed class SgDockPanel
 
     /// <summary>Arbitrary data attached to the panel for use in templates.</summary>
     public object? Tag { get; set; }
+
+    /// <summary>
+    /// Creates a new builder for a dock panel.
+    /// </summary>
+    /// <param name="title">Panel title.</param>
+    public static SgDockPanelBuilder Create(string title) => new(title);
+}
+
+/// <summary>
+/// Fluent builder for <see cref="SgDockPanel"/>.
+/// </summary>
+public sealed class SgDockPanelBuilder
+{
+    private readonly SgDockPanel _panel = new();
+
+    internal SgDockPanelBuilder(string title)
+    {
+        _panel.Title = title;
+    }
+
+    public SgDockPanelBuilder WithId(string id)
+    {
+        _panel.Id = id;
+        return this;
+    }
+
+    public SgDockPanelBuilder WithIcon(string icon)
+    {
+        _panel.Icon = icon;
+        return this;
+    }
+
+    public SgDockPanelBuilder At(SgDockPosition pos)
+    {
+        _panel.Position = pos;
+        return this;
+    }
+
+    public SgDockPanelBuilder Closable(bool value = true)
+    {
+        _panel.Closable = value;
+        return this;
+    }
+
+    public SgDockPanelBuilder Visible(bool value = true)
+    {
+        _panel.Visible = value;
+        return this;
+    }
+
+    public SgDockPanelBuilder WithTag(object? tag)
+    {
+        _panel.Tag = tag;
+        return this;
+    }
+
+    public SgDockPanel Build() => _panel;
 }

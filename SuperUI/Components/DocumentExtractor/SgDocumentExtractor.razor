@@ -1,0 +1,171 @@
+@namespace SuperUI.Components.DocumentExtractor
+@using Microsoft.AspNetCore.Components.Forms
+@using SuperUI.Components
+@using SuperUI.Components.DocumentExtractor.Models
+@using SuperUI.Components.DocumentExtractor.Services
+@using SuperUI.Localization
+@inject IJSRuntime JS
+@inject ISuperUILocalizer Localizer
+
+<div class="sg-doc-extractor @CssClass">
+    <div class="sg-doc-extractor-layout">
+        <div class="sg-doc-extractor-main">
+            <SgCard Title="@Localizer["Common_Add"]" Subtitle="Upload document for processing">
+                <SgFileUpload Label="@UploadLabel"
+                              Accept=".pdf,.docx,.txt,image/*"
+                              MaxFileSizeBytes="@MaxFileSizeBytes"
+                              ValueChanged="OnFilesPicked" />
+            </SgCard>
+
+            <SgCard Title="@Localizer["Llm_Settings"]" CssClass="mt-4">
+                <div class="sg-doc-extractor-grid">
+                    <SgSelect TValue="string"
+                              Label="@Localizer["Llm_Provider"]"
+                              Items="@_providerOptions"
+                              Value="@_endpoint.Kind.ToString()"
+                              ValueChanged="OnProviderChanged" />
+
+                    <SgTextBox TValue="string"
+                               Label="@Localizer["Llm_BaseUrl"]"
+                               @bind-Value="_endpoint.BaseUrl" />
+
+                    <SgTextBox TValue="string"
+                               Label="@Localizer["Llm_ApiKey"]"
+                               Type="password"
+                               @bind-Value="_endpoint.ApiKey" />
+
+                    <div class="sg-doc-extractor-model-row">
+                        <SgTextBox TValue="string"
+                                   Label="@Localizer["Llm_ModelId"]"
+                                   Placeholder="e.g. gpt-4o-mini"
+                                   @bind-Value="_endpoint.Model" />
+                        <SgButton Text="Fetch" Variant="SgButtonVariant.Default" OnClick="FetchModelsAsync" Loading="_fetchingModels" />
+                    </div>
+
+                    @if (_models.Count > 0)
+                    {
+                        <SgSelect TValue="string"
+                                  Label="Model Catalog"
+                                  Items="@_models.Select(m => m.Id)"
+                                  Value="@_endpoint.Model"
+                                  ValueChanged="OnModelPicked" />
+                    }
+
+                    <SgSelect TValue="string"
+                              Label="Extraction Logic"
+                              Items="@Extractors.Select(e => e.Id)"
+                              Value="@_selectedExtractorId"
+                              ValueChanged="OnExtractorPicked" />
+                </div>
+
+                <div class="sg-doc-extractor-actions mt-4">
+                    <SgButton Text="Extract"
+                              Variant="SgButtonVariant.Primary"
+                              Disabled="@(_source is null || _busy)"
+                              Loading="_busy"
+                              OnClick="ExtractAsync" />
+                    <SgButton Text="Save"
+                              Variant="SgButtonVariant.Default"
+                              Disabled="@(_result is null || _busy)"
+                              OnClick="SaveAsync" />
+                </div>
+            </SgCard>
+
+            @if (!string.IsNullOrEmpty(_status))
+            {
+                <div class="mt-3">
+                    <SgAlert Variant="@(_isError ? SgAlertVariant.Danger : SgAlertVariant.Info)" Text="@_status" />
+                </div>
+            }
+
+            @if (_result is not null)
+            {
+                <SgCard Title="Extraction Result" Subtitle="Review and edit the extracted data" CssClass="mt-4">
+                    <div class="sg-doc-extractor-form">
+                        @if (_result.Fields.Count == 0)
+                        {
+                            <SgAlert Variant="SgAlertVariant.Warn" Text="No fields were extracted. You can still save the original document." />
+                        }
+                        @foreach (var field in _result.Fields)
+                        {
+                            var f = field;
+                            <div class="sg-doc-extractor-field">
+                                @switch (f.Type)
+                                {
+                                    case SgDocumentFieldType.MultilineText:
+                                        <SgTextBox TValue="string"
+                                                   Label="@f.Label"
+                                                   Multiline="true"
+                                                   Rows="4"
+                                                   Hint="@f.Hint"
+                                                   Placeholder="@f.Placeholder"
+                                                   Required="@f.Required"
+                                                   Value="@(f.Value as string)"
+                                                   ValueChanged="(string? v) => f.Value = v" />
+                                        break;
+                                    case SgDocumentFieldType.Number:
+                                        <SgNumberInput TValue="double?"
+                                                       Label="@f.Label"
+                                                       Hint="@f.Hint"
+                                                       Required="@f.Required"
+                                                       Value="@AsNullableDouble(f.Value)"
+                                                       ValueChanged="(double? v) => f.Value = v" />
+                                        break;
+                                    case SgDocumentFieldType.Date:
+                                        <SgDatePicker Label="@f.Label"
+                                                      Hint="@f.Hint"
+                                                      Required="@f.Required"
+                                                      Value="@AsNullableDate(f.Value)"
+                                                      ValueChanged="(DateTime? v) => f.Value = v" />
+                                        break;
+                                    case SgDocumentFieldType.Boolean:
+                                        <SgCheckBox Label="@f.Label"
+                                                    Hint="@f.Hint"
+                                                    Value="@AsBool(f.Value)"
+                                                    ValueChanged="(bool v) => f.Value = v" />
+                                        break;
+                                    case SgDocumentFieldType.Select:
+                                        <SgSelect TValue="string"
+                                                  Label="@f.Label"
+                                                  Items="@(f.Options ?? new List<string>())"
+                                                  Value="@(f.Value as string)"
+                                                  ValueChanged="(string? v) => f.Value = v" />
+                                        break;
+                                    default:
+                                        <SgTextBox TValue="string"
+                                                   Label="@f.Label"
+                                                   Hint="@f.Hint"
+                                                   Placeholder="@f.Placeholder"
+                                                   Required="@f.Required"
+                                                   Value="@(f.Value as string)"
+                                                   ValueChanged="(string? v) => f.Value = v" />
+                                        break;
+                                }
+                            </div>
+                        }
+                    </div>
+                </SgCard>
+            }
+        </div>
+
+        <div class="sg-doc-extractor-side">
+            <SgCard Title="How it works">
+                <ol class="sg-doc-help-list">
+                    <li>Pick a provider (<b>OpenAI-compatible</b> or <b>OpenRouter</b>).</li>
+                    <li>Set the <b>Base URL</b> and <b>API key</b>.</li>
+                    <li>Select an <b>Extractor</b> (LLM-based or static parser).</li>
+                    <li>Upload a document and press <b>Extract</b>.</li>
+                    <li>Edit fields and <b>Save</b> back to the original format.</li>
+                </ol>
+
+                <div class="sg-doc-feature-badge mt-4">
+                    <div class="sg-doc-feature-title">Modular by design</div>
+                    <ul class="sg-doc-feature-list">
+                        <li><code>IDocumentExtractor</code> — LLM + built-in DOCX text parser ship by default.</li>
+                        <li><code>IDocumentSaver</code> — DOCX round-trip, plain-text, passthrough for PDF/images.</li>
+                    </ul>
+                </div>
+            </SgCard>
+        </div>
+    </div>
+</div>

@@ -1,8 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Map type ──────────────────────────────────────────────────────────────────
-
-public enum SgYandexMapType { Map, Satellite, Hybrid, PublicTransport }
+// SgYandexMapType — moved to SuperUI.Enums.SgYandexMapType
 
 // ── Options ───────────────────────────────────────────────────────────────────
 

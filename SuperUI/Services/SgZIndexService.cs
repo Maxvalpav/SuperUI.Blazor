@@ -86,6 +86,11 @@ public sealed class SgZIndexService
         _entries.RemoveAll(x => x.Owner == owner);
         var newTop = GetTopOwner();
 
+        if (_entries.Count == 0)
+        {
+            _currentZIndex = 1000;
+        }
+
         if (!ReferenceEquals(oldTop, newTop))
         {
             TopOwnerChanged?.Invoke(newTop);

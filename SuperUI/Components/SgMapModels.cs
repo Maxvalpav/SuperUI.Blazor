@@ -1,25 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Tile layer type ───────────────────────────────────────────────────────────
-
-/// <summary>Built-in tile layer presets.</summary>
-public enum SgMapTileLayer
-{
-    /// <summary>OpenStreetMap (default, free).</summary>
-    OpenStreetMap,
-    /// <summary>Stamen Toner (black &amp; white).</summary>
-    StamenToner,
-    /// <summary>Stamen Watercolor.</summary>
-    StamenWatercolor,
-    /// <summary>CartoDB Positron (light, minimal).</summary>
-    CartoPositron,
-    /// <summary>CartoDB Dark Matter.</summary>
-    CartoDarkMatter,
-    /// <summary>Custom XYZ tile URL — set <see cref="SgMapOptions.CustomTileUrl"/>.</summary>
-    Custom,
-    /// <summary>No base tile layer.</summary>
-    None,
-}
+// SgMapTileLayer — moved to SuperUI.Enums.SgMapTileLayer
 
 // ── Marker ────────────────────────────────────────────────────────────────────
 

@@ -1,48 +1,13 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Shape types ───────────────────────────────────────────────────────────────
-
-/// <summary>Type of a Konva shape on the canvas.</summary>
-public enum SgKonvaShapeType
-{
-    Rect,
-    Circle,
-    Ellipse,
-    Line,
-    Arrow,
-    Text,
-    Image,
-    Group,
-}
+// SgKonvaShapeType — moved to SuperUI.Enums.SgKonvaShapeType
 
 // ── Floor plan room types ─────────────────────────────────────────────────────
-
-/// <summary>Functional type of a room in a floor plan.</summary>
-public enum SgFloorRoomType
-{
-    Office,
-    MeetingRoom,
-    OpenSpace,
-    Kitchen,
-    Restroom,
-    Corridor,
-    Storage,
-    ServerRoom,
-    Reception,
-    Lobby,
-    Stairs,
-    Elevator,
-}
-
-/// <summary>Occupancy / availability status of a room.</summary>
-public enum SgFloorRoomStatus
-{
-    Available,
-    Occupied,
-    Reserved,
-    Maintenance,
-    Closed,
-}
+// SgFloorRoomType — moved to SuperUI.Enums.SgFloorRoomType
+// SgFloorRoomStatus — moved to SuperUI.Enums.SgFloorRoomStatus
 
 // ── Floor plan models ─────────────────────────────────────────────────────────
 

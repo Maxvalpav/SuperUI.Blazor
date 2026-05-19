@@ -1,53 +1,156 @@
 @namespace SuperUI.Components
-@inject IJSRuntime JS
+@using SuperUI.Services
+@using SuperUI.Themes
+@using SuperUI.Localization
+@inject SgThemeService ThemeService
+@inject ISuperUILocalizer Localizer
+@implements IAsyncDisposable
 
-<button type="button" class="sgc-btn sgc-ghost sgc-theme-switcher" 
-        title="@(IsDark ? "Switch to Light Mode" : "Switch to Dark Mode")"
-        aria-label="@(IsDark ? "Switch to Light Mode" : "Switch to Dark Mode")"
-        @onclick="ToggleThemeAsync">
-    @if (IsDark)
-    {
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="18.36" x2="5.64" y2="16.94"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-    }
-    else
-    {
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-    }
-</button>
+<SgDropdown @ref="_dropdown"
+            Placement="SgPlacement.BottomEnd"
+            MinWidth="280"
+            MaxHeight="520"
+            MenuCssClass="sgc-theme-switcher-menu">
+    <TriggerContent>
+        <button type="button"
+                class="sgc-btn sgc-ghost sgc-theme-switcher-trigger"
+                title="@Localizer.GetString("Theme_TriggerTitle", ThemeService.CurrentTheme.Name, GetModeLabel(ThemeService.CurrentMode))"
+                aria-label="@Localizer["Theme_OpenMenu"]">
+            <span class="sgc-theme-switcher-trigger-icon" aria-hidden="true">
+                <SgIcon Icon="@GetModeIcon(ThemeService.CurrentMode)" Size="14px" />
+            </span>
+            <span class="sgc-theme-switcher-trigger-text">
+                <span class="sgc-theme-switcher-trigger-title">@ThemeService.CurrentTheme.Name</span>
+                <span class="sgc-theme-switcher-trigger-subtitle">@GetModeLabel(ThemeService.CurrentMode)</span>
+            </span>
+        </button>
+    </TriggerContent>
+
+    <HeaderContent>
+        <div class="sgc-theme-switcher-header">
+            <div class="sgc-theme-switcher-header-main">
+                <div class="sgc-theme-switcher-eyebrow">@Localizer["Theme_Appearance"]</div>
+                <div class="sgc-theme-switcher-title">@ThemeService.CurrentTheme.Name</div>
+            </div>
+            <button type="button" 
+                    class="sgc-theme-reset-btn" 
+                    @onclick="ResetToDefaultAsync"
+                    title="@Localizer["Theme_ResetToDefault"]">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+            </button>
+        </div>
+    </HeaderContent>
+
+    <ChildContent>
+        <div class="sgc-theme-switcher-modes">
+            <button type="button" 
+                    class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "light" ? "is-active" : "")"
+                    @onclick='() => SetModeAsync("light")'
+                    title="@Localizer["Theme_LightModeTitle"]">
+                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Sun" Size="14px" /></span>
+                <span class="sgc-theme-mode-text">@Localizer["Theme_LightMode"]</span>
+            </button>
+            <button type="button" 
+                    class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "dark" ? "is-active" : "")"
+                    @onclick='() => SetModeAsync("dark")'
+                    title="@Localizer["Theme_DarkModeTitle"]">
+                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Moon" Size="14px" /></span>
+                <span class="sgc-theme-mode-text">@Localizer["Theme_DarkMode"]</span>
+            </button>
+            <button type="button" 
+                    class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "auto" ? "is-active" : "")"
+                    @onclick='() => SetModeAsync("auto")'
+                    title="@Localizer["Theme_AutoModeTitle"]">
+                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Monitor" Size="14px" /></span>
+                <span class="sgc-theme-mode-text">@Localizer["Theme_AutoMode"]</span>
+            </button>
+        </div>
+
+        <div class="sgc-theme-switcher-divider"></div>
+
+        <div class="sgc-theme-switcher-section">@Localizer["Theme_Collection"]</div>
+        <div class="sgc-theme-grid">
+            @foreach (var theme in ThemeService.GetAvailableThemes())
+            {
+                <button type="button" 
+                        class="sgc-theme-grid-item @(ThemeService.CurrentTheme.Id == theme.Id ? "is-active" : "")"
+                        @onclick='() => SetThemeAsync(theme.Id)'
+                        title="@theme.Description">
+                    <div class="sgc-theme-grid-preview" style="--p-color: @theme.Light.ColorPrimary; --s-color: @theme.Light.Surface;">
+                        <div class="sgc-theme-grid-preview-primary"></div>
+                        <div class="sgc-theme-grid-preview-surface"></div>
+                        @if (ThemeService.CurrentTheme.Id == theme.Id)
+                        {
+                            <span class="sgc-theme-grid-check">
+                                <SgIcon Icon="@SgIcons.Check" Size="10px" />
+                            </span>
+                        }
+                    </div>
+                    <span class="sgc-theme-grid-name">@theme.Name</span>
+                </button>
+            }
+        </div>
+    </ChildContent>
+
+    <FooterContent>
+        <div class="sgc-theme-switcher-footer">
+            <SgButton Variant="SgButtonVariant.Default" Size="SgSize.Sm" OnClick="CloseAsync">@Localizer["Theme_Close"]</SgButton>
+        </div>
+    </FooterContent>
+</SgDropdown>
 
 @code {
-    private bool IsDark { get; set; }
+    private SgDropdown? _dropdown;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnInitializedAsync()
     {
-        if (firstRender)
-        {
-            var theme = await JS.InvokeAsync<string>("localStorage.getItem", "sui-theme");
-            if (string.IsNullOrEmpty(theme))
-            {
-                // Check system preference
-                var isDarkPreferred = await JS.InvokeAsync<bool>("eval", "window.matchMedia('(prefers-color-scheme: dark)').matches");
-                IsDark = isDarkPreferred;
-            }
-            else
-            {
-                IsDark = theme == "dark";
-            }
-            
-            await ApplyThemeAsync();
-            StateHasChanged();
-        }
+        await ThemeService.InitializeAsync();
+        ThemeService.ThemeChanged += HandleThemeChanged;
     }
 
-    private async Task ToggleThemeAsync()
+    private async Task SetModeAsync(string mode)
     {
-        IsDark = !IsDark;
-        await ApplyThemeAsync();
-        await JS.InvokeVoidAsync("localStorage.setItem", "sui-theme", IsDark ? "dark" : "light");
+        await ThemeService.SetModeAsync(mode);
+        await CloseAsync();
     }
 
-    private async Task ApplyThemeAsync()
+    private async Task SetThemeAsync(string themeId)
     {
-        await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{(IsDark ? "dark" : "light")}')");
+        await ThemeService.SetThemeAsync(themeId);
+        await CloseAsync();
+    }
+
+    private async Task ResetToDefaultAsync()
+    {
+        await ThemeService.SetThemeAsync("superui-default");
+        await ThemeService.SetModeAsync("light");
+        await CloseAsync();
+    }
+
+    private Task CloseAsync() => _dropdown?.CloseAsync() ?? Task.CompletedTask;
+
+    private void HandleThemeChanged(IThemeDefinition theme, string mode)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string GetModeLabel(string mode) => mode switch
+    {
+        "dark" => Localizer["Theme_DarkMode"],
+        "auto" => Localizer["Theme_AutoMode"],
+        _ => Localizer["Theme_LightMode"]
+    };
+
+    private static string GetModeIcon(string mode) => mode switch
+    {
+        "dark" => SgIcons.Moon,
+        "auto" => SgIcons.Monitor,
+        _ => SgIcons.Sun
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+        await Task.CompletedTask;
     }
 }

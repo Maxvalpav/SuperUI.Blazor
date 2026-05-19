@@ -1,237 +1,776 @@
 @namespace SuperUI.Components
-@using Microsoft.JSInterop
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@using SuperUI.Enums
+@using Microsoft.AspNetCore.Components.Web
 
-<div class="sgc-kpi-card @CssClass @(IsLoading ? "sgc-kpi-loading" : "") @(Clickable ? "sgc-kpi-clickable" : "")"
-     style="@Style"
-     @onclick="HandleClick"
-     role="@(Clickable ? "button" : "presentation")"
+@* ═══════════════════════════════════════════════════════════════════════════
+   SgKPICard — three display modes:
+     Card   — gradient card with full-bleed wave chart
+     Ring   — circular SVG ring with value inside
+     Inline — horizontal row: label · value · dot sparkline
+   ═══════════════════════════════════════════════════════════════════════════ *@
+
+<div class="@RootClass"
+     style="@RootStyle"
+     role="@(Clickable ? "button" : null)"
      tabindex="@(Clickable ? "0" : null)"
-     @onkeydown="HandleKeyDown">
-    
+     aria-label="@AriaLabel"
+     @onclick="HandleClickAsync"
+     @onkeydown="HandleKeyDownAsync"
+     @attributes="AdditionalAttributes">
+
     @if (IsLoading)
     {
-        <div class="sgc-kpi-skeleton">
-            <span class="sgc-kpi-skel-icon"></span>
-            <span class="sgc-kpi-skel-value"></span>
-            <span class="sgc-kpi-skel-spark"></span>
-        </div>
+        @RenderSkeleton()
+    }
+    else if (DisplayMode == SgKPIDisplayMode.Ring)
+    {
+        @RenderRing()
+    }
+    else if (DisplayMode == SgKPIDisplayMode.Inline)
+    {
+        @RenderInline()
+    }
+    else if (DisplayMode == SgKPIDisplayMode.Ban)
+    {
+        @RenderBan()
+    }
+    else if (DisplayMode == SgKPIDisplayMode.Analytic)
+    {
+        @RenderAnalytic()
     }
     else
     {
-        <div class="sgc-kpi-header">
-            @if (!string.IsNullOrEmpty(Icon))
-            {
-                <span class="sgc-kpi-icon" style="color: @IconColor">@((MarkupString)Icon)</span>
-            }
-            @if (HeaderContent is not null)
-            {
-                <div class="sgc-kpi-header-content">@HeaderContent</div>
-            }
-        </div>
-
-        <div class="sgc-kpi-body">
-            <div class="sgc-kpi-value-container">
-                @if (!string.IsNullOrEmpty(Prefix))
-                {
-                    <span class="sgc-kpi-prefix">@Prefix</span>
-                }
-                <span class="sgc-kpi-value">@(ValueText ?? FormattedValue)</span>
-                @if (!string.IsNullOrEmpty(Suffix))
-                {
-                    <span class="sgc-kpi-suffix">@Suffix</span>
-                }
-            </div>
-
-            @if (ShowDelta && Delta.HasValue)
-            {
-                <div class="sgc-kpi-delta @(IsPositive ? "sgc-kpi-delta-positive" : IsNegative ? "sgc-kpi-delta-negative" : "sgc-kpi-delta-neutral")"
-                     style="@(UseTrendColor && !IsNeutral ? $"color: {TrendColor};" : "")">
-                    @if (IsPositive)
-                    {
-                        <span class="sgc-kpi-delta-arrow">↑</span>
-                    }
-                    else if (IsNegative)
-                    {
-                        <span class="sgc-kpi-delta-arrow">↓</span>
-                    }
-                    <span class="sgc-kpi-delta-value">@FormattedDelta</span>
-                    @if (ShowDeltaPercent && DeltaPercent.HasValue)
-                    {
-                        <span class="sgc-kpi-delta-percent">(@FormattedDeltaPercent)</span>
-                    }
-                </div>
-            }
-
-            @if (SparklineData != null && SparklineData.Length > 0)
-            {
-                <div class="sgc-kpi-sparkline-container" style="height: @(SparklineHeight)px;">
-                    <canvas @ref="_sparklineRef"
-                            id="@_sparklineId"
-                            class="sgc-kpi-sparkline"
-                            style="height: @(SparklineHeight)px; width: 100%;">
-                    </canvas>
-                </div>
-            }
-        </div>
-
-        @if (FooterContent is not null)
-        {
-            <div class="sgc-kpi-footer">
-                @FooterContent
-            </div>
-        }
+        @RenderCard()
     }
+
 </div>
 
 @code {
-    private ElementReference _sparklineRef;
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgKPICard>? _self;
-    private readonly string _sparklineId = $"sg-kpi-spark-{Guid.NewGuid():N}";
-    private bool _isDisposed;
-
+    // ── Value & display ───────────────────────────────────────────────────────
     [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
     [Parameter] public double? Value { get; set; }
     [Parameter] public string? ValueText { get; set; }
-    [Parameter] public string? Formatter { get; set; }
+    [Parameter] public string? Format { get; set; }
     [Parameter] public string? Prefix { get; set; }
     [Parameter] public string? Suffix { get; set; }
-    
-    [Parameter] public double? Delta { get; set; }
-    [Parameter] public double? DeltaPercent { get; set; }
-    [Parameter] public bool ShowDelta { get; set; } = true;
-    [Parameter] public bool ShowDeltaPercent { get; set; } = true;
-    
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public string? ValueColor { get; set; }
+
+    // ── Target / progress ─────────────────────────────────────────────────────
+    [Parameter] public double? Target { get; set; }
+    [Parameter] public string? TargetLabel { get; set; }
+
+    // ── Delta metrics (Ban / Analytic modes) ──────────────────────────────────
+    /// <summary>Secondary comparison metrics shown below the main value (Ban/Analytic modes).</summary>
+    [Parameter] public IReadOnlyList<SgKPIDelta>? Deltas { get; set; }
+
+    /// <summary>Period label shown above the value in Analytic mode (e.g. "Current month").</summary>
+    [Parameter] public string? PeriodLabel { get; set; }
+
+    // ── Icon ──────────────────────────────────────────────────────────────────
     [Parameter] public string? Icon { get; set; }
     [Parameter] public string? IconColor { get; set; }
-    [Parameter] public string? TrendColor { get; set; }
-    [Parameter] public bool UseTrendColor { get; set; } = true;
-    
-    [Parameter] public double[]? SparklineData { get; set; }
-    [Parameter] public int SparklineHeight { get; set; } = 40;
-    [Parameter] public string? SparklineColor { get; set; }
-    [Parameter] public bool SparklineFill { get; set; } = true;
-    
+    [Parameter] public string? IconBackground { get; set; }
+
+    // ── Trend ─────────────────────────────────────────────────────────────────
+    [Parameter] public double? TrendValue { get; set; }
+    [Parameter] public double? TrendPercent { get; set; }
+    [Parameter] public bool ShowTrend { get; set; } = true;
+    [Parameter] public string? TrendLabel { get; set; }
+    [Parameter] public bool InvertTrend { get; set; }
+
+    // ── Chart ─────────────────────────────────────────────────────────────────
+    [Parameter] public double[]? ChartData { get; set; }
+    [Parameter] public SgKPIChartType ChartType { get; set; } = SgKPIChartType.Area;
+    [Parameter] public string? ChartColor { get; set; }
+
+    // ── Appearance ────────────────────────────────────────────────────────────
+    [Parameter] public SgKPIVariant Variant { get; set; } = SgKPIVariant.Default;
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Visual layout mode. Default <see cref="SgKPIDisplayMode.Card"/>.</summary>
+    [Parameter] public SgKPIDisplayMode DisplayMode { get; set; } = SgKPIDisplayMode.Card;
+
+    // ── State ─────────────────────────────────────────────────────────────────
     [Parameter] public bool IsLoading { get; set; }
+
+    // ── Interaction ───────────────────────────────────────────────────────────
     [Parameter] public bool Clickable { get; set; }
     [Parameter] public EventCallback OnClick { get; set; }
-    
-    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    // ── Slots ─────────────────────────────────────────────────────────────────
+    [Parameter] public RenderFragment? ActionContent { get; set; }
     [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    // ── Passthrough ───────────────────────────────────────────────────────────
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Style { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private string FormattedValue => Value.HasValue 
-        ? (string.IsNullOrEmpty(Formatter) ? Value.Value.ToString("N0") : Value.Value.ToString(Formatter)) 
-        : "—";
+    // ── Computed ──────────────────────────────────────────────────────────────
 
-    private string FormattedDelta => Delta.HasValue ? Math.Abs(Delta.Value).ToString("N0") : "";
-    private string FormattedDeltaPercent => DeltaPercent.HasValue ? $"{Math.Abs(DeltaPercent.Value):N1}%" : "";
-    
-    private bool IsPositive => Delta.HasValue && Delta.Value > 0;
-    private bool IsNegative => Delta.HasValue && Delta.Value < 0;
-    private bool IsNeutral => !IsPositive && !IsNegative;
+    private bool HasChart => ChartData is { Length: > 1 };
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private bool IsPositiveTrend
     {
-        if (_isDisposed) return;
-        
-        if (firstRender && !IsLoading && SparklineData != null && SparklineData.Length > 0)
+        get
         {
-            try
+            var raw = TrendPercent ?? TrendValue ?? 0;
+            return InvertTrend ? raw < 0 : raw >= 0;
+        }
+    }
+
+    private string TrendClass => IsPositiveTrend ? "sgc-kpi-up" : "sgc-kpi-down";
+
+    private string TrendAriaLabel
+    {
+        get
+        {
+            var dir = IsPositiveTrend ? "up" : "down";
+            if (TrendPercent.HasValue) return $"Trend {dir} {Math.Abs(TrendPercent.Value):0.#}%";
+            if (TrendValue.HasValue)   return $"Trend {dir} {Math.Abs(TrendValue.Value):0.##}";
+            return $"Trend {dir}";
+        }
+    }
+
+    private string FormattedValue
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(ValueText)) return ValueText;
+            if (!Value.HasValue) return "—";
+            if (!string.IsNullOrEmpty(Format)) return Value.Value.ToString(Format);
+            return Value.Value % 1 == 0
+                ? ((long)Value.Value).ToString("N0")
+                : Value.Value.ToString("G");
+        }
+    }
+
+    private string? ValueColorStyle => !string.IsNullOrEmpty(ValueColor) ? $"color:{ValueColor};" : null;
+
+    private string? IconStyle
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(IconColor) && string.IsNullOrEmpty(IconBackground)) return null;
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrEmpty(IconColor))      sb.Append($"color:{IconColor};");
+            if (!string.IsNullOrEmpty(IconBackground)) sb.Append($"background:{IconBackground};");
+            return sb.ToString();
+        }
+    }
+
+    private string? AriaLabel => Clickable ? (Title ?? "KPI Card") : null;
+
+    private string RootClass
+    {
+        get
+        {
+            var mode = DisplayMode switch
             {
-                _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-sparkline.js");
-                if (_isDisposed) return;
-                
-                _self ??= DotNetObjectReference.Create(this);
-                await InitializeSparklineAsync();
+                SgKPIDisplayMode.Ring     => "sgc-kpi-ring",
+                SgKPIDisplayMode.Inline   => "sgc-kpi-inline",
+                SgKPIDisplayMode.Ban      => "sgc-kpi-ban",
+                SgKPIDisplayMode.Analytic => "sgc-kpi-analytic",
+                _                         => "sgc-kpi-card"
+            };
+            var cls = new List<string> { "sgc-kpi", mode, $"sgc-kpi-{SizeKey}", $"sgc-kpi-v-{VariantKey}" };
+            if (Clickable)                            cls.Add("sgc-kpi-clickable");
+            if (IsLoading)                            cls.Add("sgc-kpi-loading");
+            if (HasChart)                             cls.Add("sgc-kpi-has-chart");
+            if (!string.IsNullOrWhiteSpace(CssClass)) cls.Add(CssClass!);
+            return string.Join(' ', cls);
+        }
+    }
+
+    private string? RootStyle => string.IsNullOrWhiteSpace(Style) ? null : Style;
+
+    private string SizeKey => Size switch
+    {
+        SgSize.Sm => "sm",
+        SgSize.Lg => "lg",
+        SgSize.Xl => "xl",
+        _         => "md"
+    };
+
+    private string VariantKey => Variant switch
+    {
+        SgKPIVariant.Primary => "primary",
+        SgKPIVariant.Success => "success",
+        SgKPIVariant.Warning => "warning",
+        SgKPIVariant.Danger  => "danger",
+        SgKPIVariant.Info    => "info",
+        _                    => "default"
+    };
+
+    // ── Ring color per variant ────────────────────────────────────────────────
+    private string RingColor => Variant switch
+    {
+        SgKPIVariant.Success => "#10b981",
+        SgKPIVariant.Warning => "#f59e0b",
+        SgKPIVariant.Danger  => "#f43f5e",
+        SgKPIVariant.Info    => "#0ea5e9",
+        SgKPIVariant.Primary => "#006fee",
+        _                    => "#9ca3af"
+    };
+
+    // ── Render fragments ──────────────────────────────────────────────────────
+
+    private RenderFragment RenderSkeleton() => __builder =>
+    {
+        <div class="sgc-kpi-body">
+            <div class="sgc-kpi-skeleton">
+                <div class="sgc-kpi-skel-row">
+                    <SgSkeleton Width="32px" Height="32px" Shape="SgSkeletonShape.Rect" />
+                    <div class="sgc-kpi-skel-lines">
+                        <SgSkeleton Width="55%" Height="11px" />
+                        <SgSkeleton Width="35%" Height="9px" />
+                    </div>
+                </div>
+                <SgSkeleton Width="48%" Height="30px" CssClass="sgc-kpi-skel-val" />
+                <SgSkeleton Width="38%" Height="9px" />
+            </div>
+        </div>
+    };
+
+    private RenderFragment RenderCard() => __builder =>
+    {
+        <div class="sgc-kpi-body">
+            <div class="sgc-kpi-header">
+                <div class="sgc-kpi-header-text">
+                    @if (!string.IsNullOrEmpty(Title))   { <span class="sgc-kpi-title">@Title</span> }
+                    @if (!string.IsNullOrEmpty(Subtitle)){ <span class="sgc-kpi-subtitle">@Subtitle</span> }
+                </div>
+                @if (!string.IsNullOrEmpty(Icon))
+                {
+                    <div class="sgc-kpi-icon" style="@IconStyle" aria-hidden="true">@((MarkupString)Icon)</div>
+                }
+                @if (ActionContent is not null)
+                {
+                    <div class="sgc-kpi-action" @onclick:stopPropagation="true">@ActionContent</div>
+                }
+            </div>
+
+            <div class="sgc-kpi-spacer"></div>
+
+            <div class="sgc-kpi-value-row">
+                <span class="sgc-kpi-value" style="@ValueColorStyle">
+                    @if (!string.IsNullOrEmpty(Prefix)) { <span class="sgc-kpi-affix sgc-kpi-prefix">@Prefix</span> }
+                    @FormattedValue
+                    @if (!string.IsNullOrEmpty(Suffix)) { <span class="sgc-kpi-affix sgc-kpi-suffix">@Suffix</span> }
+                </span>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Description)) { <div class="sgc-kpi-description">@Description</div> }
+
+            @if (ShowTrend && (TrendPercent.HasValue || TrendValue.HasValue))
+            {
+                <div class="sgc-kpi-trend-wrap">
+                    <span class="sgc-kpi-trend-pill @TrendClass" aria-label="@TrendAriaLabel">
+                        <span class="sgc-kpi-trend-icon" aria-hidden="true">
+                            @((MarkupString)(IsPositiveTrend ? ArrowUpSvg : ArrowDownSvg))
+                        </span>
+                        <span class="sgc-kpi-trend-val">@TrendText</span>
+                    </span>
+                    @if (!string.IsNullOrEmpty(TrendLabel)) { <span class="sgc-kpi-trend-label">@TrendLabel</span> }
+                </div>
             }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-        }
-        else if (!firstRender && !IsLoading && SparklineData != null && _module != null)
-        {
-            await UpdateSparklineAsync();
-        }
-    }
 
-    private async Task InitializeSparklineAsync()
-    {
-        if (_module is null || _isDisposed) return;
-        
-        var color = SparklineColor ?? (IsPositive ? "#10b981" : IsNegative ? "#ef4444" : "#6b7280");
-        
-        var config = new
+            @if (Target.HasValue && Value.HasValue)
+            {
+                var pct = Math.Min(100.0, Math.Max(0.0, Value!.Value / Target!.Value * 100.0));
+                <div class="sgc-kpi-progress" role="progressbar"
+                     aria-valuenow="@((int)pct)" aria-valuemin="0" aria-valuemax="100">
+                    <div class="sgc-kpi-progress-track">
+                        <div class="sgc-kpi-progress-fill" style="width:@(pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%"></div>
+                    </div>
+                    <span class="sgc-kpi-progress-label">@($"{pct:0}%")
+                        @if (!string.IsNullOrEmpty(TargetLabel)) { <span class="sgc-kpi-progress-target"> @TargetLabel</span> }
+                    </span>
+                </div>
+            }
+
+            @if (FooterContent is not null) { <div class="sgc-kpi-footer">@FooterContent</div> }
+        </div>
+
+        @if (HasChart)
         {
-            data = SparklineData,
-            color,
-            fill = SparklineFill,
-            height = SparklineHeight
+            <div class="sgc-kpi-wave" aria-hidden="true">@RenderChart()</div>
+        }
+    };
+
+    private RenderFragment RenderRing() => __builder =>
+    {
+        // Ring sizes
+        var (sz, sw, fs, lfs) = Size switch
+        {
+            SgSize.Sm => (80,  7,  18, 10),
+            SgSize.Lg => (130, 10, 32, 13),
+            SgSize.Xl => (160, 12, 40, 14),
+            _         => (100, 8,  24, 11)
         };
-        
-        try
-        {
-            await _module.InvokeVoidAsync("initSparkline", _sparklineRef, config);
-        }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-    }
 
-    private async Task UpdateSparklineAsync()
+        var r    = (sz - sw) / 2.0;
+        var circ = 2 * Math.PI * r;
+        var pct  = (Target.HasValue && Value.HasValue)
+            ? Math.Min(1.0, Math.Max(0.0, Value!.Value / Target!.Value))
+            : 1.0;
+        var dash = pct * circ;
+        var gap  = circ - dash;
+        var ic   = System.Globalization.CultureInfo.InvariantCulture;
+        var cx   = sz / 2.0;
+        var cy   = sz / 2.0;
+        var color = !string.IsNullOrEmpty(IconColor) ? IconColor : RingColor;
+
+        <div class="sgc-kpi-ring-wrap">
+            <svg class="sgc-kpi-ring-svg"
+                 viewBox="@($"0 0 {sz} {sz}")"
+                 width="@sz" height="@sz"
+                 aria-hidden="true">
+                <!-- Track -->
+                <circle cx="@cx.ToString("F1",ic)" cy="@cy.ToString("F1",ic)"
+                        r="@r.ToString("F1",ic)"
+                        fill="none"
+                        stroke="var(--sg-bg-muted,#f3f4f6)"
+                        stroke-width="@sw" />
+                <!-- Fill -->
+                <circle cx="@cx.ToString("F1",ic)" cy="@cy.ToString("F1",ic)"
+                        r="@r.ToString("F1",ic)"
+                        fill="none"
+                        stroke="@color"
+                        stroke-width="@sw"
+                        stroke-linecap="round"
+                        stroke-dasharray="@($"{dash.ToString("F2",ic)} {gap.ToString("F2",ic)}")"
+                        transform="@($"rotate(-90 {cx.ToString("F1",ic)} {cy.ToString("F1",ic)})")" />
+                <!-- Value text -->
+                <text x="@cx.ToString("F1",ic)" y="@cy.ToString("F1",ic)"
+                      text-anchor="middle" dominant-baseline="central"
+                      font-size="@fs" font-weight="700"
+                      fill="var(--sg-fg,#111827)"
+                      font-family="inherit">
+                    @FormattedValue
+                </text>
+            </svg>
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <span class="sgc-kpi-ring-label" style="@($"font-size:{lfs}px")">@Title</span>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderInline() => __builder =>
     {
-        if (_module is null || _isDisposed || string.IsNullOrEmpty(_sparklineId)) return;
-        
-        try
-        {
-            var color = SparklineColor ?? (IsPositive ? "#10b981" : IsNegative ? "#ef4444" : "#6b7280");
-            await _module.InvokeVoidAsync("updateSparkline", _sparklineId, SparklineData, color);
-        }
-        catch (JSDisconnectedException) { }
-        catch (TaskCanceledException) { }
-    }
+        var color = !string.IsNullOrEmpty(ChartColor)
+            ? ChartColor
+            : IsPositiveTrend ? "#10b981" : "#f43f5e";
 
-    private async Task HandleClick()
+        <div class="sgc-kpi-inline-label">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <span class="sgc-kpi-inline-icon" style="@IconStyle" aria-hidden="true">@((MarkupString)Icon)</span>
+            }
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <span class="sgc-kpi-inline-title">@Title</span>
+            }
+        </div>
+
+        <div class="sgc-kpi-inline-value">
+            @if (!string.IsNullOrEmpty(Prefix)) { <span class="sgc-kpi-affix sgc-kpi-prefix">@Prefix</span> }
+            <span class="sgc-kpi-value" style="@ValueColorStyle">@FormattedValue</span>
+            @if (!string.IsNullOrEmpty(Suffix)) { <span class="sgc-kpi-affix sgc-kpi-suffix">@Suffix</span> }
+        </div>
+
+        @if (HasChart)
+        {
+            <div class="sgc-kpi-inline-spark" aria-hidden="true">
+                @RenderDotSparkline(color)
+            </div>
+        }
+
+        @if (ShowTrend && (TrendPercent.HasValue || TrendValue.HasValue))
+        {
+            <span class="sgc-kpi-inline-trend @TrendClass" aria-label="@TrendAriaLabel">
+                @((MarkupString)(IsPositiveTrend ? ArrowUpSvg : ArrowDownSvg))
+                @TrendText
+            </span>
+        }
+    };
+
+    // ── Dot sparkline (Inline mode) ───────────────────────────────────────────
+    private RenderFragment RenderDotSparkline(string color) => __builder =>
     {
-        if (Clickable && OnClick.HasDelegate)
-        {
-            await OnClick.InvokeAsync();
-        }
-    }
+        if (ChartData is not { Length: > 1 }) return;
+        var data  = ChartData;
+        var count = data.Length;
+        var min   = data.Min();
+        var max   = data.Max();
+        var range = max - min;
+        const double W = 80.0, H = 24.0, PT = 3.0;
+        var ic = System.Globalization.CultureInfo.InvariantCulture;
 
-    private async Task HandleKeyDown(KeyboardEventArgs e)
+        var pts = Enumerable.Range(0, count)
+            .Select(i => (
+                x: count == 1 ? W / 2 : W * i / (count - 1),
+                y: range < 1e-9 ? H / 2 : PT + (H - PT) * (1.0 - (data[i] - min) / range)
+            )).ToArray();
+        var path = BuildSmoothPath(pts);
+
+        __builder.OpenElement(0, "svg");
+        __builder.AddAttribute(1, "viewBox", $"0 0 {W} {H}");
+        __builder.AddAttribute(2, "preserveAspectRatio", "none");
+        __builder.AddAttribute(3, "class", "sgc-kpi-dot-svg");
+
+        // Dashed line
+        __builder.OpenElement(4, "path");
+        __builder.AddAttribute(5, "d",              path);
+        __builder.AddAttribute(6, "fill",           "none");
+        __builder.AddAttribute(7, "stroke",         color);
+        __builder.AddAttribute(8, "stroke-width",   "1.5");
+        __builder.AddAttribute(9, "stroke-dasharray", "3 2");
+        __builder.AddAttribute(10, "stroke-linecap", "round");
+        __builder.CloseElement();
+
+        // Dots at each point
+        foreach (var (i, pt) in pts.Select((p, i) => (i, p)))
+        {
+            var isLast = i == count - 1;
+            __builder.OpenElement(11 + i * 3, "circle");
+            __builder.AddAttribute(12 + i * 3, "cx",   pt.x.ToString("F2", ic));
+            __builder.AddAttribute(13 + i * 3, "cy",   pt.y.ToString("F2", ic));
+            __builder.AddAttribute(14 + i * 3, "r",    isLast ? "3" : "2");
+            __builder.AddAttribute(15 + i * 3, "fill", color);
+            __builder.AddAttribute(16 + i * 3, "stroke", "var(--sgc-card-bg,#fff)");
+            __builder.AddAttribute(17 + i * 3, "stroke-width", "1.5");
+            __builder.CloseElement();
+        }
+
+        __builder.CloseElement();
+    };
+
+    // ── Wave / area chart (Card mode) ─────────────────────────────────────────
+    private RenderFragment RenderChart() => __builder =>
     {
-        if (e.Key == "Enter" || e.Key == " ")
-        {
-            await HandleClick();
-        }
-    }
+        if (ChartData is not { Length: > 1 }) return;
 
-    public async ValueTask DisposeAsync()
+        var data  = ChartData;
+        var count = data.Length;
+        var min   = data.Min();
+        var max   = data.Max();
+        var range = max - min;
+        const double W = 200.0, H = 60.0, PT = 4.0;
+
+        var color = !string.IsNullOrEmpty(ChartColor) ? ChartColor : "rgba(255,255,255,0.9)";
+        var ic    = System.Globalization.CultureInfo.InvariantCulture;
+
+        if (ChartType == SgKPIChartType.Bar)
+        {
+            __builder.OpenElement(0, "svg");
+            __builder.AddAttribute(1, "viewBox", $"0 0 {W} {H}");
+            __builder.AddAttribute(2, "preserveAspectRatio", "none");
+            __builder.AddAttribute(3, "class", "sgc-kpi-wave-svg");
+
+            var slot = W / count;
+            var bw   = slot * 0.6;
+            var boff = slot * 0.2;
+            for (int i = 0; i < count; i++)
+            {
+                var bx = slot * i + boff;
+                var by = range < 1e-9 ? H / 2 : PT + (H - PT) * (1.0 - (data[i] - min) / range);
+                var bh = H - by;
+                var op = 0.5 + 0.5 * (bh / H);
+                __builder.OpenElement(5, "rect");
+                __builder.AddAttribute(6,  "x",       bx.ToString("F2", ic));
+                __builder.AddAttribute(7,  "y",       by.ToString("F2", ic));
+                __builder.AddAttribute(8,  "width",   bw.ToString("F2", ic));
+                __builder.AddAttribute(9,  "height",  bh.ToString("F2", ic));
+                __builder.AddAttribute(10, "fill",    color);
+                __builder.AddAttribute(11, "rx",      "2");
+                __builder.AddAttribute(12, "opacity", op.ToString("F2", ic));
+                __builder.CloseElement();
+            }
+            __builder.CloseElement();
+        }
+        else
+        {
+            var points = Enumerable.Range(0, count).Select(i => (
+                x: count == 1 ? W / 2 : W * i / (count - 1),
+                y: range < 1e-9 ? H / 2 : PT + (H - PT) * (1.0 - (data[i] - min) / range)
+            )).ToArray();
+            var path = BuildSmoothPath(points);
+            var gid  = $"kpi-wg-{Math.Abs(GetHashCode())}";
+
+            __builder.OpenElement(0, "svg");
+            __builder.AddAttribute(1, "viewBox", $"0 0 {W} {H}");
+            __builder.AddAttribute(2, "preserveAspectRatio", "none");
+            __builder.AddAttribute(3, "class", "sgc-kpi-wave-svg");
+
+            __builder.OpenElement(4, "defs");
+            __builder.OpenElement(5, "linearGradient");
+            __builder.AddAttribute(6, "id", gid);
+            __builder.AddAttribute(7, "x1", "0"); __builder.AddAttribute(8, "y1", "0");
+            __builder.AddAttribute(9, "x2", "0"); __builder.AddAttribute(10, "y2", "1");
+            __builder.OpenElement(11, "stop");
+            __builder.AddAttribute(12, "offset", "0%");
+            __builder.AddAttribute(13, "stop-color", color);
+            __builder.AddAttribute(14, "stop-opacity", "0.45");
+            __builder.CloseElement();
+            __builder.OpenElement(15, "stop");
+            __builder.AddAttribute(16, "offset", "100%");
+            __builder.AddAttribute(17, "stop-color", color);
+            __builder.AddAttribute(18, "stop-opacity", "0.05");
+            __builder.CloseElement();
+            __builder.CloseElement(); // linearGradient
+            __builder.CloseElement(); // defs
+
+            if (ChartType == SgKPIChartType.Area)
+            {
+                var x0   = points[0].x.ToString("F2", ic);
+                var xEnd = points[^1].x.ToString("F2", ic);
+                var bot  = H.ToString("F2", ic);
+                __builder.OpenElement(19, "path");
+                __builder.AddAttribute(20, "d",    $"{path} L {xEnd},{bot} L {x0},{bot} Z");
+                __builder.AddAttribute(21, "fill", $"url(#{gid})");
+                __builder.CloseElement();
+            }
+
+            __builder.OpenElement(22, "path");
+            __builder.AddAttribute(23, "d",               path);
+            __builder.AddAttribute(24, "fill",            "none");
+            __builder.AddAttribute(25, "stroke",          color);
+            __builder.AddAttribute(26, "stroke-width",    "2");
+            __builder.AddAttribute(27, "stroke-linecap",  "round");
+            __builder.AddAttribute(28, "stroke-linejoin", "round");
+            __builder.CloseElement();
+
+            __builder.CloseElement(); // svg
+        }
+    };
+
+    // ── BAN mode ──────────────────────────────────────────────────────────────
+    // Title top-left · huge value · inline trend badge · delta row at bottom
+    private RenderFragment RenderBan() => __builder =>
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        <div class="sgc-kpi-ban-header">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <span class="sgc-kpi-ban-icon" style="@IconStyle" aria-hidden="true">@((MarkupString)Icon)</span>
+            }
+            <span class="sgc-kpi-ban-title">@Title</span>
+            @if (ActionContent is not null)
+            {
+                <div class="sgc-kpi-action" @onclick:stopPropagation="true">@ActionContent</div>
+            }
+        </div>
 
-        if (_module is not null)
+        <div class="sgc-kpi-ban-center">
+            <span class="sgc-kpi-ban-value" style="@ValueColorStyle">
+                @if (!string.IsNullOrEmpty(Prefix)) { <span class="sgc-kpi-affix sgc-kpi-prefix">@Prefix</span> }
+                @FormattedValue
+                @if (!string.IsNullOrEmpty(Suffix)) { <span class="sgc-kpi-affix sgc-kpi-suffix">@Suffix</span> }
+            </span>
+
+            @if (ShowTrend && (TrendPercent.HasValue || TrendValue.HasValue))
+            {
+                <span class="sgc-kpi-ban-badge @TrendClass" aria-label="@TrendAriaLabel">
+                    <span class="sgc-kpi-trend-icon" aria-hidden="true">
+                        @((MarkupString)(IsPositiveTrend ? ArrowUpSvg : ArrowDownSvg))
+                    </span>
+                    @TrendText
+                </span>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(TrendLabel))
         {
-            try { await _module.InvokeVoidAsync("disposeSparkline", _sparklineId); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch { }
+            <div class="sgc-kpi-ban-sublabel">@TrendLabel</div>
         }
 
-        var self = _self;
-        _self = null;
-        self?.Dispose();
-
-        if (_module is not null)
+        @if (Deltas is { Count: > 0 })
         {
-            try { await _module.DisposeAsync(); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
-            _module = null;
+            <div class="sgc-kpi-ban-deltas">
+                @foreach (var d in Deltas)
+                {
+                    var dc = (d.Value >= 0) != d.Invert ? "sgc-kpi-up" : "sgc-kpi-down";
+                    <div class="sgc-kpi-ban-delta">
+                        <span class="sgc-kpi-ban-delta-label">@d.Label</span>
+                        <span class="sgc-kpi-ban-delta-val @dc">
+                            @((MarkupString)((d.Value >= 0) != d.Invert ? ArrowUpSvg : ArrowDownSvg))
+                            @FormatDelta(d)
+                        </span>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (FooterContent is not null) { <div class="sgc-kpi-footer">@FooterContent</div> }
+    };
+
+    // ── Analytic mode ─────────────────────────────────────────────────────────
+    // Icon + title header · sparkline upper area · period label · value + delta row
+    private RenderFragment RenderAnalytic() => __builder =>
+    {
+        var sparkColor = !string.IsNullOrEmpty(ChartColor)
+            ? ChartColor
+            : IsPositiveTrend ? "#10b981" : "#f43f5e";
+
+        <div class="sgc-kpi-an-header">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <span class="sgc-kpi-an-icon" style="@IconStyle" aria-hidden="true">@((MarkupString)Icon)</span>
+            }
+            <span class="sgc-kpi-an-title">@Title</span>
+            @if (ActionContent is not null)
+            {
+                <div class="sgc-kpi-action" @onclick:stopPropagation="true">@ActionContent</div>
+            }
+        </div>
+
+        @if (HasChart)
+        {
+            <div class="sgc-kpi-an-chart" aria-hidden="true">
+                @RenderAnalyticSparkline(sparkColor)
+            </div>
+        }
+
+        @if (!string.IsNullOrEmpty(PeriodLabel))
+        {
+            <div class="sgc-kpi-an-period">@PeriodLabel</div>
+        }
+
+        <div class="sgc-kpi-an-value-row">
+            <span class="sgc-kpi-an-value" style="@ValueColorStyle">
+                @if (!string.IsNullOrEmpty(Prefix)) { <span class="sgc-kpi-affix sgc-kpi-prefix">@Prefix</span> }
+                @FormattedValue
+                @if (!string.IsNullOrEmpty(Suffix)) { <span class="sgc-kpi-affix sgc-kpi-suffix">@Suffix</span> }
+            </span>
+        </div>
+
+        @if (Deltas is { Count: > 0 })
+        {
+            <div class="sgc-kpi-an-deltas">
+                @foreach (var d in Deltas)
+                {
+                    var dc = (d.Value >= 0) != d.Invert ? "sgc-kpi-up" : "sgc-kpi-down";
+                    <div class="sgc-kpi-an-delta">
+                        @if (!string.IsNullOrEmpty(d.Label))
+                        {
+                            <span class="sgc-kpi-an-delta-label">@d.Label</span>
+                        }
+                        <span class="sgc-kpi-an-delta-val @dc">@FormatDelta(d)</span>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (FooterContent is not null) { <div class="sgc-kpi-footer">@FooterContent</div> }
+    };
+
+    // ── Analytic sparkline — jagged line with dots (Tableau style) ────────────
+    private RenderFragment RenderAnalyticSparkline(string color) => __builder =>
+    {
+        if (ChartData is not { Length: > 1 }) return;
+        var data  = ChartData;
+        var count = data.Length;
+        var min   = data.Min();
+        var max   = data.Max();
+        var range = max - min;
+        const double W = 200.0, H = 56.0, PT = 5.0, PB = 5.0;
+        var ic = System.Globalization.CultureInfo.InvariantCulture;
+
+        var pointList = Enumerable.Range(0, count).Select(i => (
+            x: count == 1 ? W / 2 : W * i / (count - 1),
+            y: range < 1e-9 ? H / 2 : PT + (H - PT - PB) * (1.0 - (data[i] - min) / range)
+        )).ToArray();
+
+        var pts = string.Join(" ", pointList.Select(p =>
+            $"{p.x.ToString("F1", ic)},{p.y.ToString("F1", ic)}"));
+
+        __builder.OpenElement(0, "svg");
+        __builder.AddAttribute(1, "viewBox", $"0 0 {W} {H}");
+        __builder.AddAttribute(2, "preserveAspectRatio", "none");
+        __builder.AddAttribute(3, "class", "sgc-kpi-an-svg");
+
+        // Line
+        __builder.OpenElement(4, "polyline");
+        __builder.AddAttribute(5, "points",          pts);
+        __builder.AddAttribute(6, "fill",            "none");
+        __builder.AddAttribute(7, "stroke",          color);
+        __builder.AddAttribute(8, "stroke-width",    "1.5");
+        __builder.AddAttribute(9, "stroke-linecap",  "round");
+        __builder.AddAttribute(10, "stroke-linejoin","round");
+        __builder.CloseElement();
+
+        // Dots at every point
+        int seq = 11;
+        foreach (var pt in pointList)
+        {
+            __builder.OpenElement(seq++, "circle");
+            __builder.AddAttribute(seq++, "cx",           pt.x.ToString("F1", ic));
+            __builder.AddAttribute(seq++, "cy",           pt.y.ToString("F1", ic));
+            __builder.AddAttribute(seq++, "r",            "2.5");
+            __builder.AddAttribute(seq++, "fill",         "var(--sgc-card-bg,#fff)");
+            __builder.AddAttribute(seq++, "stroke",       color);
+            __builder.AddAttribute(seq++, "stroke-width", "1.5");
+            __builder.CloseElement();
+        }
+
+        __builder.CloseElement();
+    };
+
+    private static string FormatDelta(SgKPIDelta d)
+    {
+        var sign = d.Value >= 0 ? "+" : "";
+        return d.IsPercent
+            ? $"{sign}{d.Value:0.#}%"
+            : $"{sign}{d.Value:0.##}";
+    }
+
+    private static string BuildSmoothPath((double x, double y)[] pts)
+    {
+        if (pts.Length == 0) return "";
+        if (pts.Length == 1) return $"M {pts[0].x:F2},{pts[0].y:F2}";
+        var ic = System.Globalization.CultureInfo.InvariantCulture;
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"M {pts[0].x.ToString("F2",ic)},{pts[0].y.ToString("F2",ic)}");
+        for (int i = 1; i < pts.Length; i++)
+        {
+            var prev = pts[i - 1];
+            var curr = pts[i];
+            var cpx  = (curr.x - prev.x) * 0.4;
+            sb.Append($" C {(prev.x+cpx).ToString("F2",ic)},{prev.y.ToString("F2",ic)} {(curr.x-cpx).ToString("F2",ic)},{curr.y.ToString("F2",ic)} {curr.x.ToString("F2",ic)},{curr.y.ToString("F2",ic)}");
+        }
+        return sb.ToString();
+    }
+
+    private string TrendText
+    {
+        get
+        {
+            if (TrendPercent.HasValue) return $"{Math.Abs(TrendPercent.Value):0.#}%";
+            if (TrendValue.HasValue)   return $"{(TrendValue.Value >= 0 ? "+" : "")}{TrendValue.Value:0.##}";
+            return "";
         }
     }
+
+    private async Task HandleClickAsync(MouseEventArgs _)
+    {
+        if (!Clickable || IsLoading) return;
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+    }
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (!Clickable || IsLoading) return;
+        if (e.Key is "Enter" or " " or "Spacebar")
+            if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+    }
+
+    private const string ArrowUpSvg =
+        """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>""";
+
+    private const string ArrowDownSvg =
+        """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>""";
 }

@@ -1,10 +1,9 @@
 @namespace SuperUI.Components
-@implements IAsyncDisposable
-@inject IJSRuntime JS
+@inherits SgJsComponentBase
 @inject ISuperUILocalizer Localizer
 
-<div class="sg-ocr-container @CssClass"
-     style="@(Width != "100%" ? $"width:{Width};" : null)"
+<div class="@Css("sg-ocr-container").Build()"
+     style="@Styles().Add("width", Width, Width != "100%").NullIfEmpty()"
      @attributes="AdditionalAttributes">
 
     @if (_error is not null)
@@ -150,11 +149,10 @@
 </div>
 
 @code {
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<SgOcr>? _selfRef;
-    private readonly string _instanceId  = $"sg-ocr-{Guid.NewGuid():N}";
+    protected override string ModulePath => "./_content/SuperUI/sg-ocr.js";
+    protected override string IdPrefix => "sg-ocr";
+
     private readonly string _langSelectId = $"sg-ocr-lang-{Guid.NewGuid():N}";
-    private bool   _isDisposed;
     private bool   _processing;
     private bool   _isDragging;
     private bool   _copied;
@@ -178,30 +176,20 @@
     /// <summary>Tesseract.js source URL override.</summary>
     [Parameter] public SgOcrSources? Sources { get; set; }
 
-    /// <summary>Additional CSS class for the container.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
     /// <summary>Fired when recognition completes successfully.</summary>
     [Parameter] public EventCallback<SgOcrResult> OnTextExtracted { get; set; }
 
     /// <summary>Fired on each progress update during recognition.</summary>
     [Parameter] public EventCallback<SgOcrProgress> OnProgress { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async ValueTask OnInteractiveAsync()
     {
-        if (_isDisposed || !firstRender) return;
         try
         {
-            _module  = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-ocr.js");
-            if (_isDisposed) return;
-            _selfRef = DotNetObjectReference.Create(this);
             var sources = Sources ?? new SgOcrSources();
-            await _module.InvokeVoidAsync("initOcr", _selfRef, _instanceId, sources);
+            await SafeInvokeVoidAsync("initOcr", SelfRef, ResolvedId, sources);
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException)   { }
@@ -267,7 +255,7 @@
     /// <summary>Starts OCR recognition on the currently loaded image.</summary>
     public async Task RecognizeAsync()
     {
-        if (_module is null || _imageDataUrl is null || _processing) return;
+        if (_imageDataUrl is null || _processing) return;
 
         _processing     = true;
         _error          = null;
@@ -279,8 +267,8 @@
         try
         {
             var sources = Sources ?? new SgOcrSources();
-            var raw = await _module.InvokeAsync<System.Text.Json.JsonElement>(
-                "recognizeOcr", _instanceId, _imageDataUrl, Language.ToString(), sources);
+            var raw = await SafeInvokeAsync<System.Text.Json.JsonElement>(
+                "recognizeOcr", ResolvedId, _imageDataUrl, Language.ToString(), sources);
 
             _result = ParseResult(raw);
 
@@ -385,43 +373,21 @@
     {
         _error = null;
         StateHasChanged();
-        if (_module is not null && _selfRef is not null)
+        try
         {
-            try
-            {
-                var sources = Sources ?? new SgOcrSources();
-                await _module.InvokeVoidAsync("initOcr", _selfRef, _instanceId, sources);
-            }
-            catch { }
+            var sources = Sources ?? new SgOcrSources();
+            await SafeInvokeVoidAsync("initOcr", SelfRef, ResolvedId, sources);
         }
+        catch { }
     }
 
     // ── Dispose ───────────────────────────────────────────────────────────────
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask OnDisposingAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
-
-        if (_module is not null)
-        {
-            try { await _module.InvokeVoidAsync("disposeOcr", _instanceId); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException)   { }
-            catch { }
-        }
-
-        var selfRef = _selfRef;
-        _selfRef = null;
-        selfRef?.Dispose();
-
-        if (_module is not null)
-        {
-            try { await _module.DisposeAsync(); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException)   { }
-            catch { }
-            _module = null;
-        }
+        try { await SafeInvokeVoidAsync("disposeOcr", ResolvedId); }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch { }
     }
 }

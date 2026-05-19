@@ -87,13 +87,15 @@ function getSmartPosition(triggerElement, popoverElement, placement) {
         left = viewportWidth - popoverRect.width - padding;
     }
 
+    let maxHeight = viewportHeight - padding * 2;
     if (top < padding) {
         top = padding;
     } else if (top + popoverRect.height > viewportHeight - padding) {
-        top = viewportHeight - popoverRect.height - padding;
+        // If it still doesn't fit after flipping, we MUST limit height
+        maxHeight = viewportHeight - top - padding;
     }
 
-    return { top, left, placement: finalPlacement };
+    return { top, left, placement: finalPlacement, maxHeight };
 }
 
 export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnOutsideClick, closeOnEscape) {
@@ -103,14 +105,22 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
     let isDisposed = false;
 
     const onPointerDown = (event) => {
-        if (isDisposed || !closeOnOutsideClick) return;
-        if (!root || root.contains(event.target)) return;
+        if (isDisposed || !closeOnOutsideClick || !dotnetRef) return;
+        
+        // Check if click is inside the wrapper OR the popover (which is teleported)
+        const isInsideRoot = root && root.contains(event.target);
+        const isInsidePop = popoverElement && popoverElement.contains(event.target);
+        
+        if (isInsideRoot || isInsidePop) return;
 
         try {
-            if (dotnetRef && !isDisposed) {
+            // Check if dotnetRef is still valid (Blazor specific check)
+            if (typeof dotnetRef.invokeMethodAsync === 'function') {
                 dotnetRef.invokeMethodAsync("CloseFromJsAsync").catch(() => {});
             }
-        } catch { }
+        } catch (err) {
+            console.warn("SgPopover: failed to invoke CloseFromJsAsync", err);
+        }
     };
 
     const onKeyDown = (event) => {
@@ -178,6 +188,9 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
         popoverElement.style.position = 'fixed';
         popoverElement.style.top = pos.top + 'px';
         popoverElement.style.left = pos.left + 'px';
+        popoverElement.style.maxHeight = pos.maxHeight + 'px';
+        popoverElement.style.display = 'flex'; // Ensure flex for height limit
+        popoverElement.style.flexDirection = 'column';
         popoverElement.style.right = 'auto';
         popoverElement.style.bottom = 'auto';
         popoverElement.style.transform = 'none';

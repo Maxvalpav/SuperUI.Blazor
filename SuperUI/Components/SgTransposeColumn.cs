@@ -1,5 +1,7 @@
 namespace SuperUI.Components;
 
+using SuperUI.Enums;
+
 /// <summary>
 /// Defines a field (row) in an <see cref="SgTransposeGrid{TItem}"/>.
 /// </summary>
@@ -43,12 +45,6 @@ public sealed class SgTransposeColumn<TItem>
 
     /// <summary>Callback invoked when a cell value is edited. Receives (item, newStringValue).</summary>
     public Action<TItem, string?>? OnValueChanged { get; set; }
-}
-
-/// <summary>Aggregate function for a transpose grid row.</summary>
-public enum SgTransposeAggregate
-{
-    None, Sum, Average, Min, Max, Count
 }
 
 /// <summary>Context passed to the <see cref="SgTransposeGrid{TItem}.CellTemplate"/>.</summary>

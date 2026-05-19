@@ -1,31 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Chart type ────────────────────────────────────────────────────────────────
-
-/// <summary>Supported D3 visualisation types.</summary>
-public enum SgD3ChartType
-{
-    /// <summary>Vertical bar chart.</summary>
-    Bar,
-    /// <summary>Horizontal bar chart.</summary>
-    BarHorizontal,
-    /// <summary>Line chart (single or multi-series).</summary>
-    Line,
-    /// <summary>Area chart with fill.</summary>
-    Area,
-    /// <summary>Pie chart.</summary>
-    Pie,
-    /// <summary>Donut chart.</summary>
-    Donut,
-    /// <summary>Scatter / bubble plot.</summary>
-    Scatter,
-    /// <summary>Force-directed network graph.</summary>
-    ForceGraph,
-    /// <summary>Treemap.</summary>
-    Treemap,
-    /// <summary>Radial / spider chart.</summary>
-    Radar,
-}
+// SgD3ChartType — moved to SuperUI.Enums.SgD3ChartType
 
 // ── Data models ───────────────────────────────────────────────────────────────
 

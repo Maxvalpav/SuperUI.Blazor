@@ -1,3 +1,5 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 /// <summary>Visualisation options for <see cref="SgWarehouse"/>.</summary>

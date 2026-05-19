@@ -1,5 +1,6 @@
 @page "/three-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
 
 <PageTitle>3D Склад — SUI</PageTitle>
 
@@ -110,7 +111,7 @@
                     <div class="wh-panel-section">
                         <div class="wh-panel-section-title">Статус</div>
                         <div class="wh-status-grid">
-                            @foreach (var s in Enum.GetValues<SgWarehouseCellStatus>())
+                            @foreach (var s in Enum.GetValues<SgWhCellStatus>())
                             {
                                 var ss = s;
                                 <button class="wh-status-btn wh-status-@ss.ToString().ToLower() @(_selectedCell.Status == ss ? "active" : "")"
@@ -142,7 +143,7 @@
                     </div>
 
                     <!-- Содержимое -->
-                    @if (_selectedCell.Status == SgWarehouseCellStatus.Occupied)
+                    @if (_selectedCell.Status == SgWhCellStatus.Occupied)
                     {
                         <div class="wh-panel-section">
                             <div class="wh-panel-section-title">Содержимое</div>
@@ -232,10 +233,10 @@
                 {
                     var status = _rnd.NextDouble() switch
                     {
-                        < 0.45 => SgWarehouseCellStatus.Occupied,
-                        < 0.55 => SgWarehouseCellStatus.Reserved,
-                        < 0.60 => SgWarehouseCellStatus.Blocked,
-                        _      => SgWarehouseCellStatus.Empty,
+                        < 0.45 => SgWhCellStatus.Occupied,
+                        < 0.55 => SgWhCellStatus.Reserved,
+                        < 0.60 => SgWhCellStatus.Blocked,
+                        _      => SgWhCellStatus.Empty,
                     };
 
                     var cell = new SgWarehouseCell
@@ -247,7 +248,7 @@
                         Status = status,
                     };
 
-                    if (status == SgWarehouseCellStatus.Occupied)
+                    if (status == SgWhCellStatus.Occupied)
                     {
                         var prefix = _skuPrefixes[_rnd.Next(_skuPrefixes.Length)];
                         cell.Label     = $"{prefix}-{_rnd.Next(10000, 99999)}";
@@ -256,7 +257,7 @@
                         cell.UpdatedAt = DateTime.Now.AddDays(-_rnd.Next(0, 30))
                                                      .ToString("dd.MM.yyyy HH:mm");
                     }
-                    else if (status == SgWarehouseCellStatus.Reserved)
+                    else if (status == SgWhCellStatus.Reserved)
                     {
                         cell.Label = $"РЕЗЕРВ-{_rnd.Next(100, 999)}";
                     }
@@ -289,10 +290,10 @@
         var c = _warehouseLayout.Cells;
         _whStats = new(
             c.Count,
-            c.Count(x => x.Status == SgWarehouseCellStatus.Empty),
-            c.Count(x => x.Status == SgWarehouseCellStatus.Occupied),
-            c.Count(x => x.Status == SgWarehouseCellStatus.Reserved),
-            c.Count(x => x.Status == SgWarehouseCellStatus.Blocked));
+            c.Count(x => x.Status == SgWhCellStatus.Empty),
+            c.Count(x => x.Status == SgWhCellStatus.Occupied),
+            c.Count(x => x.Status == SgWhCellStatus.Reserved),
+            c.Count(x => x.Status == SgWhCellStatus.Blocked));
     }
 
     private void OnWarehouseClick(SgThreeClickEventArgs e)
@@ -308,15 +309,15 @@
         StateHasChanged();
     }
 
-    private async Task SetCellStatus(SgWarehouseCellStatus status)
+    private async Task SetCellStatus(SgWhCellStatus status)
     {
         if (_selectedCell is null || _warehouseThree is null) return;
 
         // Update model
         _selectedCell.Status = status;
-        if (status != SgWarehouseCellStatus.Occupied)
+        if (status != SgWhCellStatus.Occupied)
         {
-            _selectedCell.Label    = status == SgWarehouseCellStatus.Reserved
+            _selectedCell.Label    = status == SgWhCellStatus.Reserved
                                         ? $"РЕЗЕРВ-{_rnd.Next(100,999)}" : null;
             _selectedCell.Quantity  = null;
             _selectedCell.WeightKg  = null;

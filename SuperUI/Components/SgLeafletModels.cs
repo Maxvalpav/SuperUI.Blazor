@@ -1,25 +1,9 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 // ── Tile layer type ───────────────────────────────────────────────────────────
-
-/// <summary>Built-in tile layer presets for Leaflet.</summary>
-public enum SgLeafletTileLayer
-{
-    /// <summary>OpenStreetMap (default, free).</summary>
-    OpenStreetMap,
-    /// <summary>CartoDB Positron (light, minimal).</summary>
-    CartoDB_Positron,
-    /// <summary>CartoDB Dark Matter.</summary>
-    CartoDB_DarkMatter,
-    /// <summary>Stamen Toner (black &amp; white).</summary>
-    Stamen_Toner,
-    /// <summary>Stamen Watercolor.</summary>
-    Stamen_Watercolor,
-    /// <summary>Esri World Imagery (satellite).</summary>
-    Esri_WorldImagery,
-    /// <summary>Custom XYZ tile URL — set <see cref="SgLeafletOptions.CustomTileUrl"/>.</summary>
-    Custom,
-}
+// SgLeafletTileLayer — moved to SuperUI.Enums.SgLeafletTileLayer
 
 // ── Options ───────────────────────────────────────────────────────────────────
 

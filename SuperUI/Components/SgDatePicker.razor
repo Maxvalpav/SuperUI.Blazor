@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @using SuperUI.Localization
+@using SuperUI.Enums
 @using System.Linq.Expressions
 @inject ISuperUILocalizer Localizer
 @implements IDisposable
@@ -51,39 +52,88 @@
         </div>
         @if (_open)
         {
-            <div id="@_popupId" class="sgc-date-popup" role="dialog" aria-modal="false" aria-label="@Localizer["SelectDate"]">
+            <div id="@_popupId" class="sgc-date-popup" role="dialog" aria-modal="false" aria-label="@Localizer["SelectDate"]" @onmousedown:stopPropagation @onmousedown:preventDefault>
                 <div class="sgc-date-head">
-                    <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(-1)" title="@Localizer["Previous"] year">«</button>
-                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)" title="@Localizer["Previous"]">‹</button>
-                    <span class="sgc-date-title">@_view.ToString("MMMM yyyy", System.Globalization.CultureInfo.CurrentCulture)</span>
-                    <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)" title="@Localizer["Next"]">›</button>
-                    <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(1)" title="@Localizer["Next"] year">»</button>
+                    <div class="sgc-date-nav-group">
+                        <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(-1)" @onclick:stopPropagation title="@Localizer["PreviousYear"]">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M7.22 14.78a.75.75 0 001.06-1.06L3.81 9.25h11.44a.75.75 0 000-1.5H3.81l4.47-4.47a.75.75 0 10-1.06-1.06L1.47 7.97a.75.75 0 000 1.06l5.75 5.75z"/></svg>
+                        </button>
+                        <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)" @onclick:stopPropagation title="@Localizer["PreviousMonth"]">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M9.78 14.78a.75.75 0 01-1.06 0L2.97 9.03a.75.75 0 010-1.06L8.72 2.22a.75.75 0 011.06 1.06L4.56 8l5.22 5.22a.75.75 0 010 1.06z"/></svg>
+                        </button>
+                    </div>
+
+                    <div class="sgc-date-selectors">
+                        <button class="sgc-date-title-btn" type="button" @onclick="ToggleMonthView" @onclick:stopPropagation>@_view.ToString("MMMM", System.Globalization.CultureInfo.CurrentCulture)</button>
+                        <button class="sgc-date-title-btn" type="button" @onclick="ToggleYearView" @onclick:stopPropagation>@_view.Year</button>
+                    </div>
+
+                    <div class="sgc-date-nav-group">
+                        <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)" @onclick:stopPropagation title="@Localizer["NextMonth"]">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M6.22 2.22a.75.75 0 011.06 0l5.75 5.75a.75.75 0 010 1.06l-5.75 5.75a.75.75 0 11-1.06-1.06L11.44 8 6.22 2.78a.75.75 0 010-1.06z"/></svg>
+                        </button>
+                        <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(1)" @onclick:stopPropagation title="@Localizer["NextYear"]">
+                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M8.78 1.22a.75.75 0 00-1.06 1.06L12.19 6.75H.75a.75.75 0 000 1.5h11.44l-4.47 4.47a.75.75 0 101.06 1.06l5.75-5.75a.75.75 0 000-1.06L8.78 1.22z"/></svg>
+                        </button>
+                    </div>
                 </div>
-                <div class="sgc-date-grid">
-                    @for (var i = 0; i < 7; i++)
-                    {
-                        var dow = ((int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek + i) % 7;
-                        <div class="sgc-date-dow">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[dow]</div>
-                    }
-                    @foreach (var d in BuildGrid())
-                    {
-                        var dl = d;
-                        var inMonth = dl.Month == _view.Month;
-                        var isToday = dl.Date == DateTime.Today;
-                        var isSel = Value.HasValue && dl.Date == Value.Value.Date;
-                        var isDisabled = IsDateDisabled(dl);
-                        <div class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isSel ? "sgc-selected" : "") @(isDisabled ? "sgc-date-disabled" : "")"
-                             role="button"
-                             aria-disabled="@(isDisabled ? "true" : null)"
-                             aria-selected="@(isSel ? "true" : null)"
-                             @onclick="() => { if (!isDisabled) _ = PickAsync(dl); }">@dl.Day</div>
-                    }
-                </div>
+                
+                @if (_pickerMode == PickerView.Month)
+                {
+                    <div class="sgc-date-grid sgc-month-grid">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            var month = m;
+                            var isSel = Value.HasValue && Value.Value.Year == _view.Year && Value.Value.Month == month;
+                            <div class="sgc-date-cell sgc-month-cell @(isSel ? "sgc-selected" : "")" 
+                                 @onclick="() => SelectMonth(month)">
+                                @System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedMonthName(month)
+                            </div>
+                        }
+                    </div>
+                }
+                else if (_pickerMode == PickerView.Year)
+                {
+                    <div class="sgc-date-grid sgc-year-grid">
+                        @for (int y = _view.Year - 7; y <= _view.Year + 7; y++)
+                        {
+                            var year = y;
+                            var isSel = Value.HasValue && Value.Value.Year == year;
+                            <div class="sgc-date-cell sgc-year-cell @(isSel ? "sgc-selected" : "")" 
+                                 @onclick="() => SelectYear(year)">
+                                @year
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="sgc-date-grid">
+                        @for (var i = 0; i < 7; i++)
+                        {
+                            var dow = ((int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek + i) % 7;
+                            <div class="sgc-date-dow">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[dow]</div>
+                        }
+                        @foreach (var d in BuildGrid())
+                        {
+                            var dl = d;
+                            var inMonth = dl.Month == _view.Month;
+                            var isToday = dl.Date == DateTime.Today;
+                            var isSel = Value.HasValue && dl.Date == Value.Value.Date;
+                            var isDisabled = IsDateDisabled(dl);
+                            <div class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isSel ? "sgc-selected" : "") @(isDisabled ? "sgc-date-disabled" : "")"
+                                 role="button"
+                                 aria-disabled="@(isDisabled ? "true" : null)"
+                                 aria-selected="@(isSel ? "true" : null)"
+                                 @onclick="() => { if (!isDisabled) _ = PickAsync(dl); }">@dl.Day</div>
+                        }
+                    </div>
+                }
                 <div class="sgc-date-foot">
-                    <button class="sgc-btn sgc-sm" type="button" @onclick="TodayAsync">@Localizer["Today"]</button>
+                    <button class="sgc-btn sgc-sm" type="button" @onclick="TodayAsync">@Localizer["Common_Today"]</button>
                     @if (AllowClear)
                     {
-                        <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@Localizer["Clear"]</button>
+                        <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@Localizer["Common_Clear"]</button>
                     }
                 </div>
             </div>
@@ -100,6 +150,9 @@
 </div>
 
 @code {
+    private enum PickerView { Days, Month, Year }
+    private PickerView _pickerMode = PickerView.Days;
+
     private readonly string _labelId = "sg-date-label-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _hintId = "sg-date-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-date-err-" + Guid.NewGuid().ToString("N")[..8];
@@ -159,7 +212,7 @@
     /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private string ClearLabel => Localizer["Clear"];
+    private string ClearLabel => Localizer["Common_Clear"];
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
         ? ErrorText
@@ -169,6 +222,21 @@
     private bool IsDateDisabled(DateTime d) =>
         (Min.HasValue && d.Date < Min.Value.Date) ||
         (Max.HasValue && d.Date > Max.Value.Date);
+
+    private void ToggleMonthView() => _pickerMode = _pickerMode == PickerView.Month ? PickerView.Days : PickerView.Month;
+    private void ToggleYearView() => _pickerMode = _pickerMode == PickerView.Year ? PickerView.Days : PickerView.Year;
+
+    private void SelectMonth(int month)
+    {
+        _view = new DateTime(_view.Year, month, 1);
+        _pickerMode = PickerView.Days;
+    }
+
+    private void SelectYear(int year)
+    {
+        _view = new DateTime(year, _view.Month, 1);
+        _pickerMode = PickerView.Days;
+    }
 
     protected override void OnInitialized()
     {
@@ -199,7 +267,11 @@
         if (Disabled) return Task.CompletedTask;
         _blurCts?.Cancel();
         _open = !_open;
-        if (_open && Value.HasValue) _view = new DateTime(Value.Value.Year, Value.Value.Month, 1);
+        if (_open)
+        {
+             _pickerMode = PickerView.Days;
+             if (Value.HasValue) _view = new DateTime(Value.Value.Year, Value.Value.Month, 1);
+        }
         return InvokeAsync(StateHasChanged);
     }
 

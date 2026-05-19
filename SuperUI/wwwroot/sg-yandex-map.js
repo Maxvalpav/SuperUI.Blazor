@@ -127,7 +127,7 @@ function _cssVar(name, fallback) {
 // ── Canvas marker icon ────────────────────────────────────────────────────────
 
 function _makeMarkerCanvas(color, emoji) {
-    const accent = _cssVar('--sui-accent', '#006fee');
+    const accent = _cssVar('--sg-color-primary', '#006fee');
     const c = color ?? accent;
     const size = 36;
     const cv = document.createElement('canvas');

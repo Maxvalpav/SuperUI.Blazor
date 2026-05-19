@@ -74,18 +74,99 @@ export function attach(root, dotnet) {
         window.addEventListener('pointercancel', onUp, { once: true });
     }
 
-    // Attach to all sashes inside root
-    function bindSashes() {
+    // ── Tab Drag & Drop ──────────────────────────────────────────────────────
+
+    function onDragStart(e) {
+        if (isDisposed) return;
+        const tab = e.target.closest('.sgc-dock-tab');
+        if (!tab) return;
+        const panelId = tab.getAttribute('data-panel-id');
+        if (!panelId) return;
+
+        e.dataTransfer.setData('text/plain', panelId);
+        e.dataTransfer.effectAllowed = 'move';
+        tab.classList.add('sgc-dock-tab-dragging');
+        
+        // Use a delay to allow the ghost image to be created before we hide/fade the original
+        setTimeout(() => tab.style.opacity = '0.4', 0);
+    }
+
+    function onDragEnd(e) {
+        const tab = e.target.closest('.sgc-dock-tab');
+        if (tab) {
+            tab.classList.remove('sgc-dock-tab-dragging');
+            tab.style.opacity = '';
+        }
+        root.querySelectorAll('.sgc-dock-tabbar').forEach(tb => {
+            tb.classList.remove('sgc-dock-tabbar-drop-target');
+        });
+    }
+
+    function onDragOver(e) {
+        if (isDisposed) return;
+        const tabbar = e.target.closest('.sgc-dock-tabbar');
+        if (!tabbar) return;
+
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        
+        root.querySelectorAll('.sgc-dock-tabbar').forEach(tb => {
+            tb.classList.remove('sgc-dock-tabbar-drop-target');
+        });
+        tabbar.classList.add('sgc-dock-tabbar-drop-target');
+    }
+
+    function onDragLeave(e) {
+        const tabbar = e.target.closest('.sgc-dock-tabbar');
+        if (tabbar) {
+            tabbar.classList.remove('sgc-dock-tabbar-drop-target');
+        }
+    }
+
+    function onDrop(e) {
+        if (isDisposed || !dotnet) return;
+        const tabbar = e.target.closest('.sgc-dock-tabbar');
+        if (!tabbar) return;
+
+        e.preventDefault();
+        tabbar.classList.remove('sgc-dock-tabbar-drop-target');
+
+        const panelId = e.dataTransfer.getData('text/plain');
+        const targetPos = tabbar.getAttribute('data-pos');
+
+        if (panelId && targetPos) {
+            invoke('JsMovePanel', panelId, targetPos);
+        }
+    }
+
+    // Attach to sashes and tabs
+    function bindAll() {
         root.querySelectorAll('.sgc-dock-sash').forEach(s => {
             s.removeEventListener('pointerdown', onSashDown);
             s.addEventListener('pointerdown', onSashDown);
         });
+
+        root.querySelectorAll('.sgc-dock-tab').forEach(t => {
+            t.removeEventListener('dragstart', onDragStart);
+            t.addEventListener('dragstart', onDragStart);
+            t.removeEventListener('dragend', onDragEnd);
+            t.addEventListener('dragend', onDragEnd);
+        });
+
+        root.querySelectorAll('.sgc-dock-tabbar').forEach(tb => {
+            tb.removeEventListener('dragover', onDragOver);
+            tb.addEventListener('dragover', onDragOver);
+            tb.removeEventListener('dragleave', onDragLeave);
+            tb.addEventListener('dragleave', onDragLeave);
+            tb.removeEventListener('drop', onDrop);
+            tb.addEventListener('drop', onDrop);
+        });
     }
 
-    // Use MutationObserver so newly rendered sashes get bound too
-    const observer = new MutationObserver(() => bindSashes());
+    // Use MutationObserver so newly rendered sashes/tabs get bound too
+    const observer = new MutationObserver(() => bindAll());
     observer.observe(root, { childList: true, subtree: true });
-    bindSashes();
+    bindAll();
 
     root._sgDock = { state, observer };
 }
