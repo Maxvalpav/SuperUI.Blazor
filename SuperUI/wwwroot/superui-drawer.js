@@ -48,7 +48,7 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
                     e.preventDefault();
                     e.stopPropagation();
                     try {
-                        top.dotnet.invokeMethodAsync('CloseFromJsAsync').catch(() => {});
+                        top.dotnet.invokeMethodAsync('RequestCloseAsync').catch(() => {});
                     } catch { }
                 }
             }
@@ -178,15 +178,17 @@ export function initResize(drawerElement, dotnetRef, placement) {
     };
 }
 
-export function detach() {
-    const entry = drawerStack.pop();
-    if (!entry) return;
+export function detach(drawerElement) {
+    const index = drawerStack.findIndex(x => x.element === drawerElement);
+    if (index === -1) return;
+
+    const entry = drawerStack.splice(index, 1)[0];
 
     // Mark as disposed first
     if (entry.dispose) entry.dispose();
 
-    // Restore previous focus
-    if (entry.previousFocus && typeof entry.previousFocus.focus === 'function') {
+    // Restore previous focus if this was the top drawer
+    if (index === drawerStack.length && entry.previousFocus && typeof entry.previousFocus.focus === 'function') {
         try {
             entry.previousFocus.focus();
         } catch (e) {

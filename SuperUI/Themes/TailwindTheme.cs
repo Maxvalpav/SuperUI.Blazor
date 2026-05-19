@@ -25,391 +25,203 @@ public sealed class TailwindTheme : ThemeBase
 
     public override string? AdditionalCss => """
         /* ═══════════════════════════════════════════════════════
-           TAILWIND CSS — Ring focus system & component overrides
+           TAILWIND UTILITY STYLE — Component Overrides
            ═══════════════════════════════════════════════════════ */
 
-        /* Tailwind ring focus variables */
-        :root {
-            --tw-ring-color:        rgba(99, 102, 241, 0.5);   /* indigo-500/50 */
-            --tw-ring-offset-color: #ffffff;
-            --tw-ring-offset-width: 2px;
-            --tw-ring-shadow:       0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);
-            --tw-ring-offset-shadow: 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);
-
-            /* Tailwind shadow scale — exact values */
-            --tw-shadow-sm:  0 1px 2px 0 rgb(0 0 0 / 0.05);
-            --tw-shadow:     0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-            --tw-shadow-md:  0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-            --tw-shadow-lg:  0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-            --tw-shadow-xl:  0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-            --tw-shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-            --tw-shadow-inner: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
-
-            /* Tailwind prose-like spacing */
-            --tw-prose-body:    #374151;
-            --tw-prose-headings: #111827;
-            --tw-prose-links:   #4f46e5;
+        [data-theme-id="tailwind-v3"] {
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
-        [data-theme="dark"] {
-            --tw-ring-offset-color: #0f172a;
-            --tw-prose-body:    #d1d5db;
-            --tw-prose-headings: #f9fafb;
-            --tw-prose-links:   #818cf8;
+        /* ── Modern Card ───────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-card {
+            background: var(--sg-surface);
+            border: 1px solid var(--sg-border);
+            box-shadow: var(--sg-shadow-sm);
+            transition: all var(--sg-transition-base);
+            border-radius: 8px;
         }
 
-        /* ── Focus ring — Tailwind ring system ─────────────── */
-        [data-theme-id="tailwind-v3"] *:focus-visible {
-            outline: none !important;
-            box-shadow:
-                var(--tw-ring-offset-shadow),
-                var(--tw-ring-shadow),
-                var(--tw-shadow, 0 0 #0000) !important;
+        [data-theme-id="tailwind-v3"] .sgc-card:hover {
+            box-shadow: var(--sg-shadow-md);
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-card-outlined {
+            box-shadow: none;
+            border: 1px solid var(--sg-border-strong);
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-card-filled {
+            background: var(--sg-bg-subtle);
+            border: none;
+            box-shadow: none;
+        }
+
+        /* ── Buttons ───────────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-btn-primary {
+            background: var(--sg-color-primary);
+            color: var(--sg-color-primary-fg);
+            border: 1px solid transparent;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            transition: all var(--sg-transition-base);
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-btn-primary:hover:not(:disabled) {
+            filter: brightness(1.1);
+            transform: translateY(-1px);
+            box-shadow: var(--sg-shadow-sm);
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-btn-primary:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        /* ── Inputs ────────────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-input,
+        [data-theme-id="tailwind-v3"] .sgc-select,
+        [data-theme-id="tailwind-v3"] .sgc-textarea {
+            border: 1px solid var(--sg-border-strong);
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            transition: all var(--sg-transition-base);
         }
 
         [data-theme-id="tailwind-v3"] .sgc-input:focus,
         [data-theme-id="tailwind-v3"] .sgc-select:focus,
-        [data-theme-id="tailwind-v3"] .sgc-textarea:focus,
-        [data-theme-id="tailwind-v3"] .sgc-combo.sgc-open .sgc-combo-control {
-            outline: none !important;
-            border-color: #6366f1 !important;
-            box-shadow:
-                var(--tw-ring-offset-shadow),
-                var(--tw-ring-shadow),
-                var(--tw-shadow-sm) !important;
+        [data-theme-id="tailwind-v3"] .sgc-textarea:focus {
+            border-color: var(--sg-color-primary);
+            box-shadow: 0 0 0 1px var(--sg-color-primary), 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            outline: none;
         }
 
-        /* ── Buttons — Tailwind UI style ───────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-btn {
-            font-weight: 600 !important;
-            font-size: 0.875rem !important;
-            letter-spacing: 0 !important;
-            transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1) !important;
-            box-shadow: var(--tw-shadow-sm) !important;
+        /* ── Header ────────────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-header {
+            background: #ffffff;
+            border-bottom: 1px solid #e2e8f0; /* Slate-200 */
         }
 
-        /* Primary — indigo filled */
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-btn-primary {
-            background: #4f46e5 !important;
-            border-color: #4f46e5 !important;
-            color: #fff !important;
-            box-shadow: var(--tw-shadow-sm) !important;
+        [data-theme-id="tailwind-v3"][data-theme="dark"] .sgc-header {
+            background: #1e293b; /* Slate-800 */
+            border-bottom-color: #334155; /* Slate-700 */
         }
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-btn-primary:hover:not(:disabled) {
-            background: #4338ca !important;
-            border-color: #4338ca !important;
-            transform: none !important;
-            box-shadow: var(--tw-shadow) !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-btn-primary:active:not(:disabled) {
-            background: #3730a3 !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav {
+            background: #1e293b; /* Slate-800 */
+            color: #f1f5f9; /* Slate-100 */
+            border-right: none;
         }
 
-        /* Default — white with border */
-        [data-theme-id="tailwind-v3"] .sgc-btn:not(.sgc-btn-primary):not(.sgc-btn-danger):not(.sgc-btn-success):not(.sgc-ghost):not(.sgc-outlined) {
-            background: #fff !important;
-            border: 1px solid #d1d5db !important;
-            color: #374151 !important;
-            box-shadow: var(--tw-shadow-sm) !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-btn:not(.sgc-btn-primary):not(.sgc-btn-danger):not(.sgc-btn-success):not(.sgc-ghost):not(.sgc-outlined):hover:not(:disabled) {
-            background: #f9fafb !important;
-            transform: none !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-link {
+            border-left: 2px solid transparent;
+            margin: 2px 8px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            color: #94a3b8; /* Slate-400 */
+            transition: all var(--sg-transition-base);
         }
 
-        /* Ghost / text */
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-ghost {
-            background: transparent !important;
-            border-color: transparent !important;
-            color: #4f46e5 !important;
-            box-shadow: none !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-ghost:hover:not(:disabled) {
-            background: #eef2ff !important;
-            transform: none !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-link:hover {
+            background: #334155; /* Slate-700 */
+            color: #f1f5f9;
         }
 
-        /* Outlined */
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-outlined {
-            background: transparent !important;
-            border-color: #6366f1 !important;
-            color: #4f46e5 !important;
-            box-shadow: none !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-btn.sgc-outlined:hover:not(:disabled) {
-            background: #eef2ff !important;
-            transform: none !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-link.active {
+            background: #0ea5e9; /* Sky-500 */
+            color: #fff;
+            font-weight: 600;
         }
 
-        /* Dark mode buttons */
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-btn:not(.sgc-btn-primary):not(.sgc-btn-danger):not(.sgc-btn-success):not(.sgc-ghost):not(.sgc-outlined) {
-            background: #1e293b !important;
-            border-color: #334155 !important;
-            color: #f1f5f9 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-btn:not(.sgc-btn-primary):not(.sgc-btn-danger):not(.sgc-btn-success):not(.sgc-ghost):not(.sgc-outlined):hover:not(:disabled) {
-            background: #334155 !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-icon {
+            color: inherit;
+            opacity: 1;
         }
 
-        /* ── Inputs — Tailwind form style ──────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-input,
-        [data-theme-id="tailwind-v3"] .sgc-select,
-        [data-theme-id="tailwind-v3"] .sgc-textarea {
-            background: #fff !important;
-            border: 1px solid #d1d5db !important;
-            border-radius: 6px !important;
-            color: #111827 !important;
-            font-size: 0.875rem !important;
-            box-shadow: var(--tw-shadow-sm) !important;
-            transition: border-color 150ms, box-shadow 150ms !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-input:hover,
-        [data-theme-id="tailwind-v3"] .sgc-select:hover,
-        [data-theme-id="tailwind-v3"] .sgc-textarea:hover {
-            border-color: #9ca3af !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-input::placeholder,
-        [data-theme-id="tailwind-v3"] .sgc-textarea::placeholder {
-            color: #9ca3af !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-section {
+            color: #64748b; /* Slate-500 */
+            padding: 20px 16px 8px;
         }
 
-        /* Dark mode inputs */
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-input,
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-select,
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-textarea {
-            background: #1e293b !important;
-            border-color: #334155 !important;
-            color: #f1f5f9 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-input::placeholder,
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-textarea::placeholder {
-            color: #64748b !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-group-header {
+            margin: 2px 8px;
+            border-radius: 6px;
+            color: #f1f5f9;
         }
 
-        /* ── Cards — Tailwind UI card style ────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-card {
-            background: #fff !important;
-            border: 1px solid #e5e7eb !important;
-            box-shadow: var(--tw-shadow) !important;
-            border-radius: 12px !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-card:hover {
-            box-shadow: var(--tw-shadow-md) !important;
-        }
-
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-card {
-            background: #1e293b !important;
-            border-color: #334155 !important;
-        }
-
-        /* ── Dropdown / Menu ────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-dropdown-menu {
-            background: #fff !important;
-            border: 1px solid #e5e7eb !important;
-            border-radius: 8px !important;
-            box-shadow: var(--tw-shadow-lg) !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-dropdown-item:hover {
-            background: #f9fafb !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-dropdown-item.sgc-selected {
-            background: #eef2ff !important;
-            color: #4f46e5 !important;
-        }
-
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-dropdown-menu {
-            background: #1e293b !important;
-            border-color: #334155 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-dropdown-item:hover {
-            background: #334155 !important;
-        }
-
-        /* ── Table ──────────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-table thead th {
-            background: #f9fafb !important;
-            font-size: 0.75rem !important;
-            font-weight: 600 !important;
-            text-transform: uppercase !important;
-            letter-spacing: 0.05em !important;
-            color: #6b7280 !important;
-            border-bottom: 1px solid #e5e7eb !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-table tbody tr {
-            border-bottom: 1px solid #f3f4f6 !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-table tbody tr:hover td {
-            background: #f9fafb !important;
-        }
-
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-table thead th {
-            background: #1e293b !important;
-            color: #94a3b8 !important;
-            border-bottom-color: #334155 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-table tbody tr {
-            border-bottom-color: #1e293b !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-table tbody tr:hover td {
-            background: #1e293b !important;
+        [data-theme-id="tailwind-v3"] .sgc-nav-group-header:hover {
+            background: #334155;
         }
 
         /* ── Tabs ───────────────────────────────────────────── */
         [data-theme-id="tailwind-v3"] .sgc-tabs-strip {
-            background: transparent !important;
-            border-bottom: 1px solid #e5e7eb !important;
-            border-radius: 0 !important;
-            padding: 0 !important;
-            gap: 0 !important;
+            background: var(--sg-bg-muted);
+            border-radius: var(--sg-radius-lg);
+            padding: 4px;
         }
+
         [data-theme-id="tailwind-v3"] .sgc-tab-item {
-            border-radius: 0 !important;
-            font-size: 0.875rem !important;
-            font-weight: 500 !important;
-            color: #6b7280 !important;
-            padding: 0 4px !important;
-            margin-bottom: -1px !important;
-            border-bottom: 2px solid transparent !important;
+            border-radius: var(--sg-radius-md);
+            transition: all var(--sg-transition-base);
         }
-        [data-theme-id="tailwind-v3"] .sgc-tab-item:hover {
-            color: #374151 !important;
-            border-bottom-color: #d1d5db !important;
-            background: transparent !important;
-        }
+
         [data-theme-id="tailwind-v3"] .sgc-tab-item.is-active {
-            color: #4f46e5 !important;
-            border-bottom: 2px solid #4f46e5 !important;
-            background: transparent !important;
-            box-shadow: none !important;
+            background: var(--sg-surface);
+            box-shadow: var(--sg-shadow-sm);
+            color: var(--sg-fg);
         }
 
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-tabs-strip {
-            border-bottom-color: #334155 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-tab-item {
-            color: #94a3b8 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-tab-item:hover {
-            color: #e2e8f0 !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-tab-item.is-active {
-            color: #818cf8 !important;
-            border-bottom-color: #818cf8 !important;
+        /* ── Alerts ────────────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-alert {
+            border: 1px solid transparent;
+            border-radius: 6px;
+            box-shadow: none;
         }
 
-        /* ── Badges / Tags ──────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-alert.sgc-info    { background: #f0f9ff; border-color: #bae6fd; color: #0369a1; }
+        [data-theme-id="tailwind-v3"] .sgc-alert.sgc-success { background: #f0fdf4; border-color: #bbf7d0; color: #15803d; }
+        [data-theme-id="tailwind-v3"] .sgc-alert.sgc-warn    { background: #fffbeb; border-color: #fef3c7; color: #a16207; }
+        [data-theme-id="tailwind-v3"] .sgc-alert.sgc-danger  { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+
+        /* ── Tabs ───────────────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-tabs-strip {
+            background: transparent;
+            border-bottom: 1px solid #e2e8f0;
+            border-radius: 0;
+            padding: 0;
+            gap: 32px;
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-tab {
+            border-radius: 0;
+            padding: 12px 0;
+            border-bottom: 2px solid transparent;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-tab.sgc-active {
+            color: #0ea5e9;
+            border-bottom-color: #0ea5e9;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        /* ── Chips ──────────────────────────────────────────── */
+        [data-theme-id="tailwind-v3"] .sgc-chip {
+            background: #f1f5f9;
+            color: #334155;
+            border: none;
+            border-radius: 9999px;
+            padding: 2px 10px;
+            font-size: 12px;
+        }
+
+        [data-theme-id="tailwind-v3"] .sgc-chip.sgc-chip-selected {
+            background: #0ea5e9;
+            color: #fff;
+        }
+
+        /* ── Badges ─────────────────────────────────────────── */
         [data-theme-id="tailwind-v3"] .sg-badge {
-            font-size: 0.75rem !important;
-            font-weight: 500 !important;
-            border-radius: 9999px !important;
-            padding: 2px 10px !important;
-        }
-        [data-theme-id="tailwind-v3"] .sg-badge-info {
-            background: #eef2ff !important;
-            color: #4338ca !important;
-            border-color: #c7d2fe !important;
-        }
-        [data-theme-id="tailwind-v3"] .sg-badge-success {
-            background: #f0fdf4 !important;
-            color: #15803d !important;
-            border-color: #bbf7d0 !important;
-        }
-        [data-theme-id="tailwind-v3"] .sg-badge-danger {
-            background: #fef2f2 !important;
-            color: #b91c1c !important;
-            border-color: #fecaca !important;
-        }
-        [data-theme-id="tailwind-v3"] .sg-badge-warn {
-            background: #fffbeb !important;
-            color: #b45309 !important;
-            border-color: #fde68a !important;
-        }
-        [data-theme-id="tailwind-v3"] .sg-badge-neutral {
-            background: #f9fafb !important;
-            color: #374151 !important;
-            border-color: #e5e7eb !important;
-        }
-
-        /* ── Modal / Dialog ─────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-modal-content {
-            background: #fff !important;
-            border: none !important;
-            border-radius: 12px !important;
-            box-shadow: var(--tw-shadow-xl) !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-modal-content {
-            background: #1e293b !important;
-        }
-
-        /* ── Toast / Snackbar ───────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-toast {
-            background: #111827 !important;
-            color: #f9fafb !important;
-            border-radius: 8px !important;
-            box-shadow: var(--tw-shadow-lg) !important;
-            font-size: 0.875rem !important;
-        }
-
-        /* ── Tooltip ────────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-tooltip,
-        [data-theme-id="tailwind-v3"] .sg-tooltip-dark {
-            background: #111827 !important;
-            color: #f9fafb !important;
-            border-radius: 6px !important;
-            font-size: 0.75rem !important;
-            box-shadow: var(--tw-shadow-md) !important;
-        }
-
-        /* ── Navigation ─────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-nav-item.is-active,
-        [data-theme-id="tailwind-v3"] .sgc-nav-link.is-active {
-            background: #eef2ff !important;
-            color: #4f46e5 !important;
-            border-radius: 6px !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-nav-item.is-active,
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-nav-link.is-active {
-            background: rgba(99, 102, 241, 0.15) !important;
-            color: #818cf8 !important;
-        }
-
-        /* ── Progress ───────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-progress {
-            background: #e0e7ff !important;
-            border-radius: 9999px !important;
-            height: 6px !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-progress-fill {
-            background: #4f46e5 !important;
-            border-radius: 9999px !important;
-        }
-
-        /* ── Switch ─────────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-switch-slider {
-            background: #d1d5db !important;
-            border-radius: 9999px !important;
-        }
-        [data-theme-id="tailwind-v3"] .sgc-switch input:checked + .sgc-switch-slider {
-            background: #4f46e5 !important;
-        }
-
-        /* ── Divider ────────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] .sgc-divider,
-        [data-theme-id="tailwind-v3"] hr {
-            border-color: #e5e7eb !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] .sgc-divider,
-        [data-theme="dark"][data-theme-id="tailwind-v3"] hr {
-            border-color: #334155 !important;
-        }
-
-        /* ── Scrollbar ──────────────────────────────────────── */
-        [data-theme-id="tailwind-v3"] ::-webkit-scrollbar-thumb {
-            background: #cbd5e1 !important;
-            border-radius: 9999px !important;
-        }
-        [data-theme="dark"][data-theme-id="tailwind-v3"] ::-webkit-scrollbar-thumb {
-            background: #334155 !important;
+            font-weight: 500;
+            letter-spacing: 0.025em;
         }
         """;
 }
@@ -553,8 +365,8 @@ internal class TailwindSemanticLight : IThemeSemantic
     public string Font     => "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
     public string FontMono => "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     public string TextSm   => "0.875rem";   // text-sm
-    public string TextBase => "1rem";       // text-base
-    public string TextLg   => "1.125rem";   // text-lg
+    public string TextBase => "0.9375rem";  // 15px baseline for UI density
+    public string TextLg   => "1.0625rem";  // 17px
 
     // Tailwind shadow scale
     public string ShadowXs => "0 1px 2px 0 rgb(0 0 0 / 0.05)";
@@ -647,8 +459,8 @@ internal class TailwindSemanticDark : IThemeSemantic
     public string Font     => "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
     public string FontMono => "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
     public string TextSm   => "0.875rem";
-    public string TextBase => "1rem";
-    public string TextLg   => "1.125rem";
+    public string TextBase => "0.9375rem";
+    public string TextLg   => "1.0625rem";
 
     public string ShadowXs => "0 1px 2px 0 rgb(0 0 0 / 0.4)";
     public string ShadowSm => "0 1px 3px 0 rgb(0 0 0 / 0.5), 0 1px 2px -1px rgb(0 0 0 / 0.5)";

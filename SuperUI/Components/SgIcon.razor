@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
+@inherits SgComponentBase
 
-<span class="sgc-icon @CssClass" style="@GetStyle()" aria-hidden="true">
+<span class="@Css("sgc-icon").Build()" style="@GetIconStyle()" aria-hidden="true">
     @((MarkupString)Icon)
 </span>
 
@@ -8,31 +9,39 @@
     /// <summary>SVG markup of the icon.</summary>
     [Parameter, EditorRequired] public string Icon { get; set; } = "";
 
-    /// <summary>Size of the icon (e.g., "16px").</summary>
+    /// <summary>Size of the icon (e.g., "16px"). Sets both width and height.</summary>
     [Parameter] public string? Size { get; set; }
+
+    /// <summary>Width of the icon.</summary>
+    [Parameter] public string? Width { get; set; }
+
+    /// <summary>Height of the icon.</summary>
+    [Parameter] public string? Height { get; set; }
 
     /// <summary>Color of the icon (CSS color).</summary>
     [Parameter] public string? Color { get; set; }
 
-    /// <summary>Additional CSS classes.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Additional inline styles.</summary>
-    [Parameter] public string? Style { get; set; }
-
-    private string GetStyle()
+    private string GetIconStyle()
     {
-        var styles = new List<string>();
-        if (!string.IsNullOrEmpty(Size))
+        var b = Styles();
+        
+        var w = Width ?? Size;
+        var h = Height ?? Size;
+
+        if (!string.IsNullOrEmpty(w)) b.Add("width", w);
+        if (!string.IsNullOrEmpty(h)) b.Add("height", h);
+        
+        if (!string.IsNullOrEmpty(w) || !string.IsNullOrEmpty(h))
         {
-            styles.Add($"width: {Size}");
-            styles.Add($"height: {Size}");
-            styles.Add($"display: inline-flex");
-            styles.Add($"align-items: center");
-            styles.Add($"justify-content: center");
+            b.Add("display", "inline-flex");
+            b.Add("align-items", "center");
+            b.Add("justify-content", "center");
         }
-        if (!string.IsNullOrEmpty(Color)) styles.Add($"color: {Color}");
-        if (!string.IsNullOrEmpty(Style)) styles.Add(Style);
-        return string.Join("; ", styles);
+
+        if (!string.IsNullOrEmpty(Color)) b.Add("color", Color);
+        
+        return b.Build();
     }
+
+    public void Dispose() { }
 }

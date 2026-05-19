@@ -21,9 +21,9 @@
             @if (ShowSearch)
             {
                 <div class="sg-search-wrap">
-                    <svg class="sg-search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <SgIcon Icon="@SgIcons.Search" Size="14px" CssClass="sg-search-icon" />
                     <input class="sg-search"
-                           placeholder="@SearchPlaceholder"
+                           placeholder="@(SearchPlaceholder ?? Localizer["Table_Search"])"
                            value="@_searchText"
                            @oninput="OnSearchInput" />
                 </div>
@@ -32,7 +32,7 @@
             {
                 <div @ref="_exportRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleExportFocusOut" tabindex="-1">
                     <button class="sg-button" @onclick="ToggleExportMenu" title="@Localizer["Table_Export"]">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                        <SgIcon Icon="@SgIcons.Download" Size="16px" />
                         <span style="font-size: 12px; margin-left: 4px; font-weight: 500;">@Localizer["Table_Export"]</span>
                     </button>
                     @if (_showExportMenu)
@@ -41,14 +41,14 @@
                             @if (ShowExport || ShowExportCsv)
                             {
                                 <button type="button" class="sg-chooser-item sg-btn-link" @onclick="ExportToCsv">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                    <SgIcon Icon="@SgIcons.FileText" Size="14px" Style="margin-right: 8px;" />
                                     @Localizer["Table_ExportCsv"]
                                 </button>
                             }
                             @if (ShowExportExcel)
                             {
                                 <button type="button" class="sg-chooser-item sg-btn-link" @onclick="ExportToExcel">
-                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                    <SgIcon Icon="@SgIcons.FileText" Size="14px" Style="margin-right: 8px;" />
                                     @Localizer["Table_ExportExcel"]
                                 </button>
                             }
@@ -134,13 +134,13 @@
                                     {
                                         <span class="sg-sort-ind">
                                             @if (_sortDirection == SortDirection.Ascending)
-                                            {
-                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                                            }
-                                            else if (_sortDirection == SortDirection.Descending)
-                                            {
-                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                                            }
+                                    {
+                                        <SgIcon Icon="@SgIcons.ChevronUp" Size="10px" />
+                                    }
+                                    else if (_sortDirection == SortDirection.Descending)
+                                    {
+                                        <SgIcon Icon="@SgIcons.ChevronDown" Size="10px" />
+                                    }
                                         </span>
                                     }
                                 </span>
@@ -157,7 +157,22 @@
                 </tr>
             </thead>
             <tbody>
-                @if (PagedItems.Any())
+                @if (Loading)
+                {
+                    var totalCols = Columns.Count + (ShowRowNumbers ? 1 : 0) + (AllowSelection ? 1 : 0);
+                    for (int r = 0; r < 5; r++)
+                    {
+                        <tr>
+                            @for (int c = 0; c < totalCols; c++)
+                            {
+                                <td class="sg-td">
+                                    <SgSkeleton Width="@(c == 0 ? "40%" : "80%")" Height="14px" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+                else if (PagedItems.Any())
                 {
                     var rowIndex = (CurrentPage - 1) * PageSize + 1;
                     @foreach (var item in PagedItems)
@@ -275,26 +290,26 @@
                         disabled="@(CurrentPage == 1)"
                         @onclick="GoToFirstPage"
                         title="@Localizer["First"]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"></polyline><polyline points="18 17 13 12 18 7"></polyline></svg>
+                    <SgIcon Icon="@SgIcons.ChevronsLeft" Size="16px" />
                 </button>
                 <button class="sg-button" 
                         disabled="@(CurrentPage == 1)"
                         @onclick="GoToPreviousPage"
                         title="@Localizer["Previous"]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+                    <SgIcon Icon="@SgIcons.ChevronLeft" Size="16px" />
                 </button>
                 <span style="font-size: 13px; padding: 0 8px; white-space: nowrap;">@CurrentPage / @TotalPages</span>
                 <button class="sg-button" 
                         disabled="@(CurrentPage == TotalPages)"
                         @onclick="GoToNextPage"
                         title="@Localizer["Next"]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                    <SgIcon Icon="@SgIcons.ChevronRight" Size="16px" />
                 </button>
                 <button class="sg-button" 
                         disabled="@(CurrentPage == TotalPages)"
                         @onclick="GoToLastPage"
                         title="@Localizer["Last"]">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+                    <SgIcon Icon="@SgIcons.ChevronsRight" Size="16px" />
                 </button>
             </div>
         </div>

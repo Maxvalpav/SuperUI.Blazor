@@ -33,11 +33,12 @@ public partial class SgTable<TItem> : ComponentBase
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
+    [Parameter] public bool Loading { get; set; }
     [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Title { get; set; }
     [Parameter] public bool ShowSearch { get; set; } = true;
-    [Parameter] public string SearchPlaceholder { get; set; } = "Поиск...";
+    [Parameter] public string? SearchPlaceholder { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Height { get; set; }
     [Parameter] public bool FullWidth { get; set; }

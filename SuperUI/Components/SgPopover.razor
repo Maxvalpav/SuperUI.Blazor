@@ -24,26 +24,33 @@
 
     @if (_open || _isClosing)
     {
-        <div class="@Css("sgc-pop").AddClass(PlacementClass).AddClass("sgc-pop-arrow", ShowArrow).AddClass("sgc-closing", _isClosing).Build()"
-             role="@Role"
-             aria-labelledby="@_titleId"
-             tabindex="-1"
-             @ref="_popoverRef"
-             @onclick:stopPropagation="true"
-             @onmouseenter="OnPopoverMouseEnterAsync"
-             @onmouseleave="OnPopoverMouseLeaveAsync">
-            @if (!string.IsNullOrWhiteSpace(Title))
-            {
-                <div class="sgc-pop-header" id="@_titleId">@Title</div>
-            }
-            <div class="sgc-pop-body">
-                @ChildContent
+        <SgPortal>
+            <div class="@Css("sgc-pop").AddClass(PlacementClass).AddClass("sgc-pop-arrow", ShowArrow).AddClass("sgc-closing", _isClosing).Build()"
+                 role="@Role"
+                 aria-labelledby="@_titleId"
+                 tabindex="-1"
+                 @ref="_popoverRef"
+                 style="@PopStyle"
+                 @onclick:stopPropagation="true"
+                 @onmouseenter="OnPopoverMouseEnterAsync"
+                 @onmouseleave="OnPopoverMouseLeaveAsync">
+                @if (!string.IsNullOrWhiteSpace(Title))
+                {
+                    <div class="sgc-pop-header" id="@_titleId">@Title</div>
+                }
+                <div class="sgc-pop-body">
+                    @ChildContent
+                </div>
             </div>
-        </div>
+        </SgPortal>
     }
 </div>
 
 @code {
+    [Inject] private SgZIndexService ZIndex { get; set; } = default!;
+    private int _zIndex;
+    private string PopStyle => _zIndex > 0 ? $"z-index: {_zIndex};" : "";
+
     private const int CloseAnimationMs = 200;
     private const int HoverGraceMs = 120;
 
@@ -193,6 +200,7 @@
 
     private async Task AttachAsync()
     {
+        _zIndex = ZIndex.Allocate(this, SgZIndexService.PopoverBase);
         _isClosing = false;
         _attached  = false;
         await SafeInvokeVoidAsync("attach",
@@ -204,6 +212,8 @@
     private async Task DetachAsync()
     {
         if (!_attached) return;
+        ZIndex.Release(this);
+        _zIndex = 0;
         await SafeInvokeVoidAsync("detach", RootRef);
         _attached = false;
     }

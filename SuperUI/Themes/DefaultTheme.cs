@@ -73,6 +73,8 @@ public sealed class DefaultTheme : ThemeBase
             --sui-font-size-base: var(--sg-text-base);
             --sui-font-size-lg:   var(--sg-text-lg);
 
+            --sg-text-xs: 0.75rem;
+
             --sui-radius-sm:   var(--sg-radius-sm);
             --sui-radius-md:   var(--sg-radius-md);
             --sui-radius-lg:   var(--sg-radius-lg);
@@ -220,8 +222,8 @@ internal class DefaultSemanticLight : IThemeSemantic
     public string TransitionBase => "150ms cubic-bezier(0.4, 0, 0.2, 1)";
     public string TransitionSlow => "300ms cubic-bezier(0.4, 0, 0.2, 1)";
 
-    public string FocusRing => "0 0 0 2px rgba(0, 111, 238, 0.12), 0 0 0 4px #006fee";
-    public string FocusRingDanger => "0 0 0 2px rgba(244, 63, 94, 0.12), 0 0 0 4px #f43f5e";
+    public string FocusRing => "0 0 0 3px rgba(0, 111, 238, 0.2)";
+    public string FocusRingDanger => "0 0 0 3px rgba(244, 63, 94, 0.2)";
 
     public int ZDropdown => 100;
     public int ZSticky => 200;

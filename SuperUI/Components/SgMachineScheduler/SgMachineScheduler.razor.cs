@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 using SkiaSharp;
 using SkiaSharp.Views.Blazor;
 using SuperUI.Components.SgMachineScheduler.Models;
@@ -10,8 +11,10 @@ using System.Threading.Tasks;
 
 namespace SuperUI.Components.SgMachineScheduler;
 
-public partial class SgMachineScheduler : ComponentBase
+public partial class SgMachineScheduler : ComponentBase, IAsyncDisposable
 {
+    [Inject] private IJSRuntime JS { get; set; } = default!;
+
     // Parameters
     [Parameter] public List<MachineResource> Resources { get; set; } = new();
     [Parameter] public List<MachineReservation> Reservations { get; set; } = new();
@@ -59,6 +62,15 @@ public partial class SgMachineScheduler : ComponentBase
     // Drag & Drop
     private int? _draggingReservationId;
     private SKPoint _dragOffset;
+    private int? _targetMachineId;
+    private DateTime? _dragSnappedStartTime;
+
+    // JS Interop
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _resizeObserver;
+    private DotNetObjectReference<SgMachineScheduler>? _selfRef;
+    private double _containerWidth;
+    private double _containerHeight;
 
     protected override void OnParametersSet()
     {
@@ -69,8 +81,50 @@ public partial class SgMachineScheduler : ComponentBase
     {
         if (firstRender)
         {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-machinescheduler.js");
+            _selfRef = DotNetObjectReference.Create(this);
+            _resizeObserver = await _module.InvokeAsync<IJSObjectReference>("observeResize", _containerElement, _selfRef);
+
             ScrollToTime(DateTime.Now.AddHours(-2));
             StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnResize(double width, double height)
+    {
+        _containerWidth = width;
+        _containerHeight = height;
+        
+        // Clamp scroll offsets to new dimensions
+        if (_totalContentWidth > 0)
+            _scrollOffsetX = Math.Clamp(_scrollOffsetX, 0, Math.Max(0, _totalContentWidth - (float)_containerWidth));
+            
+        if (_totalContentHeight > 0)
+            _scrollOffsetY = Math.Clamp(_scrollOffsetY, 0, Math.Max(0, _totalContentHeight - (float)_containerHeight + _headerHeight));
+
+        _canvasView?.Invalidate();
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_resizeObserver != null)
+            {
+                await _module!.InvokeVoidAsync("unobserveResize", _resizeObserver);
+                await _resizeObserver.DisposeAsync();
+            }
+            if (_module != null) await _module.DisposeAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SgMachineScheduler: Error during JS disposal: {ex.Message}");
+        }
+        finally
+        {
+            _selfRef?.Dispose();
         }
     }
 
@@ -142,6 +196,17 @@ public partial class SgMachineScheduler : ComponentBase
         // --- LAYER 1-5: Content (Scrolled) ---
         canvas.Save();
         canvas.ClipRect(new SKRect(_labelWidth, _headerHeight, info.Width, info.Height));
+        
+        // Draw target row highlight if dragging
+        if (_draggingReservationId != null && _targetMachineId != null)
+        {
+            if (_machineRowTopCache.TryGetValue(_targetMachineId.Value, out var top))
+            {
+                using var highlightPaint = new SKPaint { Color = SKColor.Parse("#3B82F6").WithAlpha(20), Style = SKPaintStyle.Fill };
+                canvas.DrawRect(_labelWidth, top - _scrollOffsetY, info.Width, _rowHeight, highlightPaint);
+            }
+        }
+
         canvas.Translate(-_scrollOffsetX, -_scrollOffsetY);
         
         DrawGrid(canvas, info);
@@ -149,6 +214,35 @@ public partial class SgMachineScheduler : ComponentBase
         DrawNowLine(canvas, info);
         DrawDowntimes(canvas, info);
         DrawReservations(canvas, info);
+
+        // Draw drag ghost/preview
+        if (_draggingReservationId != null && _dragSnappedStartTime.HasValue && _targetMachineId.HasValue)
+        {
+            var res = Reservations.FirstOrDefault(r => r.Id == _draggingReservationId);
+            if (res != null && _machineRowTopCache.TryGetValue(_targetMachineId.Value, out var top))
+            {
+                var duration = res.EndTime - res.StartTime;
+                float x = DateTimeToX(_dragSnappedStartTime.Value);
+                float width = DateTimeToX(_dragSnappedStartTime.Value + duration) - x;
+                var ghostRect = new SKRect(x, top + 15, x + width, top + _rowHeight - 15);
+                
+                using var ghostPaint = new SKPaint { 
+                    Color = GetReservationColor(res).WithAlpha(100), 
+                    Style = SKPaintStyle.Fill, 
+                    IsAntialias = true,
+                    PathEffect = SKPathEffect.CreateDash(new[] { 5f, 5f }, 0)
+                };
+                using var ghostStroke = new SKPaint { 
+                    Color = GetReservationColor(res), 
+                    Style = SKPaintStyle.Stroke, 
+                    StrokeWidth = 2f, 
+                    IsAntialias = true 
+                };
+                canvas.DrawRoundRect(ghostRect, 10, 10, ghostPaint);
+                canvas.DrawRoundRect(ghostRect, 10, 10, ghostStroke);
+            }
+        }
+
         canvas.Restore();
 
         // --- LAYER 6-7: Headers (Fixed) ---
@@ -346,20 +440,36 @@ public partial class SgMachineScheduler : ComponentBase
     {
         if (e.CtrlKey)
         {
+            // Zoom centered on mouse
             var mouseX = (float)e.OffsetX;
-            float zoomDelta = e.DeltaY > 0 ? 0.9f : 1.1f;
-            float newScale = _scaleFactor * zoomDelta;
-            newScale = Math.Clamp(newScale, MinScale, MaxScale);
-            _scrollOffsetX = mouseX - (mouseX - _scrollOffsetX + _labelWidth) * (newScale / _scaleFactor) - _labelWidth;
-            _scaleFactor = newScale;
+            float zoomFactor = e.DeltaY > 0 ? 0.85f : 1.15f;
+            
+            float oldScale = _scaleFactor;
+            float newScale = Math.Clamp(_scaleFactor * zoomFactor, MinScale, MaxScale);
+            
+            if (Math.Abs(oldScale - newScale) > 0.001f)
+            {
+                // Calculate how much we need to adjust scroll to keep mouse over the same logical point
+                // logicalX = (scrollX + mouseX - labelWidth) / oldScale
+                // newScrollX = logicalX * newScale - (mouseX - labelWidth)
+                
+                float relativeX = _scrollOffsetX + mouseX - _labelWidth;
+                float logicalX = relativeX / oldScale;
+                
+                _scaleFactor = newScale;
+                _scrollOffsetX = (logicalX * _scaleFactor) - (mouseX - _labelWidth);
+            }
         }
         else
         {
             if (e.ShiftKey) _scrollOffsetX += (float)e.DeltaY;
             else _scrollOffsetY += (float)e.DeltaY;
         }
-        _scrollOffsetY = Math.Max(0, _scrollOffsetY);
+        
+        // Clamp offsets
         _scrollOffsetX = Math.Max(0, _scrollOffsetX);
+        _scrollOffsetY = Math.Max(0, _scrollOffsetY);
+        
         InvalidateLayout();
         _canvasView?.Invalidate();
     }
@@ -393,10 +503,18 @@ public partial class SgMachineScheduler : ComponentBase
             var res = Reservations.FirstOrDefault(r => r.Id == _draggingReservationId);
             if (res != null)
             {
+                // Current visual position (floating)
                 float x = point.X - _dragOffset.X + _scrollOffsetX;
                 float width = DateTimeToX(res.EndTime) - DateTimeToX(res.StartTime);
                 float y = point.Y - _dragOffset.Y + _scrollOffsetY;
-                _reservationRectCache[res.Id] = new SKRect(x, y, x + width, y + _rowHeight - 24);
+                
+                // Update ghost/preview state
+                _targetMachineId = FindMachineAtY(point.Y + _scrollOffsetY);
+                var potentialStartTime = XToDateTime(point.X - _dragOffset.X + _scrollOffsetX);
+                _dragSnappedStartTime = SnapToGrid(potentialStartTime, TimeSpan.FromMinutes(15));
+
+                // Update actual dragged rect in cache for immediate feedback
+                _reservationRectCache[res.Id] = new SKRect(x, y, x + width, y + _rowHeight - 30);
             }
             _canvasView?.Invalidate();
         }
@@ -434,18 +552,19 @@ public partial class SgMachineScheduler : ComponentBase
         if (_draggingReservationId != null)
         {
             var res = Reservations.FirstOrDefault(r => r.Id == _draggingReservationId);
-            if (res != null)
+            if (res != null && _targetMachineId.HasValue && _dragSnappedStartTime.HasValue)
             {
-                var point = new SKPoint((float)e.OffsetX, (float)e.OffsetY);
-                int newMachineId = FindMachineAtY(point.Y + _scrollOffsetY);
-                if (newMachineId != -1) res.MachineId = newMachineId;
-                var newStartTime = XToDateTime(point.X - _dragOffset.X + _scrollOffsetX);
+                res.MachineId = _targetMachineId.Value;
                 var duration = res.EndTime - res.StartTime;
-                res.StartTime = SnapToGrid(newStartTime, TimeSpan.FromMinutes(15));
+                res.StartTime = _dragSnappedStartTime.Value;
                 res.EndTime = res.StartTime + duration;
+                
                 await OnReservationMoved.InvokeAsync(res);
             }
+            
             _draggingReservationId = null;
+            _targetMachineId = null;
+            _dragSnappedStartTime = null;
         }
         _isPanning = false;
         InvalidateLayout();

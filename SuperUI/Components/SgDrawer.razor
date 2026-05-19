@@ -6,36 +6,38 @@
 
 @if (Visible || IsClosing)
 {
-    <div class="sgc-drawer-backdrop @(IsClosing ? "sgc-closing" : "")" 
-         style="z-index: @BackdropZIndex;" 
-         @onclick="BackdropClickAsync"></div>
-    
-    <div class="@Css("sgc-drawer").AddClass(PlacementClass).AddClass(IsClosing ? "sgc-closing" : "").Build()"
-         style="@GetDrawerStyle()"
-         role="dialog"
-         aria-modal="true"
-         aria-labelledby="@_titleId"
-         @ref="RootRef"
-         @attributes="AdditionalAttributes">
-        <div class="sgc-drawer-header" id="@_titleId">
-            <span class="sgc-drawer-title">@Title</span>
-            @if (ShowClose)
+    <SgPortal>
+        <div class="sgc-drawer-backdrop @(IsClosing ? "sgc-closing" : "")" 
+             style="z-index: @BackdropZIndex;" 
+             @onclick="BackdropClickAsync"></div>
+        
+        <div class="@Css("sgc-drawer").AddClass(PlacementClass).AddClass(IsClosing ? "sgc-closing" : "").Build()"
+             style="@GetDrawerStyle()"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="@_titleId"
+             @ref="RootRef"
+             @attributes="AdditionalAttributes">
+            <div class="sgc-drawer-header" id="@_titleId">
+                <span class="sgc-drawer-title">@Title</span>
+                @if (ShowClose)
+                {
+                    <button class="sgc-drawer-close" 
+                            aria-label="@Localizer["Common_Close"]" 
+                            @onclick="CloseAsync">×</button>
+                }
+            </div>
+            <div class="sgc-drawer-body">@ChildContent</div>
+            @if (FooterContent is not null)
             {
-                <button class="sgc-drawer-close" 
-                        aria-label="@Localizer["Common_Close"]" 
-                        @onclick="CloseAsync">×</button>
+                <div class="sgc-drawer-footer">@FooterContent</div>
+            }
+            @if (Resizable)
+            {
+                <div class="sgc-drawer-resizer" />
             }
         </div>
-        <div class="sgc-drawer-body">@ChildContent</div>
-        @if (FooterContent is not null)
-        {
-            <div class="sgc-drawer-footer">@FooterContent</div>
-        }
-        @if (Resizable)
-        {
-            <div class="sgc-drawer-resizer" />
-        }
-    </div>
+    </SgPortal>
 }
 
 @code {
@@ -137,7 +139,7 @@
 
     protected override async ValueTask OnClosingAsync()
     {
-        await SafeInvokeVoidAsync("detach");
+        await SafeInvokeVoidAsync("detach", RootRef);
     }
 
     protected override async ValueTask OnClosedAsync()

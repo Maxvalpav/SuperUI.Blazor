@@ -1,14 +1,16 @@
 @namespace SuperUI.Components
-@implements IDisposable
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@inherits SgJsComponentBase
 
 <CascadingValue Value="this" IsFixed="true">
     <div class="sgc-dropdown @CssClass"
+         @ref="RootRef"
          @onmouseleave="HandleMouseLeaveAsync"
          @onkeydown="HandleKeyDownAsync"
-         @onkeydown:stopPropagation="true"
-         @onblur="HandleBlurAsync"
-         @onblur:stopPropagation="true">
+         @onkeydown:stopPropagation="true">
         <div class="sgc-dropdown-trigger"
+             @ref="_triggerRef"
              role="button"
              aria-haspopup="menu"
              aria-expanded="@(_open ? "true" : "false")"
@@ -58,6 +60,9 @@
     private CancellationTokenSource? _hoverCts;
     private readonly List<SgDropdownItem> _items = new();
     private int _focusedIndex = -1;
+    private ElementReference _triggerRef;
+    private bool _attached;
+    private bool _lastRenderedOpen;
 
     /// <summary>Text shown on the default button trigger when <see cref="TriggerContent"/> is null.</summary>
     [Parameter] public string? Text { get; set; }
@@ -85,9 +90,6 @@
 
     /// <summary>Optional footer rendered below the items.</summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
-
-    /// <summary>Additional class on the outer dropdown wrapper.</summary>
-    [Parameter] public string? CssClass { get; set; }
 
     /// <summary>Additional class on the menu panel.</summary>
     [Parameter] public string? MenuCssClass { get; set; }
@@ -304,28 +306,43 @@
         }
     }
 
-    private async Task HandleBlurAsync(FocusEventArgs e)
+    protected override string ModulePath => "./_content/SuperUI/superui-dropdown.js";
+
+    [JSInvokable]
+    public Task CloseFromJsAsync() => CloseAsync();
+
+    protected override async Task OnAfterRenderSafeAsync(bool firstRender)
     {
-        // Only close the menu if focus moved completely outside the dropdown
-        // This prevents closing when clicking on menu items
-        if (Trigger != SgDropdownTrigger.Click) return;
-        
-        // Use a small delay to allow the click event to process first
-        await Task.Delay(50);
-        
-        // Check if the menu is still open and close it
-        // The blur event indicates focus left the dropdown
-        if (_open)
+        if (_open && !_lastRenderedOpen)
         {
-            await Task.Delay(70);
-            if (_open) await CloseAsync();
+            _lastRenderedOpen = true;
+            await AttachAsync();
+        }
+        else if (!_open && _lastRenderedOpen)
+        {
+            _lastRenderedOpen = false;
+            await DetachAsync();
         }
     }
 
-    public void Dispose()
+    private async Task AttachAsync()
+    {
+        if (_attached) return;
+        await SafeInvokeVoidAsync("attach", RootRef, _triggerRef, SelfRef, true, true);
+        _attached = true;
+    }
+
+    private async Task DetachAsync()
+    {
+        if (!_attached) return;
+        await SafeInvokeVoidAsync("detach", RootRef);
+        _attached = false;
+    }
+
+    protected override async ValueTask OnDisposingAsync()
     {
         _hoverCts?.Cancel();
         _hoverCts?.Dispose();
-        _open = false;
+        await DetachAsync();
     }
 }

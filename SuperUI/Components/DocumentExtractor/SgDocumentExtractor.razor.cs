@@ -21,7 +21,7 @@ namespace SuperUI.Components.DocumentExtractor;
 /// extractor (OpenAI-compatible + OpenRouter), a managed DOCX text extractor, and savers
 /// for DOCX, plain text, and a passthrough for PDF/images.
 /// </summary>
-public partial class SgDocumentExtractor : ComponentBase
+public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
 {
     private static readonly long DefaultMaxBytes = 25L * 1024 * 1024;
 
@@ -64,7 +64,40 @@ public partial class SgDocumentExtractor : ComponentBase
         _selectedExtractorId = InitialExtractorId ?? Extractors.FirstOrDefault(e => e.Id == "llm")?.Id ?? Extractors.FirstOrDefault()?.Id;
     }
 
-    private void OnProviderChanged(string? value)
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/js/documentExtractor.js");
+            var savedSettings = await _module.InvokeAsync<SgLlmEndpointConfig?>("loadExtractorSettings");
+            if (savedSettings != null)
+            {
+                _endpoint = savedSettings;
+                EndpointStore.Current = _endpoint;
+                StateHasChanged();
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null)
+        {
+            try { await _module.DisposeAsync(); } catch { /* Ignore */ }
+        }
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        if (_module != null)
+        {
+            await _module.InvokeVoidAsync("saveExtractorSettings", _endpoint);
+        }
+    }
+
+    private async void OnProviderChanged(string? value)
     {
         if (!Enum.TryParse<SgLlmEndpointKind>(value, out var kind)) return;
         _endpoint.Kind = kind;
@@ -77,13 +110,24 @@ public partial class SgDocumentExtractor : ComponentBase
                 : "https://api.openai.com/v1";
         }
         EndpointStore.Current = _endpoint;
+        await SaveSettingsAsync();
     }
 
-    private void OnModelPicked(string? id)
+    private async void OnModelPicked(string? id)
     {
         if (string.IsNullOrEmpty(id)) return;
         _endpoint.Model = id;
         EndpointStore.Current = _endpoint;
+        await SaveSettingsAsync();
+    }
+
+    private async Task DownloadAsync(SgDocumentSource saved)
+    {
+        if (_module != null)
+        {
+            var b64 = Convert.ToBase64String(saved.Data);
+            await _module.InvokeVoidAsync("downloadFile", saved.FileName, b64, saved.MimeType);
+        }
     }
 
     private void OnExtractorPicked(string? id) => _selectedExtractorId = id;
@@ -168,24 +212,6 @@ public partial class SgDocumentExtractor : ComponentBase
         }
         catch (Exception ex) { Status($"Save failed: {ex.Message}", true); }
         finally { _busy = false; }
-    }
-
-    private async Task DownloadAsync(SgDocumentSource saved)
-    {
-        // Use a tiny inline JS shim — avoids requiring a separate .js asset for this component.
-        var b64 = Convert.ToBase64String(saved.Data);
-        await JS.InvokeVoidAsync("eval", $@"
-            (function() {{
-                const bin = atob('{b64}');
-                const arr = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-                const blob = new Blob([arr], {{ type: '{saved.MimeType}' }});
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url; a.download = {System.Text.Json.JsonSerializer.Serialize(saved.FileName)};
-                document.body.appendChild(a); a.click();
-                setTimeout(() => {{ document.body.removeChild(a); URL.revokeObjectURL(url); }}, 0);
-            }})();");
     }
 
     private void Status(string message, bool isError)

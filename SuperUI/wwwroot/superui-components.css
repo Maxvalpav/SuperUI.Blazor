@@ -130,12 +130,18 @@
     padding: 0;
 }
 
-.sg-tool-btn:hover,
+.sg-tool-btn:hover {
+    background: var(--sg-color-primary);
+    color: #fff;
+    border-color: var(--sg-color-primary);
+}
+
 .sg-tool-btn:focus-visible {
     background: var(--sg-color-primary);
     color: #fff;
     border-color: var(--sg-color-primary);
     outline: none;
+    box-shadow: var(--sg-focus-ring);
 }
 
 /* ── CSS Spinner ─────────────────────────────────────────────────────────── */
@@ -789,50 +795,6 @@
    Component styles
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Shared design tokens for SUI components */
-/* Legacy variable aliases - map to new theme system */
-:root {
-    /* Background aliases */
-    --sui-bg: var(--sg-bg);
-    --sui-bg-alt: var(--sg-bg-subtle);
-    --sui-bg-hover: var(--sui-hover-bg);
-
-    /* Text aliases */
-    --sg-fg: var(--sg-fg);
-    --sg-fg: var(--sg-fg);
-    --sg-fg-muted: var(--sg-fg-muted);
-
-    /* Border aliases */
-    --sg-border-strong: var(--sg-border-strong);
-    --sg-border-soft: var(--sg-border);
-
-    /* Accent aliases */
-    --sg-color-primary-subtle: var(--sui-selected-bg);
-
-    /* Toolbar */
-    --sui-toolbar-bg: var(--sg-bg-subtle);
-    --sui-hover: var(--sui-hover-bg);
-
-    /* Danger aliases */
-    --sg-color-danger-hover: #e11d48;
-
-    /* Other */
-    --sui-disabled: var(--sg-fg-disabled);
-    --sg-focus-ring: 0 0 0 2px rgba(0, 111, 238, 0.2);
-    --sg-color-primary: var(--sg-color-primary);
-    --sg-font: var(--sg-font);
-    --sg-radius-md: var(--sg-radius-md);
-
-    /* RTL Helpers */
-    --sui-end-translate: 100%;
-    --sui-start-translate: -100%;
-}
-
-[dir="rtl"] {
-    --sui-end-translate: -100%;
-    --sui-start-translate: 100%;
-}
-
 /* ---------- Global Scrollbar ────────────────────────────────────────────── */
 
 /* Firefox — only on overflow containers, not every element */
@@ -842,7 +804,7 @@
 .sg-thin-scroll,
 body {
     scrollbar-width: thin;
-    scrollbar-color: var(--sg-border-strong, #b0b0b0) transparent;
+    scrollbar-color: var(--sg-border-strong) transparent;
 }
 
 /* Chromium / Safari */
@@ -856,13 +818,13 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--sg-border-strong, #b0b0b0);
+    background: var(--sg-border-strong);
     border-radius: 3px;
-    transition: background 0.15s;
+    transition: all var(--sg-transition-fast);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-    background: var(--sg-fg-muted, #7a7a7a);
+    background: var(--sg-fg-muted);
 }
 
 ::-webkit-scrollbar-corner {
@@ -870,6 +832,29 @@ body {
 }
 
 /* ── Canvas Grid — wider scrollbar for drag precision ─────────────────────── */
+
+/* ---------- Animations ---------- */
+@keyframes sgc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sgc-slide-up { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes sgc-shimmer { 
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.sg-animate-fade { animation: sgc-fade-in var(--sg-transition-base); }
+.sg-animate-slide { animation: sgc-slide-up var(--sg-transition-base); }
+
+/* ── Staggered Children — "изюминка" для списков ──────────────────────────── */
+.sg-stagger > * {
+    opacity: 0;
+    animation: sgc-slide-up 0.4s var(--sg-easing-out) forwards;
+}
+.sg-stagger > *:nth-child(1) { animation-delay: 0.05s; }
+.sg-stagger > *:nth-child(2) { animation-delay: 0.10s; }
+.sg-stagger > *:nth-child(3) { animation-delay: 0.15s; }
+.sg-stagger > *:nth-child(4) { animation-delay: 0.20s; }
+.sg-stagger > *:nth-child(5) { animation-delay: 0.25s; }
+.sg-stagger > *:nth-child(n+6) { animation-delay: 0.30s; }
 
 /* ---------- Button ---------- */
 /* ── Base button ──────────────────────────────────────────────────────────── */
@@ -1502,7 +1487,7 @@ body {
 }
 .sgc-combo-option:hover,
 .sgc-combo-option.sgc-active {
-    background: var(--sui-hover-bg);
+    background: var(--sg-bg-subtle);
 }
 .sgc-combo-option.sgc-selected {
     color: var(--sg-color-primary);
@@ -2043,7 +2028,7 @@ body {
     user-select: none;
 }
 .sgc-accordion-header:hover {
-    background: var(--sui-hover-bg);
+    background: var(--sg-bg-subtle);
 }
 .sgc-accordion-header:focus-visible {
     box-shadow: inset 0 0 0 2px var(--sg-color-primary);
@@ -6982,17 +6967,9 @@ button.sg-filter-item:focus-visible {
 
 /* ---------- Skeleton ---------- */
 
-/* Primitive (low-level) skeleton block */
 .sgc-skeleton {
     display: block;
-    background: linear-gradient(
-        90deg,
-        var(--sg-bg-muted) 25%,
-        var(--sg-bg-subtle) 50%,
-        var(--sg-bg-muted) 75%
-    );
-    background-size: 200% 100%;
-    animation: sgc-skeleton-loading 1.5s infinite;
+    animation: sgc-skeleton-loading 1.4s ease infinite;
 }
 .sgc-skeleton-text {
     height: 1em;
@@ -7007,12 +6984,18 @@ button.sg-filter-item:focus-visible {
 }
 
 @keyframes sgc-skeleton-loading {
-    0% {
-        background-position: 200% 0;
-    }
-    100% {
-        background-position: -200% 0;
-    }
+    0% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+.sgc-skeleton, .sgc-skeleton-element {
+    background: linear-gradient(
+        90deg,
+        var(--sg-bg-subtle) 25%,
+        var(--sg-bg-muted) 37%,
+        var(--sg-bg-subtle) 63%
+    );
+    background-size: 400% 100%;
 }
 
 /* Composite (high-level) skeleton wrapper */
@@ -7022,22 +7005,14 @@ button.sg-filter-item:focus-visible {
     width: 100%;
 }
 
-/* Shared element base — no animation by default */
 .sgc-skeleton-element {
     display: block;
-    background: linear-gradient(
-        90deg,
-        var(--sg-bg-muted) 25%,
-        var(--sg-bg-subtle) 50%,
-        var(--sg-bg-muted) 75%
-    );
-    background-size: 200% 100%;
     border-radius: var(--sg-radius-sm);
 }
 
 /* Animate only when Active */
 .sgc-skeleton-active .sgc-skeleton-element {
-    animation: sgc-skeleton-loading 1.5s infinite;
+    animation: sgc-skeleton-loading 1.4s ease infinite;
 }
 
 /* Avatar */

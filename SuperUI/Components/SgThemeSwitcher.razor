@@ -17,7 +17,7 @@
                 title="@Localizer.GetString("Theme_TriggerTitle", ThemeService.CurrentTheme.Name, GetModeLabel(ThemeService.CurrentMode))"
                 aria-label="@Localizer["Theme_OpenMenu"]">
             <span class="sgc-theme-switcher-trigger-icon" aria-hidden="true">
-                @((MarkupString)GetModeIcon(ThemeService.CurrentMode))
+                <SgIcon Icon="@GetModeIcon(ThemeService.CurrentMode)" Size="14px" />
             </span>
             <span class="sgc-theme-switcher-trigger-text">
                 <span class="sgc-theme-switcher-trigger-title">@ThemeService.CurrentTheme.Name</span>
@@ -47,28 +47,28 @@
                     class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "light" ? "is-active" : "")"
                     @onclick='() => SetModeAsync("light")'
                     title="@Localizer["Theme_LightModeTitle"]">
-                <span class="sgc-theme-mode-icon">@((MarkupString)SunIcon)</span>
+                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Sun" Size="14px" /></span>
                 <span class="sgc-theme-mode-text">@Localizer["Theme_LightMode"]</span>
             </button>
             <button type="button" 
                     class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "dark" ? "is-active" : "")"
                     @onclick='() => SetModeAsync("dark")'
-                    title="Тёмный режим">
-                <span class="sgc-theme-mode-icon">@((MarkupString)MoonIcon)</span>
-                <span class="sgc-theme-mode-text">Тёмная</span>
+                    title="@Localizer["Theme_DarkModeTitle"]">
+                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Moon" Size="14px" /></span>
+                <span class="sgc-theme-mode-text">@Localizer["Theme_DarkMode"]</span>
             </button>
             <button type="button" 
                     class="sgc-theme-mode-btn @(ThemeService.CurrentMode == "auto" ? "is-active" : "")"
                     @onclick='() => SetModeAsync("auto")'
-                    title="Системный режим">
-                <span class="sgc-theme-mode-icon">@((MarkupString)AutoIcon)</span>
-                <span class="sgc-theme-mode-text">Авто</span>
+                    title="@Localizer["Theme_AutoModeTitle"]">
+                <span class="sgc-theme-mode-icon"><SgIcon Icon="@SgIcons.Monitor" Size="14px" /></span>
+                <span class="sgc-theme-mode-text">@Localizer["Theme_AutoMode"]</span>
             </button>
         </div>
 
         <div class="sgc-theme-switcher-divider"></div>
 
-        <div class="sgc-theme-switcher-section">Коллекция тем</div>
+        <div class="sgc-theme-switcher-section">@Localizer["Theme_Collection"]</div>
         <div class="sgc-theme-grid">
             @foreach (var theme in ThemeService.GetAvailableThemes())
             {
@@ -82,7 +82,7 @@
                         @if (ThemeService.CurrentTheme.Id == theme.Id)
                         {
                             <span class="sgc-theme-grid-check">
-                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                <SgIcon Icon="@SgIcons.Check" Size="10px" />
                             </span>
                         }
                     </div>
@@ -91,13 +91,16 @@
             }
         </div>
     </ChildContent>
+
+    <FooterContent>
+        <div style="display:flex; justify-content:flex-end; padding: 10px 12px;">
+            <button type="button" class="sgc-btn" @onclick="CloseAsync">@Localizer["Theme_Close"]</button>
+        </div>
+    </FooterContent>
 </SgDropdown>
 
 @code {
     private SgDropdown? _dropdown;
-    private const string SunIcon = """<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.5"></circle><line x1="12" y1="2" x2="12" y2="4.5"></line><line x1="12" y1="19.5" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="6.7" y2="6.7"></line><line x1="17.3" y1="17.3" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="4.5" y2="12"></line><line x1="19.5" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="6.7" y2="17.3"></line><line x1="17.3" y1="6.7" x2="19.07" y2="4.93"></line></svg>""";
-    private const string MoonIcon = """<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7.2 7.2 0 0 0 9.8 9.8Z"></path></svg>""";
-    private const string AutoIcon = """<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"></path><path d="M18.36 5.64 16.24 7.76"></path><path d="M21 12h-3"></path><path d="m18.36 18.36-2.12-2.12"></path><path d="M12 21v-3"></path><path d="m5.64 18.36 2.12-2.12"></path><path d="M3 12h3"></path><path d="m5.64 5.64 2.12 2.12"></path><path d="M12 8a4 4 0 1 0 0 8"></path></svg>""";
 
     protected override async Task OnInitializedAsync()
     {
@@ -108,38 +111,41 @@
     private async Task SetModeAsync(string mode)
     {
         await ThemeService.SetModeAsync(mode);
-        // We don't close dropdown here to allow user to see the change immediately
+        await CloseAsync();
     }
 
     private async Task SetThemeAsync(string themeId)
     {
         await ThemeService.SetThemeAsync(themeId);
-        // We don't close dropdown here to allow user to see the change immediately
+        await CloseAsync();
     }
 
     private async Task ResetToDefaultAsync()
     {
         await ThemeService.SetThemeAsync("superui-default");
         await ThemeService.SetModeAsync("light");
+        await CloseAsync();
     }
+
+    private Task CloseAsync() => _dropdown?.CloseAsync() ?? Task.CompletedTask;
 
     private void HandleThemeChanged(IThemeDefinition theme, string mode)
     {
         InvokeAsync(StateHasChanged);
     }
 
-    private static string GetModeLabel(string mode) => mode switch
+    private string GetModeLabel(string mode) => mode switch
     {
-        "dark" => "Тёмная",
-        "auto" => "Авто",
-        _ => "Светлая"
+        "dark" => Localizer["Theme_DarkMode"],
+        "auto" => Localizer["Theme_AutoMode"],
+        _ => Localizer["Theme_LightMode"]
     };
 
     private static string GetModeIcon(string mode) => mode switch
     {
-        "dark" => MoonIcon,
-        "auto" => AutoIcon,
-        _ => SunIcon
+        "dark" => SgIcons.Moon,
+        "auto" => SgIcons.Monitor,
+        _ => SgIcons.Sun
     };
 
     public async ValueTask DisposeAsync()

@@ -6,32 +6,34 @@
 
 @if (Visible || IsClosing)
 {
-    <div class="sgc-modal-backdrop @(IsClosing ? "sgc-closing" : "")" style="z-index: @BackdropZIndex" @onclick="BackdropClickAsync">
-        <div class="sgc-modal sgc-modal-anim-@AnimationClass" 
-             style="@GetStyle()" 
-             role="dialog" 
-             aria-modal="true" 
-             aria-labelledby="@_titleId"
-             aria-describedby="@_bodyId"
-             tabindex="-1"
-             @ref="RootRef"
-             @onclick:stopPropagation="true">
-            <div class="sgc-modal-header" @ref="_headerRef">
-                <span id="@_titleId" class="sgc-modal-title">@Title</span>
-                @if (ShowClose)
+    <SgPortal>
+        <div class="sgc-modal-backdrop @(IsClosing ? "sgc-closing" : "")" style="z-index: @BackdropZIndex" @onclick="BackdropClickAsync">
+            <div class="sgc-modal sgc-modal-anim-@AnimationClass" 
+                 style="@GetStyle()" 
+                 role="dialog" 
+                 aria-modal="true" 
+                 aria-labelledby="@_titleId"
+                 aria-describedby="@_bodyId"
+                 tabindex="-1"
+                 @ref="RootRef"
+                 @onclick:stopPropagation="true">
+                <div class="sgc-modal-header" @ref="_headerRef">
+                    <span id="@_titleId" class="sgc-modal-title">@Title</span>
+                    @if (ShowClose)
+                    {
+                        <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Common_Close"]">×</button>
+                    }
+                </div>
+                <div id="@_bodyId" class="sgc-modal-body">
+                    @ChildContent
+                </div>
+                @if (FooterContent is not null)
                 {
-                    <button class="sgc-modal-x" type="button" @onclick="CloseAsync" aria-label="@Localizer["Common_Close"]">×</button>
+                    <div class="sgc-modal-footer">@FooterContent</div>
                 }
             </div>
-            <div id="@_bodyId" class="sgc-modal-body">
-                @ChildContent
-            </div>
-            @if (FooterContent is not null)
-            {
-                <div class="sgc-modal-footer">@FooterContent</div>
-            }
         </div>
-    </div>
+    </SgPortal>
 }
 
 @code {
@@ -109,7 +111,7 @@
 
     protected override async ValueTask OnClosingAsync()
     {
-        await SafeInvokeVoidAsync("detach");
+        await SafeInvokeVoidAsync("detach", RootRef);
     }
 
     protected override async ValueTask OnClosedAsync()
