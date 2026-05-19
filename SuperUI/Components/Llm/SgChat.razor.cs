@@ -41,7 +41,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         Provider = SgLlmProvider.OpenRouter,
         ModelId = "google/gemini-2.0-flash-001:free",
         BaseUrl = "https://openrouter.ai/api/v1",
-        ApiKey = "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"
+        ApiKey = ""
     };
 
     private List<SgLlmModelInfo> _openRouterModels = new();
