@@ -9,7 +9,7 @@
     @ChildContent
 </CascadingValue>
 
-<div class="sg-root @CssClass" style="@(string.IsNullOrEmpty(Height) ? "" : $"height: {Height};")">
+<div class="sg-root @(string.IsNullOrEmpty(Height) ? "sg-table-auto" : "sg-table-fixed") @((!string.IsNullOrEmpty(Title) || ShowSearch || ShowExport) ? "sg-has-top" : "") @((EnablePaging && (TotalPages > 1 || AllowPageSizeChange)) ? "sg-has-bottom" : "") @CssClass" style="@(string.IsNullOrEmpty(Height) ? $"max-height: {MaxHeight};" : $"height: {Height};")">
     @if (!string.IsNullOrEmpty(Title) || ShowSearch || ShowExport)
     {
         <div class="sg-toolbar">
@@ -25,7 +25,8 @@
                     <input class="sg-search"
                            placeholder="@(SearchPlaceholder ?? Localizer["Table_Search"])"
                            value="@_searchText"
-                           @oninput="OnSearchInput" />
+                           @oninput="OnSearchInput"
+                           @onchange="OnSearchChange" />
                 </div>
             }
             @if (ShowExport || ShowExportCsv || ShowExportExcel)
@@ -59,8 +60,23 @@
         </div>
     }
 
-    <div class="sg-scroll">
-        <table class="sg-table @(FullWidth ? "sg-table-full" : "")" @ref="_tableRef">
+    <div class="sg-header-scroll" @ref="_headerScrollRef">
+        <table class="sg-table sg-header-table @(FullWidth ? "sg-table-full" : "")">
+            <colgroup>
+                @if (AllowSelection)
+                {
+                    <col style="width: 40px; min-width: 40px;" />
+                }
+                @if (ShowRowNumbers)
+                {
+                    <col style="width: 50px; min-width: 50px;" />
+                }
+                @foreach (var col in Columns)
+                {
+                    var colWidth = _columnWidths.ContainsKey(col.Key) ? $"{_columnWidths[col.Key]}px" : col.Width;
+                    <col style="@(string.IsNullOrEmpty(colWidth) ? "" : $"width: {colWidth}; min-width: {colWidth};")" />
+                }
+            </colgroup>
             <thead>
                 @if (HeaderGroups.Any())
                 {
@@ -128,7 +144,7 @@
                             @ondragend="OnColumnDragEnd">
                             <div class="sg-th-content">
                                 <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
-                                      @onclick="@(() => { if (col.Sortable) OnSortClick(col.Key); })">
+                                      @onclick="@(async () => { if (col.Sortable) await OnSortClick(col.Key); })">
                                     @col.Title
                                     @if (isSorted)
                                     {
@@ -156,6 +172,26 @@
                     }
                 </tr>
             </thead>
+        </table>
+    </div>
+
+    <div class="sg-scroll" @ref="_bodyScrollRef" @onscroll="OnBodyScroll">
+        <table class="sg-table @(FullWidth ? "sg-table-full" : "")" @ref="_tableRef">
+            <colgroup>
+                @if (AllowSelection)
+                {
+                    <col style="width: 40px; min-width: 40px;" />
+                }
+                @if (ShowRowNumbers)
+                {
+                    <col style="width: 50px; min-width: 50px;" />
+                }
+                @foreach (var col in Columns)
+                {
+                    var colWidth = _columnWidths.ContainsKey(col.Key) ? $"{_columnWidths[col.Key]}px" : col.Width;
+                    <col style="@(string.IsNullOrEmpty(colWidth) ? "" : $"width: {colWidth}; min-width: {colWidth};")" />
+                }
+            </colgroup>
             <tbody>
                 @if (Loading)
                 {
@@ -264,54 +300,17 @@
         </table>
     </div>
 
-    @if (EnablePaging && TotalPages > 1)
+    @if (EnablePaging && (TotalPages > 1 || AllowPageSizeChange))
     {
-        <div class="sg-toolbar" style="border-top: 1px solid var(--sg-border); border-bottom: none;">
-            <div style="font-size: 13px; color: var(--sg-fg-subtle); display: flex; align-items: center; gap: 8px;">
-                @if (TotalCount > 0)
-                {
-                    <span>@((CurrentPage - 1) * PageSize + 1)-@Math.Min(CurrentPage * PageSize, TotalCount) @Localizer["Table_Of"] @TotalCount</span>
-                }
-                @if (AllowPageSizeChange)
-                {
-                    <span style="margin-left: 4px; margin-right: 4px;">|</span>
-                    <select class="sg-page-size-select" value="@PageSize" @onchange="OnPageSizeChange">
-                        @foreach (var size in PageSizeOptions)
-                        {
-                            <option value="@size">@size</option>
-                        }
-                    </select>
-                    <span style="font-size: 12px; color: var(--sg-fg-muted);">@Localizer["Table_PerPage"]</span>
-                }
-            </div>
-            <div class="sg-spacer"></div>
-            <div class="sg-btn-group">
-                <button class="sg-button" 
-                        disabled="@(CurrentPage == 1)"
-                        @onclick="GoToFirstPage"
-                        title="@Localizer["First"]">
-                    <SgIcon Icon="@SgIcons.ChevronsLeft" Size="16px" />
-                </button>
-                <button class="sg-button" 
-                        disabled="@(CurrentPage == 1)"
-                        @onclick="GoToPreviousPage"
-                        title="@Localizer["Previous"]">
-                    <SgIcon Icon="@SgIcons.ChevronLeft" Size="16px" />
-                </button>
-                <span style="font-size: 13px; padding: 0 8px; white-space: nowrap;">@CurrentPage / @TotalPages</span>
-                <button class="sg-button" 
-                        disabled="@(CurrentPage == TotalPages)"
-                        @onclick="GoToNextPage"
-                        title="@Localizer["Next"]">
-                    <SgIcon Icon="@SgIcons.ChevronRight" Size="16px" />
-                </button>
-                <button class="sg-button" 
-                        disabled="@(CurrentPage == TotalPages)"
-                        @onclick="GoToLastPage"
-                        title="@Localizer["Last"]">
-                    <SgIcon Icon="@SgIcons.ChevronsRight" Size="16px" />
-                </button>
-            </div>
+        <div class="sg-foot">
+            <SgPagination Page="@CurrentPage"
+                          PageChanged="async p => await GoToPage(p)"
+                          PageSize="@PageSize"
+                          PageSizeChanged="async s => await HandlePageSizeChange(s)"
+                          TotalItems="@TotalCount"
+                          SelectedCount="@SelectedItems.Count"
+                          PageSizeOptions="@(AllowPageSizeChange ? PageSizeOptions : null)"
+                          ShowInfo="true" />
         </div>
     }
 </div>

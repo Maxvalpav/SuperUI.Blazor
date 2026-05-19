@@ -19,7 +19,7 @@ public sealed class SuperUILocalizer : ISuperUILocalizer
     /// </summary>
     public SuperUILocalizer()
     {
-        _fixedCulture = null;
+        _fixedCulture = new CultureInfo("ru-RU");
         _resourceManager = new ResourceManager(
             "SuperUI.Resources.SuperUIStrings",
             typeof(SuperUILocalizer).Assembly);

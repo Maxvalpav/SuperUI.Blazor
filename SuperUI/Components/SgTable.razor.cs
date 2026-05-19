@@ -21,6 +21,9 @@ public partial class SgTable<TItem> : ComponentBase
     private readonly HashSet<TItem> _selectedItems = new();
     private bool _selectAll;
     private ElementReference _tableRef;
+    private ElementReference _headerScrollRef;
+    private ElementReference _bodyScrollRef;
+    private IJSObjectReference? _jsModule;
     private Dictionary<string, double> _columnWidths = new();
     private string? _resizingColumn;
     private double _resizeStartX;
@@ -41,6 +44,7 @@ public partial class SgTable<TItem> : ComponentBase
     [Parameter] public string? SearchPlaceholder { get; set; }
     [Parameter] public string? CssClass { get; set; }
     [Parameter] public string? Height { get; set; }
+    [Parameter] public string MaxHeight { get; set; } = "70vh";
     [Parameter] public bool FullWidth { get; set; }
     [Parameter] public string? EmptyText { get; set; }
     [Parameter] public bool AutoGenerateColumns { get; set; }
@@ -49,6 +53,9 @@ public partial class SgTable<TItem> : ComponentBase
     [Parameter] public bool ShowRowNumbers { get; set; }
     [Parameter] public bool EnablePaging { get; set; }
     [Parameter] public int PageSize { get; set; } = 20;
+    [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+    [Parameter] public int PageNumber { get; set; } = 1;
+    [Parameter] public EventCallback<int> PageNumberChanged { get; set; }
     [Parameter] public bool AllowSelection { get; set; }
     [Parameter] public bool AllowMultiSelect { get; set; }
     [Parameter] public List<TItem> SelectedItems { get; set; } = new();
@@ -112,12 +119,25 @@ public partial class SgTable<TItem> : ComponentBase
     internal int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalCount / PageSize));
     internal int CurrentPage
     {
-        get => _pageNumber;
-        set
+        get
         {
-            _pageNumber = Math.Max(1, Math.Min(value, TotalPages));
+            var page = PageNumber > 0 ? PageNumber : _pageNumber;
+            return Math.Max(1, Math.Min(page, TotalPages));
         }
     }
+
+    private async Task GoToPage(int page)
+    {
+        var targetPage = Math.Max(1, Math.Min(page, TotalPages));
+        _pageNumber = targetPage;
+        PageNumber = targetPage;
+        
+        if (PageNumberChanged.HasDelegate)
+            await PageNumberChanged.InvokeAsync(targetPage);
+            
+        StateHasChanged();
+    }
+
     internal List<TItem> FilteredAndSortedItems
     {
         get
@@ -190,6 +210,17 @@ public partial class SgTable<TItem> : ComponentBase
     internal void UnregisterHeaderGroup(SgTableHeaderGroup<TItem> group)
     {
         _headerGroups.Remove(group);
+    }
+
+    private async Task OnBodyScroll()
+    {
+        try
+        {
+            _jsModule ??= await JS.InvokeAsync<IJSObjectReference>(
+                "import", "./_content/SuperUI/Components/SgTable.razor.js");
+            await _jsModule.InvokeVoidAsync("syncHeaderScroll", _headerScrollRef, _bodyScrollRef);
+        }
+        catch { }
     }
 
     // Column resize
@@ -313,10 +344,15 @@ public partial class SgTable<TItem> : ComponentBase
     private void OnSearchInput(ChangeEventArgs e)
     {
         _searchText = e.Value?.ToString();
-        CurrentPage = 1; // Reset to first page on search
     }
 
-    private void OnSortClick(string columnKey)
+    private async Task OnSearchChange(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString();
+        await GoToPage(1);
+    }
+
+    private async Task OnSortClick(string columnKey)
     {
         if (_sortColumnKey == columnKey)
         {
@@ -336,41 +372,44 @@ public partial class SgTable<TItem> : ComponentBase
             _sortDirection = SgDataGridSortDirection.Ascending;
         }
         
-        CurrentPage = 1; // Reset to first page when sort changes
+        await GoToPage(1); // Reset to first page when sort changes
     }
 
-    private void OnPageSizeChange(ChangeEventArgs e)
+    private async Task OnPageSizeChange(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var newSize))
         {
-            PageSize = newSize;
-            CurrentPage = 1; // Reset to first page
-            StateHasChanged();
+            await HandlePageSizeChange(newSize);
         }
     }
 
-    private void GoToFirstPage()
+    private async Task HandlePageSizeChange(int newSize)
     {
-        CurrentPage = 1;
-        StateHasChanged();
+        PageSize = newSize;
+        if (PageSizeChanged.HasDelegate)
+            await PageSizeChanged.InvokeAsync(PageSize);
+            
+        await GoToPage(1); // Reset to first page
     }
 
-    private void GoToPreviousPage()
+    private async Task GoToFirstPage()
     {
-        CurrentPage = Math.Max(1, CurrentPage - 1);
-        StateHasChanged();
+        await GoToPage(1);
     }
 
-    private void GoToNextPage()
+    private async Task GoToPreviousPage()
     {
-        CurrentPage = Math.Min(TotalPages, CurrentPage + 1);
-        StateHasChanged();
+        await GoToPage(CurrentPage - 1);
     }
 
-    private void GoToLastPage()
+    private async Task GoToNextPage()
     {
-        CurrentPage = TotalPages;
-        StateHasChanged();
+        await GoToPage(CurrentPage + 1);
+    }
+
+    private async Task GoToLastPage()
+    {
+        await GoToPage(TotalPages);
     }
 
     internal bool IsSelected(TItem item) => _selectedItems.Contains(item);

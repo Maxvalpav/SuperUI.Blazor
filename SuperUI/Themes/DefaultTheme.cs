@@ -85,7 +85,6 @@ public sealed class DefaultTheme : ThemeBase
         /* ── Strict & Compact Default Theme Polish ────────── */
         
         [data-theme-id="superui-default"] {
-            letter-spacing: -0.011em;
             -webkit-font-smoothing: antialiased;
         }
 
@@ -97,7 +96,6 @@ public sealed class DefaultTheme : ThemeBase
 
         [data-theme-id="superui-default"] .sgc-card:hover {
             border-top-color: var(--sg-color-primary);
-            transform: translateY(-1px);
             box-shadow: var(--sg-shadow-md);
         }
 
