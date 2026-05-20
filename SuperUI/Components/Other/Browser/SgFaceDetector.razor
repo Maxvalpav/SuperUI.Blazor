@@ -1,0 +1,75 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-face-detector").Build()" style="@Style">
+    @if (!_isSupported)
+    {
+        <SgAlert Variant="SgAlertVariant.Warn" Title="API не поддерживается">
+            Face Detector API не включен в вашем браузере. Для Chrome/Edge: включите флаг <code>#enable-experimental-web-platform-features</code>.
+        </SgAlert>
+    }
+
+    <div style="position: relative; width: 100%; max-width: 500px; border-radius: 12px; overflow: hidden; background: #f0f0f0; margin-top: 12px;">
+        <img id="@_imgId" src="@ImageUrl" crossorigin="anonymous" style="width: 100%; display: block;" @onload="DetectAsync" />
+        
+        @if (_faces != null)
+        {
+            @foreach (var face in _faces)
+            {
+                <div style="position: absolute; 
+                            left: @(face.BoundingBox.X)px; 
+                            top: @(face.BoundingBox.Y)px; 
+                            width: @(face.BoundingBox.Width)px; 
+                            height: @(face.BoundingBox.Height)px; 
+                            border: 3px solid #00ff00; 
+                            pointer-events: none;
+                            box-shadow: 0 0 10px rgba(0,255,0,0.5);">
+                </div>
+            }
+        }
+    </div>
+    
+    <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+        <SgButton Text="Обнаружить лица" OnClick="DetectAsync" Variant="SgButtonVariant.Primary" Disabled="!_isSupported" />
+        @if (_faces != null)
+        {
+            <span style="font-weight: 600; color: var(--sui-success-color);">Найдено лиц: @_faces.Count</span>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _imgId = "img-" + Guid.NewGuid().ToString("N")[..8];
+    private List<DetectionResult>? _faces;
+    private bool _isSupported = true;
+
+    [Parameter] public string ImageUrl { get; set; } = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&q=80";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _isSupported = await SafeInvokeAsync<bool>("checkApiSupport", "FaceDetector");
+        StateHasChanged();
+    }
+
+    private async Task DetectAsync()
+    {
+        if (!_isSupported) return;
+        _faces = await SafeInvokeAsync<List<DetectionResult>>("detectShapes", _imgId, "face");
+        StateHasChanged();
+    }
+
+    public class DetectionResult
+    {
+        public Box BoundingBox { get; set; } = new();
+    }
+
+    public class Box
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+}

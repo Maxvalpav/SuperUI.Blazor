@@ -1,0 +1,102 @@
+@page "/voice-form-demo"
+@using SuperUI.Components
+@using SuperUI.Demo.Models
+@using SuperUI.Services.Llm
+
+<PageTitle>Voice Form Filler - SUI</PageTitle>
+
+<SgCard Title="Голосовое заполнение форм"
+        Subtitle="Интеллектуальное заполнение сложных форм с помощью распознавания речи и LLM.">
+
+    <div style="margin-top: 32px;">
+        <div style="max-width: 1100px; margin: 0 auto;">
+            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-bottom: 32px;">
+                <SgAlert Variant="SgAlertVariant.Info" Title="Как это работает?">
+                    <ol style="padding-left: 16px; margin: 8px 0; font-size: 13px;">
+                        <li>Настройте AI провайдера (справа).</li>
+                        <li>Нажмите кнопку <strong>«Заполнить голосом»</strong> в форме.</li>
+                        <li>Разрешите доступ к микрофону.</li>
+                        <li>Продиктуйте данные (например: <i>«Меня зовут Иван, мне 25 лет, хочу подписаться»</i>).</li>
+                        <li>AI проанализирует речь и заполнит соответствующие поля.</li>
+                    </ol>
+                </SgAlert>
+
+                <SgCard Title="Настройки AI">
+                    <SgLlmSettings @bind-Config="_llmConfig" />
+                    <div style="margin-top: 12px; font-size: 12px; color: var(--sui-fg-muted); padding: 8px; background: var(--sui-bg-secondary); border-radius: 6px;">
+                        Совет: Для теста без ключа можно использовать <b>OpenRouter</b> с моделью <code>free</code>.
+                    </div>
+                </SgCard>
+            </div>
+
+            <div style="margin-top: 32px; padding: 32px; background: var(--sui-bg-secondary); border-radius: 16px; border: 1px solid var(--sui-border-color); position: relative;">
+                <SgSmartForm Metadata="_metadata" 
+                             EnableVoiceFilling="true" 
+                             LlmConfig="_llmConfig"
+                             LlmInstructions="@_llmConfig.SystemPrompt"
+                             OnSubmit="HandleSubmit" 
+                             OnVoiceTranscript="HandleTranscript"
+                             Loading="_loading" />
+                
+                @if (!string.IsNullOrEmpty(_transcript))
+                {
+                    <div style="margin-top: 16px; padding: 12px; background: rgba(var(--sui-primary-rgb), 0.05); border-radius: 8px; border: 1px solid var(--sui-primary-color);">
+                        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--sui-primary-color); margin-bottom: 4px;">Распознанный текст:</div>
+                        <div style="font-style: italic; font-size: 14px;">«@_transcript»</div>
+                    </div>
+                }
+            </div>
+
+            @if (_lastData != null)
+            {
+                <div style="margin-top: 24px;">
+                    <SgCard Title="Экспортированный JSON (результат)">
+                        <pre style="font-size: 12px; background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px;">@System.Text.Json.JsonSerializer.Serialize(_lastData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+                    </SgCard>
+                </div>
+            }
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private bool _loading;
+    private SgLlmConfig _llmConfig = new() { Provider = SgLlmProvider.OpenRouter, ModelId = "google/gemini-2.0-flash-001:free" };
+    private string? _transcript;
+    private Dictionary<string, object?>? _lastData;
+
+    private SgSmartFormMetadata _metadata = new()
+    {
+        Title = "Анкета пользователя",
+        Columns = 2,
+        Fields = new List<SgSmartFieldMetadata>
+        {
+            new() { Key = "name", Label = "Имя", Required = true, Placeholder = "Как вас зовут?" },
+            new() { Key = "age", Label = "Возраст", Type = SgSmartFieldType.Number },
+            new() { Key = "email", Label = "Email", Type = SgSmartFieldType.Email, Required = true },
+            new() { Key = "subscribe", Label = "Подписка на новости", Type = SgSmartFieldType.Boolean },
+            new() { Key = "role", Label = "Должность", Type = SgSmartFieldType.Select, Options = new List<SgSmartOption> {
+                new() { Label = "Разработчик", Value = "dev" },
+                new() { Label = "Дизайнер", Value = "design" },
+                new() { Label = "Менеджер", Value = "pm" }
+            }},
+            new() { Key = "bio", Label = "О себе", Type = SgSmartFieldType.MultilineText, FullWidth = true }
+        }
+    };
+
+    private async Task HandleSubmit(Dictionary<string, object?> data)
+    {
+        _loading = true;
+        _lastData = data;
+        await Task.Delay(1000);
+        _loading = false;
+        StateHasChanged();
+    }
+
+    private void HandleTranscript(string text)
+    {
+        _transcript = text;
+        StateHasChanged();
+    }
+}

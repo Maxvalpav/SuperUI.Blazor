@@ -1,0 +1,100 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-micro-frontend").AddClass("sgc-loading", _loading).Build()">
+    @if (_loading)
+    {
+        @if (FallbackContent != null)
+        {
+            @FallbackContent
+        }
+        else
+        {
+            <div class="sgc-mfe-loader">
+                <SgSpinner Size="SgSize.Sm" />
+                <span>Загрузка модуля...</span>
+            </div>
+        }
+    }
+    @* Container for JS to inject content. Blazor should not touch its content after load. *@
+    <div id="@ResolvedId-mf" style="width: 100%; height: 100%; display: @(_loading ? "none" : "block")"></div>
+</div>
+
+<style>
+    .sgc-micro-frontend {
+        min-height: 50px;
+        position: relative;
+        width: 100%;
+    }
+    .sgc-mfe-loader {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 24px;
+        color: var(--sui-fg-muted);
+        font-size: 13px;
+        background: var(--sui-bg-secondary);
+        border-radius: 12px;
+        border: 1px dashed var(--sui-border-color);
+    }
+</style>
+
+@code {
+    private bool _loading = true;
+
+    [Parameter] public string? Source { get; set; }
+    [Parameter] public string? ComponentType { get; set; }
+    [Parameter] public object? Parameters { get; set; }
+    [Parameter] public RenderFragment? FallbackContent { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-mf-loader.js";
+
+    private string? _lastLoadedKey;
+
+    private async Task LoadAsync()
+    {
+        var currentKey = $"{Source}|{ComponentType}";
+        if (string.IsNullOrEmpty(Source) || currentKey == _lastLoadedKey) 
+        {
+            return;
+        }
+
+        _loading = true;
+        StateHasChanged();
+        
+        // Wait a bit to ensure the container div is rendered in the DOM
+        await Task.Delay(50);
+        
+        try 
+        {
+            _lastLoadedKey = currentKey;
+            await SafeInvokeVoidAsync("loadMicroFrontend", Source, ComponentType, $"{ResolvedId}-mf", Parameters);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading micro frontend: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsInteractive)
+        {
+            await LoadAsync();
+        }
+    }
+}

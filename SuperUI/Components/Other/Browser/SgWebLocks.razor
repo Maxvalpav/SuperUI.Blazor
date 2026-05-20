@@ -1,0 +1,58 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-web-locks").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+            <span style="font-weight: 600;">Блокировка: <code>@LockName</code></span>
+            <div style="width: 10px; height: 10px; border-radius: 50%; background: @(_isLocked ? "var(--sui-danger-color)" : "var(--sui-success-color)");"></div>
+        </div>
+        
+        <SgButton Text="@(_isLocked ? "Освободить" : "Захватить блокировку")" 
+                  OnClick="ToggleLockAsync" 
+                  Variant="@(_isLocked ? SgButtonVariant.Danger : SgButtonVariant.Primary)" 
+                  Block="true" />
+        
+        <div style="font-size: 11px; color: var(--sui-fg-muted); margin-top: 8px;">
+            Захваченная блокировка не позволит другим вкладкам получить доступ к ресурсу с таким же именем.
+        </div>
+    </div>
+</div>
+
+@code {
+    private bool _isLocked;
+
+    [Parameter] public string LockName { get; set; } = "sui-global-lock";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task ToggleLockAsync()
+    {
+        if (_isLocked)
+        {
+            await SafeInvokeVoidAsync("releaseLock", LockName);
+            _isLocked = false;
+        }
+        else
+        {
+            _isLocked = await SafeInvokeAsync<bool>("requestLock", LockName, SelfRef);
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnLockAcquired(string name)
+    {
+        _isLocked = true;
+        StateHasChanged();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_isLocked)
+        {
+            await SafeInvokeVoidAsync("releaseLock", LockName);
+        }
+        await base.DisposeAsync();
+    }
+}

@@ -1,0 +1,202 @@
+@page "/smart-form-demo"
+@using SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService Llm
+@inject SgToastService Toasts
+@inject IJSRuntime JS
+
+<PageTitle>Smart Form — SUI</PageTitle>
+
+<SgCard Title="Smart Form Generator" 
+        Subtitle="Генерация форм из текстового описания с помощью AI.">
+    
+    <div style="display: grid; grid-template-columns: 1fr 600px; gap: 24px;">
+        <div>
+            <div style="display: flex; gap: 12px; margin-bottom: 24px;">
+                <SgButton Text="Регистрация" OnClick="LoadRegistration" Variant="@(_currentScenario == "reg" ? SgButtonVariant.Primary : SgButtonVariant.Default)" />
+                <SgButton Text="Обратная связь" OnClick="LoadFeedback" Variant="@(_currentScenario == "feedback" ? SgButtonVariant.Primary : SgButtonVariant.Default)" />
+                <SgButton Text="Опросник" OnClick="LoadSurvey" Variant="@(_currentScenario == "survey" ? SgButtonVariant.Primary : SgButtonVariant.Default)" />
+            </div>
+
+            <div style="margin-bottom: 24px; padding: 20px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+                <SgTextBox Label="Опишите форму текстом" @bind-Value="_aiPrompt" Multiline="true" Rows="2" Placeholder="Напр: Форма заказа пиццы с выбором размера и топпингов" />
+                <div style="margin-top: 12px;">
+                    <SgButton Text="Сгенерировать через AI" OnClick="GenerateFromAi" Loading="_loading" Variant="SgButtonVariant.Primary" />
+                </div>
+            </div>
+
+            <SgSmartForm Metadata="_activeMetadata" OnSubmit="HandleSubmit" Loading="_loading" />
+        </div>
+
+        <div>
+            <SgCard Title="Настройки AI">
+                <SgLlmSettings @bind-Config="_llmConfig" />
+            </SgCard>
+
+            <SgCard Title="Результат (JSON)" CssClass="mt-4">
+                <SgTabs @ref="_resultTabs">
+                    <SgTabPanel Title="Данные формы">
+                        <Icon>@((MarkupString)SgIcons.Table)</Icon>
+                        <ChildContent>
+                            <div style="padding: 12px; position: relative;">
+                                @if (_submittedData != null)
+                                {
+                                    <div style="position: absolute; top: 8px; right: 8px;">
+                                        <SgIconButton Icon="@SgIcons.Copy" OnClick="() => CopyToClipboard(_submittedData)" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" />
+                                    </div>
+                                    <pre style="font-size: 12px; background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 8px; overflow: auto; min-height: 100px;">@System.Text.Json.JsonSerializer.Serialize(_submittedData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+                                }
+                                else
+                                {
+                                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 150px; color: var(--sui-fg-muted);">
+                                        <SgIcon Icon="@SgIcons.Info" Size="32" Style="opacity: 0.5; margin-bottom: 8px;" />
+                                        <p style="font-size: 13px;">Заполните и отправьте форму выше.</p>
+                                    </div>
+                                }
+                            </div>
+                        </ChildContent>
+                    </SgTabPanel>
+                    <SgTabPanel Title="Схема (Metadata)">
+                        <Icon>@((MarkupString)SgIcons.Code)</Icon>
+                        <ChildContent>
+                            <div style="padding: 12px; position: relative;">
+                                @if (_activeMetadata != null && _activeMetadata.Fields.Any())
+                                {
+                                    <div style="position: absolute; top: 8px; right: 8px;">
+                                        <SgIconButton Icon="@SgIcons.Copy" OnClick="() => CopyToClipboard(_activeMetadata)" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" />
+                                    </div>
+                                    <pre style="font-size: 11px; background: #1e1e1e; color: #89d185; padding: 12px; border-radius: 8px; overflow: auto; max-height: 400px;">@System.Text.Json.JsonSerializer.Serialize(_activeMetadata, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+                                }
+                                else
+                                {
+                                    <p style="color: var(--sui-text-muted); font-size: 13px;">Сгенерируйте форму, чтобы увидеть её JSON-структуру.</p>
+                                }
+                            </div>
+                        </ChildContent>
+                    </SgTabPanel>
+                </SgTabs>
+            </SgCard>
+        </div>
+    </div>
+</SgCard>
+
+@code {
+    private bool _loading;
+    private string _currentScenario = "reg";
+    private string _aiPrompt = "Анкета обратной связи";
+    private Dictionary<string, object?>? _submittedData;
+    private SgSmartFormMetadata _activeMetadata = new();
+    private SgLlmConfig _llmConfig = new() { Provider = SgLlmProvider.OpenRouter, ModelId = "google/gemini-2.0-flash-001:free" };
+    private SgTabs? _resultTabs;
+
+    protected override void OnInitialized() => LoadRegistration();
+
+    private void LoadRegistration()
+    {
+        _currentScenario = "reg";
+        _submittedData = null;
+        _activeMetadata = new SgSmartFormMetadata
+        {
+            Title = "Создание аккаунта",
+            Columns = 1,
+            Fields = new List<SgSmartFieldMetadata>
+            {
+                new() { Key = "login", Label = "Логин", Required = true, Placeholder = "username" },
+                new() { Key = "email", Label = "Электронная почта", Type = SgSmartFieldType.Email, Required = true },
+                new() { Key = "pass", Label = "Пароль", Type = SgSmartFieldType.Password, Required = true },
+                new() { Key = "role", Label = "Тип аккаунта", Type = SgSmartFieldType.Select, Options = new List<SgSmartOption> {
+                    new() { Label = "Личный", Value = "personal" },
+                    new() { Label = "Бизнес", Value = "business" }
+                }}
+            }
+        };
+    }
+
+    private void LoadFeedback()
+    {
+        _currentScenario = "feedback";
+        _submittedData = null;
+        _activeMetadata = new SgSmartFormMetadata
+        {
+            Title = "Обратная связь",
+            Columns = 2,
+            Fields = new List<SgSmartFieldMetadata>
+            {
+                new() { Key = "subj", Label = "Тема", Required = true, FullWidth = true },
+                new() { Key = "rate", Label = "Оценка", Type = SgSmartFieldType.Number },
+                new() { Key = "date", Label = "Дата посещения", Type = SgSmartFieldType.Date },
+                new() { Key = "msg", Label = "Сообщение", Type = SgSmartFieldType.MultilineText, FullWidth = true }
+            }
+        };
+    }
+
+    private void LoadSurvey()
+    {
+        _currentScenario = "survey";
+        _submittedData = null;
+        _activeMetadata = new SgSmartFormMetadata
+        {
+            Title = "Опрос о технологиях",
+            Fields = new List<SgSmartFieldMetadata>
+            {
+                new() { Key = "lang", Label = "Основной язык", Type = SgSmartFieldType.Select, Options = new List<SgSmartOption> {
+                    new() { Label = "C#", Value = "cs" },
+                    new() { Label = "TypeScript", Value = "ts" },
+                    new() { Label = "Python", Value = "py" }
+                }},
+                new() { Key = "remote", Label = "Удаленная работа", Type = SgSmartFieldType.Boolean }
+            }
+        };
+    }
+
+    private async Task GenerateFromAi()
+    {
+        if (string.IsNullOrWhiteSpace(_aiPrompt)) return;
+        
+        _currentScenario = "ai";
+        _loading = true;
+        _submittedData = null;
+        StateHasChanged();
+
+        try
+        {
+            await Llm.InitializeAsync(_llmConfig);
+            var provider = new SgSmartFormProvider(Llm);
+            _activeMetadata = await provider.FromPromptAsync(_aiPrompt);
+            Toasts.Success("Форма успешно сгенерирована");
+            
+            // Switch to Schema tab to show what AI created
+            if (_resultTabs != null)
+            {
+                // We don't have a direct method to set active tab by index yet in SgTabs, 
+                // but usually the first tab is active by default.
+            }
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"Ошибка генерации: {ex.Message}");
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task HandleSubmit(Dictionary<string, object?> data)
+    {
+        _loading = true;
+        _submittedData = data;
+        await Task.Delay(800);
+        _loading = false;
+        Toasts.Success("Данные формы получены");
+        StateHasChanged();
+    }
+
+    private async Task CopyToClipboard(object obj)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(obj, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+        Toasts.Info("Скопировано в буфер обмена");
+    }
+}

@@ -1,0 +1,131 @@
+@namespace SuperUI.Components.Llm
+@using SuperUI.Services.Llm
+@inject IOpenRouterService OpenRouterService
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-or-key-info @CssClass" style="@Style">
+    @if (_loading)
+    {
+        <div class="sgc-or-loading">
+            <SgSpinner Size="SgSize.Sm" />
+            <span>Проверка ключа...</span>
+        </div>
+    }
+    else if (_keyData != null)
+    {
+        <div class="sgc-or-data">
+            <div class="sgc-or-row">
+                <span class="sgc-or-label">Ключ:</span>
+                <span class="sgc-or-value">@_keyData.Label</span>
+            </div>
+            <div class="sgc-or-row">
+                <span class="sgc-or-label">Использовано:</span>
+                <span class="sgc-or-value">$@_keyData.Usage.ToString("F4")</span>
+            </div>
+            @if (_keyData.Limit.HasValue)
+            {
+                <div class="sgc-or-row">
+                    <span class="sgc-or-label">Лимит:</span>
+                    <span class="sgc-or-value">$@_keyData.Limit.Value.ToString("F2")</span>
+                </div>
+                <SgProgress Value="@((double)(_keyData.Usage / _keyData.Limit.Value * 100))" 
+                            Variant="@GetProgressVariant(_keyData.Usage, _keyData.Limit.Value)" 
+                            Size="SgSize.Sm" />
+            }
+            <div class="sgc-or-row">
+                <span class="sgc-or-label">Тип:</span>
+                <SgBadge Variant="@(_keyData.IsFreeTier ? SgBadgeVariant.Success : SgBadgeVariant.Info)">
+                    @(_keyData.IsFreeTier ? "Free Tier" : "Paid Tier")
+                </SgBadge>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(ApiKey))
+    {
+        <div class="sgc-or-error">
+            @((MarkupString)SgIcons.Star)
+            <span>Ошибка проверки ключа</span>
+            <SgButton Text="Повторить" Size="SgSize.Sm" OnClick="CheckKeyAsync" Variant="SgButtonVariant.Ghost" />
+        </div>
+    }
+    else
+    {
+        <div class="sgc-or-empty">
+            @((MarkupString)SgIcons.Refresh)
+            <span>Введите API Key для проверки баланса</span>
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-or-key-info {
+        padding: 12px;
+        background: var(--sg-bg-subtle);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-md);
+        font-size: 13px;
+        min-width: 200px;
+    }
+    .sgc-or-loading, .sgc-or-empty, .sgc-or-error {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--sg-fg-muted);
+    }
+    .sgc-or-error { color: var(--sg-danger); }
+    .sgc-or-data {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .sgc-or-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .sgc-or-label { color: var(--sg-fg-muted); }
+    .sgc-or-value { font-weight: 500; font-family: var(--sg-font-mono); }
+</style>
+
+@code {
+    [Parameter] public string? ApiKey { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private SgOpenRouterKeyData? _keyData;
+    private bool _loading;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ApiKey) && (_keyData == null || ApiKey != _lastCheckedKey))
+        {
+            await CheckKeyAsync();
+        }
+    }
+
+    private string? _lastCheckedKey;
+
+    public async Task CheckKeyAsync()
+    {
+        if (string.IsNullOrEmpty(ApiKey)) return;
+
+        _loading = true;
+        _lastCheckedKey = ApiKey;
+        try
+        {
+            _keyData = await OpenRouterService.GetKeyInfoAsync(ApiKey);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private SgSpinnerVariant GetProgressVariant(double usage, double limit)
+    {
+        var ratio = usage / limit;
+        if (ratio > 0.9) return SgSpinnerVariant.Danger;
+        if (ratio > 0.7) return SgSpinnerVariant.Warn;
+        return SgSpinnerVariant.Info;
+    }
+}

@@ -1,0 +1,44 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@inherits SgJsComponentBase
+
+<div @ref="RootRef" class="sgc-responsive-container">
+    @if (_width < NarrowThreshold)
+    {
+        @OnNarrow
+    }
+    else if (_width < WideThreshold)
+    {
+        @OnMedium
+    }
+    else
+    {
+        @OnWide
+    }
+</div>
+
+@code {
+    private double _width;
+
+    [Parameter] public RenderFragment? OnNarrow { get; set; }
+    [Parameter] public RenderFragment? OnMedium { get; set; }
+    [Parameter] public RenderFragment? OnWide { get; set; }
+
+    [Parameter] public int NarrowThreshold { get; set; } = 400;
+    [Parameter] public int WideThreshold { get; set; } = 800;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-responsive.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("observeResize", RootRef, SelfRef);
+    }
+
+    [JSInvokable]
+    public void OnResize(double width)
+    {
+        _width = width;
+        StateHasChanged();
+    }
+}

@@ -5,6 +5,7 @@ public enum SgLlmProvider
     WebLlm,
     OpenAiCompatible,
     OpenRouter,
+    Ollama,
     None
 }
 

@@ -1,0 +1,55 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-passkey-manager").Build()" style="@Style">
+    <SgButton Text="Создать Passkey" OnClick="CreatePasskeyAsync" Variant="SgButtonVariant.Primary">
+        <Icon>
+            <SgIcon Icon="@SgIcons.Shield" />
+        </Icon>
+    </SgButton>
+    
+    @if (_result != null)
+    {
+        <div style="margin-top: 12px; padding: 12px; background: var(--sui-success-bg); border-radius: 8px; border: 1px solid var(--sui-success-color);">
+            <div style="color: var(--sui-success-color); font-weight: 600; font-size: 13px;">Passkey успешно создан!</div>
+            <div style="font-size: 11px; margin-top: 4px; word-break: break-all; opacity: 0.8;">ID: @_result.Id</div>
+        </div>
+    }
+</div>
+
+@code {
+    private PasskeyResult? _result;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task CreatePasskeyAsync()
+    {
+        var options = new PasskeyOptions
+        {
+            Challenge = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(Guid.NewGuid().ToString())),
+            UserId = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("user123")),
+            UserName = "ivan@example.com",
+            UserDisplayName = "Иван Иванов",
+            RpName = "SuperUI Demo"
+        };
+
+        _result = await SafeInvokeAsync<PasskeyResult>("createPasskey", options);
+        StateHasChanged();
+    }
+
+    public class PasskeyOptions
+    {
+        public string Challenge { get; set; } = "";
+        public string UserId { get; set; } = "";
+        public string UserName { get; set; } = "";
+        public string UserDisplayName { get; set; } = "";
+        public string RpName { get; set; } = "";
+    }
+
+    public class PasskeyResult
+    {
+        public string Id { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string RawId { get; set; } = "";
+    }
+}

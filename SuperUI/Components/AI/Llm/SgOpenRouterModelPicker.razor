@@ -1,0 +1,238 @@
+@namespace SuperUI.Components.Llm
+@using SuperUI.Services.Llm
+@inject IOpenRouterService OpenRouterService
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-or-picker @CssClass" style="@Style">
+    <div class="sgc-or-search">
+        <SgTextBox Placeholder="Поиск моделей..." @bind-Value="_searchQuery" @bind-Value:after="OnSearchChanged" AllowClear="true">
+            <Prefix>@((MarkupString)SgIcons.Search)</Prefix>
+        </SgTextBox>
+        
+        <div class="sgc-or-filters">
+            <SgSwitch Label="Только бесплатные" @bind-Value="_onlyFree" OnChanged="ApplyFilters" />
+            <SgButton Text="Обновить список" Size="SgSize.Sm" OnClick="LoadModelsAsync" Loading="_loading" Variant="SgButtonVariant.Ghost" />
+        </div>
+    </div>
+
+    <div class="sgc-or-list">
+        @if (_loading)
+        {
+            <div class="sgc-or-state">
+                <SgSpinner Size="SgSize.Sm" />
+                <span>Загрузка моделей OpenRouter...</span>
+            </div>
+        }
+        else if (!_filteredModels.Any())
+        {
+            <div class="sgc-or-state">
+                @((MarkupString)SgIcons.Info)
+                <span>Модели не найдены</span>
+            </div>
+        }
+        else
+        {
+            @foreach (var model in _filteredModels)
+            {
+                <div class="sgc-or-item @(SelectedModelId == model.Id ? "sgc-active" : "")" @onclick="() => SelectModel(model)">
+                    <div class="sgc-or-item-header">
+                        <span class="sgc-or-model-name">@model.Name</span>
+                        @if (model.IsFree)
+                        {
+                            <SgBadge Variant="SgBadgeVariant.Success">Free</SgBadge>
+                        }
+                    </div>
+                    <div class="sgc-or-model-id">@model.Id</div>
+                    <div class="sgc-or-model-info">
+                        <span>Context: @(model.ContextLength / 1024)k</span>
+                        @if (!model.IsFree)
+                        {
+                            <span class="sgc-or-pricing">
+                                $@(model.Pricing.Prompt)/1M prompt
+                            </span>
+                        }
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    @if (_selectedModel != null)
+    {
+        <div class="sgc-or-details">
+            <h4>@_selectedModel.Name</h4>
+            <p class="sgc-or-desc">@_selectedModel.Description</p>
+            <div class="sgc-or-meta">
+                <div class="sgc-or-meta-item">
+                    <label>ID:</label> <span>@_selectedModel.Id</span>
+                </div>
+                <div class="sgc-or-meta-item">
+                    <label>Архитектура:</label> <span>@(_selectedModel.Architecture?.Modality ?? "N/A")</span>
+                </div>
+                <div class="sgc-or-meta-item">
+                    <label>Токенизатор:</label> <span>@(_selectedModel.Architecture?.Tokenizer ?? "N/A")</span>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-or-picker {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        background: var(--sg-bg);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-lg);
+        height: 100%;
+        max-height: 600px;
+    }
+    .sgc-or-search {
+        padding: 16px 16px 0 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .sgc-or-filters {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .sgc-or-list {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .sgc-or-item {
+        padding: 12px;
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-md);
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .sgc-or-item:hover {
+        background: var(--sg-bg-subtle);
+        border-color: var(--sg-color-primary-muted);
+    }
+    .sgc-or-item.sgc-active {
+        background: var(--sg-color-primary-subtle);
+        border-color: var(--sg-color-primary);
+    }
+    .sgc-or-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+    .sgc-or-model-name {
+        font-weight: 600;
+        font-size: 14px;
+    }
+    .sgc-or-model-id {
+        font-size: 12px;
+        color: var(--sg-fg-subtle);
+        font-family: var(--sg-font-mono);
+        margin-bottom: 8px;
+    }
+    .sgc-or-model-info {
+        display: flex;
+        gap: 12px;
+        font-size: 11px;
+        color: var(--sg-fg-muted);
+    }
+    .sgc-or-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        height: 200px;
+        color: var(--sg-fg-subtle);
+    }
+    .sgc-or-details {
+        padding: 16px;
+        border-top: 1px solid var(--sg-border);
+        background: var(--sg-bg-subtle);
+        font-size: 13px;
+    }
+    .sgc-or-details h4 {
+        margin: 0 0 8px 0;
+        font-size: 15px;
+    }
+    .sgc-or-desc {
+        color: var(--sg-fg-subtle);
+        margin-bottom: 12px;
+        line-height: 1.4;
+    }
+    .sgc-or-meta {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .sgc-or-meta-item label {
+        color: var(--sg-fg-muted);
+        font-weight: 500;
+        margin-right: 4px;
+    }
+    .sgc-or-pricing {
+        color: var(--sg-color-primary);
+        font-weight: 500;
+    }
+</style>
+
+@code {
+    [Parameter] public string? SelectedModelId { get; set; }
+    [Parameter] public EventCallback<string> SelectedModelIdChanged { get; set; }
+    [Parameter] public EventCallback<SgOpenRouterModel> OnModelSelected { get; set; }
+    [Parameter] public string? Style { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    private List<SgOpenRouterModel> _allModels = new();
+    private List<SgOpenRouterModel> _filteredModels = new();
+    private SgOpenRouterModel? _selectedModel;
+    private bool _loading;
+    private string _searchQuery = "";
+    private bool _onlyFree;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadModelsAsync();
+    }
+
+    private async Task LoadModelsAsync()
+    {
+        _loading = true;
+        _allModels = await OpenRouterService.GetModelsAsync();
+        ApplyFilters();
+        _loading = false;
+    }
+
+    private void OnSearchChanged() => ApplyFilters();
+
+    private void ApplyFilters()
+    {
+        var query = _searchQuery?.Trim().ToLower() ?? "";
+        _filteredModels = _allModels
+            .Where(m => string.IsNullOrEmpty(query) || m.Name.ToLower().Contains(query) || m.Id.ToLower().Contains(query))
+            .Where(m => !_onlyFree || m.IsFree)
+            .OrderBy(m => m.Name)
+            .ToList();
+
+        if (!string.IsNullOrEmpty(SelectedModelId))
+        {
+            _selectedModel = _allModels.FirstOrDefault(m => m.Id == SelectedModelId);
+        }
+    }
+
+    private async Task SelectModel(SgOpenRouterModel model)
+    {
+        _selectedModel = model;
+        SelectedModelId = model.Id;
+        await SelectedModelIdChanged.InvokeAsync(model.Id);
+        await OnModelSelected.InvokeAsync(model);
+    }
+}

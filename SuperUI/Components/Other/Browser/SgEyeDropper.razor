@@ -1,0 +1,35 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-eyedropper").Build()" style="@Style">
+    <SgButton Variant="Variant" OnClick="PickColorAsync" Disabled="Disabled">
+        <Icon>
+            <div style="width: 14px; height: 14px; border-radius: 2px; background: @(Value ?? "transparent"); border: 1px solid rgba(0,0,0,0.1); display: flex; align-items: center; justify-content: center;">
+                @if (string.IsNullOrEmpty(Value)) { <SgIcon Icon="@SgIcons.Activity" /> }
+            </div>
+        </Icon>
+        <ChildContent>
+            <span>@(string.IsNullOrEmpty(Value) ? ButtonText : Value)</span>
+        </ChildContent>
+    </SgButton>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    [Parameter] public string ButtonText { get; set; } = "Пипетка";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Default;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task PickColorAsync()
+    {
+        var color = await SafeInvokeAsync<string>("pickColor");
+        if (color != null)
+        {
+            Value = color;
+            await ValueChanged.InvokeAsync(color);
+        }
+    }
+}

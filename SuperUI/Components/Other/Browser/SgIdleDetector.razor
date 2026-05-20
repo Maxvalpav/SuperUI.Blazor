@@ -1,0 +1,42 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-idle-detector").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color); display: flex; align-items: center; gap: 16px;">
+        <div style="width: 12px; height: 12px; border-radius: 50%; background: @(_userState == "active" ? "var(--sui-success-color)" : "var(--sui-warning-color)");"></div>
+        <div>
+            <div style="font-weight: 600;">Статус пользователя: @(_userState == "active" ? "Активен" : "Бездействует")</div>
+            <div style="font-size: 12px; color: var(--sui-fg-muted);">Экран: @(_screenState == "locked" ? "Заблокирован" : "Разблокирован")</div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _userState = "active";
+    private string _screenState = "unlocked";
+
+    [Parameter] public int Threshold { get; set; } = 61000;
+    [Parameter] public EventCallback<IdleState> OnStateChanged { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("startIdleDetection", SelfRef, Threshold);
+    }
+
+    [JSInvokable]
+    public async Task OnIdleStateChanged(IdleState state)
+    {
+        _userState = state.User;
+        _screenState = state.Screen;
+        await OnStateChanged.InvokeAsync(state);
+        StateHasChanged();
+    }
+
+    public class IdleState
+    {
+        public string User { get; set; } = "active";
+        public string Screen { get; set; } = "unlocked";
+    }
+}

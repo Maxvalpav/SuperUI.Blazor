@@ -1,0 +1,36 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-sanitizer").Build()" style="@Style">
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+        <SgTextBox @bind-Value="_rawHtml" Label="Опасный HTML" Multiline="true" Rows="3" />
+        
+        <SgButton Text="Очистить (Sanitize)" OnClick="SanitizeAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+        
+        @if (!string.IsNullOrEmpty(_cleanHtml))
+        {
+            <div style="margin-top: 12px;">
+                <div style="font-weight: 600; font-size: 12px; margin-bottom: 4px;">Результат (Безопасный HTML):</div>
+                <pre style="font-size: 11px; background: var(--sui-bg-primary); padding: 8px; border-radius: 4px; overflow-x: auto;">@_cleanHtml</pre>
+                
+                <div style="font-weight: 600; font-size: 12px; margin-top: 12px; margin-bottom: 4px;">Предпросмотр:</div>
+                <div style="padding: 12px; background: #fff; color: #000; border: 1px solid #ddd; border-radius: 4px;">
+                    @((MarkupString)_cleanHtml)
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string _rawHtml = "<img src=x onerror=alert('XSS')> <b>Жирный текст</b> <script>console.log('Hacked')</script>";
+    private string? _cleanHtml;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task SanitizeAsync()
+    {
+        _cleanHtml = await SafeInvokeAsync<string>("sanitizeHtml", _rawHtml);
+        StateHasChanged();
+    }
+}

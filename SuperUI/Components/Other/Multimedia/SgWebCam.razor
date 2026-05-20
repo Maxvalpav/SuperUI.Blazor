@@ -1,0 +1,131 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-webcam").Build()" style="@Style">
+    <div class="sgc-webcam-container" style="width: @Width; height: @Height;">
+        <video @ref="_videoRef" 
+               class="sgc-webcam-video" 
+               style="filter: @GetFilterString();"
+               autoplay playsinline muted></video>
+        
+        @if (!_isActive)
+        {
+            <div class="sgc-webcam-placeholder">
+                <SgIcon Icon="@SgIcons.Video" />
+                <span>Камера выключена</span>
+            </div>
+        }
+        
+        <div class="sgc-webcam-overlay">
+            <div class="sgc-webcam-controls">
+                @if (!_isActive)
+                {
+                    <SgButton Variant="SgButtonVariant.Primary" OnClick="StartAsync" Text="Включить" />
+                }
+                else
+                {
+                    <SgButton Variant="SgButtonVariant.Danger" OnClick="StopAsync" Text="Выключить" />
+                    <SgButton Variant="SgButtonVariant.Default" OnClick="CaptureAsync">
+                        <Icon><SgIcon Icon="@SgIcons.Camera" /></Icon>
+                    </SgButton>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .sgc-webcam {
+        display: inline-block;
+        border-radius: 16px;
+        overflow: hidden;
+        background: #000;
+        border: 1px solid var(--sui-border-color);
+        box-shadow: var(--sui-shadow-lg);
+    }
+    .sgc-webcam-container {
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .sgc-webcam-video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .sgc-webcam-placeholder {
+        position: absolute;
+        color: white;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        opacity: 0.5;
+    }
+    .sgc-webcam-overlay {
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 20px;
+        background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+        display: flex;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    .sgc-webcam-container:hover .sgc-webcam-overlay {
+        opacity: 1;
+    }
+    .sgc-webcam-controls {
+        display: flex;
+        gap: 12px;
+    }
+</style>
+
+@code {
+    private ElementReference _videoRef;
+    private bool _isActive;
+
+    [Parameter] public string Width { get; set; } = "100%";
+    [Parameter] public string Height { get; set; } = "400px";
+    
+    // Filters
+    [Parameter] public double Grayscale { get; set; }
+    [Parameter] public double Sepia { get; set; }
+    [Parameter] public double Brightness { get; set; } = 1.0;
+    [Parameter] public double Contrast { get; set; } = 1.0;
+
+    [Parameter] public EventCallback<string> OnSnapshot { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-multimedia.js";
+
+    public async Task StartAsync()
+    {
+        var started = await SafeInvokeAsync<bool>("startCamera", _videoRef);
+        if (started)
+        {
+            _isActive = true;
+            StateHasChanged();
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        await SafeInvokeVoidAsync("stopCamera", _videoRef);
+        _isActive = false;
+        StateHasChanged();
+    }
+
+    public async Task CaptureAsync()
+    {
+        var dataUrl = await SafeInvokeAsync<string>("takeSnapshot", _videoRef);
+        await OnSnapshot.InvokeAsync(dataUrl);
+    }
+
+    private string GetFilterString()
+    {
+        return $"grayscale({Grayscale}) sepia({Sepia}) brightness({Brightness}) contrast({Contrast})";
+    }
+}

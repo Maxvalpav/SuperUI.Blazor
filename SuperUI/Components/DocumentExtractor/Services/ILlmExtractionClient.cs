@@ -3,7 +3,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using SuperUI.Components.DocumentExtractor.Models;
 
+using SuperUI.Services.Llm;
+
 namespace SuperUI.Components.DocumentExtractor.Services;
+
+public sealed class SgLlmEndpointConfig : SgLlmConfig
+{
+    // Keeping this for backward compatibility and specialized extraction needs
+    public SgLlmEndpointKind Kind { get; set; } = SgLlmEndpointKind.OpenAiCompatible;
+    public string Model { get => ModelId ?? ""; set => ModelId = value; }
+}
 
 /// <summary>
 /// Thin OpenAI-compatible client used by <see cref="LlmDocumentExtractor"/>.
@@ -25,22 +34,8 @@ public interface ILlmExtractionClient
 
 public enum SgLlmEndpointKind
 {
-    /// <summary>OpenAI-compatible Chat Completions endpoint (OpenAI, vLLM, LM Studio, Ollama-OpenAI, …).</summary>
     OpenAiCompatible,
     OpenRouter
-}
-
-public sealed class SgLlmEndpointConfig
-{
-    public SgLlmEndpointKind Kind { get; set; } = SgLlmEndpointKind.OpenAiCompatible;
-    /// <summary>Base URL (e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1).</summary>
-    public string BaseUrl { get; set; } = "https://api.openai.com/v1";
-    public string? ApiKey { get; set; }
-    /// <summary>Model id. Either typed in by hand or chosen from the provider's /models response.</summary>
-    public string Model { get; set; } = string.Empty;
-    public Dictionary<string, string>? ExtraHeaders { get; set; }
-    /// <summary>Optional override system prompt for the extraction call.</summary>
-    public string? SystemPrompt { get; set; }
 }
 
 public sealed class SgLlmModelDescriptor

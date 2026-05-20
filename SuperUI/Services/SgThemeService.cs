@@ -11,6 +11,9 @@ public sealed class SgThemeService : IAsyncDisposable
 {
     private const string StorageKeyThemeId   = "superui-theme-id";
     private const string StorageKeyDarkMode  = "superui-dark-mode";
+    private const string StorageKeyFontSize  = "superui-font-size";
+    private const string StorageKeyFontFamily = "superui-font-family";
+    private const string StorageKeyDensity   = "superui-density";
 
     private readonly IJSRuntime  _js;
     private readonly ThemeRegistry _registry;
@@ -22,6 +25,10 @@ public sealed class SgThemeService : IAsyncDisposable
 
     /// <summary>Current mode: "light" | "dark" | "auto".</summary>
     public string CurrentMode { get; private set; } = "light";
+
+    public string FontSize { get; private set; } = "md";
+    public string FontFamily { get; private set; } = "sans";
+    public string Density { get; private set; } = "relaxed";
 
     /// <summary>true if currently in dark mode.</summary>
     public bool IsDark => CurrentMode == "dark" || (CurrentMode == "auto" && _systemPrefersDark);
@@ -49,21 +56,45 @@ public sealed class SgThemeService : IAsyncDisposable
             // Load saved settings
             var savedThemeId = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyThemeId);
             var savedMode = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyDarkMode);
+            var savedFontSize = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyFontSize);
+            var savedFontFamily = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyFontFamily);
+            var savedDensity = await _js.InvokeAsync<string?>("localStorage.getItem", StorageKeyDensity);
 
             // Determine system preference
             _systemPrefersDark = await _js.InvokeAsync<bool>("eval", "window.matchMedia('(prefers-color-scheme: dark)').matches");
 
-            // Apply saved theme
+            // Apply saved settings
             if (!string.IsNullOrEmpty(savedThemeId) && _registry.TryGet(savedThemeId, out var theme))
             {
                 CurrentTheme = theme!;
             }
 
             CurrentMode = savedMode ?? "light";
+            FontSize = savedFontSize ?? "md";
+            FontFamily = savedFontFamily ?? "sans";
+            Density = savedDensity ?? "relaxed";
 
             await ApplyThemeAsync();
         }
         catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
+    }
+
+    public async Task SetFontSizeAsync(string size)
+    {
+        FontSize = size;
+        await SaveAndApplyAsync();
+    }
+
+    public async Task SetFontFamilyAsync(string family)
+    {
+        FontFamily = family;
+        await SaveAndApplyAsync();
+    }
+
+    public async Task SetDensityAsync(string density)
+    {
+        Density = density;
+        await SaveAndApplyAsync();
     }
 
     /// <summary>Sets theme by ID.</summary>
@@ -105,6 +136,9 @@ public sealed class SgThemeService : IAsyncDisposable
         {
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyThemeId, CurrentTheme.Id);
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyDarkMode, CurrentMode);
+            await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyFontSize, FontSize);
+            await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyFontFamily, FontFamily);
+            await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyDensity, Density);
             await ApplyThemeAsync();
         }
         catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
@@ -122,6 +156,16 @@ public sealed class SgThemeService : IAsyncDisposable
         {
             await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{dataTheme}')");
             await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme-id', '{CurrentTheme.Id}')");
+            
+            // Typography & Density
+            var fontSizeValue = FontSize switch { "sm" => "14px", "lg" => "18px", _ => "16px" };
+            var fontFamilyValue = FontFamily == "mono" ? "var(--sg-font-mono)" : "var(--sg-font-sans)";
+            var densityValue = Density == "compact" ? "0.75" : "1.0";
+
+            await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-base-font-size', '{fontSizeValue}')");
+            await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-base-font-family', '{fontFamilyValue}')");
+            await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-density-factor', '{densityValue}')");
+
             await _js.InvokeVoidAsync("SuperUI.applyThemeCss", css);
 
             ThemeChanged?.Invoke(CurrentTheme, CurrentMode);

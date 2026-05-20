@@ -1,0 +1,464 @@
+@namespace SuperUI.Components
+@using SuperUI.Models
+@using SuperUI.Services
+@using System.Globalization
+@inject SgWeatherService WeatherService
+
+<div class="sg-weather-dashboard @(Forecast?.Current?.IsDay == 1 ? "day" : "night")">
+    @if (Forecast == null)
+    {
+        <div class="sg-weather-loading">
+            <div class="sg-weather-spinner"></div>
+            <p>@LoadingText</p>
+        </div>
+    }
+    else
+    {
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px;">
+            <div>
+                @if (!string.IsNullOrEmpty(City))
+                {
+                    <h2 class="sg-weather-city">📍 @City</h2>
+                }
+                <div class="sg-weather-coords">@Forecast.Latitude.ToString("F2")°N, @Forecast.Longitude.ToString("F2")°E</div>
+            </div>
+            <div class="sg-weather-tabs">
+                <button class="@GetTabClass("forecast")" @onclick="@(() => _activeTab = "forecast")">Прогноз</button>
+                <button class="@GetTabClass("air")" @onclick="@(() => _activeTab = "air")">Воздух</button>
+                <button class="@GetTabClass("marine")" @onclick="@(() => _activeTab = "marine")">Море</button>
+            </div>
+        </div>
+
+        @if (_activeTab == "forecast")
+        {
+            @if (Forecast.Current != null)
+            {
+                <div class="sg-weather-current">
+                    <div class="sg-weather-main">
+                        <div class="sg-weather-icon-large">@WeatherService.GetWeatherIcon(Forecast.Current.WeatherCode, Forecast.Current.IsDay == 1)</div>
+                        <div class="sg-weather-temp">@Math.Round(Forecast.Current.Temperature)°</div>
+                        <div class="sg-weather-desc">@WeatherService.GetWeatherDescription(Forecast.Current.WeatherCode)</div>
+                    </div>
+                    
+                    <div class="sg-weather-details">
+                        <div class="sg-weather-detail-item">
+                            <span class="sg-weather-label">Ощущается как</span>
+                            <span class="sg-weather-value">@Math.Round(Forecast.Current.ApparentTemperature)°</span>
+                        </div>
+                        <div class="sg-weather-detail-item">
+                            <span class="sg-weather-label">Влажность</span>
+                            <span class="sg-weather-value">@Forecast.Current.Humidity%</span>
+                        </div>
+                        <div class="sg-weather-detail-item">
+                            <span class="sg-weather-label">Ветер</span>
+                            <span class="sg-weather-value">@Forecast.Current.WindSpeed км/ч</span>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (Forecast.Hourly?.Temperature != null && Forecast.Hourly.Time.Count >= (_selectedDayIndex + 1) * 24)
+            {
+                <div class="sg-weather-hourly-container">
+                    <h5 style="margin: 0 0 12px 0; font-size: 14px; opacity: 0.8;">Почасовой прогноз: @GetDayName(Forecast.Daily?.Time[_selectedDayIndex] ?? "")</h5>
+                    <div class="sg-weather-hourly-scroll">
+                        @for (int i = _selectedDayIndex * 24; i < (_selectedDayIndex + 1) * 24; i++)
+                        {
+                            var hourIndex = i;
+                            <div class="sg-weather-hourly-item">
+                                <span class="sg-weather-hour">@GetHour(Forecast.Hourly.Time[hourIndex])</span>
+                                <span class="sg-weather-hourly-icon">@WeatherService.GetWeatherIcon(Forecast.Hourly.WeatherCode?[hourIndex] ?? 0, IsDayHour(Forecast.Hourly.Time[hourIndex]))</span>
+                                <span class="sg-weather-hourly-temp">@Math.Round(Forecast.Hourly.Temperature[hourIndex])°</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (Forecast.Daily != null)
+            {
+                <div class="sg-weather-daily">
+                    @for (int i = 0; i < Math.Min(5, Forecast.Daily.Time.Count); i++)
+                    {
+                        var index = i;
+                        <div class="sg-weather-daily-item @(index == _selectedDayIndex ? "active" : "")" @onclick="() => _selectedDayIndex = index">
+                            <span class="sg-weather-day">@GetDayName(Forecast.Daily.Time[index])</span>
+                            <span class="sg-weather-daily-icon">@WeatherService.GetWeatherIcon(Forecast.Daily.WeatherCode[index], true)</span>
+                            <div class="sg-weather-daily-temps">
+                                <span class="sg-weather-max">@Math.Round(Forecast.Daily.TemperatureMax[index])°</span>
+                                <span class="sg-weather-min">@Math.Round(Forecast.Daily.TemperatureMin[index])°</span>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (Forecast.Current == null)
+            {
+                <div style="padding: 40px; text-align: center; opacity: 0.7;">Данные прогноза недоступны для этого режима</div>
+            }
+        }
+        else if (_activeTab == "air")
+        {
+            @if (Forecast.Hourly?.Pm25 != null)
+            {
+                <div class="sg-weather-air">
+                    <h4 style="margin: 0 0 16px 0; font-size: 16px; opacity: 0.9;">Качество воздуха</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="sg-weather-air-item">
+                            <span class="sg-weather-label">PM2.5</span>
+                            <span class="sg-weather-value">@(Forecast.Hourly.Pm25[0]) @(Forecast.HourlyUnits?.GetValueOrDefault("pm2_5"))</span>
+                        </div>
+                        <div class="sg-weather-air-item">
+                            <span class="sg-weather-label">PM10</span>
+                            <span class="sg-weather-value">@(Forecast.Hourly.Pm10?[0] ?? 0) @(Forecast.HourlyUnits?.GetValueOrDefault("pm10"))</span>
+                        </div>
+                        <div class="sg-weather-air-item" style="grid-column: span 2">
+                            <span class="sg-weather-label">NO2</span>
+                            <span class="sg-weather-value">@(Forecast.Hourly.No2?[0] ?? 0) @(Forecast.HourlyUnits?.GetValueOrDefault("no2"))</span>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div style="padding: 40px; text-align: center; opacity: 0.7;">Данные о качестве воздуха недоступны</div>
+            }
+        }
+        else if (_activeTab == "marine")
+        {
+            @if (Forecast.Hourly?.WaveHeight != null)
+            {
+                <div class="sg-weather-marine">
+                    <h4 style="margin: 0 0 16px 0; font-size: 16px; opacity: 0.9;">Морской прогноз</h4>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                        <div class="sg-weather-air-item">
+                            <span class="sg-weather-label">Высота волны</span>
+                            <span class="sg-weather-value">@(Forecast.Hourly.WaveHeight[0]) @(Forecast.HourlyUnits?.GetValueOrDefault("wave_height"))</span>
+                        </div>
+                        <div class="sg-weather-air-item">
+                            <span class="sg-weather-label">Период волны</span>
+                            <span class="sg-weather-value">@(Forecast.Hourly.WavePeriod?[0] ?? 0) @(Forecast.HourlyUnits?.GetValueOrDefault("wave_period"))</span>
+                        </div>
+                        <div class="sg-weather-air-item" style="grid-column: span 2">
+                            <span class="sg-weather-label">Направление</span>
+                            <span class="sg-weather-value">@(Forecast.Hourly.WaveDirection?[0] ?? 0)°</span>
+                        </div>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div style="padding: 40px; text-align: center; opacity: 0.7;">Морские данные недоступны для этого региона</div>
+            }
+        }
+    }
+</div>
+
+<style>
+    .sg-weather-dashboard {
+        padding: 32px;
+        border-radius: 24px;
+        color: white;
+        font-family: var(--sui-font-family, 'Segoe UI', system-ui, sans-serif);
+        background: linear-gradient(135deg, #0082ff 0%, #00d2ff 100%);
+        box-shadow: 0 20px 40px rgba(0,0,0,0.15);
+        min-height: 200px;
+        transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    .sg-weather-dashboard.night {
+        background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%);
+    }
+
+    .sg-weather-city {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+    }
+
+    .sg-weather-coords {
+        font-size: 12px;
+        opacity: 0.6;
+        margin-top: 4px;
+        font-family: monospace;
+    }
+
+    .sg-weather-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 300px;
+    }
+
+    .sg-weather-spinner {
+        width: 48px;
+        height: 48px;
+        border: 3px solid rgba(255,255,255,0.2);
+        border-top: 3px solid white;
+        border-radius: 50%;
+        animation: sg-spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        margin-bottom: 20px;
+    }
+
+    @@keyframes sg-spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .sg-weather-current {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 40px;
+        padding: 0 10px;
+    }
+
+    .sg-weather-main {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .sg-weather-icon-large {
+        font-size: 80px;
+        line-height: 1;
+        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+    }
+
+    .sg-weather-temp {
+        font-size: 84px;
+        font-weight: 800;
+        line-height: 1;
+        margin: 12px 0;
+        letter-spacing: -2px;
+    }
+
+    .sg-weather-desc {
+        font-size: 20px;
+        font-weight: 500;
+        opacity: 0.9;
+    }
+
+    .sg-weather-details {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        background: rgba(255,255,255,0.12);
+        padding: 24px;
+        border-radius: 20px;
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.1);
+        min-width: 200px;
+    }
+
+    .sg-weather-detail-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 32px;
+    }
+
+    .sg-weather-label {
+        font-size: 13px;
+        opacity: 0.7;
+        font-weight: 500;
+    }
+
+    .sg-weather-value {
+        font-weight: 700;
+        font-size: 15px;
+    }
+
+    .sg-weather-daily {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        border-top: 1px solid rgba(255,255,255,0.15);
+        padding-top: 32px;
+    }
+
+    .sg-weather-daily-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        padding: 12px 8px;
+        border-radius: 16px;
+        transition: all 0.2s ease;
+    }
+
+    .sg-weather-daily-item:hover {
+        background: rgba(255,255,255,0.08);
+        transform: translateY(-2px);
+    }
+
+    .sg-weather-daily-item.active {
+        background: rgba(255,255,255,0.15);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+
+    .sg-weather-day {
+        font-size: 13px;
+        font-weight: 600;
+        opacity: 0.8;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .sg-weather-daily-icon {
+        font-size: 28px;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));
+    }
+
+    .sg-weather-daily-temps {
+        display: flex;
+        gap: 8px;
+        font-size: 14px;
+    }
+
+    .sg-weather-max {
+        font-weight: 700;
+    }
+
+    .sg-weather-min {
+        opacity: 0.5;
+        font-weight: 500;
+    }
+
+    .sg-weather-hourly-container {
+        margin-bottom: 32px;
+        background: rgba(0,0,0,0.05);
+        padding: 20px;
+        border-radius: 20px;
+        border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .sg-weather-hourly-scroll {
+        display: flex;
+        overflow-x: auto;
+        gap: 20px;
+        padding-bottom: 12px;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.2) transparent;
+    }
+
+    .sg-weather-hourly-scroll::-webkit-scrollbar {
+        height: 4px;
+    }
+
+    .sg-weather-hourly-scroll::-webkit-scrollbar-thumb {
+        background: rgba(255,255,255,0.2);
+        border-radius: 10px;
+    }
+
+    .sg-weather-hourly-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        min-width: 50px;
+    }
+
+    .sg-weather-hour {
+        font-size: 11px;
+        opacity: 0.6;
+        font-weight: 600;
+    }
+
+    .sg-weather-hourly-icon {
+        font-size: 22px;
+    }
+
+    .sg-weather-hourly-temp {
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    .sg-weather-tabs {
+        display: flex;
+        gap: 4px;
+        background: rgba(0,0,0,0.15);
+        padding: 4px;
+        border-radius: 12px;
+        backdrop-filter: blur(4px);
+    }
+    .sg-weather-tab {
+        padding: 8px 16px;
+        background: transparent;
+        border: none;
+        color: white;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        border-radius: 9px;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity: 0.5;
+    }
+    .sg-weather-tab:hover {
+        opacity: 0.8;
+        background: rgba(255,255,255,0.05);
+    }
+    .sg-weather-tab.active {
+        background: rgba(255,255,255,0.2);
+        opacity: 1;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .sg-weather-air, .sg-weather-marine {
+        background: rgba(255,255,255,0.1);
+        padding: 24px;
+        border-radius: 20px;
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255,255,255,0.1);
+    }
+    .sg-weather-air-item {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        padding: 12px;
+        background: rgba(255,255,255,0.05);
+        border-radius: 12px;
+    }
+</style>
+
+@code {
+    [Parameter] public SgWeatherForecast? Forecast { get; set; }
+    [Parameter] public string? City { get; set; }
+    [Parameter] public string LoadingText { get; set; } = "Загрузка данных...";
+    
+    private string _activeTab = "forecast";
+    private int _selectedDayIndex = 0;
+
+    private string GetTabClass(string tab) => $"sg-weather-tab {(tab == _activeTab ? "active" : "")}";
+
+    private string GetDayName(string dateStr)
+    {
+        if (string.IsNullOrEmpty(dateStr)) return "";
+        if (DateTime.TryParse(dateStr, out var date))
+        {
+            if (date.Date == DateTime.Today) return "Сегодня";
+            return date.ToString("ddd", new System.Globalization.CultureInfo("ru-RU"));
+        }
+        return dateStr;
+    }
+
+    private string GetHour(string timeStr)
+    {
+        if (DateTime.TryParse(timeStr, out var date))
+        {
+            return date.ToString("HH:mm");
+        }
+        return timeStr;
+    }
+
+    private bool IsDayHour(string timeStr)
+    {
+        if (DateTime.TryParse(timeStr, out var date))
+        {
+            return date.Hour >= 6 && date.Hour <= 20;
+        }
+        return true;
+    }
+}

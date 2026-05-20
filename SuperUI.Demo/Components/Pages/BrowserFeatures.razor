@@ -1,0 +1,401 @@
+@page "/browser-features"
+@using SuperUI.Components
+
+<PageTitle>Browser Features - SUI</PageTitle>
+
+<SgCard Title="Возможности браузера" 
+        Subtitle="Демонстрация современных Web APIs. Некоторые функции требуют Chrome/Edge и включения экспериментальных флагов.">
+
+    <SgAlert Variant="SgAlertVariant.Info" Title="Особенности поддержки" Style="margin-bottom: 24px;">
+        Многие современные API (Shape Detection, WebUSB, File System) являются экспериментальными. 
+        Для их работы может потребоваться включение флага <code>chrome://flags/#enable-experimental-web-platform-features</code> и использование <b>HTTPS</b> или <b>localhost</b>.
+    </SgAlert>
+
+    <div style="margin-top: 32px; display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 24px;">
+        
+        @* Device & Network *@
+        <SgCard Title="Статус устройства">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <SgDeviceStatus />
+                <SgAlert Variant="SgAlertVariant.Info" ShowIcon="true">
+                    Отслеживает уровень заряда батареи и тип сетевого соединения (4G, Wi-Fi и т.д.) в реальном времени.
+                </SgAlert>
+            </div>
+        </SgCard>
+
+        @* Geolocation *@
+        <SgCard Title="Геолокация">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <SgGeoLocation OnLocationFound="HandleLocation" OnError="HandleError" Variant="SgButtonVariant.Primary" />
+                
+                @if (_lastPos != null)
+                {
+                    <div style="padding: 12px; background: var(--sui-bg-secondary); border-radius: 8px; font-family: monospace; font-size: 13px;">
+                        <div>Широта: @_lastPos.Latitude</div>
+                        <div>Долгота: @_lastPos.Longitude</div>
+                        <div>Точность: @_lastPos.Accuracy м</div>
+                    </div>
+                }
+            </div>
+        </SgCard>
+
+        @* EyeDropper *@
+        <SgCard Title="Пипетка (EyeDropper)">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <SgEyeDropper @bind-Value="_pickedColor" Variant="SgButtonVariant.Default" />
+                    @if (!string.IsNullOrEmpty(_pickedColor))
+                    {
+                        <div style="width: 32px; height: 32px; border-radius: 50%; background: @_pickedColor; border: 2px solid var(--sui-border-color);"></div>
+                    }
+                </div>
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Позволяет выбрать любой цвет с экрана (даже вне окна браузера). Работает в Chrome/Edge.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Share & Vibration *@
+        <SgCard Title="Взаимодействие">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <div style="display: flex; gap: 12px;">
+                    <SgShareButton Title="SuperUI Components" 
+                                  Text="Посмотри на эти крутые компоненты для Blazor!" 
+                                  Url="https://github.com/superui" 
+                                  Variant="SgButtonVariant.Primary" />
+                    
+                    <SgVibration ButtonText="Виброотклик" Duration="100" />
+                </div>
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Native Share API открывает системное меню "Поделиться". Vibration API работает на мобильных устройствах.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Notifications *@
+        <SgCard Title="Уведомления">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <SgNotificationManager @ref="_notifications" />
+                <SgButton Text="Показать уведомление" OnClick="ShowNotificationAsync" />
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Запрашивает разрешение и выводит системное push-уведомление.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Wake Lock *@
+        <SgCard Title="Управление экраном">
+            <SgWakeLock />
+        </SgCard>
+
+        @* Bluetooth *@
+        <SgCard Title="Беспроводная связь">
+            <SgBluetooth />
+        </SgCard>
+
+        @* Serial Port *@
+        <SgCard Title="Периферия (USB/COM)">
+            <SgSerialPort />
+        </SgCard>
+
+        @* Presentation *@
+        <SgCard Title="Внешние экраны">
+            <SgPresentation />
+        </SgCard>
+
+        @* Tab Sync *@
+        <SgCard Title="Синхронизация вкладок">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <SgTabSync OnMessage="msg => _syncMessage = msg" @ref="_tabSync" />
+                <SgTextBox @bind-Value="_syncText" Placeholder="Текст для всех вкладок..." />
+                <SgButton Text="Отправить во все вкладки" OnClick="@(async () => { if (_tabSync != null) await _tabSync.PostMessageAsync(_syncText); })" Variant="SgButtonVariant.Primary" />
+                @if (!string.IsNullOrEmpty(_syncMessage))
+                {
+                    <div style="padding: 12px; background: var(--sui-success-bg); border-radius: 8px; color: var(--sui-success-color); font-size: 13px;">
+                        Получено: @_syncMessage
+                    </div>
+                }
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Broadcast Channel API позволяет обмениваться данными между вкладками одного сайта без сервера.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Native Barcode *@
+        <SgCard Title="Нативный сканер (Chrome/Edge)">
+            <SgNativeBarcodeScanner OnDetected="b => _barcodeRes = b.RawValue" />
+            @if (!string.IsNullOrEmpty(_barcodeRes))
+            {
+                <div style="margin-top: 8px; font-weight: 600;">@_barcodeRes</div>
+            }
+        </SgCard>
+
+        @* Audio Visualizer *@
+        <SgCard Title="Анализатор звука">
+            <SgAudioVisualizer Height="150" />
+            <div style="font-size: 12px; color: var(--sui-fg-muted); margin-top: 8px;">
+                Использует Web Audio API для анализа частот в реальном времени.
+            </div>
+        </SgCard>
+
+        @* Performance *@
+        <SgCard Title="Производительность">
+            <SgPerformanceMonitor />
+            <div style="font-size: 12px; color: var(--sui-fg-muted); margin-top: 8px;">
+                Мониторинг потребления памяти JS-движком (доступно в браузерах на базе Chromium).
+            </div>
+        </SgCard>
+
+        @* Clipboard *@
+        <SgCard Title="Буфер обмена">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <SgClipboard @ref="_clipboard" />
+                <SgTextBox @bind-Value="_clipboardText" Label="Текст для копирования" />
+                <div style="display: flex; gap: 12px;">
+                    <SgButton Text="Копировать" OnClick="@(async () => { if (_clipboard != null) await _clipboard.CopyAsync(_clipboardText); })" Variant="SgButtonVariant.Default" />
+                    <SgButton Text="Вставить" OnClick="PasteFromClipboardAsync" Variant="SgButtonVariant.Default" />
+                </div>
+            </div>
+        </SgCard>
+
+        @* File System Access *@
+        <SgCard Title="Доступ к файловой системе">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <SgFileSystem @bind-Content="_fileContent" />
+                <SgTextBox @bind-Value="_fileContent" Label="Содержимое файла" Multiline="true" Rows="5" />
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    File System Access API позволяет напрямую читать и записывать файлы на диск пользователя (с его разрешения).
+                </div>
+            </div>
+        </SgCard>
+
+        @* NEW COMPONENTS *@
+
+        @* Screen Capture *@
+        <SgCard Title="Захват экрана">
+            <SgScreenCapture />
+        </SgCard>
+
+        @* Idle Detection *@
+        <SgCard Title="Детектор бездействия">
+            <SgIdleDetector Threshold="10000" />
+            <div style="font-size: 12px; color: var(--sui-fg-muted); margin-top: 8px;">
+                Отслеживает активность пользователя и состояние блокировки экрана.
+            </div>
+        </SgCard>
+
+        @* USB Manager *@
+        <SgCard Title="USB Устройства (WebUSB)">
+            <SgUsbManager />
+        </SgCard>
+
+        @* Shape Detection: Face *@
+        <SgCard Title="Распознавание лиц">
+            <SgFaceDetector />
+        </SgCard>
+
+        @* Shape Detection: Text *@
+        <SgCard Title="Распознавание текста (OCR)">
+            <SgTextDetector />
+        </SgCard>
+
+        @* Passkey Manager *@
+        <SgCard Title="Безопасность (Passkeys)">
+            <SgPasskeyManager />
+            <div style="font-size: 12px; color: var(--sui-fg-muted); margin-top: 8px;">
+                WebAuthn API для беспарольной аутентификации.
+            </div>
+        </SgCard>
+
+        @* Web Locks *@
+        <SgCard Title="Синхронизация (Web Locks)">
+            <SgWebLocks LockName="demo-resource-lock" />
+        </SgCard>
+
+        @* Audio Visualizer & Recorder *@
+        <SgCard Title="Аудио визуализатор и запись">
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                @{
+                    var visualizerId = "viz-" + Guid.NewGuid().ToString("N")[..6];
+                }
+                <SgAudioVisualizer Height="120" CanvasId="@visualizerId" />
+                <SgCanvasRecorder CanvasId="@visualizerId" />
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Web Audio API анализирует поток с микрофона. Используйте SgCanvasRecorder для захвата анимации.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Low Latency Drawing (Ink) *@
+        <SgCard Title="Рисование (Ink API)">
+            <SgInkManager />
+            <div style="font-size: 12px; color: var(--sui-fg-muted); margin-top: 8px;">
+                Обеспечивает минимальную задержку ввода при использовании стилуса или мыши.
+            </div>
+        </SgCard>
+
+        @* WebRTC P2P *@
+        <SgCard Title="P2P Связь (WebRTC)">
+            <SgWebRTC />
+        </SgCard>
+
+        @* Sanitizer *@
+        <SgCard Title="Очистка HTML (Sanitizer API)">
+            <SgHtmlSanitizer />
+        </SgCard>
+
+        @* Presentation Receiver *@
+        <SgCard Title="Приемник презентаций">
+            <SgPresentationReceiver />
+        </SgCard>
+
+        @* File Handler (OS Integration) *@
+        <SgCard Title="Обработка файлов ОС">
+            <SgFileHandler />
+            <div style="font-size: 12px; color: var(--sui-fg-muted); margin-top: 8px;">
+                Позволяет приложению открывать файлы напрямую из проводника ОС (требуется установка PWA).
+            </div>
+        </SgCard>
+
+        @* Web NFC *@
+        <SgCard Title="NFC (Web NFC)">
+            <SgWebNFC />
+        </SgCard>
+
+        @* Contact Picker *@
+        <SgCard Title="Контакты (Contact Picker)">
+            <SgContactPicker />
+        </SgCard>
+
+        @* App Badge *@
+        <SgCard Title="Иконка приложения (Badging)">
+            <SgAppBadge />
+        </SgCard>
+
+        @* Local Fonts *@
+        <SgCard Title="Системные шрифты">
+            <SgLocalFonts />
+        </SgCard>
+
+        @* Multi Screen *@
+        <SgCard Title="Управление экранами">
+            <SgMultiScreen />
+        </SgCard>
+
+        @* Compute Pressure *@
+        <SgCard Title="Нагрузка на CPU">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <SgComputePressure OnPressureChanged="p => _pressure = p" />
+                <div style="padding: 12px; border-radius: 8px; text-align: center; font-weight: 600; background: @GetPressureColor(_pressure); color: white;">
+                    Состояние: @_pressure
+                </div>
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Compute Pressure API позволяет узнать текущую нагрузку на процессор. Это "тайное" API для адаптивного UI.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Speculative Rules *@
+        <SgCard Title="Предварительный рендеринг">
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <SgSpeculativeRules Prefetch="@(new List<string> { "/smart-form-demo" })" Eagerness="moderate" />
+                <SgAlert Variant="SgAlertVariant.Success" ShowIcon="true">
+                    Страница "Smart Form" подгружается заранее в фоне при наведении.
+                </SgAlert>
+                <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                    Speculation Rules API — это мощный инструмент для ускорения навигации. Браузер скачивает страницу до того, как пользователь кликнет.
+                </div>
+            </div>
+        </SgCard>
+
+        @* Payment Request *@
+        <SgCard Title="Платежи (Apple/Google Pay)">
+            <SgPaymentRequest />
+        </SgCard>
+
+        @* Virtual Keyboard *@
+        <SgCard Title="Виртуальная клавиатура">
+            <SgVirtualKeyboard />
+        </SgCard>
+
+        @* MIDI Controller *@
+        <SgCard Title="MIDI Устройства">
+            <SgMidiController />
+        </SgCard>
+
+        @* Compression *@
+        <SgCard Title="Сжатие данных">
+            <SgCompression />
+        </SgCard>
+
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div style="margin-top: 24px;">
+            <SgAlert Variant="SgAlertVariant.Danger" Title="Ошибка" Closable="true" OnClose="@(() => _error = null)">
+                @_error
+            </SgAlert>
+        </div>
+    }
+
+</SgCard>
+
+@code {
+    private SgComputePressureState _pressure = SgComputePressureState.Nominal;
+
+    private string GetPressureColor(SgComputePressureState state) => state switch
+    {
+        SgComputePressureState.Nominal => "#10b981", // Green
+        SgComputePressureState.Fair => "#f59e0b",    // Orange
+        SgComputePressureState.Serious => "#ef4444", // Red
+        SgComputePressureState.Critical => "#7f1d1d",// Dark Red
+        _ => "#6b7280"
+    };
+
+    private SgGeoLocation.SgGeoPosition? _lastPos;
+    private string? _pickedColor;
+    private string? _error;
+    private string _clipboardText = "Привет из SuperUI!";
+    private string? _fileContent = "Это содержимое файла, которое можно сохранить на диск.";
+    private string? _syncMessage;
+    private string _syncText = "";
+    private string? _barcodeRes;
+    
+    private SgNotificationManager? _notifications;
+    private SgClipboard? _clipboard;
+    private SgTabSync? _tabSync;
+
+    private void HandleLocation(SgGeoLocation.SgGeoPosition pos)
+    {
+        _lastPos = pos;
+        StateHasChanged();
+    }
+
+    private void HandleError(string error)
+    {
+        _error = error;
+        StateHasChanged();
+    }
+
+    private async Task ShowNotificationAsync()
+    {
+        if (_notifications != null)
+        {
+            await _notifications.ShowAsync("SuperUI", "Это тестовое уведомление от вашей библиотеки компонентов!");
+        }
+    }
+
+    private async Task PasteFromClipboardAsync()
+    {
+        if (_clipboard != null)
+        {
+            var text = await _clipboard.ReadAsync();
+            if (text != null)
+            {
+                _clipboardText = text;
+                StateHasChanged();
+            }
+        }
+    }
+}

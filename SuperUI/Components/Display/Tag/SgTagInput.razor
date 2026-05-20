@@ -1,0 +1,62 @@
+@namespace SuperUI.Components
+@inherits SgComponentBase
+
+<div class="@Css("sgc-tag-input").Build()" @attributes="AttributesWithoutClassAndStyle">
+    @foreach (var tag in Tags)
+    {
+        <SgTag Closable="true" OnClose="() => RemoveTag(tag)">@tag</SgTag>
+    }
+    <input type="text" 
+           @bind="_inputValue" 
+           @bind:event="oninput"
+           @onkeydown="HandleKeyDown"
+           placeholder="@Placeholder"
+           class="sgc-tag-input-inner" />
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the list of tags.
+    /// </summary>
+    [Parameter] public List<string> Tags { get; set; } = new();
+
+    /// <summary>
+    /// Callback invoked when the tag list changes.
+    /// </summary>
+    [Parameter] public EventCallback<List<string>> TagsChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the placeholder text for the input field.
+    /// </summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    private string _inputValue = "";
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_inputValue))
+        {
+            var value = _inputValue.Trim();
+            if (!Tags.Contains(value))
+            {
+                Tags.Add(value);
+                _inputValue = "";
+                if (TagsChanged.HasDelegate)
+                    await TagsChanged.InvokeAsync(Tags);
+            }
+        }
+        else if (e.Key == "Backspace" && string.IsNullOrEmpty(_inputValue) && Tags.Any())
+        {
+            Tags.RemoveAt(Tags.Count - 1);
+            if (TagsChanged.HasDelegate)
+                await TagsChanged.InvokeAsync(Tags);
+        }
+    }
+
+    private async Task RemoveTag(string tag)
+    {
+        Tags.Remove(tag);
+        if (TagsChanged.HasDelegate)
+            await TagsChanged.InvokeAsync(Tags);
+    }
+}

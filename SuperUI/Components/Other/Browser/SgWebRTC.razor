@@ -1,0 +1,60 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-webrtc-p2p").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+        <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="font-weight: 600;">P2P Связь (WebRTC)</div>
+            
+            @if (string.IsNullOrEmpty(_offer))
+            {
+                <SgButton Text="Создать Offer" OnClick="CreateOfferAsync" Variant="SgButtonVariant.Primary" />
+            }
+            else
+            {
+                <SgTextBox @bind-Value="_offer" Label="Ваш Offer (отправьте собеседнику)" ReadOnly="true" Multiline="true" Rows="3" />
+            }
+
+            @if (_candidates.Any())
+            {
+                <div style="font-size: 11px; color: var(--sui-fg-muted);">ICE Candidates получены: @_candidates.Count</div>
+            }
+
+            <div style="margin-top: 12px; padding: 12px; background: var(--sui-bg-primary); border-radius: 6px; min-height: 100px;">
+                <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Сообщения:</div>
+                @foreach (var msg in _messages)
+                {
+                    <div style="font-size: 13px; margin-bottom: 4px;">• @msg</div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string? _offer;
+    private List<string> _candidates = new();
+    private List<string> _messages = new();
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task CreateOfferAsync()
+    {
+        _offer = await SafeInvokeAsync<string>("createOffer", SelfRef);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnIceCandidate(string candidate)
+    {
+        _candidates.Add(candidate);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnP2PMessage(string message)
+    {
+        _messages.Add(message);
+        StateHasChanged();
+    }
+}

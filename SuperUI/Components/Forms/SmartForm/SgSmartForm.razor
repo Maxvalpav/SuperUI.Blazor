@@ -1,0 +1,200 @@
+@namespace SuperUI.Components
+@using SuperUI.Models
+@using SuperUI.Services.Llm
+@inject IJSRuntime JS
+@using Microsoft.AspNetCore.Components.Forms
+@using SuperUI.Base.ComponentBases
+@inherits SgComponentBase
+
+<EditForm Model="@_formData" OnValidSubmit="HandleValidSubmit">
+    <div class="@Css("sgc-smart-form").AddClass("sgc-loading", Loading).Build()" 
+         style="--sgc-form-cols: @Metadata.Columns;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            @if (!string.IsNullOrEmpty(Metadata.Title))
+            {
+                <h3 class="sgc-smart-form-title" style="margin: 0;">@Metadata.Title</h3>
+            }
+            @if (EnableVoiceFilling)
+            {
+                <SgSmartFormFiller FormMetadata="Metadata" 
+                                   OnValuesExtracted="HandleVoiceValues" 
+                                   OnTranscript="OnVoiceTranscript"
+                                   LlmConfig="LlmConfig"
+                                   LlmInstructions="LlmInstructions" />
+            }
+        </div>
+
+        <div class="sgc-smart-form-grid">
+            @foreach (var field in Metadata.Fields)
+            {
+                <div class="sgc-smart-form-field @(field.FullWidth ? "full-width" : "")">
+                    <label class="sgc-label @(field.Required ? "required" : "")">@field.Label</label>
+                    
+                    <div class="sgc-control">
+                        @switch (field.Type)
+                        {
+                            case SgSmartFieldType.Boolean:
+                                <SgSwitch @bind-Value="@(((FormFieldValue)_formData[field.Key]).BoolValue)" />
+                                break;
+                            case SgSmartFieldType.Date:
+                                <SgDatePicker @bind-Value="@(((FormFieldValue)_formData[field.Key]).DateTimeValue)" />
+                                break;
+                            case SgSmartFieldType.Number:
+                                <SgNumberInput @bind-Value="@(((FormFieldValue)_formData[field.Key]).DecimalValue)" />
+                                break;
+                            case SgSmartFieldType.MultilineText:
+                                <SgTextArea @bind-Value="@(((FormFieldValue)_formData[field.Key]).StringValue)" Placeholder="@field.Placeholder" />
+                                break;
+                            case SgSmartFieldType.Select:
+                                <SgSelect TValue="SgSmartOption" 
+                                          Items="@field.Options" 
+                                          @bind-Value="@(((FormFieldValue)_formData[field.Key]).OptionValue)"
+                                          LabelSelector="@(x => x.Label)" />
+                                break;
+                            default:
+                                <SgTextBox @bind-Value="@(((FormFieldValue)_formData[field.Key]).StringValue)" 
+                                           Placeholder="@field.Placeholder" 
+                                           Type="@GetInputType(field.Type)" />
+                                break;
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(field.Description))
+                    {
+                        <div class="sgc-hint">@field.Description</div>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="sgc-smart-form-actions">
+            <SgButton Type="SgButtonType.Submit" Text="Submit" Variant="SgButtonVariant.Primary" Loading="Loading" />
+        </div>
+    </div>
+</EditForm>
+
+<style>
+    .sgc-smart-form-grid {
+        display: grid;
+        grid-template-columns: repeat(var(--sgc-form-cols, 1), 1fr);
+        gap: 16px;
+    }
+    .sgc-smart-form-field.full-width {
+        grid-column: 1 / -1;
+    }
+    .sgc-smart-form-actions {
+        margin-top: 24px;
+        display: flex;
+        justify-content: flex-end;
+    }
+</style>
+
+@code {
+    [Parameter, EditorRequired] public SgSmartFormMetadata Metadata { get; set; } = new();
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public bool EnableVoiceFilling { get; set; }
+    [Parameter] public SgLlmConfig? LlmConfig { get; set; }
+    [Parameter] public string? LlmInstructions { get; set; }
+    [Parameter] public EventCallback<Dictionary<string, object?>> OnSubmit { get; set; }
+    [Parameter] public EventCallback<string> OnVoiceTranscript { get; set; }
+
+    private Dictionary<string, object> _formData = new();
+
+    protected override void OnParametersSet()
+    {
+        // Initialize form data from metadata defaults
+        foreach (var field in Metadata.Fields)
+        {
+            if (!_formData.ContainsKey(field.Key))
+            {
+                _formData[field.Key] = new FormFieldValue(field.DefaultValue);
+            }
+        }
+    }
+
+    private void HandleVoiceValues(Dictionary<string, object?> data)
+    {
+        foreach (var kv in data)
+        {
+            // Find the field with case-insensitive key matching
+            var field = Metadata.Fields.FirstOrDefault(f => f.Key.Equals(kv.Key, StringComparison.OrdinalIgnoreCase));
+            if (field == null) continue;
+
+            if (_formData.TryGetValue(field.Key, out var fieldObj) && fieldObj is FormFieldValue val)
+            {
+                switch (field.Type)
+                {
+                    case SgSmartFieldType.Boolean:
+                        if (kv.Value is bool b) val.BoolValue = b;
+                        else if (kv.Value?.ToString()?.ToLower() == "true") val.BoolValue = true;
+                        else if (kv.Value?.ToString()?.ToLower() == "false") val.BoolValue = false;
+                        break;
+                    case SgSmartFieldType.Date:
+                        if (kv.Value is string s && DateTime.TryParse(s, out var dt)) val.DateTimeValue = dt;
+                        break;
+                    case SgSmartFieldType.Number:
+                        if (kv.Value is double d) val.DecimalValue = (decimal)d;
+                        else if (kv.Value is decimal dec) val.DecimalValue = dec;
+                        else if (kv.Value != null && decimal.TryParse(kv.Value.ToString(), out var parsedDec)) val.DecimalValue = parsedDec;
+                        break;
+                    case SgSmartFieldType.Select:
+                        if (kv.Value != null && field.Options != null)
+                        {
+                            var optVal = kv.Value.ToString();
+                            val.OptionValue = field.Options.FirstOrDefault(o => 
+                                string.Equals(o.Value?.ToString(), optVal, StringComparison.OrdinalIgnoreCase) || 
+                                string.Equals(o.Label, optVal, StringComparison.OrdinalIgnoreCase));
+                        }
+                        break;
+                    default:
+                        val.StringValue = kv.Value?.ToString();
+                        break;
+                }
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task HandleValidSubmit()
+    {
+        var result = new Dictionary<string, object?>();
+        foreach (var field in Metadata.Fields)
+        {
+            var val = (FormFieldValue)_formData[field.Key];
+            result[field.Key] = field.Type switch
+            {
+                SgSmartFieldType.Boolean => val.BoolValue,
+                SgSmartFieldType.Date => val.DateTimeValue,
+                SgSmartFieldType.Number => val.DecimalValue,
+                SgSmartFieldType.Select => val.OptionValue?.Value,
+                _ => val.StringValue
+            };
+        }
+        await OnSubmit.InvokeAsync(result);
+    }
+
+    private string GetInputType(SgSmartFieldType type) => type switch
+    {
+        SgSmartFieldType.Password => "password",
+        SgSmartFieldType.Email => "email",
+        _ => "text"
+    };
+
+    // Helper class to hold values of different types for EditForm/Binding
+    public class FormFieldValue
+    {
+        public string? StringValue { get; set; }
+        public decimal? DecimalValue { get; set; }
+        public bool BoolValue { get; set; }
+        public DateTime? DateTimeValue { get; set; }
+        public SgSmartOption? OptionValue { get; set; }
+
+        public FormFieldValue(object? initial)
+        {
+            if (initial is string s) StringValue = s;
+            else if (initial is decimal d) DecimalValue = d;
+            else if (initial is bool b) BoolValue = b;
+            else if (initial is DateTime dt) DateTimeValue = dt;
+        }
+    }
+}

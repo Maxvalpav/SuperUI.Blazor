@@ -1,0 +1,47 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-compression").Build()" style="@Style">
+    <div style="display: flex; flex-direction: column; gap: 16px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+        <SgTextBox @bind-Value="_input" Label="Исходный текст" Multiline="true" Rows="3" />
+        
+        <div style="display: flex; gap: 12px;">
+            <SgButton Text="Сжать (Gzip)" OnClick="CompressAsync" Variant="SgButtonVariant.Primary" />
+            <SgButton Text="Распаковать" OnClick="DecompressAsync" Variant="SgButtonVariant.Default" Disabled="@(_compressed == null)" />
+        </div>
+        
+        @if (_compressed != null)
+        {
+            <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                Размер сжатых данных: @_compressed.Length байт (было: @(System.Text.Encoding.UTF8.GetByteCount(_input)) байт)
+            </div>
+        }
+        
+        @if (!string.IsNullOrEmpty(_output))
+        {
+            <SgTextBox @bind-Value="_output" Label="Результат распаковки" Multiline="true" Rows="3" ReadOnly="true" />
+        }
+    </div>
+</div>
+
+@code {
+    private string _input = "SuperUI - это библиотека компонентов для Blazor, которая делает разработку быстрой и приятной. Мы добавляем поддержку самых современных браузерных технологий!";
+    private byte[]? _compressed;
+    private string? _output;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task CompressAsync()
+    {
+        _compressed = await SafeInvokeAsync<byte[]>("compressData", _input);
+        _output = null;
+        StateHasChanged();
+    }
+
+    private async Task DecompressAsync()
+    {
+        if (_compressed == null) return;
+        _output = await SafeInvokeAsync<string>("decompressData", _compressed);
+        StateHasChanged();
+    }
+}

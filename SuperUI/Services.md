@@ -1,4 +1,4 @@
-﻿# Services
+# Services
 
 [ISuperUILocalizer.cs](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/bcm/SuperUI/Services/ISuperUILocalizer.cs)
 [SgConfirmService.cs](https://raw.githubusercontent.com/Maxvalpav/SuperUI.Blazor/bcm/SuperUI/Services/SgConfirmService.cs)

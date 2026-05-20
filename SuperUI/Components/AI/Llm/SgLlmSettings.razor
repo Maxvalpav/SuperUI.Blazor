@@ -1,0 +1,253 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+<div class="sgc-llm-settings" style="@Style">
+    <div style="display: flex; flex-direction: column; gap: 16px;">
+        <SgSelect TValue="SgLlmProvider" Label="Провайдер" Value="Config.Provider" ValueChanged="OnProviderChanged" Items="_providers" />
+
+        @if (Config.Provider != SgLlmProvider.None)
+        {
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: -8px;">
+                <SgSwitch @bind-Value="_manualModel" Label="Ввести модель вручную" />
+                <SgSwitch @bind-Value="_showLogs" Label="Показать логи" />
+            </div>
+
+            <div class="sgc-llm-fields-grid">
+                @if (_manualModel)
+                {
+                    <div class="sgc-llm-field-group">
+                        <SgTextBox Label="ID Модели" @bind-Value="Config.ModelId" Placeholder="gpt-4o-mini" Style="flex: 1;" />
+                        <SgButton Text="Fetch" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" Loading="_loadingModels" />
+                    </div>
+                }
+                else if (Config.Provider == SgLlmProvider.OpenRouter)
+                {
+                    <div class="sgc-llm-field-group" style="grid-column: span 2;">
+                        <SgOpenRouterModelPicker SelectedModelId="@Config.ModelId" 
+                                                OnSelected="OnModelSelected"
+                                                Style="max-height: 300px; width: 100%;" />
+                    </div>
+                }
+                else if (Config.Provider == SgLlmProvider.Ollama)
+                {
+                    <div class="sgc-llm-field-group" style="grid-column: span 2;">
+                        <SgOllamaModelPicker SelectedModelId="@Config.ModelId" 
+                                            BaseUrl="@Config.BaseUrl"
+                                            OnSelected="OnModelSelected"
+                                            Style="max-height: 300px; width: 100%;" />
+                    </div>
+                }
+                else
+                {
+                    <div class="sgc-llm-field-group">
+                        <SgSelect TValue="string" Label="Выберите модель" @bind-Value="Config.ModelId" Items="_orModelIds" Style="flex: 1;" />
+                        <SgButton Text="🔄" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" Loading="_loadingModels" />
+                    </div>
+                }
+                
+                <SgTextBox Label="API Key" @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-..." />
+            </div>
+
+            @if (Config.Provider == SgLlmProvider.OpenAiCompatible || Config.Provider == SgLlmProvider.OpenRouter || Config.Provider == SgLlmProvider.Ollama)
+            {
+                <SgTextBox Label="Base URL" @bind-Value="Config.BaseUrl" 
+                           Placeholder="@(Config.Provider == SgLlmProvider.OpenRouter ? "https://openrouter.ai/api/v1" : Config.Provider == SgLlmProvider.Ollama ? "http://localhost:11434" : "https://api.openai.com/v1")" />
+            }
+
+            <SgTextBox Label="Системный промпт / Инструкции" @bind-Value="Config.SystemPrompt" Multiline="true" Rows="3" 
+                       Placeholder="Напр: Имя всегда с большой буквы. Даты в формате DD.MM.YYYY" />
+            
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+                    <div class="sgc-status-dot @(_lastStatus.ToLower())"></div>
+                    <span style="color: var(--sui-fg-muted)">@_statusText</span>
+                </div>
+                <SgButton Text="Применить" OnClick="ApplySettingsAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+            </div>
+
+            @if (_showLogs)
+            {
+                <div class="sgc-llm-logs">
+                    @foreach (var log in _logs)
+                    {
+                        <div class="sgc-log-entry">
+                            <span class="sgc-log-time">@log.Time.ToString("HH:mm:ss")</span>
+                            <span class="sgc-log-msg @log.Type.ToLower()">@log.Message</span>
+                        </div>
+                    }
+                    @if (!_logs.Any())
+                    {
+                        <div style="color: var(--sui-fg-muted); font-style: italic; font-size: 11px;">Логов пока нет...</div>
+                    }
+                </div>
+            }
+        }
+    </div>
+</div>
+
+<style>
+    .sgc-llm-fields-grid {
+        display: grid; 
+        grid-template-columns: 1.5fr 1fr; 
+        gap: 16px; 
+        align-items: end;
+    }
+    .sgc-llm-field-group {
+        display: flex; 
+        gap: 8px; 
+        align-items: end;
+    }
+    .sgc-status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ccc;
+    }
+    .sgc-status-dot.success { background: #52c41a; box-shadow: 0 0 5px #52c41a; }
+    .sgc-status-dot.error { background: #ff4d4f; box-shadow: 0 0 5px #ff4d4f; }
+    .sgc-status-dot.pending { background: #1890ff; animation: sgc-pulse 1.5s infinite; }
+
+    .sgc-llm-logs {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 12px;
+        border-radius: 8px;
+        font-family: var(--sg-font-mono, monospace);
+        font-size: 11px;
+        max-height: 150px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .sgc-log-time { color: #888; margin-right: 8px; }
+    .sgc-log-msg.error { color: #f48771; }
+    .sgc-log-msg.success { color: #89d185; }
+    
+    @@keyframes sgc-pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.4; }
+        100% { opacity: 1; }
+    }
+
+    @@media (max-width: 500px) {
+        .sgc-llm-fields-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public SgLlmConfig Config { get; set; } = new();
+    [Parameter] public EventCallback<SgLlmConfig> ConfigChanged { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private bool _manualModel;
+    private bool _showLogs;
+    private string _lastStatus = "None";
+    private string _statusText = "Готов к подключению";
+    private List<LogEntry> _logs = new();
+
+    private bool _loadingModels;
+    private List<SgLlmProvider> _providers = Enum.GetValues<SgLlmProvider>().ToList();
+    private List<string> _orModelIds = new() { "google/gemini-2.0-flash-001:free", "openai/gpt-4o-mini", "anthropic/claude-3-haiku" };
+
+    private void AddLog(string message, string type = "Info")
+    {
+        _logs.Insert(0, new LogEntry(DateTime.Now, message, type));
+        if (_logs.Count > 50) _logs.RemoveAt(_logs.Count - 1);
+        StateHasChanged();
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LlmService.CurrentConfig != null && string.IsNullOrEmpty(Config.ModelId))
+        {
+            Config.Provider = LlmService.CurrentConfig.Provider;
+            Config.ModelId = LlmService.CurrentConfig.ModelId;
+            Config.ApiKey = LlmService.CurrentConfig.ApiKey;
+            Config.BaseUrl = LlmService.CurrentConfig.BaseUrl;
+            Config.SystemPrompt = LlmService.CurrentConfig.SystemPrompt;
+            
+            _lastStatus = "Success";
+            _statusText = "Загружено из сервиса";
+        }
+
+        await LoadModelsAsync();
+    }
+
+    private async Task OnProviderChanged(SgLlmProvider provider)
+    {
+        Config.Provider = provider;
+        AddLog($"Смена провайдера на {provider}");
+        await LoadModelsAsync();
+    }
+
+    private void OnModelSelected(string modelId)
+    {
+        Config.ModelId = modelId;
+        StateHasChanged();
+    }
+
+    private async Task LoadModelsAsync()
+    {
+        if (Config.Provider == SgLlmProvider.None) return;
+        
+        _loadingModels = true;
+        _lastStatus = "Pending";
+        _statusText = "Загрузка моделей...";
+        AddLog($"Запрос списка моделей для {Config.Provider}...");
+        
+        try 
+        {
+            if (Config.Provider == SgLlmProvider.OpenRouter)
+            {
+                var models = await LlmService.GetOpenRouterModelsAsync();
+                if (models != null && models.Any())
+                {
+                    _orModelIds = models.Select(m => m.Id).OrderBy(id => id).ToList();
+                    AddLog($"Получено {models.Count()} моделей", "Success");
+                    _lastStatus = "Success";
+                    _statusText = "Модели обновлены";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            AddLog($"Ошибка загрузки моделей: {ex.Message}", "Error");
+            _lastStatus = "Error";
+            _statusText = "Ошибка загрузки";
+        }
+        finally
+        {
+            _loadingModels = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ApplySettingsAsync()
+    {
+        _lastStatus = "Pending";
+        _statusText = "Проверка...";
+        AddLog($"Применение настроек: {Config.Provider} / {Config.ModelId}");
+        
+        try 
+        {
+            await LlmService.InitializeAsync(Config);
+            await ConfigChanged.InvokeAsync(Config);
+            
+            _lastStatus = "Success";
+            _statusText = "Подключено";
+            AddLog("Настройки успешно применены", "Success");
+        }
+        catch (Exception ex)
+        {
+            _lastStatus = "Error";
+            _statusText = "Ошибка";
+            AddLog($"Ошибка применения: {ex.Message}", "Error");
+        }
+    }
+
+    private record LogEntry(DateTime Time, string Message, string Type);
+}

@@ -23,6 +23,30 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     public bool IsInitialized => _module != null;
     public SgLlmConfig? CurrentConfig { get; private set; }
 
+    public async Task SaveGlobalConfigAsync(SgLlmConfig config)
+    {
+        CurrentConfig = config;
+        var json = System.Text.Json.JsonSerializer.Serialize(config);
+        await _js.InvokeVoidAsync("localStorage.setItem", "sui-global-llm-config", json);
+    }
+
+    public async Task<SgLlmConfig?> GetGlobalConfigAsync()
+    {
+        if (CurrentConfig != null) return CurrentConfig;
+        
+        try
+        {
+            var json = await _js.InvokeAsync<string?>("localStorage.getItem", "sui-global-llm-config");
+            if (!string.IsNullOrEmpty(json))
+            {
+                CurrentConfig = System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json);
+            }
+        }
+        catch { }
+        
+        return CurrentConfig;
+    }
+
     public event Action<string>? OnTokenReceived;
     public event Action<string>? OnChatComplete;
     public event Action<string>? OnError;
@@ -95,6 +119,17 @@ public class SgLlmService : ILlmService, IAsyncDisposable
                 });
             }
             return result;
+        }
+        catch { return new(); }
+    }
+
+    public async Task<List<SgOllamaModel>> GetOllamaModelsAsync(string? baseUrl = null)
+    {
+        var url = (baseUrl?.TrimEnd('/') ?? "http://localhost:11434") + "/api/tags";
+        try
+        {
+            var response = await _http.GetFromJsonAsync<SgOllamaListResponse>(url);
+            return response?.Models ?? new();
         }
         catch { return new(); }
     }

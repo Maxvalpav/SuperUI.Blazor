@@ -1,0 +1,254 @@
+@page "/component-recorder-demo"
+@using SuperUI.Components
+@using SuperUI.Models
+@using SuperUI.Enums
+@using System.Text.Json
+@inject SgToastService Toasts
+
+<PageTitle>Component Recorder - SUI</PageTitle>
+
+<SgCard Title="SgComponentRecorder - Запись сессий"
+        Subtitle="Инструмент для записи взаимодействий пользователя внутри компонента. Помогает воспроизводить баги и анализировать UX.">
+
+    <div style="margin-top: 32px;">
+        <h2>Демонстрация записи действий</h2>
+        <p>Нажмите «Начать запись», повзаимодействуйте с формой ниже, а затем нажмите «Остановить». Вы получите JSON-лог всех кликов и ввода данных, а также видеозапись сессии.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Записываемая область">
+                <div style="margin-bottom: 24px; display: flex; gap: 12px; align-items: center; background: var(--sui-bg-secondary); padding: 12px; border-radius: 12px;">
+                    <SgButton Text="Начать запись" OnClick="StartRecording" Variant="SgButtonVariant.Primary">
+                        <Icon><SgIcon Icon="@SgIcons.Play" /></Icon>
+                    </SgButton>
+                    <SgButton Text="Остановить" OnClick="StopRecording" Variant="SgButtonVariant.Danger">
+                        <Icon><SgIcon Icon="@SgIcons.Square" /></Icon>
+                    </SgButton>
+                    <SgCheckBox @bind-Value="_recordVideo" Label="Видео" />
+                    <SgCheckBox @bind-Value="_recordAudio" Label="Аудио" />
+                    @if (_isRecording)
+                    {
+                        <div style="margin-left: auto; color: #ff4d4f; display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 12px;">
+                            <span style="width: 8px; height: 8px; background: #ff4d4f; border-radius: 50%; animation: sgc-blink 1s infinite;"></span>
+                            REC
+                        </div>
+                    }
+                </div>
+
+                <SgComponentRecorder @ref="_recorder" 
+                                    RecordVideo="_recordVideo"
+                                    RecordAudio="_recordAudio"
+                                    OnRecordingComplete="HandleRecording"
+                                    OnVideoCaptured="HandleVideo"
+                                    OnEmailSendRequested="HandleEmailRequest">
+                    <div style="padding: 32px; background: #fff; border-radius: 12px; border: 1px solid var(--sui-border-color); box-shadow: 0 2px 8px rgba(0,0,0,0.02);">
+                        <div style="display: flex; flex-direction: column; gap: 20px;">
+                            <SgTextBox TValue="string" Label="Имя пользователя" Placeholder="Введите что-нибудь..." />
+                            <SgSelect TValue="string" Label="Роль" Items="@(new[] { "Admin", "User", "Guest" })" />
+                            <SgCheckBox Label="Подписаться на новости" />
+                            <SgButton Text="Отправить форму" Variant="SgButtonVariant.Primary" FullWidth="true" Style="margin-top: 8px;" />
+                        </div>
+                    </div>
+                </SgComponentRecorder>
+            </SgCard>
+
+            <div style="display: flex; flex-direction: column; gap: 24px;">
+                <SgCard Title="Видеозапись сессии">
+                    <div style="height: 250px; background: #000; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+                        @if (!string.IsNullOrEmpty(_videoUrl))
+                        {
+                            <video src="@_videoUrl" controls style="max-width: 100%; max-height: 100%;" />
+                        }
+                        else
+                        {
+                            <div style="color: #666; text-align: center; padding: 20px;">
+                                <SgIcon Icon="@SgIcons.Activity" Size="48px" style="opacity: 0.2; margin-bottom: 12px;" />
+                                <p>Видео появится после завершения записи</p>
+                            </div>
+                        }
+                    </div>
+                </SgCard>
+
+                <SgCard Title="Результат (Interaction Log)">
+                    <div style="height: 250px; overflow: auto; background: #282c34; color: #abb2bf; padding: 16px; border-radius: 8px; font-family: monospace; font-size: 11px;">
+                        @if (_session != null)
+                        {
+                            <pre>@JsonSerializer.Serialize(_session, new JsonSerializerOptions { 
+                                WriteIndented = true,
+                                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                            })</pre>
+                        }
+                        else
+                        {
+                            <div style="height: 100%; display: flex; align-items: center; justify-content: center; color: #666;">
+                                Лог появится после завершения записи
+                            </div>
+                        }
+                    </div>
+                </SgCard>
+            </div>
+        </div>
+
+        <div style="margin-top: 32px;">
+            <SgCard Title="История записей">
+                @if (_history.Any())
+                {
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        @foreach (var entry in _history.OrderByDescending(x => x.Timestamp))
+                        {
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+                                <div style="display: flex; align-items: center; gap: 16px;">
+                                    <div style="width: 40px; height: 40px; background: var(--sui-primary-color); color: white; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                                        <SgIcon Icon="@(entry.VideoUrl != null ? SgIcons.Video : SgIcons.Activity)" />
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600;">Запись @entry.Timestamp.ToString("HH:mm:ss")</div>
+                                        <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                                            @entry.Session?.Events.Count событий @(entry.HasAudio ? "• С аудио" : "")
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 8px;">
+                                     @if (entry.VideoUrl != null)
+                                     {
+                                         <SgButton Text="Смотреть" OnClick="() => _videoUrl = entry.VideoUrl" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                                         <SgButton Text="Скачать MP4" OnClick="() => DownloadVideo(entry)" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm">
+                                             <Icon><SgIcon Icon="@SgIcons.Download" /></Icon>
+                                         </SgButton>
+                                         <SgButton Text="Почта" OnClick="() => OpenEmailModal(entry)" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm">
+                                             <Icon><SgIcon Icon="@SgIcons.Send" /></Icon>
+                                         </SgButton>
+                                     }
+                                     <SgButton Text="Лог" OnClick="() => _session = entry.Session" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                                 </div>
+                            </div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div style="padding: 40px; text-align: center; color: var(--sui-fg-muted);">
+                        История пока пуста. Завершите запись, чтобы она появилась здесь.
+                    </div>
+                }
+            </SgCard>
+        </div>
+    </div>
+
+</SgCard>
+
+<SgModal @bind-Visible="_showEmailModal" Title="Отправить запись по почте" Width="400px">
+    <ChildContent>
+        <div style="display: flex; flex-direction: column; gap: 16px; padding: 8px 0;">
+            <p style="font-size: 14px; color: var(--sui-fg-muted);">
+                Запись будет сконвертирована в Base64 и передана в обработчик отправки.
+            </p>
+            <SgTextBox TValue="string" @bind-Value="_emailAddress" Label="Email получателя" Placeholder="example@mail.com" Type="email" />
+        </div>
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="Отправить" Variant="SgButtonVariant.Primary" OnClick="SendEmail" Disabled="@(string.IsNullOrEmpty(_emailAddress))" />
+        <SgButton Text="Отмена" OnClick="@(() => _showEmailModal = false)" />
+    </FooterContent>
+</SgModal>
+
+@code {
+    private SgComponentRecorder? _recorder;
+    private SgInteractionSession? _session;
+    private bool _isRecording;
+    private bool _recordVideo = true;
+    private bool _recordAudio = true;
+    private string? _videoUrl;
+    private List<RecordingEntry> _history = new();
+    
+    private bool _showEmailModal;
+    private string _emailAddress = "";
+    private RecordingEntry? _emailTargetEntry;
+
+    private class RecordingEntry
+    {
+        public string? VideoUrl { get; set; }
+        public SgInteractionSession? Session { get; set; }
+        public DateTime Timestamp { get; set; }
+        public bool HasAudio { get; set; }
+    }
+
+    private async Task StartRecording()
+    {
+        _videoUrl = null;
+        _isRecording = true;
+        if (_recorder != null) await _recorder.StartAsync();
+    }
+
+    private async Task StopRecording()
+    {
+        _isRecording = false;
+        if (_recorder != null) await _recorder.StopAsync();
+    }
+
+    private void HandleRecording(SgInteractionSession session)
+    {
+        _session = session;
+        AddToHistory();
+        StateHasChanged();
+    }
+
+    private void HandleVideo(string url)
+    {
+        _videoUrl = url;
+        AddToHistory();
+        StateHasChanged();
+    }
+
+    private void AddToHistory()
+    {
+        if (_session == null) return;
+        
+        var existing = _history.FirstOrDefault(x => x.Session?.Id == _session.Id);
+        if (existing != null)
+        {
+            existing.VideoUrl = _videoUrl;
+        }
+        else
+        {
+            _history.Add(new RecordingEntry 
+            { 
+                Session = _session, 
+                VideoUrl = _videoUrl, 
+                Timestamp = DateTime.Now,
+                HasAudio = _recordAudio && _recordVideo
+            });
+        }
+    }
+
+    private async Task DownloadVideo(RecordingEntry entry)
+    {
+        if (entry.VideoUrl == null || _recorder == null) return;
+        await _recorder.DownloadAsync(entry.VideoUrl, $"recording_{entry.Timestamp:yyyyMMdd_HHmmss}.webm");
+    }
+
+    private void OpenEmailModal(RecordingEntry entry)
+    {
+        _emailTargetEntry = entry;
+        _showEmailModal = true;
+    }
+
+    private async Task SendEmail()
+    {
+        if (_emailTargetEntry?.VideoUrl == null || _recorder == null) return;
+        
+        _showEmailModal = false;
+        Toasts.Info($"Подготовка файла для {_emailAddress}...", "Почта");
+        
+        await _recorder.RequestEmailSendAsync(
+            _emailAddress, 
+            _emailTargetEntry.VideoUrl, 
+            $"recording_{_emailTargetEntry.Timestamp:yyyyMMdd_HHmmss}.webm");
+    }
+
+    private void HandleEmailRequest(SgEmailSendRequest request)
+    {
+        // Здесь в реальном приложении был бы вызов API для отправки
+        // Но для демо мы просто показываем, что данные получены
+        Toasts.Success($"Файл {request.FileName} ({request.Base64Data.Length / 1024} KB) успешно передан в очередь отправки для {request.Email}", "Почта");
+    }
+}

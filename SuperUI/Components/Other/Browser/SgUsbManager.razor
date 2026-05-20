@@ -1,0 +1,45 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-usb-manager").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+        <SgButton Text="Подключить USB устройство" OnClick="RequestDeviceAsync" Variant="SgButtonVariant.Primary" />
+        
+        @if (_device != null)
+        {
+            <div style="margin-top: 16px; padding: 12px; background: var(--sui-bg-primary); border-radius: 6px; border: 1px solid var(--sui-border-color);">
+                <div style="font-weight: 600; margin-bottom: 8px;">Подключено:</div>
+                <div style="font-size: 13px;">
+                    <div><b>Продукт:</b> @(_device.ProductName ?? "Неизвестно")</div>
+                    <div><b>Производитель:</b> @(_device.ManufacturerName ?? "Неизвестно")</div>
+                    <div><b>Vendor ID:</b> 0x@(_device.VendorId.ToString("X4"))</div>
+                    <div><b>Product ID:</b> 0x@(_device.ProductId.ToString("X4"))</div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private UsbDeviceInfo? _device;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task RequestDeviceAsync()
+    {
+        var device = await SafeInvokeAsync<UsbDeviceInfo>("requestUsbDevice");
+        if (device != null)
+        {
+            _device = device;
+            StateHasChanged();
+        }
+    }
+
+    public class UsbDeviceInfo
+    {
+        public int VendorId { get; set; }
+        public int ProductId { get; set; }
+        public string? ProductName { get; set; }
+        public string? ManufacturerName { get; set; }
+    }
+}

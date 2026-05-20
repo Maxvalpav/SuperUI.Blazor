@@ -1,0 +1,83 @@
+@page "/command-palette-demo"
+@using SuperUI.Components
+@inject NavigationManager Nav
+
+<PageTitle>Command Palette - SUI</PageTitle>
+
+<SgCard Title="SgCommandPalette - Командная панель"
+        Subtitle="Быстрый поиск команд и навигация через сочетание клавиш Ctrl+K.">
+
+    <div style="margin-top: 32px; text-align: center; padding: 64px; background: var(--sui-bg-secondary); border: 2px dashed var(--sui-border-color); border-radius: 16px;">
+        <div style="font-size: 48px; margin-bottom: 24px;">⌨️</div>
+        <h2 style="margin-top: 0;">Нажмите <kbd style="background: #fff; border: 1px solid #ccc; padding: 4px 8px; border-radius: 6px; box-shadow: 0 2px 0 #ccc;">Ctrl + K</kbd></h2>
+        <p style="color: var(--sui-text-secondary); max-width: 400px; margin: 16px auto;">
+            Используйте командную панель для быстрого перехода между разделами документации или выполнения действий.
+        </p>
+        <SgButton Text="Открыть панель мышью" Variant="SgButtonVariant.Primary" OnClick="async () => { if (_palette != null) await _palette.Open(); }">
+            <Icon><SgIcon Icon="@SgIcons.Search" /></Icon>
+        </SgButton>
+    </div>
+
+    <SgCommandPalette @ref="_palette" Placeholder="Куда хотите перейти?" />
+
+    <div style="margin-top: 48px;">
+        <h3>Как это работает?</h3>
+        <ul style="line-height: 1.8; color: var(--sui-text-secondary);">
+            <li><b>Глобальный хоткей</b>: Компонент автоматически регистрирует Ctrl+K в браузере.</li>
+            <li><b>Группировка</b>: Команды логически разделены на категории (Навигация, Действия и т.д.).</li>
+            <li><b>Управление клавиатурой</b>: Используйте стрелки для выбора и Enter для подтверждения.</li>
+            <li><b>Гибкость</b>: Каждая команда — это просто <code>EventCallback</code>, который может делать что угодно.</li>
+        </ul>
+    </div>
+
+</SgCard>
+
+@code {
+    private SgCommandPalette? _palette;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && _palette != null)
+        {
+            var navGroup = new SgCommandGroup { Title = "Навигация" };
+            
+            AddNavCommand(navGroup, "DataGrid", "datagrid", SgIcons.Layout);
+            AddNavCommand(navGroup, "Table", "table", SgIcons.Layout);
+            AddNavCommand(navGroup, "Charts", "charts", SgIcons.PieChart);
+            AddNavCommand(navGroup, "Smart Form", "smart-form-demo", SgIcons.Layout);
+            AddNavCommand(navGroup, "Gantt Chart", "gantt", SgIcons.Activity);
+
+            var actionGroup = new SgCommandGroup { Title = "Быстрые действия" };
+            actionGroup.Commands.Add(new SgCommand { 
+                Text = "Переключить темную тему", 
+                Shortcut = "T T",
+                Icon = (builder) => { builder.OpenComponent<SgIcon>(0); builder.AddAttribute(1, "Icon", SgIcons.Zap); builder.CloseComponent(); },
+                OnExecute = EventCallback.Factory.Create(this, () => { /* Логика темы */ }) 
+            });
+            
+            actionGroup.Commands.Add(new SgCommand { 
+                Text = "Создать новый тикет", 
+                Shortcut = "N T",
+                Icon = (builder) => { builder.OpenComponent<SgIcon>(0); builder.AddAttribute(1, "Icon", SgIcons.Plus); builder.CloseComponent(); },
+                OnExecute = EventCallback.Factory.Create(this, () => { }) 
+            });
+
+            _palette.RegisterGroup(navGroup);
+            _palette.RegisterGroup(actionGroup);
+        }
+    }
+
+    private void AddNavCommand(SgCommandGroup group, string text, string url, string icon)
+    {
+        group.Commands.Add(new SgCommand { 
+            Text = $"Перейти к {text}", 
+            Icon = (builder) => { 
+                builder.OpenComponent<SgIcon>(0); 
+                builder.AddAttribute(1, "Icon", icon); 
+                builder.AddAttribute(2, "Size", "16px");
+                builder.CloseComponent(); 
+            },
+            OnExecute = EventCallback.Factory.Create(this, () => Nav.NavigateTo(url)) 
+        });
+    }
+}

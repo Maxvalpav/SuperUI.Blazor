@@ -1,0 +1,69 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-screen-capture").Build()" style="@Style">
+    @if (!_isSupported)
+    {
+        <SgAlert Variant="SgAlertVariant.Warn" Title="API не поддерживается">
+            Screen Capture API не поддерживается вашим браузером или текущим контекстом (требуется HTTPS).
+        </SgAlert>
+    }
+
+    <div style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; margin-top: 12px; box-shadow: var(--sui-shadow-lg);">
+        <video id="@_videoId" autoplay playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
+        
+        <div style="position: absolute; bottom: 16px; left: 16px; right: 16px; display: flex; gap: 12px; justify-content: center;">
+            @if (!_isCapturing)
+            {
+                <SgButton Text="Демонстрация экрана" OnClick="StartCaptureAsync" Variant="SgButtonVariant.Primary" Disabled="!_isSupported" />
+            }
+            else
+            {
+                <SgButton Text="Остановить" OnClick="StopCaptureAsync" Variant="SgButtonVariant.Danger" />
+                <SgButton Text="В PiP" OnClick="TogglePipAsync" Variant="SgButtonVariant.Default" />
+            }
+        </div>
+        
+        @if (!_isCapturing && _isSupported)
+        {
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.4); color: #fff; pointer-events: none;">
+                <div style="text-align: center;">
+                    <div style="font-size: 32px; margin-bottom: 12px; opacity: 0.5;">📺</div>
+                    <div style="font-weight: 500;">Нажмите кнопку ниже для выбора окна</div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _videoId = "v-" + Guid.NewGuid().ToString("N")[..8];
+    private bool _isCapturing;
+    private bool _isSupported = true;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _isSupported = await SafeInvokeAsync<bool>("checkApiSupport", "ScreenCapture");
+        StateHasChanged();
+    }
+
+    private async Task StartCaptureAsync()
+    {
+        _isCapturing = await SafeInvokeAsync<bool>("startScreenCapture", _videoId);
+        StateHasChanged();
+    }
+
+    private async Task StopCaptureAsync()
+    {
+        await JS.InvokeVoidAsync("eval", $"const v = document.getElementById('{_videoId}'); if(v.srcObject) {{ v.srcObject.getTracks().forEach(t => t.stop()); v.srcObject = null; }}");
+        _isCapturing = false;
+        StateHasChanged();
+    }
+
+    private async Task TogglePipAsync()
+    {
+        await SafeInvokeVoidAsync("togglePip", _videoId);
+    }
+}

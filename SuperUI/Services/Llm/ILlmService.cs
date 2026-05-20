@@ -16,6 +16,7 @@ public interface ILlmService
     Task ChatAsync(string message, SgLlmPromptOptions? options = null);
     Task<bool> IsReadyAsync();
     Task<List<SgLlmModelInfo>> GetOpenRouterModelsAsync();
+    Task<List<SgOllamaModel>> GetOllamaModelsAsync(string? baseUrl = null);
 }
 
 public class SgLlmModelInfo

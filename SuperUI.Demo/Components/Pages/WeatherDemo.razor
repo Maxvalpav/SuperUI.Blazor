@@ -1,0 +1,151 @@
+@page "/weather-demo"
+@using SuperUI.Components
+@using SuperUI.Models
+@using SuperUI.Services
+@inject SgWeatherService WeatherService
+
+<PageTitle>Weather Dashboard - SUI</PageTitle>
+
+<SgCard Title="Open-Meteo Weather API"
+        Subtitle="Супер-компонент для отображения погоды на основе бесплатного и высокоточного Open-Meteo API.">
+
+    <div style="margin-top: 32px;">
+        <div style="max-width: 900px; margin: 0 auto; background: var(--sui-bg-secondary); padding: 24px; border-radius: 16px; border: 1px solid var(--sui-border-color); box-shadow: var(--sui-shadow-sm);">
+            
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 12px; margin-bottom: 20px;">
+                <SgTextBox TValue="string" @bind-Value="_cityName" Placeholder="Поиск города (например: Сочи, Лондон...)" OnEnter="SearchCity" />
+                <SgButton Text="Найти" Variant="SgButtonVariant.Primary" OnClick="SearchCity" Loading="_searching" />
+            </div>
+
+            @if (_searchResults?.Results != null)
+            {
+                <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; padding: 12px; background: rgba(var(--sui-primary-rgb), 0.05); border-radius: 8px;">
+                    @foreach (var city in _searchResults.Results)
+                    {
+                        <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="@(() => SelectCity(city))" Style="font-size: 12px;">
+                            <ChildContent>
+                                📍 @city.Name (@city.Country)
+                            </ChildContent>
+                        </SgButton>
+                    }
+                </div>
+            }
+
+            <div style="display: grid; grid-template-columns: 120px 120px 1fr auto; gap: 16px; align-items: flex-end; border-top: 1px solid var(--sui-border-color); padding-top: 20px;">
+                <SgTextBox TValue="double" @bind-Value="_lat" Label="Широта" />
+                <SgTextBox TValue="double" @bind-Value="_lon" Label="Долгота" />
+                
+                <SgSelect TValue="string" Label="Тип данных" Items="_apiTypes" @bind-Value="_selectedApi" />
+
+                <SgButton Variant="SgButtonVariant.Primary" OnClick="RefreshWeather" Loading="_loading" Style="height: 36px; padding: 0 20px;">
+                    <ChildContent>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <SgIcon Icon="@SgIcons.Refresh" />
+                            <span>Обновить</span>
+                        </div>
+                    </ChildContent>
+                </SgButton>
+            </div>
+        </div>
+
+        <div style="max-width: 600px; margin: 40px auto 0;">
+            @if (_error != null)
+            {
+                <SgAlert Variant="SgAlertVariant.Danger" Title="Ошибка загрузки">
+                    @_error
+                </SgAlert>
+            }
+            else
+            {
+                <SgWeatherDashboard Forecast="_forecast" City="@_cityName" LoadingText="@(_loading ? "Запрос данных из Open-Meteo..." : "Выберите город и нажмите обновить")" />
+            }
+        </div>
+
+        <div style="margin-top: 48px;">
+            <h3>Особенности реализации</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 24px;">
+                <SgCard Title="Бесплатный API">
+                    <p style="font-size: 14px; color: var(--sui-fg-muted);">
+                        Используется Open-Meteo, который не требует API-ключа для некоммерческого использования.
+                    </p>
+                </SgCard>
+                <SgCard Title="Адаптивный дизайн">
+                    <p style="font-size: 14px; color: var(--sui-fg-muted);">
+                        Цветовая схема Dashboard автоматически меняется в зависимости от времени суток (день/ночь).
+                    </p>
+                </SgCard>
+                <SgCard Title="Детальный прогноз">
+                    <p style="font-size: 14px; color: var(--sui-fg-muted);">
+                        Отображение текущей температуры, влажности, ветра и прогноза на 5 дней вперед.
+                    </p>
+                </SgCard>
+            </div>
+        </div>
+    </div>
+</SgCard>
+
+@code {
+    private double _lat = 55.7558; // Москва по умолчанию
+    private double _lon = 37.6173;
+    private string _cityName = "Москва";
+    private string? _error;
+    private bool _loading;
+    private bool _searching;
+    private SgWeatherForecast? _forecast;
+    private SgGeocodingResponse? _searchResults;
+    
+    private string _selectedApi = "Прогноз";
+    private List<string> _apiTypes = new() { "Прогноз", "Качество воздуха", "Морской прогноз" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshWeather();
+    }
+
+    private async Task SearchCity()
+    {
+        if (string.IsNullOrWhiteSpace(_cityName)) return;
+        _searching = true;
+        _searchResults = await WeatherService.SearchCityAsync(_cityName);
+        _searching = false;
+        StateHasChanged();
+    }
+
+    private async Task SelectCity(SgGeocodingResult city)
+    {
+        _lat = city.Latitude;
+        _lon = city.Longitude;
+        _cityName = city.Name;
+        _searchResults = null;
+        await RefreshWeather();
+    }
+
+    private async Task RefreshWeather()
+    {
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+
+        try 
+        {
+            _forecast = _selectedApi switch
+            {
+                "Качество воздуха" => await WeatherService.GetAirQualityAsync(_lat, _lon),
+                "Морской прогноз" => await WeatherService.GetMarineAsync(_lat, _lon),
+                _ => await WeatherService.GetForecastAsync(_lat, _lon, 16)
+            };
+
+            if (_forecast == null)
+            {
+                _error = "Не удалось получить данные от сервера. Проверьте подключение к интернету или координаты.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Произошла ошибка: {ex.Message}";
+        }
+
+        _loading = false;
+        StateHasChanged();
+    }
+}

@@ -1,0 +1,317 @@
+@namespace SuperUI.Components
+@typeparam TItem
+@using Microsoft.AspNetCore.Components.Web
+@using SuperUI.Enums
+@using SuperUI.Localization
+@using SortDirection = SuperUI.Enums.SgDataGridSortDirection
+@inject ISuperUILocalizer Localizer
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+<div class="sg-root @(string.IsNullOrEmpty(Height) ? "sg-table-auto" : "sg-table-fixed") @((!string.IsNullOrEmpty(Title) || ShowSearch || ShowExport) ? "sg-has-top" : "") @((EnablePaging && (TotalPages > 1 || AllowPageSizeChange)) ? "sg-has-bottom" : "") @CssClass" style="@(string.IsNullOrEmpty(Height) ? $"max-height: {MaxHeight};" : $"height: {Height};")">
+    @if (!string.IsNullOrEmpty(Title) || ShowSearch || ShowExport)
+    {
+        <div class="sg-toolbar">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <div class="sg-title">@Title</div>
+            }
+            <div class="sg-spacer"></div>
+            @if (ShowSearch)
+            {
+                <div class="sg-search-wrap">
+                    <SgIcon Icon="@SgIcons.Search" Size="14px" CssClass="sg-search-icon" />
+                    <input class="sg-search"
+                           placeholder="@(SearchPlaceholder ?? Localizer["Table_Search"])"
+                           value="@_searchText"
+                           @oninput="OnSearchInput"
+                           @onchange="OnSearchChange" />
+                </div>
+            }
+            @if (ShowExport || ShowExportCsv || ShowExportExcel)
+            {
+                <div @ref="_exportRef" class="sg-chooser-wrap" @onclick:stopPropagation="true" @onfocusout="HandleExportFocusOut" tabindex="-1">
+                    <button class="sg-button" @onclick="ToggleExportMenu" title="@Localizer["Table_Export"]">
+                        <SgIcon Icon="@SgIcons.Download" Size="16px" />
+                        <span style="font-size: 12px; margin-left: 4px; font-weight: 500;">@Localizer["Table_Export"]</span>
+                    </button>
+                    @if (_showExportMenu)
+                    {
+                        <div class="sg-chooser-menu">
+                            @if (ShowExport || ShowExportCsv)
+                            {
+                                <button type="button" class="sg-chooser-item sg-btn-link" @onclick="ExportToCsv">
+                                    <SgIcon Icon="@SgIcons.FileText" Size="14px" Style="margin-right: 8px;" />
+                                    @Localizer["Table_ExportCsv"]
+                                </button>
+                            }
+                            @if (ShowExportExcel)
+                            {
+                                <button type="button" class="sg-chooser-item sg-btn-link" @onclick="ExportToExcel">
+                                    <SgIcon Icon="@SgIcons.FileText" Size="14px" Style="margin-right: 8px;" />
+                                    @Localizer["Table_ExportExcel"]
+                                </button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    <div class="sg-header-scroll" @ref="_headerScrollRef">
+        <table class="sg-table sg-header-table @(FullWidth ? "sg-table-full" : "")">
+            <colgroup>
+                @if (AllowSelection)
+                {
+                    <col style="width: 40px; min-width: 40px;" />
+                }
+                @if (ShowRowNumbers)
+                {
+                    <col style="width: 50px; min-width: 50px;" />
+                }
+                @foreach (var col in Columns)
+                {
+                    var colWidth = _columnWidths.ContainsKey(col.Key) ? $"{_columnWidths[col.Key]}px" : col.Width;
+                    <col style="@(string.IsNullOrEmpty(colWidth) ? "" : $"width: {colWidth}; min-width: {colWidth};")" />
+                }
+            </colgroup>
+            <thead>
+                @if (HeaderGroups.Any())
+                {
+                    <tr class="sg-tr-header-group">
+                        @if (AllowSelection)
+                        {
+                            <th class="sg-th sg-th-group" rowspan="2" style="width: 40px; text-align: center;">
+                                @if (AllowMultiSelect)
+                                {
+                                    <input type="checkbox" class="sg-checkbox"
+                                           checked="@_selectAll" 
+                                           @onchange="async () => await ToggleSelectAll()" />
+                                }
+                            </th>
+                        }
+                        @if (ShowRowNumbers)
+                        {
+                            <th class="sg-th sg-th-group" rowspan="2" style="width: 50px; text-align: center;">@Localizer["Table_RowNo"]</th>
+                        }
+                        @foreach (var group in HeaderGroups)
+                        {
+                            <th class="sg-th sg-th-group" colspan="@group.ColumnCount">@group.Title</th>
+                        }
+                    </tr>
+                }
+                <tr class="sg-tr-header-main">
+                    @if (AllowSelection && !HeaderGroups.Any())
+                    {
+                        <th class="sg-th" style="width: 40px; text-align: center;">
+                            @if (AllowMultiSelect)
+                            {
+                                <input type="checkbox" class="sg-checkbox"
+                                       checked="@_selectAll" 
+                                       @onchange="async () => await ToggleSelectAll()" />
+                            }
+                        </th>
+                    }
+                    @if (ShowRowNumbers && !HeaderGroups.Any())
+                    {
+                        <th class="sg-th" style="width: 50px; text-align: center;">@Localizer["Table_RowNo"]</th>
+                    }
+                    @for (int i = 0; i < Columns.Count; i++)
+                    {
+                        var col = Columns[i];
+                        var colIndex = i;
+                        var isSorted = _sortColumnKey == col.Key;
+                        var thClass = "sg-th sg-th-resizable";
+                        if (_draggedColumnIndex == colIndex) thClass += " sg-th-dragging";
+                        if (_dropTargetIndex == colIndex) thClass += " sg-th-drop-target";
+                        thClass += col.HeaderAlign switch
+                        {
+                            SgHAlign.Left => " sg-align-left",
+                            SgHAlign.Center => " sg-align-center",
+                            SgHAlign.Right => " sg-align-right",
+                            _ => string.Empty
+                        };
+                        var colWidth = _columnWidths.ContainsKey(col.Key) ? $"{_columnWidths[col.Key]}px" : col.Width;
+                        <th class="@thClass" 
+                            style="@(string.IsNullOrEmpty(colWidth) ? "" : $"width: {colWidth}; min-width: {colWidth};")"
+                            draggable="@(AllowColumnReorder ? "true" : "false")"
+                            @ondragstart="@(() => OnColumnDragStart(colIndex))"
+                            @ondragover:preventDefault
+                            @ondragover="@(() => OnColumnDragOver(colIndex))"
+                            @ondrop="@(() => OnColumnDrop(colIndex))"
+                            @ondragend="OnColumnDragEnd">
+                            <div class="sg-th-content">
+                                <span class="sg-th-title @(col.Sortable ? "sg-sortable" : "")"
+                                      @onclick="@(async () => { if (col.Sortable) await OnSortClick(col.Key); })">
+                                    @col.Title
+                                    @if (isSorted)
+                                    {
+                                        <span class="sg-sort-ind">
+                                            @if (_sortDirection == SortDirection.Ascending)
+                                    {
+                                        <SgIcon Icon="@SgIcons.ChevronUp" Size="10px" />
+                                    }
+                                    else if (_sortDirection == SortDirection.Descending)
+                                    {
+                                        <SgIcon Icon="@SgIcons.ChevronDown" Size="10px" />
+                                    }
+                                        </span>
+                                    }
+                                </span>
+                                @if (AllowColumnResize)
+                                {
+                                    <div class="sg-resize-handle"
+                                         @onmousedown="@(e => OnResizeStart(e, col.Key))"
+                                         @onmousedown:stopPropagation="true"
+                                         @onclick:stopPropagation="true"></div>
+                                }
+                            </div>
+                        </th>
+                    }
+                </tr>
+            </thead>
+        </table>
+    </div>
+
+    <div class="sg-scroll" @ref="_bodyScrollRef" @onscroll="OnBodyScroll">
+        <table class="sg-table @(FullWidth ? "sg-table-full" : "")" @ref="_tableRef">
+            <colgroup>
+                @if (AllowSelection)
+                {
+                    <col style="width: 40px; min-width: 40px;" />
+                }
+                @if (ShowRowNumbers)
+                {
+                    <col style="width: 50px; min-width: 50px;" />
+                }
+                @foreach (var col in Columns)
+                {
+                    var colWidth = _columnWidths.ContainsKey(col.Key) ? $"{_columnWidths[col.Key]}px" : col.Width;
+                    <col style="@(string.IsNullOrEmpty(colWidth) ? "" : $"width: {colWidth}; min-width: {colWidth};")" />
+                }
+            </colgroup>
+            <tbody>
+                @if (Loading)
+                {
+                    var totalCols = Columns.Count + (ShowRowNumbers ? 1 : 0) + (AllowSelection ? 1 : 0);
+                    for (int r = 0; r < 5; r++)
+                    {
+                        <tr>
+                            @for (int c = 0; c < totalCols; c++)
+                            {
+                                <td class="sg-td">
+                                    <SgSkeleton Width="@(c == 0 ? "40%" : "80%")" Height="14px" />
+                                </td>
+                            }
+                        </tr>
+                    }
+                }
+                else if (PagedItems.Any())
+                {
+                    var rowIndex = (CurrentPage - 1) * PageSize + 1;
+                    @foreach (var item in PagedItems)
+                    {
+                        var rowClass = "sg-tr";
+                        if (IsSelected(item)) rowClass += " sg-selected";
+                        if (RowClass != null)
+                        {
+                            var rc = RowClass(item);
+                            if (!string.IsNullOrEmpty(rc))
+                                rowClass += " " + rc;
+                        }
+                        var rowStyle = RowStyle != null ? RowStyle(item) : null;
+                        <tr class="@rowClass" style="@rowStyle"
+                            @onclick="async () => await OnRowClick(item)"
+                            @ondblclick="async () => await OnRowDoubleClick(item)">
+                            @if (AllowSelection)
+                            {
+                                <td class="sg-td sg-align-center" style="width: 40px;">
+                                    <input type="checkbox" class="sg-checkbox"
+                                           checked="@IsSelected(item)" 
+                                           @onchange="async () => await ToggleSelection(item)"
+                                           @onclick:stopPropagation="true" />
+                                </td>
+                            }
+                            @if (ShowRowNumbers)
+                            {
+                                <td class="sg-td sg-align-center" style="width: 50px;">@rowIndex</td>
+                            }
+                            @foreach (var col in Columns)
+                            {
+                                var value = col.GetValue(item);
+                                var isBool = value is bool;
+                                var isNumeric = col.IsNumericColumn;
+                                var effectiveHAlign = col.HAlign == SgHAlign.Default
+                                    ? (isNumeric ? SgHAlign.Right : SgHAlign.Left)
+                                    : col.HAlign;
+                                var tdClass = "sg-td";
+                                tdClass += effectiveHAlign switch
+                                {
+                                    SgHAlign.Left => " sg-align-left",
+                                    SgHAlign.Center => " sg-align-center",
+                                    SgHAlign.Right => " sg-align-right",
+                                    _ => string.Empty
+                                };
+                                tdClass += col.VAlign switch
+                                {
+                                    SgVAlign.Top => " sg-valign-top",
+                                    SgVAlign.Middle => " sg-valign-middle",
+                                    SgVAlign.Bottom => " sg-valign-bottom",
+                                    _ => string.Empty
+                                };
+                                if (col.CellClass != null)
+                                {
+                                    var cc = col.CellClass(item);
+                                    if (!string.IsNullOrEmpty(cc))
+                                        tdClass += " " + cc;
+                                }
+                                var tdStyle = col.CellStyle != null ? col.CellStyle(item) : null;
+                                <td class="@tdClass" style="@tdStyle">
+                                    @if (col.Template != null)
+                                    {
+                                        @col.Template(item)
+                                    }
+                                    else if (isBool && col.Template == null)
+                                    {
+                                        <input type="checkbox" class="sg-checkbox" checked="@((bool)value)" disabled />
+                                    }
+                                    else
+                                    {
+                                        @col.GetDisplay(item)
+                                    }
+                                </td>
+                            }
+                        </tr>
+                        rowIndex++;
+                    }
+                }
+                else
+                {
+                    var totalCols = Columns.Count + (ShowRowNumbers ? 1 : 0) + (AllowSelection ? 1 : 0);
+                    <tr>
+                        <td class="sg-td" colspan="@totalCols" style="text-align: center; padding: 32px; color: var(--sg-fg-muted);">
+                            @EffectiveEmptyText
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (EnablePaging && (TotalPages > 1 || AllowPageSizeChange))
+    {
+        <div class="sg-foot">
+            <SgPagination Page="@CurrentPage"
+                          PageChanged="async p => await GoToPage(p)"
+                          PageSize="@PageSize"
+                          PageSizeChanged="async s => await HandlePageSizeChange(s)"
+                          TotalItems="@TotalCount"
+                          SelectedCount="@SelectedItems.Count"
+                          PageSizeOptions="@(AllowPageSizeChange ? PageSizeOptions : null)"
+                          ShowInfo="true" />
+        </div>
+    }
+</div>

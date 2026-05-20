@@ -1,0 +1,58 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-midi-controller").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <SgButton Text="Подключить MIDI" OnClick="RequestMidiAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+
+        @if (_ports.Any())
+        {
+            <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+                @foreach (var port in _ports)
+                {
+                    <div style="padding: 10px; background: var(--sui-bg-primary); border-radius: 8px; border: 1px solid var(--sui-border-color); font-size: 13px; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <div style="font-weight: 600;">@port.Name</div>
+                            <div style="font-size: 11px; color: var(--sui-fg-muted);">@port.Manufacturer (@port.Type)</div>
+                        </div>
+                        <div style="width: 8px; height: 8px; border-radius: 50%; background: @(port.State == "connected" ? "var(--sui-success-color)" : "var(--sui-danger-color)");"></div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<MidiPortInfo> _ports = new();
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task RequestMidiAsync()
+    {
+        await SafeInvokeVoidAsync("requestMidiAccess", SelfRef);
+    }
+
+    [JSInvokable]
+    public void OnMidiStateChanged(MidiPortInfo info)
+    {
+        var existing = _ports.FirstOrDefault(p => p.Name == info.Name);
+        if (existing != null)
+        {
+            existing.State = info.State;
+        }
+        else
+        {
+            _ports.Add(info);
+        }
+        StateHasChanged();
+    }
+
+    public class MidiPortInfo
+    {
+        public string Name { get; set; } = "";
+        public string Manufacturer { get; set; } = "";
+        public string State { get; set; } = "";
+        public string Type { get; set; } = "";
+    }
+}

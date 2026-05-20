@@ -1,0 +1,47 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-contact-picker").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <SgButton Text="Выбрать контакты" OnClick="PickAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+
+        @if (_contacts != null && _contacts.Any())
+        {
+            <div style="margin-top: 16px; display: flex; flex-direction: column; gap: 8px;">
+                @foreach (var contact in _contacts)
+                {
+                    <div style="padding: 10px; background: var(--sui-bg-primary); border-radius: 8px; border: 1px solid var(--sui-border-color); font-size: 13px;">
+                        <div style="font-weight: 600;">@(contact.Name?.FirstOrDefault() ?? "Без имени")</div>
+                        @if (contact.Email?.Any() == true)
+                        {
+                            <div style="color: var(--sui-fg-muted); font-size: 11px;">@string.Join(", ", contact.Email)</div>
+                        }
+                        @if (contact.Tel?.Any() == true)
+                        {
+                            <div style="color: var(--sui-fg-muted); font-size: 11px;">@string.Join(", ", contact.Tel)</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<ContactResult>? _contacts;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task PickAsync()
+    {
+        _contacts = await SafeInvokeAsync<List<ContactResult>>("pickContacts", new[] { "name", "email", "tel" }, true);
+        StateHasChanged();
+    }
+
+    public class ContactResult
+    {
+        public List<string>? Name { get; set; }
+        public List<string>? Email { get; set; }
+        public List<string>? Tel { get; set; }
+    }
+}

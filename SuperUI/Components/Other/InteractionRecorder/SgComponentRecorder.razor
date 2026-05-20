@@ -1,0 +1,134 @@
+@namespace SuperUI.Components
+@using SuperUI.Models
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@inherits SgJsComponentBase
+
+<div @ref="RootRef" class="@Css("sgc-recorder-wrapper").Build()">
+    @if (_isRecording)
+    {
+        <div class="sgc-recorder-indicator">
+            <span class="sgc-dot"></span> RECORDING
+        </div>
+    }
+    @ChildContent
+</div>
+
+<style>
+    .sgc-recorder-wrapper {
+        position: relative;
+    }
+    .sgc-recorder-indicator {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(0,0,0,0.7);
+        color: #ff4d4f;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 10px;
+        font-weight: bold;
+        display: flex;
+        align-items: center;
+        z-index: 1000;
+        pointer-events: none;
+    }
+    .sgc-dot {
+        width: 8px;
+        height: 8px;
+        background: #ff4d4f;
+        border-radius: 50%;
+        margin-right: 6px;
+        animation: sgc-blink 1s infinite;
+    }
+    @@keyframes sgc-blink {
+        0% { opacity: 1; }
+        50% { opacity: 0.3; }
+        100% { opacity: 1; }
+    }
+</style>
+
+@code {
+    private bool _isRecording;
+    private SgInteractionSession? _session;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback<SgInteractionSession> OnRecordingComplete { get; set; }
+    [Parameter] public EventCallback<string> OnVideoCaptured { get; set; }
+    [Parameter] public EventCallback<SgEmailSendRequest> OnEmailSendRequested { get; set; }
+    [Parameter] public bool RecordVideo { get; set; }
+    [Parameter] public bool RecordAudio { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-interaction-recorder.js";
+
+    public async Task StartAsync()
+    {
+        _session = new SgInteractionSession { 
+            UserAgent = await JS.InvokeAsync<string>("eval", "navigator.userAgent"),
+            Url = await JS.InvokeAsync<string>("eval", "window.location.href")
+        };
+        
+        var started = await SafeInvokeAsync<bool>("startRecording", RootRef, SelfRef, new { 
+            recordVideo = RecordVideo,
+            recordAudio = RecordAudio 
+        });
+        
+        if (started)
+        {
+            _isRecording = true;
+        }
+        else
+        {
+            _isRecording = false;
+        }
+        StateHasChanged();
+    }
+
+    public async Task StopAsync()
+    {
+        _isRecording = false;
+        await SafeInvokeVoidAsync("stopRecording");
+        if (_session != null && OnRecordingComplete.HasDelegate)
+        {
+            await OnRecordingComplete.InvokeAsync(_session);
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnInteractionCaptured(SgInteractionEvent ev)
+    {
+        _session?.Events.Add(ev);
+    }
+
+    [JSInvokable]
+    public async Task HandleVideoCaptured(string videoUrl)
+    {
+        if (OnVideoCaptured.HasDelegate)
+        {
+            await OnVideoCaptured.InvokeAsync(videoUrl);
+        }
+    }
+
+    public string ExportJson() => System.Text.Json.JsonSerializer.Serialize(_session);
+
+    public async Task DownloadAsync(string url, string fileName)
+    {
+        await SafeInvokeVoidAsync("downloadUrl", url, fileName);
+    }
+
+    public async Task RequestEmailSendAsync(string email, string videoUrl, string fileName)
+    {
+        if (OnEmailSendRequested.HasDelegate)
+        {
+            var base64 = await SafeInvokeAsync<string>("getBlobBase64", videoUrl);
+            await OnEmailSendRequested.InvokeAsync(new SgEmailSendRequest
+            {
+                Email = email,
+                FileName = fileName,
+                Base64Data = base64,
+                Session = _session
+            });
+        }
+    }
+}

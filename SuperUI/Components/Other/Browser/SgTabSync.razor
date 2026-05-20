@@ -1,0 +1,31 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+@code {
+    [Parameter] public string ChannelName { get; set; } = "sui-sync";
+    [Parameter] public EventCallback<string> OnMessage { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initBroadcastChannel", ChannelName, SelfRef);
+    }
+
+    public async Task PostMessageAsync(string data)
+    {
+        await SafeInvokeAsync<bool>("postToBroadcastChannel", ChannelName, data);
+    }
+
+    [JSInvokable]
+    public async Task OnMessageReceived(string data)
+    {
+        await OnMessage.InvokeAsync(data);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await SafeInvokeVoidAsync("closeBroadcastChannel", ChannelName);
+        await base.DisposeAsync();
+    }
+}

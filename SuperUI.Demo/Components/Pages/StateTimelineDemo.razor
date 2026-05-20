@@ -1,0 +1,51 @@
+@page "/state-timeline-demo"
+@using SuperUI.Components
+
+<PageTitle>State Timeline - SUI</PageTitle>
+
+<SgCard Title="SgStateTimeline - Time Travel Debugger"
+        Subtitle="Компонент для отладки состояния приложения. Позволяет делать снимки состояния и возвращаться к ним (Time Travel).">
+
+    <div style="margin-top: 32px;">
+        <h2>Отладка состояния формы</h2>
+        <p>Меняйте данные в форме слева. Каждый раз, когда вы нажимаете «Snapshot», текущее состояние сохраняется. Вы можете кликнуть на любой снимок в правой панели, чтобы восстановить состояние формы на тот момент.</p>
+
+        <div style="display: grid; grid-template-columns: 1fr 300px; gap: 24px; margin-top: 16px;">
+            <SgCard Title="Редактор данных">
+                <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+                    <SgTextBox TValue="string" @bind-Value="_appState.Title" Label="Заголовок задачи" />
+                    <SgNumberInput TValue="int" @bind-Value="_appState.Priority" Label="Приоритет" Min="1" Max="10" />
+                    <SgSelect TValue="string" @bind-Value="_appState.Status" Label="Статус" Items="@(new[] { "Todo", "In Progress", "Done" })" />
+                    <SgCheckBox @bind-Value="_appState.IsCompleted" Label="Завершено" />
+                    
+                    <div style="margin-top: 16px; padding: 16px; background: #f0f7ff; border-radius: 8px;">
+                        <strong>Текущее состояние (JSON):</strong>
+                        <pre style="margin-top: 8px; font-size: 12px;">@System.Text.Json.JsonSerializer.Serialize(_appState, new System.Text.Json.JsonSerializerOptions { 
+                            WriteIndented = true, 
+                            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping 
+                        })</pre>
+                    </div>
+                </div>
+            </SgCard>
+
+            <SgStateTimeline TState="AppState" 
+                             @bind-State="_appState" 
+                             MaxSnapshots="50" 
+                             ShowDiff="true"
+                             AutoSnapshot="true" />
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private AppState _appState = new();
+
+    public class AppState
+    {
+        public string Title { get; set; } = "Новая задача";
+        public int Priority { get; set; } = 5;
+        public string Status { get; set; } = "Todo";
+        public bool IsCompleted { get; set; }
+    }
+}

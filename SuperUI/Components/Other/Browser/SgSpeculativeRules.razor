@@ -1,0 +1,57 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+@* 
+    Speculative Rules API Component.
+    Allows pre-fetching or pre-rendering pages before the user clicks them.
+    This is an experimental browser feature for extreme performance.
+*@
+
+@code {
+    /// <summary>
+    /// List of URLs to prefetch.
+    /// </summary>
+    [Parameter] public List<string>? Prefetch { get; set; }
+
+    /// <summary>
+    /// List of URLs to prerender (heavier than prefetch, renders the page in background).
+    /// </summary>
+    [Parameter] public List<string>? Prerender { get; set; }
+
+    /// <summary>
+    /// When to trigger the speculation (hover, moderate, eager).
+    /// </summary>
+    [Parameter] public string Eagerness { get; set; } = "moderate";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await UpdateRulesAsync();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Prefetch != null || Prerender != null)
+        {
+            await UpdateRulesAsync();
+        }
+    }
+
+    private async Task UpdateRulesAsync()
+    {
+        try
+        {
+            var rules = new
+            {
+                prefetch = Prefetch?.Select(url => new { source = "list", urls = new[] { url }, eagerness = Eagerness }).ToArray(),
+                prerender = Prerender?.Select(url => new { source = "list", urls = new[] { url }, eagerness = Eagerness }).ToArray()
+            };
+
+            await JS.InvokeVoidAsync("superui.applySpeculationRules", rules);
+        }
+        catch { /* Browser might not support it */ }
+    }
+}

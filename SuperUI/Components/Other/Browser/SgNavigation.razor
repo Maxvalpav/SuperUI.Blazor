@@ -1,0 +1,53 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-navigation-api").Build()" style="@Style">
+    @if (_isNavigating)
+    {
+        <div style="position: fixed; top: 0; left: 0; right: 0; height: 3px; background: var(--sui-primary-color); z-index: 9999; animation: sui-nav-progress 2s infinite linear;"></div>
+    }
+</div>
+
+<style>
+    @@keyframes sui-nav-progress {
+        0% { left: -40%; width: 40%; }
+        100% { left: 100%; width: 40%; }
+    }
+    
+    /* Автоматическая подсветка активного пункта меню */
+    .sui-nav-item.active {
+        background: var(--sui-primary-bg) !important;
+        color: var(--sui-primary-color) !important;
+        font-weight: 600;
+    }
+</style>
+
+@code {
+    private bool _isNavigating;
+    
+    [Inject] private NavigationManager NavManager { get; set; } = default!;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("initNavigation", SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task OnNavigateStarted(string path)
+    {
+        _isNavigating = true;
+        await InvokeAsync(StateHasChanged);
+        
+        // Даем время на показ анимации перед реальным переходом
+        await Task.Delay(100);
+        
+        // Очищаем статус через некоторое время (когда Blazor закончит рендер)
+        _ = Task.Run(async () => {
+            await Task.Delay(800);
+            _isNavigating = false;
+            await InvokeAsync(StateHasChanged);
+        });
+    }
+}

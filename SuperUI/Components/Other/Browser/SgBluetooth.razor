@@ -1,0 +1,90 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-bluetooth").Build()" style="@Style">
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="font-weight: 600;">Bluetooth Устройства</div>
+            <SgButton Text="Поиск" OnClick="RequestDeviceAsync" Variant="SgButtonVariant.Primary" Loading="_loading" />
+        </div>
+
+        @if (_device != null)
+        {
+            <div style="padding: 12px; background: var(--sui-bg-primary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+                <div style="font-weight: 600;">@(_device.Name ?? "Неизвестное устройство")</div>
+                <div style="font-size: 12px; color: var(--sui-fg-muted); margin-bottom: 8px;">ID: @_device.Id</div>
+                
+                <div style="display: flex; gap: 8px;">
+                    @if (!_connected)
+                    {
+                        <SgButton Text="Подключить" OnClick="ConnectAsync" Size="SgSize.Sm" />
+                    }
+                    else
+                    {
+                        <SgButton Text="Отключить" OnClick="DisconnectAsync" Variant="SgButtonVariant.Danger" Size="SgSize.Sm" />
+                        <div style="display: flex; align-items: center; gap: 4px; color: var(--sui-success-color); font-size: 12px;">
+                            <SgIcon Icon="@SgIcons.Activity" /> Подключено
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="text-align: center; padding: 20px; color: var(--sui-fg-muted); font-size: 13px;">
+                Нажмите «Поиск», чтобы выбрать устройство
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _loading;
+    private bool _connected;
+    private BluetoothDeviceInfo? _device;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task RequestDeviceAsync()
+    {
+        _loading = true;
+        StateHasChanged();
+        try
+        {
+            _device = await SafeInvokeAsync<BluetoothDeviceInfo>("requestBluetoothDevice");
+            _connected = false;
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (_device == null) return;
+        var success = await SafeInvokeAsync<bool>("connectBluetooth");
+        if (success)
+        {
+            _connected = true;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DisconnectAsync()
+    {
+        var success = await SafeInvokeAsync<bool>("disconnectBluetooth");
+        if (success)
+        {
+            _connected = false;
+            StateHasChanged();
+        }
+    }
+
+    public class BluetoothDeviceInfo
+    {
+        public string Id { get; set; } = "";
+        public string? Name { get; set; }
+    }
+}

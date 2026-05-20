@@ -59,11 +59,14 @@ public static class ServiceCollectionExtensions
         });
         
         services.TryAddScoped<SgThemeService>();
+        services.TryAddScoped<SgSettingsService>();
         services.TryAddScoped<SgRagService>();
         services.TryAddScoped<Services.Llm.ILlmService, Services.Llm.SgLlmService>();
+        services.TryAddScoped<Services.Llm.IOpenRouterService, Services.Llm.SgOpenRouterService>();
         services.TryAddScoped<Services.Llm.SgChatHistoryService>();
         services.TryAddScoped<Services.Llm.SgPuterService>();
         services.TryAddScoped<SgJsModuleCache>();
+        services.TryAddScoped<SgWeatherService>();
 
         Components.DocumentExtractor.Services.DocumentExtractorServiceCollectionExtensions.AddSgDocumentExtractor(services);
 

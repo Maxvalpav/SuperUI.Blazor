@@ -1,0 +1,93 @@
+@namespace SuperUI.Components
+@inherits SgComponentBase
+
+<div class="@Css("sgc-image").AddClass("sgc-image-loading", _loading).AddClass("sgc-image-error", _error).Build()"
+     style="@Styles().AddStyle("width", Width).AddStyle("height", Height).Build()"
+     @attributes="AttributesWithoutClassAndStyle">
+    @if (_error && ErrorContent != null)
+    {
+        @ErrorContent
+    }
+    else if (_error && !string.IsNullOrEmpty(FallbackSrc))
+    {
+        <img src="@FallbackSrc" alt="@Alt" style="object-fit: @ObjectFit" />
+    }
+    else
+    {
+        <img src="@Src" 
+             alt="@Alt" 
+             @onload="OnLoad" 
+             @onerror="OnError" 
+             loading="@(Lazy ? "lazy" : "eager")" 
+             style="object-fit: @ObjectFit; @(_loading ? "display:none" : "")" />
+    }
+    
+    @if (_loading && PlaceholderContent != null)
+    {
+        <div class="sgc-image-placeholder">@PlaceholderContent</div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the image source URL.
+    /// </summary>
+    [Parameter] public string? Src { get; set; }
+
+    /// <summary>
+    /// Gets or sets the fallback image source URL to use if the primary source fails to load.
+    /// </summary>
+    [Parameter] public string? FallbackSrc { get; set; }
+
+    /// <summary>
+    /// Gets or sets the image alternative text.
+    /// </summary>
+    [Parameter] public string? Alt { get; set; }
+
+    /// <summary>
+    /// Gets or sets the width of the image.
+    /// </summary>
+    [Parameter] public string? Width { get; set; }
+
+    /// <summary>
+    /// Gets or sets the height of the image.
+    /// </summary>
+    [Parameter] public string? Height { get; set; }
+
+    /// <summary>
+    /// Gets or sets how the image should be fitted to its container. Default is "cover".
+    /// </summary>
+    [Parameter] public string ObjectFit { get; set; } = "cover";
+
+    /// <summary>
+    /// Gets or sets whether to use native browser lazy loading. Default is true.
+    /// </summary>
+    [Parameter] public bool Lazy { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the content to display while the image is loading.
+    /// </summary>
+    [Parameter] public RenderFragment? PlaceholderContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the content to display if the image fails to load.
+    /// </summary>
+    [Parameter] public RenderFragment? ErrorContent { get; set; }
+
+    private bool _loading = true;
+    private bool _error = false;
+
+    private void OnLoad() => _loading = false;
+    private void OnError()
+    {
+        _loading = false;
+        _error = true;
+    }
+
+    protected override void OnParametersSet()
+    {
+        // Reset state if Src changes
+        _loading = true;
+        _error = false;
+    }
+}

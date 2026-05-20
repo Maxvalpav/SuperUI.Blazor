@@ -1,0 +1,42 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+@*
+    Compute Pressure API Component.
+*@
+
+@code {
+    [Parameter] public EventCallback<SgComputePressureState> OnPressureChanged { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("observeComputePressure", SelfRef);
+    }
+
+    [JSInvokable]
+    public async Task HandlePressureChanged(IEnumerable<PressureRecord> records)
+    {
+        var lastRecord = records.LastOrDefault();
+        if (lastRecord != null && Enum.TryParse<SgComputePressureState>(lastRecord.State, true, out var pressureState))
+        {
+            await OnPressureChanged.InvokeAsync(pressureState);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnPressureUpdate(string state)
+    {
+        if (Enum.TryParse<SgComputePressureState>(state, true, out var pressureState))
+        {
+            await OnPressureChanged.InvokeAsync(pressureState);
+        }
+    }
+
+    public class PressureRecord
+    {
+        public string Source { get; set; } = "";
+        public string State { get; set; } = "";
+    }
+}

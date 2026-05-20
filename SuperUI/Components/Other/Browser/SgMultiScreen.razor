@@ -1,0 +1,52 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-multi-screen").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <SgButton Text="Информация об экранах" OnClick="GetDetailsAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+
+        @if (_details != null)
+        {
+            <div style="margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+                @foreach (var screen in _details.Screens)
+                {
+                    <div style="padding: 12px; background: var(--sui-bg-primary); border-radius: 8px; border: 1px solid @(screen.IsPrimary ? "var(--sui-primary-color)" : "var(--sui-border-color)");">
+                        <div style="font-weight: 600; font-size: 13px;">@(screen.Label ?? "Экран")</div>
+                        <div style="font-size: 12px; margin-top: 4px;">
+                            <div>Разрешение: @(screen.Width)x@(screen.Height)</div>
+                            <div>Координаты: @(screen.Left), @(screen.Top)</div>
+                            @if (screen.IsPrimary) { <div style="color: var(--sui-primary-color); font-weight: bold;">Основной</div> }
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private ScreenDetailsResult? _details;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task GetDetailsAsync()
+    {
+        _details = await SafeInvokeAsync<ScreenDetailsResult>("getScreenDetails");
+        StateHasChanged();
+    }
+
+    public class ScreenDetailsResult
+    {
+        public List<ScreenInfo> Screens { get; set; } = new();
+    }
+
+    public class ScreenInfo
+    {
+        public string? Label { get; set; }
+        public bool IsPrimary { get; set; }
+        public int Width { get; set; }
+        public int Height { get; set; }
+        public int Left { get; set; }
+        public int Top { get; set; }
+    }
+}

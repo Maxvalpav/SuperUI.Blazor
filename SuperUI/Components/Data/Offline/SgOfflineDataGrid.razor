@@ -1,0 +1,46 @@
+@namespace SuperUI.Components
+@typeparam TItem where TItem : class
+@using SuperUI.Base.ComponentBases
+@inherits SgComponentBase
+
+<div class="sgc-offline-data">
+    <div class="sgc-sync-status @(_isOnline ? "online" : "offline")">
+        @(_isOnline ? "● Online - Synced" : "○ Offline - Working Local")
+    </div>
+    
+    <SgDataGrid TItem="TItem" Items="@_localItems" AllowEdit="true">
+        @ChildContent
+    </SgDataGrid>
+</div>
+
+<style>
+    .sgc-sync-status {
+        padding: 4px 12px;
+        font-size: 11px;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        display: inline-block;
+    }
+    .sgc-sync-status.online { background: #f6ffed; color: #52c41a; }
+    .sgc-sync-status.offline { background: #fff1f0; color: #f5222d; }
+</style>
+
+@code {
+    private List<TItem> _localItems = new();
+    private bool _isOnline = true;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public IEnumerable<TItem>? OnlineSource { get; set; }
+    
+    protected override async Task OnInitializedAsync()
+    {
+        // 1. Try load from IndexedDB (simplified)
+        // 2. If online, fetch from source and merge
+        if (OnlineSource != null) _localItems = OnlineSource.ToList();
+    }
+
+    public async Task SyncAsync()
+    {
+        // Conflict resolution logic here
+    }
+}

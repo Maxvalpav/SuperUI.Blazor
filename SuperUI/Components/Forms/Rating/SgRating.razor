@@ -1,0 +1,70 @@
+@namespace SuperUI.Components
+@inherits SgComponentBase
+
+<div class="@Css("sgc-rating").AddClass("sgc-rating-disabled", Disabled).AddClass("sgc-rating-readonly", ReadOnly).Build()"
+     role="slider"
+     aria-valuemin="0"
+     aria-valuemax="@Max"
+     aria-valuenow="@Value"
+     @attributes="AttributesWithoutClassAndStyle">
+    @for (int i = 1; i <= Max; i++)
+    {
+        var value = i;
+        <span class="@GetStarClass(value)"
+              @onclick="() => SetValue(value)"
+              @onmouseenter="() => Hover(value)"
+              @onmouseleave="() => Hover(0)"
+              aria-label="@(value + " stars")">
+            <SgIcon Icon="@SgIcons.Star" />
+        </span>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// Gets or sets the current rating value.
+    /// </summary>
+    [Parameter] public int Value { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the rating value changes.
+    /// </summary>
+    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum rating value. Default is 5.
+    /// </summary>
+    [Parameter] public int Max { get; set; } = 5;
+
+    /// <summary>
+    /// Gets or sets whether the rating is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the rating is read-only.
+    /// </summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    private int _hoverValue;
+
+    private void Hover(int value)
+    {
+        if (Disabled || ReadOnly) return;
+        _hoverValue = value;
+    }
+
+    private async Task SetValue(int value)
+    {
+        if (Disabled || ReadOnly) return;
+        Value = value;
+        if (ValueChanged.HasDelegate)
+            await ValueChanged.InvokeAsync(Value);
+    }
+
+    private string GetStarClass(int index)
+    {
+        var displayValue = _hoverValue > 0 ? _hoverValue : Value;
+        return index <= displayValue ? "sgc-rating-star sgc-active" : "sgc-rating-star";
+    }
+}

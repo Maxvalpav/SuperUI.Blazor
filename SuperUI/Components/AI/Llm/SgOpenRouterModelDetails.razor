@@ -1,0 +1,203 @@
+@namespace SuperUI.Components.Llm
+@using SuperUI.Services.Llm
+@inject IOpenRouterService OpenRouterService
+
+<div class="sgc-or-model-details @CssClass" style="@Style">
+    @if (_model != null)
+    {
+        <div class="sgc-or-details-card">
+            <div class="sgc-or-header">
+                <div class="sgc-or-title-row">
+                    <h3>@_model.Name</h3>
+                    @if (_model.IsFree)
+                    {
+                        <SgBadge Variant="SgBadgeVariant.Success">FREE</SgBadge>
+                    }
+                </div>
+                <code class="sgc-or-id">@_model.Id</code>
+            </div>
+
+            <div class="sgc-or-body">
+                <p class="sgc-or-description">@_model.Description</p>
+
+                <div class="sgc-or-stats-grid">
+                    <div class="sgc-or-stat">
+                        <span class="sgc-or-stat-label">Контекст</span>
+                        <span class="sgc-or-stat-value">@FormatContext(_model.ContextLength)</span>
+                    </div>
+                    <div class="sgc-or-stat">
+                        <span class="sgc-or-stat-label">Prompt</span>
+                        <span class="sgc-or-stat-value">$@_model.Pricing.Prompt / 1M</span>
+                    </div>
+                    <div class="sgc-or-stat">
+                        <span class="sgc-or-stat-label">Completion</span>
+                        <span class="sgc-or-stat-value">$@_model.Pricing.Completion / 1M</span>
+                    </div>
+                    @if (_model.Architecture != null)
+                    {
+                        <div class="sgc-or-stat">
+                            <span class="sgc-or-stat-label">Модальность</span>
+                            <span class="sgc-or-stat-value">@_model.Architecture.Modality</span>
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (ShowActions)
+            {
+                <div class="sgc-or-footer">
+                    <SgButton Text="Выбрать модель" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="OnSelectClick" Block="true" />
+                </div>
+            }
+        </div>
+    }
+    else if (_loading)
+    {
+        <div class="sgc-or-loading">
+            <SgSpinner />
+            <span>Загрузка данных модели...</span>
+        </div>
+    }
+    else
+    {
+        <div class="sgc-or-empty">
+            Модель не выбрана
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-or-model-details {
+        background: var(--sg-bg);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-lg);
+        overflow: hidden;
+    }
+    .sgc-or-details-card {
+        display: flex;
+        flex-direction: column;
+    }
+    .sgc-or-header {
+        padding: 16px;
+        border-bottom: 1px solid var(--sg-border);
+        background: var(--sg-bg-subtle);
+    }
+    .sgc-or-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+    }
+    .sgc-or-header h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+    }
+    .sgc-or-id {
+        font-size: 11px;
+        color: var(--sg-fg-muted);
+    }
+    .sgc-or-body {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .sgc-or-description {
+        margin: 0;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--sg-fg);
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .sgc-or-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+    }
+    .sgc-or-stat {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .sgc-or-stat-label {
+        font-size: 11px;
+        color: var(--sg-fg-muted);
+        text-transform: uppercase;
+    }
+    .sgc-or-stat-value {
+        font-size: 13px;
+        font-weight: 500;
+    }
+    .sgc-or-footer {
+        padding: 12px 16px;
+        border-top: 1px solid var(--sg-border);
+    }
+    .sgc-or-loading, .sgc-or-empty {
+        padding: 32px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        color: var(--sg-fg-muted);
+        font-size: 13px;
+    }
+</style>
+
+@code {
+    [Parameter] public string? ModelId { get; set; }
+    [Parameter] public SgOpenRouterModel? Model { get; set; }
+    [Parameter] public bool ShowActions { get; set; }
+    [Parameter] public EventCallback<string> OnSelected { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private SgOpenRouterModel? _model;
+    private bool _loading;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Model != null)
+        {
+            _model = Model;
+        }
+        else if (!string.IsNullOrEmpty(ModelId) && (_model == null || _model.Id != ModelId))
+        {
+            await LoadModelDetailsAsync();
+        }
+    }
+
+    private async Task LoadModelDetailsAsync()
+    {
+        if (string.IsNullOrEmpty(ModelId)) return;
+        
+        _loading = true;
+        try
+        {
+            var models = await OpenRouterService.GetModelsAsync();
+            _model = models.FirstOrDefault(m => m.Id == ModelId);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatContext(int length)
+    {
+        if (length >= 1024 * 1024) return $"{(length / (1024.0 * 1024.0)):F1}M";
+        if (length >= 1024) return $"{length / 1024}k";
+        return length.ToString();
+    }
+
+    private async Task OnSelectClick()
+    {
+        if (_model != null)
+        {
+            await OnSelected.InvokeAsync(_model.Id);
+        }
+    }
+}

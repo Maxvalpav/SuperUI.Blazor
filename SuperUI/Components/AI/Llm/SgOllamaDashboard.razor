@@ -1,0 +1,241 @@
+@namespace SuperUI.Components.Llm
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-ollama-dashboard @CssClass" style="@Style">
+    <div class="sgc-ollama-dashboard-header">
+        <div class="sgc-ollama-dashboard-title">
+            <SgIcon Icon="@SgIcons.Cpu" Size="20px" />
+            <span>Ollama Local Dashboard</span>
+        </div>
+        <div class="sgc-ollama-dashboard-actions">
+            <SgSwitch @bind-Value="_showLogs" Label="Логи" Size="SgSize.Sm" />
+        </div>
+    </div>
+
+    <div class="sgc-ollama-dashboard-main">
+        <SgTabs Vertical="true" Style="height: 100%;">
+            <SgTabPanel Title="Модели">
+                <Icon>@((MarkupString)SgIcons.Search)</Icon>
+                <ChildContent>
+                    <div class="sgc-ollama-tab-content">
+                        <SgOllamaModelPicker SelectedModelId="@SelectedModelId" 
+                                            BaseUrl="@BaseUrl"
+                                            OnSelected="OnModelSelectedInternal" />
+                    </div>
+                </ChildContent>
+            </SgTabPanel>
+            
+            <SgTabPanel Title="Настройки">
+                <Icon>@((MarkupString)SgIcons.Settings)</Icon>
+                <ChildContent>
+                    <div class="sgc-ollama-tab-content">
+                        <div class="sgc-ollama-settings-group">
+                            <label>Base URL (Ollama API)</label>
+                            <SgTextBox @bind-Value="BaseUrl" Placeholder="http://localhost:11434" />
+                        </div>
+                        
+                        <div class="sgc-ollama-info-card">
+                            <div class="sgc-ollama-info-row">
+                                <span class="sgc-ollama-info-label">Статус:</span>
+                                <SgBadge Variant="@(_isConnected ? SgBadgeVariant.Success : SgBadgeVariant.Danger)">
+                                    @(_isConnected ? "Подключено" : "Нет связи")
+                                </SgBadge>
+                            </div>
+                            @if (_isConnected)
+                            {
+                                <div class="sgc-ollama-info-row">
+                                    <span class="sgc-ollama-info-label">Модель:</span>
+                                    <span class="sgc-ollama-info-value">@(SelectedModelId ?? "Не выбрана")</span>
+                                </div>
+                            }
+                        </div>
+
+                        <SgButton Text="Проверить соединение" 
+                                  Variant="SgButtonVariant.Primary" 
+                                  OnClick="CheckConnectionAsync" 
+                                  Loading="_checking" 
+                                  Block="true" />
+                    </div>
+                </ChildContent>
+            </SgTabPanel>
+        </SgTabs>
+    </div>
+
+    @if (_showLogs)
+    {
+        <div class="sgc-ollama-dashboard-logs">
+            <div class="sgc-ollama-logs-header">
+                <span>Terminal Output</span>
+                <SgButton Text="Clear" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="() => _logs.Clear()" />
+            </div>
+            <div class="sgc-ollama-logs-body">
+                @foreach (var log in _logs)
+                {
+                    <div class="sgc-ollama-log-entry @log.Type.ToLower()">
+                        <span class="sgc-ollama-log-time">@log.Time.ToString("HH:mm:ss")</span>
+                        <span class="sgc-ollama-log-msg">@log.Message</span>
+                    </div>
+                }
+                @if (!_logs.Any())
+                {
+                    <div class="sgc-ollama-log-empty">Ожидание событий...</div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-ollama-dashboard {
+        display: flex;
+        flex-direction: column;
+        background: var(--sg-bg);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-lg);
+        overflow: hidden;
+        height: 500px;
+    }
+    .sgc-ollama-dashboard-header {
+        padding: 12px 16px;
+        background: var(--sg-bg-subtle);
+        border-bottom: 1px solid var(--sg-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .sgc-ollama-dashboard-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 600;
+    }
+    .sgc-ollama-dashboard-main {
+        flex: 1;
+        overflow: hidden;
+    }
+    .sgc-ollama-tab-content {
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        height: 100%;
+        overflow-y: auto;
+    }
+    .sgc-ollama-settings-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .sgc-ollama-settings-group label {
+        font-size: 12px;
+        color: var(--sg-fg-muted);
+    }
+    .sgc-ollama-info-card {
+        padding: 12px;
+        background: var(--sg-bg-subtle);
+        border-radius: var(--sg-radius-md);
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .sgc-ollama-info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 13px;
+    }
+    .sgc-ollama-info-label { color: var(--sg-fg-muted); }
+    .sgc-ollama-info-value { font-weight: 500; }
+
+    .sgc-ollama-dashboard-logs {
+        height: 150px;
+        background: #121212;
+        color: #e0e0e0;
+        border-top: 1px solid var(--sg-border);
+        display: flex;
+        flex-direction: column;
+    }
+    .sgc-ollama-logs-header {
+        padding: 4px 12px;
+        background: #1a1a1a;
+        font-size: 10px;
+        color: #888;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .sgc-ollama-logs-body {
+        flex: 1;
+        padding: 8px 12px;
+        font-family: var(--sg-font-mono, monospace);
+        font-size: 11px;
+        overflow-y: auto;
+    }
+    .sgc-ollama-log-entry { display: flex; gap: 8px; margin-bottom: 2px; }
+    .sgc-ollama-log-time { color: #555; }
+    .sgc-ollama-log-entry.error { color: #ef4444; }
+    .sgc-ollama-log-entry.success { color: #22c55e; }
+    .sgc-ollama-log-empty { color: #444; text-align: center; margin-top: 20px; }
+</style>
+
+@code {
+    [Parameter] public string BaseUrl { get; set; } = "http://localhost:11434";
+    [Parameter] public string? SelectedModelId { get; set; }
+    [Parameter] public EventCallback<string> BaseUrlChanged { get; set; }
+    [Parameter] public EventCallback<string> SelectedModelIdChanged { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+
+    private bool _showLogs = true;
+    private bool _checking;
+    private bool _isConnected;
+    private List<LogItem> _logs = new();
+
+    private class LogItem {
+        public DateTime Time { get; set; }
+        public string Message { get; set; } = "";
+        public string Type { get; set; } = "info";
+    }
+
+    private void AddLog(string msg, string type = "info") {
+        _logs.Add(new LogItem { Time = DateTime.Now, Message = msg, Type = type });
+        if (_logs.Count > 50) _logs.RemoveAt(0);
+        StateHasChanged();
+    }
+
+    private async Task OnModelSelectedInternal(string modelId)
+    {
+        SelectedModelId = modelId;
+        AddLog($"Выбрана модель: {modelId}", "info");
+        await SelectedModelIdChanged.InvokeAsync(modelId);
+    }
+
+    private async Task CheckConnectionAsync()
+    {
+        _checking = true;
+        AddLog($"Проверка связи с Ollama по адресу {BaseUrl}...", "info");
+        try {
+            var models = await LlmService.GetOllamaModelsAsync(BaseUrl);
+            if (models.Any()) {
+                _isConnected = true;
+                AddLog($"Успешно! Найдено {models.Count} моделей.", "success");
+            } else {
+                _isConnected = false;
+                AddLog("Ошибка: Модели не найдены. Убедитесь, что Ollama запущена и API доступно.", "error");
+            }
+        } catch (Exception ex) {
+            _isConnected = false;
+            AddLog($"Ошибка подключения: {ex.Message}", "error");
+        } finally {
+            _checking = false;
+            await BaseUrlChanged.InvokeAsync(BaseUrl);
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        AddLog("Ollama Dashboard инициализирован", "info");
+    }
+}

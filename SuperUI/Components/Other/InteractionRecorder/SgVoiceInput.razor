@@ -1,0 +1,140 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-voice-input").Build()" style="@Style">
+    <SgButton Variant="@(_isListening ? SgButtonVariant.Danger : Variant)" 
+              OnClick="ToggleListening"
+              Loading="_isInitializing"
+              Disabled="Disabled">
+        <Icon>
+            @if (_isListening)
+            {
+                <SgIcon Icon="@SgIcons.Square" />
+            }
+            else
+            {
+                <SgIcon Icon="@SgIcons.Mic" />
+            }
+        </Icon>
+        <ChildContent>
+            @if (ShowText)
+            {
+                <span>@(_isListening ? StopText : StartText)</span>
+            }
+        </ChildContent>
+    </SgButton>
+
+    @if (_isListening && ShowPreview && !string.IsNullOrEmpty(_interimText))
+    {
+        <div class="sgc-voice-preview">
+            @_interimText
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-voice-input {
+        display: inline-flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .sgc-voice-preview {
+        font-size: 12px;
+        color: var(--sui-fg-muted);
+        font-style: italic;
+        background: var(--sui-bg-secondary);
+        padding: 4px 8px;
+        border-radius: 4px;
+        border-left: 2px solid var(--sui-primary-color);
+    }
+</style>
+
+@code {
+    private bool _isListening;
+    private bool _isInitializing;
+    private string _interimText = "";
+    private string _finalText = "";
+
+    [Parameter] public string StartText { get; set; } = "Говорить";
+    [Parameter] public string StopText { get; set; } = "Остановить";
+    [Parameter] public bool ShowText { get; set; } = true;
+    [Parameter] public bool ShowPreview { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Default;
+    [Parameter] public string Language { get; set; } = "ru-RU";
+    
+    [Parameter] public EventCallback<string> OnResult { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-voice-input.js";
+
+    private async Task ToggleListening()
+    {
+        if (_isListening)
+        {
+            await StopAsync();
+        }
+        else
+        {
+            await StartAsync();
+        }
+    }
+
+    public async Task StartAsync()
+    {
+        _isInitializing = true;
+        StateHasChanged();
+
+        var supported = await SafeInvokeAsync<bool>("initVoiceRecognition", SelfRef, Language);
+        if (supported)
+        {
+            var started = await SafeInvokeAsync<bool>("startRecognition");
+            if (started)
+            {
+                _isListening = true;
+                _interimText = "";
+            }
+        }
+        else
+        {
+            await OnError.InvokeAsync("Speech recognition not supported");
+        }
+
+        _isInitializing = false;
+        StateHasChanged();
+    }
+
+    public async Task StopAsync()
+    {
+        await SafeInvokeVoidAsync("stopRecognition");
+        _isListening = false;
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechResult(string final, string interim)
+    {
+        _interimText = interim;
+        if (!string.IsNullOrEmpty(final))
+        {
+            _finalText = final;
+            await OnResult.InvokeAsync(final);
+        }
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnSpeechError(string error)
+    {
+        _isListening = false;
+        await OnError.InvokeAsync(error);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public void OnSpeechEnd()
+    {
+        _isListening = false;
+        StateHasChanged();
+    }
+}

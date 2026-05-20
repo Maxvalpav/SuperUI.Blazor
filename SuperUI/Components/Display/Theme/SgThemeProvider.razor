@@ -1,0 +1,48 @@
+@namespace SuperUI.Components
+@using SuperUI.Services
+@inject SgThemeService ThemeService
+@implements IAsyncDisposable
+
+@using SuperUI.Base.ComponentBases
+
+<CascadingValue Value="GetContext()" IsFixed="false">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    private HostEnvironmentContext GetContext() => new()
+    {
+        ThemeTag = ThemeService.CurrentMode,
+        // Можно добавить детекцию reduced motion через JS если нужно
+        PrefersReducedMotion = false 
+    };
+
+    [Parameter]
+    public string DefaultThemeId { get; set; } = "superui-default";
+
+    [Parameter]
+    public string DefaultMode { get; set; } = "light";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await ThemeService.InitializeAsync();
+            ThemeService.ThemeChanged += OnThemeChanged;
+        }
+    }
+
+    private async void OnThemeChanged(SuperUI.Themes.IThemeDefinition theme, string mode)
+    {
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ThemeService.ThemeChanged -= OnThemeChanged;
+        await ThemeService.DisposeAsync();
+    }
+}

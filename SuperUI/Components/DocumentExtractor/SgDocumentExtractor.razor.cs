@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
 using SuperUI.Components.DocumentExtractor.Models;
 using SuperUI.Components.DocumentExtractor.Services;
+using SuperUI.Services.Llm;
 
 namespace SuperUI.Components.DocumentExtractor;
 
@@ -48,7 +49,7 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
 
     private readonly List<string> _providerOptions = new() { nameof(SgLlmEndpointKind.OpenAiCompatible), nameof(SgLlmEndpointKind.OpenRouter) };
 
-    private SgLlmEndpointConfig _endpoint = new();
+    private SgLlmConfig _llmConfig = new();
     private SgDocumentSource? _source;
     private SgDocumentExtractionResult? _result;
     private List<SgLlmModelDescriptor> _models = new();
@@ -56,11 +57,10 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
     private string? _status;
     private bool _isError;
     private bool _busy;
-    private bool _fetchingModels;
 
     protected override void OnInitialized()
     {
-        _endpoint = EndpointStore.Current;
+        _llmConfig = ToLlmConfig(EndpointStore.Current);
         _selectedExtractorId = InitialExtractorId ?? Extractors.FirstOrDefault(e => e.Id == "llm")?.Id ?? Extractors.FirstOrDefault()?.Id;
     }
 
@@ -74,8 +74,8 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
             var savedSettings = await _module.InvokeAsync<SgLlmEndpointConfig?>("loadExtractorSettings");
             if (savedSettings != null)
             {
-                _endpoint = savedSettings;
-                EndpointStore.Current = _endpoint;
+                _llmConfig = ToLlmConfig(savedSettings);
+                UpdateEndpointStore();
                 StateHasChanged();
             }
         }
@@ -93,32 +93,46 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
     {
         if (_module != null)
         {
-            await _module.InvokeVoidAsync("saveExtractorSettings", _endpoint);
+            await _module.InvokeVoidAsync("saveExtractorSettings", FromLlmConfig(_llmConfig));
         }
     }
 
-    private async void OnProviderChanged(string? value)
+    private void OnLlmConfigChanged(SgLlmConfig config)
     {
-        if (!Enum.TryParse<SgLlmEndpointKind>(value, out var kind)) return;
-        _endpoint.Kind = kind;
-        // Switch base URL hint when the user picks a provider, without overwriting custom URLs once they typed one.
-        if (string.IsNullOrWhiteSpace(_endpoint.BaseUrl) ||
-            _endpoint.BaseUrl is "https://api.openai.com/v1" or "https://openrouter.ai/api/v1")
+        _llmConfig = config;
+        UpdateEndpointStore();
+        _ = SaveSettingsAsync();
+    }
+
+    private void UpdateEndpointStore()
+    {
+        EndpointStore.Current = FromLlmConfig(_llmConfig);
+    }
+
+    private SgLlmConfig ToLlmConfig(SgLlmEndpointConfig endpoint)
+    {
+        return new SgLlmConfig
         {
-            _endpoint.BaseUrl = kind == SgLlmEndpointKind.OpenRouter
-                ? "https://openrouter.ai/api/v1"
-                : "https://api.openai.com/v1";
-        }
-        EndpointStore.Current = _endpoint;
-        await SaveSettingsAsync();
+            Provider = endpoint.Kind == SgLlmEndpointKind.OpenRouter ? SgLlmProvider.OpenRouter : SgLlmProvider.OpenAiCompatible,
+            ModelId = endpoint.Model,
+            ApiKey = endpoint.ApiKey,
+            BaseUrl = endpoint.BaseUrl,
+            SystemPrompt = endpoint.SystemPrompt,
+            ExtraHeaders = endpoint.ExtraHeaders
+        };
     }
 
-    private async void OnModelPicked(string? id)
+    private SgLlmEndpointConfig FromLlmConfig(SgLlmConfig config)
     {
-        if (string.IsNullOrEmpty(id)) return;
-        _endpoint.Model = id;
-        EndpointStore.Current = _endpoint;
-        await SaveSettingsAsync();
+        return new SgLlmEndpointConfig
+        {
+            Kind = config.Provider == SgLlmProvider.OpenRouter ? SgLlmEndpointKind.OpenRouter : SgLlmEndpointKind.OpenAiCompatible,
+            Model = config.ModelId ?? "",
+            ApiKey = config.ApiKey,
+            BaseUrl = config.BaseUrl ?? "",
+            SystemPrompt = config.SystemPrompt,
+            ExtraHeaders = config.ExtraHeaders
+        };
     }
 
     private async Task DownloadAsync(SgDocumentSource saved)
@@ -131,19 +145,6 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
     }
 
     private void OnExtractorPicked(string? id) => _selectedExtractorId = id;
-
-    private async Task FetchModelsAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_endpoint.BaseUrl)) { Status("Set a base URL first.", true); return; }
-        _fetchingModels = true; _isError = false; _status = null;
-        try
-        {
-            _models = await LlmClient.ListModelsAsync(_endpoint);
-            Status(_models.Count == 0 ? "Provider returned no models." : $"Loaded {_models.Count} models.", _models.Count == 0);
-        }
-        catch (Exception ex) { Status($"Model fetch failed: {ex.Message}", true); }
-        finally { _fetchingModels = false; }
-    }
 
     private async Task OnFilesPicked(IReadOnlyList<IBrowserFile>? files)
     {
@@ -182,7 +183,7 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
         if (extractor is null) { Status("No extractor available for this document.", true); return; }
 
         // Make sure the LLM extractor sees the latest endpoint settings.
-        EndpointStore.Current = _endpoint;
+        UpdateEndpointStore();
 
         _busy = true; _isError = false; _status = "Extracting…";
         try

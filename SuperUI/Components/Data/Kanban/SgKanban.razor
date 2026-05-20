@@ -1,0 +1,530 @@
+@namespace SuperUI.Components
+@using Microsoft.AspNetCore.Components.Web
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<div class="sgc-kanban @CssClass">
+    <div class="sgc-kanban-header">
+        <div class="sgc-kanban-toolbar">
+            <div style="display:flex; gap:8px; align-items:center;">
+                <SgTextBox TValue="string" Placeholder="@Localizer["Kanban_SearchPlaceholder"]" Value="@SearchText" ValueChanged="@OnSearchChanged" />
+                <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="OnAddColumn">
+                     <span class="sgc-kanban-icon" style="margin-right:4px;">@((MarkupString)SgIcons.Plus)</span> @Localizer["Kanban_AddColumn"]
+                </SgButton>
+            </div>
+        </div>
+    </div>
+
+    <div class="sgc-kanban-board">
+        @if (EffectiveSwimlanes.Any())
+        {
+            @foreach (var lane in EffectiveSwimlanes)
+            {
+                <div class="sgc-kanban-swimlane">
+                    <div class="sgc-kanban-swimlane-header">@lane</div>
+                    <div class="sgc-kanban-swimlane-columns">
+                        @foreach (var column in Columns)
+                        {
+                            <div @key="column.Id" style="display: contents;">
+                                @RenderColumn(column, lane)
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        }
+        else
+        {
+            @foreach (var column in Columns)
+            {
+                <div @key="column.Id" style="display: contents;">
+                    @RenderColumn(column)
+                </div>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private RenderFragment RenderColumn(SgKanbanColumn column, string? swimlane = null) => @<div 
+        class="sgc-kanban-column @(_dropColumnId == column.Id && _dropSwimlane == swimlane && _draggedColumn != null ? "sgc-drop-target" : null) @(_draggedColumn?.Id == column.Id ? "sgc-dragging" : null)" 
+        @ondragenter="() => OnColumnDragEnter(column.Id, swimlane)"
+        @ondragleave="OnDragLeave"
+        ondragover="event.preventDefault();" 
+        @ondrop="() => OnDropColumn(column)">
+        
+        @{
+            var colTasks = GetFilteredTasks(column.Id, swimlane);
+            var isWipExceeded = column.WipLimit > 0 && colTasks.Count > column.WipLimit;
+        }
+
+        <div class="sgc-kanban-col-header @(isWipExceeded ? "sgc-wip-exceeded" : "")" 
+             style="border-top-color: @(column.Color ?? "var(--sg-border)")">
+            <span class="sgc-kanban-col-drag-handle" draggable="true" @ondragstart="() => OnColumnDragStart(column)">
+                @((MarkupString)SgIcons.GripVertical)
+            </span>
+            <span class="sgc-kanban-col-title">@column.Title</span>
+            <span class="sgc-kanban-col-count @(isWipExceeded ? "sgc-wip-limit-exceeded" : "")">
+                @colTasks.Count 
+                @if (column.WipLimit > 0)
+                {
+                    <span class="sgc-wip-limit">/ @column.WipLimit</span>
+                }
+            </span>
+            
+            <div class="sgc-kanban-column-actions">
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnEditColumn(column)">
+                    <span class="sgc-kanban-icon">@((MarkupString)SgIcons.Edit)</span>
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnDeleteColumn(column)">
+                    <span class="sgc-kanban-icon">@((MarkupString)SgIcons.X)</span>
+                </SgButton>
+            </div>
+        </div>
+
+        <div class="sgc-kanban-tasks"
+             @ondragenter="() => OnTaskContainerDragEnter(column.Id, swimlane)"
+             @ondragover:preventDefault
+             @ondrop="() => OnDropTask(column.Id, null, swimlane)">
+            @foreach (var task in colTasks)
+            {
+                var currentTask = task;
+                <div @key="currentTask.Id" 
+                     class="sgc-kanban-task @(_dropTaskId == currentTask.Id ? "sgc-drop-before" : null) @(_draggedTask?.Id == currentTask.Id ? "sgc-dragging" : null)" 
+                     draggable="true" 
+                     @ondragstart="() => OnDragStart(currentTask)"
+                     @ondragenter="() => OnTaskDragEnter(currentTask)"
+                     @ondragleave="OnDragLeave"
+                     ondragover="event.preventDefault();"
+                     @ondrop:stopPropagation
+                     @ondrop="() => OnDropTask(column.Id, currentTask.Id, swimlane)"
+                     @ondblclick="() => OnEditTask(currentTask)">
+                    
+                    @if (!string.IsNullOrEmpty(currentTask.Color))
+                    {
+                        <div class="sgc-kanban-task-color" style="background-color: @currentTask.Color"></div>
+                    }
+
+                    <div class="sgc-kanban-task-content">
+                        <div class="sgc-kanban-task-title">@currentTask.Title</div>
+                        @if (!string.IsNullOrEmpty(currentTask.Description))
+                        {
+                            <div class="sgc-kanban-task-desc">@currentTask.Description</div>
+                        }
+                        
+                        <div class="sgc-kanban-task-footer">
+                            <div style="display:flex; flex-direction:column; gap:6px; flex:1;">
+                                @if (currentTask.Tags.Any())
+                                {
+                                    <div class="sgc-kanban-task-tags">
+                                        @foreach (var tag in currentTask.Tags)
+                                        {
+                                            <SgBadge Text="@tag" />
+                                        }
+                                    </div>
+                                }
+                                
+                                @if (currentTask.DueDate.HasValue)
+                                {
+                                    <div class="sgc-kanban-task-date @(currentTask.DueDate < DateTime.Today ? "sgc-overdue" : "")">
+                                        <span class="sgc-kanban-icon">@((MarkupString)SgIcons.Calendar)</span>
+                                        @currentTask.DueDate.Value.ToString("d MMM")
+                                    </div>
+                                }
+                            </div>
+                            
+                            @if (!string.IsNullOrEmpty(currentTask.Assignee))
+                            {
+                                <SgAvatar Initials="@currentTask.Assignee" Size="SgSize.Sm" Title="@currentTask.Assignee" />
+                            }
+                        </div>
+                    </div>
+
+                    <div class="sgc-kanban-task-actions">
+                        <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Title="@Localizer["Kanban_Duplicate"]" OnClick="() => OnDuplicateTask(currentTask)">
+                            <span class="sgc-kanban-icon">@((MarkupString)SgIcons.Copy)</span>
+                        </SgButton>
+                        <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="() => OnDeleteTask(currentTask)">
+                            <span class="sgc-kanban-icon">@((MarkupString)SgIcons.X)</span>
+                        </SgButton>
+                    </div>
+                </div>
+            }
+            
+            <button type="button" class="sgc-kanban-add-task"
+                    @onclick="() => OnAddTask(column.Id, swimlane)">
+                <span class="sgc-kanban-icon" style="margin-right: 4px;">@((MarkupString)SgIcons.Plus)</span> 
+                 <span>@Localizer["Kanban_AddTask"]</span>
+            </button>
+        </div>
+    </div>;
+}
+
+@* Modal for Task Edit *@
+ <SgModal @bind-Visible="_taskModalVisible" Title="@(_isNewTask ? Localizer["Kanban_NewTask"] : Localizer["Kanban_EditTask"])" Width="400px">
+    <ChildContent>
+        @if (_editingTask != null)
+        {
+            <div style="display:flex; flex-direction:column; gap:12px; padding: 4px;">
+                 <SgTextBox Label="@Localizer["Kanban_FieldTitle"]" @bind-Value="_editingTask.Title" />
+                 <SgTextBox Label="@Localizer["Kanban_FieldDescription"]" @bind-Value="_editingTask.Description" Multiline="true" />
+                 
+                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                     <SgSelect TValue="string" Label="@Localizer["Kanban_FieldColumn"]" 
+                               Items="@Columns.Select(c => c.Id).ToList()"
+                               LabelSelector="@(id => Columns.FirstOrDefault(c => c.Id == id)?.Title ?? "")"
+                               @bind-Value="_editingTask.ColumnId" />
+                     <SgColorPicker Label="@Localizer["Kanban_FieldColor"]" @bind-Value="_editingTask.Color" />
+                 </div>
+
+                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                     <SgTextBox Label="@Localizer["Kanban_FieldAssignee"]" @bind-Value="_editingTask.Assignee" />
+                     <SgDatePicker Label="@Localizer["Kanban_FieldDueDate"]" Value="_editingTask.DueDate" ValueChanged="@(v => _editingTask.DueDate = v)" />
+                 </div>
+                
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                     <label class="sgc-label">@Localizer["Kanban_FieldTags"]</label>
+                    <SgTextBox TValue="string" Value="@(string.Join(", ", _editingTask.Tags))" 
+                               ValueChanged="@(v => _editingTask.Tags = (v as string ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).Select(s => s.Trim()).ToList())" />
+                </div>
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="@Localizer["Cancel"]" OnClick="@(() => _taskModalVisible = false)" />
+        <SgButton Text="@Localizer["Save"]" Variant="SgButtonVariant.Primary" OnClick="SaveTask" />
+    </FooterContent>
+</SgModal>
+
+@* Modal for Column Edit *@
+ <SgModal @bind-Visible="_columnModalVisible" Title="@(_isNewColumn ? Localizer["Kanban_NewColumn"] : Localizer["Kanban_EditColumn"])" Width="320px">
+    <ChildContent>
+        @if (_editingColumn != null)
+        {
+            <div style="display:flex; flex-direction:column; gap:12px; padding: 4px;">
+                 <SgTextBox Label="@Localizer["Kanban_FieldColumnName"]" @bind-Value="_editingColumn.Title" />
+                <SgColorPicker Label="Цвет" @bind-Value="_editingColumn.Color" />
+            </div>
+        }
+    </ChildContent>
+    <FooterContent>
+        <SgButton Text="@Localizer["Cancel"]" OnClick="@(() => _columnModalVisible = false)" />
+        <SgButton Text="@Localizer["Save"]" Variant="SgButtonVariant.Primary" OnClick="SaveColumn" />
+    </FooterContent>
+</SgModal>
+
+@code {
+    [Parameter] public List<SgKanbanColumn> Columns { get; set; } = new();
+    [Parameter] public List<SgKanbanTask> Tasks { get; set; } = new();
+    [Parameter] public EventCallback<List<SgKanbanTask>> TasksChanged { get; set; }
+    [Parameter] public EventCallback<List<SgKanbanColumn>> ColumnsChanged { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Optional list of swimlanes. If empty, tasks are not grouped horizontally.
+    /// </summary>
+    [Parameter] public List<string> Swimlanes { get; set; } = new();
+
+    private string SearchText { get; set; } = "";
+
+    private async Task OnSearchChanged(string value)
+    {
+        SearchText = value;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private List<string> EffectiveSwimlanes => Swimlanes.Any() ? Swimlanes : new List<string>();
+
+    private SgKanbanTask? _draggedTask;
+    private SgKanbanColumn? _draggedColumn;
+    private string? _dropColumnId;
+    private string? _dropSwimlane;
+    private string? _dropTaskId;
+
+    // Task Edit State
+    private bool _taskModalVisible;
+    private SgKanbanTask? _editingTask;
+    private SgKanbanTask? _targetTask;
+    private bool _isNewTask;
+
+    // Column Edit State
+    private bool _columnModalVisible;
+    private SgKanbanColumn? _editingColumn;
+    private SgKanbanColumn? _targetColumn;
+    private bool _isNewColumn;
+
+    private List<SgKanbanTask> GetFilteredTasks(string columnId, string? swimlane)
+    {
+        var query = Tasks.Where(t => t.ColumnId == columnId);
+        
+        if (!string.IsNullOrEmpty(swimlane))
+        {
+            query = query.Where(t => t.Swimlane == swimlane);
+        }
+
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            query = query.Where(t => t.Title.Contains(SearchText, StringComparison.OrdinalIgnoreCase) || 
+                                     t.Description.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.OrderBy(t => t.Order).ToList();
+    }
+
+    private void OnDragStart(SgKanbanTask task)
+    {
+        _draggedColumn = null;
+        _draggedTask = task;
+        _dropTaskId = null;
+    }
+
+    private void OnColumnDragStart(SgKanbanColumn column)
+    {
+        _draggedTask = null;
+        _draggedColumn = column;
+        _dropColumnId = null;
+        _dropTaskId = null;
+    }
+
+    private void OnTaskDragEnter(SgKanbanTask task)
+    {
+        if (_draggedTask == null || _draggedTask.Id == task.Id) return;
+        
+        // Use a small delay or check to prevent flickering if needed, 
+        // but for now just setting the drop target
+        _dropTaskId = task.Id;
+        _dropColumnId = task.ColumnId;
+        _dropSwimlane = task.Swimlane;
+    }
+
+    private void OnTaskContainerDragEnter(string columnId, string? swimlane)
+    {
+        if (_draggedTask == null) return;
+        
+        // If entering a column and not over a specific task, clear _dropTaskId
+        _dropColumnId = columnId;
+        _dropSwimlane = swimlane;
+        _dropTaskId = null;
+    }
+
+    private void OnColumnDragEnter(string columnId, string? swimlane)
+    {
+        if (_draggedColumn == null) return;
+        _dropColumnId = columnId;
+        _dropSwimlane = swimlane;
+    }
+
+    private void OnDragLeave()
+    {
+        // We don't necessarily want to clear everything on leave because it might flicker
+    }
+
+    private async Task OnDropTask(string columnId, string? targetTaskId = null, string? swimlane = null)
+    {
+        if (_draggedTask == null) return;
+
+        var draggedTask = _draggedTask;
+        
+        // If dropped on itself
+        if (draggedTask.Id == targetTaskId) 
+        {
+            ClearDragState();
+            return;
+        }
+
+        // Change location only
+        draggedTask.ColumnId = columnId;
+        draggedTask.Swimlane = swimlane;
+
+        // If dropped on a specific task, we need to adjust orders in THAT column only
+        if (!string.IsNullOrEmpty(targetTaskId))
+        {
+            var targetTasks = Tasks.Where(t => t.ColumnId == columnId && t.Swimlane == swimlane)
+                                   .OrderBy(t => t.Order)
+                                   .ToList();
+            
+            targetTasks.RemoveAll(t => t.Id == draggedTask.Id);
+            var idx = targetTasks.FindIndex(t => t.Id == targetTaskId);
+            if (idx >= 0) targetTasks.Insert(idx, draggedTask);
+            else targetTasks.Add(draggedTask);
+
+            // Normalize orders in target column to make them contiguous
+            for (int i = 0; i < targetTasks.Count; i++)
+            {
+                targetTasks[i].Order = i;
+            }
+        }
+        else
+        {
+            // Dropped on empty space - just put at the end
+            var maxOrder = Tasks.Where(t => t.ColumnId == columnId && t.Swimlane == swimlane)
+                                .Max(t => (int?)t.Order) ?? -1;
+            draggedTask.Order = maxOrder + 1;
+        }
+
+        // IMPORTANT: We do NOT re-index the source column. 
+        // The remaining tasks keep their 'Order' values, they just have a gap now.
+        // This prevents them from "moving" or "shifting" unexpectedly.
+
+        ClearDragState();
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private async Task OnDropColumn(SgKanbanColumn targetColumn)
+    {
+        if (_draggedColumn == null || _draggedColumn.Id == targetColumn.Id) 
+        {
+            ClearDragState();
+            return;
+        }
+
+        var draggedIndex = Columns.FindIndex(c => c.Id == _draggedColumn.Id);
+        var targetIndex = Columns.FindIndex(c => c.Id == targetColumn.Id);
+        
+        if (draggedIndex >= 0 && targetIndex >= 0)
+        {
+            var item = Columns[draggedIndex];
+            Columns.RemoveAt(draggedIndex);
+            Columns.Insert(targetIndex, item);
+            await ColumnsChanged.InvokeAsync(Columns);
+        }
+
+        ClearDragState();
+    }
+
+    private void ClearDragState()
+    {
+        _draggedTask = null;
+        _draggedColumn = null;
+        _dropColumnId = null;
+        _dropSwimlane = null;
+        _dropTaskId = null;
+        StateHasChanged();
+    }
+
+    private void OnAddTask(string columnId, string? swimlane = null)
+    {
+        _isNewTask = true;
+        _editingTask = new SgKanbanTask { ColumnId = columnId, Swimlane = swimlane };
+        _taskModalVisible = true;
+    }
+
+    private void OnEditTask(SgKanbanTask task)
+    {
+        _isNewTask = false;
+        _targetTask = task;
+        _editingTask = new SgKanbanTask
+        {
+            Id = task.Id,
+            Title = task.Title,
+            Description = task.Description,
+            Color = task.Color,
+            ColumnId = task.ColumnId,
+            Assignee = task.Assignee,
+            Tags = new List<string>(task.Tags),
+            DueDate = task.DueDate,
+            Swimlane = task.Swimlane,
+            Order = task.Order
+        };
+        _taskModalVisible = true;
+    }
+
+    private async Task SaveTask()
+    {
+        if (_editingTask == null) return;
+
+        if (_isNewTask)
+        {
+            _editingTask.Order = Tasks.Count(t => t.ColumnId == _editingTask.ColumnId && t.Swimlane == _editingTask.Swimlane);
+            Tasks.Add(_editingTask);
+        }
+        else if (_targetTask != null)
+        {
+            _targetTask.Title = _editingTask.Title;
+            _targetTask.Description = _editingTask.Description;
+            _targetTask.Color = _editingTask.Color;
+            _targetTask.ColumnId = _editingTask.ColumnId;
+            _targetTask.Assignee = _editingTask.Assignee;
+            _targetTask.Tags = _editingTask.Tags;
+            _targetTask.DueDate = _editingTask.DueDate;
+            _targetTask.Swimlane = _editingTask.Swimlane;
+        }
+
+        _taskModalVisible = false;
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private async Task OnDuplicateTask(SgKanbanTask task)
+    {
+        var copy = new SgKanbanTask
+        {
+            Title = Localizer.GetString("Kanban_TaskCopy", task.Title),
+            Description = task.Description,
+            Color = task.Color,
+            ColumnId = task.ColumnId,
+            Assignee = task.Assignee,
+            Tags = new List<string>(task.Tags),
+            DueDate = task.DueDate,
+            Swimlane = task.Swimlane,
+            Order = Tasks.Count(t => t.ColumnId == task.ColumnId && t.Swimlane == task.Swimlane)
+        };
+
+        Tasks.Add(copy);
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private async Task OnDeleteTask(SgKanbanTask task)
+    {
+        Tasks.Remove(task);
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+
+    private void OnAddColumn()
+    {
+        _isNewColumn = true;
+        _editingColumn = new SgKanbanColumn();
+        _columnModalVisible = true;
+    }
+
+    private void OnEditColumn(SgKanbanColumn column)
+    {
+        _isNewColumn = false;
+        _targetColumn = column;
+        _editingColumn = new SgKanbanColumn
+        {
+            Id = column.Id,
+            Title = column.Title,
+            Color = column.Color,
+            WipLimit = column.WipLimit
+        };
+        _columnModalVisible = true;
+    }
+
+    private async Task SaveColumn()
+    {
+        if (_editingColumn == null) return;
+
+        if (_isNewColumn)
+        {
+            Columns.Add(_editingColumn);
+        }
+        else if (_targetColumn != null)
+        {
+            _targetColumn.Title = _editingColumn.Title;
+            _targetColumn.Color = _editingColumn.Color;
+            _targetColumn.WipLimit = _editingColumn.WipLimit;
+        }
+
+        _columnModalVisible = false;
+        await ColumnsChanged.InvokeAsync(Columns);
+    }
+
+    private async Task OnDeleteColumn(SgKanbanColumn column)
+    {
+        // Delete all tasks in this column
+        Tasks.RemoveAll(t => t.ColumnId == column.Id);
+        Columns.Remove(column);
+        await ColumnsChanged.InvokeAsync(Columns);
+        await TasksChanged.InvokeAsync(Tasks);
+    }
+}

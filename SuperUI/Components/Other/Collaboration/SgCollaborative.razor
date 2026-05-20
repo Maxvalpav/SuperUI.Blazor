@@ -1,0 +1,96 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@using SuperUI.Abstractions.Collaboration
+@using SuperUI.Base.ComponentBases
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<div @ref="RootRef" class="sgc-collaborative-container" @onmousemove="HandleMouseMove">
+    @ChildContent
+
+    @foreach (var cursor in _remoteCursors.Values)
+    {
+        <SgRemoteCursor @key="cursor.UserId" Position="cursor" />
+    }
+</div>
+
+<style>
+    .sgc-collaborative-container {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+</style>
+
+@code {
+    private Dictionary<string, SgCursorPosition> _remoteCursors = new();
+    private SgCollaborativeUser _localUser = new() { Name = "Me", Color = "#" + Guid.NewGuid().ToString()[..6] };
+    private DateTime _lastUpdate = DateTime.MinValue;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string RoomId { get; set; } = "default";
+    [Parameter] public ISgCollaborationProvider? Provider { get; set; }
+    [Parameter] public SgCollaborativeUser? LocalUser { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-collaboration.js";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (LocalUser != null) _localUser = LocalUser;
+        
+        if (Provider != null)
+        {
+            Provider.OnCursorMoved += HandleRemoteCursorMove;
+            Provider.OnPresenceChanged += HandlePresenceChanged;
+            await Provider.ConnectAsync(RoomId, _localUser);
+        }
+    }
+
+    private void HandleRemoteCursorMove(SgCursorPosition pos)
+    {
+        if (pos.UserId == _localUser.Id) return;
+        _remoteCursors[pos.UserId] = pos;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandlePresenceChanged(List<SgCollaborativeUser> users)
+    {
+        // Cleanup cursors of users who left
+        var activeIds = users.Select(u => u.Id).ToHashSet();
+        var toRemove = _remoteCursors.Keys.Where(id => !activeIds.Contains(id)).ToList();
+        foreach (var id in toRemove) _remoteCursors.Remove(id);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleMouseMove(MouseEventArgs e)
+    {
+        if (Provider == null) return;
+        
+        // Throttling to 50ms
+        if ((DateTime.UtcNow - _lastUpdate).TotalMilliseconds < 50) return;
+        
+        _lastUpdate = DateTime.UtcNow;
+        
+        var pos = new SgCursorPosition
+        {
+            UserId = _localUser.Id,
+            UserName = _localUser.Name,
+            Color = _localUser.Color,
+            X = e.OffsetX,
+            Y = e.OffsetY
+        };
+
+        await Provider.SendCursorUpdateAsync(pos);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        if (Provider != null)
+        {
+            Provider.OnCursorMoved -= HandleRemoteCursorMove;
+            Provider.OnPresenceChanged -= HandlePresenceChanged;
+        }
+        await base.OnDisposingAsync();
+    }
+}

@@ -1,0 +1,169 @@
+@namespace SuperUI.Components
+@using SuperUI.Models
+@using SuperUI.Services.Llm
+@inject SgWeatherService Weather
+@inject ILlmService Llm
+@inject IJSRuntime JS
+
+<div class="sgc-form-filler">
+    <div style="display: flex; align-items: center; gap: 12px;">
+        <SgVoiceInput OnResult="HandleVoiceResult" 
+                     Variant="SgButtonVariant.Primary" 
+                     StartText="Заполнить голосом" 
+                     OnError="HandleVoiceError" />
+        
+        @if (_isProcessing)
+        {
+            <div class="sgc-filler-status">
+                <span class="sgc-spinner"></span>
+                <span>@_statusText</span>
+            </div>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="sgc-filler-error">
+            <SgIcon Icon="@SgIcons.Activity" /> @_error
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-form-filler {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .sgc-filler-status {
+        font-size: 13px;
+        color: var(--sui-primary-color);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(var(--sui-primary-rgb), 0.1);
+        padding: 4px 12px;
+        border-radius: 20px;
+    }
+    .sgc-filler-error {
+        font-size: 12px;
+        color: var(--sui-danger-color);
+        padding: 4px 8px;
+    }
+    .sgc-spinner {
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(0,0,0,0.1);
+        border-top-color: var(--sui-primary-color);
+        border-radius: 50%;
+        animation: sgc-spin 0.6s linear infinite;
+    }
+    @@keyframes sgc-spin {
+        to { transform: rotate(360deg); }
+    }
+</style>
+
+@code {
+    private bool _isProcessing;
+    private string _statusText = "";
+    private string? _error;
+
+    [Parameter] public SgSmartFormMetadata? FormMetadata { get; set; }
+    [Parameter] public SgLlmConfig? LlmConfig { get; set; }
+    [Parameter] public string? LlmInstructions { get; set; }
+    [Parameter] public EventCallback<Dictionary<string, object?>> OnValuesExtracted { get; set; }
+    [Parameter] public EventCallback<string> OnTranscript { get; set; }
+
+    private void HandleVoiceError(string error)
+    {
+        _error = $"Ошибка микрофона: {error}";
+        StateHasChanged();
+    }
+
+    private async Task HandleVoiceResult(string text)
+    {
+        if (FormMetadata == null || string.IsNullOrWhiteSpace(text)) return;
+
+        _error = null;
+        _isProcessing = true;
+        _statusText = "Распознавание...";
+        await OnTranscript.InvokeAsync(text);
+        StateHasChanged();
+
+        try
+        {
+            _statusText = "Анализ данных...";
+            var extractedData = await ExtractDataAsync(text);
+            
+            if (extractedData != null && extractedData.Count > 0)
+            {
+                _statusText = "Заполнение формы...";
+                await OnValuesExtracted.InvokeAsync(extractedData);
+            }
+            else
+            {
+                _error = "Не удалось извлечь данные из речи. Попробуйте сказать четче.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка AI: {ex.Message}";
+        }
+        finally
+        {
+            _isProcessing = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task<Dictionary<string, object?>> ExtractDataAsync(string text)
+    {
+        var fieldsJson = System.Text.Json.JsonSerializer.Serialize(FormMetadata.Fields.Select(f => new { f.Key, f.Label, f.Type }));
+        
+        var systemPrompt = $@"You are a form data extractor. 
+Analyze the user's spoken text and extract values for the following form fields:
+{fieldsJson}
+
+{LlmInstructions}
+
+Return ONLY a valid JSON object where keys match the field 'Key' exactly.
+Values must match the field type:
+- SgSmartFieldType.Boolean (0): true/false
+- SgSmartFieldType.Number (2): numbers
+- SgSmartFieldType.Date (5): YYYY-MM-DD
+- Other: strings
+
+Text to analyze: ""{text}""";
+
+        var tcs = new TaskCompletionSource<string>();
+        Action<string> onComplete = (content) => tcs.TrySetResult(content);
+        Action<string> onError = (err) => tcs.TrySetException(new Exception(err));
+
+        Llm.OnChatComplete += onComplete;
+        Llm.OnError += onError;
+
+        try
+        {
+            if (LlmConfig != null)
+            {
+                await Llm.InitializeAsync(LlmConfig);
+            }
+
+            await Llm.ChatAsync(systemPrompt, new SgLlmPromptOptions { Stream = false });
+            var response = await tcs.Task;
+
+            // Cleanup Markdown
+            if (response.Contains("```json")) response = response.Split("```json")[1].Split("```")[0];
+            else if (response.Contains("```")) response = response.Split("```")[1].Split("```")[0];
+            response = response.Trim();
+
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object?>>(response) 
+                   ?? new Dictionary<string, object?>();
+        }
+        finally
+        {
+            Llm.OnChatComplete -= onComplete;
+            Llm.OnError -= onError;
+        }
+    }
+}

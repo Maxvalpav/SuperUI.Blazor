@@ -783,6 +783,10 @@
                                 <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                             </svg>
                         </button>
+                        <div class="ddb-plan-check" style="margin-left:8px; display:flex; align-items:center; gap:6px; font-size:12px; color:var(--sui-fg-muted);">
+                            <input type="checkbox" id="chkPlan" @bind="_showPlan" />
+                            <label for="chkPlan" style="cursor:pointer">Показать план</label>
+                        </div>
                     </div>
                 </div>
                 <textarea class="ddb-editor"
@@ -832,6 +836,38 @@
                     </SgDataGrid>
                 </div>
             }
+
+            @* ── Explain Plan ────────────────────────────────────────────── *@
+            @if (_showPlan && !string.IsNullOrEmpty(_planText))
+            {
+                <div class="ddb-plan-card" style="margin-top:20px; border:1px solid var(--sui-border-color); border-radius:12px; overflow:hidden;">
+                    <div class="ddb-plan-head" style="padding:10px 16px; background:var(--sui-bg-secondary); border-bottom:1px solid var(--sui-border-color); display:flex; justify-content:space-between; align-items:center;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+                            </svg>
+                            <span style="font-size:12px; font-weight:600">План выполнения (EXPLAIN ANALYZE)</span>
+                        </div>
+                        <div style="font-size:11px; color:var(--sui-fg-muted)">Heuristics: Columnar, Parquet, Bulk Insert</div>
+                    </div>
+                    <div class="ddb-plan-body" style="padding:16px; background:#0f0f0f; color:#4af626; font-family:'Fira Code','Cascadia Code','Consolas',monospace; font-size:12px; overflow-x:auto; white-space:pre; border-bottom: 1px solid #333; line-height: 1.4;">@_planText</div>
+                    <div class="ddb-plan-foot" style="padding:12px 16px; background:var(--sui-bg-secondary); border-top:1px solid var(--sui-border-color);">
+                        <div style="font-size:11px; font-weight:600; margin-bottom:8px; color:var(--sui-accent); display:flex; align-items:center; gap:6px;">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                            Анализ производительности DuckDB:
+                        </div>
+                        <ul style="font-size:11px; color:var(--sui-fg-muted); padding-left:16px; margin:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 24px;">
+                            <li><strong style="color:var(--sui-fg)">Wasm Memory:</strong> Браузер ограничивает DuckDB до 4ГБ RAM. Следите за размером джойнов.</li>
+                            <li><strong style="color:var(--sui-fg)">Threading:</strong> В Wasm по умолчанию используется 1 поток. Для мультипоточности нужны COOP/COEP заголовки.</li>
+                            <li><strong style="color:var(--sui-fg)">Vectorized Execution:</strong> Данные обрабатываются пачками (2048 строк). Это минимизирует накладные расходы.</li>
+                            <li><strong style="color:var(--sui-fg)">Columnar Scan:</strong> Используйте <code>SELECT a, b</code> вместо <code>*</code> для ускорения чтения.</li>
+                            <li><strong style="color:var(--sui-fg)">Filter Pushdown:</strong> DuckDB фильтрует данные прямо при чтении из Parquet/CSV.</li>
+                            <li><strong style="color:var(--sui-fg)">Join Order:</strong> Маленькие таблицы должны быть справа для построения Hash Table.</li>
+                        </ul>
+                    </div>
+                </div>
+            }
+            
             else if (_hasRun && _queryError is null)
             {
                 <div class="ddb-empty-result">
@@ -922,6 +958,9 @@
     private bool _hasRun;
     private long _elapsed;
     private int _genCount = 1000;
+
+    private bool _showPlan;
+    private string? _planText;
 
     private List<ColInfo> _columns = new();
     private List<Dictionary<string, object?>> _rows = new();
@@ -1270,6 +1309,7 @@
         _running = true;
         _queryError = null;
         _hasRun = false;
+        _planText = null;
         _columns.Clear();
         _rows.Clear();
         StateHasChanged();
@@ -1314,6 +1354,29 @@
                     .ToList();
 
                 _hasRun = true;
+
+                // Run EXPLAIN ANALYZE if requested
+                if (_showPlan && !_sql.Trim().ToUpper().StartsWith("EXPLAIN"))
+                {
+                    try
+                    {
+                        // Set output to show more details including physical plan
+                        await _module.InvokeVoidAsync("execute", "PRAGMA explain_output='all'");
+                        
+                        var explainResult = await _module.InvokeAsync<JsonElement>("query", $"EXPLAIN ANALYZE {_sql.Trim()}");
+                        if (explainResult.GetProperty("ok").GetBoolean())
+                        {
+                            var explainRows = explainResult.GetProperty("rows").EnumerateArray();
+                            if (explainRows.Any())
+                            {
+                                // Join all rows if multiple, DuckDB sometimes splits long plans
+                                _planText = string.Join("\n", explainRows.Select(r => r.EnumerateObject().First().Value.GetString()));
+                            }
+                        }
+                    }
+                    catch { /* ignore plan errors */ }
+                }
+
                 await RefreshSchemaAsync();
             }
             else

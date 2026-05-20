@@ -1,0 +1,45 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-presentation").Build()" style="@Style">
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <div style="font-weight: 600;">Трансляция (Presentation API)</div>
+        
+        <SgTextBox @bind-Value="PresentationUrl" Label="URL для трансляции" Placeholder="https://example.com/slide" />
+        
+        <div style="display: flex; gap: 8px;">
+            @if (!_isActive)
+            {
+                <SgButton Text="Начать трансляцию" OnClick="StartPresentationAsync" Variant="SgButtonVariant.Primary" FullWidth="true" />
+            }
+            else
+            {
+                <SgButton Text="Завершить" OnClick="TerminatePresentationAsync" Variant="SgButtonVariant.Danger" FullWidth="true" />
+            }
+        </div>
+        
+        <div style="font-size: 12px; color: var(--sui-fg-muted);">
+            Позволяет выводить контент на второй экран, проектор или Smart TV напрямую из браузера.
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string PresentationUrl { get; set; } = "/presentation-mode";
+    private bool _isActive;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task StartPresentationAsync()
+    {
+        _isActive = await SafeInvokeAsync<bool>("startPresentation", PresentationUrl);
+        StateHasChanged();
+    }
+
+    private async Task TerminatePresentationAsync()
+    {
+        await SafeInvokeAsync<bool>("terminatePresentation");
+        _isActive = false;
+        StateHasChanged();
+    }
+}

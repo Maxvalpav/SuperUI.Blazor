@@ -1,0 +1,71 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-serial-port").Build()" style="@Style">
+    <div style="display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+            <div style="font-weight: 600;">Последовательный порт (Serial)</div>
+            <div style="display: flex; gap: 8px;">
+                @if (!_isOpen)
+                {
+                    <SgButton Text="Выбрать порт" OnClick="RequestPortAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" />
+                    <SgButton Text="Открыть" OnClick="OpenPortAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" Disabled="@(!_hasPort)" />
+                }
+                else
+                {
+                    <SgButton Text="Закрыть" OnClick="ClosePortAsync" Variant="SgButtonVariant.Danger" Size="SgSize.Sm" />
+                }
+            </div>
+        </div>
+
+        @if (_isOpen)
+        {
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                <SgTextBox @bind-Value="_sendBuffer" Placeholder="Введите данные для отправки..." />
+                <SgButton Text="Отправить" OnClick="SendDataAsync" Variant="SgButtonVariant.Primary" FullWidth="true" />
+            </div>
+        }
+        else
+        {
+            <div style="font-size: 12px; color: var(--sui-fg-muted);">
+                Web Serial API позволяет взаимодействовать с микроконтроллерами (Arduino, ESP32) и другими устройствами через USB/COM.
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _hasPort;
+    private bool _isOpen;
+    private string _sendBuffer = "";
+    private int _baudRate = 9600;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task RequestPortAsync()
+    {
+        _hasPort = await SafeInvokeAsync<bool>("requestSerialPort");
+        StateHasChanged();
+    }
+
+    private async Task OpenPortAsync()
+    {
+        _isOpen = await SafeInvokeAsync<bool>("openSerialPort", new { baudRate = _baudRate });
+        StateHasChanged();
+    }
+
+    private async Task SendDataAsync()
+    {
+        if (string.IsNullOrEmpty(_sendBuffer)) return;
+        await SafeInvokeAsync<bool>("writeSerial", _sendBuffer);
+        _sendBuffer = "";
+        StateHasChanged();
+    }
+
+    private async Task ClosePortAsync()
+    {
+        await SafeInvokeAsync<bool>("closeSerialPort");
+        _isOpen = false;
+        StateHasChanged();
+    }
+}

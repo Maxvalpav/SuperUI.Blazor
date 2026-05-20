@@ -1,0 +1,100 @@
+@page "/micro-frontend-app"
+@using SuperUI.Components
+
+<PageTitle>Micro Frontend Application - SUI</PageTitle>
+
+<SgCard Title="Микрофронтенд-приложение"
+        Subtitle="Демонстрация сборки приложения из независимых модулей (Blazor Custom Elements и JS модули).">
+
+    <div style="margin-top: 32px;">
+        <div style="display: grid; grid-template-columns: 250px 1fr; gap: 24px;">
+            
+            @* Sidebar / Navigation *@
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <SgCard Title="Модули">
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <SgButton Text="Dashboard" 
+                                  Variant="@(_activeModule == "dashboard" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)" 
+                                  OnClick="@(() => _activeModule = "dashboard")" 
+                                  Style="justify-content: flex-start" />
+                        <SgButton Text="Analytics" 
+                                  Variant="@(_activeModule == "analytics" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)" 
+                                  OnClick="@(() => _activeModule = "analytics")"
+                                  Style="justify-content: flex-start" />
+                        <SgButton Text="User Profile" 
+                                  Variant="@(_activeModule == "profile" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)" 
+                                  OnClick="@(() => _activeModule = "profile")"
+                                  Style="justify-content: flex-start" />
+                    </div>
+                </SgCard>
+
+                <SgAlert Variant="SgAlertVariant.Info">
+                    <div style="font-size: 12px;">
+                        Эти модули могут быть написаны на разных фреймворках (React, Vue, Blazor) и загружаются динамически.
+                    </div>
+                </SgAlert>
+            </div>
+
+            @* Main Content Area *@
+            <div style="background: var(--sui-bg-secondary); padding: 32px; border-radius: 16px; border: 1px solid var(--sui-border-color); min-height: 500px;">
+                
+                @if (_activeModule == "dashboard")
+                {
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                        @* Blazor component as Micro Frontend *@
+                        <SgMicroFrontend Source="web-component" 
+                                        ComponentType="sg-mfe-widget" 
+                                        Parameters="@(new { Title = "Продажи", Description = "Данные о продажах за текущий квартал.", Status = "Active" })">
+                            <FallbackContent>
+                                <div style="padding: 20px; text-align: center;"><SgSpinner /></div>
+                            </FallbackContent>
+                        </SgMicroFrontend>
+
+                        <SgMicroFrontend Source="web-component" 
+                                        ComponentType="sg-mfe-widget" 
+                                        Parameters="@(new { Title = "Пользователи", Description = "Активность пользователей в реальном времени.", Status = "Active" })">
+                            <FallbackContent>
+                                <div style="padding: 20px; text-align: center;"><SgSpinner /></div>
+                            </FallbackContent>
+                        </SgMicroFrontend>
+
+                        @* JS Real Micro Frontend (Chart.js) *@
+                        <div style="grid-column: span 2">
+                            <SgMicroFrontend Source="./_content/SuperUI/mfe/revenue-chart.js" 
+                                            ComponentType="RevenueChart"
+                                            Parameters="@(new { title = "Динамика выручки (MFE)", color = "#4facfe" })">
+                                <FallbackContent>
+                                    <div style="padding: 40px; text-align: center; color: var(--sui-fg-muted);">
+                                        <SgSpinner Size="SgSize.Sm" /> Загрузка графиков...
+                                    </div>
+                                </FallbackContent>
+                            </SgMicroFrontend>
+                        </div>
+                    </div>
+                }
+                else if (_activeModule == "analytics")
+                {
+                    <SgMicroFrontend Source="./_content/SuperUI/mfe/analytics-module.js" 
+                                    ComponentType="AnalyticsDashboard"
+                                    Parameters="@(new { userCount = 15420 })">
+                        <FallbackContent>
+                            <SgLoader Title="Analytics" StatusText="Инициализация модуля..." />
+                        </FallbackContent>
+                    </SgMicroFrontend>
+                }
+                else if (_activeModule == "profile")
+                {
+                    <SgMicroFrontend Source="web-component" 
+                                    ComponentType="sg-mfe-widget" 
+                                    Parameters="@(new { Title = "Профиль", Description = "Настройки текущего пользователя.", Status = "System" })" />
+                }
+
+            </div>
+        </div>
+    </div>
+
+</SgCard>
+
+@code {
+    private string _activeModule = "dashboard";
+}

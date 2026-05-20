@@ -1,0 +1,74 @@
+@namespace SuperUI.Components
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-signature-pad").Build()" style="@Styles().AddStyle("width", Width).AddStyle("height", Height).Build()">
+    <canvas @ref="_canvasRef" width="@_canvasWidth" height="@_canvasHeight"></canvas>
+    <div class="sgc-signature-pad-actions">
+        <SgButton Title="Copy to Clipboard" Size="SgSize.Sm" OnClick="CopyToClipboardAsync" Variant="SgButtonVariant.Ghost">
+            <Icon><SgIcon Icon="@SgIcons.Copy" Size="14px" /></Icon>
+        </SgButton>
+        <SgButton Title="Download as PNG" Size="SgSize.Sm" OnClick="DownloadAsync" Variant="SgButtonVariant.Ghost">
+            <Icon><SgIcon Icon="@SgIcons.Download" Size="14px" /></Icon>
+        </SgButton>
+        <SgButton Text="Clear" Size="SgSize.Sm" OnClick="ClearAsync" Variant="SgButtonVariant.Ghost" />
+    </div>
+</div>
+
+<style>
+    .sgc-signature-pad {
+        border: 1px solid var(--sg-border, #d9d9d9);
+        border-radius: 4px;
+        background: #fff;
+        position: relative;
+    }
+    .sgc-signature-pad canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+    }
+    .sgc-signature-pad-actions {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+    }
+</style>
+
+@code {
+    private ElementReference _canvasRef;
+    private int _canvasWidth = 400;
+    private int _canvasHeight = 200;
+
+    [Parameter] public string Width { get; set; } = "400px";
+    [Parameter] public string Height { get; set; } = "200px";
+    [Parameter] public string PenColor { get; set; } = "#000";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-signature-pad.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("init", _canvasRef, SelfRef, PenColor);
+    }
+
+    public async Task ClearAsync()
+    {
+        await SafeInvokeVoidAsync("clear", _canvasRef);
+    }
+
+    public async Task<string> GetImageAsync()
+    {
+        return await SafeInvokeAsync<string>("getDataUrl", _canvasRef) ?? "";
+    }
+
+    public async Task DownloadAsync()
+    {
+        await SafeInvokeVoidAsync("download", _canvasRef, "signature.png");
+    }
+
+    public async Task<bool> CopyToClipboardAsync()
+    {
+        return await SafeInvokeAsync<bool>("copyToClipboard", _canvasRef);
+    }
+}

@@ -1,0 +1,58 @@
+@namespace SuperUI.Components
+@inherits SgComponentBase
+
+@if (_visible)
+{
+    <span class="@Css("sgc-tag").AddClass(ColorClass).Build()"
+          style="@Styles().AddStyle("background-color", Color, _isHexColor).Build()"
+          @attributes="AttributesWithoutClassAndStyle">
+        @ChildContent
+        @if (Closable)
+        {
+            <span class="sgc-tag-close" @onclick="HandleCloseAsync" role="button" aria-label="close">
+                <SgIcon Icon="@SgIcons.X" Size="10px" />
+            </span>
+        }
+    </span>
+}
+
+@code {
+    /// <summary>
+    /// Gets or sets the tag content.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the tag color. Can be a preset name (success, processing, error, warning) or a hex color.
+    /// </summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the tag is closable.
+    /// </summary>
+    [Parameter] public bool Closable { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the tag is closed.
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private bool _visible = true;
+    private bool _isHexColor => Color?.StartsWith("#") == true;
+
+    private string ColorClass => Color switch
+    {
+        "success" => "sgc-tag-success",
+        "processing" => "sgc-tag-processing",
+        "error" => "sgc-tag-error",
+        "warning" => "sgc-tag-warning",
+        _ => ""
+    };
+
+    private async Task HandleCloseAsync()
+    {
+        _visible = false;
+        if (OnClose.HasDelegate)
+            await OnClose.InvokeAsync();
+    }
+}

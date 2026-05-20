@@ -1,0 +1,41 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-virtual-keyboard").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <SgTextBox TValue="string" Label="Нажмите здесь (для мобильных)" Placeholder="Клавиатура не перекроет контент" />
+        
+        @if (_rect != null)
+        {
+            <div style="margin-top: 12px; font-size: 11px; color: var(--sui-fg-muted);">
+                Геометрия клавиатуры: @_rect.Width x @_rect.Height
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private KeyboardRect? _rect;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("setupVirtualKeyboard", SelfRef);
+    }
+
+    [JSInvokable]
+    public void OnKeyboardGeometryChanged(KeyboardRect rect)
+    {
+        _rect = rect;
+        StateHasChanged();
+    }
+
+    public class KeyboardRect
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+}

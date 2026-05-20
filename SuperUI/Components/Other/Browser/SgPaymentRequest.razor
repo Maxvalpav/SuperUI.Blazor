@@ -1,0 +1,38 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-payment-request").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <SgButton Text="Тестовая оплата (1000 ₽)" OnClick="RequestPaymentAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+
+        @if (_result != null)
+        {
+            <div style="margin-top: 12px; padding: 10px; background: var(--sui-success-bg); border-radius: 6px; color: var(--sui-success-color); font-size: 13px;">
+                <b>Успешно!</b> Метод: @_result.MethodName
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private PaymentResult? _result;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task RequestPaymentAsync()
+    {
+        var details = new
+        {
+            total = new { label = "Total", amount = new { currency = "RUB", value = "1000.00" } },
+            displayItems = new[] { new { label = "SuperUI License", amount = new { currency = "RUB", value = "1000.00" } } }
+        };
+
+        _result = await SafeInvokeAsync<PaymentResult>("requestPayment", details, new { });
+        StateHasChanged();
+    }
+
+    public class PaymentResult
+    {
+        public string MethodName { get; set; } = "";
+    }
+}

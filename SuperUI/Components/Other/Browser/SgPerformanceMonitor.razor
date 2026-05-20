@@ -1,0 +1,71 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-perf-monitor").Build()" style="@Style">
+    <div style="padding: 12px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color); font-family: monospace; font-size: 12px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+            <span>Performance:</span>
+            <span style="color: var(--sui-success-color); font-weight: bold;">@_fps FPS</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+            <span>Memory JS:</span>
+            <span style="color: var(--sui-primary-color)">@_memoryUsed MB</span>
+        </div>
+        <div style="width: 100%; height: 4px; background: var(--sui-border-color); border-radius: 2px; overflow: hidden;">
+            <div style="width: @(_memoryPercent)%; height: 100%; background: var(--sui-primary-color); transition: width 0.3s;"></div>
+        </div>
+        <div style="display: flex; gap: 12px; margin-top: 8px; color: var(--sui-fg-muted);">
+            <span>Heap: @_memoryLimit MB</span>
+        </div>
+    </div>
+</div>
+
+@code {
+    private int _fps = 0;
+    private string _memoryUsed = "0";
+    private string _memoryLimit = "0";
+    private double _memoryPercent = 0;
+    private System.Threading.Timer? _timer;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _timer = new System.Threading.Timer(async _ => await UpdateMetricsAsync(), null, 0, 1000);
+    }
+
+    private async Task UpdateMetricsAsync()
+    {
+        var metrics = await SafeInvokeAsync<PerfMetrics>("getPerformanceMetrics");
+        if (metrics != null)
+        {
+            _fps = metrics.Fps;
+            if (metrics.Memory != null)
+            {
+                _memoryUsed = (metrics.Memory.UsedJSHeapSize / 1024 / 1024).ToString("F1");
+                _memoryLimit = (metrics.Memory.JsHeapSizeLimit / 1024 / 1024).ToString("F0");
+                _memoryPercent = (double)metrics.Memory.UsedJSHeapSize / metrics.Memory.JsHeapSizeLimit * 100;
+            }
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        _timer?.Dispose();
+        await base.DisposeAsync();
+    }
+
+    public class PerfMetrics
+    {
+        public int Fps { get; set; }
+        public MemoryInfo? Memory { get; set; }
+    }
+
+    public class MemoryInfo
+    {
+        public long UsedJSHeapSize { get; set; }
+        public long TotalJSHeapSize { get; set; }
+        public long JsHeapSizeLimit { get; set; }
+    }
+}

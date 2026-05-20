@@ -1,0 +1,43 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-file-system").Build()" style="@Style">
+    <div style="display: flex; gap: 12px;">
+        <SgButton Text="Открыть файл" OnClick="OpenFileAsync">
+            <Icon><SgIcon Icon="@SgIcons.Activity" /></Icon>
+        </SgButton>
+        <SgButton Text="Сохранить файл" OnClick="SaveFileAsync" Variant="SgButtonVariant.Primary" Disabled="@(string.IsNullOrEmpty(Content))" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Content { get; set; }
+    [Parameter] public EventCallback<string> ContentChanged { get; set; }
+    [Parameter] public string DefaultFileName { get; set; } = "document.txt";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task OpenFileAsync()
+    {
+        var file = await SafeInvokeAsync<FileData>("openFile");
+        if (file != null)
+        {
+            Content = file.Content;
+            await ContentChanged.InvokeAsync(file.Content);
+        }
+    }
+
+    private async Task SaveFileAsync()
+    {
+        if (string.IsNullOrEmpty(Content)) return;
+        await SafeInvokeAsync<bool>("saveFile", Content, DefaultFileName, "text/plain");
+    }
+
+    public class FileData
+    {
+        public string Name { get; set; } = "";
+        public long Size { get; set; }
+        public string Type { get; set; } = "";
+        public string Content { get; set; } = "";
+    }
+}

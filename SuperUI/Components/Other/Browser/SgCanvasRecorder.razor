@@ -1,0 +1,56 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-canvas-recorder").Build()" style="@Style">
+    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        @if (!_isRecording)
+        {
+            <SgButton Text="Записать Canvas" OnClick="StartRecordingAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+        }
+        else
+        {
+            <SgButton Text="Остановить запись" OnClick="StopRecordingAsync" Variant="SgButtonVariant.Danger" Size="SgSize.Sm" />
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_videoUrl))
+    {
+        <div style="margin-top: 12px; padding: 12px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+            <div style="font-size: 12px; margin-bottom: 8px; font-weight: 600;">Запись готова:</div>
+            <video src="@_videoUrl" controls style="width: 100%; border-radius: 4px;"></video>
+            <div style="margin-top: 8px;">
+                <SgButton Text="Скачать MP4" OnClick="DownloadAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" />
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _isRecording;
+    private string? _videoUrl;
+
+    [Parameter] public string CanvasId { get; set; } = "";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task StartRecordingAsync()
+    {
+        if (string.IsNullOrEmpty(CanvasId)) return;
+        _isRecording = await SafeInvokeAsync<bool>("startCanvasRecording", CanvasId);
+        _videoUrl = null;
+        StateHasChanged();
+    }
+
+    private async Task StopRecordingAsync()
+    {
+        _videoUrl = await SafeInvokeAsync<string>("stopCanvasRecording");
+        _isRecording = false;
+        StateHasChanged();
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (string.IsNullOrEmpty(_videoUrl)) return;
+        await JS.InvokeVoidAsync("eval", $"const a = document.createElement('a'); a.href = '{_videoUrl}'; a.download = 'canvas-record.webm'; a.click();");
+    }
+}

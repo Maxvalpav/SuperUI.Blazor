@@ -1,0 +1,43 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-audio-visualizer").Build()" style="@Style">
+    <div style="position: relative; width: 100%; height: @(Height)px; background: #000; border-radius: 8px; overflow: hidden;">
+        <canvas id="@GetCanvasId()" width="800" height="@Height" style="width: 100%; height: 100%; display: block;"></canvas>
+        
+        @if (!_started)
+        {
+            <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,0.6);">
+                <SgButton Text="Включить визуализатор" OnClick="StartAsync" Variant="SgButtonVariant.Primary">
+                    <Icon>
+                        <SgIcon Icon="@SgIcons.Volume2" />
+                    </Icon>
+                </SgButton>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string? _internalId;
+    private bool _started;
+
+    [Parameter] public int Height { get; set; } = 100;
+    [Parameter] public string? CanvasId { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private string GetCanvasId() => CanvasId ?? (_internalId ??= "c-" + Guid.NewGuid().ToString("N")[..8]);
+
+    private async Task StartAsync()
+    {
+        _started = await SafeInvokeAsync<bool>("startAudioVisualizer", GetCanvasId());
+        StateHasChanged();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await SafeInvokeVoidAsync("stopAudioVisualizer");
+        await base.DisposeAsync();
+    }
+}

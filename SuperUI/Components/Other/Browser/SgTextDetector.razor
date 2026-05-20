@@ -1,0 +1,86 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-text-detector").Build()" style="@Style">
+    @if (!_isSupported)
+    {
+        <SgAlert Variant="SgAlertVariant.Warn" Title="API не поддерживается">
+            Text Detector API не включен в вашем браузере. Для Chrome/Edge: включите флаг <code>#enable-experimental-web-platform-features</code>.
+        </SgAlert>
+    }
+
+    <div style="position: relative; width: 100%; max-width: 500px; border-radius: 12px; overflow: hidden; background: #f0f0f0; margin-top: 12px;">
+        <img id="@_imgId" src="@ImageUrl" crossorigin="anonymous" style="width: 100%; display: block;" @onload="DetectAsync" />
+        
+        @if (_texts != null)
+        {
+            @foreach (var item in _texts)
+            {
+                <div style="position: absolute; 
+                            left: @(item.BoundingBox.X)px; 
+                            top: @(item.BoundingBox.Y)px; 
+                            width: @(item.BoundingBox.Width)px; 
+                            height: @(item.BoundingBox.Height)px; 
+                            border: 2px solid #ff00ff; 
+                            background: rgba(255,0,255,0.1);
+                            pointer-events: none;">
+                    <span style="position: absolute; top: -20px; left: 0; background: #ff00ff; color: #fff; font-size: 10px; padding: 2px 4px; white-space: nowrap;">
+                        @item.RawValue
+                    </span>
+                </div>
+            }
+        }
+    </div>
+    
+    <div style="margin-top: 12px;">
+        <SgButton Text="Распознать текст" OnClick="DetectAsync" Variant="SgButtonVariant.Primary" Disabled="!_isSupported" />
+        
+        @if (_texts != null && _texts.Any())
+        {
+            <div style="margin-top: 12px; max-height: 150px; overflow-y: auto; padding: 12px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+                <div style="font-weight: 600; font-size: 12px; margin-bottom: 8px; color: var(--sui-primary-color);">РЕЗУЛЬТАТ OCR:</div>
+                @foreach (var item in _texts)
+                {
+                    <div style="font-size: 13px; margin-bottom: 4px; font-family: monospace;">@item.RawValue</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private readonly string _imgId = "img-" + Guid.NewGuid().ToString("N")[..8];
+    private List<TextDetectionResult>? _texts;
+    private bool _isSupported = true;
+
+    [Parameter] public string ImageUrl { get; set; } = "https://raw.githubusercontent.com/otiai10/gosseract/master/test/data/001-pica.png";
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _isSupported = await SafeInvokeAsync<bool>("checkApiSupport", "TextDetector");
+        StateHasChanged();
+    }
+
+    private async Task DetectAsync()
+    {
+        if (!_isSupported) return;
+        _texts = await SafeInvokeAsync<List<TextDetectionResult>>("detectShapes", _imgId, "text");
+        StateHasChanged();
+    }
+
+    public class TextDetectionResult
+    {
+        public string RawValue { get; set; } = "";
+        public Box BoundingBox { get; set; } = new();
+    }
+
+    public class Box
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+}

@@ -1,0 +1,38 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-file-handler").Build()" style="@Style">
+    @if (_lastLaunchedFile != null)
+    {
+        <SgAlert Variant="SgAlertVariant.Success" Title="Файл открыт из ОС" Closable="true" OnClose="@(() => _lastLaunchedFile = null)">
+            <div><b>Имя:</b> @_lastLaunchedFile.Name</div>
+            <div style="margin-top: 8px; font-family: monospace; font-size: 12px; max-height: 100px; overflow-y: auto;">
+                @_lastLaunchedFile.Content
+            </div>
+        </SgAlert>
+    }
+</div>
+
+@code {
+    private LaunchedFile? _lastLaunchedFile;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("checkFileLaunch", SelfRef);
+    }
+
+    [JSInvokable]
+    public void OnFileLaunched(LaunchedFile file)
+    {
+        _lastLaunchedFile = file;
+        StateHasChanged();
+    }
+
+    public class LaunchedFile
+    {
+        public string Name { get; set; } = "";
+        public string Content { get; set; } = "";
+    }
+}

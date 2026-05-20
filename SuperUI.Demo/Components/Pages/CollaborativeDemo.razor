@@ -1,0 +1,110 @@
+@page "/collaborative-demo"
+@using SuperUI.Components
+@using SuperUI.Abstractions.Collaboration
+
+<PageTitle>Collaboration - SUI</PageTitle>
+
+<SgCard Title="SgCollaborative - Совместная работа"
+        Subtitle="Компонент для отображения курсоров других пользователей в реальном времени.">
+
+    <div style="margin-top: 24px; padding: 16px; border: 1px dashed var(--sui-border-color); border-radius: 8px;">
+        <p>Перемещайте мышь внутри области ниже, чтобы увидеть, как это работает (имитация удаленных пользователей).</p>
+        
+        <SgCollaborative Provider="_mockProvider">
+            <div style="height: 400px; background: white; border: 1px solid var(--sui-border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+                <div style="text-align: center;">
+                    <SgIcon Icon="@SgIcons.Monitor" Size="48px" />
+                    <h3 style="margin-top: 16px;">Рабочая область</h3>
+                    <p style="color: var(--sui-text-secondary);">Здесь могут быть ваши компоненты, графики или редакторы</p>
+                </div>
+            </div>
+        </SgCollaborative>
+    </div>
+
+    <div style="margin-top: 24px;">
+        <SgButton Text="Добавить случайного пользователя" OnClick="AddRandomUser" />
+        <SgButton Text="Очистить" OnClick="ClearUsers" />
+    </div>
+
+</SgCard>
+
+@code {
+    private MockCollaborationProvider _mockProvider = new();
+
+    private void AddRandomUser()
+    {
+        var names = new[] { "Alice", "Bob", "Charlie", "David", "Eve" };
+        var colors = new[] { "#ff4d4f", "#722ed1", "#1890ff", "#52c41a", "#faad14" };
+        var random = new Random();
+        
+        var id = Guid.NewGuid().ToString();
+        var name = names[random.Next(names.Length)];
+        var color = colors[random.Next(colors.Length)];
+        
+        _mockProvider.SimulateUser(id, name, color);
+    }
+
+    private void ClearUsers()
+    {
+        _mockProvider.Clear();
+    }
+
+    public class MockCollaborationProvider : ISgCollaborationProvider
+    {
+        public string RoomId => "demo-room";
+        public event Action<SgCursorPosition>? OnCursorMoved;
+        public event Action<List<SgCollaborativeUser>>? OnPresenceChanged;
+        public event Action<SgComponentActivity>? OnActivityReceived;
+
+        private Dictionary<string, SgCollaborativeUser> _users = new();
+        private Dictionary<string, SgCursorPosition> _cursors = new();
+
+        public Task ConnectAsync(string roomId, SgCollaborativeUser localUser) => Task.CompletedTask;
+        public Task SendCursorUpdateAsync(SgCursorPosition cursor) => Task.CompletedTask;
+        public Task SendComponentActivityAsync(SgComponentActivity activity) => Task.CompletedTask;
+
+        public void SimulateUser(string id, string name, string color)
+        {
+            var user = new SgCollaborativeUser { Id = id, Name = name, Color = color };
+            var cursor = new SgCursorPosition 
+            { 
+                UserId = id, 
+                UserName = name, 
+                Color = color,
+                X = 100,
+                Y = 100
+            };
+            
+            _users[id] = user;
+            _cursors[id] = cursor;
+            
+            OnPresenceChanged?.Invoke(_users.Values.ToList());
+            OnCursorMoved?.Invoke(cursor);
+            
+            _ = Task.Run(async () => {
+                var rnd = new Random();
+                for(int i = 0; i < 50; i++)
+                {
+                    if (!_cursors.ContainsKey(id)) break;
+                    
+                    cursor.X += rnd.Next(-20, 21);
+                    cursor.Y += rnd.Next(-20, 21);
+                    cursor.X = Math.Clamp(cursor.X, 0, 800);
+                    cursor.Y = Math.Clamp(cursor.Y, 0, 400);
+                    
+                    OnCursorMoved?.Invoke(cursor);
+                    await Task.Delay(100);
+                }
+            });
+        }
+
+        public void Clear()
+        {
+            _users.Clear();
+            _cursors.Clear();
+            OnPresenceChanged?.Invoke(new List<SgCollaborativeUser>());
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+}

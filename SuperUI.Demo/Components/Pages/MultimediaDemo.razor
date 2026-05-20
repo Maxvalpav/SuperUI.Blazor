@@ -1,0 +1,106 @@
+@page "/multimedia-demo"
+@using SuperUI.Components
+
+<PageTitle>Multimedia Components - SUI</PageTitle>
+
+<SgCard Title="Мультимедийные компоненты"
+        Subtitle="Демонстрация работы с камерой, фильтрами и синтезом речи прямо в браузере.">
+
+    <div style="margin-top: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px;">
+        
+        @* Webcam Section *@
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <SgCard Title="SgWebCam">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgWebCam @ref="_webcam" 
+                              OnSnapshot="HandleSnapshot" 
+                              Grayscale="_gray" 
+                              Sepia="_sepia" 
+                              Brightness="_bright" 
+                              Contrast="_contrast" />
+                    
+                    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; display: flex; flex-direction: column; gap: 12px;">
+                        <div style="font-weight: 600; font-size: 13px;">Фильтры реального времени</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                            <SgTextBox TValue="double" @bind-Value="_gray" Label="Grayscale" Type="number" />
+                            <SgTextBox TValue="double" @bind-Value="_sepia" Label="Sepia" Type="number" />
+                            <SgTextBox TValue="double" @bind-Value="_bright" Label="Brightness" Type="number" />
+                            <SgTextBox TValue="double" @bind-Value="_contrast" Label="Contrast" Type="number" />
+                        </div>
+                    </div>
+                </div>
+            </SgCard>
+
+            @if (_snapshots.Any())
+            {
+                <SgCard Title="Галерея снимков">
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+                        @foreach (var img in _snapshots)
+                        {
+                            <img src="@img" style="width: 80px; height: 60px; border-radius: 4px; border: 1px solid var(--sui-border-color); object-fit: cover; cursor: pointer;" @onclick="@(() => _selectedImg = img)" />
+                        }
+                    </div>
+                </SgCard>
+            }
+        </div>
+
+        @* TTS Section *@
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+            <SgCard Title="SgSpeechSynthesizer">
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <SgTextBox TValue="string" @bind-Value="_ttsText" Label="Текст для озвучки" Multiline="true" Rows="4" />
+                    
+                    <div style="display: flex; align-items: center; gap: 16px;">
+                        <SgSpeechSynthesizer Text="@_ttsText" Variant="SgButtonVariant.Primary" Pitch="_pitch" Rate="_rate" />
+                        <div style="font-size: 12px; color: var(--sui-fg-muted);">Использует нативный Web Speech API</div>
+                    </div>
+
+                    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <SgTextBox TValue="double" @bind-Value="_pitch" Label="Pitch (Тон)" Type="number" />
+                        <SgTextBox TValue="double" @bind-Value="_rate" Label="Rate (Скорость)" Type="number" />
+                    </div>
+                </div>
+            </SgCard>
+
+            <SgAlert Variant="SgAlertVariant.Info" Title="Безопасность">
+                Все мультимедийные функции запрашивают разрешение у пользователя через стандартные механизмы безопасности браузера. Данные не передаются на сервер без вашего участия.
+            </SgAlert>
+        </div>
+    </div>
+
+</SgCard>
+
+@if (!string.IsNullOrEmpty(_selectedImg))
+{
+    <SgModal Visible="true" Title="Просмотр снимка" OnClose="@(() => _selectedImg = null)">
+        <ChildContent>
+            <div style="text-align: center;">
+                <img src="@_selectedImg" style="max-width: 100%; border-radius: 8px;" />
+            </div>
+        </ChildContent>
+        <FooterContent>
+            <SgButton Text="Закрыть" OnClick="@(() => _selectedImg = null)" />
+        </FooterContent>
+    </SgModal>
+}
+
+@code {
+    private SgWebCam? _webcam;
+    private List<string> _snapshots = new();
+    private string? _selectedImg;
+
+    private double _gray = 0;
+    private double _sepia = 0;
+    private double _bright = 1.0;
+    private double _contrast = 1.0;
+
+    private string _ttsText = "Привет! Я новый компонент синтеза речи в библиотеке SuperUI. Я могу озвучивать любой текст на разных языках.";
+    private double _pitch = 1.0;
+    private double _rate = 1.0;
+
+    private void HandleSnapshot(string dataUrl)
+    {
+        _snapshots.Insert(0, dataUrl);
+        StateHasChanged();
+    }
+}

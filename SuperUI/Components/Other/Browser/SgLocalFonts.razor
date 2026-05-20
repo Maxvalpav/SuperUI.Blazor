@@ -1,0 +1,45 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-local-fonts").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <SgButton Text="Запросить список шрифтов" OnClick="GetFontsAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+
+        @if (_fonts != null && _fonts.Any())
+        {
+            <div style="margin-top: 16px; max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+                @foreach (var font in _fonts.Take(50))
+                {
+                    <div style="padding: 8px; background: var(--sui-bg-primary); border-radius: 6px; border: 1px solid var(--sui-border-color);">
+                        <div style="font-family: @font.Family; font-size: 16px;">Пример: @font.FullName</div>
+                        <div style="font-size: 11px; color: var(--sui-fg-muted);">@font.PostscriptName (@font.Style)</div>
+                    </div>
+                }
+                @if (_fonts.Count > 50)
+                {
+                    <div style="font-size: 11px; text-align: center; color: var(--sui-fg-muted);">...и еще @(_fonts.Count - 50) шрифтов</div>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<FontResult>? _fonts;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task GetFontsAsync()
+    {
+        _fonts = await SafeInvokeAsync<List<FontResult>>("getLocalFonts");
+        StateHasChanged();
+    }
+
+    public class FontResult
+    {
+        public string Family { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string PostscriptName { get; set; } = "";
+        public string Style { get; set; } = "";
+    }
+}

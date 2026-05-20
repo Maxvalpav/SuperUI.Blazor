@@ -1,0 +1,74 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-web-nfc").Build()" style="@Style">
+    <div style="padding: 16px; background: var(--sui-bg-secondary); border-radius: 12px; border: 1px solid var(--sui-border-color);">
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+            <SgButton Text="Начать сканирование" OnClick="StartScanAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+            <SgButton Text="Записать на метку" OnClick="WriteAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" />
+        </div>
+
+        @if (_isScanning)
+        {
+            <SgAlert Variant="SgAlertVariant.Info" Title="Сканирование..." Style="margin-bottom: 12px;">
+                Поднесите NFC-метку к устройству.
+            </SgAlert>
+        }
+
+        @if (_lastRead != null)
+        {
+            <div style="padding: 12px; background: var(--sui-bg-primary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+                <div style="font-weight: 600; font-size: 13px; margin-bottom: 8px;">Данные метки:</div>
+                <div style="font-size: 12px;">
+                    <div><b>Serial:</b> @_lastRead.SerialNumber</div>
+                    @foreach (var record in _lastRead.Records)
+                    {
+                        <div style="margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--sui-border-color);">
+                            <div><b>Тип:</b> @record.RecordType</div>
+                            <div style="word-break: break-all;"><b>Данные:</b> @record.Data</div>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private bool _isScanning;
+    private NfcReadResult? _lastRead;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task StartScanAsync()
+    {
+        _isScanning = await SafeInvokeAsync<bool>("scanNfc", SelfRef);
+        StateHasChanged();
+    }
+
+    private async Task WriteAsync()
+    {
+        var message = "Hello from SuperUI!";
+        await SafeInvokeVoidAsync("writeNfc", message);
+    }
+
+    [JSInvokable]
+    public void OnNfcRead(NfcReadResult result)
+    {
+        _lastRead = result;
+        StateHasChanged();
+    }
+
+    public class NfcReadResult
+    {
+        public string SerialNumber { get; set; } = "";
+        public List<NfcRecord> Records { get; set; } = new();
+    }
+
+    public class NfcRecord
+    {
+        public string RecordType { get; set; } = "";
+        public string? MediaType { get; set; }
+        public string Data { get; set; } = "";
+    }
+}

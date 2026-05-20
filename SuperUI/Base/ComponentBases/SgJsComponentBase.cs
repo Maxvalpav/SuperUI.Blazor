@@ -244,7 +244,7 @@ public abstract class SgJsComponentBase : SgComponentBase, IAsyncDisposable
     // ── IAsyncDisposable ──────────────────────────────────────────────────────
 
     /// <inheritdoc/>
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
         if (_isDisposed) return;
         _isDisposed = true;

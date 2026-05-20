@@ -1,0 +1,56 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-wakelock").Build()" style="@Style">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--sui-bg-secondary); border-radius: 8px; border: 1px solid var(--sui-border-color);">
+        <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 14px;">Не выключать экран</div>
+            <div style="font-size: 12px; color: var(--sui-fg-muted);">Предотвращает переход устройства в спящий режим</div>
+        </div>
+        <SgSwitch Value="_isActive" ValueChanged="ToggleWakeLockAsync" />
+    </div>
+</div>
+
+@code {
+    private bool _isActive;
+    private IJSObjectReference? _wakeLock;
+
+    protected override string ModulePath => "./_content/SuperUI/superui-browser-features.js";
+
+    private async Task ToggleWakeLockAsync(bool value)
+    {
+        if (value)
+        {
+            try
+            {
+                _wakeLock = await SafeInvokeAsync<IJSObjectReference>("requestWakeLock");
+                _isActive = _wakeLock != null;
+            }
+            catch
+            {
+                _isActive = false;
+            }
+        }
+        else
+        {
+            if (_wakeLock != null)
+            {
+                await _wakeLock.InvokeVoidAsync("release");
+                await _wakeLock.DisposeAsync();
+                _wakeLock = null;
+            }
+            _isActive = false;
+        }
+        StateHasChanged();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_wakeLock != null)
+        {
+            await _wakeLock.InvokeVoidAsync("release");
+            await _wakeLock.DisposeAsync();
+        }
+        await base.DisposeAsync();
+    }
+}
