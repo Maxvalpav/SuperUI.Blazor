@@ -1,0 +1,190 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmToolPlayground — позволяет описать несколько JSON-schema tools и отправить
+   диалог. Поддерживает локальное "исполнение" встроенных утилит (echo / now /
+   js_eval) — пользователь может тестировать tool-calling без подключения настоящих
+   функций.
+*@
+
+<div class="sgc-llm-tools @CssClass" style="@Style">
+    <SgTextArea @bind-Value="_systemPrompt" Rows="2"
+                Placeholder="System prompt (опционально)" Label="System" />
+
+    <div class="sgc-tools-list">
+        @foreach (var (t, idx) in _tools.Select((v, i) => (v, i)))
+        {
+            <SgCard>
+                <div class="sgc-tools-row">
+                    <SgTextBox @bind-Value="t.Name" Placeholder="имя_функции" Label="Имя" />
+                    <SgTextBox @bind-Value="t.Description" Placeholder="что делает" Label="Описание" />
+                    <SgIconButton Icon="@SgIcons.Trash" Variant="SgButtonVariant.Ghost"
+                                  OnClick="@(() => _tools.RemoveAt(idx))" />
+                </div>
+                <SgTextArea @bind-Value="t.ParametersJsonSchema" Rows="4"
+                            Placeholder='{"type":"object","properties":{"x":{"type":"number"}},"required":["x"]}'
+                            Label="JSON Schema параметров" />
+            </SgCard>
+        }
+    </div>
+
+    <div class="sgc-tools-actions">
+        <SgButton Text="+ Tool" OnClick="AddTool" Variant="SgButtonVariant.Outlined" />
+        <SgButton Text="echo" OnClick="@(() => AddBuiltIn("echo", "Возвращает ввод как есть", "{\"type\":\"object\",\"properties\":{\"text\":{\"type\":\"string\"}},\"required\":[\"text\"]}"))"
+                  Variant="SgButtonVariant.Ghost" />
+        <SgButton Text="now" OnClick="@(() => AddBuiltIn("now", "Возвращает текущую дату/время", "{\"type\":\"object\",\"properties\":{}}"))"
+                  Variant="SgButtonVariant.Ghost" />
+        <SgButton Text="calc" OnClick="@(() => AddBuiltIn("calc", "Вычисляет арифметическое выражение", "{\"type\":\"object\",\"properties\":{\"expr\":{\"type\":\"string\"}},\"required\":[\"expr\"]}"))"
+                  Variant="SgButtonVariant.Ghost" />
+    </div>
+
+    <SgTextArea @bind-Value="_userMessage" Rows="3"
+                Placeholder="Сообщение пользователя..." Label="User" />
+
+    <div class="sgc-tools-actions">
+        <SgTextBox @bind-Value="_model" Placeholder="gpt-4o-mini" Label="Модель" />
+        <SgButton Text="Отправить" OnClick="RunAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (_transcript.Count > 0)
+    {
+        <SgCard>
+            <h4 style="margin-top:0">Диалог</h4>
+            @foreach (var step in _transcript)
+            {
+                <div class="sgc-tools-step">
+                    <SgBadge Variant="@(step.Role == "tool" ? SgBadgeVariant.Info :
+                                       step.Role == "assistant" ? SgBadgeVariant.Default :
+                                       SgBadgeVariant.Muted)">@step.Role</SgBadge>
+                    <pre>@step.Text</pre>
+                </div>
+            }
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-tools { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-tools-list { display: flex; flex-direction: column; gap: 8px; }
+    .sgc-tools-row { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; align-items: end; }
+    .sgc-tools-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .sgc-tools-step { display: flex; gap: 8px; align-items: start; margin: 6px 0; }
+    .sgc-tools-step pre { margin: 0; white-space: pre-wrap; word-break: break-word; flex: 1; font-family: inherit; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _systemPrompt = "Ты вежливый ассистент. Если можешь использовать функцию — используй её.";
+    private string _userMessage = "Сколько сейчас времени?";
+    private string _model = "";
+    private bool _busy;
+    private string _error = "";
+
+    private readonly List<SgLlmTool> _tools = new();
+    private readonly List<TranscriptStep> _transcript = new();
+
+    private record TranscriptStep(string Role, string Text);
+
+    private void AddTool() => _tools.Add(new SgLlmTool { Name = "my_func", ParametersJsonSchema = "{\"type\":\"object\",\"properties\":{}}" });
+
+    private void AddBuiltIn(string name, string description, string schema)
+    {
+        if (_tools.Any(t => t.Name == name)) return;
+        _tools.Add(new SgLlmTool { Name = name, Description = description, ParametersJsonSchema = schema });
+    }
+
+    private async Task RunAsync()
+    {
+        _busy = true; _error = ""; _transcript.Clear();
+        try
+        {
+            var messages = new List<SgLlmChatMsg>();
+            if (!string.IsNullOrWhiteSpace(_systemPrompt))
+                messages.Add(new() { Role = "system", Content = _systemPrompt });
+            messages.Add(new() { Role = "user", Content = _userMessage });
+            _transcript.Add(new("user", _userMessage));
+
+            for (var hop = 0; hop < 4; hop++)
+            {
+                var res = await LlmService.CompleteAsync(new SgLlmChatRequest
+                {
+                    Messages = messages,
+                    Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                    Tools = _tools.Where(t => !string.IsNullOrWhiteSpace(t.Name)).ToList()
+                });
+                if (!string.IsNullOrEmpty(res.Error)) { _error = res.Error; return; }
+
+                if (res.ToolCalls.Count > 0)
+                {
+                    messages.Add(new SgLlmChatMsg
+                    {
+                        Role = "assistant",
+                        Content = res.Content ?? "",
+                        ToolCalls = res.ToolCalls
+                    });
+                    foreach (var call in res.ToolCalls)
+                    {
+                        var output = await ExecuteToolLocal(call);
+                        _transcript.Add(new("assistant", $"→ call {call.Name}({call.ArgumentsJson})"));
+                        _transcript.Add(new("tool", output));
+                        messages.Add(new SgLlmChatMsg
+                        {
+                            Role = "tool",
+                            Content = output,
+                            ToolCallId = call.Id,
+                            Name = call.Name
+                        });
+                    }
+                    continue;
+                }
+
+                _transcript.Add(new("assistant", res.Content ?? ""));
+                return;
+            }
+            _error = "Слишком много tool-call раундов (>4).";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static Task<string> ExecuteToolLocal(SgLlmToolCall call)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(string.IsNullOrEmpty(call.ArgumentsJson) ? "{}" : call.ArgumentsJson);
+            switch (call.Name)
+            {
+                case "echo":
+                    return Task.FromResult(doc.RootElement.TryGetProperty("text", out var t) ? (t.GetString() ?? "") : "");
+                case "now":
+                    return Task.FromResult(DateTime.Now.ToString("O"));
+                case "calc":
+                    var expr = doc.RootElement.TryGetProperty("expr", out var e) ? e.GetString() ?? "" : "";
+                    return Task.FromResult(EvalSimple(expr));
+                default:
+                    return Task.FromResult("(не реализовано локально — подключите свою функцию)");
+            }
+        }
+        catch (Exception ex) { return Task.FromResult($"ERROR: {ex.Message}"); }
+    }
+
+    private static string EvalSimple(string expr)
+    {
+        try
+        {
+            var dt = new System.Data.DataTable();
+            var r = dt.Compute(expr, "");
+            return r?.ToString() ?? "";
+        }
+        catch (Exception ex) { return $"ERROR: {ex.Message}"; }
+    }
+}

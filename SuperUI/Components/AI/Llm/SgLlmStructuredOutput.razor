@@ -1,0 +1,95 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmStructuredOutput — playground для structured outputs (json_schema).
+   Пользователь задаёт схему и запрос, получает JSON, прошедший валидацию схемы.
+*@
+
+<div class="sgc-llm-struct @CssClass" style="@Style">
+    <SgTextArea @bind-Value="_systemPrompt" Rows="2" Label="System"
+                Placeholder="Ответь объектом, соответствующим JSON schema." />
+
+    <SgTextArea @bind-Value="_userMessage" Rows="3" Label="User"
+                Placeholder="Извлеки имя, возраст и e-mail из: Иван 28 ivan@example.com" />
+
+    <SgTextArea @bind-Value="_schema" Rows="10" Label="JSON Schema (response_format.json_schema)" />
+
+    <div class="sgc-struct-actions">
+        <SgTextBox @bind-Value="_model" Placeholder="gpt-4o-mini" Label="Модель" />
+        <SgButton Text="Сгенерировать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@string.IsNullOrWhiteSpace(_schema)" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (!string.IsNullOrEmpty(_raw))
+    {
+        <SgCard>
+            <h4 style="margin:0 0 8px 0">Результат</h4>
+            <pre class="sgc-struct-pre">@_pretty</pre>
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-struct { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-struct-actions { display: flex; gap: 8px; align-items: end; }
+    .sgc-struct-pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: monospace; font-size: 0.85rem; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _systemPrompt = "Ты структурированный извлекатель данных. Верни ровно JSON по схеме.";
+    private string _userMessage = "Иван 28 ivan@example.com";
+    private string _schema = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""name"":  {""type"": ""string""},
+    ""age"":   {""type"": ""integer""},
+    ""email"": {""type"": ""string"", ""format"": ""email""}
+  },
+  ""required"": [""name"", ""age"", ""email""],
+  ""additionalProperties"": false
+}";
+    private string _model = "";
+    private bool _busy;
+    private string _error = "";
+    private string _raw = "";
+    private string _pretty = "";
+
+    private async Task RunAsync()
+    {
+        _busy = true; _error = ""; _raw = ""; _pretty = "";
+        try
+        {
+            var res = await LlmService.CompleteAsync(new SgLlmChatRequest
+            {
+                Messages = new()
+                {
+                    new() { Role = "system", Content = _systemPrompt },
+                    new() { Role = "user", Content = _userMessage }
+                },
+                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                ResponseFormat = "json_schema",
+                JsonSchema = _schema
+            });
+            if (!string.IsNullOrEmpty(res.Error)) { _error = res.Error; return; }
+            _raw = res.Content;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(_raw);
+                _pretty = System.Text.Json.JsonSerializer.Serialize(doc, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            }
+            catch { _pretty = _raw; }
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

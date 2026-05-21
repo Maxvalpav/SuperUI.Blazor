@@ -1,0 +1,100 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmProviderPicker — карточки провайдеров (включая бесплатные) с быстрой
+   подстановкой BaseUrl/ApiKey и ссылками на регистрацию ключа.
+*@
+
+<div class="sgc-llm-providers @CssClass" style="@Style">
+    <div class="sgc-llm-providers-filter">
+        <SgTextBox @bind-Value="_filter" Placeholder="Поиск..." />
+        <SgSwitch @bind-Value="_freeOnly" Label="Только бесплатные" />
+    </div>
+
+    <div class="sgc-llm-providers-grid">
+        @foreach (var p in Filtered())
+        {
+            <div class="sgc-llm-provider-card @(IsSelected(p) ? "selected" : "")"
+                 @onclick="@(() => SelectAsync(p))">
+                <div class="sgc-llm-provider-head">
+                    <strong>@p.Label</strong>
+                    @if (p.IsFree)
+                    {
+                        <SgBadge Variant="SgBadgeVariant.Success">FREE</SgBadge>
+                    }
+                    @if (!p.RequiresKey)
+                    {
+                        <SgBadge Variant="SgBadgeVariant.Info">no-key</SgBadge>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(p.Notes))
+                {
+                    <div class="sgc-llm-provider-notes">@p.Notes</div>
+                }
+                <div class="sgc-llm-provider-url" title="@p.BaseUrl">@p.BaseUrl</div>
+                <div class="sgc-llm-provider-links" @onclick:stopPropagation="true">
+                    @if (!string.IsNullOrEmpty(p.ApiKeyUrl))
+                    {
+                        <a href="@p.ApiKeyUrl" target="_blank" rel="noopener">🔑 ключ</a>
+                    }
+                    @if (!string.IsNullOrEmpty(p.DocsUrl))
+                    {
+                        <a href="@p.DocsUrl" target="_blank" rel="noopener">📄 docs</a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .sgc-llm-providers { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-llm-providers-filter { display: flex; gap: 12px; align-items: center; }
+    .sgc-llm-providers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+    .sgc-llm-provider-card { border: 1px solid var(--sg-border, #e5e7eb); border-radius: 8px; padding: 10px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: border-color .15s; }
+    .sgc-llm-provider-card:hover { border-color: var(--sg-color-primary, #0ea5e9); }
+    .sgc-llm-provider-card.selected { border-color: var(--sg-color-primary, #0ea5e9); background: rgba(14,165,233,0.06); }
+    .sgc-llm-provider-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .sgc-llm-provider-notes { font-size: 0.8rem; opacity: 0.85; }
+    .sgc-llm-provider-url { font-family: monospace; font-size: 0.75rem; opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sgc-llm-provider-links { display: flex; gap: 12px; font-size: 0.8rem; }
+    .sgc-llm-provider-links a { color: var(--sg-color-primary, #0ea5e9); text-decoration: none; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+    [Parameter] public SgLlmConfig? Config { get; set; }
+    [Parameter] public EventCallback<SgLlmConfig> ConfigChanged { get; set; }
+    [Parameter] public EventCallback<SgLlmProviderPreset> OnSelected { get; set; }
+
+    private string _filter = "";
+    private bool _freeOnly;
+
+    private IEnumerable<SgLlmProviderPreset> Filtered()
+    {
+        var all = LlmService.GetProviderPresets();
+        return all.Where(p =>
+            (!_freeOnly || p.IsFree) &&
+            (string.IsNullOrWhiteSpace(_filter) ||
+             p.Label.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
+             (p.Notes?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false)));
+    }
+
+    private bool IsSelected(SgLlmProviderPreset p) =>
+        Config != null && Config.Provider == p.Provider;
+
+    private async Task SelectAsync(SgLlmProviderPreset p)
+    {
+        if (Config != null)
+        {
+            Config.Provider = p.Provider;
+            if (!string.IsNullOrEmpty(p.BaseUrl)) Config.BaseUrl = p.BaseUrl;
+            if (!p.RequiresKey) Config.ApiKey = "";
+            if (ConfigChanged.HasDelegate) await ConfigChanged.InvokeAsync(Config);
+        }
+        if (OnSelected.HasDelegate) await OnSelected.InvokeAsync(p);
+    }
+}

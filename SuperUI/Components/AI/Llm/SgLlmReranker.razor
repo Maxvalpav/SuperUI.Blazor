@@ -1,0 +1,80 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmReranker — ранжирование документов по релевантности запросу.
+   Использует Cohere /v2/rerank, для других провайдеров — fallback на cos-similarity
+   эмбеддингов.
+*@
+
+<div class="sgc-llm-rerank @CssClass" style="@Style">
+    <SgTextBox @bind-Value="_query" Placeholder="Запрос пользователя..." Label="Запрос" />
+
+    <SgTextArea @bind-Value="_docs" Rows="8" Label="Документы (по одному на строку)" />
+
+    <div class="sgc-rerank-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="rerank-v3.5" Label="Модель (опц.)" />
+        <SgNumberInput TValue="int" @bind-Value="_topN" Min="0" Max="50" Label="Top N (0 = все)" />
+    </div>
+
+    <div class="sgc-rerank-actions">
+        <SgButton Text="Ранжировать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary"
+                  Disabled="@(string.IsNullOrWhiteSpace(_query) || string.IsNullOrWhiteSpace(_docs))" />
+    </div>
+
+    @if (_results.Count > 0)
+    {
+        <SgCard>
+            <h4 style="margin:0 0 8px 0">Результаты</h4>
+            @foreach (var (r, i) in _results.Select((x, idx) => (x, idx)))
+            {
+                <div class="sgc-rerank-row">
+                    <SgBadge>@(i + 1)</SgBadge>
+                    <SgBadge Variant="SgBadgeVariant.Info">score: @r.Score.ToString("F4")</SgBadge>
+                    <span>@r.Document</span>
+                </div>
+            }
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-rerank { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-rerank-controls { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+    .sgc-rerank-actions { display: flex; gap: 8px; }
+    .sgc-rerank-row { display: flex; gap: 8px; align-items: center; padding: 4px 0; border-bottom: 1px dashed var(--sg-border, #e5e7eb); }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _query = "";
+    private string _docs = "";
+    private string _model = "";
+    private int _topN;
+    private bool _busy;
+    private List<SgLlmRerankResult> _results = new();
+
+    private async Task RunAsync()
+    {
+        var lines = _docs.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+        if (lines.Count == 0) return;
+
+        _busy = true; _results.Clear();
+        try
+        {
+            _results = await LlmService.RerankAsync(new SgLlmRerankRequest
+            {
+                Query = _query,
+                Documents = lines,
+                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                TopN = _topN > 0 ? _topN : null
+            });
+        }
+        finally { _busy = false; }
+    }
+}

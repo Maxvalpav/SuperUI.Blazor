@@ -2,10 +2,10 @@
 @inject ISuperUILocalizer Localizer
 
 <div class="sg-rag-uploader @CssClass @(_isDragging ? "sg-rag-uploader-drag" : "")"
-     @ondragover:preventDefault
-     @ondragover="OnDragOver"
-     @ondragleave="OnDragLeave"
-     @ondrop:preventDefault
+     @ondragover:preventDefault="true"
+     @ondragover="@(_ => OnDragOver())"
+     @ondragleave="@(_ => OnDragLeave())"
+     @ondrop:preventDefault="true"
      @ondrop="OnDrop"
      @attributes="AdditionalAttributes">
 
@@ -41,6 +41,12 @@
     @* Ingest queue *@
     @if (_queue.Count > 0)
     {
+        <div class="sg-rag-queue-header">
+            <span>@Localizer.GetString("Rag_QueueCount", _queue.Count)</span>
+            <button type="button" class="sg-rag-clear-btn" @onclick="ClearQueue">
+                @Localizer["Rag_Clear"]
+            </button>
+        </div>
         <div class="sg-rag-queue">
             @foreach (var item in _queue)
             {
@@ -152,9 +158,27 @@
             await IngestFileAsync(file);
     }
 
+    private void ClearQueue()
+    {
+        _queue.Clear();
+        _error = null;
+        StateHasChanged();
+    }
+
     private async Task IngestFileAsync(IBrowserFile file)
     {
         if (_ragService is null) { _error = "RagService not available"; return; }
+
+        if (MaxFileSizeMb > 0 && file.Size > (long)MaxFileSizeMb * 1024 * 1024)
+        {
+            _queue.Add(new QueueItem
+            {
+                FileName = file.Name,
+                Error = Localizer.GetString("Rag_FileTooLarge", MaxFileSizeMb)
+            });
+            StateHasChanged();
+            return;
+        }
 
         var lang   = DetectLanguage(file.Name);
         var isCode = lang is not null;

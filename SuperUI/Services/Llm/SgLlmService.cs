@@ -984,6 +984,593 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         _ => ""
     };
 
+    // ============== FREE / ADDITIONAL PROVIDERS ==============
+
+    private static readonly IReadOnlyList<SgLlmProviderPreset> _presets = new List<SgLlmProviderPreset>
+    {
+        new() { Provider = SgLlmProvider.OpenAiCompatible, Label = "OpenAI", BaseUrl = "https://api.openai.com/v1",
+                ApiKeyUrl = "https://platform.openai.com/api-keys", DocsUrl = "https://platform.openai.com/docs", IsFree = false },
+        new() { Provider = SgLlmProvider.OpenRouter, Label = "OpenRouter", BaseUrl = "https://openrouter.ai/api/v1",
+                ApiKeyUrl = "https://openrouter.ai/keys", DocsUrl = "https://openrouter.ai/docs", IsFree = true,
+                Notes = "Free models available (suffix :free)." },
+        new() { Provider = SgLlmProvider.Ollama, Label = "Ollama (local)", BaseUrl = "http://localhost:11434",
+                DocsUrl = "https://ollama.com", IsFree = true, RequiresKey = false,
+                Notes = "Локальные модели, ключ не нужен." },
+        new() { Provider = SgLlmProvider.Anthropic, Label = "Anthropic", BaseUrl = "https://api.anthropic.com/v1",
+                ApiKeyUrl = "https://console.anthropic.com/settings/keys" },
+        new() { Provider = SgLlmProvider.Google, Label = "Google Gemini",
+                BaseUrl = "https://generativelanguage.googleapis.com/v1beta",
+                ApiKeyUrl = "https://aistudio.google.com/app/apikey", IsFree = true,
+                Notes = "AI Studio даёт бесплатную квоту." },
+        new() { Provider = SgLlmProvider.Mistral, Label = "Mistral AI", BaseUrl = "https://api.mistral.ai/v1",
+                ApiKeyUrl = "https://console.mistral.ai/api-keys", IsFree = true,
+                Notes = "На «Experiment» тарифе бесплатно." },
+        new() { Provider = SgLlmProvider.Groq, Label = "Groq", BaseUrl = "https://api.groq.com/openai/v1",
+                ApiKeyUrl = "https://console.groq.com/keys", IsFree = true,
+                Notes = "Очень быстрый инференс, free tier." },
+        new() { Provider = SgLlmProvider.DeepSeek, Label = "DeepSeek", BaseUrl = "https://api.deepseek.com",
+                ApiKeyUrl = "https://platform.deepseek.com/api_keys" },
+        new() { Provider = SgLlmProvider.XAi, Label = "xAI Grok", BaseUrl = "https://api.x.ai/v1",
+                ApiKeyUrl = "https://console.x.ai/" },
+        new() { Provider = SgLlmProvider.Cohere, Label = "Cohere",
+                BaseUrl = "https://api.cohere.ai/compatibility/v1",
+                ApiKeyUrl = "https://dashboard.cohere.com/api-keys", IsFree = true,
+                Notes = "Trial-ключи бесплатны." },
+        new() { Provider = SgLlmProvider.Perplexity, Label = "Perplexity", BaseUrl = "https://api.perplexity.ai",
+                ApiKeyUrl = "https://www.perplexity.ai/settings/api" },
+        new() { Provider = SgLlmProvider.TogetherAi, Label = "Together AI",
+                BaseUrl = "https://api.together.xyz/v1",
+                ApiKeyUrl = "https://api.together.ai/settings/api-keys", IsFree = true,
+                Notes = "$1 free credits + бесплатные модели." },
+        new() { Provider = SgLlmProvider.Fireworks, Label = "Fireworks AI",
+                BaseUrl = "https://api.fireworks.ai/inference/v1",
+                ApiKeyUrl = "https://fireworks.ai/account/api-keys" },
+        new() { Provider = SgLlmProvider.Cerebras, Label = "Cerebras",
+                BaseUrl = "https://api.cerebras.ai/v1",
+                ApiKeyUrl = "https://cloud.cerebras.ai/", IsFree = true,
+                Notes = "Free tier для разработчиков." },
+        new() { Provider = SgLlmProvider.AzureOpenAi, Label = "Azure OpenAI", BaseUrl = "" },
+        new() { Provider = SgLlmProvider.HuggingFace, Label = "HuggingFace",
+                BaseUrl = "https://router.huggingface.co/v1",
+                ApiKeyUrl = "https://huggingface.co/settings/tokens", IsFree = true,
+                Notes = "Бесплатный inference router." },
+        new() { Provider = SgLlmProvider.CloudflareWorkersAi, Label = "Cloudflare Workers AI",
+                BaseUrl = "https://api.cloudflare.com/client/v4/accounts/{ACCOUNT_ID}/ai/v1",
+                ApiKeyUrl = "https://dash.cloudflare.com/profile/api-tokens",
+                DocsUrl = "https://developers.cloudflare.com/workers-ai/", IsFree = true,
+                Notes = "10 000 Neurons/день бесплатно. Замените {ACCOUNT_ID}." },
+        new() { Provider = SgLlmProvider.GitHubModels, Label = "GitHub Models",
+                BaseUrl = "https://models.inference.ai.azure.com",
+                ApiKeyUrl = "https://github.com/settings/tokens",
+                DocsUrl = "https://github.com/marketplace/models", IsFree = true,
+                Notes = "Бесплатно по GitHub Personal Access Token." },
+        new() { Provider = SgLlmProvider.SambaNova, Label = "SambaNova Cloud",
+                BaseUrl = "https://api.sambanova.ai/v1",
+                ApiKeyUrl = "https://cloud.sambanova.ai/apis", IsFree = true,
+                Notes = "Free tier, OpenAI-совместимый." },
+        new() { Provider = SgLlmProvider.GlhfChat, Label = "GLHF.chat",
+                BaseUrl = "https://glhf.chat/api/openai/v1",
+                ApiKeyUrl = "https://glhf.chat/users/settings/api", IsFree = true,
+                Notes = "Бесплатный hosted OSS-инференс." },
+        new() { Provider = SgLlmProvider.Targon, Label = "Targon",
+                BaseUrl = "https://api.targon.com/v1",
+                ApiKeyUrl = "https://targon.com/sign-in", IsFree = true,
+                Notes = "Бесплатный routing, требуется логин." },
+        new() { Provider = SgLlmProvider.Pollinations, Label = "Pollinations",
+                BaseUrl = "https://text.pollinations.ai/openai",
+                DocsUrl = "https://pollinations.ai/", IsFree = true, RequiresKey = false,
+                Notes = "Не требует ключа, есть текст и картинки." },
+    };
+
+    public IReadOnlyList<SgLlmProviderPreset> GetProviderPresets() => _presets;
+
+    public SgLlmProviderPreset? GetPreset(SgLlmProvider provider) =>
+        _presets.FirstOrDefault(p => p.Provider == provider);
+
+    public async Task<List<SgLlmModelInfo>> GetCloudflareWorkersAiModelsAsync(string? accountId = null, string? apiToken = null)
+    {
+        // Cloudflare doesn't expose /models on the openai-compat path; return a curated list.
+        return new List<SgLlmModelInfo>
+        {
+            new() { Id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast", Name = "Llama 3.3 70B (CF)", IsFree = true },
+            new() { Id = "@cf/meta/llama-3.1-8b-instruct", Name = "Llama 3.1 8B (CF)", IsFree = true },
+            new() { Id = "@cf/qwen/qwen2.5-coder-32b-instruct", Name = "Qwen2.5 Coder 32B", IsFree = true },
+            new() { Id = "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", Name = "DeepSeek R1 Distill 32B", IsFree = true },
+            new() { Id = "@cf/google/gemma-3-12b-it", Name = "Gemma 3 12B", IsFree = true },
+            new() { Id = "@cf/mistralai/mistral-small-3.1-24b-instruct", Name = "Mistral Small 3.1 24B", IsFree = true },
+        };
+    }
+
+    public async Task<List<SgLlmModelInfo>> GetGitHubModelsAsync(string? apiKey = null)
+    {
+        // GitHub Models catalog endpoint is azure-flavoured; use a curated list as fallback.
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "https://models.inference.ai.azure.com/models");
+            if (!string.IsNullOrEmpty(apiKey)) req.Headers.Authorization = new("Bearer", apiKey);
+            var resp = await _http.SendAsync(req);
+            if (resp.IsSuccessStatusCode)
+            {
+                var raw = await resp.Content.ReadAsStringAsync();
+                using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                var list = new List<SgLlmModelInfo>();
+                var root = doc.RootElement;
+                IEnumerable<System.Text.Json.JsonElement> items =
+                    root.ValueKind == System.Text.Json.JsonValueKind.Array
+                        ? root.EnumerateArray()
+                        : (root.TryGetProperty("data", out var d) ? d.EnumerateArray() : Array.Empty<System.Text.Json.JsonElement>());
+                foreach (var m in items)
+                {
+                    var id = m.TryGetProperty("name", out var n) ? n.GetString()
+                          : (m.TryGetProperty("id", out var idEl) ? idEl.GetString() : null);
+                    if (!string.IsNullOrEmpty(id)) list.Add(new() { Id = id!, Name = id!, IsFree = true });
+                }
+                if (list.Count > 0) return list;
+            }
+        }
+        catch { }
+        return new()
+        {
+            new() { Id = "gpt-4o-mini", Name = "GPT-4o mini (GitHub)", IsFree = true },
+            new() { Id = "gpt-4o", Name = "GPT-4o (GitHub)", IsFree = true },
+            new() { Id = "Phi-3.5-MoE-instruct", Name = "Phi-3.5 MoE (GitHub)", IsFree = true },
+            new() { Id = "Mistral-large-2407", Name = "Mistral Large (GitHub)", IsFree = true },
+            new() { Id = "Meta-Llama-3.1-70B-Instruct", Name = "Llama 3.1 70B (GitHub)", IsFree = true },
+        };
+    }
+
+    public Task<List<SgLlmModelInfo>> GetSambaNovaModelsAsync(string? apiKey = null)
+        => GetOpenAiCompatibleModelsAsync("https://api.sambanova.ai/v1", apiKey, () => new()
+        {
+            new() { Id = "Meta-Llama-3.3-70B-Instruct", Name = "Llama 3.3 70B", IsFree = true },
+            new() { Id = "DeepSeek-R1-Distill-Llama-70B", Name = "DeepSeek R1 Distill 70B", IsFree = true },
+            new() { Id = "Qwen2.5-72B-Instruct", Name = "Qwen2.5 72B", IsFree = true },
+        });
+
+    public Task<List<SgLlmModelInfo>> GetGlhfModelsAsync(string? apiKey = null) =>
+        Task.FromResult(new List<SgLlmModelInfo>
+        {
+            new() { Id = "hf:meta-llama/Llama-3.3-70B-Instruct", Name = "Llama 3.3 70B", IsFree = true },
+            new() { Id = "hf:Qwen/Qwen2.5-72B-Instruct", Name = "Qwen2.5 72B", IsFree = true },
+            new() { Id = "hf:deepseek-ai/DeepSeek-V3", Name = "DeepSeek V3", IsFree = true },
+            new() { Id = "hf:mistralai/Mistral-Small-Instruct-2409", Name = "Mistral Small", IsFree = true },
+        });
+
+    public Task<List<SgLlmModelInfo>> GetPollinationsModelsAsync() =>
+        Task.FromResult(new List<SgLlmModelInfo>
+        {
+            new() { Id = "openai", Name = "OpenAI (Pollinations proxy)", IsFree = true },
+            new() { Id = "mistral", Name = "Mistral (Pollinations)", IsFree = true },
+            new() { Id = "qwen-coder", Name = "Qwen2.5 Coder", IsFree = true },
+            new() { Id = "llama", Name = "Llama 3.x", IsFree = true },
+            new() { Id = "deepseek", Name = "DeepSeek", IsFree = true },
+        });
+
+    // ============== ADDITIONAL API CAPABILITIES ==============
+
+    public async Task<SgLlmChatResult> CompleteAsync(SgLlmChatRequest req)
+    {
+        var result = new SgLlmChatResult();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var baseUrl = CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1";
+        var url = baseUrl + "/chat/completions";
+
+        var messages = req.Messages.Select(m => BuildOpenAiMessage(m)).ToList();
+        var body = new Dictionary<string, object?>
+        {
+            ["model"] = req.Model ?? CurrentConfig.ModelId ?? "gpt-4o-mini",
+            ["messages"] = messages,
+            ["stream"] = false
+        };
+        if (req.Temperature.HasValue) body["temperature"] = req.Temperature.Value;
+        if (req.TopP.HasValue) body["top_p"] = req.TopP.Value;
+        if (req.MaxTokens.HasValue) body["max_tokens"] = req.MaxTokens.Value;
+        if (req.Seed.HasValue) body["seed"] = req.Seed.Value;
+        if (req.Stop is { Count: > 0 }) body["stop"] = req.Stop;
+        if (req.Tools is { Count: > 0 })
+        {
+            body["tools"] = req.Tools.Select(t => new
+            {
+                type = "function",
+                function = new
+                {
+                    name = t.Name,
+                    description = t.Description,
+                    parameters = string.IsNullOrEmpty(t.ParametersJsonSchema)
+                        ? (object)new { type = "object", properties = new { } }
+                        : System.Text.Json.JsonDocument.Parse(t.ParametersJsonSchema).RootElement
+                }
+            }).ToList();
+        }
+        if (req.ToolChoice != null) body["tool_choice"] = req.ToolChoice;
+        if (req.ResponseFormat == "json_object")
+            body["response_format"] = new { type = "json_object" };
+        else if (req.ResponseFormat == "json_schema" && !string.IsNullOrEmpty(req.JsonSchema))
+        {
+            var schema = System.Text.Json.JsonDocument.Parse(req.JsonSchema).RootElement;
+            body["response_format"] = new { type = "json_schema", json_schema = new { name = "schema", schema, strict = true } };
+        }
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+            if (CurrentConfig.Provider == SgLlmProvider.OpenRouter)
+            {
+                request.Headers.TryAddWithoutValidation("HTTP-Referer", "https://superui.local");
+                request.Headers.TryAddWithoutValidation("X-Title", "SuperUI");
+            }
+
+            var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            result.RawJson = raw;
+            if (!response.IsSuccessStatusCode) { result.Error = $"HTTP {(int)response.StatusCode}: {Truncate(raw, 300)}"; return result; }
+
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            var choice = doc.RootElement.GetProperty("choices")[0];
+            if (choice.TryGetProperty("finish_reason", out var fr)) result.FinishReason = fr.GetString();
+            var msg = choice.GetProperty("message");
+            if (msg.TryGetProperty("content", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.String)
+                result.Content = c.GetString() ?? "";
+            if (msg.TryGetProperty("tool_calls", out var tcs) && tcs.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var tc in tcs.EnumerateArray())
+                {
+                    var call = new SgLlmToolCall();
+                    if (tc.TryGetProperty("id", out var idEl)) call.Id = idEl.GetString() ?? "";
+                    if (tc.TryGetProperty("function", out var fn))
+                    {
+                        if (fn.TryGetProperty("name", out var nm)) call.Name = nm.GetString() ?? "";
+                        if (fn.TryGetProperty("arguments", out var ar)) call.ArgumentsJson = ar.GetString() ?? "";
+                    }
+                    result.ToolCalls.Add(call);
+                }
+            }
+            if (doc.RootElement.TryGetProperty("usage", out var usage))
+            {
+                if (usage.TryGetProperty("prompt_tokens", out var pt) && pt.ValueKind == System.Text.Json.JsonValueKind.Number) result.PromptTokens = pt.GetInt32();
+                if (usage.TryGetProperty("completion_tokens", out var ct) && ct.ValueKind == System.Text.Json.JsonValueKind.Number) result.CompletionTokens = ct.GetInt32();
+                if (usage.TryGetProperty("total_tokens", out var tt) && tt.ValueKind == System.Text.Json.JsonValueKind.Number) result.TotalTokens = tt.GetInt32();
+            }
+            return result;
+        }
+        catch (Exception ex) { result.Error = ex.Message; return result; }
+    }
+
+    private static object BuildOpenAiMessage(SgLlmChatMsg m)
+    {
+        if (m.Attachments is { Count: > 0 })
+        {
+            var parts = new List<object> { new { type = "text", text = m.Content } };
+            foreach (var a in m.Attachments.Where(x => x.IsImage))
+                parts.Add(new { type = "image_url", image_url = new { url = $"data:{a.MimeType};base64,{a.Base64}" } });
+            return new { role = m.Role, content = parts };
+        }
+        if (m.ToolCalls is { Count: > 0 })
+        {
+            return new
+            {
+                role = m.Role,
+                content = m.Content,
+                tool_calls = m.ToolCalls.Select(t => new
+                {
+                    id = t.Id,
+                    type = "function",
+                    function = new { name = t.Name, arguments = t.ArgumentsJson }
+                }).ToList()
+            };
+        }
+        if (!string.IsNullOrEmpty(m.ToolCallId))
+            return new { role = "tool", content = m.Content, tool_call_id = m.ToolCallId, name = m.Name };
+        return new { role = m.Role, content = m.Content };
+    }
+
+    public async Task<SgLlmStructuredResult<T>> CompleteStructuredAsync<T>(SgLlmStructuredRequest req)
+    {
+        var schema = req.JsonSchema ?? BuildJsonSchemaForType(typeof(T));
+        var chatRes = await CompleteAsync(new SgLlmChatRequest
+        {
+            Messages = req.Messages,
+            Model = req.Model,
+            Temperature = req.Temperature,
+            MaxTokens = req.MaxTokens,
+            ResponseFormat = "json_schema",
+            JsonSchema = schema
+        });
+        var sr = new SgLlmStructuredResult<T> { RawJson = chatRes.Content, Error = chatRes.Error };
+        if (!string.IsNullOrEmpty(chatRes.Content))
+        {
+            try { sr.Data = System.Text.Json.JsonSerializer.Deserialize<T>(chatRes.Content); }
+            catch (Exception ex) { sr.Error = $"Parse failed: {ex.Message}"; }
+        }
+        return sr;
+    }
+
+    private static string BuildJsonSchemaForType(Type t)
+    {
+        // Minimal helper for common cases — non-recursive; users can pass a custom schema for complex types.
+        if (t == typeof(string))
+            return "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[\"value\"],\"additionalProperties\":false}";
+
+        var props = new Dictionary<string, object>();
+        var required = new List<string>();
+        foreach (var p in t.GetProperties())
+        {
+            var name = char.ToLowerInvariant(p.Name[0]) + p.Name[1..];
+            props[name] = MapJsonType(p.PropertyType);
+            required.Add(name);
+        }
+        var schema = new { type = "object", properties = props, required, additionalProperties = false };
+        return System.Text.Json.JsonSerializer.Serialize(schema);
+    }
+
+    private static object MapJsonType(Type t)
+    {
+        var nt = Nullable.GetUnderlyingType(t) ?? t;
+        if (nt == typeof(string)) return new { type = "string" };
+        if (nt == typeof(bool)) return new { type = "boolean" };
+        if (nt == typeof(int) || nt == typeof(long)) return new { type = "integer" };
+        if (nt == typeof(double) || nt == typeof(float) || nt == typeof(decimal)) return new { type = "number" };
+        if (typeof(System.Collections.IEnumerable).IsAssignableFrom(nt) && nt != typeof(string))
+            return new { type = "array", items = new { type = "string" } };
+        return new { type = "object" };
+    }
+
+    public async Task<List<SgLlmRerankResult>> RerankAsync(SgLlmRerankRequest req)
+    {
+        if (CurrentConfig == null) return new();
+        if (req.Documents.Count == 0) return new();
+
+        // Cohere v2 rerank endpoint
+        if (CurrentConfig.Provider == SgLlmProvider.Cohere)
+        {
+            var url = "https://api.cohere.com/v2/rerank";
+            var body = new
+            {
+                model = req.Model ?? "rerank-v3.5",
+                query = req.Query,
+                documents = req.Documents,
+                top_n = req.TopN ?? req.Documents.Count
+            };
+            try
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+                if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                    request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+                var resp = await _http.SendAsync(request);
+                if (!resp.IsSuccessStatusCode) return new();
+                using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+                var list = new List<SgLlmRerankResult>();
+                if (doc.RootElement.TryGetProperty("results", out var arr))
+                    foreach (var r in arr.EnumerateArray())
+                    {
+                        var idx = r.GetProperty("index").GetInt32();
+                        var score = r.GetProperty("relevance_score").GetDouble();
+                        list.Add(new() { Index = idx, Score = score, Document = req.Documents[idx] });
+                    }
+                return list;
+            }
+            catch { return new(); }
+        }
+
+        // Fallback: embedding-based cosine rerank
+        var qVec = await GetEmbeddingsAsync(req.Query);
+        var docVecs = await GetEmbeddingsBatchAsync(req.Documents);
+        var fallback = new List<SgLlmRerankResult>();
+        for (var i = 0; i < docVecs.Count; i++)
+        {
+            double dot = 0, na = 0, nb = 0;
+            var a = qVec; var b = docVecs[i];
+            var n = Math.Min(a.Length, b.Length);
+            for (var k = 0; k < n; k++) { dot += a[k] * b[k]; na += a[k] * a[k]; nb += b[k] * b[k]; }
+            var denom = Math.Sqrt(na) * Math.Sqrt(nb);
+            fallback.Add(new() { Index = i, Score = denom == 0 ? 0 : dot / denom, Document = req.Documents[i] });
+        }
+        return fallback.OrderByDescending(r => r.Score).Take(req.TopN ?? fallback.Count).ToList();
+    }
+
+    public async Task<SgLlmImageResult> GenerateImageVariationsAsync(byte[] imageBytes, string imageMime, int count = 1,
+        string? size = "1024x1024", string? modelId = null)
+    {
+        var result = new SgLlmImageResult();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/images/variations";
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var img = new ByteArrayContent(imageBytes);
+            img.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(imageMime);
+            content.Add(img, "image", "image" + GuessExt(imageMime));
+            content.Add(new StringContent(Math.Max(1, count).ToString()), "n");
+            content.Add(new StringContent(size ?? "1024x1024"), "size");
+            content.Add(new StringContent(modelId ?? "dall-e-2"), "model");
+            content.Add(new StringContent("b64_json"), "response_format");
+
+            var req = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                req.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(req);
+            var raw = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode) { result.Error = $"HTTP {(int)resp.StatusCode}: {Truncate(raw, 300)}"; return result; }
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("data", out var arr))
+                foreach (var item in arr.EnumerateArray())
+                {
+                    var gi = new SgLlmGeneratedImage();
+                    if (item.TryGetProperty("url", out var u)) gi.Url = u.GetString();
+                    if (item.TryGetProperty("b64_json", out var b)) gi.B64Json = b.GetString();
+                    result.Images.Add(gi);
+                }
+            return result;
+        }
+        catch (Exception ex) { result.Error = ex.Message; return result; }
+    }
+
+    public async Task<List<SgLlmFileInfo>> ListFilesAsync(string? purpose = null)
+    {
+        if (CurrentConfig == null) return new();
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/files";
+        if (!string.IsNullOrEmpty(purpose)) url += $"?purpose={Uri.EscapeDataString(purpose)}";
+        try
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                req.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return new();
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var list = new List<SgLlmFileInfo>();
+            if (doc.RootElement.TryGetProperty("data", out var arr))
+                foreach (var f in arr.EnumerateArray())
+                {
+                    var fi = new SgLlmFileInfo();
+                    if (f.TryGetProperty("id", out var i)) fi.Id = i.GetString() ?? "";
+                    if (f.TryGetProperty("filename", out var n)) fi.FileName = n.GetString() ?? "";
+                    if (f.TryGetProperty("bytes", out var b) && b.ValueKind == System.Text.Json.JsonValueKind.Number) fi.Bytes = b.GetInt64();
+                    if (f.TryGetProperty("purpose", out var p)) fi.Purpose = p.GetString();
+                    if (f.TryGetProperty("created_at", out var ca) && ca.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        fi.CreatedAt = DateTimeOffset.FromUnixTimeSeconds(ca.GetInt64()).UtcDateTime;
+                    list.Add(fi);
+                }
+            return list;
+        }
+        catch { return new(); }
+    }
+
+    public async Task<bool> DeleteFileAsync(string fileId)
+    {
+        if (CurrentConfig == null) return false;
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/files/" + Uri.EscapeDataString(fileId);
+        try
+        {
+            var req = new HttpRequestMessage(HttpMethod.Delete, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                req.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(req);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    public async Task<List<SgLlmFineTuneJob>> ListFineTuneJobsAsync()
+    {
+        if (CurrentConfig == null) return new();
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/fine_tuning/jobs";
+        try
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                req.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return new();
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var list = new List<SgLlmFineTuneJob>();
+            if (doc.RootElement.TryGetProperty("data", out var arr))
+                foreach (var j in arr.EnumerateArray())
+                {
+                    var ft = new SgLlmFineTuneJob();
+                    if (j.TryGetProperty("id", out var i)) ft.Id = i.GetString() ?? "";
+                    if (j.TryGetProperty("model", out var m)) ft.Model = m.GetString();
+                    if (j.TryGetProperty("status", out var s)) ft.Status = s.GetString();
+                    if (j.TryGetProperty("fine_tuned_model", out var fm)) ft.FineTunedModel = fm.GetString();
+                    if (j.TryGetProperty("created_at", out var ca) && ca.ValueKind == System.Text.Json.JsonValueKind.Number)
+                        ft.CreatedAt = DateTimeOffset.FromUnixTimeSeconds(ca.GetInt64()).UtcDateTime;
+                    list.Add(ft);
+                }
+            return list;
+        }
+        catch { return new(); }
+    }
+
+    public async Task<SgLlmBatchJob> CreateBatchAsync(SgLlmBatchRequest req)
+    {
+        var job = new SgLlmBatchJob();
+        if (CurrentConfig == null) return job;
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/batches";
+        try
+        {
+            var body = new Dictionary<string, object?>
+            {
+                ["input_file_id"] = req.InputFileId,
+                ["endpoint"] = req.Endpoint,
+                ["completion_window"] = req.CompletionWindow
+            };
+            if (req.Metadata != null) body["metadata"] = req.Metadata;
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(request);
+            if (!resp.IsSuccessStatusCode) return job;
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            ParseBatch(doc.RootElement, job);
+            return job;
+        }
+        catch { return job; }
+    }
+
+    public async Task<SgLlmBatchJob?> GetBatchAsync(string batchId)
+    {
+        if (CurrentConfig == null) return null;
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/batches/" + Uri.EscapeDataString(batchId);
+        try
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                req.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return null;
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var job = new SgLlmBatchJob();
+            ParseBatch(doc.RootElement, job);
+            return job;
+        }
+        catch { return null; }
+    }
+
+    public async Task<List<SgLlmBatchJob>> ListBatchesAsync()
+    {
+        if (CurrentConfig == null) return new();
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/batches";
+        try
+        {
+            var req = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                req.Headers.Authorization = new("Bearer", CurrentConfig.ApiKey);
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return new();
+            using var doc = System.Text.Json.JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var list = new List<SgLlmBatchJob>();
+            if (doc.RootElement.TryGetProperty("data", out var arr))
+                foreach (var j in arr.EnumerateArray())
+                {
+                    var job = new SgLlmBatchJob();
+                    ParseBatch(j, job);
+                    list.Add(job);
+                }
+            return list;
+        }
+        catch { return new(); }
+    }
+
+    private static void ParseBatch(System.Text.Json.JsonElement root, SgLlmBatchJob job)
+    {
+        if (root.TryGetProperty("id", out var i)) job.Id = i.GetString() ?? "";
+        if (root.TryGetProperty("status", out var s)) job.Status = s.GetString();
+        if (root.TryGetProperty("endpoint", out var e)) job.Endpoint = e.GetString();
+        if (root.TryGetProperty("input_file_id", out var ifid)) job.InputFileId = ifid.GetString();
+        if (root.TryGetProperty("output_file_id", out var ofid)) job.OutputFileId = ofid.GetString();
+        if (root.TryGetProperty("error_file_id", out var efid)) job.ErrorFileId = efid.GetString();
+        if (root.TryGetProperty("request_counts", out var rc))
+        {
+            if (rc.TryGetProperty("completed", out var c) && c.ValueKind == System.Text.Json.JsonValueKind.Number) job.RequestCounts_Completed = c.GetInt32();
+            if (rc.TryGetProperty("failed", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.Number) job.RequestCounts_Failed = f.GetInt32();
+            if (rc.TryGetProperty("total", out var t) && t.ValueKind == System.Text.Json.JsonValueKind.Number) job.RequestCounts_Total = t.GetInt32();
+        }
+        if (root.TryGetProperty("created_at", out var ca) && ca.ValueKind == System.Text.Json.JsonValueKind.Number)
+            job.CreatedAt = DateTimeOffset.FromUnixTimeSeconds(ca.GetInt64()).UtcDateTime;
+    }
+
     // ---- Internal response DTOs ----
     private class OpenAiModelsResponse { public List<OpenAiModel>? Data { get; set; } }
     private class OpenAiModel

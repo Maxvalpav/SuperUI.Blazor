@@ -20,7 +20,27 @@ public enum SgLlmProvider
     Cerebras,      // Cerebras Cloud
     AzureOpenAi,   // Azure OpenAI
     HuggingFace,   // HuggingFace Router (OpenAI-compatible)
+    CloudflareWorkersAi, // Cloudflare Workers AI — free tier (Neurons)
+    GitHubModels,        // GitHub Marketplace Models — free for devs
+    SambaNova,           // SambaNova Cloud — free tier
+    Pollinations,        // pollinations.ai — no key needed, free
+    GlhfChat,            // glhf.chat — free OSS models, OpenAI-compatible
+    Targon,              // targon.ai — free routing
+    OpenAiCompatibleCustom, // explicit alias for arbitrary base URL
     None
+}
+
+/// <summary>Provider preset metadata used by the UI to pre-fill BaseUrl, hint URLs and labels.</summary>
+public class SgLlmProviderPreset
+{
+    public SgLlmProvider Provider { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public string BaseUrl { get; set; } = string.Empty;
+    public string? ApiKeyUrl { get; set; }
+    public string? DocsUrl { get; set; }
+    public bool IsFree { get; set; }
+    public bool RequiresKey { get; set; } = true;
+    public string? Notes { get; set; }
 }
 
 public class SgLlmAttachment

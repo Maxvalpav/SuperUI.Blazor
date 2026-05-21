@@ -58,6 +58,32 @@ public interface ILlmService
     Task<string> AnalyzeVideoAsync(SgLlmVideoRequest request);
 
     Task<string> UploadFileAsync(Stream fileStream, string fileName, string purpose = "fine-tune");
+
+    // --- Free / additional providers ---
+    Task<List<SgLlmModelInfo>> GetCloudflareWorkersAiModelsAsync(string? accountId = null, string? apiToken = null);
+    Task<List<SgLlmModelInfo>> GetGitHubModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetSambaNovaModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetGlhfModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetPollinationsModelsAsync();
+
+    // --- Provider presets registry ---
+    IReadOnlyList<SgLlmProviderPreset> GetProviderPresets();
+    SgLlmProviderPreset? GetPreset(SgLlmProvider provider);
+
+    // --- Structured outputs / tools / advanced ---
+    Task<SgLlmStructuredResult<T>> CompleteStructuredAsync<T>(SgLlmStructuredRequest request);
+    Task<SgLlmChatResult> CompleteAsync(SgLlmChatRequest request);
+    Task<List<SgLlmRerankResult>> RerankAsync(SgLlmRerankRequest request);
+    Task<SgLlmImageResult> GenerateImageVariationsAsync(byte[] imageBytes, string imageMime, int count = 1,
+        string? size = "1024x1024", string? modelId = null);
+
+    // --- Files / fine-tuning / batch ---
+    Task<List<SgLlmFileInfo>> ListFilesAsync(string? purpose = null);
+    Task<bool> DeleteFileAsync(string fileId);
+    Task<List<SgLlmFineTuneJob>> ListFineTuneJobsAsync();
+    Task<SgLlmBatchJob> CreateBatchAsync(SgLlmBatchRequest request);
+    Task<SgLlmBatchJob?> GetBatchAsync(string batchId);
+    Task<List<SgLlmBatchJob>> ListBatchesAsync();
 }
 
 public class SgLlmImageRequest
@@ -158,3 +184,128 @@ public class SgLlmModelInfo
 }
 
 public record SgLlmConnectionTest(bool Ok, int Status, string Message);
+
+public class SgLlmChatRequest
+{
+    public List<SgLlmChatMsg> Messages { get; set; } = new();
+    public string? Model { get; set; }
+    public double? Temperature { get; set; }
+    public double? TopP { get; set; }
+    public int? MaxTokens { get; set; }
+    public List<string>? Stop { get; set; }
+    public string? ResponseFormat { get; set; } // "text" | "json_object" | "json_schema"
+    public string? JsonSchema { get; set; }
+    public List<SgLlmTool>? Tools { get; set; }
+    public object? ToolChoice { get; set; }
+    public bool Stream { get; set; }
+    public int? Seed { get; set; }
+}
+
+public class SgLlmChatMsg
+{
+    public string Role { get; set; } = "user";
+    public string Content { get; set; } = string.Empty;
+    public List<SgLlmAttachment>? Attachments { get; set; }
+    public List<SgLlmToolCall>? ToolCalls { get; set; }
+    public string? ToolCallId { get; set; }
+    public string? Name { get; set; }
+}
+
+public class SgLlmTool
+{
+    public string Type { get; set; } = "function";
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public string? ParametersJsonSchema { get; set; }
+}
+
+public class SgLlmToolCall
+{
+    public string Id { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string ArgumentsJson { get; set; } = string.Empty;
+}
+
+public class SgLlmChatResult
+{
+    public string Content { get; set; } = string.Empty;
+    public string? FinishReason { get; set; }
+    public List<SgLlmToolCall> ToolCalls { get; set; } = new();
+    public int? PromptTokens { get; set; }
+    public int? CompletionTokens { get; set; }
+    public int? TotalTokens { get; set; }
+    public string? Error { get; set; }
+    public string? RawJson { get; set; }
+}
+
+public class SgLlmStructuredRequest
+{
+    public List<SgLlmChatMsg> Messages { get; set; } = new();
+    public string? Model { get; set; }
+    public double? Temperature { get; set; }
+    public int? MaxTokens { get; set; }
+    public string SchemaName { get; set; } = "Result";
+    public string? JsonSchema { get; set; }
+}
+
+public class SgLlmStructuredResult<T>
+{
+    public T? Data { get; set; }
+    public string? RawJson { get; set; }
+    public string? Error { get; set; }
+}
+
+public class SgLlmRerankRequest
+{
+    public string Query { get; set; } = string.Empty;
+    public List<string> Documents { get; set; } = new();
+    public string? Model { get; set; }
+    public int? TopN { get; set; }
+}
+
+public class SgLlmRerankResult
+{
+    public int Index { get; set; }
+    public double Score { get; set; }
+    public string Document { get; set; } = string.Empty;
+}
+
+public class SgLlmFileInfo
+{
+    public string Id { get; set; } = string.Empty;
+    public string FileName { get; set; } = string.Empty;
+    public long Bytes { get; set; }
+    public string? Purpose { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class SgLlmFineTuneJob
+{
+    public string Id { get; set; } = string.Empty;
+    public string? Model { get; set; }
+    public string? Status { get; set; }
+    public string? FineTunedModel { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
+
+public class SgLlmBatchRequest
+{
+    public string InputFileId { get; set; } = string.Empty;
+    public string Endpoint { get; set; } = "/v1/chat/completions";
+    public string CompletionWindow { get; set; } = "24h";
+    public Dictionary<string, string>? Metadata { get; set; }
+}
+
+public class SgLlmBatchJob
+{
+    public string Id { get; set; } = string.Empty;
+    public string? Status { get; set; }
+    public string? Endpoint { get; set; }
+    public string? InputFileId { get; set; }
+    public string? OutputFileId { get; set; }
+    public string? ErrorFileId { get; set; }
+    public int? RequestCounts_Completed { get; set; }
+    public int? RequestCounts_Failed { get; set; }
+    public int? RequestCounts_Total { get; set; }
+    public DateTime? CreatedAt { get; set; }
+}
