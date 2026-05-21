@@ -8,6 +8,18 @@ public enum SgLlmProvider
     Ollama,
     OpenCode,
     Anthropic,
+    Google,        // Google Gemini (native v1beta)
+    Mistral,       // Mistral AI (la Plateforme)
+    Groq,          // Groq Cloud
+    DeepSeek,      // DeepSeek Platform
+    XAi,           // xAI (Grok)
+    Cohere,        // Cohere v2
+    Perplexity,    // Perplexity AI
+    TogetherAi,    // Together AI
+    Fireworks,     // Fireworks AI
+    Cerebras,      // Cerebras Cloud
+    AzureOpenAi,   // Azure OpenAI
+    HuggingFace,   // HuggingFace Router (OpenAI-compatible)
     None
 }
 
@@ -31,21 +43,92 @@ public class SgLlmMessage
     public DateTime Timestamp { get; set; } = DateTime.UtcNow;
 }
 
+/// <summary>
+/// LLM configuration spanning all supported providers and the union of their parameters.
+/// Only "base" properties (Provider, ModelId, ApiKey, BaseUrl, SystemPrompt, Stream) are always sent.
+/// Advanced properties are only forwarded to the provider when <see cref="UseAdvanced"/> is true.
+/// </summary>
 public class SgLlmConfig
 {
-    public SgLlmProvider Provider { get; set; } = SgLlmProvider.OpenAiCompatible;
+    // --- Base / connection ---
+    public SgLlmProvider Provider { get; set; } = SgLlmProvider.OpenRouter;
     public string? ModelId { get; set; }
     public string? ApiKey { get; set; }
     public string? BaseUrl { get; set; }
     public string? SystemPrompt { get; set; }
+    public bool Stream { get; set; } = true;
     public Dictionary<string, string>? ExtraHeaders { get; set; }
 
-    // Advanced settings
+    /// <summary>
+    /// Master switch. When false, only Provider/ModelId/ApiKey/BaseUrl/SystemPrompt
+    /// reach the provider — every advanced field below is omitted from the request.
+    /// </summary>
+    public bool UseAdvanced { get; set; }
+
+    // --- Sampling (most OpenAI-compatible providers) ---
     public double Temperature { get; set; } = 0.7;
     public double TopP { get; set; } = 1.0;
     public int? MaxTokens { get; set; }
     public double PresencePenalty { get; set; } = 0.0;
     public double FrequencyPenalty { get; set; } = 0.0;
+    public int? Seed { get; set; }
+    public List<string>? Stop { get; set; }
+
+    // --- Extended sampling (Anthropic / Gemini / OpenRouter / vLLM-style) ---
+    public int? TopK { get; set; }
+    public double? MinP { get; set; }
+    public double? RepetitionPenalty { get; set; }
+
+    // --- Output controls ---
+    /// <summary>"text" | "json_object" | "json_schema"</summary>
+    public string? ResponseFormat { get; set; }
+    public string? JsonSchema { get; set; }
+    public bool? LogProbs { get; set; }
+    public int? TopLogProbs { get; set; }
+    public bool? ParallelToolCalls { get; set; }
+    public bool? StreamUsage { get; set; }
+
+    // --- Reasoning models (OpenAI o-series, GPT-5, DeepSeek-R1, Grok-think) ---
+    /// <summary>"minimal" | "low" | "medium" | "high"</summary>
+    public string? ReasoningEffort { get; set; }
+    /// <summary>"low" | "medium" | "high" — GPT-5 verbosity control</summary>
+    public string? Verbosity { get; set; }
+
+    // --- Anthropic extended thinking ---
+    public bool? AnthropicThinking { get; set; }
+    public int? AnthropicThinkingBudgetTokens { get; set; }
+
+    // --- Google Gemini ---
+    /// <summary>"BLOCK_NONE" | "BLOCK_ONLY_HIGH" | "BLOCK_MEDIUM_AND_ABOVE" | "BLOCK_LOW_AND_ABOVE"</summary>
+    public string? GeminiSafetyThreshold { get; set; }
+    public int? GeminiThinkingBudget { get; set; }
+    public bool? GeminiIncludeThoughts { get; set; }
+
+    // --- OpenRouter-specific ---
+    /// <summary>Fallback model list (OR routes through them in order if primary fails).</summary>
+    public List<string>? OrFallbackModels { get; set; }
+    /// <summary>"fallback" | "lowest-price" | "highest-throughput" | "fastest" | null</summary>
+    public string? OrProviderSort { get; set; }
+    /// <summary>Allowed provider slugs (e.g. ["anthropic","openai"]). Empty = all.</summary>
+    public List<string>? OrAllowedProviders { get; set; }
+    /// <summary>Ignored provider slugs.</summary>
+    public List<string>? OrIgnoredProviders { get; set; }
+    /// <summary>If true, only use providers that don't log prompts (data:policy).</summary>
+    public bool? OrRequireParameters { get; set; }
+    public bool? OrAllowDataCollection { get; set; }
+    /// <summary>"middle-out" — OR auto-compresses long contexts.</summary>
+    public string? OrTransforms { get; set; }
+
+    // --- Service tier (OpenAI/Anthropic priority queues) ---
+    /// <summary>"auto" | "default" | "flex" | "priority" | "scale"</summary>
+    public string? ServiceTier { get; set; }
+
+    // --- Azure-specific ---
+    public string? AzureDeployment { get; set; }
+    public string? AzureApiVersion { get; set; } = "2024-10-21";
+
+    // --- User identification (abuse tracking on OpenAI/Anthropic) ---
+    public string? UserIdentifier { get; set; }
 }
 
 public class SgLlmPromptOptions

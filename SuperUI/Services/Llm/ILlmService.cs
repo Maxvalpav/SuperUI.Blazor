@@ -15,13 +15,33 @@ public interface ILlmService
     Task InitializeAsync(SgLlmConfig config);
     Task ChatAsync(string message, SgLlmPromptOptions? options = null);
     Task<bool> IsReadyAsync();
+
+    /// <summary>
+    /// Lightweight connectivity check against the provider's REST endpoint —
+    /// usually GET /models with the supplied API key. Returns the raw HTTP status,
+    /// a short body snippet (truncated), and whether it looked successful.
+    /// </summary>
+    Task<SgLlmConnectionTest> TestConnectionAsync(SgLlmConfig config);
+
     Task<List<SgLlmModelInfo>> GetOpenRouterModelsAsync();
     Task<List<SgLlmModelInfo>> GetOpenAiModelsAsync(string? baseUrl = null, string? apiKey = null);
     Task<List<SgLlmModelInfo>> GetAnthropicModelsAsync(string? apiKey = null);
     Task<List<SgOllamaModel>> GetOllamaModelsAsync(string? baseUrl = null);
+
+    Task<List<SgLlmModelInfo>> GetGoogleModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetMistralModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetGroqModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetDeepSeekModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetXAiModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetCohereModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetPerplexityModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetTogetherModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetFireworksModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetCerebrasModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetHuggingFaceModelsAsync(string? apiKey = null);
+
     Task<float[]> GetEmbeddingsAsync(string text, string? modelId = null);
-    
-    // Новые возможности OpenAI Compatible API
+
     Task<string> GenerateImageAsync(string prompt, string? modelId = null, string? size = "1024x1024");
     Task<string> SpeechToTextAsync(Stream audioStream, string fileName, string? modelId = null);
     Task<byte[]> TextToSpeechAsync(string text, string? modelId = null, string? voice = "alloy");
@@ -35,3 +55,5 @@ public class SgLlmModelInfo
     public string Description { get; set; } = string.Empty;
     public bool IsFree { get; set; }
 }
+
+public record SgLlmConnectionTest(bool Ok, int Status, string Message);

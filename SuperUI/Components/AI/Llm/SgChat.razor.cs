@@ -246,14 +246,9 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     {
         InvokeAsync(() =>
         {
-            if (error.Contains("401"))
-            {
-                _error = "Unauthorized (401). Please check your API Key in settings.";
-            }
-            else
-            {
-                _error = error;
-            }
+            // Show the provider's actual response — generic "check API key" hides the
+            // real cause (e.g. unknown model on OpenRouter also returns 401).
+            _error = error;
             _isThinking = false;
             _streaming = false;
             StateHasChanged();
