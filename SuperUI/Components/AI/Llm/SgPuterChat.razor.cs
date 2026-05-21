@@ -273,7 +273,13 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         // Basic fallback for non-markdown content (e.g. image URLs or simple status messages)
         if (msg.Content.StartsWith("http") && (msg.Content.EndsWith(".png") || msg.Content.EndsWith(".jpg") || msg.Content.Contains("puter.ai/ai/txt2img")))
         {
-             return $"<img src=\"{msg.Content}\" class=\"sg-chat-att-img\" style=\"max-width: 100%; cursor: pointer;\" onclick=\"window.open('{msg.Content}', '_blank')\" />";
+            // Only render http(s) image URLs; attribute-encode to prevent breaking out of src/onclick.
+            if (Uri.TryCreate(msg.Content, UriKind.Absolute, out var uri) &&
+                (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
+            {
+                var safeUrl = System.Web.HttpUtility.HtmlAttributeEncode(uri.AbsoluteUri);
+                return $"<a href=\"{safeUrl}\" target=\"_blank\" rel=\"noopener\"><img src=\"{safeUrl}\" class=\"sg-chat-att-img\" style=\"max-width: 100%; cursor: pointer;\" /></a>";
+            }
         }
         return System.Web.HttpUtility.HtmlEncode(msg.Content).Replace("\n", "<br>");
     }
