@@ -75,6 +75,11 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         {
             apiKey = config.ApiKey,
             baseUrl = config.BaseUrl,
+            temperature = config.Temperature,
+            topP = config.TopP,
+            maxTokens = config.MaxTokens,
+            presencePenalty = config.PresencePenalty,
+            frequencyPenalty = config.FrequencyPenalty
         };
 
         await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides);
@@ -87,7 +92,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         options ??= new SgLlmPromptOptions();
         var sysPrompt = options.SystemPrompt ?? CurrentConfig?.SystemPrompt ?? "You are a helpful assistant.";
 
-        await _module.InvokeVoidAsync("chatDirectStream", _instanceId, message, sysPrompt, options.Attachments, "default-stream");
+        await _module.InvokeVoidAsync("chatDirectStream", _instanceId, message, sysPrompt, options.Attachments, "default-stream", options.Tools, options.ToolChoice);
     }
 
     public async Task<bool> IsReadyAsync()
@@ -123,15 +128,220 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         catch { return new(); }
     }
 
+    public async Task<List<SgLlmModelInfo>> GetOpenAiModelsAsync(string? baseUrl = null, string? apiKey = null)
+    {
+        var url = (baseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/models";
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+            }
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return new();
+
+            var data = await response.Content.ReadFromJsonAsync<OpenAiModelsResponse>();
+            if (data?.Data == null) return new();
+
+            return data.Data.Select(m => new SgLlmModelInfo
+            {
+                Id = m.Id,
+                Name = m.Id, // OpenAI models usually only have ID as name
+                Description = $"Owned by: {m.OwnedBy}"
+            }).ToList();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SgLlmService] OpenAI Models Error: {ex.Message}");
+            return new();
+        }
+    }
+
+    private class OpenAiModelsResponse
+    {
+        public List<OpenAiModel>? Data { get; set; }
+    }
+
+    private class OpenAiModel
+    {
+        public string Id { get; set; } = string.Empty;
+        [System.Text.Json.Serialization.JsonPropertyName("owned_by")]
+        public string OwnedBy { get; set; } = string.Empty;
+    }
+
+    public async Task<List<SgLlmModelInfo>> GetAnthropicModelsAsync(string? apiKey = null)
+    {
+        // Anthropic doesn't have a public models list endpoint like OpenAI
+        // Returning current state-of-the-art models as fallback, but ideally from a managed list
+        return new List<SgLlmModelInfo>
+        {
+            new() { Id = "claude-3-5-sonnet-20240620", Name = "Claude 3.5 Sonnet", Description = "Most intelligent model" },
+            new() { Id = "claude-3-opus-20240229", Name = "Claude 3 Opus", Description = "Powerful for complex tasks" },
+            new() { Id = "claude-3-sonnet-20240229", Name = "Claude 3 Sonnet", Description = "Balanced speed and intelligence" },
+            new() { Id = "claude-3-haiku-20240307", Name = "Claude 3 Haiku", Description = "Fastest and most compact" }
+        };
+    }
+
     public async Task<List<SgOllamaModel>> GetOllamaModelsAsync(string? baseUrl = null)
     {
         var url = (baseUrl?.TrimEnd('/') ?? "http://localhost:11434") + "/api/tags";
         try
         {
             var response = await _http.GetFromJsonAsync<SgOllamaListResponse>(url);
-            return response?.Models ?? new();
+            
+            // Если Ollama возвращает детализированный список, преобразуем его
+            if (response?.Models != null)
+            {
+                foreach (var model in response.Models)
+                {
+                    // Можно добавить доп. обработку если нужно
+                }
+                return response.Models;
+            }
+            return new();
         }
-        catch { return new(); }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SgLlmService] Ollama API Error: {ex.Message}");
+            return new();
+        }
+    }
+
+    public async Task<float[]> GetEmbeddingsAsync(string text, string? modelId = null)
+    {
+        if (CurrentConfig == null) return Array.Empty<float>();
+
+        var mId = modelId ?? "text-embedding-3-small";
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/embeddings";
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+            {
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+            }
+
+            request.Content = JsonContent.Create(new { model = mId, input = text });
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return Array.Empty<float>();
+
+            var data = await response.Content.ReadFromJsonAsync<OpenAiEmbeddingsResponse>();
+            return data?.Data?[0]?.Embedding ?? Array.Empty<float>();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SgLlmService] Embeddings Error: {ex.Message}");
+            return Array.Empty<float>();
+        }
+    }
+
+    public async Task<string> GenerateImageAsync(string prompt, string? modelId = null, string? size = "1024x1024")
+    {
+        if (CurrentConfig == null) return string.Empty;
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/images/generations";
+        
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            request.Content = JsonContent.Create(new { model = modelId ?? "dall-e-3", prompt, size, n = 1 });
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            var data = await response.Content.ReadFromJsonAsync<OpenAiImageResponse>();
+            return data?.Data?[0]?.Url ?? string.Empty;
+        }
+        catch { return string.Empty; }
+    }
+
+    public async Task<string> SpeechToTextAsync(Stream audioStream, string fileName, string? modelId = null)
+    {
+        if (CurrentConfig == null) return string.Empty;
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/audio/transcriptions";
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(audioStream);
+            content.Add(streamContent, "file", fileName);
+            content.Add(new StringContent(modelId ?? "whisper-1"), "model");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            var data = await response.Content.ReadFromJsonAsync<OpenAiAudioResponse>();
+            return data?.Text ?? string.Empty;
+        }
+        catch { return string.Empty; }
+    }
+
+    public async Task<byte[]> TextToSpeechAsync(string text, string? modelId = null, string? voice = "alloy")
+    {
+        if (CurrentConfig == null) return Array.Empty<byte>();
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/audio/speech";
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            request.Content = JsonContent.Create(new { model = modelId ?? "tts-1", input = text, voice });
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return Array.Empty<byte>();
+
+            return await response.Content.ReadAsByteArrayAsync();
+        }
+        catch { return Array.Empty<byte>(); }
+    }
+
+    public async Task<string> UploadFileAsync(Stream fileStream, string fileName, string purpose = "fine-tune")
+    {
+        if (CurrentConfig == null) return string.Empty;
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/files";
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var streamContent = new StreamContent(fileStream);
+            content.Add(streamContent, "file", fileName);
+            content.Add(new StringContent(purpose), "purpose");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return string.Empty;
+
+            var data = await response.Content.ReadFromJsonAsync<OpenAiFileResponse>();
+            return data?.Id ?? string.Empty;
+        }
+        catch { return string.Empty; }
+    }
+
+    private class OpenAiImageResponse { public List<OpenAiImageData>? Data { get; set; } }
+    private class OpenAiImageData { public string? Url { get; set; } }
+    private class OpenAiAudioResponse { public string? Text { get; set; } }
+    private class OpenAiFileResponse { public string? Id { get; set; } }
+
+    private class OpenAiEmbeddingsResponse
+    {
+        public List<OpenAiEmbeddingData>? Data { get; set; }
+    }
+
+    private class OpenAiEmbeddingData
+    {
+        public float[]? Embedding { get; set; }
     }
 
     private class OpenRouterModelsResponse

@@ -145,7 +145,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         }
     }
 
-    private async Task SendMessage()
+    private async Task SendAsync()
     {
         if (string.IsNullOrWhiteSpace(_userInput) && _attachments.Count == 0) return;
         if (!_isReady || _streaming) return;
@@ -276,7 +276,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     {
         if (e.Key == "Enter" && !e.ShiftKey)
         {
-            await SendMessage();
+            await SendAsync();
         }
     }
 

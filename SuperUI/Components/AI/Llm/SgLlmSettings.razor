@@ -3,60 +3,120 @@
 @inject ILlmService LlmService
 
 <div class="sgc-llm-settings" style="@Style">
-    <div style="display: flex; flex-direction: column; gap: 16px;">
-        <SgSelect TValue="SgLlmProvider" Label="Провайдер" Value="Config.Provider" ValueChanged="OnProviderChanged" Items="_providers" />
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; border-bottom: 1px solid var(--sg-border); flex-wrap: nowrap;">
+                @foreach (var provider in _providers)
+                {
+                    <button type="button" 
+                            class="sgc-provider-tab @(Config.Provider == provider ? "active" : "") @(LlmService.CurrentConfig?.Provider == provider ? "current" : "")"
+                            @onclick="@(() => OnProviderChanged(provider))">
+                        @provider
+                    </button>
+                }
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--sui-fg-muted);">
+                <span>Провайдер: <b>@Config.Provider</b></span>
+                <SgSwitch @bind-Value="_showLogs" Label="Логи" Size="SgSize.Sm" />
+            </div>
+        </div>
 
         @if (Config.Provider != SgLlmProvider.None)
         {
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: -8px;">
-                <SgSwitch @bind-Value="_manualModel" Label="Ввести модель вручную" />
-                <SgSwitch @bind-Value="_showLogs" Label="Показать логи" />
-            </div>
-
-            <div class="sgc-llm-fields-grid">
-                @if (_manualModel)
-                {
-                    <div class="sgc-llm-field-group">
-                        <SgTextBox Label="ID Модели" @bind-Value="Config.ModelId" Placeholder="gpt-4o-mini" Style="flex: 1;" />
-                    </div>
-                }
-                else if (Config.Provider == SgLlmProvider.OpenRouter)
-                {
-                    <div class="sgc-llm-field-group" style="grid-column: span 2;">
-                        <SgSelect TValue="string" Label="Выберите модель" @bind-Value="Config.ModelId" Items="_orModelIds" Style="flex: 1;" />
-                        <SgButton Text="🔄 Fetch" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" Loading="_loadingModels" />
-                    </div>
-                }
-                else if (Config.Provider == SgLlmProvider.Ollama)
-                {
-                    <div class="sgc-llm-field-group" style="grid-column: span 2;">
-                        <SgOllamaModelPicker SelectedModelId="@Config.ModelId" 
-                                            BaseUrl="@Config.BaseUrl"
-                                            OnSelected="OnModelSelected"
-                                            Style="max-height: 300px; width: 100%;" />
-                    </div>
-                }
-                else
-                {
-                    <div class="sgc-llm-field-group">
-                        <SgSelect TValue="string" Label="Выберите модель" @bind-Value="Config.ModelId" Items="_orModelIds" Style="flex: 1;" />
-                        <SgButton Text="🔄" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Default" Size="SgSize.Sm" Loading="_loadingModels" />
-                    </div>
-                }
+            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                <SgSwitch @bind-Value="_manualModel" Label="Вручную" Style="margin-bottom: 8px; white-space: nowrap;" />
                 
-                <SgTextBox Label="API Key" @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-..." />
+                <div style="flex: 1;">
+                    @if (_manualModel)
+                    {
+                        <SgTextBox Label="ID Модели" @bind-Value="Config.ModelId" Placeholder="gpt-4o-mini" />
+                    }
+                    else if (Config.Provider == SgLlmProvider.Ollama)
+                    {
+                        <div style="display: flex; flex-direction: column;">
+                            <label class="sgc-label">Выберите модель</label>
+                            <SgOllamaModelPicker SelectedModelId="@Config.ModelId" 
+                                                BaseUrl="@Config.BaseUrl"
+                                                OnSelected="OnModelSelected"
+                                                Style="width: 100%;" />
+                        </div>
+                    }
+                    else
+                    {
+                        <SgAutoComplete TItem="string" Label="Выберите модель" @bind-Value="Config.ModelId" 
+                                        Items="_orModelIds" Placeholder="Поиск или ввод модели..." Style="flex: 1;" MaxResults="500" />
+                    }
+                </div>
+
+                <SgIconButton Icon="@SgIcons.Refresh" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Loading="_loadingModels" Style="margin-bottom: 8px;" />
             </div>
 
-            @if (Config.Provider == SgLlmProvider.OpenAiCompatible || Config.Provider == SgLlmProvider.OpenRouter || Config.Provider == SgLlmProvider.Ollama)
-            {
-                <SgTextBox Label="Base URL" @bind-Value="Config.BaseUrl" 
-                           Placeholder="@(Config.Provider == SgLlmProvider.OpenRouter ? "https://openrouter.ai/api/v1" : Config.Provider == SgLlmProvider.Ollama ? "http://localhost:11434" : "https://api.openai.com/v1")" />
-            }
+            <div class="sgc-llm-compact-grid">
+                <SgTextBox Label="API Key" @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-..." />
+                
+                @if (Config.Provider == SgLlmProvider.OpenAiCompatible || Config.Provider == SgLlmProvider.OpenRouter || Config.Provider == SgLlmProvider.Ollama)
+                {
+                    <SgTextBox Label="Base URL" @bind-Value="Config.BaseUrl" 
+                               Placeholder="@(Config.Provider == SgLlmProvider.OpenRouter ? "https://openrouter.ai/api/v1" : Config.Provider == SgLlmProvider.Ollama ? "http://localhost:11434" : "https://api.openai.com/v1")" />
+                }
+            </div>
 
-            <SgTextBox Label="Системный промпт / Инструкции" @bind-Value="Config.SystemPrompt" Multiline="true" Rows="3" 
-                       Placeholder="Напр: Имя всегда с большой буквы. Даты в формате DD.MM.YYYY" />
+            <SgTextBox Label="Системный промпт" @bind-Value="Config.SystemPrompt" Multiline="true" Rows="2" 
+                       Placeholder="Напр: Имя всегда с большой буквы." />
             
-            <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-top: 4px;">
+                <SgSwitch @bind-Value="_showAdvanced" Label="Расширенные" Size="SgSize.Sm" />
+            </div>
+
+            @if (_showAdvanced)
+            {
+                <div class="sgc-llm-advanced-panel">
+                    @if (Config.Provider == SgLlmProvider.OpenRouter)
+                    {
+                        <div class="sgc-llm-info-section">
+                            <SgOpenRouterKeyInfo ApiKey="@Config.ApiKey" />
+                            <SgOpenRouterModelDetails ModelId="@Config.ModelId" />
+                        </div>
+                    }
+                    else if (Config.Provider == SgLlmProvider.Ollama)
+                    {
+                        <div class="sgc-llm-ollama-status">
+                            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
+                                <span>Статус сервера:</span>
+                                <SgBadge Variant="@(_lastStatus == "Success" ? SgBadgeVariant.Success : SgBadgeVariant.Danger)" Size="SgSize.Sm">
+                                    @(_lastStatus == "Success" ? "Подключено" : "Нет связи")
+                                </SgBadge>
+                            </div>
+                        </div>
+                    }
+
+                    <div class="sgc-llm-advanced-row">
+                        <div class="sgc-llm-advanced-field">
+                            <label class="sgc-label-sm">Temp (@Config.Temperature.ToString("F1"))</label>
+                            <SgSlider @bind-Value="Config.Temperature" Min="0" Max="2" Step="0.1" />
+                        </div>
+                        <div class="sgc-llm-advanced-field">
+                            <label class="sgc-label-sm">Top P (@Config.TopP.ToString("F2"))</label>
+                            <SgSlider @bind-Value="Config.TopP" Min="0" Max="1" Step="0.01" />
+                        </div>
+                    </div>
+                    <div class="sgc-llm-advanced-row">
+                        <div class="sgc-llm-advanced-field">
+                            <label class="sgc-label-sm">Pres. Pen. (@Config.PresencePenalty.ToString("F1"))</label>
+                            <SgSlider @bind-Value="Config.PresencePenalty" Min="-2" Max="2" Step="0.1" />
+                        </div>
+                        <div class="sgc-llm-advanced-field">
+                            <label class="sgc-label-sm">Freq. Pen. (@Config.FrequencyPenalty.ToString("F1"))</label>
+                            <SgSlider @bind-Value="Config.FrequencyPenalty" Min="-2" Max="2" Step="0.1" />
+                        </div>
+                    </div>
+                    <div class="sgc-llm-advanced-row">
+                        <SgNumberInput Label="Max Tokens" @bind-Value="Config.MaxTokens" Placeholder="Auto" Style="flex: 1;" Size="SgSize.Sm" />
+                    </div>
+                </div>
+            }
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
                 <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
                     <div class="sgc-status-dot @(_lastStatus.ToLower())"></div>
                     <span style="color: var(--sui-fg-muted)">@_statusText</span>
@@ -85,16 +145,87 @@
 </div>
 
 <style>
-    .sgc-llm-fields-grid {
-        display: grid; 
-        grid-template-columns: 1.5fr 1fr; 
-        gap: 16px; 
-        align-items: end;
+    .sgc-provider-tab {
+        padding: 6px 10px;
+        border: 1px solid var(--sg-border);
+        background: var(--sg-bg);
+        border-radius: 6px;
+        font-size: 12px;
+        cursor: pointer;
+        white-space: nowrap;
+        color: var(--sg-fg-muted);
+        transition: all 0.2s;
+        flex: 0 0 auto;
     }
-    .sgc-llm-field-group {
-        display: flex; 
-        gap: 8px; 
-        align-items: end;
+    .sgc-provider-tab:hover {
+        background: var(--sg-bg-subtle);
+    }
+    .sgc-provider-tab.active {
+        background: var(--sg-color-primary-subtle);
+        border-color: var(--sg-color-primary);
+        color: var(--sg-color-primary);
+        font-weight: 600;
+    }
+    .sgc-provider-tab.current::after {
+        content: "●";
+        margin-left: 4px;
+        color: var(--sg-color-success);
+        font-size: 8px;
+        vertical-align: middle;
+    }
+
+    .sgc-llm-compact-grid {
+        display: grid; 
+        grid-template-columns: 1fr 1.5fr; 
+        gap: 12px; 
+    }
+    .sgc-llm-advanced-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        padding: 8px;
+        background: var(--sg-bg-subtle);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        margin-top: 4px;
+    }
+    .sgc-llm-info-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 8px;
+        border-bottom: 1px solid var(--sg-border);
+        padding-bottom: 8px;
+    }
+    .sgc-llm-info-section ::deep .sgc-or-key-info,
+    .sgc-llm-info-section ::deep .sgc-or-model-details {
+        border: none;
+        padding: 0;
+        background: transparent;
+    }
+    .sgc-llm-ollama-status {
+        padding: 8px;
+        background: var(--sg-bg);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        margin-bottom: 8px;
+    }
+    .sgc-llm-advanced-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-end;
+    }
+    .sgc-llm-advanced-field {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .sgc-label-sm {
+        font-size: 10px;
+        color: var(--sg-fg-muted);
+        font-weight: 500;
+        margin-bottom: -2px;
     }
     .sgc-status-dot {
         width: 8px;
@@ -109,15 +240,16 @@
     .sgc-llm-logs {
         background: #1e1e1e;
         color: #d4d4d4;
-        padding: 12px;
-        border-radius: 8px;
+        padding: 8px;
+        border-radius: 6px;
         font-family: var(--sg-font-mono, monospace);
         font-size: 11px;
-        max-height: 150px;
+        max-height: 120px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 2px;
+        margin-top: 8px;
     }
     .sgc-log-time { color: #888; margin-right: 8px; }
     .sgc-log-msg.error { color: #f48771; }
@@ -130,7 +262,7 @@
     }
 
     @@media (max-width: 500px) {
-        .sgc-llm-fields-grid {
+        .sgc-llm-compact-grid {
             grid-template-columns: 1fr;
         }
     }
@@ -143,6 +275,7 @@
 
     private bool _manualModel;
     private bool _showLogs;
+    private bool _showAdvanced;
     private string _lastStatus = "None";
     private string _statusText = "Готов к подключению";
     private List<LogEntry> _logs = new();
@@ -167,6 +300,11 @@
             Config.ApiKey = LlmService.CurrentConfig.ApiKey;
             Config.BaseUrl = LlmService.CurrentConfig.BaseUrl;
             Config.SystemPrompt = LlmService.CurrentConfig.SystemPrompt;
+            Config.Temperature = LlmService.CurrentConfig.Temperature;
+            Config.TopP = LlmService.CurrentConfig.TopP;
+            Config.MaxTokens = LlmService.CurrentConfig.MaxTokens;
+            Config.PresencePenalty = LlmService.CurrentConfig.PresencePenalty;
+            Config.FrequencyPenalty = LlmService.CurrentConfig.FrequencyPenalty;
             
             _lastStatus = "Success";
             _statusText = "Загружено из сервиса";
@@ -178,6 +316,29 @@
     private async Task OnProviderChanged(SgLlmProvider provider)
     {
         Config.Provider = provider;
+        
+        // Автоматически заполняем Base URL для известных провайдеров
+        if (provider == SgLlmProvider.OpenRouter)
+        {
+            Config.BaseUrl = "https://openrouter.ai/api/v1";
+        }
+        else if (provider == SgLlmProvider.OpenCode)
+        {
+            Config.BaseUrl = "https://api.opencode.ai/v1";
+        }
+        else if (provider == SgLlmProvider.Ollama)
+        {
+            Config.BaseUrl = "http://localhost:11434";
+        }
+        else if (provider == SgLlmProvider.OpenAiCompatible)
+        {
+            Config.BaseUrl = "https://api.openai.com/v1";
+        }
+        else if (provider == SgLlmProvider.Anthropic)
+        {
+            Config.BaseUrl = "https://api.anthropic.com/v1";
+        }
+
         AddLog($"Смена провайдера на {provider}");
         await LoadModelsAsync();
     }
@@ -199,16 +360,38 @@
         
         try 
         {
+            List<SgLlmModelInfo>? models = null;
+
             if (Config.Provider == SgLlmProvider.OpenRouter)
             {
-                var models = await LlmService.GetOpenRouterModelsAsync();
-                if (models != null && models.Any())
-                {
-                    _orModelIds = models.Select(m => m.Id).OrderBy(id => id).ToList();
-                    AddLog($"Получено {models.Count()} моделей", "Success");
-                    _lastStatus = "Success";
-                    _statusText = "Модели обновлены";
-                }
+                models = await LlmService.GetOpenRouterModelsAsync();
+            }
+            else if (Config.Provider == SgLlmProvider.OpenAiCompatible || Config.Provider == SgLlmProvider.OpenCode)
+            {
+                models = await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey);
+            }
+            else if (Config.Provider == SgLlmProvider.Anthropic)
+            {
+                // Загружаем через сервис (в будущем можно добавить запрос к API, если появится)
+                models = await LlmService.GetAnthropicModelsAsync(Config.ApiKey);
+            }
+            else if (Config.Provider == SgLlmProvider.Ollama)
+            {
+                var ollamaModels = await LlmService.GetOllamaModelsAsync(Config.BaseUrl);
+                _orModelIds = ollamaModels.Select(m => m.Name).OrderBy(id => id).ToList();
+                AddLog($"Получено {ollamaModels.Count()} моделей (Ollama)", "Success");
+            }
+
+            if (models != null)
+            {
+                _orModelIds = models.Select(m => m.Id).OrderBy(id => id).ToList();
+                AddLog($"Получено {models.Count()} моделей ({Config.Provider})", "Success");
+            }
+
+            if (_orModelIds.Any())
+            {
+                _lastStatus = "Success";
+                _statusText = "Модели обновлены";
             }
         }
         catch (Exception ex)

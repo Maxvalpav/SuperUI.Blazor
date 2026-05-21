@@ -6,6 +6,8 @@ public enum SgLlmProvider
     OpenAiCompatible,
     OpenRouter,
     Ollama,
+    OpenCode,
+    Anthropic,
     None
 }
 
@@ -37,6 +39,13 @@ public class SgLlmConfig
     public string? BaseUrl { get; set; }
     public string? SystemPrompt { get; set; }
     public Dictionary<string, string>? ExtraHeaders { get; set; }
+
+    // Advanced settings
+    public double Temperature { get; set; } = 0.7;
+    public double TopP { get; set; } = 1.0;
+    public int? MaxTokens { get; set; }
+    public double PresencePenalty { get; set; } = 0.0;
+    public double FrequencyPenalty { get; set; } = 0.0;
 }
 
 public class SgLlmPromptOptions
@@ -44,4 +53,6 @@ public class SgLlmPromptOptions
     public string? SystemPrompt { get; set; }
     public bool Stream { get; set; } = true;
     public List<SgLlmAttachment>? Attachments { get; set; }
+    public List<object>? Tools { get; set; }
+    public object? ToolChoice { get; set; }
 }

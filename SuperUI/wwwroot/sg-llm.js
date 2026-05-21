@@ -125,8 +125,9 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
       } catch (_) {}
     };
     inst.llmEngine = await webllm.CreateMLCEngine(modelId, { initProgressCallback: progressCallback });
-  } else if (providerLower === 'openaicompatible' || providerLower === 'openrouter') {
+  } else if (providerLower === 'openaicompatible' || providerLower === 'openrouter' || providerLower === 'opencode' || providerLower === 'openai') {
     const isOR = providerLower === 'openrouter';
+    const isOC = providerLower === 'opencode';
     const extraHeaders = {};
     if (isOR) {
       extraHeaders['HTTP-Referer'] = window.location.origin;
@@ -134,10 +135,44 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
     }
     inst.llmEngine = {
       kind: 'openai',
-      baseUrl: opts?.baseUrl || (isOR ? 'https://openrouter.ai/api/v1' : 'https://api.openai.com/v1'),
+      baseUrl: opts?.baseUrl || (isOR ? 'https://openrouter.ai/api/v1' : (isOC ? 'https://api.opencode.ai/v1' : 'https://api.openai.com/v1')),
       apiKey: opts?.apiKey || inst.options.apiKey || '',
-      model: modelId || (isOR ? 'google/gemini-2.0-flash-001:free' : 'gpt-4o-mini'),
-      extraHeaders
+      model: modelId || (isOR ? 'google/gemini-2.0-flash-001:free' : (isOC ? 'mistralai/mistral-7b-instruct' : 'gpt-4o-mini')),
+      extraHeaders,
+      temperature: opts?.temperature ?? 0.7,
+      topP: opts?.topP ?? 1.0,
+      maxTokens: opts?.maxTokens,
+      presencePenalty: opts?.presencePenalty ?? 0.0,
+      frequencyPenalty: opts?.frequencyPenalty ?? 0.0,
+    };
+    try {
+      inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', {
+        stage: 'ready', loaded: 1, total: 1, percent: 100, file: null, isComplete: true,
+      });
+    } catch (_) {}
+  } else if (providerLower === 'anthropic') {
+    inst.llmEngine = {
+      kind: 'anthropic',
+      baseUrl: opts?.baseUrl || 'https://api.anthropic.com/v1',
+      apiKey: opts?.apiKey || inst.options.apiKey || '',
+      model: modelId || 'claude-3-5-sonnet-20240620',
+      temperature: opts?.temperature ?? 0.7,
+      topP: opts?.topP ?? 1.0,
+      maxTokens: opts?.maxTokens,
+    };
+    try {
+      inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', {
+        stage: 'ready', loaded: 1, total: 1, percent: 100, file: null, isComplete: true,
+      });
+    } catch (_) {}
+  } else if (providerLower === 'ollama') {
+    inst.llmEngine = {
+      kind: 'ollama',
+      baseUrl: opts?.baseUrl || 'http://localhost:11434',
+      model: modelId || 'llama3',
+      temperature: opts?.temperature ?? 0.7,
+      topP: opts?.topP ?? 1.0,
+      maxTokens: opts?.maxTokens,
     };
     try {
       inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', {
@@ -147,7 +182,7 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
   }
 }
 
-export async function chatDirectStream(instanceId, message, systemPrompt, attachments, streamId) {
+export async function chatDirectStream(instanceId, message, systemPrompt, attachments, streamId, tools, toolChoice) {
   const inst = _instances.get(instanceId);
   if (!inst) throw new Error(`Instance ${instanceId} not found`);
   if (!inst.llmEngine) throw new Error('LLM not loaded');
@@ -169,6 +204,8 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
   const userTurn = { role: 'user', content: historyText };
 
   let fullAnswer = '';
+  let toolCalls = [];
+
   const _sendToken = (token) => {
     fullAnswer += token;
     try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenCallback', token); } catch (_) {}
@@ -176,11 +213,12 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
 
   const _sendComplete = () => {
     inst._directHistory.push(userTurn);
-    inst._directHistory.push({ role: 'assistant', content: fullAnswer });
+    inst._directHistory.push({ role: 'assistant', content: fullAnswer, tool_calls: toolCalls.length ? toolCalls : undefined });
     if (inst._directHistory.length > 20) inst._directHistory = inst._directHistory.slice(-20);
     const answer = {
       question: message,
       answer: fullAnswer,
+      tool_calls: toolCalls,
       sources: [],
       promptTokens: Math.ceil(messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 1000), 0) / 4),
       completionTokens: Math.ceil(fullAnswer.length / 4),
@@ -193,7 +231,20 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
     const abortCtrl = new AbortController();
     inst._activeAbortCtrl = abortCtrl;
     try {
-      const response = await fetch(`${inst.llmEngine.baseUrl}/chat/completions`, {
+      const body = { 
+        model: inst.llmEngine.model, 
+        messages, 
+        stream: true,
+        tools: tools || undefined,
+        tool_choice: toolChoice || undefined,
+        temperature: inst.llmEngine.temperature,
+        top_p: inst.llmEngine.topP,
+        max_tokens: inst.llmEngine.maxTokens || undefined,
+        presence_penalty: inst.llmEngine.presencePenalty,
+        frequency_penalty: inst.llmEngine.frequencyPenalty
+      };
+
+      const response = await fetch(`${inst.llmEngine.baseUrl.replace(/\/$/, '')}/chat/completions`, {
         method: 'POST',
         signal: abortCtrl.signal,
         headers: {
@@ -201,7 +252,7 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
           'Authorization': `Bearer ${inst.llmEngine.apiKey}`,
           ...(inst.llmEngine.extraHeaders || {}),
         },
-        body: JSON.stringify({ model: inst.llmEngine.model, messages, stream: true }),
+        body: JSON.stringify(body),
       });
       if (!response.ok) throw new Error(`LLM API error ${response.status}`);
       const reader = response.body.getReader();
@@ -220,8 +271,17 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
           if (payload === '[DONE]') break;
           try {
             const parsed = JSON.parse(payload);
-            const token = parsed.choices?.[0]?.delta?.content;
-            if (token) _sendToken(token);
+            const delta = parsed.choices?.[0]?.delta;
+            if (delta?.content) _sendToken(delta.content);
+            if (delta?.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                if (!toolCalls[tc.index]) {
+                  toolCalls[tc.index] = { id: tc.id, type: 'function', function: { name: '', arguments: '' } };
+                }
+                if (tc.function?.name) toolCalls[tc.index].function.name += tc.function.name;
+                if (tc.function?.arguments) toolCalls[tc.index].function.arguments += tc.function.arguments;
+              }
+            }
           } catch (_) {}
         }
       }
@@ -231,7 +291,124 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
       inst._activeAbortCtrl = null;
       _sendComplete();
     }
-  } else {
+  } else if (inst.llmEngine.kind === 'ollama') {
+     const abortCtrl = new AbortController();
+     inst._activeAbortCtrl = abortCtrl;
+     try {
+       // Ollama API supports chat completions at /api/chat
+       const response = await fetch(`${inst.llmEngine.baseUrl.replace(/\/$/, '')}/api/chat`, {
+         method: 'POST',
+         signal: abortCtrl.signal,
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ 
+           model: inst.llmEngine.model, 
+           messages: messages, // Ollama uses the same messages format
+           stream: true,
+           tools: tools || undefined,
+           options: {
+             temperature: inst.llmEngine.temperature,
+             top_p: inst.llmEngine.topP,
+             num_predict: inst.llmEngine.maxTokens || undefined
+           }
+         }),
+       });
+       if (!response.ok) throw new Error(`Ollama API error ${response.status}`);
+       const reader = response.body.getReader();
+       const decoder = new TextDecoder('utf-8');
+       let buffer = '';
+       while (true) {
+         const { done, value } = await reader.read();
+         if (done || abortCtrl.signal.aborted) break;
+         
+         buffer += decoder.decode(value, { stream: true });
+         
+         // Ollama might send multiple JSON objects in one chunk or split one object across chunks
+         let boundary = buffer.indexOf('\n');
+         while (boundary !== -1) {
+           const line = buffer.slice(0, boundary).trim();
+           buffer = buffer.slice(boundary + 1);
+           
+           if (line) {
+             try {
+               const parsed = JSON.parse(line);
+               if (parsed.message?.content) {
+                 _sendToken(parsed.message.content);
+               }
+               if (parsed.message?.tool_calls) {
+                 for (const tc of parsed.message.tool_calls) {
+                   // Ollama tool calls are usually complete in one chunk or a few
+                   toolCalls.push(tc);
+                 }
+               }
+               if (parsed.done) break;
+             } catch (e) {
+               console.error('[sg-llm] Ollama parse error:', e, line);
+             }
+           }
+           boundary = buffer.indexOf('\n');
+         }
+       }
+     } catch (err) {
+       if (err?.name !== 'AbortError') throw err;
+     } finally {
+       inst._activeAbortCtrl = null;
+       _sendComplete();
+     }
+    } else if (inst.llmEngine.kind === 'anthropic') {
+      const abortCtrl = new AbortController();
+      inst._activeAbortCtrl = abortCtrl;
+      try {
+        const body = {
+          model: inst.llmEngine.model,
+          messages: messages.filter(m => m.role !== 'system'),
+          system: messages.find(m => m.role === 'system')?.content || undefined,
+          max_tokens: inst.llmEngine.maxTokens || 4096,
+          stream: true,
+          tools: tools || undefined,
+          temperature: inst.llmEngine.temperature,
+          top_p: inst.llmEngine.topP,
+        };
+
+        const response = await fetch(`${inst.llmEngine.baseUrl.replace(/\/$/, '')}/messages`, {
+          method: 'POST',
+          signal: abortCtrl.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': inst.llmEngine.apiKey,
+            'anthropic-version': '2023-06-01',
+            'dangerously-allow-browser': 'true'
+          },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(`Anthropic API error ${response.status}`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done || abortCtrl.signal.aborted) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop();
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.type === 'content_block_delta' && parsed.delta?.text) {
+                _sendToken(parsed.delta.text);
+              }
+            } catch (_) {}
+          }
+        }
+      } catch (err) {
+        if (err?.name !== 'AbortError') throw err;
+      } finally {
+        inst._activeAbortCtrl = null;
+        _sendComplete();
+      }
+    } else {
     // WebLLM
     try {
       const stream = await inst.llmEngine.chat.completions.create({ messages, stream: true });

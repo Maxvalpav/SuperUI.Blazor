@@ -5,7 +5,7 @@
 @inject ISuperUILocalizer Localizer
 @implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
@@ -19,7 +19,8 @@
          aria-disabled="@(Disabled ? "true" : null)"
          aria-invalid="@(IsInvalid ? "true" : null)"
          aria-describedby="@DescribedBy"
-         @onclick:stopPropagation="true">
+         @onclick:stopPropagation="true"
+         @attributes="AdditionalAttributes">
         <div class="sgc-combo-control">
             <input class="sgc-combo-input"
                    value="@_search"
@@ -170,14 +171,24 @@
     [Parameter] public int MinCharacters { get; set; } = 0;
     
     /// <summary>
-    /// Gets or sets the maximum number of suggestions to display. Default is 8.
+    /// Gets or sets the maximum number of suggestions to display. Default is 50.
     /// </summary>
-    [Parameter] public int MaxResults { get; set; } = 8;
+    [Parameter] public int MaxResults { get; set; } = 50;
     
     /// <summary>
     /// Gets or sets additional CSS class names to apply to the field container.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS styles to apply to the field container.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional HTML attributes to apply to the combobox element.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
@@ -255,6 +266,16 @@
         _search = e.Value?.ToString() ?? string.Empty;
         _open = true;
         _activeIndex = 0;
+
+        if (typeof(TItem) == typeof(string))
+        {
+            Value = (TItem)(object)_search;
+            if (ValueChanged.HasDelegate)
+            {
+                await ValueChanged.InvokeAsync(Value);
+            }
+        }
+
         await InvokeAsync(StateHasChanged);
     }
 
