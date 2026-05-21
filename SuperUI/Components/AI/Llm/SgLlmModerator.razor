@@ -1,0 +1,97 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmModerator — проверка текста через /moderations.
+   Показывает категории и их веса.
+*@
+
+<div class="sgc-llm-moderator @CssClass" style="@Style">
+    <SgTextArea @bind-Value="_text" Rows="4"
+                Placeholder="Текст для модерации..." />
+
+    <div class="sgc-mod-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="omni-moderation-latest" Label="Модель" />
+    </div>
+
+    <div class="sgc-mod-actions">
+        <SgButton Text="Проверить" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@string.IsNullOrWhiteSpace(_text)" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (_result != null)
+    {
+        <SgCard>
+            <div class="sgc-mod-header">
+                <SgBadge Variant="@(_result.Flagged ? SgBadgeVariant.Danger : SgBadgeVariant.Success)">
+                    @(_result.Flagged ? "FLAGGED" : "OK")
+                </SgBadge>
+                @foreach (var c in _result.Categories)
+                {
+                    <SgBadge Variant="SgBadgeVariant.Warn">@c</SgBadge>
+                }
+            </div>
+
+            <table class="sgc-mod-scores">
+                <thead><tr><th>Категория</th><th>Score</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var kv in _result.CategoryScores.OrderByDescending(k => k.Value))
+                    {
+                        <tr>
+                            <td>@kv.Key</td>
+                            <td>@kv.Value.ToString("F4")</td>
+                            <td style="width: 200px;">
+                                <SgProgress Value="@(kv.Value * 100)"
+                                            Variant="@ScoreVariant(kv.Value)" Size="SgSize.Sm" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-moderator { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-mod-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+    .sgc-mod-actions { display: flex; gap: 8px; }
+    .sgc-mod-header { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
+    .sgc-mod-scores { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .sgc-mod-scores th, .sgc-mod-scores td { padding: 4px 8px; border-bottom: 1px solid var(--sg-border, #e5e7eb); text-align: left; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _text = "";
+    private string _model = "omni-moderation-latest";
+    private bool _busy;
+    private string _error = "";
+    private SgLlmModerationResult? _result;
+
+    private async Task RunAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_text)) return;
+        _busy = true; _error = ""; _result = null;
+        try
+        {
+            _result = await LlmService.ModerateAsync(_text, string.IsNullOrWhiteSpace(_model) ? null : _model);
+            if (!string.IsNullOrEmpty(_result.Error)) _error = _result.Error;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static SgSpinnerVariant ScoreVariant(double s) =>
+        s >= 0.7 ? SgSpinnerVariant.Danger :
+        s >= 0.4 ? SgSpinnerVariant.Warn :
+        SgSpinnerVariant.Success;
+}

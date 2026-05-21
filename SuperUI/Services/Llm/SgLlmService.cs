@@ -618,6 +618,372 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         catch { return string.Empty; }
     }
 
+    public async Task<List<float[]>> GetEmbeddingsBatchAsync(IEnumerable<string> texts, string? modelId = null, int? dimensions = null)
+    {
+        if (CurrentConfig == null) return new();
+        var inputs = texts.ToList();
+        if (inputs.Count == 0) return new();
+
+        var mId = modelId ?? "text-embedding-3-small";
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/embeddings";
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            object body = dimensions.HasValue
+                ? new { model = mId, input = inputs, dimensions = dimensions.Value }
+                : new { model = mId, input = inputs };
+            request.Content = JsonContent.Create(body);
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode) return new();
+
+            var data = await response.Content.ReadFromJsonAsync<OpenAiEmbeddingsResponse>();
+            return data?.Data?.Select(d => d.Embedding ?? Array.Empty<float>()).ToList() ?? new();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SgLlmService] Embeddings batch error: {ex.Message}");
+            return new();
+        }
+    }
+
+    public async Task<SgLlmImageResult> GenerateImageRichAsync(SgLlmImageRequest req)
+    {
+        var result = new SgLlmImageResult();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/images/generations";
+
+        try
+        {
+            var body = new Dictionary<string, object?>
+            {
+                ["model"] = req.Model ?? "gpt-image-1",
+                ["prompt"] = req.Prompt,
+                ["n"] = Math.Max(1, req.Count),
+                ["size"] = req.Size ?? "1024x1024",
+                ["response_format"] = req.ResponseFormat ?? "b64_json"
+            };
+            if (!string.IsNullOrEmpty(req.Quality)) body["quality"] = req.Quality;
+            if (!string.IsNullOrEmpty(req.Style)) body["style"] = req.Style;
+            if (!string.IsNullOrEmpty(req.Background)) body["background"] = req.Background;
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                result.Error = $"HTTP {(int)response.StatusCode}: {Truncate(raw, 300)}";
+                return result;
+            }
+
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("data", out var dataArr))
+            {
+                foreach (var item in dataArr.EnumerateArray())
+                {
+                    var img = new SgLlmGeneratedImage();
+                    if (item.TryGetProperty("url", out var u)) img.Url = u.GetString();
+                    if (item.TryGetProperty("b64_json", out var b)) img.B64Json = b.GetString();
+                    if (item.TryGetProperty("revised_prompt", out var rp)) result.RevisedPrompt = rp.GetString();
+                    result.Images.Add(img);
+                }
+            }
+            return result;
+        }
+        catch (Exception ex)
+        {
+            result.Error = ex.Message;
+            return result;
+        }
+    }
+
+    public async Task<SgLlmImageResult> EditImageAsync(byte[] imageBytes, string imageMime, string prompt,
+        byte[]? maskBytes = null, string? maskMime = null, string? modelId = null, string? size = "1024x1024")
+    {
+        var result = new SgLlmImageResult();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/images/edits";
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var imgContent = new ByteArrayContent(imageBytes);
+            imgContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(imageMime);
+            content.Add(imgContent, "image", "image" + GuessExt(imageMime));
+            if (maskBytes != null && maskBytes.Length > 0)
+            {
+                var maskContent = new ByteArrayContent(maskBytes);
+                maskContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(maskMime ?? "image/png");
+                content.Add(maskContent, "mask", "mask.png");
+            }
+            content.Add(new StringContent(prompt), "prompt");
+            content.Add(new StringContent(modelId ?? "gpt-image-1"), "model");
+            content.Add(new StringContent(size ?? "1024x1024"), "size");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                result.Error = $"HTTP {(int)response.StatusCode}: {Truncate(raw, 300)}";
+                return result;
+            }
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("data", out var dataArr))
+            {
+                foreach (var item in dataArr.EnumerateArray())
+                {
+                    var img = new SgLlmGeneratedImage();
+                    if (item.TryGetProperty("url", out var u)) img.Url = u.GetString();
+                    if (item.TryGetProperty("b64_json", out var b)) img.B64Json = b.GetString();
+                    result.Images.Add(img);
+                }
+            }
+            return result;
+        }
+        catch (Exception ex) { result.Error = ex.Message; return result; }
+    }
+
+    public async Task<SgLlmTranscription> TranscribeAsync(SgLlmTranscribeRequest req)
+    {
+        var result = new SgLlmTranscription();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var endpoint = req.Translate ? "/audio/translations" : "/audio/transcriptions";
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + endpoint;
+
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var audio = new ByteArrayContent(req.Audio);
+            content.Add(audio, "file", req.FileName);
+            content.Add(new StringContent(req.Model ?? "whisper-1"), "model");
+            if (!string.IsNullOrEmpty(req.Language)) content.Add(new StringContent(req.Language), "language");
+            if (!string.IsNullOrEmpty(req.Prompt)) content.Add(new StringContent(req.Prompt), "prompt");
+            if (!string.IsNullOrEmpty(req.ResponseFormat)) content.Add(new StringContent(req.ResponseFormat), "response_format");
+            if (req.Temperature.HasValue) content.Add(new StringContent(req.Temperature.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)), "temperature");
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                result.Error = $"HTTP {(int)response.StatusCode}: {Truncate(raw, 300)}";
+                return result;
+            }
+            // verbose_json contains language + duration, plain text returns the text itself
+            if (req.ResponseFormat == "text" || req.ResponseFormat == "srt" || req.ResponseFormat == "vtt")
+            {
+                result.Text = raw;
+            }
+            else
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                if (doc.RootElement.TryGetProperty("text", out var t)) result.Text = t.GetString() ?? "";
+                if (doc.RootElement.TryGetProperty("language", out var l)) result.Language = l.GetString();
+                if (doc.RootElement.TryGetProperty("duration", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.Number)
+                    result.Duration = d.GetDouble();
+            }
+            return result;
+        }
+        catch (Exception ex) { result.Error = ex.Message; return result; }
+    }
+
+    public async Task<SgLlmTtsResult> SynthesizeAsync(SgLlmTtsRequest req)
+    {
+        var result = new SgLlmTtsResult();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/audio/speech";
+
+        try
+        {
+            var body = new Dictionary<string, object?>
+            {
+                ["model"] = req.Model ?? "tts-1",
+                ["input"] = req.Input,
+                ["voice"] = req.Voice ?? "alloy",
+                ["response_format"] = req.Format ?? "mp3"
+            };
+            if (req.Speed.HasValue) body["speed"] = req.Speed.Value;
+            if (!string.IsNullOrEmpty(req.Instructions)) body["instructions"] = req.Instructions;
+
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+
+            var response = await _http.SendAsync(request);
+            if (!response.IsSuccessStatusCode)
+            {
+                var errBody = await response.Content.ReadAsStringAsync();
+                result.Error = $"HTTP {(int)response.StatusCode}: {Truncate(errBody, 300)}";
+                return result;
+            }
+            result.Audio = await response.Content.ReadAsByteArrayAsync();
+            result.MimeType = (req.Format ?? "mp3") switch
+            {
+                "wav" => "audio/wav",
+                "opus" => "audio/opus",
+                "aac" => "audio/aac",
+                "flac" => "audio/flac",
+                "pcm" => "audio/pcm",
+                _ => "audio/mpeg"
+            };
+            return result;
+        }
+        catch (Exception ex) { result.Error = ex.Message; return result; }
+    }
+
+    public async Task<SgLlmModerationResult> ModerateAsync(string text, string? modelId = null)
+    {
+        var result = new SgLlmModerationResult();
+        if (CurrentConfig == null) { result.Error = "Service not initialized"; return result; }
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/moderations";
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url);
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+            request.Content = JsonContent.Create(new { input = text, model = modelId ?? "omni-moderation-latest" });
+
+            var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                result.Error = $"HTTP {(int)response.StatusCode}: {Truncate(raw, 300)}";
+                return result;
+            }
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            if (doc.RootElement.TryGetProperty("results", out var arr) && arr.GetArrayLength() > 0)
+            {
+                var first = arr[0];
+                if (first.TryGetProperty("flagged", out var f)) result.Flagged = f.GetBoolean();
+                if (first.TryGetProperty("categories", out var cats))
+                {
+                    foreach (var c in cats.EnumerateObject())
+                        if (c.Value.ValueKind == System.Text.Json.JsonValueKind.True) result.Categories.Add(c.Name);
+                }
+                if (first.TryGetProperty("category_scores", out var scores))
+                {
+                    foreach (var s in scores.EnumerateObject())
+                        if (s.Value.ValueKind == System.Text.Json.JsonValueKind.Number)
+                            result.CategoryScores[s.Name] = s.Value.GetDouble();
+                }
+            }
+            return result;
+        }
+        catch (Exception ex) { result.Error = ex.Message; return result; }
+    }
+
+    public async Task<string> AnalyzeVisionAsync(SgLlmVisionRequest req)
+    {
+        if (CurrentConfig == null) return "(service not initialized)";
+        var url = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/chat/completions";
+
+        var parts = new List<object> { new { type = "text", text = req.Prompt } };
+        foreach (var img in req.Images)
+        {
+            parts.Add(new { type = "image_url", image_url = new { url = $"data:{img.MimeType};base64,{img.Base64}" } });
+        }
+
+        var body = new Dictionary<string, object?>
+        {
+            ["model"] = req.Model ?? CurrentConfig.ModelId ?? "gpt-4o-mini",
+            ["messages"] = new[] { new { role = "user", content = parts } },
+            ["temperature"] = req.Temperature
+        };
+        if (req.MaxTokens.HasValue) body["max_tokens"] = req.MaxTokens.Value;
+
+        try
+        {
+            var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = JsonContent.Create(body) };
+            if (!string.IsNullOrEmpty(CurrentConfig.ApiKey))
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", CurrentConfig.ApiKey);
+            if (CurrentConfig.Provider == SgLlmProvider.OpenRouter)
+            {
+                request.Headers.TryAddWithoutValidation("HTTP-Referer", "https://superui.local");
+                request.Headers.TryAddWithoutValidation("X-Title", "SuperUI");
+            }
+            var response = await _http.SendAsync(request);
+            var raw = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode) return $"HTTP {(int)response.StatusCode}: {Truncate(raw, 300)}";
+
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            return doc.RootElement.GetProperty("choices")[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+        }
+        catch (Exception ex) { return ex.Message; }
+    }
+
+    public async Task<string> AnalyzeVideoAsync(SgLlmVideoRequest req)
+    {
+        // Gemini accepts inline video data via generateContent. For everyone else we
+        // fall back to chat/completions multipart (some providers accept video frames
+        // as image attachments, but proper video support is provider-specific).
+        if (CurrentConfig == null) return "(service not initialized)";
+
+        if (CurrentConfig.Provider == SgLlmProvider.Google)
+        {
+            var baseUrl = (CurrentConfig.BaseUrl?.TrimEnd('/') ?? "https://generativelanguage.googleapis.com/v1beta");
+            var model = req.Model ?? CurrentConfig.ModelId ?? "gemini-2.5-flash";
+            var url = $"{baseUrl}/models/{model}:generateContent?key={CurrentConfig.ApiKey}";
+
+            var b64 = Convert.ToBase64String(req.Video);
+            var body = new
+            {
+                contents = new[]
+                {
+                    new
+                    {
+                        role = "user",
+                        parts = new object[]
+                        {
+                            new { text = req.Prompt },
+                            new { inline_data = new { mime_type = req.MimeType, data = b64 } }
+                        }
+                    }
+                },
+                generationConfig = req.MaxTokens.HasValue
+                    ? (object)new { maxOutputTokens = req.MaxTokens.Value }
+                    : new { }
+            };
+            try
+            {
+                var resp = await _http.PostAsJsonAsync(url, body);
+                var raw = await resp.Content.ReadAsStringAsync();
+                if (!resp.IsSuccessStatusCode) return $"HTTP {(int)resp.StatusCode}: {Truncate(raw, 300)}";
+                using var doc = System.Text.Json.JsonDocument.Parse(raw);
+                var sb = new System.Text.StringBuilder();
+                foreach (var p in doc.RootElement.GetProperty("candidates")[0].GetProperty("content").GetProperty("parts").EnumerateArray())
+                    if (p.TryGetProperty("text", out var t)) sb.Append(t.GetString());
+                return sb.ToString();
+            }
+            catch (Exception ex) { return ex.Message; }
+        }
+
+        return "Video analysis is only implemented for Google Gemini in this build.";
+    }
+
+    private static string Truncate(string s, int max) => s.Length <= max ? s : s.Substring(0, max) + "…";
+    private static string GuessExt(string mime) => mime switch
+    {
+        "image/png" => ".png",
+        "image/jpeg" or "image/jpg" => ".jpg",
+        "image/webp" => ".webp",
+        _ => ""
+    };
+
     // ---- Internal response DTOs ----
     private class OpenAiModelsResponse { public List<OpenAiModel>? Data { get; set; } }
     private class OpenAiModel

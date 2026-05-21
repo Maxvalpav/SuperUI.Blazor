@@ -1,0 +1,136 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmEmbedder — генерация эмбеддингов (single или batch), показывает размерность,
+   нормирование и cosine-similarity между всеми парами входов.
+*@
+
+<div class="sgc-llm-embedder @CssClass" style="@Style">
+    <SgTextArea @bind-Value="_input" Rows="6"
+                Placeholder="Каждая строка — отдельный текст для эмбеддинга" />
+
+    <div class="sgc-emb-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="text-embedding-3-small" Label="Модель" />
+        <SgNumberInput TValue="int" @bind-Value="_dims" Min="0" Max="4096" Step="1"
+                       Label="Размерность (0 = по умолчанию)" />
+    </div>
+
+    <div class="sgc-emb-actions">
+        <SgButton Text="Сгенерировать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@string.IsNullOrWhiteSpace(_input)" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (_vectors.Count > 0)
+    {
+        <SgCard>
+            <div><b>Векторов:</b> @_vectors.Count, <b>размерность:</b> @(_vectors[0].Length)</div>
+
+            @if (_vectors.Count > 1)
+            {
+                <h4 style="margin-top: 12px;">Косинусное сходство</h4>
+                <table class="sgc-emb-sim">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            @for (var j = 0; j < _vectors.Count; j++)
+                            {
+                                <th>#@(j + 1)</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @for (var i = 0; i < _vectors.Count; i++)
+                        {
+                            var iLocal = i;
+                            <tr>
+                                <th>#@(iLocal + 1)</th>
+                                @for (var j = 0; j < _vectors.Count; j++)
+                                {
+                                    var sim = Cosine(_vectors[iLocal], _vectors[j]);
+                                    <td style="@CellStyle(sim)">@sim.ToString("F3")</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            <details style="margin-top: 12px;">
+                <summary>Сырые векторы</summary>
+                @for (var i = 0; i < _vectors.Count; i++)
+                {
+                    var v = _vectors[i];
+                    <div class="sgc-emb-vec">
+                        <b>#@(i + 1):</b>
+                        <code>[@string.Join(", ", v.Take(10).Select(x => x.ToString("F4")))]@(v.Length > 10 ? ", ..." : "")</code>
+                    </div>
+                }
+            </details>
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-embedder { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-emb-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+    .sgc-emb-actions { display: flex; gap: 8px; }
+    .sgc-emb-sim { border-collapse: collapse; width: 100%; font-size: 0.85rem; }
+    .sgc-emb-sim th, .sgc-emb-sim td { border: 1px solid var(--sg-border, #e5e7eb); padding: 4px 8px; text-align: center; }
+    .sgc-emb-vec { margin: 4px 0; font-size: 0.85rem; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _input = "";
+    private string _model = "text-embedding-3-small";
+    private int _dims;
+    private bool _busy;
+    private string _error = "";
+    private List<float[]> _vectors = new();
+
+    private async Task RunAsync()
+    {
+        var texts = _input
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToList();
+        if (texts.Count == 0) return;
+
+        _busy = true; _error = ""; _vectors.Clear();
+        try
+        {
+            int? d = _dims > 0 ? _dims : null;
+            _vectors = await LlmService.GetEmbeddingsBatchAsync(texts, string.IsNullOrWhiteSpace(_model) ? null : _model, d);
+            if (_vectors.Count == 0) _error = "Не удалось получить эмбеддинги (проверьте ключ/модель)";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static double Cosine(float[] a, float[] b)
+    {
+        if (a.Length == 0 || b.Length == 0 || a.Length != b.Length) return 0;
+        double dot = 0, na = 0, nb = 0;
+        for (var i = 0; i < a.Length; i++) { dot += a[i] * b[i]; na += a[i] * a[i]; nb += b[i] * b[i]; }
+        var denom = Math.Sqrt(na) * Math.Sqrt(nb);
+        return denom == 0 ? 0 : dot / denom;
+    }
+
+    private static string CellStyle(double sim)
+    {
+        var t = Math.Clamp((sim + 1) / 2.0, 0, 1);
+        var r = (int)((1 - t) * 220 + t * 80);
+        var g = (int)(t * 200 + 30);
+        return $"background: rgba({r},{g},80,0.35);";
+    }
+}

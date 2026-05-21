@@ -1,0 +1,104 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@using Microsoft.AspNetCore.Components.Forms
+@inject ILlmService LlmService
+
+@*
+   SgLlmVideoAnalyzer — анализ видео. Реально работает для Google Gemini (inline video),
+   у других провайдеров вернётся уведомление "видео не поддерживается".
+*@
+
+<div class="sgc-llm-video @CssClass" style="@Style">
+    <SgFileUpload OnFilesSelected="@OnFile" Accept="video/*" />
+    @if (!string.IsNullOrEmpty(_fileName))
+    {
+        <SgChip>@_fileName (@FormatBytes(_video?.Length ?? 0))</SgChip>
+    }
+
+    <SgTextArea @bind-Value="_prompt" Rows="3"
+                Placeholder="Что нужно понять / резюмировать в видео?" />
+
+    <div class="sgc-video-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="gemini-2.5-flash" Label="Модель" />
+        <SgNumberInput TValue="int" @bind-Value="_maxTokens" Min="0" Max="32000" Step="64" Label="max_tokens" />
+    </div>
+
+    <div class="sgc-video-actions">
+        <SgButton Text="Анализировать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@(_video == null)" />
+    </div>
+
+    <SgAlert Variant="SgAlertVariant.Info">
+        Видео-вход реализован для Google Gemini (inline_data). Для других провайдеров используйте кадры через Vision.
+    </SgAlert>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+    @if (!string.IsNullOrEmpty(_answer))
+    {
+        <SgCard>
+            <pre class="sgc-video-answer">@_answer</pre>
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-video { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-video-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .sgc-video-actions { display: flex; gap: 8px; }
+    .sgc-video-answer { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _prompt = "Кратко опиши, что происходит на видео.";
+    private string _model = "";
+    private int _maxTokens = 1024;
+    private bool _busy;
+    private string _error = "";
+    private string _answer = "";
+    private byte[]? _video;
+    private string _mime = "video/mp4";
+    private string _fileName = "";
+
+    private async Task OnFile(IReadOnlyList<IBrowserFile> files)
+    {
+        var f = files.FirstOrDefault();
+        if (f == null) return;
+        _fileName = f.Name;
+        _mime = string.IsNullOrEmpty(f.ContentType) ? "video/mp4" : f.ContentType;
+        using var ms = new MemoryStream();
+        await f.OpenReadStream(200_000_000).CopyToAsync(ms);
+        _video = ms.ToArray();
+    }
+
+    private async Task RunAsync()
+    {
+        if (_video == null) return;
+        _busy = true; _error = ""; _answer = "";
+        try
+        {
+            _answer = await LlmService.AnalyzeVideoAsync(new SgLlmVideoRequest
+            {
+                Prompt = _prompt,
+                Video = _video,
+                MimeType = _mime,
+                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                MaxTokens = _maxTokens > 0 ? _maxTokens : null
+            });
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+
+    private static string FormatBytes(long n)
+    {
+        if (n < 1024) return $"{n} B";
+        if (n < 1024 * 1024) return $"{n / 1024.0:F1} KB";
+        return $"{n / 1024.0 / 1024.0:F2} MB";
+    }
+}

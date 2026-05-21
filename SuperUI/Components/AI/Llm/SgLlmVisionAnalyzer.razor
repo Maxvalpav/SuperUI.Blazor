@@ -1,0 +1,111 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@using Microsoft.AspNetCore.Components.Forms
+@inject ILlmService LlmService
+
+@*
+   SgLlmVisionAnalyzer — загрузка одного или нескольких изображений + текст-промпт,
+   отправка в multi-modal chat (gpt-4o-mini / совместимые). Возвращает текстовый ответ.
+*@
+
+<div class="sgc-llm-vision @CssClass" style="@Style">
+    <SgFileUpload OnFilesSelected="@OnFiles" Accept="image/*" Multiple="true" />
+
+    @if (_images.Count > 0)
+    {
+        <div class="sgc-vision-thumbs">
+            @foreach (var (img, idx) in _images.Select((v, i) => (v, i)))
+            {
+                <div class="sgc-vision-thumb">
+                    <img src="@($"data:{img.MimeType};base64,{img.Base64}")" alt="img" />
+                    <SgIconButton Icon="@SgIcons.X" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                                  OnClick="@(() => _images.RemoveAt(idx))" />
+                </div>
+            }
+        </div>
+    }
+
+    <SgTextArea @bind-Value="_prompt" Rows="3" Placeholder="Что нужно понять/извлечь из изображения?" />
+
+    <div class="sgc-vision-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="gpt-4o-mini" Label="Модель" />
+        <SgNumberInput TValue="int" @bind-Value="_maxTokens" Min="0" Max="32000" Step="64" Label="max_tokens" />
+        <SgNumberInput TValue="double" @bind-Value="_temp" Min="0" Max="2" Step="0.05" Decimals="2" Label="Температура" />
+    </div>
+
+    <div class="sgc-vision-actions">
+        <SgButton Text="Анализировать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@(_images.Count == 0)" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+    @if (!string.IsNullOrEmpty(_answer))
+    {
+        <SgCard>
+            <pre class="sgc-vision-answer">@_answer</pre>
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-vision { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-vision-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sgc-vision-thumb { position: relative; width: 120px; height: 120px; border-radius: 8px; overflow: hidden; border: 1px solid var(--sg-border, #e5e7eb); }
+    .sgc-vision-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .sgc-vision-thumb > button { position: absolute; top: 2px; right: 2px; }
+    .sgc-vision-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .sgc-vision-actions { display: flex; gap: 8px; }
+    .sgc-vision-answer { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _prompt = "Опиши, что изображено.";
+    private string _model = "";
+    private int _maxTokens = 512;
+    private double _temp = 0.7;
+    private bool _busy;
+    private string _error = "";
+    private string _answer = "";
+    private List<SgLlmAttachment> _images = new();
+
+    private async Task OnFiles(IReadOnlyList<IBrowserFile> files)
+    {
+        foreach (var f in files)
+        {
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(20_000_000).CopyToAsync(ms);
+            _images.Add(new SgLlmAttachment
+            {
+                Name = f.Name,
+                MimeType = string.IsNullOrEmpty(f.ContentType) ? "image/png" : f.ContentType,
+                Base64 = Convert.ToBase64String(ms.ToArray()),
+                IsImage = true
+            });
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        if (_images.Count == 0) return;
+        _busy = true; _error = ""; _answer = "";
+        try
+        {
+            _answer = await LlmService.AnalyzeVisionAsync(new SgLlmVisionRequest
+            {
+                Prompt = _prompt,
+                Images = _images,
+                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                MaxTokens = _maxTokens > 0 ? _maxTokens : null,
+                Temperature = _temp
+            });
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _busy = false; }
+    }
+}

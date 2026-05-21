@@ -1,0 +1,123 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@using Microsoft.AspNetCore.Components.Forms
+@inject ILlmService LlmService
+
+@*
+   SgLlmTranscriber — speech-to-text component.
+   Загружает аудио файл и вызывает TranscribeAsync (Whisper / совместимые модели).
+   Поддерживает language, prompt, response_format, translate (translation endpoint).
+*@
+
+<div class="sgc-llm-transcriber @CssClass" style="@Style">
+    <div class="sgc-stt-row">
+        <SgFileUpload OnFilesSelected="@OnFile" Accept="audio/*,video/*" />
+        @if (_fileName != null)
+        {
+            <SgChip>@_fileName (@FormatBytes(_audio?.Length ?? 0))</SgChip>
+        }
+    </div>
+
+    <div class="sgc-stt-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="whisper-1" Label="Модель" />
+        <SgTextBox @bind-Value="_language" Placeholder="ru, en, ..." Label="Язык (ISO)" />
+        <SgSelect TValue="string" @bind-Value="_format" Items="_formats" Label="Формат ответа" />
+        <SgSwitch @bind-Value="_translate" Label="Перевод на английский" />
+    </div>
+
+    <SgTextArea @bind-Value="_prompt" Rows="2" Placeholder="Подсказка/глоссарий для модели (опционально)" />
+
+    <div class="sgc-stt-actions">
+        <SgButton Text="Распознать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@(_audio == null)" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (_result != null && string.IsNullOrEmpty(_result.Error))
+    {
+        <SgCard>
+            <div class="sgc-stt-meta">
+                @if (!string.IsNullOrEmpty(_result.Language))
+                {
+                    <SgBadge>lang: @_result.Language</SgBadge>
+                }
+                @if (_result.Duration.HasValue)
+                {
+                    <SgBadge>@($"{_result.Duration.Value:F1}s")</SgBadge>
+                }
+            </div>
+            <pre class="sgc-stt-text">@_result.Text</pre>
+        </SgCard>
+    }
+</div>
+
+<style>
+    .sgc-llm-transcriber { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-stt-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .sgc-stt-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .sgc-stt-actions { display: flex; gap: 8px; }
+    .sgc-stt-meta { display: flex; gap: 6px; margin-bottom: 8px; }
+    .sgc-stt-text { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: inherit; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+    [Parameter] public EventCallback<string> OnTranscribed { get; set; }
+
+    private byte[]? _audio;
+    private string? _fileName;
+    private string _model = "whisper-1";
+    private string _language = "";
+    private string _prompt = "";
+    private string _format = "json";
+    private bool _translate;
+    private bool _busy;
+    private string _error = "";
+    private SgLlmTranscription? _result;
+
+    private static readonly List<string> _formats = new() { "json", "verbose_json", "text", "srt", "vtt" };
+
+    private async Task OnFile(IReadOnlyList<IBrowserFile> files)
+    {
+        var f = files.FirstOrDefault();
+        if (f == null) return;
+        _fileName = f.Name;
+        using var ms = new MemoryStream();
+        await f.OpenReadStream(200_000_000).CopyToAsync(ms);
+        _audio = ms.ToArray();
+    }
+
+    private async Task RunAsync()
+    {
+        if (_audio == null) return;
+        _busy = true; _error = ""; _result = null;
+        try
+        {
+            _result = await LlmService.TranscribeAsync(new SgLlmTranscribeRequest
+            {
+                Audio = _audio,
+                FileName = _fileName ?? "audio.webm",
+                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Language = string.IsNullOrWhiteSpace(_language) ? null : _language,
+                Prompt = string.IsNullOrWhiteSpace(_prompt) ? null : _prompt,
+                ResponseFormat = _format,
+                Translate = _translate
+            });
+            if (!string.IsNullOrEmpty(_result.Error)) _error = _result.Error;
+            else if (OnTranscribed.HasDelegate) await OnTranscribed.InvokeAsync(_result.Text);
+        }
+        finally { _busy = false; }
+    }
+
+    private static string FormatBytes(long n)
+    {
+        if (n < 1024) return $"{n} B";
+        if (n < 1024 * 1024) return $"{n / 1024.0:F1} KB";
+        return $"{n / 1024.0 / 1024.0:F2} MB";
+    }
+}

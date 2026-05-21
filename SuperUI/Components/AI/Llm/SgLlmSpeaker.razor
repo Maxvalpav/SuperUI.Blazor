@@ -1,0 +1,107 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+@inject IJSRuntime JS
+
+@*
+   SgLlmSpeaker — text-to-speech.
+   Поддерживает voice, format, speed, instructions (для tts-1 / gpt-4o-mini-tts и т.п.).
+*@
+
+<div class="sgc-llm-speaker @CssClass" style="@Style">
+    <SgTextArea @bind-Value="_text" Rows="4" Placeholder="Текст для озвучивания..." />
+
+    <div class="sgc-tts-controls">
+        <SgTextBox @bind-Value="_model" Placeholder="tts-1" Label="Модель" />
+        <SgSelect TValue="string" @bind-Value="_voice" Items="_voices" Label="Голос" />
+        <SgSelect TValue="string" @bind-Value="_format" Items="_formats" Label="Формат" />
+        <SgNumberInput TValue="double" @bind-Value="_speed" Min="0.25" Max="4.0" Step="0.05" Decimals="2" Label="Скорость" />
+    </div>
+
+    <SgTextArea @bind-Value="_instructions" Rows="2"
+                Placeholder="Инструкции по стилю (для моделей gpt-4o-*-tts)" />
+
+    <div class="sgc-tts-actions">
+        <SgButton Text="Синтезировать" OnClick="RunAsync" Loading="_busy"
+                  Variant="SgButtonVariant.Primary" Disabled="@string.IsNullOrWhiteSpace(_text)" />
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (!string.IsNullOrEmpty(_audioUrl))
+    {
+        <audio controls src="@_audioUrl" style="width: 100%;"></audio>
+        <div class="sgc-tts-actions">
+            <SgButton Text="Скачать" OnClick="DownloadAsync" Variant="SgButtonVariant.Outlined" />
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-llm-speaker { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-tts-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+    .sgc-tts-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _text = "";
+    private string _model = "tts-1";
+    private string _voice = "alloy";
+    private string _format = "mp3";
+    private double _speed = 1.0;
+    private string _instructions = "";
+    private bool _busy;
+    private string _error = "";
+    private string _audioUrl = "";
+    private byte[]? _audio;
+    private string _mime = "audio/mpeg";
+
+    private static readonly List<string> _voices = new()
+        { "alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse" };
+    private static readonly List<string> _formats = new() { "mp3", "wav", "opus", "aac", "flac", "pcm" };
+
+    private async Task RunAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_text)) return;
+        _busy = true; _error = ""; _audioUrl = "";
+        try
+        {
+            var res = await LlmService.SynthesizeAsync(new SgLlmTtsRequest
+            {
+                Input = _text,
+                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Voice = _voice,
+                Format = _format,
+                Speed = _speed,
+                Instructions = string.IsNullOrWhiteSpace(_instructions) ? null : _instructions
+            });
+            if (!string.IsNullOrEmpty(res.Error)) { _error = res.Error; return; }
+            _audio = res.Audio;
+            _mime = res.MimeType;
+            _audioUrl = $"data:{_mime};base64,{Convert.ToBase64String(_audio)}";
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (_audio == null || _audio.Length == 0) return;
+        var ext = _format switch
+        {
+            "wav" => "wav", "opus" => "opus", "aac" => "aac",
+            "flac" => "flac", "pcm" => "pcm", _ => "mp3"
+        };
+        try
+        {
+            await JS.InvokeVoidAsync("eval",
+                $"(()=>{{const a=document.createElement('a');a.href='{_audioUrl}';a.download='tts.{ext}';a.click();}})()");
+        }
+        catch { }
+    }
+}

@@ -1,0 +1,160 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@using Microsoft.AspNetCore.Components.Forms
+@inject ILlmService LlmService
+@inject IJSRuntime JS
+
+<div class="sgc-llm-image-studio @CssClass" style="@Style">
+    <div class="sgc-image-toolbar">
+        <SgTextArea @bind-Value="_prompt" Placeholder="Опишите изображение..." Rows="3" />
+
+        <div class="sgc-image-controls">
+            <SgSelect TValue="string" @bind-Value="_size" Items="_sizes" Label="Размер" />
+            <SgSelect TValue="string" @bind-Value="_quality" Items="_qualities" Label="Качество" />
+            <SgSelect TValue="string" @bind-Value="_style" Items="_styles" Label="Стиль" />
+            <SgNumberInput TValue="int" @bind-Value="_count" Min="1" Max="4" Label="Кол-во" />
+            <SgTextBox @bind-Value="_model" Placeholder="gpt-image-1" Label="Модель" />
+        </div>
+
+        <div class="sgc-image-actions">
+            <SgButton Text="Сгенерировать" OnClick="GenerateAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
+            @if (_lastImage != null)
+            {
+                <SgButton Text="Редактировать" OnClick="@(() => _editMode = !_editMode)" Variant="SgButtonVariant.Outlined" />
+            }
+        </div>
+
+        @if (_editMode)
+        {
+            <SgTextArea @bind-Value="_editPrompt" Placeholder="Опишите изменения..." Rows="2" />
+            <div class="sgc-image-label">Маска (опционально):</div>
+            <SgFileUpload OnFilesSelected="@OnMaskSelected" Accept="image/*" />
+            <SgButton Text="Применить редактирование" OnClick="EditAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
+    }
+
+    @if (_images.Count > 0)
+    {
+        <div class="sgc-image-grid">
+            @foreach (var img in _images)
+            {
+                <div class="sgc-image-card">
+                    <img src="@GetSrc(img)" alt="generated" />
+                    <div class="sgc-image-card-actions">
+                        <SgButton Text="Скачать" Size="SgSize.Sm" OnClick="@(() => Download(img))" />
+                        <SgButton Text="Использовать" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                                  OnClick="@(() => UseAsBase(img))" />
+                    </div>
+                </div>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(_revisedPrompt))
+        {
+            <div class="sgc-image-revised"><b>Уточнённый промпт:</b> @_revisedPrompt</div>
+        }
+    }
+</div>
+
+<style>
+    .sgc-llm-image-studio { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+    .sgc-image-toolbar { display: flex; flex-direction: column; gap: 8px; }
+    .sgc-image-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+    .sgc-image-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sgc-image-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .sgc-image-card { display: flex; flex-direction: column; gap: 4px; border: 1px solid var(--sg-border, #e5e7eb); border-radius: 8px; overflow: hidden; }
+    .sgc-image-card img { width: 100%; height: auto; display: block; }
+    .sgc-image-card-actions { display: flex; gap: 4px; padding: 4px; }
+    .sgc-image-revised { font-size: 0.85rem; opacity: 0.8; }
+</style>
+
+@code {
+    [Parameter] public string CssClass { get; set; } = "";
+    [Parameter] public string Style { get; set; } = "";
+
+    private string _prompt = "";
+    private string _editPrompt = "";
+    private string _model = "gpt-image-1";
+    private string _size = "1024x1024";
+    private string _quality = "standard";
+    private string _style = "vivid";
+    private int _count = 1;
+    private bool _busy;
+    private bool _editMode;
+    private string _error = "";
+    private string _revisedPrompt = "";
+    private List<SgLlmGeneratedImage> _images = new();
+    private SgLlmGeneratedImage? _lastImage;
+    private byte[]? _maskBytes;
+    private string? _maskMime;
+
+    private static readonly List<string> _sizes = new() { "256x256", "512x512", "1024x1024", "1024x1792", "1792x1024" };
+    private static readonly List<string> _qualities = new() { "standard", "hd", "low", "medium", "high" };
+    private static readonly List<string> _styles = new() { "vivid", "natural" };
+
+    private async Task GenerateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_prompt)) return;
+        _busy = true; _error = ""; _images.Clear(); _revisedPrompt = "";
+        try
+        {
+            var res = await LlmService.GenerateImageRichAsync(new SgLlmImageRequest
+            {
+                Prompt = _prompt,
+                Model = _model,
+                Size = _size,
+                Quality = _quality,
+                Style = _style,
+                Count = _count
+            });
+            if (!string.IsNullOrEmpty(res.Error)) _error = res.Error;
+            _images = res.Images;
+            _revisedPrompt = res.RevisedPrompt ?? "";
+            _lastImage = _images.FirstOrDefault();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task EditAsync()
+    {
+        if (_lastImage == null || string.IsNullOrWhiteSpace(_editPrompt)) return;
+        _busy = true; _error = "";
+        try
+        {
+            byte[]? baseBytes = !string.IsNullOrEmpty(_lastImage.B64Json)
+                ? Convert.FromBase64String(_lastImage.B64Json)
+                : null;
+            if (baseBytes == null) { _error = "Базовое изображение должно быть в b64_json"; return; }
+            var res = await LlmService.EditImageAsync(baseBytes, _lastImage.MimeType ?? "image/png", _editPrompt,
+                _maskBytes, _maskMime, _model, _size);
+            if (!string.IsNullOrEmpty(res.Error)) _error = res.Error;
+            else { _images = res.Images; _lastImage = _images.FirstOrDefault(); }
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task OnMaskSelected(IReadOnlyList<IBrowserFile> files)
+    {
+        var f = files.FirstOrDefault();
+        if (f == null) return;
+        _maskMime = string.IsNullOrEmpty(f.ContentType) ? "image/png" : f.ContentType;
+        using var ms = new MemoryStream();
+        await f.OpenReadStream(20_000_000).CopyToAsync(ms);
+        _maskBytes = ms.ToArray();
+    }
+
+    private void UseAsBase(SgLlmGeneratedImage img) { _lastImage = img; _editMode = true; }
+
+    private string GetSrc(SgLlmGeneratedImage img) =>
+        !string.IsNullOrEmpty(img.Url) ? img.Url
+        : $"data:{img.MimeType ?? "image/png"};base64,{img.B64Json}";
+
+    private void Download(SgLlmGeneratedImage img)
+    {
+        // Hook a JS download here if needed; left as a placeholder
+    }
+}
