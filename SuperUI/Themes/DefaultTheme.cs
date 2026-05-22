@@ -141,274 +141,274 @@ public sealed class DefaultTheme : ThemeBase
 
 internal class DefaultPrimitives : IThemePrimitives
 {
-    public string Neutral0 => "#ffffff";
-    public string Neutral50 => "#f9fafb";
-    public string Neutral100 => "#f3f4f6";
-    public string Neutral200 => "#e5e7eb";
-    public string Neutral300 => "#d1d5db";
-    public string Neutral400 => "#9ca3af";
-    public string Neutral500 => "#6b7280";
-    public string Neutral600 => "#4b5563";
-    public string Neutral700 => "#374151";
-    public string Neutral800 => "#1f2937";
-    public string Neutral900 => "#111827";
+    public virtual string Neutral0 => "#ffffff";
+    public virtual string Neutral50 => "#f9fafb";
+    public virtual string Neutral100 => "#f3f4f6";
+    public virtual string Neutral200 => "#e5e7eb";
+    public virtual string Neutral300 => "#d1d5db";
+    public virtual string Neutral400 => "#9ca3af";
+    public virtual string Neutral500 => "#6b7280";
+    public virtual string Neutral600 => "#4b5563";
+    public virtual string Neutral700 => "#374151";
+    public virtual string Neutral800 => "#1f2937";
+    public virtual string Neutral900 => "#111827";
 
-    public string Primary50 => "#eff6ff";
-    public string Primary100 => "#dbeafe";
-    public string Primary200 => "#bfdbfe";
-    public string Primary300 => "#93c5fd";
-    public string Primary400 => "#60a5fa";
-    public string Primary500 => "#3b82f6";
-    public string Primary600 => "#2563eb";
-    public string Primary700 => "#1d4ed8";
-    public string Primary800 => "#1e40af";
-    public string Primary900 => "#1e3a8a";
+    public virtual string Primary50 => "#eff6ff";
+    public virtual string Primary100 => "#dbeafe";
+    public virtual string Primary200 => "#bfdbfe";
+    public virtual string Primary300 => "#93c5fd";
+    public virtual string Primary400 => "#60a5fa";
+    public virtual string Primary500 => "#3b82f6";
+    public virtual string Primary600 => "#2563eb";
+    public virtual string Primary700 => "#1d4ed8";
+    public virtual string Primary800 => "#1e40af";
+    public virtual string Primary900 => "#1e3a8a";
 
-    public string Success50 => "#f0fdf4";
-    public string Success100 => "#dcfce7";
-    public string Success500 => "#22c55e";
-    public string Success600 => "#16a34a";
-    public string Success700 => "#15803d";
+    public virtual string Success50 => "#f0fdf4";
+    public virtual string Success100 => "#dcfce7";
+    public virtual string Success500 => "#22c55e";
+    public virtual string Success600 => "#16a34a";
+    public virtual string Success700 => "#15803d";
 
-    public string Danger50 => "#fef2f2";
-    public string Danger100 => "#fee2e2";
-    public string Danger500 => "#ef4444";
-    public string Danger600 => "#dc2626";
-    public string Danger700 => "#b91c1c";
+    public virtual string Danger50 => "#fef2f2";
+    public virtual string Danger100 => "#fee2e2";
+    public virtual string Danger500 => "#ef4444";
+    public virtual string Danger600 => "#dc2626";
+    public virtual string Danger700 => "#b91c1c";
 
-    public string Warning50 => "#fffbeb";
-    public string Warning100 => "#fef3c7";
-    public string Warning500 => "#f59e0b";
-    public string Warning600 => "#d97706";
+    public virtual string Warning50 => "#fffbeb";
+    public virtual string Warning100 => "#fef3c7";
+    public virtual string Warning500 => "#f59e0b";
+    public virtual string Warning600 => "#d97706";
 
-    public string Info50 => "#ecfeff";
-    public string Info100 => "#cffafe";
-    public string Info500 => "#0ea5e9";
-    public string Info600 => "#0284c7";
+    public virtual string Info50 => "#ecfeff";
+    public virtual string Info100 => "#cffafe";
+    public virtual string Info500 => "#0ea5e9";
+    public virtual string Info600 => "#0284c7";
 
-    public string FontSans => "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
-    public string FontMono => "'JetBrains Mono', 'Fira Code', ui-monospace, monospace";
-    public string FontSerif => "Georgia, 'Times New Roman', serif";
+    public virtual string FontSans => "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+    public virtual string FontMono => "'JetBrains Mono', 'Fira Code', ui-monospace, monospace";
+    public virtual string FontSerif => "Georgia, 'Times New Roman', serif";
 
-    public string RadiusNone => "0";
-    public string RadiusXs => "2px";
-    public string RadiusSm => "4px";
-    public string RadiusMd => "8px";
-    public string RadiusLg => "12px";
-    public string RadiusXl => "16px";
-    public string Radius2Xl => "24px";
-    public string RadiusFull => "9999px";
+    public virtual string RadiusNone => "0";
+    public virtual string RadiusXs => "2px";
+    public virtual string RadiusSm => "4px";
+    public virtual string RadiusMd => "8px";
+    public virtual string RadiusLg => "12px";
+    public virtual string RadiusXl => "16px";
+    public virtual string Radius2Xl => "24px";
+    public virtual string RadiusFull => "9999px";
 }
 
 internal class DefaultSemanticLight : IThemeSemantic
 {
-    public string BgDefault => "#ffffff";
-    public string BgSubtle => "#f9fafb";
-    public string BgMuted => "#f3f4f6";
-    public string BgEmphasized => "#e5e7eb";
-    public string BgOverlay => "rgba(0, 0, 0, 0.4)";
-    public string BgGlass => "rgba(255, 255, 255, 0.7)";
-    public string BorderGlass => "rgba(255, 255, 255, 0.3)";
-    public string BlurGlass => "8px";
+    public virtual string BgDefault => "#ffffff";
+    public virtual string BgSubtle => "#f9fafb";
+    public virtual string BgMuted => "#f3f4f6";
+    public virtual string BgEmphasized => "#e5e7eb";
+    public virtual string BgOverlay => "rgba(0, 0, 0, 0.4)";
+    public virtual string BgGlass => "rgba(255, 255, 255, 0.7)";
+    public virtual string BorderGlass => "rgba(255, 255, 255, 0.3)";
+    public virtual string BlurGlass => "8px";
 
-    public string Surface => "#ffffff";
-    public string SurfaceRaised => "#ffffff";
-    public string SurfaceOverlay => "#ffffff";
+    public virtual string Surface => "#ffffff";
+    public virtual string SurfaceRaised => "#ffffff";
+    public virtual string SurfaceOverlay => "#ffffff";
 
-    public string FgDefault => "#111827";
-    public string FgSubtle => "#4b5563";
-    public string FgMuted => "#6b7280";
-    public string FgDisabled => "#9ca3af";
-    public string FgInverse => "#ffffff";
-    public string FgLink => "#2563eb";
-    public string FgLinkHover => "#1d4ed8";
+    public virtual string FgDefault => "#111827";
+    public virtual string FgSubtle => "#4b5563";
+    public virtual string FgMuted => "#6b7280";
+    public virtual string FgDisabled => "#9ca3af";
+    public virtual string FgInverse => "#ffffff";
+    public virtual string FgLink => "#2563eb";
+    public virtual string FgLinkHover => "#1d4ed8";
 
-    public string BorderDefault => "#e5e7eb";
-    public string BorderSubtle => "#f3f4f6";
-    public string BorderStrong => "#d1d5db";
-    public string BorderFocus => "#3b82f6";
-    public string Divider => "#f3f4f6";
+    public virtual string BorderDefault => "#e5e7eb";
+    public virtual string BorderSubtle => "#f3f4f6";
+    public virtual string BorderStrong => "#d1d5db";
+    public virtual string BorderFocus => "#3b82f6";
+    public virtual string Divider => "#f3f4f6";
 
-    public string ColorPrimary => "#3b82f6";
-    public string ColorPrimarySubtle => "#eff6ff";
-    public string ColorPrimaryMuted => "#dbeafe";
-    public string ColorPrimaryHover => "#2563eb";
-    public string ColorPrimaryActive => "#1d4ed8";
-    public string ColorPrimaryFg => "#ffffff";
+    public virtual string ColorPrimary => "#3b82f6";
+    public virtual string ColorPrimarySubtle => "#eff6ff";
+    public virtual string ColorPrimaryMuted => "#dbeafe";
+    public virtual string ColorPrimaryHover => "#2563eb";
+    public virtual string ColorPrimaryActive => "#1d4ed8";
+    public virtual string ColorPrimaryFg => "#ffffff";
 
-    public string ColorSuccess => "#10b981";
-    public string ColorSuccessSubtle => "#f0fdf4";
-    public string ColorSuccessHover => "#059669";
-    public string ColorSuccessFg => "#ffffff";
+    public virtual string ColorSuccess => "#10b981";
+    public virtual string ColorSuccessSubtle => "#f0fdf4";
+    public virtual string ColorSuccessHover => "#059669";
+    public virtual string ColorSuccessFg => "#ffffff";
 
-    public string ColorDanger => "#f43f5e";
-    public string ColorDangerSubtle => "#fef2f2";
-    public string ColorDangerHover => "#e11d48";
-    public string ColorDangerFg => "#ffffff";
+    public virtual string ColorDanger => "#f43f5e";
+    public virtual string ColorDangerSubtle => "#fef2f2";
+    public virtual string ColorDangerHover => "#e11d48";
+    public virtual string ColorDangerFg => "#ffffff";
 
-    public string ColorWarning => "#f59e0b";
-    public string ColorWarningSubtle => "#fffbeb";
-    public string ColorWarningHover => "#d97706";
-    public string ColorWarningFg => "#ffffff";
+    public virtual string ColorWarning => "#f59e0b";
+    public virtual string ColorWarningSubtle => "#fffbeb";
+    public virtual string ColorWarningHover => "#d97706";
+    public virtual string ColorWarningFg => "#ffffff";
 
-    public string ColorInfo => "#3b82f6";
-    public string ColorInfoSubtle => "#eff6ff";
-    public string ColorInfoHover => "#2563eb";
-    public string ColorInfoFg => "#ffffff";
+    public virtual string ColorInfo => "#3b82f6";
+    public virtual string ColorInfoSubtle => "#eff6ff";
+    public virtual string ColorInfoHover => "#2563eb";
+    public virtual string ColorInfoFg => "#ffffff";
 
-    public string Font => "'Inter', system-ui, sans-serif";
-    public string FontMono => "'JetBrains Mono', monospace";
-    public string TextSm => "0.75rem";   // 12px
-    public string TextBase => "0.8125rem"; // 13px
-    public string TextLg => "0.9375rem"; // 15px
+    public virtual string Font => "'Inter', system-ui, sans-serif";
+    public virtual string FontMono => "'JetBrains Mono', monospace";
+    public virtual string TextSm => "0.75rem";   // 12px
+    public virtual string TextBase => "0.8125rem"; // 13px
+    public virtual string TextLg => "0.9375rem"; // 15px
 
-    public string ShadowXs => "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
-    public string ShadowSm => "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)";
-    public string ShadowMd => "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)";
-    public string ShadowLg => "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)";
-    public string ShadowXl => "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)";
+    public virtual string ShadowXs => "0 1px 2px 0 rgba(0, 0, 0, 0.05)";
+    public virtual string ShadowSm => "0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1)";
+    public virtual string ShadowMd => "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)";
+    public virtual string ShadowLg => "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)";
+    public virtual string ShadowXl => "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)";
 
-    public string RadiusSm => "2px"; // Stricter
-    public string RadiusMd => "4px"; // Stricter
-    public string RadiusLg => "6px"; // Stricter
-    public string RadiusXl => "8px"; // Stricter
-    public string RadiusFull => "9999px";
+    public virtual string RadiusSm => "2px"; // Stricter
+    public virtual string RadiusMd => "4px"; // Stricter
+    public virtual string RadiusLg => "6px"; // Stricter
+    public virtual string RadiusXl => "8px"; // Stricter
+    public virtual string RadiusFull => "9999px";
 
-    public string TransitionFast => "100ms cubic-bezier(0, 0, 0.2, 1)";
-    public string TransitionBase => "200ms cubic-bezier(0.4, 0, 0.2, 1)";
-    public string TransitionSlow => "400ms cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string TransitionFast => "100ms cubic-bezier(0, 0, 0.2, 1)";
+    public virtual string TransitionBase => "200ms cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string TransitionSlow => "400ms cubic-bezier(0.4, 0, 0.2, 1)";
 
-    public string FocusRing => "0 0 0 2px #ffffff, 0 0 0 4px #0ea5e9";
-    public string FocusRingDanger => "0 0 0 2px #ffffff, 0 0 0 4px #f43f5e";
+    public virtual string FocusRing => "0 0 0 2px #ffffff, 0 0 0 4px #0ea5e9";
+    public virtual string FocusRingDanger => "0 0 0 2px #ffffff, 0 0 0 4px #f43f5e";
 
-    public int ZDropdown => 1000;
-    public int ZSticky => 1020;
-    public int ZModal => 1050;
-    public int ZToast => 1070;
-    public int ZTooltip => 1100;
+    public virtual int ZDropdown => 1000;
+    public virtual int ZSticky => 1020;
+    public virtual int ZModal => 1050;
+    public virtual int ZToast => 1070;
+    public virtual int ZTooltip => 1100;
 }
 
 internal class DefaultSemanticDark : IThemeSemantic
 {
-    public string BgDefault => "#0f172a";
-    public string BgSubtle => "#1e293b";
-    public string BgMuted => "#334155";
-    public string BgEmphasized => "#475569";
-    public string BgOverlay => "rgba(0, 0, 0, 0.6)";
-    public string BgGlass => "rgba(15, 23, 42, 0.7)";
-    public string BorderGlass => "rgba(255, 255, 255, 0.1)";
-    public string BlurGlass => "10px";
+    public virtual string BgDefault => "#0f172a";
+    public virtual string BgSubtle => "#1e293b";
+    public virtual string BgMuted => "#334155";
+    public virtual string BgEmphasized => "#475569";
+    public virtual string BgOverlay => "rgba(0, 0, 0, 0.6)";
+    public virtual string BgGlass => "rgba(15, 23, 42, 0.7)";
+    public virtual string BorderGlass => "rgba(255, 255, 255, 0.1)";
+    public virtual string BlurGlass => "10px";
 
-    public string Surface => "#1e293b";
-    public string SurfaceRaised => "#334155";
-    public string SurfaceOverlay => "#334155";
+    public virtual string Surface => "#1e293b";
+    public virtual string SurfaceRaised => "#334155";
+    public virtual string SurfaceOverlay => "#334155";
 
-    public string FgDefault => "#f8fafc";
-    public string FgSubtle => "#cbd5e1";
-    public string FgMuted => "#94a3b8";
-    public string FgDisabled => "#64748b";
-    public string FgInverse => "#0f172a";
-    public string FgLink => "#60a5fa";
-    public string FgLinkHover => "#93c5fd";
+    public virtual string FgDefault => "#f8fafc";
+    public virtual string FgSubtle => "#cbd5e1";
+    public virtual string FgMuted => "#94a3b8";
+    public virtual string FgDisabled => "#64748b";
+    public virtual string FgInverse => "#0f172a";
+    public virtual string FgLink => "#60a5fa";
+    public virtual string FgLinkHover => "#93c5fd";
 
-    public string BorderDefault => "#334155";
-    public string BorderSubtle => "#1e293b";
-    public string BorderStrong => "#475569";
-    public string BorderFocus => "#3b82f6";
-    public string Divider => "#334155";
+    public virtual string BorderDefault => "#334155";
+    public virtual string BorderSubtle => "#1e293b";
+    public virtual string BorderStrong => "#475569";
+    public virtual string BorderFocus => "#3b82f6";
+    public virtual string Divider => "#334155";
 
-    public string ColorPrimary => "#3b82f6";
-    public string ColorPrimarySubtle => "rgba(59, 130, 246, 0.1)";
-    public string ColorPrimaryMuted => "rgba(59, 130, 246, 0.2)";
-    public string ColorPrimaryHover => "#60a5fa";
-    public string ColorPrimaryActive => "#93c5fd";
-    public string ColorPrimaryFg => "#ffffff";
+    public virtual string ColorPrimary => "#3b82f6";
+    public virtual string ColorPrimarySubtle => "rgba(59, 130, 246, 0.1)";
+    public virtual string ColorPrimaryMuted => "rgba(59, 130, 246, 0.2)";
+    public virtual string ColorPrimaryHover => "#60a5fa";
+    public virtual string ColorPrimaryActive => "#93c5fd";
+    public virtual string ColorPrimaryFg => "#ffffff";
 
-    public string ColorSuccess => "#34d399";
-    public string ColorSuccessSubtle => "rgba(52, 211, 153, 0.1)";
-    public string ColorSuccessHover => "#6ee7b7";
-    public string ColorSuccessFg => "#064e3b";
+    public virtual string ColorSuccess => "#34d399";
+    public virtual string ColorSuccessSubtle => "rgba(52, 211, 153, 0.1)";
+    public virtual string ColorSuccessHover => "#6ee7b7";
+    public virtual string ColorSuccessFg => "#064e3b";
 
-    public string ColorDanger => "#fb7185";
-    public string ColorDangerSubtle => "rgba(251, 113, 133, 0.1)";
-    public string ColorDangerHover => "#fda4af";
-    public string ColorDangerFg => "#ffffff";
+    public virtual string ColorDanger => "#fb7185";
+    public virtual string ColorDangerSubtle => "rgba(251, 113, 133, 0.1)";
+    public virtual string ColorDangerHover => "#fda4af";
+    public virtual string ColorDangerFg => "#ffffff";
 
-    public string ColorWarning => "#fbbf24";
-    public string ColorWarningSubtle => "rgba(251, 191, 36, 0.1)";
-    public string ColorWarningHover => "#fcd34d";
-    public string ColorWarningFg => "#451a03";
+    public virtual string ColorWarning => "#fbbf24";
+    public virtual string ColorWarningSubtle => "rgba(251, 191, 36, 0.1)";
+    public virtual string ColorWarningHover => "#fcd34d";
+    public virtual string ColorWarningFg => "#451a03";
 
-    public string ColorInfo => "#60a5fa";
-    public string ColorInfoSubtle => "rgba(96, 165, 250, 0.1)";
-    public string ColorInfoHover => "#93c5fd";
-    public string ColorInfoFg => "#1e3a8a";
+    public virtual string ColorInfo => "#60a5fa";
+    public virtual string ColorInfoSubtle => "rgba(96, 165, 250, 0.1)";
+    public virtual string ColorInfoHover => "#93c5fd";
+    public virtual string ColorInfoFg => "#1e3a8a";
 
-    public string Font => "'Inter', system-ui, sans-serif";
-    public string FontMono => "'JetBrains Mono', monospace";
-    public string TextSm => "0.75rem";
-    public string TextBase => "0.8125rem";
-    public string TextLg => "0.9375rem";
+    public virtual string Font => "'Inter', system-ui, sans-serif";
+    public virtual string FontMono => "'JetBrains Mono', monospace";
+    public virtual string TextSm => "0.75rem";
+    public virtual string TextBase => "0.8125rem";
+    public virtual string TextLg => "0.9375rem";
 
-    public string ShadowXs => "0 1px 2px 0 rgba(0, 0, 0, 0.5)";
-    public string ShadowSm => "0 1px 3px 0 rgba(0, 0, 0, 0.6)";
-    public string ShadowMd => "0 4px 6px -1px rgba(0, 0, 0, 0.6)";
-    public string ShadowLg => "0 10px 15px -3px rgba(0, 0, 0, 0.7)";
-    public string ShadowXl => "0 20px 25px -5px rgba(0, 0, 0, 0.8)";
+    public virtual string ShadowXs => "0 1px 2px 0 rgba(0, 0, 0, 0.5)";
+    public virtual string ShadowSm => "0 1px 3px 0 rgba(0, 0, 0, 0.6)";
+    public virtual string ShadowMd => "0 4px 6px -1px rgba(0, 0, 0, 0.6)";
+    public virtual string ShadowLg => "0 10px 15px -3px rgba(0, 0, 0, 0.7)";
+    public virtual string ShadowXl => "0 20px 25px -5px rgba(0, 0, 0, 0.8)";
 
-    public string RadiusSm => "2px";
-    public string RadiusMd => "4px";
-    public string RadiusLg => "6px";
-    public string RadiusXl => "8px";
-    public string RadiusFull => "9999px";
+    public virtual string RadiusSm => "2px";
+    public virtual string RadiusMd => "4px";
+    public virtual string RadiusLg => "6px";
+    public virtual string RadiusXl => "8px";
+    public virtual string RadiusFull => "9999px";
 
-    public string TransitionFast => "100ms cubic-bezier(0, 0, 0.2, 1)";
-    public string TransitionBase => "200ms cubic-bezier(0.4, 0, 0.2, 1)";
-    public string TransitionSlow => "400ms cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string TransitionFast => "100ms cubic-bezier(0, 0, 0.2, 1)";
+    public virtual string TransitionBase => "200ms cubic-bezier(0.4, 0, 0.2, 1)";
+    public virtual string TransitionSlow => "400ms cubic-bezier(0.4, 0, 0.2, 1)";
 
-    public string FocusRing => "0 0 0 2px #010409, 0 0 0 4px #38bdf8";
-    public string FocusRingDanger => "0 0 0 2px #010409, 0 0 0 4px #fb7185";
+    public virtual string FocusRing => "0 0 0 2px #010409, 0 0 0 4px #38bdf8";
+    public virtual string FocusRingDanger => "0 0 0 2px #010409, 0 0 0 4px #fb7185";
 
-    public int ZDropdown => 1000;
-    public int ZSticky => 1020;
-    public int ZModal => 1050;
-    public int ZToast => 1070;
-    public int ZTooltip => 1100;
+    public virtual int ZDropdown => 1000;
+    public virtual int ZSticky => 1020;
+    public virtual int ZModal => 1050;
+    public virtual int ZToast => 1070;
+    public virtual int ZTooltip => 1100;
 }
 
 internal class DefaultComponents : IThemeComponents
 {
-    public string BtnRadius => "4px";
-    public string BtnFontSize => "0.75rem"; // 12px for compact look
-    public string BtnFontWeight => "600";
-    public string BtnHeight => "30px";     // Very compact
-    public string BtnHeightSm => "24px";
-    public string BtnHeightLg => "38px";
+    public virtual string BtnRadius => "4px";
+    public virtual string BtnFontSize => "0.75rem"; // 12px for compact look
+    public virtual string BtnFontWeight => "600";
+    public virtual string BtnHeight => "30px";     // Very compact
+    public virtual string BtnHeightSm => "24px";
+    public virtual string BtnHeightLg => "38px";
 
-    public string InputRadius => "4px";
-    public string InputFontSize => "0.8125rem";
-    public string InputHeight => "30px";
-    public string InputHeightSm => "24px";
-    public string InputHeightLg => "38px";
+    public virtual string InputRadius => "4px";
+    public virtual string InputFontSize => "0.8125rem";
+    public virtual string InputHeight => "30px";
+    public virtual string InputHeightSm => "24px";
+    public virtual string InputHeightLg => "38px";
 
-    public string CardRadius => "4px"; // Strict
-    public string CardPadding => "12px"; // Compact
-    public string CardBorderColor => "var(--sg-border)";
-    public string CardBg => "var(--sg-surface)";
+    public virtual string CardRadius => "4px"; // Strict
+    public virtual string CardPadding => "12px"; // Compact
+    public virtual string CardBorderColor => "var(--sg-border)";
+    public virtual string CardBg => "var(--sg-surface)";
 
-    public string ModalRadius => "8px";
+    public virtual string ModalRadius => "8px";
 
-    public string TableRadius => "4px";
-    public string TableHeaderFontWeight => "700";
+    public virtual string TableRadius => "4px";
+    public virtual string TableHeaderFontWeight => "700";
 
-    public string TabsIndicatorHeight => "2px";
-    public string TooltipMaxWidth => "240px";
+    public virtual string TabsIndicatorHeight => "2px";
+    public virtual string TooltipMaxWidth => "240px";
 
-    public string HeaderBg => "var(--sg-bg)";
-    public string HeaderFg => "var(--sg-fg)";
-    public string NavBg => "var(--sg-bg-subtle)";
-    public string NavFg => "var(--sg-fg-subtle)";
-    public string NavActiveBg => "var(--sg-color-primary-subtle)";
-    public string NavActiveFg => "var(--sg-color-primary)";
+    public virtual string HeaderBg => "var(--sg-bg)";
+    public virtual string HeaderFg => "var(--sg-fg)";
+    public virtual string NavBg => "var(--sg-bg-subtle)";
+    public virtual string NavFg => "var(--sg-fg-subtle)";
+    public virtual string NavActiveBg => "var(--sg-color-primary-subtle)";
+    public virtual string NavActiveFg => "var(--sg-color-primary)";
 }
 
