@@ -76,9 +76,23 @@ public class SgSettingsService
         return _llmService.CurrentConfig ?? new SgLlmConfig();
     }
 
+    public async Task<SgLlmConfig?> LoadDefaultLlmConfigAsync()
+    {
+        if (_llmService is SgLlmService impl)
+        {
+            return await impl.GetGlobalConfigAsync();
+        }
+        return _llmService.CurrentConfig;
+    }
+
     public async Task SaveDefaultLlmConfigAsync(SgLlmConfig config)
     {
+        // Persist to localStorage so the choice survives reloads.
+        if (_llmService is SgLlmService impl)
+        {
+            await impl.SaveGlobalConfigAsync(config);
+        }
+        // Initialize the engine for immediate use across the app.
         await _llmService.InitializeAsync(config);
-        // ILlmService already saves to localStorage if implemented
     }
 }

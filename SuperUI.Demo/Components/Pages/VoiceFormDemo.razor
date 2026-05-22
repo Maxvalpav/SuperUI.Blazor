@@ -3,97 +3,170 @@
 @using SuperUI.Demo.Models
 @using SuperUI.Services.Llm
 
-<PageTitle>Voice Form Filler - SUI</PageTitle>
+@*
+   Демонстрация: SgSmartForm + распознавание речи + LLM «понимает» речь и
+   раскладывает значения по полям. Настройки провайдера живут компактно
+   в верхней панели — основное место отдано форме и её результату.
+*@
 
-<SgCard Title="Голосовое заполнение форм"
-        Subtitle="Интеллектуальное заполнение сложных форм с помощью распознавания речи и LLM.">
+<PageTitle>Voice Form Filler — SUI</PageTitle>
 
-    <div style="margin-top: 32px;">
-        <div style="max-width: 1100px; margin: 0 auto;">
-            <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 24px; margin-bottom: 32px;">
-                <SgAlert Variant="SgAlertVariant.Info" Title="Как это работает?">
-                    <ol style="padding-left: 16px; margin: 8px 0; font-size: 13px;">
-                        <li>Настройте AI провайдера (справа).</li>
-                        <li>Нажмите кнопку <strong>«Заполнить голосом»</strong> в форме.</li>
-                        <li>Разрешите доступ к микрофону.</li>
-                        <li>Продиктуйте данные (например: <i>«Меня зовут Иван, мне 25 лет, хочу подписаться»</i>).</li>
-                        <li>AI проанализирует речь и заполнит соответствующие поля.</li>
-                    </ol>
-                </SgAlert>
+<div class="vfd-page">
+    <header class="vfd-header">
+        <div>
+            <h1>Голосовое заполнение форм</h1>
+            <p>Распознавание речи + LLM раскладывает текст по полям анкеты.</p>
+        </div>
+        <SgLlmSettings Compact="true" Config="_llmConfig" ConfigChanged="OnConfigChanged" />
+    </header>
 
-                <SgCard Title="Настройки AI">
-                    <SgLlmSettings @bind-Config="_llmConfig" />
-                </SgCard>
-            </div>
+    <div class="vfd-grid">
+        <SgAlert Variant="SgAlertVariant.Info" Title="Как это работает?" CssClass="vfd-help">
+            <ol>
+                <li>Настройте AI-провайдера в шапке.</li>
+                <li>Нажмите <strong>«Заполнить голосом»</strong>.</li>
+                <li>Разрешите доступ к микрофону и продиктуйте данные —
+                    например: <i>«Меня зовут Иван, мне 25 лет, хочу подписаться»</i>.</li>
+                <li>AI заполнит соответствующие поля автоматически.</li>
+            </ol>
+        </SgAlert>
 
-            <div style="margin-top: 32px; padding: 32px; background: var(--sui-bg-secondary); border-radius: 16px; border: 1px solid var(--sui-border-color); position: relative;">
-                <SgSmartForm Metadata="_metadata" 
-                             EnableVoiceFilling="true" 
-                             LlmConfig="_llmConfig"
-                             LlmInstructions="@_llmConfig.SystemPrompt"
-                             OnSubmit="HandleSubmit" 
-                             OnVoiceTranscript="HandleTranscript"
-                             Loading="_loading" />
-                
-                @if (!string.IsNullOrEmpty(_transcript))
-                {
-                    <div style="margin-top: 16px; padding: 12px; background: rgba(var(--sui-primary-rgb), 0.05); border-radius: 8px; border: 1px solid var(--sui-primary-color);">
-                        <div style="font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--sui-primary-color); margin-bottom: 4px;">Распознанный текст:</div>
-                        <div style="font-style: italic; font-size: 14px;">«@_transcript»</div>
-                    </div>
-                }
-            </div>
+        <SgCard Title="Анкета пользователя" CssClass="vfd-form-card">
+            <SgSmartForm Metadata="_metadata"
+                         EnableVoiceFilling="true"
+                         LlmConfig="_llmConfig"
+                         LlmInstructions="@_llmConfig.SystemPrompt"
+                         OnSubmit="HandleSubmit"
+                         OnVoiceTranscript="HandleTranscript"
+                         Loading="_loading" />
 
-            @if (_lastData != null)
+            @if (!string.IsNullOrEmpty(_transcript))
             {
-                <div style="margin-top: 24px;">
-                    <SgCard Title="Экспортированный JSON (результат)">
-                        <pre style="font-size: 12px; background: #1e1e1e; color: #d4d4d4; padding: 16px; border-radius: 8px;">@System.Text.Json.JsonSerializer.Serialize(_lastData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
-                    </SgCard>
+                <div class="vfd-transcript">
+                    <span class="vfd-transcript-tag">Распознано</span>
+                    <span class="vfd-transcript-text">«@_transcript»</span>
                 </div>
             }
-        </div>
-    </div>
+        </SgCard>
 
-</SgCard>
+        @if (_lastData is not null)
+        {
+            <SgCard Title="Результат (JSON)" CssClass="vfd-result-card">
+                <pre class="vfd-json">@System.Text.Json.JsonSerializer.Serialize(_lastData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+            </SgCard>
+        }
+    </div>
+</div>
+
+<style>
+    .vfd-page {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px 24px;
+        max-width: 1280px;
+        margin: 0 auto;
+    }
+
+    .vfd-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+    }
+    .vfd-header h1 { margin: 0 0 4px; font-size: 22px; font-weight: 600; }
+    .vfd-header p  { margin: 0; color: var(--sui-fg-muted, var(--sg-fg-muted)); font-size: 13px; }
+
+    /* Help slot in the side column, form slot spans both columns on wide screens.
+       On narrow screens everything stacks. */
+    .vfd-grid {
+        display: grid;
+        grid-template-columns: 280px 1fr;
+        gap: 16px;
+        align-items: start;
+    }
+    .vfd-help { margin: 0; }
+    .vfd-help ol { padding-left: 18px; margin: 6px 0 0; font-size: 12.5px; line-height: 1.55; }
+    .vfd-help li + li { margin-top: 2px; }
+
+    .vfd-form-card { grid-column: 2; }
+    .vfd-result-card { grid-column: 1 / -1; }
+
+    .vfd-transcript {
+        margin-top: 12px;
+        padding: 8px 12px;
+        background: rgba(var(--sui-primary-rgb, 14, 165, 233), 0.06);
+        border: 1px solid var(--sui-primary-color, var(--sg-color-primary));
+        border-radius: 8px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    .vfd-transcript-tag {
+        font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+        text-transform: uppercase;
+        color: var(--sui-primary-color, var(--sg-color-primary));
+    }
+    .vfd-transcript-text { font-style: italic; font-size: 13px; }
+
+    .vfd-json {
+        font-size: 12px;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        padding: 14px 16px;
+        border-radius: 8px;
+        margin: 0;
+        max-height: 320px;
+        overflow: auto;
+    }
+
+    @@media (max-width: 720px) {
+        .vfd-grid { grid-template-columns: 1fr; }
+        .vfd-form-card { grid-column: 1; }
+    }
+</style>
 
 @code {
     private bool _loading;
-    private SgLlmConfig _llmConfig = new() { Provider = SgLlmProvider.OpenRouter, ModelId = "google/gemini-2.0-flash-001:free" };
+    private SgLlmConfig _llmConfig = new()
+    {
+        Provider = SgLlmProvider.OpenRouter,
+        ModelId = "google/gemini-2.0-flash-001:free"
+    };
     private string? _transcript;
     private Dictionary<string, object?>? _lastData;
 
-    private SgSmartFormMetadata _metadata = new()
+    private readonly SgSmartFormMetadata _metadata = new()
     {
         Title = "Анкета пользователя",
         Columns = 2,
         Fields = new List<SgSmartFieldMetadata>
         {
-            new() { Key = "name", Label = "Имя", Required = true, Placeholder = "Как вас зовут?" },
-            new() { Key = "age", Label = "Возраст", Type = SgSmartFieldType.Number },
+            new() { Key = "name",  Label = "Имя",   Required = true, Placeholder = "Как вас зовут?" },
+            new() { Key = "age",   Label = "Возраст", Type = SgSmartFieldType.Number },
             new() { Key = "email", Label = "Email", Type = SgSmartFieldType.Email, Required = true },
             new() { Key = "subscribe", Label = "Подписка на новости", Type = SgSmartFieldType.Boolean },
-            new() { Key = "role", Label = "Должность", Type = SgSmartFieldType.Select, Options = new List<SgSmartOption> {
-                new() { Label = "Разработчик", Value = "dev" },
-                new() { Label = "Дизайнер", Value = "design" },
-                new() { Label = "Менеджер", Value = "pm" }
-            }},
-            new() { Key = "bio", Label = "О себе", Type = SgSmartFieldType.MultilineText, FullWidth = true }
+            new() { Key = "role",  Label = "Должность", Type = SgSmartFieldType.Select,
+                Options = new List<SgSmartOption>
+                {
+                    new() { Label = "Разработчик", Value = "dev" },
+                    new() { Label = "Дизайнер",    Value = "design" },
+                    new() { Label = "Менеджер",    Value = "pm" }
+                }},
+            new() { Key = "bio",   Label = "О себе", Type = SgSmartFieldType.MultilineText, FullWidth = true }
         }
     };
+
+    private void OnConfigChanged(SgLlmConfig config) => _llmConfig = config;
 
     private async Task HandleSubmit(Dictionary<string, object?> data)
     {
         _loading = true;
         _lastData = data;
-        await Task.Delay(1000);
+        await Task.Delay(800);
         _loading = false;
-        StateHasChanged();
     }
 
-    private void HandleTranscript(string text)
-    {
-        _transcript = text;
-        StateHasChanged();
-    }
+    private void HandleTranscript(string text) => _transcript = text;
 }

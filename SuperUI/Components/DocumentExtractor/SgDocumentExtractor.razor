@@ -8,53 +8,59 @@
 @inject ISuperUILocalizer Localizer
 
 <div class="sg-doc-extractor @CssClass">
+    <SgCard CssClass="sg-doc-settings-card">
+        <div class="sg-doc-settings-header">
+            <span class="sg-doc-settings-title">@Localizer["Llm_Settings"]</span>
+            <div class="sg-doc-extractor-toolbar">
+                <SgSelect TValue="string"
+                          Items="@Extractors.Select(e => e.Id)"
+                          Value="@_selectedExtractorId"
+                          ValueChanged="OnExtractorPicked"
+                          Style="min-width: 180px;" />
+            </div>
+        </div>
+        <SgLlmSettings Compact="true" Config="_llmConfig" ConfigChanged="OnLlmConfigChanged" />
+    </SgCard>
+
     <div class="sg-doc-extractor-layout">
         <div class="sg-doc-extractor-main">
-            <SgCard Title="@Localizer["Common_Add"]" Subtitle="Upload document for processing">
+            <SgCard Title="Документ" Subtitle="Загрузите PDF, DOCX, TXT или изображение">
                 <SgFileUpload Label="@UploadLabel"
                               Accept=".pdf,.docx,.txt,image/*"
                               MaxFileSizeBytes="@MaxFileSizeBytes"
                               ValueChanged="OnFilesPicked" />
-            </SgCard>
 
-            <SgCard Title="@Localizer["Llm_Settings"]" CssClass="mt-4">
-                <SgLlmSettings Config="_llmConfig" ConfigChanged="OnLlmConfigChanged" />
-                
-                <div class="mt-4">
-                    <SgSelect TValue="string"
-                              Label="Extraction Logic"
-                              Items="@Extractors.Select(e => e.Id)"
-                              Value="@_selectedExtractorId"
-                              ValueChanged="OnExtractorPicked" />
-                </div>
-
-                <div class="sg-doc-extractor-actions mt-4">
-                    <SgButton Text="Extract"
+                <div class="sg-doc-extractor-actions">
+                    <SgButton Text="Извлечь"
                               Variant="SgButtonVariant.Primary"
                               Disabled="@(_source is null || _busy)"
                               Loading="_busy"
-                              OnClick="ExtractAsync" />
-                    <SgButton Text="Save"
-                              Variant="SgButtonVariant.Default"
+                              OnClick="ExtractAsync">
+                        <Icon>@((MarkupString)SgIcons.Sparkles)</Icon>
+                    </SgButton>
+                    <SgButton Text="Сохранить"
+                              Variant="SgButtonVariant.Outlined"
                               Disabled="@(_result is null || _busy)"
-                              OnClick="SaveAsync" />
+                              OnClick="SaveAsync">
+                        <Icon>@((MarkupString)SgIcons.Download)</Icon>
+                    </SgButton>
                 </div>
-            </SgCard>
 
-            @if (!string.IsNullOrEmpty(_status))
-            {
-                <div class="mt-3">
-                    <SgAlert Variant="@(_isError ? SgAlertVariant.Danger : SgAlertVariant.Info)" Text="@_status" />
-                </div>
-            }
+                @if (!string.IsNullOrEmpty(_status))
+                {
+                    <div class="sg-doc-status">
+                        <SgAlert Variant="@(_isError ? SgAlertVariant.Danger : SgAlertVariant.Info)" Text="@_status" />
+                    </div>
+                }
+            </SgCard>
 
             @if (_result is not null)
             {
-                <SgCard Title="Extraction Result" Subtitle="Review and edit the extracted data" CssClass="mt-4">
+                <SgCard Title="Результат" Subtitle="Проверьте и отредактируйте извлечённые данные">
                     <div class="sg-doc-extractor-form">
                         @if (_result.Fields.Count == 0)
                         {
-                            <SgAlert Variant="SgAlertVariant.Warn" Text="No fields were extracted. You can still save the original document." />
+                            <SgAlert Variant="SgAlertVariant.Warn" Text="Поля не извлечены — можно сохранить оригинал." />
                         }
                         @foreach (var field in _result.Fields)
                         {
@@ -118,24 +124,24 @@
             }
         </div>
 
-        <div class="sg-doc-extractor-side">
-            <SgCard Title="How it works">
+        <aside class="sg-doc-extractor-side">
+            <SgCard Title="Как это работает">
                 <ol class="sg-doc-help-list">
-                    <li>Pick a provider (<b>OpenAI-compatible</b> or <b>OpenRouter</b>).</li>
-                    <li>Set the <b>Base URL</b> and <b>API key</b>.</li>
-                    <li>Select an <b>Extractor</b> (LLM-based or static parser).</li>
-                    <li>Upload a document and press <b>Extract</b>.</li>
-                    <li>Edit fields and <b>Save</b> back to the original format.</li>
+                    <li>Выберите провайдера (<b>OpenAI-совместимый</b> или <b>OpenRouter</b>).</li>
+                    <li>Задайте <b>Base URL</b> и <b>API key</b>.</li>
+                    <li>Выберите <b>экстрактор</b> — LLM или встроенный парсер.</li>
+                    <li>Загрузите документ и нажмите <b>Извлечь</b>.</li>
+                    <li>Отредактируйте поля и <b>сохраните</b> в исходном формате.</li>
                 </ol>
 
-                <div class="sg-doc-feature-badge mt-4">
-                    <div class="sg-doc-feature-title">Modular by design</div>
+                <div class="sg-doc-feature-badge">
+                    <div class="sg-doc-feature-title">Модульная архитектура</div>
                     <ul class="sg-doc-feature-list">
-                        <li><code>IDocumentExtractor</code> — LLM + built-in DOCX text parser ship by default.</li>
-                        <li><code>IDocumentSaver</code> — DOCX round-trip, plain-text, passthrough for PDF/images.</li>
+                        <li><code>IDocumentExtractor</code> — LLM + встроенный DOCX-парсер.</li>
+                        <li><code>IDocumentSaver</code> — DOCX round-trip, plain-text, passthrough для PDF/картинок.</li>
                     </ul>
                 </div>
             </SgCard>
-        </div>
+        </aside>
     </div>
 </div>
