@@ -83,17 +83,18 @@ public sealed class DefaultTheme : ThemeBase
         }
 
         /* ── Strict & Compact Default Theme Polish ────────── */
-        
+
         [data-theme-id="superui-default"] {
             -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
         }
 
         /* Micro-twist: Subtle top-accent on cards */
         [data-theme-id="superui-default"] .sgc-card {
             border-top: 2px solid var(--sg-border);
-            transition: all var(--sg-transition-base);
+            transition: border-color 180ms cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow   180ms cubic-bezier(0.4, 0, 0.2, 1);
         }
-
         [data-theme-id="superui-default"] .sgc-card:hover {
             border-top-color: var(--sg-color-primary);
             box-shadow: var(--sg-shadow-md);
@@ -111,30 +112,153 @@ public sealed class DefaultTheme : ThemeBase
             border-radius: 0;
             padding: 8px 16px;
         }
-
         [data-theme-id="superui-default"] .sgc-nav-link.active {
             background: var(--sg-bg-subtle);
             border-left-color: var(--sg-color-primary);
             font-weight: 600;
         }
 
-        /* Effect: Gradient primary buttons */
-        [data-theme-id="superui-default"] .sgc-btn-primary {
-            background: linear-gradient(180deg, var(--sg-color-primary) 0%, var(--sg-color-primary-hover) 100%);
-            border: 1px solid var(--sg-color-primary-active);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), var(--sg-shadow-xs);
+        /* ═══════════════════════════════════════════════════════════════
+           BUTTONS — strict shape, modern color, calm animation
+           - No jump (translateY) — buttons hold their place on hover
+           - Press feedback via subtle scale(0.97), not vertical shift
+           - Primary keeps a faint top highlight + soft colored glow
+           - Transitions are short & decoupled so colors update without
+             the box-shadow lagging behind
+           ═══════════════════════════════════════════════════════════════ */
+
+        /* Common reset — eliminate the global vertical hop, keep radii. */
+        [data-theme-id="superui-default"] .sgc-btn {
+            transition: background-color 150ms cubic-bezier(0.4, 0, 0.2, 1),
+                        border-color     150ms cubic-bezier(0.4, 0, 0.2, 1),
+                        color            150ms cubic-bezier(0.4, 0, 0.2, 1),
+                        box-shadow       180ms cubic-bezier(0.4, 0, 0.2, 1),
+                        transform        120ms cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateZ(0);          /* compositor-promote — smoother animations */
+        }
+        [data-theme-id="superui-default"] .sgc-btn:hover:not(:disabled) {
+            transform: none;                   /* override base translateY(-1px) */
+        }
+        [data-theme-id="superui-default"] .sgc-btn:active:not(:disabled) {
+            transform: scale(0.97);            /* tactile press — no layout shift */
+            box-shadow: none;
+        }
+        [data-theme-id="superui-default"] .sgc-btn:focus-visible {
+            outline: none;
+            box-shadow: 0 0 0 2px var(--sg-bg),
+                        0 0 0 4px var(--sg-color-primary);
         }
 
-        [data-theme-id="superui-default"] .sgc-btn-primary:hover:not(:disabled) {
-            filter: brightness(1.05);
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.2), var(--sg-shadow-sm);
+        /* ── Primary — modern color with a faint inner highlight ──── */
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-primary {
+            background: var(--sg-color-primary);
+            border: 1px solid var(--sg-color-primary);
+            color: var(--sg-color-primary-fg);
+            font-weight: 600;
+            letter-spacing: 0.01em;
+            /* Faint top highlight (1px white inset) + soft colored glow */
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.18),
+                0 1px 2px 0 rgba(15, 23, 42, 0.08),
+                0 0 0 0 rgba(59, 130, 246, 0.0);
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-primary:hover:not(:disabled) {
+            background: var(--sg-color-primary-hover);
+            border-color: var(--sg-color-primary-hover);
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.22),
+                0 2px 6px -1px rgba(15, 23, 42, 0.12),
+                0 0 0 4px rgba(59, 130, 246, 0.12);
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-primary:active:not(:disabled) {
+            background: var(--sg-color-primary-active);
+            border-color: var(--sg-color-primary-active);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.12);
+        }
+        [data-theme-id="superui-default"][data-theme="dark"] .sgc-btn.sgc-btn-primary:hover:not(:disabled) {
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.10),
+                0 2px 6px -1px rgba(0, 0, 0, 0.40),
+                0 0 0 4px rgba(96, 165, 250, 0.18);
+        }
+
+        /* ── Secondary (default) — quiet color shift, no jump ───── */
+        [data-theme-id="superui-default"] .sgc-btn:not(.sgc-btn-primary):not(.sgc-btn-danger):not(.sgc-btn-success):not(.sgc-outlined):not(.sgc-ghost):not(.sgc-dashed):hover:not(:disabled) {
+            background: var(--sg-bg-muted);
+            border-color: var(--sg-color-primary);
+            color: var(--sg-fg);
+            box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.06);
+        }
+
+        /* ── Danger / Success — same restraint as Primary ──────── */
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-danger,
+        [data-theme-id="superui-default"] .sgc-btn.sgc-danger,
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-success,
+        [data-theme-id="superui-default"] .sgc-btn.sgc-success {
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.18),
+                0 1px 2px 0 rgba(15, 23, 42, 0.08);
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-danger:hover:not(:disabled),
+        [data-theme-id="superui-default"] .sgc-btn.sgc-danger:hover:not(:disabled) {
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.22),
+                0 2px 6px -1px rgba(15, 23, 42, 0.12),
+                0 0 0 4px rgba(244, 63, 94, 0.14);
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-success:hover:not(:disabled),
+        [data-theme-id="superui-default"] .sgc-btn.sgc-success:hover:not(:disabled) {
+            box-shadow:
+                inset 0 1px 0 rgba(255, 255, 255, 0.22),
+                0 2px 6px -1px rgba(15, 23, 42, 0.12),
+                0 0 0 4px rgba(16, 185, 129, 0.14);
+        }
+
+        /* ── Outlined / Dashed — clean color fill on hover ──────── */
+        [data-theme-id="superui-default"] .sgc-btn.sgc-outlined,
+        [data-theme-id="superui-default"] .sgc-btn.sgc-dashed {
+            box-shadow: none;
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-outlined:hover:not(:disabled) {
+            background: var(--sg-color-primary-subtle);
+            border-color: var(--sg-color-primary);
+            color: var(--sg-color-primary-hover);
+            box-shadow: none;
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-dashed:hover:not(:disabled) {
+            background: var(--sg-color-primary-subtle);
+            border-color: var(--sg-color-primary);
+            color: var(--sg-color-primary-hover);
+            box-shadow: none;
+        }
+
+        /* ── Ghost — pure background change ─────────────────────── */
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-ghost,
+        [data-theme-id="superui-default"] .sgc-btn.sgc-ghost {
+            box-shadow: none;
+        }
+        [data-theme-id="superui-default"] .sgc-btn.sgc-btn-ghost:hover:not(:disabled),
+        [data-theme-id="superui-default"] .sgc-btn.sgc-ghost:hover:not(:disabled) {
+            background: var(--sg-bg-muted);
+            color: var(--sg-fg);
+            box-shadow: none;
+        }
+
+        /* Disabled — fully calm */
+        [data-theme-id="superui-default"] .sgc-btn:disabled {
+            transform: none !important;
+            box-shadow: none !important;
+            cursor: not-allowed;
+            opacity: 0.55;
         }
 
         /* Modern Input focus effect */
         [data-theme-id="superui-default"] .sgc-input:focus,
-        [data-theme-id="superui-default"] .sgc-select:focus {
+        [data-theme-id="superui-default"] .sgc-select:focus,
+        [data-theme-id="superui-default"] .sgc-textarea:focus {
             background: var(--sg-bg);
             border-color: var(--sg-color-primary);
+            box-shadow: 0 0 0 3px var(--sg-color-primary-subtle);
         }
         """;
 }
