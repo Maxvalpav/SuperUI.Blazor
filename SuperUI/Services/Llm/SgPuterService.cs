@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace SuperUI.Services.Llm;
@@ -11,7 +12,9 @@ namespace SuperUI.Services.Llm;
 public class SgPuterService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
+    private readonly SemaphoreSlim _moduleLock = new(1, 1);
     private IJSObjectReference? _module;
+    private DotNetObjectReference<SgPuterService>? _selfRef;
     private bool _isDisposed;
 
     public event Action<string>? OnTokenReceived;
@@ -25,24 +28,47 @@ public class SgPuterService : IAsyncDisposable
 
     private async Task EnsureModuleAsync()
     {
-        if (_module == null)
+        if (_isDisposed) throw new ObjectDisposedException(nameof(SgPuterService));
+        if (_module != null) return;
+
+        await _moduleLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            _module = await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-puter.js");
+            if (_isDisposed) throw new ObjectDisposedException(nameof(SgPuterService));
+            _module ??= await _js.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-puter.js");
+        }
+        finally
+        {
+            _moduleLock.Release();
         }
     }
 
+    private DotNetObjectReference<SgPuterService> GetSelfRef()
+        => _selfRef ??= DotNetObjectReference.Create(this);
+
     public async Task<bool> IsAvailableAsync()
     {
-        await EnsureModuleAsync();
-        return await _module!.InvokeAsync<bool>("isPuterAvailable");
+        try
+        {
+            await EnsureModuleAsync();
+            return await _module!.InvokeAsync<bool>("isPuterAvailable");
+        }
+        catch (JSDisconnectedException) { return false; }
+        catch (TaskCanceledException)   { return false; }
+        catch (ObjectDisposedException) { return false; }
     }
 
     // AI Features
     public async Task ChatAsync(string message, string? model = null, bool stream = true)
     {
-        await EnsureModuleAsync();
-        var selfRef = DotNetObjectReference.Create(this);
-        await _module!.InvokeVoidAsync("chat", message, model, stream, selfRef);
+        try
+        {
+            await EnsureModuleAsync();
+            await _module!.InvokeVoidAsync("chat", message, model, stream, GetSelfRef());
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException)   { }
+        catch (ObjectDisposedException) { }
     }
 
     [JSInvokable]
@@ -128,6 +154,22 @@ public class SgPuterService : IAsyncDisposable
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        if (_module != null) await _module.DisposeAsync();
+
+        var selfRef = _selfRef;
+        _selfRef = null;
+        selfRef?.Dispose();
+
+        var module = _module;
+        _module = null;
+        if (module is not null)
+        {
+            try { await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException)   { }
+            catch (ObjectDisposedException) { }
+        }
+
+        _moduleLock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

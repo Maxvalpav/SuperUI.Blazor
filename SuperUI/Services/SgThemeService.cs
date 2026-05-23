@@ -76,7 +76,11 @@ public sealed class SgThemeService : IAsyncDisposable
 
             await ApplyThemeAsync();
         }
-        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { /* prerender */ }
     }
 
     public async Task SetFontSizeAsync(string size)
@@ -141,7 +145,11 @@ public sealed class SgThemeService : IAsyncDisposable
             await _js.InvokeVoidAsync("localStorage.setItem", StorageKeyDensity, Density);
             await ApplyThemeAsync();
         }
-        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { /* prerender: JS not yet available */ }
     }
 
     private async Task ApplyThemeAsync()
@@ -156,7 +164,7 @@ public sealed class SgThemeService : IAsyncDisposable
         {
             await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{dataTheme}')");
             await _js.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme-id', '{CurrentTheme.Id}')");
-            
+
             // Typography & Density
             var fontSizeValue = FontSize switch { "sm" => "14px", "lg" => "18px", _ => "16px" };
             var fontFamilyValue = FontFamily == "mono" ? "var(--sg-font-mono)" : "var(--sg-font-sans)";
@@ -167,10 +175,16 @@ public sealed class SgThemeService : IAsyncDisposable
             await _js.InvokeVoidAsync("eval", $"document.documentElement.style.setProperty('--sg-density-factor', '{densityValue}')");
 
             await _js.InvokeVoidAsync("SuperUI.applyThemeCss", css);
-
-            ThemeChanged?.Invoke(CurrentTheme, CurrentMode);
         }
-        catch (Exception ex) when (ex is JSException or TaskCanceledException) { }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { /* prerender: JS not yet available */ }
+
+        // Уведомляем подписчиков даже если JS не отдал — иначе UI может потерять синхронизацию.
+        try { ThemeChanged?.Invoke(CurrentTheme, CurrentMode); }
+        catch { /* подписчик упал — не наш контракт */ }
     }
 
     public IReadOnlyList<IThemeDefinition> GetAvailableThemes() => _registry.GetAll();
@@ -179,9 +193,19 @@ public sealed class SgThemeService : IAsyncDisposable
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        if (_module is not null)
+
+        // Очищаем подписчиков чтобы циклические ссылки не задерживали GC.
+        ThemeChanged = null;
+
+        var module = _module;
+        _module = null;
+        if (module is not null)
         {
-            try { await _module.DisposeAsync(); } catch { }
+            try { await module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
         }
+        GC.SuppressFinalize(this);
     }
 }

@@ -36,15 +36,23 @@ public abstract class SgComponentBase : ComponentBase, IDisposable, IAsyncDispos
 
     private async void HandleThemeChanged(IThemeDefinition theme, string mode)
     {
-        if (!_disposed)
+        if (_disposed) return;
+        try
+        {
             await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        catch (TaskCanceledException) { }
     }
 
     public virtual void Dispose()
     {
         if (_disposed) return;
         _disposed = true;
-        ThemeService.ThemeChanged -= HandleThemeChanged;
+        if (ThemeService is not null)
+            ThemeService.ThemeChanged -= HandleThemeChanged;
+        GC.SuppressFinalize(this);
     }
 
     public virtual ValueTask DisposeAsync()

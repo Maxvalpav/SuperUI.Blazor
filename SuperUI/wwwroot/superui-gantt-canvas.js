@@ -56,15 +56,54 @@ export class SgGantCanvas {
     }
 
     initEvents() {
-        this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        window.addEventListener('mousemove', this.handleMouseMove.bind(this));
-        window.addEventListener('mouseup', this.handleMouseUp.bind(this));
-        window.addEventListener('keydown', this.handleKeyDown.bind(this));
-        this.canvas.addEventListener('wheel', this.handleWheel.bind(this), { passive: false });
-        this.canvas.addEventListener('dblclick', this.handleDblClick.bind(this));
-        
-        const resizeObserver = new ResizeObserver(() => this.resize());
-        resizeObserver.observe(this.container);
+        this._handlers = {
+            mousedown: this.handleMouseDown.bind(this),
+            mousemove: this.handleMouseMove.bind(this),
+            mouseup:   this.handleMouseUp.bind(this),
+            keydown:   this.handleKeyDown.bind(this),
+            wheel:     this.handleWheel.bind(this),
+            dblclick:  this.handleDblClick.bind(this),
+        };
+        this.canvas.addEventListener('mousedown', this._handlers.mousedown);
+        window.addEventListener('mousemove', this._handlers.mousemove);
+        window.addEventListener('mouseup',   this._handlers.mouseup);
+        window.addEventListener('keydown',   this._handlers.keydown);
+        this.canvas.addEventListener('wheel', this._handlers.wheel, { passive: false });
+        this.canvas.addEventListener('dblclick', this._handlers.dblclick);
+
+        this._resizeObserver = new ResizeObserver(() => this.resize());
+        this._resizeObserver.observe(this.container);
+    }
+
+    dispose() {
+        this._disposed = true;
+        if (this._rafId) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = 0;
+        }
+        if (this._resizeObserver) {
+            try { this._resizeObserver.disconnect(); } catch {}
+            this._resizeObserver = null;
+        }
+        const h = this._handlers;
+        if (h) {
+            try { this.canvas.removeEventListener('mousedown', h.mousedown); } catch {}
+            try { window.removeEventListener('mousemove', h.mousemove); } catch {}
+            try { window.removeEventListener('mouseup',   h.mouseup);   } catch {}
+            try { window.removeEventListener('keydown',   h.keydown);   } catch {}
+            try { this.canvas.removeEventListener('wheel', h.wheel);    } catch {}
+            try { this.canvas.removeEventListener('dblclick', h.dblclick); } catch {}
+            this._handlers = null;
+        }
+        if (this.state?.tooltip?.timeout) {
+            clearTimeout(this.state.tooltip.timeout);
+            this.state.tooltip.timeout = null;
+        }
+        this.dotNetRef = null;
+        this.data = null;
+        this.canvas = null;
+        this.ctx = null;
+        this.container = null;
     }
 
     resize() {
@@ -101,11 +140,12 @@ export class SgGantCanvas {
     }
 
     animate() {
+        if (this._disposed) return;
         if (this.needsUpdate) {
             this.render();
             this.needsUpdate = false;
         }
-        requestAnimationFrame(this.animate.bind(this));
+        this._rafId = requestAnimationFrame(this.animate.bind(this));
     }
 
     handleMouseDown(e) {
@@ -942,5 +982,7 @@ export function scrollTo(instance, x, y) {
 }
 
 export function dispose(instance) {
-    // Cleanup
+    if (instance && typeof instance.dispose === 'function') {
+        instance.dispose();
+    }
 }

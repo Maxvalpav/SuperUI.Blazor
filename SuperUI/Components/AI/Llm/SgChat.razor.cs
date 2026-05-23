@@ -197,8 +197,10 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private void HandleToken(string token)
     {
+        if (_disposed) return;
         InvokeAsync(async () =>
         {
+            if (_disposed) return;
             if (_streamingMsg == null)
             {
                 _streamingMsg = new SgLlmMessage { Role = "assistant", Content = "" };
@@ -210,6 +212,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
             _renderCounter++;
             if (_renderCounter % RenderEvery == 0)
                 await RenderMarkdownAsync(_streamingMsg);
+            if (_disposed) return;
             StateHasChanged();
             await ScrollToBottomAsync();
         });
@@ -217,16 +220,18 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private void HandleComplete(string fullAnswer)
     {
+        if (_disposed) return;
         InvokeAsync(async () =>
         {
+            if (_disposed) return;
             if (_streamingMsg != null)
                 await RenderMarkdownAsync(_streamingMsg);
-            
+
             if (_currentSession != null && _streamingMsg != null)
             {
-                _currentSession.Messages.Add(new SgLlmMessage 
-                { 
-                    Role = "assistant", 
+                _currentSession.Messages.Add(new SgLlmMessage
+                {
+                    Role = "assistant",
                     Content = _streamingMsg.Content,
                     Timestamp = DateTime.UtcNow
                 });
@@ -234,6 +239,7 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
                 await HistoryService.SaveSessionAsync(_currentSession);
             }
 
+            if (_disposed) return;
             _isThinking = false;
             _streaming = false;
             _streamingMsg = null;
@@ -244,8 +250,10 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private void HandleError(string error)
     {
+        if (_disposed) return;
         InvokeAsync(() =>
         {
+            if (_disposed) return;
             // Show the provider's actual response — generic "check API key" hides the
             // real cause (e.g. unknown model on OpenRouter also returns 401).
             _error = error;
@@ -370,15 +378,25 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         await JS.InvokeVoidAsync("eval", $"(()=>{{const a=document.createElement('a');a.href='data:{mime};base64,{b64}';a.download='chat-{ts}.{ext}';document.body.appendChild(a);a.click();document.body.removeChild(a);}})()");
     }
 
+    private bool _disposed;
+
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
+
         LlmService.OnTokenReceived -= HandleToken;
         LlmService.OnChatComplete -= HandleComplete;
         LlmService.OnError -= HandleError;
 
         if (_llmModule is not null)
         {
-            try { await _llmModule.DisposeAsync(); } catch { }
+            try { await _llmModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+            _llmModule = null;
         }
+        GC.SuppressFinalize(this);
     }
 }

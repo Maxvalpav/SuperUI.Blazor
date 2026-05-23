@@ -443,9 +443,11 @@ export function stopAudioVisualizer() {
 }
 
 // --- Performance API ---
-let lastFpsTime = performance.now();
+let lastFpsTime = 0;
 let frames = 0;
 let currentFps = 0;
+let fpsRafId = 0;
+let fpsSubscribers = 0;
 
 function updateFps() {
     frames++;
@@ -455,9 +457,29 @@ function updateFps() {
         frames = 0;
         lastFpsTime = now;
     }
-    requestAnimationFrame(updateFps);
+    fpsRafId = requestAnimationFrame(updateFps);
 }
-requestAnimationFrame(updateFps);
+
+function ensureFpsLoop() {
+    if (fpsSubscribers === 0) {
+        lastFpsTime = performance.now();
+        frames = 0;
+        fpsRafId = requestAnimationFrame(updateFps);
+    }
+    fpsSubscribers++;
+}
+
+function releaseFpsLoop() {
+    if (fpsSubscribers > 0) fpsSubscribers--;
+    if (fpsSubscribers === 0 && fpsRafId) {
+        cancelAnimationFrame(fpsRafId);
+        fpsRafId = 0;
+        currentFps = 0;
+    }
+}
+
+export function startPerformanceMonitoring() { ensureFpsLoop(); }
+export function stopPerformanceMonitoring()  { releaseFpsLoop(); }
 
 export function getPerformanceMetrics() {
     const metrics = {

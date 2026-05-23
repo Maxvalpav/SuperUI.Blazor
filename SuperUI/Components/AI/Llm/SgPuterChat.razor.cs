@@ -89,8 +89,10 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 
     private void HandleToken(string token)
     {
+        if (_disposed) return;
         InvokeAsync(async () =>
         {
+            if (_disposed) return;
             if (_streamingMsg == null)
             {
                 _streamingMsg = new SgLlmMessage { Role = "assistant", Content = "" };
@@ -99,11 +101,12 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
             }
             _streamingMsg.Content += token;
             _tokenCount = _streamingMsg.Content.Length / 4;
-            
+
             _renderCounter++;
             if (_renderCounter % RenderEvery == 0)
                 await RenderMarkdownAsync(_streamingMsg);
 
+            if (_disposed) return;
             StateHasChanged();
             await ScrollToBottomAsync();
         });
@@ -111,19 +114,22 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 
     private void HandleComplete(string fullAnswer)
     {
+        if (_disposed) return;
         InvokeAsync(async () =>
         {
+            if (_disposed) return;
             if (_streamingMsg != null)
             {
                 await RenderMarkdownAsync(_streamingMsg);
-                _messages.Add(new SgLlmMessage 
-                { 
-                    Role = "assistant", 
+                _messages.Add(new SgLlmMessage
+                {
+                    Role = "assistant",
                     Content = _streamingMsg.Content,
                     Timestamp = DateTime.UtcNow
                 });
             }
 
+            if (_disposed) return;
             _isThinking = false;
             _streaming = false;
             _streamingMsg = null;
@@ -135,8 +141,10 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 
     private void HandleError(string error)
     {
+        if (_disposed) return;
         InvokeAsync(() =>
         {
+            if (_disposed) return;
             _error = error;
             _isThinking = false;
             _streaming = false;
@@ -357,11 +365,25 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         StateHasChanged();
     }
 
+    private bool _disposed;
+
     public async ValueTask DisposeAsync()
     {
+        if (_disposed) return;
+        _disposed = true;
+
         PuterService.OnTokenReceived -= HandleToken;
         PuterService.OnChatComplete -= HandleComplete;
         PuterService.OnError -= HandleError;
-        if (_llmModule is not null) await _llmModule.DisposeAsync();
+
+        if (_llmModule is not null)
+        {
+            try { await _llmModule.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
+            _llmModule = null;
+        }
+        GC.SuppressFinalize(this);
     }
 }

@@ -63,6 +63,18 @@ export function startRecognition() {
 
 export function stopRecognition() {
     if (recognition) {
-        recognition.stop();
+        try { recognition.stop(); } catch {}
     }
+}
+
+export function disposeVoiceRecognition() {
+    if (recognition) {
+        try { recognition.stop(); } catch {}
+        try { recognition.abort(); } catch {}
+        recognition.onresult = null;
+        recognition.onerror  = null;
+        recognition.onend    = null;
+        recognition = null;
+    }
+    activeDotNetRef = null;
 }

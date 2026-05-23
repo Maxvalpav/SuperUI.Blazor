@@ -274,7 +274,9 @@ export function readImageFile(input) {
 
 // ----- CommandBar -----
 
-const commandBarInstances = new Map();
+// WeakMap keyed by DOM element — не удерживает узлы и DotNetObjectReference
+// если Blazor забыл вызвать disposeCommandBar.
+const commandBarInstances = new WeakMap();
 
 export function initCommandBar(cmdBarElement, dotnetRef) {
     if (!cmdBarElement) return;

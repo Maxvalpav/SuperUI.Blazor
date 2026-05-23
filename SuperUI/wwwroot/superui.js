@@ -100,21 +100,22 @@ export function init(dotnetRef, gridRoot) {
 
     // Virtualization scroll support
     const scrollContainer = gridRoot.querySelector('.sg-scroll');
+    let scrollRaf = 0;
+    const onScroll = () => {
+        if (!scrollContainer) return;
+        if (scrollRaf) return;
+        scrollRaf = window.requestAnimationFrame(() => {
+            scrollRaf = 0;
+            try {
+                if (!dotnetRef._sgDisposed) {
+                    dotnetRef.invokeMethodAsync('OnScrollAsync',
+                        Math.round(scrollContainer.scrollTop),
+                        Math.round(scrollContainer.clientHeight));
+                }
+            } catch (e) { }
+        });
+    };
     if (scrollContainer) {
-        let scrollRaf = 0;
-        const onScroll = () => {
-            if (scrollRaf) return;
-            scrollRaf = window.requestAnimationFrame(() => {
-                scrollRaf = 0;
-                try {
-                    if (!dotnetRef._sgDisposed) {
-                        dotnetRef.invokeMethodAsync('OnScrollAsync', 
-                            Math.round(scrollContainer.scrollTop), 
-                            Math.round(scrollContainer.clientHeight));
-                    }
-                } catch (e) { }
-            });
-        };
         scrollContainer.addEventListener('scroll', onScroll);
         // Initial viewport height
         setTimeout(onScroll, 0);
@@ -207,9 +208,14 @@ export function init(dotnetRef, gridRoot) {
     gridRoot.addEventListener('dragend', onDragEnd);
 
     // Keep handles so DisposeAsync can clean up.
-    init._cleanup = init._cleanup || new Map();
+    // WeakMap so that abandoned dotnetRef does not pin DOM / closures alive.
+    init._cleanup = init._cleanup || new WeakMap();
     init._cleanup.set(dotnetRef, () => {
         gridRoot.removeEventListener('pointerdown', onPointerDown);
+        gridRoot.removeEventListener('dblclick', onDblClick);
+        if (scrollContainer) {
+            scrollContainer.removeEventListener('scroll', onScroll);
+        }
         gridRoot.removeEventListener('dragstart', onDragStart);
         gridRoot.removeEventListener('dragover', onDragOver);
         gridRoot.removeEventListener('dragleave', onDragLeave);
@@ -432,8 +438,8 @@ export function initDataGridVirtualization(dotNetRef, gridRoot) {
     // Initial call to set viewport height and initial rows
     onScroll();
     
-    // Store cleanup function
-    initDataGridVirtualization._cleanup = initDataGridVirtualization._cleanup || new Map();
+    // Store cleanup function (WeakMap → не удерживает dotNetRef)
+    initDataGridVirtualization._cleanup = initDataGridVirtualization._cleanup || new WeakMap();
     initDataGridVirtualization._cleanup.set(dotNetRef, () => {
         if (scrollTimeout) {
             clearTimeout(scrollTimeout);

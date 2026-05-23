@@ -21,14 +21,6 @@ export function init(canvas, dotNetRef, color) {
         };
     }
 
-    canvas.addEventListener('mousedown', start);
-    canvas.addEventListener('mousemove', draw);
-    window.addEventListener('mouseup', stop);
-    
-    canvas.addEventListener('touchstart', (e) => { e.preventDefault(); start(e); }, { passive: false });
-    canvas.addEventListener('touchmove', (e) => { e.preventDefault(); draw(e); }, { passive: false });
-    canvas.addEventListener('touchend', stop);
-
     function start(e) {
         drawing = true;
         const pos = getPos(e);
@@ -51,9 +43,22 @@ export function init(canvas, dotNetRef, color) {
         drawing = false;
     }
 
+    const onTouchStart = (e) => { e.preventDefault(); start(e); };
+    const onTouchMove  = (e) => { e.preventDefault(); draw(e);  };
+
+    canvas.addEventListener('mousedown', start);
+    canvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stop);
+
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove',  onTouchMove,  { passive: false });
+    canvas.addEventListener('touchend', stop);
+
+    canvas._handlers = { start, draw, stop, onTouchStart, onTouchMove };
+
     canvas._clear = () => ctx.clearRect(0, 0, canvas.width, canvas.height);
     canvas._getDataUrl = () => canvas.toDataURL('image/png');
-    
+
     canvas._download = (filename) => {
         const link = document.createElement('a');
         link.download = filename || 'signature.png';
@@ -79,3 +84,21 @@ export function clear(canvas) { canvas._clear(); }
 export function getDataUrl(canvas) { return canvas._getDataUrl(); }
 export function download(canvas, filename) { canvas._download(filename); }
 export async function copyToClipboard(canvas) { return await canvas._copy(); }
+
+export function dispose(canvas) {
+    if (!canvas) return;
+    const h = canvas._handlers;
+    if (h) {
+        try { canvas.removeEventListener('mousedown', h.start); } catch {}
+        try { canvas.removeEventListener('mousemove', h.draw);  } catch {}
+        try { window.removeEventListener('mouseup',   h.stop);  } catch {}
+        try { canvas.removeEventListener('touchstart', h.onTouchStart); } catch {}
+        try { canvas.removeEventListener('touchmove',  h.onTouchMove);  } catch {}
+        try { canvas.removeEventListener('touchend',   h.stop);         } catch {}
+    }
+    canvas._handlers = null;
+    canvas._clear = null;
+    canvas._getDataUrl = null;
+    canvas._download = null;
+    canvas._copy = null;
+}

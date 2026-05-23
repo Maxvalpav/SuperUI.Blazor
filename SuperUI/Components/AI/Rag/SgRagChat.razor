@@ -404,9 +404,16 @@
 
     public async ValueTask DisposeAsync()
     {
+        try { _streamCts?.Cancel(); } catch { }
+        _streamCts?.Dispose();
+        _streamCts = null;
+
         if (_ragModule is not null)
         {
-            try { await _ragModule.DisposeAsync(); } catch { }
+            try { await _ragModule.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { }
+            catch (TaskCanceledException) { }
+            catch (ObjectDisposedException) { }
             _ragModule = null;
         }
     }
