@@ -1052,6 +1052,18 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
     /// </summary>
     [Parameter] public int EstimatedRowHeight { get; set; } = 32;
 
+    /// <summary>
+    /// Когда <c>true</c>, содержимое ячеек переносится по словам, и высота строки растёт
+    /// до размера самой высокой ячейки. По умолчанию <c>false</c> (одна строка + ellipsis).
+    /// </summary>
+    /// <remarks>
+    /// При включённом wrap виртуализация (<see cref="EnableVirtualization"/>) автоматически
+    /// отключается через <see cref="ShouldUseVirtualization"/>, потому что её алгоритм
+    /// рассчитывает позиции по фиксированной высоте строки и при переменной высоте даст
+    /// «дёрганый» скролл и неточные паддинги. Используйте wrap для умеренных наборов данных.
+    /// </remarks>
+    [Parameter] public bool WrapCells { get; set; }
+
     [JSInvokable]
     public async Task OnScrollAsync(int scrollTop, int viewportHeight)
     {
@@ -1763,6 +1775,11 @@ public partial class SgDataGrid<TItem> : ComponentBase, IAsyncDisposable where T
 
         // Don't virtualize if grouping is active - grouping has complex rendering
         if (_groupByKeys.Count > 0)
+            return false;
+
+        // Wrap-cells даёт переменную высоту строк — фиксированный _estimatedRowHeight в
+        // CalculateVirtualWindow станет рассчитывать неверные top/bottom padding'и.
+        if (WrapCells)
             return false;
 
         // Enable virtualization for large datasets (>= threshold)
