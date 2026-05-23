@@ -1,3 +1,7 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+
 namespace SuperUI.Services.Llm;
 
 public enum SgLlmProvider
@@ -8,6 +12,8 @@ public enum SgLlmProvider
     Ollama,
     OpenCode,
     Anthropic,
+    LmStudio,      // LM Studio local OpenAI-compatible server
+    GigaGpt,       // GigaGPT / GigaChat-compatible endpoint
     Google,        // Google Gemini (native v1beta)
     Mistral,       // Mistral AI (la Plateforme)
     Groq,          // Groq Cloud
@@ -43,6 +49,79 @@ public class SgLlmProviderPreset
     public string? Notes { get; set; }
 }
 
+public class SgLlmRouteConfig
+{
+    public bool Enabled { get; set; }
+    public string Purpose { get; set; } = string.Empty;
+    public SgLlmProvider? Provider { get; set; }
+    public string? ModelId { get; set; }
+    public string? BaseUrl { get; set; }
+    public string? SystemPrompt { get; set; }
+}
+
+public static class SgLlmTaskPurpose
+{
+    public const string Chat = "chat";
+    public const string Documents = "documents";
+    public const string Vision = "vision";
+    public const string Structured = "structured";
+    public const string Embeddings = "embeddings";
+    public const string Rerank = "rerank";
+    public const string Images = "images";
+    public const string Moderation = "moderation";
+    public const string Speech = "speech";
+    public const string Video = "video";
+}
+
+public class SgLlmProfile
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = "New profile";
+    public SgLlmConfig Config { get; set; } = new();
+    public bool IsDefault { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public class SgLlmDiagnosticCheck
+{
+    public string Name { get; set; } = string.Empty;
+    public bool Ok { get; set; }
+    public string Message { get; set; } = string.Empty;
+}
+
+public class SgLlmDiagnosticsResult
+{
+    public bool Ok => Checks.Count > 0 && Checks.All(c => c.Ok);
+    public List<SgLlmDiagnosticCheck> Checks { get; set; } = new();
+    public string Summary => Ok ? "Подключение готово" : "Найдены проблемы подключения";
+}
+
+public class SgLlmHealthStatus
+{
+    public SgLlmProvider Provider { get; set; }
+    public string ProviderLabel { get; set; } = string.Empty;
+    public bool Ok { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string? BaseUrl { get; set; }
+    public List<SgLlmDiagnosticCheck> Checks { get; set; } = new();
+}
+
+public class SgLlmUsageRecord
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+    public SgLlmProvider Provider { get; set; }
+    public string ProviderLabel { get; set; } = string.Empty;
+    public string? ModelId { get; set; }
+    public int PromptTokens { get; set; }
+    public int CompletionTokens { get; set; }
+    public int TotalTokens => PromptTokens + CompletionTokens;
+    public double DurationMs { get; set; }
+    public bool Ok { get; set; } = true;
+    public string? Error { get; set; }
+}
+
 public class SgLlmAttachment
 {
     public string Name { get; set; } = string.Empty;
@@ -70,6 +149,9 @@ public class SgLlmMessage
 /// </summary>
 public class SgLlmConfig
 {
+    public const int CurrentSchemaVersion = 3;
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
     // --- Base / connection ---
     public SgLlmProvider Provider { get; set; } = SgLlmProvider.OpenRouter;
     public string? ModelId { get; set; }
@@ -78,6 +160,34 @@ public class SgLlmConfig
     public string? SystemPrompt { get; set; }
     public bool Stream { get; set; } = true;
     public Dictionary<string, string>? ExtraHeaders { get; set; }
+
+    // --- Task routing ---
+    public Dictionary<string, SgLlmRouteConfig>? Routes { get; set; }
+
+    // --- UX / safety / transport ---
+    public bool PersistApiKey { get; set; } = true;
+    public bool UseBackendProxy { get; set; }
+    public string? ProxyUrl { get; set; }
+    public int? TimeoutSeconds { get; set; } = 120;
+    public int? RetryCount { get; set; } = 0;
+    public int? RetryDelayMs { get; set; } = 500;
+    public SgLlmProvider? FallbackProvider { get; set; }
+    public string? FallbackBaseUrl { get; set; }
+
+    // --- GigaChat / GigaGPT authorization ---
+    /// <summary>"Bearer" for an already issued access token, or "OAuth" for authorization-key exchange.</summary>
+    public string? GigaAuthMode { get; set; } = "Bearer";
+    public string? GigaScope { get; set; } = "GIGACHAT_API_PERS";
+    public string? GigaOAuthUrl { get; set; } = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
+
+    // --- OpenAI latest API ---
+    public bool? UseResponsesApi { get; set; }
+
+    // --- Cost / usage guard ---
+    public bool OnlyFreeModels { get; set; }
+    public bool WarnOnPaidModels { get; set; } = true;
+    public int? DailyTokenLimit { get; set; }
+    public int? RequestTokenLimit { get; set; }
 
     /// <summary>
     /// Master switch. When false, only Provider/ModelId/ApiKey/BaseUrl/SystemPrompt

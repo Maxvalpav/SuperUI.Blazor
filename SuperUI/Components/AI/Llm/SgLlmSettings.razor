@@ -3,35 +3,34 @@
 @inject ILlmService LlmService
 
 @*
-   SgLlmSettings — universal LLM provider + parameter editor.
+   SgLlmSettings — единые настройки LLM для чата, глобальных настроек и экстрактора.
 
-   • Compact = true:  one-row inline editor (provider chip + model + key) with a
-                       popover holding the rest. Designed to live in a chat toolbar.
-   • Compact = false: full panel (the original side-settings layout).
-
-   The advanced switch (Расширенные) gates Config.UseAdvanced. When it's OFF, the
-   LLM service only forwards Provider / ModelId / ApiKey / BaseUrl / SystemPrompt —
-   nothing in the "Advanced" section is sent to the API.
+   Compact = true: аккуратная строка: провайдер-плашка, модель, Base URL, ключ и быстрые действия.
+   Compact = false: полный редактор с теми же провайдерами и расширенными параметрами.
 *@
 
-<div class="sgc-llm-settings @(Compact ? "sgc-llm-compact" : "")" style="@Style">
+<div class="sgc-llm-settings @(Compact ? "sgc-llm-compact" : "sgc-llm-full")" style="@Style">
 
     @if (Compact)
     {
         <div class="sgc-llm-compact-row">
-            <SgPopover ButtonText="@($"{Config.Provider}")"
-                       ButtonVariant="SgButtonVariant.Outlined"
-                       ButtonSize="SgSize.Sm"
-                       Title="@Localizer["Llm_ProviderTitle"]"
-                       Placement="SgPlacement.BottomStart">
+            <SgPopover Title="Провайдер LLM" Placement="SgPlacement.BottomStart">
+                <TriggerContent>
+                    <button type="button" class="sgc-provider-pill" title="Выбрать провайдера">
+                        <span class="sgc-provider-dot"></span>
+                        <span>@ProviderLabel(Config.Provider)</span>
+                        <span class="sgc-provider-chevron">⌄</span>
+                    </button>
+                </TriggerContent>
                 <ChildContent>
-                    <div class="sgc-llm-provider-grid" style="min-width: 280px;">
+                    <div class="sgc-llm-provider-grid sgc-llm-provider-grid-compact">
                         @foreach (var provider in _providers)
                         {
                             <button type="button"
-                                    class="sgc-provider-tab @(Config.Provider == provider ? "active" : "")"
+                                    class="sgc-provider-card @(Config.Provider == provider ? "active" : "")"
                                     @onclick="@(() => OnProviderChanged(provider))">
-                                @provider
+                                <span class="sgc-provider-card-title">@ProviderLabel(provider)</span>
+                                <span class="sgc-provider-card-desc">@ProviderShortHint(provider)</span>
                             </button>
                         }
                     </div>
@@ -40,29 +39,49 @@
 
             @if (Config.Provider != SgLlmProvider.None)
             {
-                <SgAutoComplete TItem="string" @bind-Value="Config.ModelId" Items="_orModelIds"
-                                Placeholder="@Localizer["Llm_ModelPlaceholder"]" MaxResults="200"
-                                Style="flex: 1; min-width: 160px;" />
+                <div class="sgc-mini-field sgc-mini-model">
+                    <span>Модель</span>
+                    <SgAutoComplete TItem="string" @bind-Value="Config.ModelId" Items="FilteredModelIds"
+                                    Placeholder="выберите или введите модель" MaxResults="200"
+                                    Style="width: 100%;" />
+                </div>
 
-                <SgTextBox @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-..."
-                           Style="width: 140px;" />
+                @if (NeedsBaseUrl(Config.Provider))
+                {
+                    <div class="sgc-mini-field sgc-mini-url">
+                        <span>Base URL</span>
+                        <SgTextBox Value="@Config.BaseUrl" ValueChanged="@((string? v) => OnBaseUrlChanged(v))" Placeholder="@DefaultBaseUrl(Config.Provider)" Style="width: 100%;" />
+                    </div>
+                }
 
-                <SgIconButton Icon="@SgIcons.Refresh" OnClick="LoadModelsAsync"
-                              Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Loading="_loadingModels" />
+                @if (ProviderRequiresKey(Config.Provider))
+                {
+                    <div class="sgc-mini-field sgc-mini-key">
+                        <span>API key</span>
+                        <SgTextBox @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-... / token" Style="width: 100%;" />
+                    </div>
+                }
 
-                <SgPopover Title="@Localizer["Llm_Settings"]" Placement="SgPlacement.BottomEnd">
-                    <TriggerContent>
-                        <SgIconButton Icon="@SgIcons.Settings" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
-                    </TriggerContent>
-                    <ChildContent>
-                        <div style="min-width: 420px; max-width: 480px;">
-                            @RenderFullSettings()
-                        </div>
-                    </ChildContent>
-                </SgPopover>
+                <div class="sgc-llm-actions">
+                    <SgIconButton Icon="@SgIcons.Refresh" OnClick="LoadModelsAsync"
+                                  Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Loading="_loadingModels" Title="Обновить список моделей" />
 
-                <SgButton Text="@Localizer["Common_Apply"]" OnClick="ApplySettingsAsync"
-                          Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                    <SgPopover Title="@Localizer["Llm_Settings"]" Placement="SgPlacement.BottomEnd">
+                        <TriggerContent>
+                            <SgIconButton Icon="@SgIcons.Settings" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Title="Полные настройки" />
+                        </TriggerContent>
+                        <ChildContent>
+                            <div class="sgc-llm-popover-panel">
+                                @RenderFullSettings()
+                            </div>
+                        </ChildContent>
+                    </SgPopover>
+
+                    <SgButton Text="Проверить" OnClick="CheckConnectionAsync"
+                              Variant="SgButtonVariant.Outlined" Size="SgSize.Sm" Loading="_checkingConnection" />
+                    <SgButton Text="@Localizer["Common_Apply"]" OnClick="ApplySettingsAsync"
+                              Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                </div>
             }
 
             <div class="sgc-status-dot @(_lastStatus.ToLower())" title="@_statusText"></div>
@@ -70,21 +89,32 @@
     }
     else
     {
-        <div style="display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: flex; flex-direction: column; gap: 8px;">
-                <div class="sgc-llm-provider-tabs">
+        <div class="sgc-llm-full-layout">
+            <div class="sgc-llm-heading">
+                <div>
+                    <div class="sgc-llm-title">Настройки LLM</div>
+                    <div class="sgc-llm-subtitle">Единый профиль провайдера, модели, Base URL и ключа для всех LLM-компонентов.</div>
+                </div>
+                <div class="sgc-llm-heading-actions">
+                    <SgSwitch @bind-Value="_showLogs" Label="@Localizer["Llm_Logs"]" Size="SgSize.Sm" />
+                </div>
+            </div>
+
+            <div class="sgc-llm-section">
+                <div class="sgc-llm-section-head">
+                    <span>Провайдер</span>
+                    <small>@ProviderShortHint(Config.Provider)</small>
+                </div>
+                <div class="sgc-llm-provider-grid">
                     @foreach (var provider in _providers)
                     {
                         <button type="button"
-                                class="sgc-provider-tab @(Config.Provider == provider ? "active" : "") @(LlmService.CurrentConfig?.Provider == provider ? "current" : "")"
+                                class="sgc-provider-card @(Config.Provider == provider ? "active" : "") @(LlmService.CurrentConfig?.Provider == provider ? "current" : "")"
                                 @onclick="@(() => OnProviderChanged(provider))">
-                            @provider
+                            <span class="sgc-provider-card-title">@ProviderLabel(provider)</span>
+                            <span class="sgc-provider-card-desc">@ProviderShortHint(provider)</span>
                         </button>
                     }
-                </div>
-                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--sui-fg-muted);">
-                    <span>@Localizer["Llm_Provider"]: <b>@Config.Provider</b></span>
-                    <SgSwitch @bind-Value="_showLogs" Label="@Localizer["Llm_Logs"]" Size="SgSize.Sm" />
                 </div>
             </div>
 
@@ -92,12 +122,19 @@
             {
                 @RenderFullSettings()
 
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
-                    <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
+                <div class="sgc-llm-footer">
+                    <div class="sgc-llm-status-text">
                         <div class="sgc-status-dot @(_lastStatus.ToLower())"></div>
-                        <span style="color: var(--sui-fg-muted)">@_statusText</span>
+                        <span>@_statusText</span>
+                        @if (HasDirtyChanges)
+                        {
+                            <span class="sgc-dirty-badge">изменения не применены</span>
+                        }
                     </div>
-                    <SgButton Text="@Localizer["Common_Apply"]" OnClick="ApplySettingsAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                    <div class="sgc-footer-actions">
+                        <SgButton Text="Проверить" OnClick="CheckConnectionAsync" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm" Loading="_checkingConnection" />
+                        <SgButton Text="@Localizer["Common_Apply"]" OnClick="ApplySettingsAsync" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                    </div>
                 </div>
 
                 @if (_showLogs)
@@ -112,7 +149,7 @@
                         }
                         @if (!_logs.Any())
                         {
-                            <div style="color: var(--sui-fg-muted); font-style: italic; font-size: 11px;">@Localizer["Llm_NoLogs"]</div>
+                            <div style="color: var(--sg-fg-muted); font-style: italic; font-size: 11px;">@Localizer["Llm_NoLogs"]</div>
                         }
                     </div>
                 }
@@ -124,67 +161,298 @@
 @code {
     RenderFragment RenderFullSettings() => __builder =>
     {
-        <div style="display: flex; flex-direction: column; gap: 10px;">
-            @* Model row *@
-            <div style="display: flex; gap: 8px; align-items: flex-end;">
-                <SgSwitch @bind-Value="_manualModel" Label="@Localizer["Llm_Manual"]" Style="margin-bottom: 8px; white-space: nowrap;" />
-                <div style="flex: 1;">
-                    @if (_manualModel)
-                    {
-                        <SgTextBox Label="@Localizer["Llm_ModelId"]" @bind-Value="Config.ModelId" Placeholder="gpt-4o-mini" />
-                    }
-                    else if (Config.Provider == SgLlmProvider.Ollama)
-                    {
-                        <div style="display: flex; flex-direction: column;">
+        <div class="sgc-llm-editor">
+            <div class="sgc-llm-card sgc-profile-card">
+                <div class="sgc-llm-card-head">
+                    <div>
+                        <strong>Профили подключений</strong>
+                        <small>Сохраняйте набор провайдер + модель + URL + параметры и быстро переключайтесь между ними.</small>
+                    </div>
+                </div>
+                <div class="sgc-profile-row">
+                    <SgSelect TValue="string" Items="@_profiles.Select(p => p.Id).ToList()" Value="@_selectedProfileId" ValueChanged="ApplyProfileAsync" LabelSelector="ProfileLabel" Placeholder="Выберите профиль" Style="min-width: 180px; flex: 1;" />
+                    <SgTextBox @bind-Value="_profileName" Placeholder="Название профиля" Style="min-width: 180px; flex: 1;" />
+                    <SgSwitch @bind-Value="_profileDefault" Label="По умолчанию" Size="SgSize.Sm" />
+                    <SgButton Text="Сохранить" OnClick="SaveProfileAsync" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm" />
+                    <SgButton Text="Удалить" OnClick="DeleteProfileAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                </div>
+                @if (_profiles.Count > 0)
+                {
+                    <div class="sgc-profile-hint">@(string.Join(" · ", _profiles.Select(p => p.IsDefault ? $"★ {p.Name}" : p.Name).Take(6)))</div>
+                }
+                <details class="sgc-profile-io">
+                    <summary>Импорт / экспорт профилей</summary>
+                    <div class="sgc-profile-row">
+                        <SgButton Text="Экспорт JSON" OnClick="ExportProfilesAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                        <SgButton Text="Импорт JSON" OnClick="ImportProfilesAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    </div>
+                    <SgTextBox @bind-Value="_profilesJson" Multiline="true" Rows="4" Placeholder="JSON профилей" />
+                </details>
+            </div>
+
+            <div class="sgc-llm-card">
+                <div class="sgc-llm-card-head">
+                    <div>
+                        <strong>Модель</strong>
+                        <small>Список загружается из API провайдера; если API недоступен — показываются встроенные актуальные варианты.</small>
+                    </div>
+                    <SgSwitch @bind-Value="_manualModel" Label="@Localizer["Llm_Manual"]" Size="SgSize.Sm" />
+                </div>
+
+                <div class="sgc-llm-model-row">
+                    <div class="sgc-llm-model-input">
+                        @if (_manualModel)
+                        {
+                            <SgTextBox Label="@Localizer["Llm_ModelId"]" @bind-Value="Config.ModelId" Placeholder="например: gpt-5.4-mini" />
+                        }
+                        else if (Config.Provider == SgLlmProvider.Ollama)
+                        {
                             <label class="sgc-label">@Localizer["Llm_PickModel"]</label>
                             <SgOllamaModelPicker SelectedModelId="@Config.ModelId"
                                                  BaseUrl="@Config.BaseUrl"
                                                  OnSelected="OnModelSelected"
                                                  Style="width: 100%;" />
-                        </div>
-                    }
-                    else
-                    {
-                        <SgAutoComplete TItem="string" Label="@Localizer["Llm_PickModel"]" @bind-Value="Config.ModelId"
-                                        Items="_orModelIds" Placeholder="@Localizer["Llm_ModelPlaceholder"]" Style="flex: 1;" MaxResults="500" />
-                    }
+                        }
+                        else
+                        {
+                            <SgAutoComplete TItem="string" Label="@Localizer["Llm_PickModel"]" @bind-Value="Config.ModelId"
+                                            Items="FilteredModelIds" Placeholder="модель не выбрана" Style="width: 100%;" MaxResults="500" />
+                        }
+                    </div>
+                    <SgIconButton Icon="@SgIcons.Refresh" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Loading="_loadingModels" Title="Обновить модели" />
                 </div>
-                <SgIconButton Icon="@SgIcons.Refresh" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Loading="_loadingModels" Style="margin-bottom: 8px;" />
-            </div>
-
-            @* Connection: API key + Base URL (+Azure deployment) *@
-            <div class="sgc-llm-compact-grid">
-                <SgTextBox Label="API Key" @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-..." />
-                @if (NeedsBaseUrl(Config.Provider))
+                <div class="sgc-model-filters">
+                    <SgSwitch @bind-Value="_filterFreeOnly" Label="free/local" Size="SgSize.Sm" />
+                    <SgSwitch @bind-Value="_filterVisionOnly" Label="vision" Size="SgSize.Sm" />
+                    <SgSwitch @bind-Value="_filterToolsOnly" Label="tools" Size="SgSize.Sm" />
+                    <SgSwitch @bind-Value="_filterJsonOnly" Label="json" Size="SgSize.Sm" />
+                    <SgSwitch @bind-Value="_filterReasoningOnly" Label="reasoning" Size="SgSize.Sm" />
+                </div>
+                @if (RecommendedModels.Any())
                 {
-                    <SgTextBox Label="Base URL" @bind-Value="Config.BaseUrl" Placeholder="@DefaultBaseUrl(Config.Provider)" />
+                    <div class="sgc-model-chips">
+                        @foreach (var m in RecommendedModels)
+                        {
+                            <button type="button" class="sgc-model-chip @(Config.ModelId == m.Id ? "active" : "")" @onclick="@(() => SelectRecommendedModel(m.Id))" title="@m.Description">
+                                <span>@m.Name</span>
+                                @if (m.IsFree) { <em>free</em> }
+                                @if (m.SupportsVision) { <em>vision</em> }
+                                @if (m.SupportsTools) { <em>tools</em> }
+                            </button>
+                        }
+                    </div>
+                }
+                @if (SelectedModelInfo is not null)
+                {
+                    <div class="sgc-model-meta">
+                        <span>@SelectedModelInfo.ProviderLabel</span>
+                        @if (SelectedModelInfo.ContextWindow is > 0) { <span>ctx @(SelectedModelInfo.ContextWindow.Value.ToString("N0"))</span> }
+                        @if (SelectedModelInfo.SupportsVision) { <span>vision</span> }
+                        @if (SelectedModelInfo.SupportsTools) { <span>tools</span> }
+                        @if (SelectedModelInfo.SupportsJsonSchema) { <span>json/schema</span> }
+                        @if (SelectedModelInfo.SupportsReasoning) { <span>reasoning</span> }
+                    </div>
+                    @if (Config.ResponseFormat == "json_schema" && !SelectedModelInfo.SupportsJsonSchema)
+                    {
+                        <div class="sgc-llm-warning">Выбранная модель не отмечена как поддерживающая JSON schema. Провайдер может вернуть ошибку.</div>
+                    }
+                }
+                @if (_models.Count > 0)
+                {
+                    <details class="sgc-model-catalog">
+                        <summary>Каталог моделей (@FilteredModelIds.Count)</summary>
+                        <div class="sgc-model-table-wrap">
+                            <table class="sgc-model-table">
+                                <thead>
+                                    <tr><th>Модель</th><th>Context</th><th>Caps</th><th>Type</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var m in _models.Where(x => FilteredModelIds.Contains(x.Id)).Take(25))
+                                    {
+                                        <tr class="@(Config.ModelId == m.Id ? "active" : "")" @onclick="@(() => SelectRecommendedModel(m.Id))">
+                                            <td><b>@m.Name</b><small>@m.Id</small></td>
+                                            <td>@(m.ContextWindow is > 0 ? m.ContextWindow.Value.ToString("N0") : "—")</td>
+                                            <td>
+                                                @if (m.SupportsVision) { <span>vision</span> }
+                                                @if (m.SupportsTools) { <span>tools</span> }
+                                                @if (m.SupportsJsonSchema) { <span>json</span> }
+                                                @if (m.SupportsReasoning) { <span>reasoning</span> }
+                                            </td>
+                                            <td>@(IsModelFree(m) ? "free/local" : "paid/unknown")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </details>
                 }
             </div>
 
-            @if (Config.Provider == SgLlmProvider.AzureOpenAi)
+            <div class="sgc-llm-card">
+                <div class="sgc-llm-card-head">
+                    <div>
+                        <strong>Подключение</strong>
+                        <small>@ProviderConnectionHint(Config.Provider)</small>
+                    </div>
+                </div>
+                <div class="sgc-llm-connection-grid @(ProviderRequiresKey(Config.Provider) ? "" : "no-key")">
+                    @if (ProviderRequiresKey(Config.Provider))
+                    {
+                        <SgTextBox Label="API Key / Token" @bind-Value="Config.ApiKey" Type="password" Placeholder="sk-... / hf_... / token" />
+                    }
+                    @if (NeedsBaseUrl(Config.Provider))
+                    {
+                        <SgTextBox Label="Base URL" Value="@Config.BaseUrl" ValueChanged="@((string? v) => OnBaseUrlChanged(v))" Placeholder="@DefaultBaseUrl(Config.Provider)" />
+                    }
+                </div>
+                <div class="sgc-llm-connection-options">
+                    <SgSwitch @bind-Value="Config.PersistApiKey" Label="Сохранять ключ в браузере" Size="SgSize.Sm" />
+                    <SgSwitch @bind-Value="Config.UseBackendProxy" Label="Backend proxy" Size="SgSize.Sm" />
+                </div>
+                @if (Config.UseBackendProxy)
+                {
+                    <SgTextBox Label="Proxy URL" @bind-Value="Config.ProxyUrl" Placeholder="/api/llm или https://server.example.com/llm" />
+                    <div class="sgc-llm-note">В режиме proxy ключ можно не отдавать в браузер: UI отправит запрос на ваш backend endpoint.</div>
+                }
+                @if (Config.Provider == SgLlmProvider.GigaGpt)
+                {
+                    <div class="sgc-llm-giga-box">
+                        <div class="sgc-llm-advanced-row">
+                            <SgSelect TValue="string" Label="GigaChat auth" @bind-Value="Config.GigaAuthMode"
+                                      Items="_gigaAuthModes" Placeholder="Bearer" />
+                            <SgSelect TValue="string" Label="Scope" @bind-Value="Config.GigaScope"
+                                      Items="_gigaScopes" Placeholder="GIGACHAT_API_PERS" />
+                        </div>
+                        @if (Config.GigaAuthMode == "OAuth")
+                        {
+                            <SgTextBox Label="OAuth URL" @bind-Value="Config.GigaOAuthUrl" Placeholder="https://ngw.devices.sberbank.ru:9443/api/v2/oauth" />
+                            <div class="sgc-llm-note">В поле API Key укажите authorization key GigaChat. Компонент обменяет его на access token через POST /api/v2/oauth; для production безопаснее использовать Backend proxy.</div>
+                        }
+                        else
+                        {
+                            <div class="sgc-llm-note">Bearer-режим ожидает уже полученный access token GigaChat в поле API Key.</div>
+                        }
+                    </div>
+                }
+                @if (ProviderRequiresKey(Config.Provider) && !Config.PersistApiKey)
+                {
+                    <div class="sgc-llm-warning">Ключ будет использоваться в текущей сессии, но не будет сохранён в localStorage/профиль.</div>
+                }
+            </div>
+
+            @if (_diagnostics is not null)
             {
-                <div class="sgc-llm-compact-grid">
-                    <SgTextBox Label="@Localizer["Llm_AzureDeployment"]" @bind-Value="Config.AzureDeployment" Placeholder="my-deployment" />
-                    <SgTextBox Label="@Localizer["Llm_AzureApiVersion"]" @bind-Value="Config.AzureApiVersion" Placeholder="2024-10-21" />
+                <div class="sgc-llm-card">
+                    <div class="sgc-llm-card-head">
+                        <div>
+                            <strong>Диагностика подключения</strong>
+                            <small>@_diagnostics.Summary</small>
+                        </div>
+                    </div>
+                    <div class="sgc-diag-list">
+                        @foreach (var check in _diagnostics.Checks)
+                        {
+                            <div class="sgc-diag-item @(check.Ok ? "ok" : "bad")">
+                                <span>@(check.Ok ? "✓" : "!")</span>
+                                <b>@check.Name</b>
+                                <small>@check.Message</small>
+                            </div>
+                        }
+                    </div>
                 </div>
             }
 
-            @* System prompt *@
-            <SgTextBox Label="@Localizer["Llm_SystemPrompt"]" @bind-Value="Config.SystemPrompt" Multiline="true" Rows="2"
-                       Placeholder="@Localizer["Llm_SystemPromptHint"]" />
+            <div class="sgc-llm-card">
+                <div class="sgc-llm-card-head">
+                    <div>
+                        <strong>Health dashboard</strong>
+                        <small>Проверка доступности всех провайдеров из registry. Для облачных провайдеров нужен ключ текущего профиля.</small>
+                    </div>
+                    <SgButton Text="Проверить всех" OnClick="CheckAllProvidersHealthAsync" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm" Loading="_checkingHealth" />
+                </div>
+                @if (_healthStatuses.Count > 0)
+                {
+                    <div class="sgc-health-grid">
+                        @foreach (var h in _healthStatuses)
+                        {
+                            <div class="sgc-health-card @(h.Ok ? "ok" : "bad")">
+                                <div><span>@(h.Ok ? "✓" : "!")</span><b>@h.ProviderLabel</b></div>
+                                <small>@h.Status</small>
+                                <em>@h.BaseUrl</em>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
 
-            @* Advanced switch *@
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px;">
+            <div class="sgc-llm-card">
+                <div class="sgc-llm-card-head">
+                    <div>
+                        <strong>Cost guard</strong>
+                        <small>Ограничьте paid-модели и токены. @DailyLimitText</small>
+                    </div>
+                </div>
+                <div class="sgc-llm-advanced-row">
+                    <SgSwitch @bind-Value="Config.OnlyFreeModels" Label="Только free/local модели" Size="SgSize.Sm" />
+                    <SgSwitch @bind-Value="Config.WarnOnPaidModels" Label="Предупреждать о paid-моделях" Size="SgSize.Sm" />
+                </div>
+                <div class="sgc-llm-advanced-row">
+                    <SgNumberInput TValue="int?" Label="Лимит токенов / день" @bind-Value="Config.DailyTokenLimit" Placeholder="например 100000" Size="SgSize.Sm" />
+                    <SgNumberInput TValue="int?" Label="Max output / запрос" @bind-Value="Config.RequestTokenLimit" Placeholder="например 8192" Size="SgSize.Sm" />
+                </div>
+                @if (Config.WarnOnPaidModels && SelectedModelLooksPaid)
+                {
+                    <div class="sgc-llm-warning">Выбрана модель без признака free/local. Если включить «Только free/local», применение будет заблокировано.</div>
+                }
+            </div>
+
+            <div class="sgc-llm-card">
+                <SgTextBox Label="@Localizer["Llm_SystemPrompt"]" @bind-Value="Config.SystemPrompt" Multiline="true" Rows="2"
+                           Placeholder="@Localizer["Llm_SystemPromptHint"]" />
+            </div>
+
+            <div class="sgc-llm-card">
+                <div class="sgc-llm-card-head">
+                    <div>
+                        <strong>Usage log</strong>
+                        <small>Последние LLM-запросы в этом браузере: модель, токены, статус.</small>
+                    </div>
+                    <div class="sgc-footer-actions">
+                        <SgButton Text="Обновить" OnClick="LoadUsageAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                        <SgButton Text="Очистить" OnClick="ClearUsageAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                    </div>
+                </div>
+                @if (_usageRecords.Count == 0)
+                {
+                    <div class="sgc-profile-hint">Пока нет записей usage.</div>
+                }
+                else
+                {
+                    <div class="sgc-usage-list">
+                        @foreach (var u in _usageRecords.Take(6))
+                        {
+                            <div class="sgc-usage-item @(u.Ok ? "ok" : "bad")">
+                                <span>@u.Timestamp.ToLocalTime().ToString("HH:mm")</span>
+                                <b>@u.ProviderLabel</b>
+                                <small>@u.ModelId</small>
+                                <em>@(u.Ok ? $"{u.TotalTokens:N0} tok" : u.Error)</em>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+
+            <div class="sgc-llm-advanced-toggle">
+
                 <SgSwitch @bind-Value="Config.UseAdvanced" Label="@Localizer["Llm_Advanced"]" Size="SgSize.Sm" />
                 @if (!Config.UseAdvanced)
                 {
-                    <span style="font-size: 11px; color: var(--sui-fg-muted);">@Localizer["Llm_BasicOnlyHint"]</span>
+                    <span>@Localizer["Llm_BasicOnlyHint"]</span>
                 }
             </div>
 
             @if (Config.UseAdvanced)
             {
-                @* Provider context strip *@
                 <div class="sgc-llm-advanced-panel">
                     @if (Config.Provider == SgLlmProvider.OpenRouter)
                     {
@@ -198,14 +466,27 @@
                         <div class="sgc-llm-ollama-status">
                             <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px;">
                                 <span>@Localizer["Llm_OllamaStatus"]:</span>
-                                <SgBadge Variant="@(_lastStatus == "Success" ? SgBadgeVariant.Success : SgBadgeVariant.Danger)" Size="SgSize.Sm">
-                                    @(_lastStatus == "Success" ? @Localizer["Llm_Connected"] : @Localizer["Llm_NotConnected"])
+                                <SgBadge Variant="@StatusBadgeVariant" Size="SgSize.Sm">
+                                    @StatusBadgeText
                                 </SgBadge>
                             </div>
                         </div>
                     }
 
-                    @* Sampling *@
+                    @if (Config.Provider == SgLlmProvider.OpenAiCompatible || Config.Provider == SgLlmProvider.LmStudio || Config.Provider == SgLlmProvider.HuggingFace || Config.Provider == SgLlmProvider.GigaGpt)
+                    {
+                        <details class="sgc-llm-group">
+                            <summary>OpenAI-compatible / Microsoft.Extensions.AI</summary>
+                            <div class="sgc-llm-note">
+                                Базовые параметры приводятся к <code>Microsoft.Extensions.AI.ChatOptions</code>, а дополнительные поля отправляются только при включённых расширенных настройках.
+                            </div>
+                            @if (Config.Provider == SgLlmProvider.OpenAiCompatible)
+                            {
+                                <SgSwitch @bind-Value="_useResponsesApiBool" Label="OpenAI Responses API для новых GPT-5.x" Size="SgSize.Sm" />
+                            }
+                        </details>
+                    }
+
                     <details open class="sgc-llm-group">
                         <summary>@Localizer["Llm_Sampling"]</summary>
                         <div class="sgc-llm-advanced-row">
@@ -258,7 +539,6 @@
                         </div>
                     </details>
 
-                    @* Output controls *@
                     <details class="sgc-llm-group">
                         <summary>@Localizer["Llm_Output"]</summary>
                         <div class="sgc-llm-advanced-row">
@@ -277,7 +557,6 @@
                         </div>
                     </details>
 
-                    @* Reasoning *@
                     @if (SupportsReasoning(Config.Provider))
                     {
                         <details class="sgc-llm-group">
@@ -291,7 +570,6 @@
                         </details>
                     }
 
-                    @* Anthropic-specific *@
                     @if (Config.Provider == SgLlmProvider.Anthropic)
                     {
                         <details class="sgc-llm-group">
@@ -303,21 +581,6 @@
                         </details>
                     }
 
-                    @* Gemini-specific *@
-                    @if (Config.Provider == SgLlmProvider.Google)
-                    {
-                        <details class="sgc-llm-group">
-                            <summary>Gemini — safety + thinking</summary>
-                            <div class="sgc-llm-advanced-row">
-                                <SgSelect TValue="string" Label="Safety threshold" @bind-Value="Config.GeminiSafetyThreshold"
-                                          Items="_geminiSafetyLevels" Placeholder="default" AllowClear="true" />
-                                <SgNumberInput TValue="int?" Label="Thinking budget" @bind-Value="Config.GeminiThinkingBudget" Placeholder="Auto" Size="SgSize.Sm" />
-                            </div>
-                            <SgSwitch @bind-Value="_geminiIncludeThoughtsBool" Label="@Localizer["Llm_IncludeThoughts"]" Size="SgSize.Sm" />
-                        </details>
-                    }
-
-                    @* OpenRouter-specific *@
                     @if (Config.Provider == SgLlmProvider.OpenRouter)
                     {
                         <details class="sgc-llm-group">
@@ -329,7 +592,7 @@
                                           Items="_orTransforms" Placeholder="none" AllowClear="true" />
                             </div>
                             <SgTextBox Label="Fallback models (comma-separated)" Value="@_orFallbackText"
-                                       ValueChanged="@((string? v) => OnOrFallbackChanged(v))" Placeholder="openai/gpt-4o, anthropic/claude-3-5-sonnet" />
+                                       ValueChanged="@((string? v) => OnOrFallbackChanged(v))" Placeholder="openai/gpt-5.4-mini, anthropic/claude-sonnet-4-5" />
                             <div class="sgc-llm-advanced-row">
                                 <SgTextBox Label="Allowed providers" Value="@_orAllowedText"
                                            ValueChanged="@((string? v) => OnOrAllowedChanged(v))" Placeholder="openai, anthropic" Style="flex: 1;" />
@@ -343,7 +606,6 @@
                         </details>
                     }
 
-                    @* Service tier (OpenAI / Anthropic) *@
                     @if (SupportsServiceTier(Config.Provider))
                     {
                         <details class="sgc-llm-group">
@@ -353,7 +615,38 @@
                         </details>
                     }
 
-                    @* User identifier *@
+                    <details class="sgc-llm-group">
+                        <summary>Маршрутизация задач</summary>
+                        <div class="sgc-llm-note">Можно назначить отдельную модель/endpoint для чата, документов, vision и structured output. Текущий компонент применяет route: <b>@TaskPurpose</b>.</div>
+                        <div class="sgc-route-list">
+                            @foreach (var purpose in _routePurposes)
+                            {
+                                var purposeId = purpose;
+                                <div class="sgc-route-row">
+                                    <SgSwitch Value="@IsRouteEnabled(purposeId)" ValueChanged="@((bool v) => SetRouteEnabled(purposeId, v))" Label="@purposeId" Size="SgSize.Sm" />
+                                    <SgSelect TValue="SgLlmProvider" Items="_providers" Value="@GetRouteProvider(purposeId)" ValueChanged="@((SgLlmProvider v) => SetRouteProvider(purposeId, v))" />
+                                    <SgTextBox Value="@GetRouteModel(purposeId)" ValueChanged="@((string? v) => SetRouteModel(purposeId, v))" Placeholder="model id" />
+                                    <SgTextBox Value="@GetRouteBaseUrl(purposeId)" ValueChanged="@((string? v) => SetRouteBaseUrl(purposeId, v))" Placeholder="base url optional" />
+                                </div>
+                            }
+                        </div>
+                    </details>
+
+                    <details class="sgc-llm-group">
+                        <summary>Надёжность: timeout / retry / fallback</summary>
+                        <div class="sgc-llm-advanced-row">
+                            <SgNumberInput TValue="int?" Label="Timeout, сек" @bind-Value="Config.TimeoutSeconds" Placeholder="120" Size="SgSize.Sm" />
+                            <SgNumberInput TValue="int?" Label="Retry count" @bind-Value="Config.RetryCount" Placeholder="0" Size="SgSize.Sm" />
+                            <SgNumberInput TValue="int?" Label="Retry delay, ms" @bind-Value="Config.RetryDelayMs" Placeholder="500" Size="SgSize.Sm" />
+                        </div>
+                        <SgTextBox Label="Fallback Base URL" @bind-Value="Config.FallbackBaseUrl" Placeholder="например: http://localhost:11434" />
+                    </details>
+
+                    <details class="sgc-llm-group">
+                        <summary>Developer: raw request preview</summary>
+                        <pre class="sgc-raw-preview">@RawRequestPreview</pre>
+                    </details>
+
                     <details class="sgc-llm-group">
                         <summary>@Localizer["Llm_AbuseProtection"]</summary>
                         <SgTextBox Label="User identifier" @bind-Value="Config.UserIdentifier"
@@ -366,92 +659,165 @@
 }
 
 <style>
+    .sgc-llm-settings {
+        --sgc-soft: color-mix(in srgb, var(--sg-color-primary, #2563eb) 8%, transparent);
+        width: 100%;
+    }
     .sgc-llm-compact-row {
         display: flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         flex-wrap: nowrap;
-        padding: 4px 6px;
-        background: var(--sg-bg);
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
+        padding: 5px 7px;
+        background: var(--sg-bg, #fff);
+        border: 1px solid var(--sg-border, #d8dee8);
+        border-radius: 10px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+        max-width: 100%;
     }
-    .sgc-llm-provider-tabs {
-        display: flex;
-        gap: 4px;
-        overflow-x: auto;
-        padding-bottom: 4px;
-        border-bottom: 1px solid var(--sg-border);
-        flex-wrap: nowrap;
-    }
-    .sgc-llm-provider-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 4px;
-        padding: 4px;
-    }
-    .sgc-provider-tab {
-        padding: 6px 10px;
-        border: 1px solid var(--sg-border);
-        background: var(--sg-bg);
-        border-radius: 6px;
+    .sg-providerless { color: var(--sg-fg-muted); }
+    .sgc-provider-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        height: 32px;
+        padding: 0 10px;
+        border: 1px solid var(--sg-color-primary, #2563eb);
+        background: var(--sgc-soft);
+        color: var(--sg-color-primary, #2563eb);
+        border-radius: 9px;
         font-size: 12px;
+        font-weight: 650;
         cursor: pointer;
         white-space: nowrap;
-        color: var(--sg-fg-muted);
-        transition: all 0.2s;
-        flex: 0 0 auto;
     }
-    .sgc-provider-tab:hover { background: var(--sg-bg-subtle); }
-    .sgc-provider-tab.active {
-        background: var(--sg-color-primary-subtle);
-        border-color: var(--sg-color-primary);
-        color: var(--sg-color-primary);
-        font-weight: 600;
+    .sgc-provider-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent); }
+    .sgc-provider-chevron { opacity: .7; font-size: 12px; }
+    .sgc-mini-field {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
     }
-    .sgc-provider-tab.current::after {
-        content: "●";
-        margin-left: 4px;
-        color: var(--sg-color-success);
-        font-size: 8px;
-        vertical-align: middle;
+    .sgc-mini-field > span {
+        font-size: 10px;
+        line-height: 1;
+        color: var(--sg-fg-muted, #64748b);
+        padding-left: 2px;
     }
-    .sgc-llm-compact-grid {
+    .sgc-mini-model { flex: 1 1 260px; min-width: 180px; }
+    .sgc-mini-url { flex: 0 1 250px; min-width: 190px; }
+    .sgc-mini-key { flex: 0 1 180px; min-width: 150px; }
+    .sgc-llm-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .sgc-llm-popover-panel { min-width: 520px; max-width: min(720px, 92vw); }
+
+    .sgc-llm-full-layout { display: flex; flex-direction: column; gap: 14px; }
+    .sgc-llm-heading {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: flex-start;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--sg-border, #e5e7eb);
+    }
+    .sgc-llm-title { font-size: 15px; font-weight: 750; color: var(--sg-fg, #111827); }
+    .sgc-llm-subtitle { margin-top: 2px; font-size: 12px; color: var(--sg-fg-muted, #64748b); line-height: 1.35; }
+    .sgc-llm-heading-actions { flex: 0 0 auto; }
+    .sgc-llm-section { display: flex; flex-direction: column; gap: 8px; }
+    .sgc-llm-section-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 12px; color: var(--sg-fg, #111827); }
+    .sgc-llm-section-head span { font-weight: 700; }
+    .sgc-llm-section-head small { color: var(--sg-fg-muted, #64748b); }
+    .sgc-llm-provider-grid {
         display: grid;
-        grid-template-columns: 1fr 1.5fr;
-        gap: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+        gap: 8px;
     }
+    .sgc-llm-provider-grid-compact { min-width: 360px; max-width: 520px; padding: 4px; }
+    .sgc-provider-card {
+        text-align: left;
+        padding: 9px 10px;
+        border: 1px solid var(--sg-border, #d8dee8);
+        background: var(--sg-bg, #fff);
+        border-radius: 10px;
+        cursor: pointer;
+        color: var(--sg-fg, #111827);
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        transition: border-color .15s, background .15s, box-shadow .15s, transform .15s;
+        min-height: 58px;
+    }
+    .sgc-provider-card:hover { border-color: var(--sg-color-primary, #2563eb); transform: translateY(-1px); box-shadow: 0 8px 18px rgba(15, 23, 42, .08); }
+    .sgc-provider-card.active {
+        border-color: var(--sg-color-primary, #2563eb);
+        background: var(--sgc-soft);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--sg-color-primary, #2563eb) 20%, transparent);
+    }
+    .sgc-provider-card.current::after {
+        content: "● применён";
+        margin-top: 2px;
+        color: var(--sg-color-success, #16a34a);
+        font-size: 10px;
+    }
+    .sgc-provider-card-title { font-size: 12px; font-weight: 750; }
+    .sgc-provider-card-desc { font-size: 10.5px; color: var(--sg-fg-muted, #64748b); line-height: 1.25; }
+
+    .sgc-llm-editor { display: flex; flex-direction: column; gap: 10px; }
+    .sgc-llm-card {
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 10px;
+        padding: 10px;
+        background: var(--sg-bg, #fff);
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+    }
+    .sgc-llm-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+    .sgc-llm-card-head strong { display: block; font-size: 12.5px; color: var(--sg-fg, #111827); }
+    .sgc-llm-card-head small { display: block; margin-top: 2px; color: var(--sg-fg-muted, #64748b); font-size: 11px; line-height: 1.35; }
+    .sgc-llm-model-row { display: flex; align-items: flex-end; gap: 8px; }
+    .sgc-llm-model-input { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .sgc-llm-connection-grid { display: grid; grid-template-columns: minmax(180px, .9fr) minmax(220px, 1.35fr); gap: 12px; align-items: end; }
+    .sgc-llm-connection-grid.no-key { grid-template-columns: 1fr; }
+    .sgc-llm-advanced-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 3px 2px;
+    }
+    .sgc-llm-advanced-toggle span { font-size: 11px; color: var(--sg-fg-muted, #64748b); }
     .sgc-llm-advanced-panel {
         display: flex;
         flex-direction: column;
         gap: 8px;
-        padding: 8px;
-        background: var(--sg-bg-subtle);
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-        margin-top: 4px;
+        padding: 9px;
+        background: var(--sg-bg-subtle, #f8fafc);
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 10px;
     }
     .sgc-llm-group {
-        background: var(--sg-bg);
-        border: 1px solid var(--sg-border);
-        border-radius: 6px;
-        padding: 6px 8px;
+        background: var(--sg-bg, #fff);
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 8px;
+        padding: 7px 9px;
     }
     .sgc-llm-group > summary {
         cursor: pointer;
         font-size: 12px;
-        font-weight: 600;
-        color: var(--sg-fg);
+        font-weight: 700;
+        color: var(--sg-fg, #111827);
         padding: 4px 0;
         user-select: none;
     }
-    .sgc-llm-group[open] > summary { margin-bottom: 6px; }
+    .sgc-llm-group[open] > summary { margin-bottom: 7px; }
+    .sgc-llm-note { font-size: 11px; color: var(--sg-fg-muted, #64748b); line-height: 1.45; }
     .sgc-llm-info-section {
         display: flex;
         flex-direction: column;
         gap: 8px;
         margin-bottom: 8px;
-        border-bottom: 1px solid var(--sg-border);
+        border-bottom: 1px solid var(--sg-border, #e5e7eb);
         padding-bottom: 8px;
     }
     .sgc-llm-info-section ::deep .sgc-or-key-info,
@@ -462,9 +828,9 @@
     }
     .sgc-llm-ollama-status {
         padding: 8px;
-        background: var(--sg-bg);
-        border: 1px solid var(--sg-border);
-        border-radius: 6px;
+        background: var(--sg-bg, #fff);
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 7px;
         margin-bottom: 8px;
     }
     .sgc-llm-advanced-row {
@@ -475,50 +841,124 @@
     }
     .sgc-llm-advanced-field {
         flex: 1;
-        min-width: 110px;
+        min-width: 120px;
         display: flex;
         flex-direction: column;
         gap: 2px;
     }
     .sgc-label-sm {
         font-size: 10px;
-        color: var(--sg-fg-muted);
-        font-weight: 500;
+        color: var(--sg-fg-muted, #64748b);
+        font-weight: 600;
         margin-bottom: -2px;
     }
     .sgc-status-dot {
         width: 8px;
         height: 8px;
         border-radius: 50%;
-        background: #ccc;
+        background: #cbd5e1;
+        flex: 0 0 auto;
     }
-    .sgc-status-dot.success { background: #52c41a; box-shadow: 0 0 5px #52c41a; }
-    .sgc-status-dot.error { background: #ff4d4f; box-shadow: 0 0 5px #ff4d4f; }
-    .sgc-status-dot.pending { background: #1890ff; animation: sgc-pulse 1.5s infinite; }
+    .sgc-status-dot.success { background: #22c55e; box-shadow: 0 0 0 3px rgba(34, 197, 94, .16); }
+    .sgc-status-dot.error { background: #ef4444; box-shadow: 0 0 0 3px rgba(239, 68, 68, .16); }
+    .sgc-status-dot.pending { background: #3b82f6; animation: sgc-pulse 1.5s infinite; }
+    .sgc-llm-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 2px; }
+    .sgc-llm-status-text { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--sg-fg-muted, #64748b); }
     .sgc-llm-logs {
-        background: #1e1e1e;
-        color: #d4d4d4;
-        padding: 8px;
-        border-radius: 6px;
+        background: #111827;
+        color: #e5e7eb;
+        padding: 9px;
+        border-radius: 8px;
         font-family: var(--sg-font-mono, monospace);
         font-size: 11px;
-        max-height: 120px;
+        max-height: 140px;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
         gap: 2px;
-        margin-top: 8px;
+        margin-top: 2px;
     }
-    .sgc-log-time { color: #888; margin-right: 8px; }
-    .sgc-log-msg.error { color: #f48771; }
-    .sgc-log-msg.success { color: #89d185; }
+    .sgc-log-time { color: #94a3b8; margin-right: 8px; }
+    .sgc-log-msg.error { color: #fca5a5; }
+    .sgc-log-msg.success { color: #86efac; }
+
+    .sgc-profile-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .sgc-profile-hint { font-size: 11px; color: var(--sg-fg-muted, #64748b); line-height: 1.35; }
+    .sgc-profile-io { border-top: 1px dashed var(--sg-border, #e5e7eb); padding-top: 6px; }
+    .sgc-profile-io > summary { cursor: pointer; font-size: 11px; color: var(--sg-fg-muted, #64748b); }
+    .sgc-model-filters { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .sgc-model-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+    .sgc-model-chip {
+        border: 1px solid var(--sg-border, #e5e7eb);
+        background: var(--sg-bg-subtle, #f8fafc);
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 11px;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        cursor: pointer;
+        color: var(--sg-fg, #111827);
+    }
+    .sgc-model-chip:hover, .sgc-model-chip.active { border-color: var(--sg-color-primary, #2563eb); background: var(--sgc-soft); color: var(--sg-color-primary, #2563eb); }
+    .sgc-model-chip em { font-style: normal; font-size: 9px; color: var(--sg-fg-muted, #64748b); }
+    .sgc-model-meta { display: flex; gap: 6px; flex-wrap: wrap; font-size: 10px; color: var(--sg-fg-muted, #64748b); }
+    .sgc-model-meta span { border: 1px solid var(--sg-border, #e5e7eb); border-radius: 999px; padding: 2px 6px; }
+    .sgc-model-catalog { border-top: 1px dashed var(--sg-border, #e5e7eb); padding-top: 6px; }
+    .sgc-model-catalog > summary { cursor: pointer; font-size: 11px; color: var(--sg-fg-muted, #64748b); }
+    .sgc-model-table-wrap { max-height: 260px; overflow: auto; margin-top: 8px; border: 1px solid var(--sg-border, #e5e7eb); border-radius: 8px; }
+    .sgc-model-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .sgc-model-table th, .sgc-model-table td { padding: 6px 8px; border-bottom: 1px solid var(--sg-border, #e5e7eb); text-align: left; vertical-align: top; }
+    .sgc-model-table tbody tr { cursor: pointer; }
+    .sgc-model-table tbody tr:hover, .sgc-model-table tbody tr.active { background: var(--sgc-soft); }
+    .sgc-model-table td small { display: block; color: var(--sg-fg-muted, #64748b); margin-top: 2px; word-break: break-all; }
+    .sgc-model-table td span { display: inline-block; border: 1px solid var(--sg-border, #e5e7eb); border-radius: 999px; padding: 1px 5px; margin: 1px; color: var(--sg-fg-muted, #64748b); }
+    .sgc-llm-connection-options { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .sgc-llm-warning { font-size: 11px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 7px 9px; }
+    .sgc-llm-giga-box { border: 1px dashed var(--sg-border, #e5e7eb); border-radius: 9px; padding: 9px; display: flex; flex-direction: column; gap: 8px; }
+    .sgc-diag-list { display: flex; flex-direction: column; gap: 6px; }
+    .sgc-diag-item { display: grid; grid-template-columns: 18px minmax(90px, .35fr) 1fr; gap: 6px; align-items: center; font-size: 11px; }
+    .sgc-diag-item span { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; }
+    .sgc-diag-item.ok span { background: #dcfce7; color: #166534; }
+    .sgc-diag-item.bad span { background: #fee2e2; color: #991b1b; }
+    .sgc-diag-item small { color: var(--sg-fg-muted, #64748b); overflow-wrap: anywhere; }
+    .sgc-health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 8px; }
+    .sgc-health-card { border: 1px solid var(--sg-border, #e5e7eb); border-radius: 9px; padding: 8px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .sgc-health-card.ok { background: #f0fdf4; border-color: #bbf7d0; }
+    .sgc-health-card.bad { background: #fef2f2; border-color: #fecaca; }
+    .sgc-health-card > div { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+    .sgc-health-card span { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 999px; background: rgba(255,255,255,.75); }
+    .sgc-health-card small { color: var(--sg-fg-muted, #64748b); font-size: 10.5px; }
+    .sgc-health-card em { color: var(--sg-fg-muted, #64748b); font-size: 10px; font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sgc-dirty-badge { border: 1px solid #f59e0b; color: #92400e; background: #fffbeb; border-radius: 999px; padding: 2px 7px; font-size: 10px; }
+    .sgc-footer-actions { display: inline-flex; gap: 6px; align-items: center; }
+    .sgc-raw-preview { margin: 0; padding: 9px; border-radius: 8px; background: #0f172a; color: #e2e8f0; white-space: pre-wrap; overflow: auto; font-size: 11px; line-height: 1.45; }
+    .sgc-route-list { display: flex; flex-direction: column; gap: 7px; }
+    .sgc-route-row { display: grid; grid-template-columns: 130px minmax(140px, .75fr) minmax(160px, 1fr) minmax(180px, 1fr); gap: 8px; align-items: end; }
+    .sgc-usage-list { display: flex; flex-direction: column; gap: 5px; }
+    .sgc-usage-item { display: grid; grid-template-columns: 44px 120px minmax(120px, 1fr) minmax(70px, auto); gap: 8px; align-items: center; font-size: 11px; }
+    .sgc-usage-item span { color: var(--sg-fg-muted, #64748b); }
+    .sgc-usage-item small { color: var(--sg-fg-muted, #64748b); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sgc-usage-item em { font-style: normal; justify-self: end; color: var(--sg-fg-muted, #64748b); }
+    .sgc-usage-item.bad em { color: #b91c1c; }
 
     @@keyframes sgc-pulse {
         0% { opacity: 1; }
-        50% { opacity: 0.4; }
+        50% { opacity: 0.45; }
         100% { opacity: 1; }
     }
-    @@media (max-width: 500px) {
-        .sgc-llm-compact-grid { grid-template-columns: 1fr; }
+    @@media (max-width: 900px) {
+        .sgc-llm-compact-row { flex-wrap: wrap; }
+        .sgc-mini-model, .sgc-mini-url, .sgc-mini-key { flex: 1 1 180px; }
+        .sgc-llm-actions { margin-left: auto; }
+        .sgc-llm-connection-grid { grid-template-columns: 1fr; }
+        .sgc-llm-popover-panel { min-width: min(520px, 90vw); }
+    }
+    @@media (max-width: 560px) {
+        .sgc-llm-provider-grid { grid-template-columns: 1fr; }
+        .sgc-llm-provider-grid-compact { min-width: min(330px, 88vw); }
+        .sgc-llm-heading, .sgc-llm-footer, .sgc-llm-card-head { flex-direction: column; align-items: stretch; }
+        .sgc-llm-model-row { align-items: stretch; }
+        .sgc-route-row { grid-template-columns: 1fr; }
     }
 </style>

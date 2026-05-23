@@ -67,6 +67,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Speech;
     [Parameter] public EventCallback<string> OnTranscribed { get; set; }
 
     private byte[]? _audio;
@@ -98,11 +99,13 @@
         _busy = true; _error = ""; _result = null;
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             _result = await LlmService.TranscribeAsync(new SgLlmTranscribeRequest
             {
                 Audio = _audio,
                 FileName = _fileName ?? "audio.webm",
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 Language = string.IsNullOrWhiteSpace(_language) ? null : _language,
                 Prompt = string.IsNullOrWhiteSpace(_prompt) ? null : _prompt,
                 ResponseFormat = _format,

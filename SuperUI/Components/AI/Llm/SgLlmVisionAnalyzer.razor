@@ -64,6 +64,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Vision;
 
     private string _prompt = "Опиши, что изображено.";
     private string _model = "";
@@ -96,11 +97,13 @@
         _busy = true; _error = ""; _answer = "";
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             _answer = await LlmService.AnalyzeVisionAsync(new SgLlmVisionRequest
             {
                 Prompt = _prompt,
                 Images = _images,
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 MaxTokens = _maxTokens > 0 ? _maxTokens : null,
                 Temperature = _temp
             });

@@ -75,6 +75,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Images;
 
     private string _prompt = "";
     private string _editPrompt = "";
@@ -102,10 +103,12 @@
         _busy = true; _error = ""; _images.Clear(); _revisedPrompt = "";
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             var res = await LlmService.GenerateImageRichAsync(new SgLlmImageRequest
             {
                 Prompt = _prompt,
-                Model = _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 Size = _size,
                 Quality = _quality,
                 Style = _style,
@@ -125,12 +128,14 @@
         _busy = true; _error = "";
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             byte[]? baseBytes = !string.IsNullOrEmpty(_lastImage.B64Json)
                 ? Convert.FromBase64String(_lastImage.B64Json)
                 : null;
             if (baseBytes == null) { _error = "Базовое изображение должно быть в b64_json"; return; }
             var res = await LlmService.EditImageAsync(baseBytes, _lastImage.MimeType ?? "image/png", _editPrompt,
-                _maskBytes, _maskMime, _model, _size);
+                _maskBytes, _maskMime, string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model, _size);
             if (!string.IsNullOrEmpty(res.Error)) _error = res.Error;
             else { _images = res.Images; _lastImage = _images.FirstOrDefault(); }
         }

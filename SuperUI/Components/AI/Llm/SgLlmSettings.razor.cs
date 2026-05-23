@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Components;
 using SuperUI.Localization;
+using SuperUI.Enums;
 using SuperUI.Services.Llm;
 
 namespace SuperUI.Components;
@@ -17,16 +18,80 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     /// with a popover holding the rest. Designed to live in a chat toolbar.
     /// </summary>
     [Parameter] public bool Compact { get; set; }
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Chat;
 
     private bool _manualModel;
     private bool _showLogs;
     private string _lastStatus = "None";
     private string _statusText = "Готов к подключению";
     private readonly List<LogEntry> _logs = new();
+    private SgBadgeVariant StatusBadgeVariant => _lastStatus == "Success" ? SgBadgeVariant.Success : SgBadgeVariant.Danger;
+    private string StatusBadgeText => _lastStatus == "Success" ? Localizer["Llm_Connected"] : Localizer["Llm_NotConnected"];
 
     private bool _loadingModels;
-    private readonly List<SgLlmProvider> _providers = Enum.GetValues<SgLlmProvider>().ToList();
-    private List<string> _orModelIds = new() { "openrouter/free" };
+    private readonly List<SgLlmProvider> _providers = SgLlmProviderRegistry.AllowedProviders.ToList();
+
+    private List<SgLlmModelInfo> _models = new();
+    private List<string> _modelIds = new();
+    private bool _filterFreeOnly;
+    private bool _filterVisionOnly;
+    private bool _filterToolsOnly;
+    private bool _filterJsonOnly;
+    private bool _filterReasoningOnly;
+    private List<SgLlmProfile> _profiles = new();
+    private string? _selectedProfileId;
+    private string _profileName = "";
+    private bool _profileDefault;
+    private SgLlmDiagnosticsResult? _diagnostics;
+    private bool _checkingConnection;
+    private string? _profilesJson;
+    private List<SgLlmUsageRecord> _usageRecords = new();
+    private List<SgLlmHealthStatus> _healthStatuses = new();
+    private bool _checkingHealth;
+    private int TodayTokens => _usageRecords.Where(u => u.Timestamp.ToLocalTime().Date == DateTime.Now.Date).Sum(u => u.TotalTokens);
+    private string DailyLimitText => Config.DailyTokenLimit is > 0 ? $"{TodayTokens:N0} / {Config.DailyTokenLimit:N0} токенов сегодня" : $"{TodayTokens:N0} токенов сегодня";
+    private string _lastAppliedFingerprint = "";
+
+    private IEnumerable<SgLlmModelInfo> RecommendedModels =>
+        (_models.Count > 0 ? _models : SgLlmProviderRegistry.FallbackModels(Config.Provider))
+        .Where(m => (!Config.OnlyFreeModels || IsModelFree(m)) && (m.IsRecommended || m.IsFree))
+        .Take(6);
+
+    private bool HasDirtyChanges => Fingerprint(Config) != _lastAppliedFingerprint;
+    private SgLlmModelInfo? SelectedModelInfo => _models.FirstOrDefault(m => string.Equals(m.Id, Config.ModelId, StringComparison.OrdinalIgnoreCase));
+    private static bool IsModelFree(SgLlmModelInfo m) => m.IsFree || m.Id.Contains(":free", StringComparison.OrdinalIgnoreCase) || m.Provider is SgLlmProvider.Ollama or SgLlmProvider.LmStudio;
+    private bool SelectedModelLooksPaid => SelectedModelInfo is { } m && !IsModelFree(m) && Config.Provider is not (SgLlmProvider.Ollama or SgLlmProvider.LmStudio);
+    private List<string> FilteredModelIds
+    {
+        get
+        {
+            if (_models.Count == 0) return _modelIds;
+            return _models
+                .Where(m => (!Config.OnlyFreeModels && !_filterFreeOnly) || IsModelFree(m))
+                .Where(m => !_filterVisionOnly || m.SupportsVision)
+                .Where(m => !_filterToolsOnly || m.SupportsTools)
+                .Where(m => !_filterJsonOnly || m.SupportsJsonSchema)
+                .Where(m => !_filterReasoningOnly || m.SupportsReasoning)
+                .Select(m => m.Id)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(id => id)
+                .ToList();
+        }
+    }
+
+    private readonly List<string> _routePurposes = new()
+    {
+        SgLlmTaskPurpose.Chat,
+        SgLlmTaskPurpose.Documents,
+        SgLlmTaskPurpose.Vision,
+        SgLlmTaskPurpose.Structured,
+        SgLlmTaskPurpose.Embeddings,
+        SgLlmTaskPurpose.Rerank,
+        SgLlmTaskPurpose.Images,
+        SgLlmTaskPurpose.Moderation,
+        SgLlmTaskPurpose.Speech,
+        SgLlmTaskPurpose.Video
+    };
 
     // Helpers for boolean nullable bindings
     private bool _logProbsBool
@@ -64,6 +129,11 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         get => Config.OrAllowDataCollection ?? false;
         set => Config.OrAllowDataCollection = value ? true : null;
     }
+    private bool _useResponsesApiBool
+    {
+        get => Config.UseResponsesApi ?? false;
+        set => Config.UseResponsesApi = value ? true : null;
+    }
 
     // String <-> List<string> bindings
     private string _stopText => Config.Stop is null ? "" : string.Join(", ", Config.Stop);
@@ -89,84 +159,68 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private readonly List<string> _effortLevels = new() { "minimal", "low", "medium", "high" };
     private readonly List<string> _verbosityLevels = new() { "low", "medium", "high" };
     private readonly List<string> _geminiSafetyLevels = new() { "BLOCK_NONE", "BLOCK_ONLY_HIGH", "BLOCK_MEDIUM_AND_ABOVE", "BLOCK_LOW_AND_ABOVE" };
-    private readonly List<string> _orSortOptions = new() { "price", "throughput", "latency" };
+    private readonly List<string> _orSortOptions = new() { "fallback", "lowest-price", "highest-throughput", "fastest", "price", "throughput", "latency" };
     private readonly List<string> _orTransforms = new() { "middle-out" };
     private readonly List<string> _serviceTiers = new() { "auto", "default", "flex", "priority", "scale" };
+    private readonly List<string> _gigaAuthModes = new() { "Bearer", "OAuth" };
+    private readonly List<string> _gigaScopes = new() { "GIGACHAT_API_PERS", "GIGACHAT_API_B2B", "GIGACHAT_API_CORP" };
 
-    private static bool NeedsBaseUrl(SgLlmProvider p) =>
-        p is SgLlmProvider.OpenAiCompatible
-            or SgLlmProvider.OpenRouter
-            or SgLlmProvider.OpenCode
-            or SgLlmProvider.Ollama
-            or SgLlmProvider.Mistral
-            or SgLlmProvider.Groq
-            or SgLlmProvider.DeepSeek
-            or SgLlmProvider.XAi
-            or SgLlmProvider.Cohere
-            or SgLlmProvider.Perplexity
-            or SgLlmProvider.TogetherAi
-            or SgLlmProvider.Fireworks
-            or SgLlmProvider.Cerebras
-            or SgLlmProvider.HuggingFace
-            or SgLlmProvider.AzureOpenAi
-            or SgLlmProvider.Anthropic
-            or SgLlmProvider.Google;
+    private static bool NeedsBaseUrl(SgLlmProvider p) => SgLlmProviderRegistry.NeedsBaseUrl(p);
+    private static bool ProviderRequiresKey(SgLlmProvider p) => SgLlmProviderRegistry.RequiresKey(p);
+    private static bool SupportsPenalties(SgLlmProvider p) => SgLlmProviderRegistry.SupportsPenalties(p);
+    private static bool SupportsTopKMinP(SgLlmProvider p) => SgLlmProviderRegistry.SupportsTopKMinP(p);
+    private static bool SupportsReasoning(SgLlmProvider p) => SgLlmProviderRegistry.SupportsReasoning(p);
+    private static bool SupportsServiceTier(SgLlmProvider p) => SgLlmProviderRegistry.SupportsServiceTier(p);
+    private static string DefaultBaseUrl(SgLlmProvider p) => SgLlmProviderRegistry.DefaultBaseUrl(p);
+    private static string ProviderLabel(SgLlmProvider p) => p == SgLlmProvider.None ? "Не выбран" : SgLlmProviderRegistry.Label(p);
+    private static string ProviderShortHint(SgLlmProvider p) => SgLlmProviderRegistry.ShortHint(p);
+    private static string ProviderConnectionHint(SgLlmProvider p) => SgLlmProviderRegistry.ConnectionHint(p);
 
-    private static bool SupportsPenalties(SgLlmProvider p) =>
-        p is SgLlmProvider.OpenAiCompatible
-            or SgLlmProvider.OpenRouter
-            or SgLlmProvider.OpenCode
-            or SgLlmProvider.Mistral
-            or SgLlmProvider.Groq
-            or SgLlmProvider.DeepSeek
-            or SgLlmProvider.XAi
-            or SgLlmProvider.TogetherAi
-            or SgLlmProvider.Fireworks
-            or SgLlmProvider.Ollama
-            or SgLlmProvider.AzureOpenAi;
-
-    private static bool SupportsTopKMinP(SgLlmProvider p) =>
-        p is SgLlmProvider.OpenRouter
-            or SgLlmProvider.Ollama
-            or SgLlmProvider.Anthropic
-            or SgLlmProvider.Google
-            or SgLlmProvider.TogetherAi
-            or SgLlmProvider.Fireworks
-            or SgLlmProvider.Cohere;
-
-    private static bool SupportsReasoning(SgLlmProvider p) =>
-        p is SgLlmProvider.OpenAiCompatible
-            or SgLlmProvider.AzureOpenAi
-            or SgLlmProvider.OpenRouter
-            or SgLlmProvider.DeepSeek
-            or SgLlmProvider.XAi;
-
-    private static bool SupportsServiceTier(SgLlmProvider p) =>
-        p is SgLlmProvider.OpenAiCompatible
-            or SgLlmProvider.AzureOpenAi
-            or SgLlmProvider.Anthropic;
-
-    private static string DefaultBaseUrl(SgLlmProvider p) => p switch
+    private static string Fingerprint(SgLlmConfig config)
     {
-        SgLlmProvider.OpenRouter => "https://openrouter.ai/api/v1",
-        SgLlmProvider.OpenCode => "https://api.opencode.ai/v1",
-        SgLlmProvider.Ollama => "http://localhost:11434",
-        SgLlmProvider.OpenAiCompatible => "https://api.openai.com/v1",
-        SgLlmProvider.Anthropic => "https://api.anthropic.com/v1",
-        SgLlmProvider.Google => "https://generativelanguage.googleapis.com/v1beta",
-        SgLlmProvider.Mistral => "https://api.mistral.ai/v1",
-        SgLlmProvider.Groq => "https://api.groq.com/openai/v1",
-        SgLlmProvider.DeepSeek => "https://api.deepseek.com",
-        SgLlmProvider.XAi => "https://api.x.ai/v1",
-        SgLlmProvider.Cohere => "https://api.cohere.ai/compatibility/v1",
-        SgLlmProvider.Perplexity => "https://api.perplexity.ai",
-        SgLlmProvider.TogetherAi => "https://api.together.xyz/v1",
-        SgLlmProvider.Fireworks => "https://api.fireworks.ai/inference/v1",
-        SgLlmProvider.Cerebras => "https://api.cerebras.ai/v1",
-        SgLlmProvider.HuggingFace => "https://router.huggingface.co/v1",
-        SgLlmProvider.AzureOpenAi => "https://YOUR_RESOURCE.openai.azure.com",
-        _ => ""
-    };
+        var copy = CopyConfig(config);
+        copy.ApiKey = string.IsNullOrWhiteSpace(copy.ApiKey) ? "" : "***";
+        return System.Text.Json.JsonSerializer.Serialize(copy);
+    }
+
+    private static SgLlmConfig CopyConfig(SgLlmConfig source)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(source);
+        return System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json) ?? new();
+    }
+
+    private string RawRequestPreview
+    {
+        get
+        {
+            var payload = new Dictionary<string, object?>
+            {
+                ["taskPurpose"] = TaskPurpose,
+                ["provider"] = ProviderLabel(Config.Provider),
+                ["url"] = Config.Provider == SgLlmProvider.Anthropic
+                    ? $"{Config.BaseUrl?.TrimEnd('/')}/messages"
+                    : Config.Provider == SgLlmProvider.Ollama
+                        ? $"{Config.BaseUrl?.TrimEnd('/')}/api/chat"
+                        : Config.Provider == SgLlmProvider.OpenAiCompatible && Config.UseResponsesApi == true
+                            ? $"{Config.BaseUrl?.TrimEnd('/')}/responses"
+                            : $"{Config.BaseUrl?.TrimEnd('/')}/chat/completions",
+                ["model"] = Config.ModelId,
+                ["stream"] = Config.Stream,
+                ["temperature"] = Config.UseAdvanced ? Config.Temperature : null,
+                ["top_p"] = Config.UseAdvanced ? Config.TopP : null,
+                ["max_tokens"] = Config.UseAdvanced ? Config.MaxTokens : null,
+                ["response_format"] = Config.UseAdvanced ? Config.ResponseFormat : null,
+                ["timeoutSeconds"] = Config.TimeoutSeconds,
+                ["retryCount"] = Config.RetryCount,
+                ["useBackendProxy"] = Config.UseBackendProxy,
+                ["proxyUrl"] = Config.ProxyUrl,
+                ["gigaAuthMode"] = Config.Provider == SgLlmProvider.GigaGpt ? Config.GigaAuthMode : null,
+                ["gigaScope"] = Config.Provider == SgLlmProvider.GigaGpt ? Config.GigaScope : null,
+                ["useResponsesApi"] = Config.Provider == SgLlmProvider.OpenAiCompatible ? Config.UseResponsesApi : null
+            };
+            return System.Text.Json.JsonSerializer.Serialize(payload, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+    }
 
     private void AddLog(string message, string type = "Info")
     {
@@ -187,6 +241,45 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     public void Dispose()
     {
         LlmService.OnError -= OnServiceError;
+    }
+
+    private void EnsureBaseUrl()
+    {
+        if (!_providers.Contains(Config.Provider))
+        {
+            Config.Provider = SgLlmProvider.OpenRouter;
+            Config.ModelId = null;
+            Config.BaseUrl = DefaultBaseUrl(Config.Provider);
+        }
+
+        if (string.Equals(Config.ModelId, "google/gemini-2.0-flash-001:free", StringComparison.OrdinalIgnoreCase))
+        {
+            Config.ModelId = null;
+        }
+
+        if (Config.Provider != SgLlmProvider.None)
+        {
+            Config.BaseUrl = SgLlmProviderRegistry.NormalizeBaseUrl(Config.Provider, Config.BaseUrl);
+        }
+    }
+
+    private async Task OnBaseUrlChanged(string? value)
+    {
+        var detected = SgLlmProviderRegistry.DetectProvider(value);
+        if (detected != SgLlmProvider.None && detected != Config.Provider && _providers.Contains(detected))
+        {
+            Config.Provider = detected;
+            Config.ModelId = null;
+        }
+
+        Config.BaseUrl = SgLlmProviderRegistry.NormalizeBaseUrl(Config.Provider, value);
+        await LoadModelsAsync();
+    }
+
+    private async Task SelectRecommendedModel(string modelId)
+    {
+        Config.ModelId = modelId;
+        await InvokeAsync(StateHasChanged);
     }
 
     protected override async Task OnInitializedAsync()
@@ -236,19 +329,43 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             Config.AzureDeployment = c.AzureDeployment;
             Config.AzureApiVersion = c.AzureApiVersion;
             Config.UserIdentifier = c.UserIdentifier;
+            Config.PersistApiKey = c.PersistApiKey;
+            Config.UseBackendProxy = c.UseBackendProxy;
+            Config.ProxyUrl = c.ProxyUrl;
+            Config.TimeoutSeconds = c.TimeoutSeconds;
+            Config.RetryCount = c.RetryCount;
+            Config.RetryDelayMs = c.RetryDelayMs;
+            Config.FallbackProvider = c.FallbackProvider;
+            Config.FallbackBaseUrl = c.FallbackBaseUrl;
+            Config.GigaAuthMode = c.GigaAuthMode;
+            Config.GigaScope = c.GigaScope;
+            Config.GigaOAuthUrl = c.GigaOAuthUrl;
+            Config.UseResponsesApi = c.UseResponsesApi;
+            Config.OnlyFreeModels = c.OnlyFreeModels;
+            Config.WarnOnPaidModels = c.WarnOnPaidModels;
+            Config.DailyTokenLimit = c.DailyTokenLimit;
+            Config.RequestTokenLimit = c.RequestTokenLimit;
 
             _lastStatus = "Success";
             _statusText = Localizer["Llm_LoadedFromService"];
         }
 
+        EnsureBaseUrl();
+        await LoadProfilesAsync();
         await LoadModelsAsync();
+        await LoadUsageAsync();
+        _lastAppliedFingerprint = Fingerprint(Config);
     }
 
     private async Task OnProviderChanged(SgLlmProvider provider)
     {
         Config.Provider = provider;
         Config.BaseUrl = DefaultBaseUrl(provider);
-        AddLog($"Switch provider → {provider}");
+        Config.ModelId = null;
+        _models = SgLlmProviderRegistry.FallbackModels(provider);
+        _modelIds = _models.Select(m => m.Id).ToList();
+        if (!ProviderRequiresKey(provider)) Config.ApiKey = string.Empty;
+        AddLog($"Switch provider → {ProviderLabel(provider)}");
         await LoadModelsAsync();
     }
 
@@ -261,6 +378,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private async Task LoadModelsAsync()
     {
         if (Config.Provider == SgLlmProvider.None) return;
+        EnsureBaseUrl();
 
         _loadingModels = true;
         _lastStatus = "Pending";
@@ -273,20 +391,10 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             {
                 SgLlmProvider.OpenRouter => await LlmService.GetOpenRouterModelsAsync(),
                 SgLlmProvider.OpenAiCompatible => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
-                SgLlmProvider.OpenCode => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
-                SgLlmProvider.AzureOpenAi => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
                 SgLlmProvider.Anthropic => await LlmService.GetAnthropicModelsAsync(Config.ApiKey),
-                SgLlmProvider.Google => await LlmService.GetGoogleModelsAsync(Config.ApiKey),
-                SgLlmProvider.Mistral => await LlmService.GetMistralModelsAsync(Config.ApiKey),
-                SgLlmProvider.Groq => await LlmService.GetGroqModelsAsync(Config.ApiKey),
-                SgLlmProvider.DeepSeek => await LlmService.GetDeepSeekModelsAsync(Config.ApiKey),
-                SgLlmProvider.XAi => await LlmService.GetXAiModelsAsync(Config.ApiKey),
-                SgLlmProvider.Cohere => await LlmService.GetCohereModelsAsync(Config.ApiKey),
-                SgLlmProvider.Perplexity => await LlmService.GetPerplexityModelsAsync(Config.ApiKey),
-                SgLlmProvider.TogetherAi => await LlmService.GetTogetherModelsAsync(Config.ApiKey),
-                SgLlmProvider.Fireworks => await LlmService.GetFireworksModelsAsync(Config.ApiKey),
-                SgLlmProvider.Cerebras => await LlmService.GetCerebrasModelsAsync(Config.ApiKey),
+                SgLlmProvider.LmStudio => await LlmService.GetLmStudioModelsAsync(Config.BaseUrl),
                 SgLlmProvider.HuggingFace => await LlmService.GetHuggingFaceModelsAsync(Config.ApiKey),
+                SgLlmProvider.GigaGpt => await LlmService.GetGigaGptModelsAsync(Config.BaseUrl, Config.ApiKey, Config.GigaAuthMode, Config.GigaScope, Config.GigaOAuthUrl),
                 SgLlmProvider.Ollama => null,
                 _ => null
             };
@@ -294,16 +402,36 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             if (Config.Provider == SgLlmProvider.Ollama)
             {
                 var ollamaModels = await LlmService.GetOllamaModelsAsync(Config.BaseUrl);
-                _orModelIds = ollamaModels.Select(m => m.Name).OrderBy(id => id).ToList();
-                AddLog($"Loaded {ollamaModels.Count} models (Ollama)", "Success");
+                _models = ollamaModels.Select(m => new SgLlmModelInfo { Id = m.Name, Name = m.Name, Provider = Config.Provider, ProviderLabel = ProviderLabel(Config.Provider), IsFree = true }).Where(m => !string.IsNullOrWhiteSpace(m.Id)).OrderBy(m => m.Id).ToList();
+                if (_models.Count == 0) _models = SgLlmProviderRegistry.FallbackModels(Config.Provider);
+                _modelIds = _models.Select(m => m.Id).ToList();
+                AddLog($"Loaded {_modelIds.Count} models (Ollama)", "Success");
             }
             else if (models != null)
             {
-                _orModelIds = models.Select(m => m.Id).OrderBy(id => id).ToList();
-                AddLog($"Loaded {models.Count} models ({Config.Provider})", "Success");
+                _models = models.Where(m => !string.IsNullOrWhiteSpace(m.Id)).ToList();
+                foreach (var m in _models)
+                {
+                    if (m.Provider == default) m.Provider = Config.Provider;
+                    m.ProviderLabel ??= ProviderLabel(Config.Provider);
+                }
+                if (_models.Count == 0) _models = SgLlmProviderRegistry.FallbackModels(Config.Provider);
+                _modelIds = _models.Select(m => m.Id).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id).ToList();
+                AddLog($"Loaded {_modelIds.Count} models ({ProviderLabel(Config.Provider)})", "Success");
+            }
+            else
+            {
+                _models = SgLlmProviderRegistry.FallbackModels(Config.Provider);
+                _modelIds = _models.Select(m => m.Id).ToList();
             }
 
-            if (_orModelIds.Any())
+            if (Config.OnlyFreeModels)
+            {
+                _models = _models.Where(IsModelFree).ToList();
+                _modelIds = _models.Select(m => m.Id).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(id => id).ToList();
+            }
+
+            if (_modelIds.Any())
             {
                 _lastStatus = "Success";
                 _statusText = Localizer["Llm_ModelsUpdated"];
@@ -312,8 +440,10 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         catch (Exception ex)
         {
             AddLog($"Error loading models: {ex.Message}", "Error");
-            _lastStatus = "Error";
-            _statusText = Localizer["Llm_LoadError"];
+            _models = SgLlmProviderRegistry.FallbackModels(Config.Provider);
+            _modelIds = _models.Select(m => m.Id).ToList();
+            _lastStatus = _modelIds.Count > 0 ? "Success" : "Error";
+            _statusText = _modelIds.Count > 0 ? "Показаны встроенные модели" : Localizer["Llm_LoadError"];
         }
         finally
         {
@@ -322,17 +452,192 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         }
     }
 
+    private static List<string> FallbackModelIds(SgLlmProvider provider) => SgLlmProviderRegistry.FallbackModels(provider).Select(m => m.Id).ToList();
+
+    private SgLlmRouteConfig GetRoute(string purpose)
+    {
+        Config.Routes ??= new Dictionary<string, SgLlmRouteConfig>(StringComparer.OrdinalIgnoreCase);
+        if (!Config.Routes.TryGetValue(purpose, out var route) || route is null)
+        {
+            route = new SgLlmRouteConfig { Purpose = purpose };
+            Config.Routes[purpose] = route;
+        }
+        return route;
+    }
+
+    private bool IsRouteEnabled(string purpose) => GetRoute(purpose).Enabled;
+    private void SetRouteEnabled(string purpose, bool value) => GetRoute(purpose).Enabled = value;
+
+    private string? GetRouteModel(string purpose) => GetRoute(purpose).ModelId;
+    private void SetRouteModel(string purpose, string? value) => GetRoute(purpose).ModelId = value;
+    private string? GetRouteBaseUrl(string purpose) => GetRoute(purpose).BaseUrl;
+    private void SetRouteBaseUrl(string purpose, string? value) => GetRoute(purpose).BaseUrl = value;
+    private SgLlmProvider GetRouteProvider(string purpose) => GetRoute(purpose).Provider ?? Config.Provider;
+    private void SetRouteProvider(string purpose, SgLlmProvider value)
+    {
+        var route = GetRoute(purpose);
+        route.Provider = value;
+        if (string.IsNullOrWhiteSpace(route.BaseUrl)) route.BaseUrl = DefaultBaseUrl(value);
+    }
+
+    private string ProfileLabel(string id) => _profiles.FirstOrDefault(p => p.Id == id)?.Name ?? id;
+
+    private async Task LoadProfilesAsync()
+    {
+        _profiles = await LlmService.GetProfilesAsync();
+        var def = _profiles.FirstOrDefault(p => p.IsDefault);
+        _selectedProfileId = def?.Id ?? _profiles.FirstOrDefault()?.Id;
+        _profileName = ProviderLabel(Config.Provider) + " profile";
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        var name = string.IsNullOrWhiteSpace(_profileName) ? $"{ProviderLabel(Config.Provider)} / {Config.ModelId}" : _profileName.Trim();
+        var profile = new SgLlmProfile
+        {
+            Id = string.IsNullOrWhiteSpace(_selectedProfileId) ? Guid.NewGuid().ToString("N") : _selectedProfileId!,
+            Name = name,
+            Config = CopyConfig(Config),
+            IsDefault = _profileDefault
+        };
+        await LlmService.SaveProfileAsync(profile);
+        await LoadProfilesAsync();
+        _selectedProfileId = profile.Id;
+        AddLog($"Profile saved: {name}", "Success");
+    }
+
+    private async Task ApplyProfileAsync(string? profileId)
+    {
+        _selectedProfileId = profileId;
+        var profile = _profiles.FirstOrDefault(p => p.Id == profileId);
+        if (profile is null) return;
+        Config = CopyConfig(profile.Config);
+        EnsureBaseUrl();
+        await ConfigChanged.InvokeAsync(Config);
+        await LoadModelsAsync();
+        _lastAppliedFingerprint = Fingerprint(Config);
+        _profileName = profile.Name;
+        _profileDefault = profile.IsDefault;
+        AddLog($"Profile loaded: {profile.Name}", "Success");
+    }
+
+    private async Task DeleteProfileAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_selectedProfileId)) return;
+        await LlmService.DeleteProfileAsync(_selectedProfileId);
+        _selectedProfileId = null;
+        await LoadProfilesAsync();
+        AddLog("Profile deleted", "Success");
+    }
+
+    private async Task ExportProfilesAsync()
+    {
+        _profilesJson = await LlmService.ExportProfilesJsonAsync();
+    }
+
+    private async Task ImportProfilesAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_profilesJson)) return;
+        await LlmService.ImportProfilesJsonAsync(_profilesJson);
+        await LoadProfilesAsync();
+        AddLog("Profiles imported", "Success");
+    }
+
+    private async Task LoadUsageAsync()
+    {
+        _usageRecords = await LlmService.GetUsageRecordsAsync();
+    }
+
+    private async Task ClearUsageAsync()
+    {
+        await LlmService.ClearUsageRecordsAsync();
+        _usageRecords.Clear();
+        AddLog("Usage log cleared", "Success");
+    }
+
+    private async Task CheckAllProvidersHealthAsync()
+    {
+        _checkingHealth = true;
+        try
+        {
+            _healthStatuses = await LlmService.CheckProvidersHealthAsync(Config);
+            AddLog("Provider health checked", _healthStatuses.All(h => h.Ok) ? "Success" : "Info");
+        }
+        catch (Exception ex)
+        {
+            AddLog($"Health check error: {ex.Message}", "Error");
+        }
+        finally
+        {
+            _checkingHealth = false;
+        }
+    }
+
+    private async Task CheckConnectionAsync()
+    {
+        _checkingConnection = true;
+        _lastStatus = "Pending";
+        _statusText = "Проверка подключения…";
+        try
+        {
+            EnsureBaseUrl();
+            _diagnostics = await LlmService.TestFullConnectionAsync(Config);
+            _lastStatus = _diagnostics.Ok ? "Success" : "Error";
+            _statusText = _diagnostics.Summary;
+            AddLog($"Diagnostics: {_diagnostics.Summary}", _diagnostics.Ok ? "Success" : "Error");
+        }
+        catch (Exception ex)
+        {
+            _lastStatus = "Error";
+            _statusText = ex.Message;
+            AddLog($"Diagnostics error: {ex.Message}", "Error");
+        }
+        finally
+        {
+            _checkingConnection = false;
+        }
+    }
+
     private async Task ApplySettingsAsync()
     {
         _lastStatus = "Pending";
         _statusText = Localizer["Llm_Checking"];
-        AddLog($"Apply: {Config.Provider} / {Config.ModelId} (advanced={Config.UseAdvanced})");
+        EnsureBaseUrl();
+        if (string.IsNullOrWhiteSpace(Config.ModelId))
+        {
+            _lastStatus = "Error";
+            _statusText = "Выберите модель";
+            AddLog("Apply stopped: model is empty", "Error");
+            return;
+        }
+
+        if (Config.OnlyFreeModels && SelectedModelLooksPaid)
+        {
+            _lastStatus = "Error";
+            _statusText = "Выбрана paid-модель, а включён режим only-free";
+            AddLog("Apply stopped: paid model blocked by cost guard", "Error");
+            return;
+        }
+        if (Config.DailyTokenLimit is > 0 && TodayTokens >= Config.DailyTokenLimit.Value)
+        {
+            _lastStatus = "Error";
+            _statusText = "Дневной лимит токенов исчерпан";
+            AddLog("Apply stopped: daily token limit reached", "Error");
+            return;
+        }
+        if (Config.RequestTokenLimit is > 0 && (Config.MaxTokens is null || Config.MaxTokens > Config.RequestTokenLimit))
+        {
+            Config.MaxTokens = Config.RequestTokenLimit;
+        }
+
+        AddLog($"Apply: {ProviderLabel(Config.Provider)} / {Config.ModelId} (advanced={Config.UseAdvanced})");
 
         try
         {
             // 1) Probe the provider endpoint with the supplied key. This catches
             //    401/403/etc. up-front rather than waiting for the first message.
-            var probe = await LlmService.TestConnectionAsync(Config);
+            var effectiveConfig = LlmService.ResolveConfigForTask(TaskPurpose, Config);
+            var probe = await LlmService.TestConnectionAsync(effectiveConfig);
             if (probe.Ok)
             {
                 AddLog($"Connection check: {probe.Message}", "Success");
@@ -352,11 +657,13 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
             }
 
             // 2) Initialize the JS-side engine and notify parent.
-            await LlmService.InitializeAsync(Config);
+            await LlmService.InitializeAsync(effectiveConfig);
             await ConfigChanged.InvokeAsync(Config);
+            _lastAppliedFingerprint = Fingerprint(Config);
 
             _lastStatus = "Success";
             _statusText = Localizer["Llm_Connected"];
+            await LoadUsageAsync();
             AddLog("Settings applied", "Success");
         }
         catch (Exception ex)

@@ -65,6 +65,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.Llm.IOpenRouterService, Services.Llm.SgOpenRouterService>();
         services.TryAddScoped<Services.Llm.SgChatHistoryService>();
         services.TryAddScoped<Services.Llm.SgPuterService>();
+        services.TryAddScoped<Services.Llm.SgLlmProxyForwarder>();
         services.TryAddScoped<SgJsModuleCache>();
         services.TryAddScoped<SgWeatherService>();
 

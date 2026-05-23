@@ -89,6 +89,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Embeddings;
 
     private string _input = "";
     private string _model = "text-embedding-3-small";
@@ -109,8 +110,10 @@
         _busy = true; _error = ""; _vectors.Clear();
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             int? d = _dims > 0 ? _dims : null;
-            _vectors = await LlmService.GetEmbeddingsBatchAsync(texts, string.IsNullOrWhiteSpace(_model) ? null : _model, d);
+            _vectors = await LlmService.GetEmbeddingsBatchAsync(texts, string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model, d);
             if (_vectors.Count == 0) _error = "Не удалось получить эмбеддинги (проверьте ключ/модель)";
         }
         catch (Exception ex) { _error = ex.Message; }

@@ -49,6 +49,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Speech;
 
     private string _text = "";
     private string _model = "tts-1";
@@ -72,10 +73,12 @@
         _busy = true; _error = ""; _audioUrl = "";
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             var res = await LlmService.SynthesizeAsync(new SgLlmTtsRequest
             {
                 Input = _text,
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 Voice = _voice,
                 Format = _format,
                 Speed = _speed,

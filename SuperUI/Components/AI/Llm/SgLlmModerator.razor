@@ -70,6 +70,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Moderation;
 
     private string _text = "";
     private string _model = "omni-moderation-latest";
@@ -83,7 +84,9 @@
         _busy = true; _error = ""; _result = null;
         try
         {
-            _result = await LlmService.ModerateAsync(_text, string.IsNullOrWhiteSpace(_model) ? null : _model);
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
+            _result = await LlmService.ModerateAsync(_text, string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model);
             if (!string.IsNullOrEmpty(_result.Error)) _error = _result.Error;
         }
         catch (Exception ex) { _error = ex.Message; }

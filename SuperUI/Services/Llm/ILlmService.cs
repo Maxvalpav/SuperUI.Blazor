@@ -13,6 +13,7 @@ public interface ILlmService
     event Action<string>? OnError;
 
     Task InitializeAsync(SgLlmConfig config);
+    SgLlmConfig ResolveConfigForTask(string purpose, SgLlmConfig? baseConfig = null);
     Task ChatAsync(string message, SgLlmPromptOptions? options = null);
     Task<bool> IsReadyAsync();
 
@@ -22,6 +23,17 @@ public interface ILlmService
     /// a short body snippet (truncated), and whether it looked successful.
     /// </summary>
     Task<SgLlmConnectionTest> TestConnectionAsync(SgLlmConfig config);
+    Task<SgLlmDiagnosticsResult> TestFullConnectionAsync(SgLlmConfig config);
+
+    Task<List<SgLlmProfile>> GetProfilesAsync();
+    Task SaveProfileAsync(SgLlmProfile profile);
+    Task DeleteProfileAsync(string profileId);
+    Task<string> ExportProfilesJsonAsync();
+    Task ImportProfilesJsonAsync(string json);
+
+    Task<List<SgLlmUsageRecord>> GetUsageRecordsAsync();
+    Task ClearUsageRecordsAsync();
+    Task<List<SgLlmHealthStatus>> CheckProvidersHealthAsync(SgLlmConfig? baseConfig = null);
 
     Task<List<SgLlmModelInfo>> GetOpenRouterModelsAsync();
     Task<List<SgLlmModelInfo>> GetOpenAiModelsAsync(string? baseUrl = null, string? apiKey = null);
@@ -39,6 +51,8 @@ public interface ILlmService
     Task<List<SgLlmModelInfo>> GetFireworksModelsAsync(string? apiKey = null);
     Task<List<SgLlmModelInfo>> GetCerebrasModelsAsync(string? apiKey = null);
     Task<List<SgLlmModelInfo>> GetHuggingFaceModelsAsync(string? apiKey = null);
+    Task<List<SgLlmModelInfo>> GetLmStudioModelsAsync(string? baseUrl = null);
+    Task<List<SgLlmModelInfo>> GetGigaGptModelsAsync(string? baseUrl = null, string? apiKey = null, string? authMode = null, string? scope = null, string? oauthUrl = null);
 
     Task<float[]> GetEmbeddingsAsync(string text, string? modelId = null);
     Task<List<float[]>> GetEmbeddingsBatchAsync(IEnumerable<string> texts, string? modelId = null, int? dimensions = null);
@@ -181,6 +195,14 @@ public class SgLlmModelInfo
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public bool IsFree { get; set; }
+    public bool IsRecommended { get; set; }
+    public SgLlmProvider Provider { get; set; }
+    public string? ProviderLabel { get; set; }
+    public int? ContextWindow { get; set; }
+    public bool SupportsVision { get; set; }
+    public bool SupportsTools { get; set; }
+    public bool SupportsJsonSchema { get; set; }
+    public bool SupportsReasoning { get; set; }
 }
 
 public record SgLlmConnectionTest(bool Ok, int Status, string Message);

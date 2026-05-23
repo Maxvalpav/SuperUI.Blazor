@@ -50,6 +50,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Rerank;
 
     private string _query = "";
     private string _docs = "";
@@ -67,11 +68,13 @@
         _busy = true; _results.Clear();
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             _results = await LlmService.RerankAsync(new SgLlmRerankRequest
             {
                 Query = _query,
                 Documents = lines,
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 TopN = _topN > 0 ? _topN : null
             });
         }

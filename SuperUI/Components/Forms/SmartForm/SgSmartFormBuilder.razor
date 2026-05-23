@@ -87,6 +87,7 @@
     [Parameter] public bool ShowPreview { get; set; } = true;
     [Parameter] public bool EnableVoiceFilling { get; set; } = true;
     [Parameter] public SgLlmConfig? LlmConfig { get; set; }
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Structured;
     [Parameter] public EventCallback<SgSmartFormMetadata> OnMetadataReady { get; set; }
     [Parameter] public EventCallback<Dictionary<string, object?>> OnPreviewSubmit { get; set; }
 
@@ -109,8 +110,8 @@
         _busy = true; _error = ""; _metadata = null;
         try
         {
-            if (LlmConfig != null && !Llm.IsInitialized)
-                await Llm.InitializeAsync(LlmConfig);
+            var effective = Llm.ResolveConfigForTask(TaskPurpose, LlmConfig);
+            await Llm.InitializeAsync(effective);
 
             var sys = $@"You are a UI form designer. Given a user description, output a JSON form
 metadata. Always reply in language: {Locale ?? "ru"}.
@@ -187,7 +188,7 @@ Rules:
                     new() { Role = "system", Content = sys },
                     new() { Role = "user", Content = _prompt }
                 },
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 ResponseFormat = "json_schema",
                 JsonSchema = schema,
                 Temperature = 0.2

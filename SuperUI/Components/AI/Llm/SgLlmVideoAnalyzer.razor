@@ -54,6 +54,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Video;
 
     private string _prompt = "Кратко опиши, что происходит на видео.";
     private string _model = "";
@@ -82,12 +83,14 @@
         _busy = true; _error = ""; _answer = "";
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             _answer = await LlmService.AnalyzeVideoAsync(new SgLlmVideoRequest
             {
                 Prompt = _prompt,
                 Video = _video,
                 MimeType = _mime,
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 MaxTokens = _maxTokens > 0 ? _maxTokens : null
             });
         }

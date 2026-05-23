@@ -82,6 +82,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Structured;
 
     private string _systemPrompt = "Ты вежливый ассистент. Если можешь использовать функцию — используй её.";
     private string _userMessage = "Сколько сейчас времени?";
@@ -107,6 +108,8 @@
         _busy = true; _error = ""; _transcript.Clear();
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             var messages = new List<SgLlmChatMsg>();
             if (!string.IsNullOrWhiteSpace(_systemPrompt))
                 messages.Add(new() { Role = "system", Content = _systemPrompt });
@@ -118,7 +121,7 @@
                 var res = await LlmService.CompleteAsync(new SgLlmChatRequest
                 {
                     Messages = messages,
-                    Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                    Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                     Tools = _tools.Where(t => !string.IsNullOrWhiteSpace(t.Name)).ToList()
                 });
                 if (!string.IsNullOrEmpty(res.Error)) { _error = res.Error; return; }

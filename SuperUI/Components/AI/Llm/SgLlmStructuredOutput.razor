@@ -45,6 +45,7 @@
 @code {
     [Parameter] public string CssClass { get; set; } = "";
     [Parameter] public string Style { get; set; } = "";
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Structured;
 
     private string _systemPrompt = "Ты структурированный извлекатель данных. Верни ровно JSON по схеме.";
     private string _userMessage = "Иван 28 ivan@example.com";
@@ -69,6 +70,8 @@
         _busy = true; _error = ""; _raw = ""; _pretty = "";
         try
         {
+            var effective = LlmService.ResolveConfigForTask(TaskPurpose);
+            await LlmService.InitializeAsync(effective);
             var res = await LlmService.CompleteAsync(new SgLlmChatRequest
             {
                 Messages = new()
@@ -76,7 +79,7 @@
                     new() { Role = "system", Content = _systemPrompt },
                     new() { Role = "user", Content = _userMessage }
                 },
-                Model = string.IsNullOrWhiteSpace(_model) ? null : _model,
+                Model = string.IsNullOrWhiteSpace(_model) ? effective.ModelId : _model,
                 ResponseFormat = "json_schema",
                 JsonSchema = _schema
             });

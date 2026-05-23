@@ -70,6 +70,7 @@
 
     [Parameter] public SgSmartFormMetadata? FormMetadata { get; set; }
     [Parameter] public SgLlmConfig? LlmConfig { get; set; }
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Structured;
     [Parameter] public string? LlmInstructions { get; set; }
     [Parameter] public EventCallback<Dictionary<string, object?>> OnValuesExtracted { get; set; }
     [Parameter] public EventCallback<string> OnTranscript { get; set; }
@@ -144,10 +145,8 @@ Text to analyze: ""{text}""";
 
         try
         {
-            if (LlmConfig != null)
-            {
-                await Llm.InitializeAsync(LlmConfig);
-            }
+            var effective = Llm.ResolveConfigForTask(TaskPurpose, LlmConfig);
+            await Llm.InitializeAsync(effective);
 
             await Llm.ChatAsync(systemPrompt, new SgLlmPromptOptions { Stream = false });
             var response = await tcs.Task;

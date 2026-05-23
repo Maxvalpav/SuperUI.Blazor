@@ -29,6 +29,7 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
     [Inject] public IEnumerable<IDocumentExtractor> Extractors { get; set; } = Array.Empty<IDocumentExtractor>();
     [Inject] public IEnumerable<IDocumentSaver> Savers { get; set; } = Array.Empty<IDocumentSaver>();
     [Inject] public ILlmExtractionClient LlmClient { get; set; } = default!;
+    [Inject] public ILlmService GeneralLlmService { get; set; } = default!;
     [Inject] public SgLlmEndpointConfigStore EndpointStore { get; set; } = default!;
 
     /// <summary>Maximum upload size in bytes. Defaults to 25 MiB.</summary>
@@ -106,7 +107,8 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
 
     private void UpdateEndpointStore()
     {
-        EndpointStore.Current = FromLlmConfig(_llmConfig);
+        var effective = GeneralLlmService.ResolveConfigForTask(SgLlmTaskPurpose.Documents, _llmConfig);
+        EndpointStore.Current = FromLlmConfig(effective);
     }
 
     private SgLlmConfig ToLlmConfig(SgLlmEndpointConfig endpoint)

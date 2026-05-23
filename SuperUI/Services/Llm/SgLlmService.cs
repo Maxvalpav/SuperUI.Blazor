@@ -1,8 +1,10 @@
 using Microsoft.JSInterop;
+using Microsoft.Extensions.AI;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 namespace SuperUI.Services.Llm;
@@ -19,6 +21,11 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     private DotNetObjectReference<SgLlmService>? _selfRef;
     private string? _instanceId;
     private bool _isDisposed;
+    private readonly Dictionary<string, (DateTimeOffset At, List<SgLlmModelInfo> Models)> _modelCache = new();
+    private static readonly TimeSpan ModelCacheTtl = TimeSpan.FromMinutes(15);
+    private const string GlobalConfigStorageKey = "sui-global-llm-config";
+    private const string ProfilesStorageKey = "sui-llm-profiles";
+    private const string UsageStorageKey = "sui-llm-usage";
 
     public bool IsInitialized => _module != null;
     public SgLlmConfig? CurrentConfig { get; private set; }
@@ -26,8 +33,8 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     public async Task SaveGlobalConfigAsync(SgLlmConfig config)
     {
         CurrentConfig = config;
-        var json = System.Text.Json.JsonSerializer.Serialize(config);
-        await _js.InvokeVoidAsync("localStorage.setItem", "sui-global-llm-config", json);
+        var json = System.Text.Json.JsonSerializer.Serialize(SanitizeForStorage(config));
+        await _js.InvokeVoidAsync("localStorage.setItem", GlobalConfigStorageKey, json);
     }
 
     public async Task<SgLlmConfig?> GetGlobalConfigAsync()
@@ -36,15 +43,223 @@ public class SgLlmService : ILlmService, IAsyncDisposable
 
         try
         {
-            var json = await _js.InvokeAsync<string?>("localStorage.getItem", "sui-global-llm-config");
+            var json = await _js.InvokeAsync<string?>("localStorage.getItem", GlobalConfigStorageKey);
             if (!string.IsNullOrEmpty(json))
             {
-                CurrentConfig = System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json);
+                CurrentConfig = MigrateConfig(System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json) ?? new SgLlmConfig());
+                await _js.InvokeVoidAsync("localStorage.setItem", GlobalConfigStorageKey, System.Text.Json.JsonSerializer.Serialize(SanitizeForStorage(CurrentConfig)));
             }
         }
         catch { }
 
         return CurrentConfig;
+    }
+
+    public async Task<List<SgLlmProfile>> GetProfilesAsync()
+    {
+        try
+        {
+            var json = await _js.InvokeAsync<string?>("localStorage.getItem", ProfilesStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            var profiles = System.Text.Json.JsonSerializer.Deserialize<List<SgLlmProfile>>(json) ?? new();
+            var changed = false;
+            foreach (var p in profiles)
+            {
+                var migrated = MigrateConfig(p.Config);
+                if (migrated.SchemaVersion != p.Config.SchemaVersion || migrated.ModelId != p.Config.ModelId || migrated.BaseUrl != p.Config.BaseUrl || migrated.Provider != p.Config.Provider)
+                    changed = true;
+                p.Config = migrated;
+            }
+            if (changed)
+                await _js.InvokeVoidAsync("localStorage.setItem", ProfilesStorageKey, System.Text.Json.JsonSerializer.Serialize(profiles));
+            return profiles;
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    public async Task SaveProfileAsync(SgLlmProfile profile)
+    {
+        var profiles = await GetProfilesAsync();
+        profile.UpdatedAt = DateTime.UtcNow;
+        profile.Config = SanitizeForStorage(profile.Config);
+
+        if (profile.IsDefault)
+        {
+            foreach (var p in profiles) p.IsDefault = false;
+        }
+
+        var idx = profiles.FindIndex(p => p.Id == profile.Id);
+        if (idx >= 0) profiles[idx] = profile;
+        else profiles.Add(profile);
+
+        await _js.InvokeVoidAsync("localStorage.setItem", ProfilesStorageKey, System.Text.Json.JsonSerializer.Serialize(profiles));
+    }
+
+    public async Task DeleteProfileAsync(string profileId)
+    {
+        var profiles = await GetProfilesAsync();
+        profiles.RemoveAll(p => p.Id == profileId);
+        await _js.InvokeVoidAsync("localStorage.setItem", ProfilesStorageKey, System.Text.Json.JsonSerializer.Serialize(profiles));
+    }
+
+    public async Task<string> ExportProfilesJsonAsync()
+    {
+        var profiles = await GetProfilesAsync();
+        return System.Text.Json.JsonSerializer.Serialize(profiles, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    public async Task ImportProfilesJsonAsync(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return;
+        var imported = System.Text.Json.JsonSerializer.Deserialize<List<SgLlmProfile>>(json) ?? new();
+        foreach (var p in imported)
+        {
+            if (string.IsNullOrWhiteSpace(p.Id)) p.Id = Guid.NewGuid().ToString("N");
+            p.Config = MigrateConfig(p.Config);
+            p.UpdatedAt = DateTime.UtcNow;
+        }
+        await _js.InvokeVoidAsync("localStorage.setItem", ProfilesStorageKey, System.Text.Json.JsonSerializer.Serialize(imported));
+    }
+
+    public async Task<List<SgLlmUsageRecord>> GetUsageRecordsAsync()
+    {
+        try
+        {
+            var json = await _js.InvokeAsync<string?>("localStorage.getItem", UsageStorageKey);
+            if (string.IsNullOrWhiteSpace(json)) return new();
+            return System.Text.Json.JsonSerializer.Deserialize<List<SgLlmUsageRecord>>(json) ?? new();
+        }
+        catch
+        {
+            return new();
+        }
+    }
+
+    public async Task ClearUsageRecordsAsync()
+    {
+        await _js.InvokeVoidAsync("localStorage.removeItem", UsageStorageKey);
+    }
+
+    public async Task<List<SgLlmHealthStatus>> CheckProvidersHealthAsync(SgLlmConfig? baseConfig = null)
+    {
+        var result = new List<SgLlmHealthStatus>();
+        foreach (var provider in SgLlmProviderRegistry.AllowedProviders)
+        {
+            var cfg = baseConfig is null ? new SgLlmConfig() : CopyConfig(baseConfig);
+            var activeProvider = baseConfig?.Provider;
+            cfg.Provider = provider;
+            cfg.BaseUrl = activeProvider == provider && !string.IsNullOrWhiteSpace(baseConfig?.BaseUrl)
+                ? SgLlmProviderRegistry.NormalizeBaseUrl(provider, baseConfig!.BaseUrl)
+                : SgLlmProviderRegistry.DefaultBaseUrl(provider);
+            cfg.ModelId = activeProvider == provider && !string.IsNullOrWhiteSpace(baseConfig?.ModelId)
+                ? baseConfig!.ModelId
+                : SgLlmProviderRegistry.FallbackModels(provider).FirstOrDefault()?.Id;
+
+            // Reuse the entered key only for the active provider. Local providers do not need a key.
+            if (activeProvider != provider && SgLlmProviderRegistry.RequiresKey(provider))
+            {
+                cfg.ApiKey = string.Empty;
+            }
+
+            var diag = await TestFullConnectionAsync(cfg);
+            result.Add(new SgLlmHealthStatus
+            {
+                Provider = provider,
+                ProviderLabel = SgLlmProviderRegistry.Label(provider),
+                BaseUrl = cfg.BaseUrl,
+                Ok = diag.Ok,
+                Status = diag.Summary,
+                Checks = diag.Checks
+            });
+        }
+        return result;
+    }
+
+    private static SgLlmConfig CopyConfig(SgLlmConfig source)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(source);
+        return System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json) ?? new();
+    }
+
+    private async Task SaveUsageRecordAsync(SgLlmUsageRecord record)
+    {
+        try
+        {
+            var records = await GetUsageRecordsAsync();
+            records.Insert(0, record);
+            if (records.Count > 200) records = records.Take(200).ToList();
+            await _js.InvokeVoidAsync("localStorage.setItem", UsageStorageKey, System.Text.Json.JsonSerializer.Serialize(records));
+        }
+        catch { }
+    }
+
+    private static SgLlmConfig MigrateConfig(SgLlmConfig? source)
+    {
+        var config = source ?? new SgLlmConfig();
+
+        if (!SgLlmProviderRegistry.IsAllowed(config.Provider))
+        {
+            config.Provider = SgLlmProvider.OpenRouter;
+            config.BaseUrl = SgLlmProviderRegistry.DefaultBaseUrl(config.Provider);
+            config.ModelId = null;
+        }
+
+        if (string.Equals(config.ModelId, "google/gemini-2.0-flash-001:free", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(config.ModelId, "openrouter/free", StringComparison.OrdinalIgnoreCase))
+        {
+            config.ModelId = null;
+        }
+
+        config.BaseUrl = SgLlmProviderRegistry.NormalizeBaseUrl(config.Provider, config.BaseUrl);
+
+        config.Routes ??= new Dictionary<string, SgLlmRouteConfig>(StringComparer.OrdinalIgnoreCase);
+        foreach (var purpose in new[]
+        {
+            SgLlmTaskPurpose.Chat,
+            SgLlmTaskPurpose.Documents,
+            SgLlmTaskPurpose.Vision,
+            SgLlmTaskPurpose.Structured,
+            SgLlmTaskPurpose.Embeddings,
+            SgLlmTaskPurpose.Rerank,
+            SgLlmTaskPurpose.Images,
+            SgLlmTaskPurpose.Moderation,
+            SgLlmTaskPurpose.Speech,
+            SgLlmTaskPurpose.Video
+        })
+        {
+            if (!config.Routes.ContainsKey(purpose)) config.Routes[purpose] = new SgLlmRouteConfig { Purpose = purpose };
+        }
+
+        foreach (var route in config.Routes.Values)
+        {
+            if (string.IsNullOrWhiteSpace(route.Purpose)) route.Purpose = SgLlmTaskPurpose.Chat;
+            if (route.Provider.HasValue && !SgLlmProviderRegistry.IsAllowed(route.Provider.Value)) route.Provider = null;
+            if (route.Provider.HasValue && !string.IsNullOrWhiteSpace(route.BaseUrl))
+                route.BaseUrl = SgLlmProviderRegistry.NormalizeBaseUrl(route.Provider.Value, route.BaseUrl);
+            if (string.Equals(route.ModelId, "google/gemini-2.0-flash-001:free", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(route.ModelId, "openrouter/free", StringComparison.OrdinalIgnoreCase))
+                route.ModelId = null;
+        }
+
+        config.SchemaVersion = SgLlmConfig.CurrentSchemaVersion;
+        config.GigaAuthMode ??= "Bearer";
+        config.GigaScope ??= "GIGACHAT_API_PERS";
+        config.GigaOAuthUrl ??= "https://ngw.devices.sberbank.ru:9443/api/v2/oauth";
+        config.TimeoutSeconds ??= 120;
+        config.RetryCount ??= 0;
+        config.RetryDelayMs ??= 500;
+        return config;
+    }
+
+    private static SgLlmConfig SanitizeForStorage(SgLlmConfig source)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(source);
+        var clone = MigrateConfig(System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json) ?? new());
+        if (!clone.PersistApiKey) clone.ApiKey = string.Empty;
+        return clone;
     }
 
     public event Action<string>? OnTokenReceived;
@@ -78,6 +293,67 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides);
     }
 
+    public SgLlmConfig ResolveConfigForTask(string purpose, SgLlmConfig? baseConfig = null)
+    {
+        var resolved = CopyConfig(baseConfig ?? CurrentConfig ?? new SgLlmConfig());
+        if (string.IsNullOrWhiteSpace(purpose) || resolved.Routes is null) return resolved;
+        if (!resolved.Routes.TryGetValue(purpose, out var route) || route is null || !route.Enabled) return resolved;
+
+        if (route.Provider.HasValue) resolved.Provider = route.Provider.Value;
+        if (!string.IsNullOrWhiteSpace(route.ModelId)) resolved.ModelId = route.ModelId;
+        if (!string.IsNullOrWhiteSpace(route.BaseUrl)) resolved.BaseUrl = route.BaseUrl;
+        if (!string.IsNullOrWhiteSpace(route.SystemPrompt)) resolved.SystemPrompt = route.SystemPrompt;
+        if (!string.IsNullOrWhiteSpace(resolved.BaseUrl))
+            resolved.BaseUrl = SgLlmProviderRegistry.NormalizeBaseUrl(resolved.Provider, resolved.BaseUrl);
+        return resolved;
+    }
+
+    private static bool UsesMicrosoftExtensionsAiOptions(SgLlmProvider provider) =>
+        provider is SgLlmProvider.OpenAiCompatible
+            or SgLlmProvider.LmStudio
+            or SgLlmProvider.HuggingFace
+            or SgLlmProvider.GigaGpt;
+
+    /// <summary>
+    /// Normalizes OpenAI-compatible provider settings through Microsoft.Extensions.AI.
+    /// The JS bridge still performs browser streaming, but the option surface is kept
+    /// aligned with <see cref="ChatOptions"/> so the same config can be reused by
+    /// server-side IChatClient adapters.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> BuildMicrosoftAiChatOptions(SgLlmConfig c)
+    {
+        var options = new ChatOptions
+        {
+            ModelId = c.ModelId,
+            Instructions = c.SystemPrompt,
+            Temperature = (float)c.Temperature,
+            TopP = (float)c.TopP,
+            MaxOutputTokens = c.MaxTokens,
+            PresencePenalty = (float)c.PresencePenalty,
+            FrequencyPenalty = (float)c.FrequencyPenalty,
+            Seed = c.Seed,
+            TopK = c.TopK
+        };
+
+        if (c.Stop is { Count: > 0 }) options.StopSequences = [.. c.Stop];
+
+        // Keep the JS payload serializable; ChatOptions itself may contain non-JSON
+        // members such as RawRepresentationFactory.
+        return new Dictionary<string, object?>
+        {
+            ["modelId"] = options.ModelId,
+            ["instructions"] = options.Instructions,
+            ["temperature"] = options.Temperature,
+            ["topP"] = options.TopP,
+            ["topK"] = options.TopK,
+            ["maxOutputTokens"] = options.MaxOutputTokens,
+            ["presencePenalty"] = options.PresencePenalty,
+            ["frequencyPenalty"] = options.FrequencyPenalty,
+            ["seed"] = options.Seed,
+            ["stopSequences"] = options.StopSequences
+        };
+    }
+
     private static object BuildOverrides(SgLlmConfig c)
     {
         var dict = new Dictionary<string, object?>
@@ -85,8 +361,26 @@ public class SgLlmService : ILlmService, IAsyncDisposable
             ["apiKey"] = c.ApiKey,
             ["baseUrl"] = c.BaseUrl,
             ["extraHeaders"] = c.ExtraHeaders,
+            ["routes"] = c.Routes,
             ["stream"] = c.Stream,
+            ["useBackendProxy"] = c.UseBackendProxy,
+            ["proxyUrl"] = c.ProxyUrl,
+            ["timeoutSeconds"] = c.TimeoutSeconds,
+            ["retryCount"] = c.RetryCount,
+            ["retryDelayMs"] = c.RetryDelayMs,
+            ["gigaAuthMode"] = c.GigaAuthMode,
+            ["gigaScope"] = c.GigaScope,
+            ["gigaOAuthUrl"] = c.GigaOAuthUrl,
+            ["useResponsesApi"] = c.UseResponsesApi,
+            ["onlyFreeModels"] = c.OnlyFreeModels,
+            ["dailyTokenLimit"] = c.DailyTokenLimit,
+            ["requestTokenLimit"] = c.RequestTokenLimit,
         };
+
+        if (UsesMicrosoftExtensionsAiOptions(c.Provider))
+        {
+            dict["microsoftExtensionsAI"] = BuildMicrosoftAiChatOptions(c);
+        }
 
         if (!c.UseAdvanced)
         {
@@ -199,8 +493,15 @@ public class SgLlmService : ILlmService, IAsyncDisposable
                     req = new HttpRequestMessage(HttpMethod.Get, url);
                     if (!string.IsNullOrEmpty(config.ApiKey)) req.Headers.Add("api-key", config.ApiKey);
                     break;
+                case SgLlmProvider.GigaGpt:
+                    url = $"{(config.BaseUrl?.TrimEnd('/') ?? DefaultBaseUrl(config.Provider))}/models";
+                    req = new HttpRequestMessage(HttpMethod.Get, url);
+                    var gigaToken = await ResolveGigaAccessTokenAsync(config.ApiKey, config.GigaAuthMode, config.GigaScope, config.GigaOAuthUrl);
+                    if (!string.IsNullOrEmpty(gigaToken))
+                        req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", gigaToken);
+                    break;
                 default:
-                    var baseUrl = (config.BaseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1");
+                    var baseUrl = (config.BaseUrl?.TrimEnd('/') ?? DefaultBaseUrl(config.Provider));
                     // OpenRouter's /models is public (200 with any/no key) — that defeats the
                     // whole purpose of an "is my key valid" probe. Use /auth/key which is
                     // explicitly auth-gated.
@@ -252,8 +553,105 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         }
     }
 
+    public async Task<SgLlmDiagnosticsResult> TestFullConnectionAsync(SgLlmConfig config)
+    {
+        var result = new SgLlmDiagnosticsResult();
+        void Add(string name, bool ok, string message) => result.Checks.Add(new SgLlmDiagnosticCheck { Name = name, Ok = ok, Message = message });
+
+        if (!SgLlmProviderRegistry.IsAllowed(config.Provider))
+        {
+            Add("Провайдер", false, "Провайдер не входит в поддерживаемый список SuperUI.");
+            return result;
+        }
+
+        Add("Провайдер", true, SgLlmProviderRegistry.Label(config.Provider));
+
+        var baseUrl = string.IsNullOrWhiteSpace(config.BaseUrl)
+            ? SgLlmProviderRegistry.DefaultBaseUrl(config.Provider)
+            : config.BaseUrl!.Trim();
+        Add("Base URL", !string.IsNullOrWhiteSpace(baseUrl), baseUrl);
+
+        var requiresKey = SgLlmProviderRegistry.RequiresKey(config.Provider);
+        Add("API key", !requiresKey || !string.IsNullOrWhiteSpace(config.ApiKey), !requiresKey ? "Ключ не требуется" : (string.IsNullOrWhiteSpace(config.ApiKey) ? "Ключ не указан" : "Ключ указан"));
+
+        Add("Модель", !string.IsNullOrWhiteSpace(config.ModelId), string.IsNullOrWhiteSpace(config.ModelId) ? "Выберите модель перед применением" : config.ModelId!);
+
+        var probe = await TestConnectionAsync(config);
+        Add("Endpoint", probe.Ok, probe.Message);
+
+        try
+        {
+            List<SgLlmModelInfo> models = config.Provider switch
+            {
+                SgLlmProvider.OpenRouter => await GetOpenRouterModelsAsync(),
+                SgLlmProvider.OpenAiCompatible => await GetOpenAiModelsAsync(config.BaseUrl, config.ApiKey),
+                SgLlmProvider.Anthropic => await GetAnthropicModelsAsync(config.ApiKey),
+                SgLlmProvider.Ollama => (await GetOllamaModelsAsync(config.BaseUrl)).Select(m => new SgLlmModelInfo { Id = m.Name, Name = m.Name, Provider = config.Provider }).ToList(),
+                SgLlmProvider.LmStudio => await GetLmStudioModelsAsync(config.BaseUrl),
+                SgLlmProvider.HuggingFace => await GetHuggingFaceModelsAsync(config.ApiKey),
+                SgLlmProvider.GigaGpt => await GetGigaGptModelsAsync(config.BaseUrl, config.ApiKey, config.GigaAuthMode, config.GigaScope, config.GigaOAuthUrl),
+                _ => new()
+            };
+
+            if (string.IsNullOrWhiteSpace(config.ModelId))
+            {
+                Add("Каталог моделей", models.Count > 0, models.Count > 0 ? $"Найдено моделей: {models.Count}" : "Модели не получены");
+            }
+            else
+            {
+                var exists = models.Count == 0 || models.Any(m => string.Equals(m.Id, config.ModelId, StringComparison.OrdinalIgnoreCase));
+                Add("Модель в каталоге", exists, exists ? "OK" : "Модель не найдена в /models; можно оставить вручную, если endpoint её поддерживает");
+            }
+        }
+        catch (Exception ex)
+        {
+            Add("Каталог моделей", false, ex.Message);
+        }
+
+        if (config.UseBackendProxy)
+        {
+            Add("Backend proxy", !string.IsNullOrWhiteSpace(config.ProxyUrl), string.IsNullOrWhiteSpace(config.ProxyUrl) ? "Укажите Proxy URL" : config.ProxyUrl!);
+        }
+
+        return result;
+    }
+
+    private bool TryGetCachedModels(string key, out List<SgLlmModelInfo> models)
+    {
+        if (_modelCache.TryGetValue(key, out var entry) && DateTimeOffset.UtcNow - entry.At < ModelCacheTtl)
+        {
+            models = entry.Models.Select(CloneModel).ToList();
+            return true;
+        }
+        models = new();
+        return false;
+    }
+
+    private void SetCachedModels(string key, List<SgLlmModelInfo> models)
+    {
+        _modelCache[key] = (DateTimeOffset.UtcNow, models.Select(CloneModel).ToList());
+    }
+
+    private static SgLlmModelInfo CloneModel(SgLlmModelInfo m) => new()
+    {
+        Id = m.Id,
+        Name = m.Name,
+        Description = m.Description,
+        IsFree = m.IsFree,
+        IsRecommended = m.IsRecommended,
+        Provider = m.Provider,
+        ProviderLabel = m.ProviderLabel,
+        ContextWindow = m.ContextWindow,
+        SupportsVision = m.SupportsVision,
+        SupportsTools = m.SupportsTools,
+        SupportsJsonSchema = m.SupportsJsonSchema,
+        SupportsReasoning = m.SupportsReasoning
+    };
+
     public async Task<List<SgLlmModelInfo>> GetOpenRouterModelsAsync()
     {
+        const string cacheKey = "openrouter:/models";
+        if (TryGetCachedModels(cacheKey, out var cached)) return cached;
         try
         {
             var response = await _http.GetFromJsonAsync<OpenRouterModelsResponse>("https://openrouter.ai/api/v1/models");
@@ -267,63 +665,133 @@ public class SgLlmService : ILlmService, IAsyncDisposable
                               (pricing.Prompt?.ToString() == "0" || pricing.Prompt?.ToString() == "0.0") &&
                               (pricing.Completion?.ToString() == "0" || pricing.Completion?.ToString() == "0.0");
 
+                var inputModalities = m.Architecture?.InputModalities ?? new();
+                var isVision = inputModalities.Any(x => string.Equals(x, "image", StringComparison.OrdinalIgnoreCase))
+                    || (m.Description?.Contains("vision", StringComparison.OrdinalIgnoreCase) ?? false)
+                    || (m.Description?.Contains("image", StringComparison.OrdinalIgnoreCase) ?? false);
+
                 result.Add(new SgLlmModelInfo
                 {
                     Id = m.Id,
                     Name = m.Name,
                     Description = m.Description,
-                    IsFree = isFree
+                    IsFree = isFree,
+                    Provider = SgLlmProvider.OpenRouter,
+                    ProviderLabel = SgLlmProviderRegistry.Label(SgLlmProvider.OpenRouter),
+                    ContextWindow = m.ContextLength,
+                    SupportsJsonSchema = true,
+                    SupportsTools = true,
+                    SupportsVision = isVision,
+                    SupportsReasoning = m.Id.Contains("reason", StringComparison.OrdinalIgnoreCase)
+                        || m.Id.Contains("gpt-5", StringComparison.OrdinalIgnoreCase)
+                        || m.Id.Contains("claude", StringComparison.OrdinalIgnoreCase)
+                        || m.Id.Contains("deepseek", StringComparison.OrdinalIgnoreCase)
                 });
             }
+            SetCachedModels(cacheKey, result);
             return result;
         }
-        catch { return new(); }
+        catch { return SgLlmProviderRegistry.FallbackModels(SgLlmProvider.OpenRouter); }
     }
 
     public async Task<List<SgLlmModelInfo>> GetOpenAiModelsAsync(string? baseUrl = null, string? apiKey = null)
     {
-        var url = (baseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1") + "/models";
         try
         {
-            var request = new HttpRequestMessage(HttpMethod.Get, url);
-            if (!string.IsNullOrEmpty(apiKey))
-            {
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
-            }
-
-            var response = await _http.SendAsync(request);
-            if (!response.IsSuccessStatusCode) return new();
-
-            var data = await response.Content.ReadFromJsonAsync<OpenAiModelsResponse>();
-            if (data?.Data == null) return new();
-
-            return data.Data.Select(m => new SgLlmModelInfo
-            {
-                Id = m.Id,
-                Name = m.Id,
-                Description = $"Owned by: {m.OwnedBy}"
-            }).ToList();
+            var models = await FetchOpenAiModelsAsync(baseUrl, apiKey);
+            return models.Count > 0 ? models : BuiltinOpenAiModels();
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[SgLlmService] OpenAI Models Error: {ex.Message}");
-            return new();
+            return BuiltinOpenAiModels();
         }
     }
 
+    private async Task<List<SgLlmModelInfo>> FetchOpenAiModelsAsync(string? baseUrl = null, string? apiKey = null)
+    {
+        var normalizedBaseUrl = baseUrl?.TrimEnd('/') ?? "https://api.openai.com/v1";
+        var cacheKey = $"openai-compatible:{normalizedBaseUrl}:{(!string.IsNullOrWhiteSpace(apiKey))}";
+        if (TryGetCachedModels(cacheKey, out var cached)) return cached;
+        var url = normalizedBaseUrl + "/models";
+        var request = new HttpRequestMessage(HttpMethod.Get, url);
+        if (!string.IsNullOrEmpty(apiKey))
+        {
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+        }
+
+        var response = await _http.SendAsync(request);
+        if (!response.IsSuccessStatusCode) return new();
+
+        var data = await response.Content.ReadFromJsonAsync<OpenAiModelsResponse>();
+        if (data?.Data == null) return new();
+
+        var result = data.Data.Select(m =>
+        {
+            var context = m.Providers?.Select(p => p.ContextLength ?? 0).DefaultIfEmpty(0).Max() ?? 0;
+            var supportsTools = m.Providers?.Any(p => p.SupportsTools == true) ?? true;
+            var supportsStructured = m.Providers?.Any(p => p.SupportsStructuredOutput == true) ?? true;
+            var inputModalities = m.Architecture?.InputModalities ?? new();
+            var isVision = inputModalities.Any(x => string.Equals(x, "image", StringComparison.OrdinalIgnoreCase));
+            return new SgLlmModelInfo
+            {
+                Id = m.Id,
+                Name = m.Id,
+                Description = context > 0 ? $"Owned by: {m.OwnedBy} · ctx {context:n0}" : $"Owned by: {m.OwnedBy}",
+                Provider = SgLlmProvider.OpenAiCompatible,
+                ProviderLabel = SgLlmProviderRegistry.Label(SgLlmProvider.OpenAiCompatible),
+                ContextWindow = context > 0 ? context : null,
+                SupportsVision = isVision,
+                SupportsTools = supportsTools,
+                SupportsJsonSchema = supportsStructured,
+                SupportsReasoning = m.Id.Contains("reason", StringComparison.OrdinalIgnoreCase) || m.Id.Contains("gpt-5", StringComparison.OrdinalIgnoreCase) || m.Id.Contains("deepseek", StringComparison.OrdinalIgnoreCase)
+            };
+        }).ToList();
+        SetCachedModels(cacheKey, result);
+        return result;
+    }
+
+    private static string DefaultBaseUrl(SgLlmProvider provider) =>
+        SgLlmProviderRegistry.DefaultBaseUrl(provider) is { Length: > 0 } url ? url : "https://api.openai.com/v1";
+
+    private static List<SgLlmModelInfo> BuiltinOpenAiModels() => SgLlmProviderRegistry.FallbackModels(SgLlmProvider.OpenAiCompatible);
+
     public async Task<List<SgLlmModelInfo>> GetAnthropicModelsAsync(string? apiKey = null)
     {
-        // Anthropic does have a public /v1/models endpoint, but it needs auth headers and is often
-        // blocked by CORS from browsers. Provide a current built-in list as fallback.
-        return new List<SgLlmModelInfo>
+        if (!string.IsNullOrWhiteSpace(apiKey))
         {
-            new() { Id = "claude-opus-4-7", Name = "Claude Opus 4.7", Description = "Most capable, frontier reasoning" },
-            new() { Id = "claude-sonnet-4-6", Name = "Claude Sonnet 4.6", Description = "Balanced speed/intelligence" },
-            new() { Id = "claude-haiku-4-5", Name = "Claude Haiku 4.5", Description = "Fastest and cheapest" },
-            new() { Id = "claude-3-7-sonnet-latest", Name = "Claude 3.7 Sonnet", Description = "Previous-gen sonnet" },
-            new() { Id = "claude-3-5-sonnet-latest", Name = "Claude 3.5 Sonnet", Description = "Stable older model" },
-            new() { Id = "claude-3-5-haiku-latest", Name = "Claude 3.5 Haiku", Description = "Stable older haiku" }
-        };
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Get, "https://api.anthropic.com/v1/models");
+                req.Headers.TryAddWithoutValidation("x-api-key", apiKey);
+                req.Headers.TryAddWithoutValidation("anthropic-version", "2023-06-01");
+                var resp = await _http.SendAsync(req);
+                if (resp.IsSuccessStatusCode)
+                {
+                    var data = await resp.Content.ReadFromJsonAsync<AnthropicModelsResponse>();
+                    if (data?.Data is { Count: > 0 })
+                    {
+                        return data.Data.Select(m => new SgLlmModelInfo
+                        {
+                            Id = m.Id,
+                            Name = string.IsNullOrWhiteSpace(m.DisplayName) ? m.Id : m.DisplayName!,
+                            Description = m.CreatedAt is null ? "Anthropic model" : $"Created: {m.CreatedAt}",
+                            Provider = SgLlmProvider.Anthropic,
+                            ProviderLabel = SgLlmProviderRegistry.Label(SgLlmProvider.Anthropic),
+                            ContextWindow = m.Id.Contains("haiku-4-5", StringComparison.OrdinalIgnoreCase) ? 200_000 : 1_000_000,
+                            SupportsVision = true,
+                            SupportsTools = true,
+                            SupportsJsonSchema = true,
+                            SupportsReasoning = true,
+                            IsRecommended = m.Id.Contains("opus-4-7", StringComparison.OrdinalIgnoreCase) || m.Id.Contains("sonnet-4-6", StringComparison.OrdinalIgnoreCase)
+                        }).ToList();
+                    }
+                }
+            }
+            catch { }
+        }
+
+        return SgLlmProviderRegistry.FallbackModels(SgLlmProvider.Anthropic);
     }
 
     public async Task<List<SgOllamaModel>> GetOllamaModelsAsync(string? baseUrl = null)
@@ -421,14 +889,68 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         return await GetOpenAiCompatibleModelsAsync("https://api.cerebras.ai/v1", apiKey, BuiltinCerebrasModels);
     }
 
-    public async Task<List<SgLlmModelInfo>> GetHuggingFaceModelsAsync(string? apiKey = null) => BuiltinHuggingFaceModels();
+    public async Task<List<SgLlmModelInfo>> GetHuggingFaceModelsAsync(string? apiKey = null)
+    {
+        return await GetOpenAiCompatibleModelsAsync("https://router.huggingface.co/v1", apiKey, BuiltinHuggingFaceModels);
+    }
+
+    public async Task<List<SgLlmModelInfo>> GetLmStudioModelsAsync(string? baseUrl = null)
+    {
+        var url = string.IsNullOrWhiteSpace(baseUrl) ? "http://localhost:1234/v1" : baseUrl;
+        return await GetOpenAiCompatibleModelsAsync(url, null, BuiltinLmStudioModels);
+    }
+
+    public async Task<List<SgLlmModelInfo>> GetGigaGptModelsAsync(string? baseUrl = null, string? apiKey = null, string? authMode = null, string? scope = null, string? oauthUrl = null)
+    {
+        var url = string.IsNullOrWhiteSpace(baseUrl) ? "https://gigachat.devices.sberbank.ru/api/v1" : baseUrl;
+        var token = await ResolveGigaAccessTokenAsync(apiKey, authMode, scope, oauthUrl);
+        return await GetOpenAiCompatibleModelsAsync(url, token, BuiltinGigaGptModels);
+    }
+
+    private async Task<string?> ResolveGigaAccessTokenAsync(string? apiKey, string? authMode, string? scope, string? oauthUrl)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey)) return apiKey;
+        if (!string.Equals(authMode, "OAuth", StringComparison.OrdinalIgnoreCase)) return apiKey;
+
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Post, string.IsNullOrWhiteSpace(oauthUrl) ? "https://ngw.devices.sberbank.ru:9443/api/v2/oauth" : oauthUrl);
+            var authValue = apiKey.StartsWith("Basic ", StringComparison.OrdinalIgnoreCase) ? apiKey[6..].Trim() : apiKey.Trim();
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", authValue);
+            req.Headers.TryAddWithoutValidation("RqUID", Guid.NewGuid().ToString());
+            req.Headers.TryAddWithoutValidation("Accept", "application/json");
+            req.Content = new FormUrlEncodedContent(new Dictionary<string, string>
+            {
+                ["scope"] = string.IsNullOrWhiteSpace(scope) ? "GIGACHAT_API_PERS" : scope!
+            });
+
+            var resp = await _http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return apiKey;
+            var token = await resp.Content.ReadFromJsonAsync<GigaOAuthResponse>();
+            return string.IsNullOrWhiteSpace(token?.AccessToken) ? apiKey : token.AccessToken;
+        }
+        catch
+        {
+            return apiKey;
+        }
+    }
 
     private async Task<List<SgLlmModelInfo>> GetOpenAiCompatibleModelsAsync(string baseUrl, string? apiKey, Func<List<SgLlmModelInfo>> fallback)
     {
         try
         {
-            var res = await GetOpenAiModelsAsync(baseUrl, apiKey);
-            return res.Count > 0 ? res : fallback();
+            var res = await FetchOpenAiModelsAsync(baseUrl, apiKey);
+            if (res.Count > 0)
+            {
+                var provider = SgLlmProviderRegistry.DetectProvider(baseUrl);
+                foreach (var m in res)
+                {
+                    m.Provider = provider == SgLlmProvider.None ? SgLlmProvider.OpenAiCompatible : provider;
+                    m.ProviderLabel = SgLlmProviderRegistry.Label(m.Provider);
+                }
+                return res;
+            }
+            return fallback();
         }
         catch
         {
@@ -492,11 +1014,11 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         new() { Id = "qwen-3-32b", Name = "Qwen 3 32B", Description = "Strong reasoning" }
     };
 
-    private static List<SgLlmModelInfo> BuiltinHuggingFaceModels() => new()
-    {
-        new() { Id = "meta-llama/Meta-Llama-3.1-70B-Instruct", Name = "Llama 3.1 70B Instruct", Description = "Via HF Router" },
-        new() { Id = "Qwen/Qwen2.5-72B-Instruct", Name = "Qwen 2.5 72B", Description = "Via HF Router" }
-    };
+    private static List<SgLlmModelInfo> BuiltinHuggingFaceModels() => SgLlmProviderRegistry.FallbackModels(SgLlmProvider.HuggingFace);
+
+    private static List<SgLlmModelInfo> BuiltinLmStudioModels() => SgLlmProviderRegistry.FallbackModels(SgLlmProvider.LmStudio);
+
+    private static List<SgLlmModelInfo> BuiltinGigaGptModels() => SgLlmProviderRegistry.FallbackModels(SgLlmProvider.GigaGpt);
 
     public async Task<float[]> GetEmbeddingsAsync(string text, string? modelId = null)
     {
@@ -998,6 +1520,12 @@ public class SgLlmService : ILlmService, IAsyncDisposable
                 Notes = "Локальные модели, ключ не нужен." },
         new() { Provider = SgLlmProvider.Anthropic, Label = "Anthropic", BaseUrl = "https://api.anthropic.com/v1",
                 ApiKeyUrl = "https://console.anthropic.com/settings/keys" },
+        new() { Provider = SgLlmProvider.LmStudio, Label = "LM Studio", BaseUrl = "http://localhost:1234/v1",
+                DocsUrl = "https://lmstudio.ai/docs", IsFree = true, RequiresKey = false,
+                Notes = "Локальный OpenAI-compatible сервер." },
+        new() { Provider = SgLlmProvider.GigaGpt, Label = "GigaGPT / GigaChat", BaseUrl = "https://gigachat.devices.sberbank.ru/api/v1",
+                ApiKeyUrl = "https://developers.sber.ru/portal/products/gigachat-api", IsFree = false,
+                Notes = "Совместимый chat/completions endpoint, требуется bearer token." },
         new() { Provider = SgLlmProvider.Google, Label = "Google Gemini",
                 BaseUrl = "https://generativelanguage.googleapis.com/v1beta",
                 ApiKeyUrl = "https://aistudio.google.com/app/apikey", IsFree = true,
@@ -1062,10 +1590,9 @@ public class SgLlmService : ILlmService, IAsyncDisposable
                 Notes = "Не требует ключа, есть текст и картинки." },
     };
 
-    public IReadOnlyList<SgLlmProviderPreset> GetProviderPresets() => _presets;
+    public IReadOnlyList<SgLlmProviderPreset> GetProviderPresets() => SgLlmProviderRegistry.Presets;
 
-    public SgLlmProviderPreset? GetPreset(SgLlmProvider provider) =>
-        _presets.FirstOrDefault(p => p.Provider == provider);
+    public SgLlmProviderPreset? GetPreset(SgLlmProvider provider) => SgLlmProviderRegistry.GetPreset(provider);
 
     public async Task<List<SgLlmModelInfo>> GetCloudflareWorkersAiModelsAsync(string? accountId = null, string? apiToken = null)
     {
@@ -1572,12 +2099,50 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     }
 
     // ---- Internal response DTOs ----
+    private class GigaOAuthResponse
+    {
+        [JsonPropertyName("access_token")]
+        public string? AccessToken { get; set; }
+        [JsonPropertyName("expires_at")]
+        public long? ExpiresAt { get; set; }
+    }
+
     private class OpenAiModelsResponse { public List<OpenAiModel>? Data { get; set; } }
     private class OpenAiModel
     {
         public string Id { get; set; } = string.Empty;
-        [System.Text.Json.Serialization.JsonPropertyName("owned_by")]
+        [JsonPropertyName("owned_by")]
         public string OwnedBy { get; set; } = string.Empty;
+        public OpenAiModelArchitecture? Architecture { get; set; }
+        public List<OpenAiProviderInfo>? Providers { get; set; }
+    }
+
+    private class OpenAiModelArchitecture
+    {
+        [JsonPropertyName("input_modalities")]
+        public List<string> InputModalities { get; set; } = new();
+        [JsonPropertyName("output_modalities")]
+        public List<string> OutputModalities { get; set; } = new();
+    }
+
+    private class OpenAiProviderInfo
+    {
+        [JsonPropertyName("context_length")]
+        public int? ContextLength { get; set; }
+        [JsonPropertyName("supports_tools")]
+        public bool? SupportsTools { get; set; }
+        [JsonPropertyName("supports_structured_output")]
+        public bool? SupportsStructuredOutput { get; set; }
+    }
+
+    private class AnthropicModelsResponse { public List<AnthropicModel>? Data { get; set; } }
+    private class AnthropicModel
+    {
+        public string Id { get; set; } = string.Empty;
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+        [JsonPropertyName("created_at")]
+        public string? CreatedAt { get; set; }
     }
 
     private class GeminiModelsResponse { public List<GeminiModel>? Models { get; set; } }
@@ -1604,7 +2169,17 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         public string Id { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
+        [JsonPropertyName("context_length")]
+        public int? ContextLength { get; set; }
+        public OpenRouterArchitecture? Architecture { get; set; }
         public OpenRouterPricing? Pricing { get; set; }
+    }
+    private class OpenRouterArchitecture
+    {
+        [JsonPropertyName("input_modalities")]
+        public List<string> InputModalities { get; set; } = new();
+        [JsonPropertyName("output_modalities")]
+        public List<string> OutputModalities { get; set; } = new();
     }
     private class OpenRouterPricing
     {
@@ -1627,6 +2202,23 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         {
             answer = result.ToString();
         }
+        if (CurrentConfig is not null)
+        {
+            var usage = new SgLlmUsageRecord
+            {
+                Provider = CurrentConfig.Provider,
+                ProviderLabel = SgLlmProviderRegistry.Label(CurrentConfig.Provider),
+                ModelId = CurrentConfig.ModelId,
+                Ok = true
+            };
+            if (result.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                if (result.TryGetProperty("promptTokens", out var pt) && pt.ValueKind == System.Text.Json.JsonValueKind.Number) usage.PromptTokens = pt.GetInt32();
+                if (result.TryGetProperty("completionTokens", out var ct) && ct.ValueKind == System.Text.Json.JsonValueKind.Number) usage.CompletionTokens = ct.GetInt32();
+                if (result.TryGetProperty("durationMs", out var d) && d.ValueKind == System.Text.Json.JsonValueKind.Number) usage.DurationMs = d.GetDouble();
+            }
+            _ = SaveUsageRecordAsync(usage);
+        }
         OnChatComplete?.Invoke(answer);
     }
 
@@ -1640,7 +2232,21 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     }
 
     [JSInvokable]
-    public void OnErrorCallback(string message) => OnError?.Invoke(message);
+    public void OnErrorCallback(string message)
+    {
+        OnError?.Invoke(message);
+        if (CurrentConfig is not null)
+        {
+            _ = SaveUsageRecordAsync(new SgLlmUsageRecord
+            {
+                Provider = CurrentConfig.Provider,
+                ProviderLabel = SgLlmProviderRegistry.Label(CurrentConfig.Provider),
+                ModelId = CurrentConfig.ModelId,
+                Ok = false,
+                Error = message
+            });
+        }
+    }
 
     public async ValueTask DisposeAsync()
     {

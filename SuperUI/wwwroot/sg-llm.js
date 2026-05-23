@@ -1,5 +1,5 @@
 // sg-llm.js — SuperUI LLM JS Bridge (ESM)
-// Supports: WebLLM, OpenAI-compatible (OpenAI/OpenRouter/OpenCode/Mistral/Groq/DeepSeek/xAI/Cohere/Perplexity/Together/Fireworks/Cerebras/HuggingFace),
+// Supports: WebLLM, OpenAI-compatible (OpenAI/OpenRouter/LM Studio/HuggingFace/GigaGPT and legacy presets),
 // Anthropic, Google Gemini (v1beta), Ollama, Azure OpenAI.
 
 const _instances = new Map();
@@ -92,8 +92,8 @@ export function checkWebGpu() {
 // ── Provider default base URLs ─────────────────────────────────────────────
 const _providerDefaults = {
   openai:        { url: 'https://api.openai.com/v1',                 model: 'gpt-4o-mini' },
-  openaicompatible:{ url: 'https://api.openai.com/v1',               model: 'gpt-4o-mini' },
-  openrouter:    { url: 'https://openrouter.ai/api/v1',              model: 'openrouter/free' },
+  openaicompatible:{ url: 'https://api.openai.com/v1',               model: 'gpt-5.5' },
+  openrouter:    { url: 'https://openrouter.ai/api/v1',              model: 'openai/gpt-5.5' },
   opencode:      { url: 'https://api.opencode.ai/v1',                model: 'mistralai/mistral-7b-instruct' },
   mistral:       { url: 'https://api.mistral.ai/v1',                 model: 'mistral-large-latest' },
   groq:          { url: 'https://api.groq.com/openai/v1',            model: 'llama-3.3-70b-versatile' },
@@ -104,12 +104,40 @@ const _providerDefaults = {
   togetherai:    { url: 'https://api.together.xyz/v1',               model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo' },
   fireworks:     { url: 'https://api.fireworks.ai/inference/v1',     model: 'accounts/fireworks/models/llama-v3p3-70b-instruct' },
   cerebras:      { url: 'https://api.cerebras.ai/v1',                model: 'llama-3.3-70b' },
-  huggingface:   { url: 'https://router.huggingface.co/v1',          model: 'meta-llama/Meta-Llama-3.1-70B-Instruct' },
+  huggingface:   { url: 'https://router.huggingface.co/v1',          model: 'deepseek-ai/DeepSeek-V4-Pro' },
+  lmstudio:      { url: 'http://localhost:1234/v1',                  model: 'local-model' },
+  gigagpt:       { url: 'https://gigachat.devices.sberbank.ru/api/v1',model: 'GigaChat-2-Max' },
 };
 
 function _isOpenAiKind(p) {
   return ['openai','openaicompatible','openrouter','opencode','mistral','groq','deepseek',
-          'xai','cohere','perplexity','togetherai','fireworks','cerebras','huggingface','azureopenai'].includes(p);
+          'xai','cohere','perplexity','togetherai','fireworks','cerebras','huggingface','lmstudio','gigagpt','azureopenai'].includes(p);
+}
+
+async function _resolveGigaAccessToken(opts) {
+  const key = opts?.apiKey || '';
+  if (!key || opts?.useBackendProxy || (opts?.gigaAuthMode || 'Bearer').toLowerCase() !== 'oauth') return key;
+  const oauthUrl = opts?.gigaOAuthUrl || 'https://ngw.devices.sberbank.ru:9443/api/v2/oauth';
+  const scope = opts?.gigaScope || 'GIGACHAT_API_PERS';
+  const basic = key.toLowerCase().startsWith('basic ') ? key.slice(6).trim() : key.trim();
+  try {
+    const resp = await fetch(oauthUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+        'RqUID': crypto?.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+        'Authorization': `Basic ${basic}`,
+      },
+      body: new URLSearchParams({ scope }).toString(),
+    });
+    if (!resp.ok) throw new Error(`GigaChat OAuth error ${resp.status}`);
+    const data = await resp.json();
+    return data?.access_token || key;
+  } catch (err) {
+    console.warn('[sg-llm] GigaChat OAuth failed; using provided key as bearer token:', err);
+    return key;
+  }
 }
 
 export async function loadLlm(instanceId, provider, modelId, opts) {
@@ -137,15 +165,18 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
       extraHeaders['HTTP-Referer'] = window.location.origin;
       extraHeaders['X-Title'] = 'SuperUI';
     }
-    let baseUrl = opts?.baseUrl || defaults.url;
+    let baseUrl = (opts?.useBackendProxy && opts?.proxyUrl) ? opts.proxyUrl : (opts?.baseUrl || defaults.url);
     if (providerLower === 'azureopenai' && opts.azureDeployment && opts.azureApiVersion) {
       // Azure uses deployment-scoped URL; we'll build the chat URL at request time.
     }
+    const resolvedApiKey = providerLower === 'gigagpt'
+      ? await _resolveGigaAccessToken(opts)
+      : (opts?.apiKey || inst.options.apiKey || '');
     inst.llmEngine = {
       kind: 'openai',
       sub: providerLower,
       baseUrl,
-      apiKey: opts?.apiKey || inst.options.apiKey || '',
+      apiKey: opts?.useBackendProxy ? '' : resolvedApiKey,
       model: modelId || defaults.model,
       extraHeaders,
       opts,
@@ -155,8 +186,8 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
     inst.llmEngine = {
       kind: 'anthropic',
       baseUrl: opts?.baseUrl || 'https://api.anthropic.com/v1',
-      apiKey: opts?.apiKey || inst.options.apiKey || '',
-      model: modelId || 'claude-sonnet-4-6',
+      apiKey: opts?.useBackendProxy ? '' : (opts?.apiKey || inst.options.apiKey || ''),
+      model: modelId || 'claude-opus-4-7',
       opts,
     };
     try { inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', { stage: 'ready', loaded: 1, total: 1, percent: 100, file: null, isComplete: true }); } catch (_) {}
@@ -164,7 +195,7 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
     inst.llmEngine = {
       kind: 'google',
       baseUrl: opts?.baseUrl || 'https://generativelanguage.googleapis.com/v1beta',
-      apiKey: opts?.apiKey || inst.options.apiKey || '',
+      apiKey: opts?.useBackendProxy ? '' : (opts?.apiKey || inst.options.apiKey || ''),
       model: modelId || 'gemini-2.5-flash',
       opts,
     };
@@ -173,7 +204,7 @@ export async function loadLlm(instanceId, provider, modelId, opts) {
     inst.llmEngine = {
       kind: 'ollama',
       baseUrl: opts?.baseUrl || 'http://localhost:11434',
-      model: modelId || 'llama3',
+      model: modelId || 'qwen3.6',
       opts,
     };
     try { inst.dotnetRef.invokeMethodAsync('OnLlmProgressCallback', { stage: 'ready', loaded: 1, total: 1, percent: 100, file: null, isComplete: true }); } catch (_) {}
@@ -196,7 +227,7 @@ function _buildOpenAiBody(engine, messages, tools, toolChoice) {
   // Sampling (only present when advanced flag set on .NET side passed them through)
   _put(body, 'temperature', o.temperature);
   _put(body, 'top_p', o.topP);
-  _put(body, 'max_tokens', o.maxTokens);
+  _put(body, 'max_tokens', o.requestTokenLimit || o.maxTokens);
   _put(body, 'presence_penalty', o.presencePenalty);
   _put(body, 'frequency_penalty', o.frequencyPenalty);
   _put(body, 'seed', o.seed);
@@ -241,7 +272,17 @@ function _buildOpenAiBody(engine, messages, tools, toolChoice) {
   return body;
 }
 
+function _shouldUseResponsesApi(engine) {
+  const base = String(engine.baseUrl || '').toLowerCase();
+  const model = String(engine.model || '').toLowerCase();
+  return engine.sub === 'openaicompatible'
+    && (engine.opts?.useResponsesApi === true || (base.includes('api.openai.com') && model.startsWith('gpt-5')));
+}
+
 function _buildOpenAiUrl(engine) {
+  if (_shouldUseResponsesApi(engine)) {
+    return `${engine.baseUrl.replace(/\/$/, '')}/responses`;
+  }
   if (engine.sub === 'azureopenai') {
     const o = engine.opts || {};
     const base = engine.baseUrl.replace(/\/$/, '');
@@ -252,14 +293,100 @@ function _buildOpenAiUrl(engine) {
   return `${engine.baseUrl.replace(/\/$/, '')}/chat/completions`;
 }
 
+function _contentToResponseText(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content.map(p => {
+      if (p.type === 'text') return p.text || '';
+      if (p.type === 'image_url') return `[image: ${p.image_url?.url ? 'attached' : 'url missing'}]`;
+      return '';
+    }).filter(Boolean).join('\n');
+  }
+  return String(content || '');
+}
+
+function _buildResponsesBody(engine, messages, tools, toolChoice) {
+  const o = engine.opts || {};
+  const sys = messages.find(m => m.role === 'system')?.content;
+  const input = messages
+    .filter(m => m.role !== 'system')
+    .map(m => ({ role: m.role, content: _contentToResponseText(m.content) }));
+  const body = { model: engine.model, input, stream: true };
+  if (sys) body.instructions = _contentToResponseText(sys);
+  _put(body, 'tools', tools);
+  _put(body, 'tool_choice', toolChoice);
+  _put(body, 'temperature', o.temperature);
+  _put(body, 'top_p', o.topP);
+  _put(body, 'max_output_tokens', o.requestTokenLimit || o.maxTokens);
+  _put(body, 'parallel_tool_calls', o.parallelToolCalls);
+  _put(body, 'reasoning', o.reasoningEffort ? { effort: o.reasoningEffort } : undefined);
+  if (o.responseFormat === 'json_object') body.text = { format: { type: 'json_object' } };
+  if (o.responseFormat === 'json_schema' && o.jsonSchema) {
+    try { body.text = { format: { type: 'json_schema', ...JSON.parse(o.jsonSchema) } }; } catch {}
+  }
+  return body;
+}
+
 function _buildOpenAiHeaders(engine) {
   const headers = { 'Content-Type': 'application/json', ...(engine.extraHeaders || {}) };
   if (engine.sub === 'azureopenai') {
-    headers['api-key'] = engine.apiKey;
-  } else {
+    if (engine.apiKey) headers['api-key'] = engine.apiKey;
+  } else if (engine.apiKey) {
     headers['Authorization'] = `Bearer ${engine.apiKey}`;
   }
   return headers;
+}
+
+async function _fetchWithRetry(url, init, opts) {
+  const retryCount = Number(opts?.retryCount || 0);
+  const retryDelayMs = Number(opts?.retryDelayMs || 500);
+  const timeoutSeconds = Number(opts?.timeoutSeconds || 0);
+  let lastError;
+  for (let attempt = 0; attempt <= retryCount; attempt++) {
+    const ctrl = new AbortController();
+    const external = init.signal;
+    const onAbort = () => ctrl.abort();
+    if (external) external.addEventListener('abort', onAbort, { once: true });
+    const timer = timeoutSeconds > 0 ? setTimeout(() => ctrl.abort(), timeoutSeconds * 1000) : null;
+    try {
+      const response = await fetch(url, { ...init, signal: ctrl.signal });
+      if (response.ok || response.status < 500 || attempt === retryCount) return response;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (err) {
+      lastError = err;
+      if (attempt === retryCount || err?.name === 'AbortError') throw err;
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (external) external.removeEventListener('abort', onAbort);
+    }
+    if (retryDelayMs > 0) await new Promise(r => setTimeout(r, retryDelayMs));
+  }
+  throw lastError || new Error('fetch failed');
+}
+
+function _todayTokenUsage() {
+  try {
+    const raw = localStorage.getItem('sui-llm-usage');
+    const rows = raw ? JSON.parse(raw) : [];
+    const today = new Date().toDateString();
+    return rows.filter(r => new Date(r.Timestamp || r.timestamp).toDateString() === today)
+      .reduce((s, r) => s + Number(r.TotalTokens || r.totalTokens || ((r.PromptTokens || r.promptTokens || 0) + (r.CompletionTokens || r.completionTokens || 0)) || 0), 0);
+  } catch { return 0; }
+}
+
+function _checkUsageGuard(engine, messages) {
+  const o = engine.opts || {};
+  if (o.onlyFreeModels && engine.sub === 'openrouter' && !String(engine.model || '').includes(':free')) {
+    return `Cost guard: модель ${engine.model} не помечена как :free.`;
+  }
+  if (o.dailyTokenLimit && _todayTokenUsage() >= Number(o.dailyTokenLimit)) {
+    return `Cost guard: дневной лимит токенов исчерпан (${o.dailyTokenLimit}).`;
+  }
+  const promptEstimate = Math.ceil(messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 1000), 0) / 4);
+  if (o.requestTokenLimit && promptEstimate > Number(o.requestTokenLimit) * 4) {
+    return `Cost guard: слишком большой запрос (${promptEstimate} input tokens estimate).`;
+  }
+  return null;
 }
 
 export async function chatDirectStream(instanceId, message, systemPrompt, attachments, streamId, tools, toolChoice) {
@@ -280,6 +407,7 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
   const historyText = message || (attachments?.length ? `[${attachments.length} file(s)]` : '');
   const userTurn = { role: 'user', content: historyText };
 
+  const startedAt = performance.now();
   let fullAnswer = '';
   let toolCalls = [];
 
@@ -295,16 +423,25 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
     const answer = {
       question: message, answer: fullAnswer, tool_calls: toolCalls, sources: [],
       promptTokens: Math.ceil(messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : 1000), 0) / 4),
-      completionTokens: Math.ceil(fullAnswer.length / 4), durationMs: 0,
+      completionTokens: Math.ceil(fullAnswer.length / 4), durationMs: Math.round(performance.now() - startedAt),
     };
     try { inst.dotnetRef.invokeMethodAsync('OnStreamCompleteCallback', answer); } catch (_) {}
   };
+
+  const guardError = _checkUsageGuard(inst.llmEngine, messages);
+  if (guardError) {
+    try { inst.dotnetRef.invokeMethodAsync('OnErrorCallback', guardError); } catch (_) {}
+    return;
+  }
 
   if (inst.llmEngine.kind === 'openai') {
     const abortCtrl = new AbortController();
     inst._activeAbortCtrl = abortCtrl;
     try {
-      const body = _buildOpenAiBody(inst.llmEngine, messages, tools, toolChoice);
+      const useResponses = _shouldUseResponsesApi(inst.llmEngine);
+      const body = useResponses
+        ? _buildResponsesBody(inst.llmEngine, messages, tools, toolChoice)
+        : _buildOpenAiBody(inst.llmEngine, messages, tools, toolChoice);
       const url = _buildOpenAiUrl(inst.llmEngine);
       const headers = _buildOpenAiHeaders(inst.llmEngine);
       // Diagnostic log — shows in DevTools console so users can confirm the key,
@@ -313,7 +450,7 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
         ? `${inst.llmEngine.apiKey.slice(0,6)}…${inst.llmEngine.apiKey.slice(-4)} (len=${inst.llmEngine.apiKey.length})`
         : `(empty, len=${(inst.llmEngine.apiKey || '').length})`;
       console.info('[sg-llm] →', { url, model: inst.llmEngine.model, sub: inst.llmEngine.sub, apiKey: keyMasked });
-      const response = await fetch(url, { method: 'POST', signal: abortCtrl.signal, headers, body: JSON.stringify(body) });
+      const response = await _fetchWithRetry(url, { method: 'POST', signal: abortCtrl.signal, headers, body: JSON.stringify(body) }, inst.llmEngine.opts || {});
       if (!response.ok) {
         const t = await response.text().catch(() => '');
         throw new Error(`LLM API error ${response.status} ${t.slice(0,200)}`);
@@ -334,6 +471,8 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
           if (payload === '[DONE]') break;
           try {
             const parsed = JSON.parse(payload);
+            if (parsed.type === 'response.output_text.delta' && parsed.delta) _sendToken(parsed.delta);
+            if (parsed.type === 'response.reasoning_summary_text.delta' && parsed.delta) _sendToken(parsed.delta);
             const delta = parsed.choices?.[0]?.delta;
             if (delta?.content) _sendToken(delta.content);
             if (delta?.reasoning_content) _sendToken(delta.reasoning_content);
@@ -370,7 +509,7 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
       _put(options, 'repeat_penalty', o.repetitionPenalty);
       _put(options, 'presence_penalty', o.presencePenalty);
       _put(options, 'frequency_penalty', o.frequencyPenalty);
-      _put(options, 'num_predict', o.maxTokens);
+      _put(options, 'num_predict', o.requestTokenLimit || o.maxTokens);
       _put(options, 'seed', o.seed);
       _put(options, 'stop', o.stop);
       const body = { model: inst.llmEngine.model, messages, stream: true };
@@ -427,7 +566,7 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
       const body = {
         model: inst.llmEngine.model,
         messages: messages.filter(m => m.role !== 'system').map(m => ({ role: m.role, content: m.content })),
-        max_tokens: o.maxTokens || 4096,
+        max_tokens: o.requestTokenLimit || o.maxTokens || 4096,
         stream: true,
       };
       const sys = messages.find(m => m.role === 'system')?.content;
