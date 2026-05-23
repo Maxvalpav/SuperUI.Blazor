@@ -5,12 +5,12 @@
 
 <SgPortal>
     <div class="sgc-toast-container sgc-toast-@PlacementClass" role="region" aria-label="Notifications" aria-live="polite">
-        @foreach (var t in (Placement is SgToastPlacement.TopRight or SgToastPlacement.TopLeft or SgToastPlacement.TopCenter ? _items.AsEnumerable().Reverse() : _items))
+        @foreach (var t in OrderedItems())
         {
             var tLocal = t;
-            <div class="sgc-toast @VariantClass(tLocal.Variant) @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")" 
-                 role="status" 
-                 aria-live="polite" 
+            <div class="sgc-toast @VariantClass(tLocal.Variant) @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")"
+                 role="status"
+                 aria-live="polite"
                  aria-atomic="true"
                  @key="tLocal.Id">
                 <div class="sgc-toast-body">
@@ -20,31 +20,41 @@
                     }
                     <div>@tLocal.Message</div>
                 </div>
-                <button type="button" class="sgc-toast-x" aria-label="Close notification" @onclick="() => RemoveAsync(tLocal.Id)">×</button>
+                <button type="button" class="sgc-toast-x" aria-label="Close notification" @onclick="() => DismissAsync(tLocal.Id)">×</button>
             </div>
         }
     </div>
 </SgPortal>
 
 @code {
+    private const int CloseAnimationMs = 300;
+
     private readonly List<SgToast> _items = new();
     private readonly Queue<SgToast> _queue = new();
     private readonly HashSet<string> _closingIds = new();
-    private readonly CancellationTokenSource _hostCts = new();
+    private readonly Dictionary<string, CancellationTokenSource> _timeouts = new();
 
+    private CancellationTokenSource _hostCts = new();
     private bool _disposed;
 
-    /// <summary>
-    /// Gets or sets the toast container placement.
-    /// Default is <see cref="SgToastPlacement.TopRight"/>.
-    /// </summary>
+    /// <summary>Toast container placement. Default — <see cref="SgToastPlacement.TopRight"/>.</summary>
     [Parameter] public SgToastPlacement Placement { get; set; } = SgToastPlacement.TopRight;
 
     protected override void OnInitialized()
     {
         Toasts.Added += OnAdd;
         Toasts.Removed += OnRemove;
+        Toasts.Updated += OnUpdate;
     }
+
+    private IEnumerable<SgToast> OrderedItems()
+        => (Placement is SgToastPlacement.TopRight
+                       or SgToastPlacement.TopLeft
+                       or SgToastPlacement.TopCenter)
+            ? _items.AsEnumerable().Reverse()
+            : _items;
+
+    // ── Service events ────────────────────────────────────────────────────────
 
     private void OnAdd(SgToast t)
     {
@@ -52,10 +62,30 @@
         _ = SafeAsync(() => AddAsync(t), nameof(OnAdd));
     }
 
+    private void OnRemove(string id)
+    {
+        if (_disposed) return;
+        _ = SafeAsync(() => DismissAsync(id), nameof(OnRemove));
+    }
+
+    private void OnUpdate(SgToast t)
+    {
+        if (_disposed) return;
+        _ = SafeAsync(async () =>
+        {
+            // Подменяем элемент в видимом списке (если он там есть)
+            var idx = _items.FindIndex(x => x.Id == t.Id);
+            if (idx >= 0) _items[idx] = t;
+            await InvokeAsync(StateHasChanged);
+        }, nameof(OnUpdate));
+    }
+
+    // ── Show ──────────────────────────────────────────────────────────────────
+
     private async Task AddAsync(SgToast t)
     {
         var max = Math.Max(1, Options.Value.MaxVisibleToasts);
-        
+
         if (_items.Count >= max)
         {
             _queue.Enqueue(t);
@@ -65,73 +95,83 @@
         _items.Add(t);
         await InvokeAsync(StateHasChanged);
 
-        if (t.DurationMs > 0 && !_disposed)
+        if (t.DurationMs > 0)
         {
-            // Create a CancellationTokenSource for this toast's timeout
-            var cts = CancellationTokenSource.CreateLinkedTokenSource(_hostCts.Token);
-            t.TimeoutCts = cts;
-            
-            try
+            await StartAutoDismissAsync(t);
+        }
+    }
+
+    private async Task StartAutoDismissAsync(SgToast t)
+    {
+        // Отменяем старый таймер если был (например, после Update с продлением)
+        if (_timeouts.Remove(t.Id, out var oldCts))
+        {
+            try { oldCts.Cancel(); } catch { }
+            oldCts.Dispose();
+        }
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_hostCts.Token);
+        _timeouts[t.Id] = cts;
+
+        try
+        {
+            await Task.Delay(t.DurationMs, cts.Token);
+            if (!_disposed) await DismissAsync(t.Id);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            if (_timeouts.Remove(t.Id, out var owned))
             {
-                await Task.Delay(t.DurationMs, cts.Token);
-                if (!_disposed) await RemoveAsync(t.Id);
-            }
-            catch (OperationCanceledException) { }
-            finally
-            {
-                // Dispose the timeout token when auto-close completes
-                if (t.TimeoutCts != null)
-                {
-                    try { t.TimeoutCts.Cancel(); } catch { }
-                    t.TimeoutCts.Dispose();
-                    t.TimeoutCts = null;
-                }
+                owned.Dispose();
             }
         }
     }
 
-    private void OnRemove(string id)
+    // ── Close ─────────────────────────────────────────────────────────────────
+
+    private async Task DismissAsync(string id)
     {
         if (_disposed) return;
-        _ = SafeAsync(() => RemoveAsync(id), nameof(OnRemove));
-    }
-
-    private async Task RemoveAsync(string id)
-    {
         if (_closingIds.Contains(id)) return;
-        
-        // Cancel the timeout token when manually closed
-        var toast = _items.FirstOrDefault(x => x.Id == id);
-        if (toast?.TimeoutCts != null)
+        if (_items.All(x => x.Id != id)) return; // нечего закрывать
+
+        // Гасим таймер
+        if (_timeouts.Remove(id, out var cts))
         {
-            try { toast.TimeoutCts.Cancel(); } catch { }
-            toast.TimeoutCts.Dispose();
-            toast.TimeoutCts = null;
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
         }
-        
+
         _closingIds.Add(id);
         await InvokeAsync(StateHasChanged);
-        
-        // Wait for animation
-        await Task.Delay(300);
-        
+
+        // Ждём анимацию закрытия, но прерываемся при dispose
+        try { await Task.Delay(CloseAnimationMs, _hostCts.Token); }
+        catch (OperationCanceledException) { return; }
+
+        if (_disposed) return;
+
         _items.RemoveAll(x => x.Id == id);
         _closingIds.Remove(id);
-        
-        // Check queue
+
+        // Подкачка из очереди
         if (_queue.Count > 0)
         {
             var next = _queue.Dequeue();
-            _ = SafeAsync(() => AddAsync(next), nameof(RemoveAsync));
+            _ = SafeAsync(() => AddAsync(next), nameof(DismissAsync));
         }
 
         await InvokeAsync(StateHasChanged);
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private static async Task SafeAsync(Func<Task> action, string source)
     {
         try { await action(); }
         catch (OperationCanceledException) { }
+        catch (ObjectDisposedException)    { }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[SgToastHost.{source}] {ex}");
@@ -160,25 +200,26 @@
     {
         if (_disposed) return;
         _disposed = true;
-        
-        Toasts.Added -= OnAdd;
+
+        Toasts.Added   -= OnAdd;
         Toasts.Removed -= OnRemove;
-        
-        // Cancel all active toast timeouts
-        foreach (var toast in _items)
-        {
-            if (toast.TimeoutCts != null)
-            {
-                try { toast.TimeoutCts.Cancel(); } catch { }
-                toast.TimeoutCts.Dispose();
-                toast.TimeoutCts = null;
-            }
-        }
-        
+        Toasts.Updated -= OnUpdate;
+
         try { _hostCts.Cancel(); } catch { }
+
+        foreach (var cts in _timeouts.Values)
+        {
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
+        }
+        _timeouts.Clear();
+
         _hostCts.Dispose();
-        
-        // Dispose the service
-        await Toasts.DisposeAsync();
+        _items.Clear();
+        _queue.Clear();
+        _closingIds.Clear();
+
+        // НЕ диспозим Toasts — это DI-singleton, владеет контейнер.
+        await ValueTask.CompletedTask;
     }
 }

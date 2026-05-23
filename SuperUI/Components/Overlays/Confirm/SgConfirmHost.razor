@@ -1,5 +1,5 @@
 @namespace SuperUI.Components
-@implements IDisposable
+@implements IAsyncDisposable
 @inject SgConfirmService ConfirmService
 
 <SgModal Visible="@_visible" VisibleChanged="OnVisibleChanged" Title="@_request?.Title">
@@ -23,7 +23,9 @@
 @code {
     private SgConfirmRequest? _request;
     private TaskCompletionSource<bool>? _pending;
+    private CancellationTokenRegistration? _cancelReg;
     private bool _visible;
+    private bool _disposed;
 
     protected override void OnInitialized()
     {
@@ -32,17 +34,31 @@
 
     private Task<bool> ShowAsync(SgConfirmRequest request)
     {
-        _request = request;
+        if (_disposed) return Task.FromResult(false);
+
+        // Отменяем предыдущий ожидающий диалог — пользователь увидит только последний запрос.
         _pending?.TrySetResult(false);
+        DisposeCancelReg();
+
+        _request = request;
         _pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         _visible = true;
+
+        // Программная отмена со стороны вызывающего.
+        if (request.CancellationToken.CanBeCanceled)
+        {
+            var tcs = _pending;
+            _cancelReg = request.CancellationToken.Register(static state =>
+            {
+                ((TaskCompletionSource<bool>)state!).TrySetResult(false);
+            }, tcs);
+        }
+
         _ = InvokeAsync(StateHasChanged);
         return _pending.Task;
     }
 
-    /// <summary>
-    /// Maps the confirm request variant to the appropriate button variant.
-    /// </summary>
+    /// <summary>Maps the confirm request variant to the appropriate button variant.</summary>
     private SgButtonVariant ConfirmButtonVariant => _request?.Variant switch
     {
         SgAlertVariant.Success => SgButtonVariant.Success,
@@ -73,16 +89,33 @@
         if (!visible)
         {
             _request = null;
+            DisposeCancelReg();
         }
 
-        await InvokeAsync(StateHasChanged);
+        if (!_disposed) await InvokeAsync(StateHasChanged);
     }
 
     private Task CloseAsync() => OnVisibleChanged(false);
 
-    public void Dispose()
+    private void DisposeCancelReg()
     {
+        var reg = _cancelReg;
+        _cancelReg = null;
+        reg?.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
         ConfirmService.Requested -= ShowAsync;
+
+        DisposeCancelReg();
         _pending?.TrySetResult(false);
+        _pending = null;
+        _request = null;
+
+        await ValueTask.CompletedTask;
     }
 }
