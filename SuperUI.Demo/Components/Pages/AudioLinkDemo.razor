@@ -1,0 +1,186 @@
+@page "/audio-link-demo"
+@using SuperUI.Components
+
+<PageTitle>Acoustic Data Link - SUI</PageTitle>
+
+<div style="max-width: 900px; margin: 0 auto; padding: 24px 16px;">
+
+    <div style="margin-bottom: 24px;">
+        <h1 style="font-size: 22px; font-weight: 800; margin: 0 0 6px;">
+            🔊 Acoustic Data Link
+        </h1>
+        <p style="color: var(--sg-fg-muted); font-size: 13px; margin: 0;">
+            Передача данных между устройствами через звук — без Wi-Fi, Bluetooth и интернета.
+            Использует FSK-модуляцию в диапазоне 18–22 kHz (ультразвук).
+        </p>
+    </div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px;">
+
+        @* ── Устройство A: Передатчик ── *@
+        <SgCard Title="Устройство A — Передатчик">
+            <SgAudioLink
+                Title="Acoustic TX"
+                ShowTransmitter="true"
+                ShowReceiver="false"
+                ShowSettings="true"
+                ShowLog="true"
+                TxPlaceholder="Купон, токен, ссылка..."
+                MaxPayloadLength="128"
+                OnTxComplete="OnTxComplete"
+                OnError="OnError" />
+        </SgCard>
+
+        @* ── Устройство B: Приёмник ── *@
+        <SgCard Title="Устройство B — Приёмник">
+            <SgAudioLink
+                Title="Acoustic RX"
+                ShowTransmitter="false"
+                ShowReceiver="true"
+                ShowSettings="true"
+                ShowLog="true"
+                OnDataReceived="OnDataReceived"
+                OnError="OnError" />
+        </SgCard>
+
+    </div>
+
+    @* ── Полнодуплексный режим ── *@
+    <SgCard Title="Полнодуплексный режим (TX + RX)" Style="margin-bottom: 24px;">
+        <p style="font-size: 12px; color: var(--sg-fg-muted); margin: 0 0 12px;">
+            Один компонент — оба режима одновременно. Откройте эту страницу на двух устройствах.
+        </p>
+        <SgAudioLink
+            Title="Full-Duplex Node"
+            ShowTransmitter="true"
+            ShowReceiver="true"
+            ShowSettings="true"
+            ShowLog="true"
+            MaxPayloadLength="256"
+            OnDataReceived="OnDataReceived"
+            OnTxComplete="OnTxComplete"
+            OnError="OnError" />
+    </SgCard>
+
+    @* ── Сценарии использования ── *@
+    <SgCard Title="Сценарии применения" Style="margin-bottom: 24px;">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+            @foreach (var scenario in _scenarios)
+            {
+                <div style="padding: 12px; background: var(--sg-bg-subtle); border: 1px solid var(--sg-border);
+                            border-radius: var(--sg-radius-lg); cursor: pointer;"
+                     @onclick="() => UseScenario(scenario.Payload)">
+                    <div style="font-size: 20px; margin-bottom: 6px;">@scenario.Icon</div>
+                    <div style="font-weight: 700; font-size: 12px; margin-bottom: 4px;">@scenario.Title</div>
+                    <div style="font-size: 11px; color: var(--sg-fg-muted);">@scenario.Description</div>
+                    <div style="margin-top: 8px; font-size: 10px; font-family: monospace;
+                                color: var(--sg-color-primary); background: var(--sg-color-primary-subtle);
+                                padding: 2px 6px; border-radius: 4px; display: inline-block;">
+                        @scenario.Payload
+                    </div>
+                </div>
+            }
+        </div>
+    </SgCard>
+
+    @* ── Как это работает ── *@
+    <SgCard Title="Как это работает">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 12px;">
+            <div>
+                <h4 style="margin: 0 0 8px; font-size: 12px; font-weight: 700;">Протокол FSK</h4>
+                <ul style="margin: 0; padding-left: 16px; color: var(--sg-fg-subtle); line-height: 1.8;">
+                    <li>16 несущих частот: 18000–21750 Hz</li>
+                    <li>Шаг 250 Hz → 4 бита на символ</li>
+                    <li>Преамбула: 3 пары 17500/17750 Hz</li>
+                    <li>Маркер старта: 17250 Hz</li>
+                    <li>CRC-8 для проверки целостности</li>
+                    <li>FFT 8192 точек для точного детектирования</li>
+                </ul>
+            </div>
+            <div>
+                <h4 style="margin: 0 0 8px; font-size: 12px; font-weight: 700;">Web Audio API</h4>
+                <ul style="margin: 0; padding-left: 16px; color: var(--sg-fg-subtle); line-height: 1.8;">
+                    <li>OscillatorNode — генерация тонов</li>
+                    <li>OfflineAudioContext — рендер без задержек</li>
+                    <li>DynamicsCompressorNode — защита динамиков</li>
+                    <li>AnalyserNode + FFT — анализ спектра</li>
+                    <li>BiquadFilterNode — highpass 16 kHz</li>
+                    <li>getUserMedia — захват микрофона</li>
+                </ul>
+            </div>
+        </div>
+
+        <div style="margin-top: 16px; padding: 10px 12px; background: var(--sg-color-warning-subtle);
+                    border: 1px solid rgba(217,119,6,.2); border-radius: var(--sg-radius-md);
+                    font-size: 11px; color: var(--sg-color-warning);">
+            ⚠️ Требуется HTTPS и разрешение на использование микрофона для режима приёма.
+            Ультразвуковой диапазон поддерживается большинством современных динамиков и микрофонов.
+            Скорость передачи ~5–12 байт/с в зависимости от длительности символа.
+        </div>
+    </SgCard>
+
+    @* ── Лог событий ── *@
+    @if (_events.Count > 0)
+    {
+        <SgCard Title="События компонентов" Style="margin-top: 20px;">
+            <div style="max-height: 200px; overflow-y: auto; font-size: 11px; font-family: monospace;">
+                @foreach (var ev in _events.AsEnumerable().Reverse())
+                {
+                    <div style="padding: 3px 0; border-bottom: 1px solid var(--sg-divider);
+                                color: @(ev.StartsWith("✅") ? "var(--sg-color-success)" :
+                                         ev.StartsWith("❌") ? "var(--sg-color-danger)" :
+                                         "var(--sg-fg-subtle)")">
+                        @ev
+                    </div>
+                }
+            </div>
+        </SgCard>
+    }
+
+</div>
+
+@code {
+    private readonly List<string> _events = new();
+
+    private record Scenario(string Icon, string Title, string Description, string Payload);
+
+    private readonly Scenario[] _scenarios =
+    [
+        new("🎫", "Скидочный купон",   "Передача кода скидки на кассе",          "COUPON:SAVE20-2026"),
+        new("🔑", "Токен авторизации", "Вход без интернета в закрытой зоне",      "AUTH:eyJhbGciOiJIUzI1NiJ9"),
+        new("🔗", "Ссылка",            "Передача URL на выставке",                "https://superui.dev"),
+        new("📦", "ID заказа",         "Подтверждение заказа на складе",          "ORDER:ORD-2026-00847"),
+        new("🏷️", "NFC-замена",        "Бесконтактная передача без NFC-чипа",     "NFC:04:A3:2B:11:CC:DE"),
+        new("🔐", "TOTP-код",          "Одноразовый пароль для 2FA",              "OTP:847291"),
+    ];
+
+    private void UseScenario(string payload)
+    {
+        _events.Insert(0, $"📋 {DateTime.Now:HH:mm:ss} Сценарий скопирован: {payload}");
+        StateHasChanged();
+    }
+
+    private Task OnDataReceived(SgAudioLinkDataReceivedEventArgs args)
+    {
+        _events.Insert(0, $"✅ {DateTime.Now:HH:mm:ss} RX: \"{args.Text}\" ({args.ByteCount}B, CRC=0x{args.Crc:X2})");
+        if (_events.Count > 100) _events.RemoveAt(_events.Count - 1);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnTxComplete(SgAudioLinkTxCompleteEventArgs args)
+    {
+        _events.Insert(0, $"✅ {DateTime.Now:HH:mm:ss} TX: \"{args.Text}\" ({args.SymbolCount} символов)");
+        if (_events.Count > 100) _events.RemoveAt(_events.Count - 1);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    private Task OnError(SgAudioLinkErrorEventArgs args)
+    {
+        _events.Insert(0, $"❌ {DateTime.Now:HH:mm:ss} [{args.ErrorType}] {args.Message}");
+        if (_events.Count > 100) _events.RemoveAt(_events.Count - 1);
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+}

@@ -174,6 +174,7 @@ export function backtopAttach(dotnet, opts) {
     const targetSelector = opts?.target;
     let target    = targetSelector ? document.querySelector(targetSelector) : window;
     const threshold = opts?.threshold ?? 200;
+    const direction = opts?.direction ?? 'top';
     let visible   = false;
     let isDisposed = false;
     let listenerAttached = false;
@@ -183,9 +184,23 @@ export function backtopAttach(dotnet, opts) {
         return target === window ? window.scrollY : target.scrollTop;
     }
 
+    function getMaxY() {
+        if (!target) return 0;
+        if (target === window) {
+            return document.documentElement.scrollHeight - window.innerHeight;
+        }
+        return target.scrollHeight - target.clientHeight;
+    }
+
     function check() {
         if (isDisposed || !dotnet) return;
-        const next = getY() > threshold;
+        let next = false;
+        if (direction === 'top') {
+            next = getY() > threshold;
+        } else {
+            next = getY() < getMaxY() - threshold;
+        }
+        
         if (next !== visible) {
             visible = next;
             try {
@@ -240,5 +255,15 @@ export function scrollToTop(targetSelector, smooth) {
         window.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
     } else {
         target.scrollTo({ top: 0, behavior: smooth ? 'smooth' : 'auto' });
+    }
+}
+
+export function scrollToBottom(targetSelector, smooth) {
+    const target = targetSelector ? document.querySelector(targetSelector) : window;
+    if (!target) return;
+    if (target === window) {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    } else {
+        target.scrollTo({ top: target.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     }
 }

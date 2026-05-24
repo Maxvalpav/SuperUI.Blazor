@@ -106,6 +106,9 @@ public class SgEChartsOptions
 
     /// <summary>Background colour. <c>null</c> = transparent.</summary>
     public string? BackgroundColor { get; set; }
+
+    /// <summary>Optional ARIA label for accessibility. Default is "Chart: {ChartType}".</summary>
+    public string? AriaLabel { get; set; }
 }
 
 // ── Events ────────────────────────────────────────────────────────────────────

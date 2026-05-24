@@ -1,0 +1,157 @@
+@page "/2gis-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+
+<PageTitle>2GIS MapGL — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <SgStack Align="SgAlignItems.Center" Gap="12px">
+        <SgIcon Icon="Map" Size="28" Color="var(--sg-primary)" />
+        <div>
+            <h1 class="sg-demo-title">2GIS MapGL</h1>
+            <p class="sg-demo-subtitle">Интеграция современного векторного API 2GIS с поддержкой 3D, вращения и наклона.</p>
+        </div>
+    </SgStack>
+</div>
+
+<SgRow Gutter="24">
+    <SgCol Span="16">
+        <SgCard Title="Интерактивная карта" FullHeight>
+            <Sg2GisMap 
+                Options="_options" 
+                Markers="_markers" 
+                Polylines="_polylines"
+                OnViewChanged="HandleViewChanged"
+                OnMarkerClick="HandleMarkerClick"
+                Height="600px" />
+        </SgCard>
+    </SgCol>
+
+    <SgCol Span="8">
+        <SgStack Orientation="SgOrientation.Vertical" Gap="16px">
+            <SgCard Title="Параметры">
+                <SgStack Orientation="SgOrientation.Vertical" Gap="12px">
+                    <div>
+                        <label class="sg-label">Центр: @_currentCenter</label>
+                    </div>
+                    <div>
+                        <label class="sg-label">Zoom: @_currentZoom:F1</label>
+                    </div>
+                    <div>
+                        <label class="sg-label">Rotation: @_currentRotation:F0°</label>
+                    </div>
+                    <div>
+                        <label class="sg-label">Pitch: @_currentPitch:F0°</label>
+                    </div>
+                    
+                    <SgDivider />
+
+                    <SgButton Variant="SgButtonVariant.Primary" OnClick="GoToMoscow">В центр Москвы</SgButton>
+                    <SgButton OnClick="ToggleMarkers">@(showMarkers ? "Скрыть маркеры" : "Показать маркеры")</SgButton>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="События">
+                <div style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px; background: var(--sg-bg-subtle); padding: 8px; border-radius: 4px;">
+                    @foreach (var log in _logs)
+                    {
+                        <div style="margin-bottom: 4px; border-bottom: 1px solid var(--sg-border-light); padding-bottom: 2px;">
+                            <span style="color: var(--sg-text-secondary)">[@DateTime.Now:HH:mm:ss]</span> @log
+                        </div>
+                    }
+                </div>
+            </SgCard>
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+@code {
+    private Sg2GisMapOptions _options = new()
+    {
+        ApiKey = "cb20c30a-313b-4835-bc32-9a008272551d", // Публичный ключ для демо
+        CenterLon = 37.6176,
+        CenterLat = 55.7558,
+        Zoom = 13,
+        Pitch = 45,
+        Rotation = 0
+    };
+
+    private List<SgMapMarker> _markers = new();
+    private List<SgMapPolyline> _polylines = new();
+    private List<string> _logs = new();
+    private bool showMarkers = true;
+
+    private string _currentCenter = "37.6176, 55.7558";
+    private double _currentZoom = 13;
+    private double _currentRotation = 0;
+    private double _currentPitch = 45;
+
+    protected override void OnInitialized()
+    {
+        _markers = new List<SgMapMarker>
+        {
+            new SgMapMarker { Id = "kremlin", Longitude = 37.6176, Latitude = 55.7558, Title = "Московский Кремль", Description = "Сердце России" },
+            new SgMapMarker { Id = "gum", Longitude = 37.6215, Latitude = 55.7547, Title = "ГУМ", Description = "Главный Универсальный Магазин" }
+        };
+
+        _polylines = new List<SgMapPolyline>
+        {
+            new SgMapPolyline 
+            { 
+                Id = "route1", 
+                Color = "#ff4d4f", 
+                Width = 5,
+                Coordinates = new List<SgMapCoord>
+                {
+                    new SgMapCoord { Longitude = 37.6176, Latitude = 55.7558 },
+                    new SgMapCoord { Longitude = 37.6215, Latitude = 55.7547 }
+                }
+            }
+        };
+    }
+
+    private void HandleViewChanged(Sg2GisMapViewChangedEventArgs args)
+    {
+        _currentCenter = $"{args.CenterLon:F4}, {args.CenterLat:F4}";
+        _currentZoom = args.Zoom;
+        _currentRotation = args.Rotation;
+        _currentPitch = args.Pitch;
+        StateHasChanged();
+    }
+
+    private void HandleMarkerClick(SgMapMarkerClickEventArgs args)
+    {
+        _logs.Insert(0, $"Клик по маркеру: {args.Title} ({args.MarkerId})");
+        StateHasChanged();
+    }
+
+    private void GoToMoscow()
+    {
+        _options = new Sg2GisMapOptions
+        {
+            ApiKey = _options.ApiKey,
+            CenterLon = 37.6176,
+            CenterLat = 55.7558,
+            Zoom = 15,
+            Pitch = 0,
+            Rotation = 0
+        };
+    }
+
+    private void ToggleMarkers()
+    {
+        showMarkers = !showMarkers;
+        if (showMarkers)
+        {
+            _markers = new List<SgMapMarker>
+            {
+                new SgMapMarker { Id = "kremlin", Longitude = 37.6176, Latitude = 55.7558, Title = "Московский Кремль" },
+                new SgMapMarker { Id = "gum", Longitude = 37.6215, Latitude = 55.7547, Title = "ГУМ" }
+            };
+        }
+        else
+        {
+            _markers = new List<SgMapMarker>();
+        }
+    }
+}

@@ -1,0 +1,117 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="sgc-eye-tracker">
+    @if (!_isActive)
+    {
+        <SgCard Variant="SgCardVariant.Glass" Style="max-width: 400px; margin: 20px auto;">
+            <SgStack Orientation="SgOrientation.Vertical" Align="SgAlignItems.Center" Gap="16px">
+                <SgIcon Icon="@SgIcons.Eye" Style="width: 48px; height: 48px; color: var(--sg-primary);" />
+                <div style="text-align: center;">
+                    <h3 style="margin: 0;">Eye Tracking</h3>
+                    <p style="color: var(--sg-text-secondary); font-size: 14px;">
+                        Активируйте трекер взгляда для управления интерфейсом или контроля внимания.
+                    </p>
+                </div>
+                <SgButton Variant="SgButtonVariant.Primary" OnClick="StartTrackerAsync" Text="Активировать" />
+            </SgStack>
+        </SgCard>
+    }
+    else
+    {
+        <div @ref="_dotRef" class="sgc-eye-tracker-dot">
+            <div @ref="_dotInnerRef" class="sgc-eye-tracker-dot-inner"></div>
+        </div>
+        
+        <div class="sgc-eye-tracker-toolbar">
+            <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="CalibrateAsync" Text="Калибровка" />
+            <SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="StopTrackerAsync" Text="Остановить" />
+        </div>
+    }
+</div>
+
+<style>
+    .sgc-eye-tracker-dot {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 40px;
+        height: 40px;
+        margin-left: -20px;
+        margin-top: -20px;
+        border: 2px solid var(--sg-primary);
+        border-radius: 50%;
+        z-index: 10000;
+        pointer-events: none;
+        transition: transform 0.1s ease-out;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--sg-primary-rgb), 0.1);
+        backdrop-filter: blur(2px);
+    }
+    .sgc-eye-tracker-dot-inner {
+        width: 8px;
+        height: 8px;
+        background: var(--sg-primary);
+        border-radius: 50%;
+        box-shadow: 0 0 10px var(--sg-primary);
+    }
+    .sgc-eye-tracker-toolbar {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10001;
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(8px);
+        border-radius: var(--sg-radius-md);
+        border: 1px solid var(--sg-border);
+        box-shadow: var(--sg-shadow-md);
+    }
+    [data-theme="dark"] .sgc-eye-tracker-toolbar {
+        background: rgba(30, 30, 35, 0.7);
+    }
+</style>
+
+@code {
+    private ElementReference _dotRef;
+    private ElementReference _dotInnerRef;
+    private bool _isActive;
+
+    [Parameter] public EventCallback<SgGazePoint> OnGazeUpdate { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-eye-tracker.js";
+
+    public async Task StartTrackerAsync()
+    {
+        _isActive = await SafeInvokeAsync<bool>("initEyeTracker", _dotRef, _dotInnerRef);
+        StateHasChanged();
+    }
+
+    public async Task StopTrackerAsync()
+    {
+        await SafeInvokeVoidAsync("stopEyeTracker");
+        _isActive = false;
+        StateHasChanged();
+    }
+
+    public async Task CalibrateAsync()
+    {
+        await SafeInvokeVoidAsync("calibrate");
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try { await StopTrackerAsync(); } catch { }
+        await base.DisposeAsync();
+    }
+
+    public class SgGazePoint
+    {
+        public double X { get; set; }
+        public double Y { get; set; }
+    }
+}

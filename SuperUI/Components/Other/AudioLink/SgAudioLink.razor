@@ -1,0 +1,474 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="sg-al-root @CssClass" id="@ResolvedId" style="@Style" @attributes="AdditionalAttributes">
+
+    @* ── Header ── *@
+    <div class="sg-al-header">
+        <div class="sg-al-header-left">
+            <span class="sg-al-icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 18V5l12-2v13"/>
+                    <circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+                </svg>
+            </span>
+            <span class="sg-al-title">@(Title ?? "Acoustic Data Link")</span>
+        </div>
+        <div class="sg-al-state-badge sg-al-state-@_state.ToString().ToLowerInvariant()">
+            <span class="sg-al-state-dot"></span>
+            @GetStateLabel()
+        </div>
+    </div>
+
+    @* ── Spectrum visualizer ── *@
+    <div class="sg-al-spectrum-wrap">
+        <canvas id="@_canvasId" class="sg-al-canvas" width="600" height="80"
+                aria-label="Frequency spectrum 16–23 kHz"></canvas>
+        <div class="sg-al-spectrum-labels">
+            <span>16 kHz</span>
+            <span>18 kHz</span>
+            <span>20 kHz</span>
+            <span>22 kHz</span>
+        </div>
+    </div>
+
+    @* ── TX panel ── *@
+    @if (ShowTransmitter)
+    {
+        <div class="sg-al-panel">
+            <div class="sg-al-panel-title">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+                Передатчик
+            </div>
+
+            <div class="sg-al-tx-row">
+                <input class="sg-al-input"
+                       type="text"
+                       placeholder="@(TxPlaceholder ?? "Введите текст для передачи...")"
+                       @bind="_txText"
+                       @bind:event="oninput"
+                       @onkeydown="OnTxKeyDown"
+                       disabled="@(_state == SgAudioLinkState.Transmitting)"
+                       maxlength="@MaxPayloadLength"
+                       aria-label="Текст для передачи" />
+
+                <button class="sg-al-btn sg-al-btn-primary"
+                        @onclick="TransmitAsync"
+                        disabled="@(string.IsNullOrWhiteSpace(_txText) || _state == SgAudioLinkState.Transmitting)">
+                    @if (_state == SgAudioLinkState.Transmitting)
+                    {
+                        <span class="sg-al-spinner" aria-hidden="true"></span>
+                        <span>Передача...</span>
+                    }
+                    else
+                    {
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="22 2 11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                        </svg>
+                        <span>Отправить</span>
+                    }
+                </button>
+            </div>
+
+            @if (_txText.Length > 0)
+            {
+                <div class="sg-al-tx-meta">
+                    <span>@_txText.Length / @MaxPayloadLength байт</span>
+                    <span>~@EstimateTransmitMs() мс</span>
+                </div>
+            }
+        </div>
+    }
+
+    @* ── RX panel ── *@
+    @if (ShowReceiver)
+    {
+        <div class="sg-al-panel">
+            <div class="sg-al-panel-title">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+                Приёмник
+            </div>
+
+            <div class="sg-al-rx-controls">
+                @if (!_rxActive)
+                {
+                    <button class="sg-al-btn sg-al-btn-success" @onclick="StartReceiveAsync">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        </svg>
+                        Начать слушать
+                    </button>
+                }
+                else
+                {
+                    <button class="sg-al-btn sg-al-btn-danger" @onclick="StopReceiveAsync">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <rect x="3" y="3" width="18" height="18" rx="2"/>
+                        </svg>
+                        Остановить
+                    </button>
+
+                    <div class="sg-al-rx-indicator @(_state == SgAudioLinkState.PreambleDetected || _state == SgAudioLinkState.Receiving ? "sg-al-rx-active" : "")">
+                        <span class="sg-al-rx-pulse"></span>
+                        @(_state == SgAudioLinkState.PreambleDetected ? "Преамбула..." :
+                          _state == SgAudioLinkState.Receiving        ? "Приём данных..." :
+                                                                         "Ожидание сигнала")
+                    </div>
+                }
+            </div>
+
+            @if (_lastReceived is not null)
+            {
+                <div class="sg-al-rx-result">
+                    <div class="sg-al-rx-result-header">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                             stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        Получено · @_lastReceived.ByteCount байт · CRC 0x@_lastReceived.Crc.ToString("X2")
+                        · @_lastReceived.ReceivedAt.ToString("HH:mm:ss")
+                    </div>
+                    <div class="sg-al-rx-text" role="status" aria-live="polite">@_lastReceived.Text</div>
+                    @if (ShowCopyButton)
+                    {
+                        <button class="sg-al-btn sg-al-btn-ghost sg-al-btn-sm" @onclick="CopyLastReceivedAsync">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                 stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                            </svg>
+                            @(_copied ? "Скопировано!" : "Копировать")
+                        </button>
+                    }
+                </div>
+            }
+        </div>
+    }
+
+    @* ── Settings ── *@
+    @if (ShowSettings)
+    {
+        <details class="sg-al-settings">
+            <summary class="sg-al-settings-toggle">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="12" cy="12" r="3"/>
+                    <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+                </svg>
+                Параметры протокола
+            </summary>
+            <div class="sg-al-settings-body">
+                <label class="sg-al-setting-row">
+                    <span>Длительность символа</span>
+                    <div class="sg-al-setting-control">
+                        <input type="range" min="40" max="200" step="10"
+                               @bind="SymbolMs" @bind:event="oninput" />
+                        <span class="sg-al-setting-val">@SymbolMs мс</span>
+                    </div>
+                </label>
+                <label class="sg-al-setting-row">
+                    <span>Громкость передатчика</span>
+                    <div class="sg-al-setting-control">
+                        <input type="range" min="0.1" max="1.0" step="0.05"
+                               @bind="Volume" @bind:event="oninput" />
+                        <span class="sg-al-setting-val">@((Volume * 100).ToString("F0"))%</span>
+                    </div>
+                </label>
+                @if (_protocolInfo is not null)
+                {
+                    <div class="sg-al-proto-info">
+                        <div class="sg-al-proto-row">
+                            <span>Несущие</span>
+                            <span>@_protocolInfo.BaseFreq–@(_protocolInfo.BaseFreq + (_protocolInfo.NumCarriers - 1) * _protocolInfo.FreqStep) Hz</span>
+                        </div>
+                        <div class="sg-al-proto-row">
+                            <span>Шаг</span><span>@_protocolInfo.FreqStep Hz</span>
+                        </div>
+                        <div class="sg-al-proto-row">
+                            <span>Бит/символ</span><span>@_protocolInfo.BitsPerSymbol</span>
+                        </div>
+                        <div class="sg-al-proto-row">
+                            <span>FFT</span><span>@_protocolInfo.FftSize</span>
+                        </div>
+                        <div class="sg-al-proto-row">
+                            <span>Скорость</span>
+                            <span>~@((1000.0 / SymbolMs * _protocolInfo.BitsPerSymbol / 8.0).ToString("F1")) байт/с</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </details>
+    }
+
+    @* ── Log ── *@
+    @if (ShowLog && _log.Count > 0)
+    {
+        <div class="sg-al-log" role="log" aria-label="Журнал событий">
+            <div class="sg-al-log-header">
+                <span>Журнал</span>
+                <button class="sg-al-btn sg-al-btn-ghost sg-al-btn-sm" @onclick="ClearLog">Очистить</button>
+            </div>
+            <div class="sg-al-log-entries">
+                @foreach (var entry in _log.AsEnumerable().Reverse().Take(50))
+                {
+                    <div class="sg-al-log-entry sg-al-log-@entry.Level">
+                        <span class="sg-al-log-time">@entry.Timestamp.ToString("HH:mm:ss.fff")</span>
+                        <span class="sg-al-log-dir">@entry.Direction</span>
+                        <span class="sg-al-log-msg">@entry.Message</span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ── Error ── *@
+    @if (_error is not null)
+    {
+        <div class="sg-al-error" role="alert">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            @_error
+            <button class="sg-al-btn sg-al-btn-ghost sg-al-btn-sm" @onclick="() => _error = null">✕</button>
+        </div>
+    }
+</div>
+
+@code {
+    protected override string ModulePath => "./_content/SuperUI/sg-audio-link.js";
+    protected override string IdPrefix   => "sg-audio-link";
+
+    // ── Parameters ─────────────────────────────────────────────────────────────
+
+    [Parameter] public string?  Title           { get; set; }
+    [Parameter] public bool     ShowTransmitter { get; set; } = true;
+    [Parameter] public bool     ShowReceiver    { get; set; } = true;
+    [Parameter] public bool     ShowSettings    { get; set; } = true;
+    [Parameter] public bool     ShowLog         { get; set; } = true;
+    [Parameter] public bool     ShowCopyButton  { get; set; } = true;
+    [Parameter] public string?  TxPlaceholder   { get; set; }
+    [Parameter] public int      MaxPayloadLength { get; set; } = 256;
+    [Parameter] public int      SymbolMs        { get; set; } = 80;
+    [Parameter] public double   Volume          { get; set; } = 0.5;
+
+    [Parameter] public EventCallback<SgAudioLinkDataReceivedEventArgs> OnDataReceived { get; set; }
+    [Parameter] public EventCallback<SgAudioLinkTxCompleteEventArgs>   OnTxComplete   { get; set; }
+    [Parameter] public EventCallback<SgAudioLinkErrorEventArgs>        OnError        { get; set; }
+
+    // ── State ──────────────────────────────────────────────────────────────────
+
+    private SgAudioLinkState                  _state        = SgAudioLinkState.Idle;
+    private string?                           _error;
+    private string                            _txText       = string.Empty;
+    private bool                              _rxActive;
+    private bool                              _copied;
+    private SgAudioLinkDataReceivedEventArgs? _lastReceived;
+    private SgAudioLinkProtocolInfo?          _protocolInfo;
+    private readonly List<SgAudioLinkLogEntry> _log         = new();
+    private readonly string                   _canvasId     = $"sg-al-canvas-{Guid.NewGuid():N}";
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        var opts = new
+        {
+            symbolMs = SymbolMs,
+            guardMs  = 10,
+            volume   = Volume,
+        };
+
+        await SafeInvokeVoidAsync("init", SelfRef, ResolvedId, opts);
+        await SafeInvokeVoidAsync("attachCanvas", ResolvedId, _canvasId);
+
+        _protocolInfo = await SafeInvokeAsync<SgAudioLinkProtocolInfo>("getProtocolInfo");
+
+        AddLog("SYS", "Компонент инициализирован", "info");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── TX ─────────────────────────────────────────────────────────────────────
+
+    public async Task TransmitAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_txText)) return;
+        if (_state == SgAudioLinkState.Transmitting) return;
+
+        _state = SgAudioLinkState.Transmitting;
+        _error = null;
+        AddLog("TX", $"Передача: \"{_txText}\" ({_txText.Length} байт)", "info");
+        await InvokeAsync(StateHasChanged);
+
+        await SafeInvokeVoidAsync("transmit", ResolvedId, _txText);
+    }
+
+    private async Task OnTxKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await TransmitAsync();
+    }
+
+    // ── RX ─────────────────────────────────────────────────────────────────────
+
+    public async Task StartReceiveAsync()
+    {
+        _rxActive = true;
+        _state    = SgAudioLinkState.Listening;
+        _error    = null;
+        AddLog("SYS", "Запрос доступа к микрофону...", "info");
+        await InvokeAsync(StateHasChanged);
+
+        await SafeInvokeVoidAsync("startReceive", ResolvedId);
+    }
+
+    public async Task StopReceiveAsync()
+    {
+        await SafeInvokeVoidAsync("stopReceive", ResolvedId);
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+
+    private int EstimateTransmitMs()
+    {
+        // preamble (6 syms) + start (1) + data nibbles (len*2) + crc (2)
+        var nibbles = _txText.Length * 2 + 4 + 2; // data + len + crc
+        var syms    = 7 + nibbles;                 // preamble + start + data
+        return syms * (SymbolMs + 10);
+    }
+
+    private string GetStateLabel() => _state switch
+    {
+        SgAudioLinkState.Idle             => "Готов",
+        SgAudioLinkState.Transmitting     => "Передача",
+        SgAudioLinkState.Listening        => "Слушаю",
+        SgAudioLinkState.PreambleDetected => "Преамбула",
+        SgAudioLinkState.Receiving        => "Приём",
+        SgAudioLinkState.Error            => "Ошибка",
+        _                                 => _state.ToString()
+    };
+
+    private void AddLog(string dir, string msg, string level)
+    {
+        _log.Add(new SgAudioLinkLogEntry { Direction = dir, Message = msg, Level = level });
+        if (_log.Count > 200) _log.RemoveAt(0);
+    }
+
+    private void ClearLog() => _log.Clear();
+
+    private async Task CopyLastReceivedAsync()
+    {
+        if (_lastReceived is null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _lastReceived.Text);
+            _copied = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(2000);
+            _copied = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch { /* clipboard not available */ }
+    }
+
+    // ── JS callbacks ───────────────────────────────────────────────────────────
+
+    [JSInvokable]
+    public async Task OnTxCompleteAsync(string text, int symbolCount)
+    {
+        _state  = _rxActive ? SgAudioLinkState.Listening : SgAudioLinkState.Idle;
+        _txText = string.Empty;
+        AddLog("TX", $"Передано {symbolCount} символов", "success");
+        await InvokeAsync(StateHasChanged);
+
+        if (OnTxComplete.HasDelegate)
+            await OnTxComplete.InvokeAsync(new SgAudioLinkTxCompleteEventArgs
+            {
+                Text = text, SymbolCount = symbolCount
+            });
+    }
+
+    [JSInvokable]
+    public async Task OnRxStartedAsync()
+    {
+        _state = SgAudioLinkState.Listening;
+        AddLog("RX", "Микрофон активен, ожидание сигнала", "info");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnRxStoppedAsync()
+    {
+        _rxActive = false;
+        _state    = SgAudioLinkState.Idle;
+        AddLog("RX", "Приёмник остановлен", "info");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnPreambleDetectedAsync()
+    {
+        _state = SgAudioLinkState.PreambleDetected;
+        AddLog("RX", "Преамбула обнаружена, ожидание данных...", "info");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnDataReceivedAsync(string text, int byteCount, int crc)
+    {
+        _state = SgAudioLinkState.Listening;
+        _lastReceived = new SgAudioLinkDataReceivedEventArgs
+        {
+            Text = text, ByteCount = byteCount, Crc = crc
+        };
+        AddLog("RX", $"Получено: \"{text}\" ({byteCount} байт, CRC=0x{crc:X2})", "success");
+        await InvokeAsync(StateHasChanged);
+
+        if (OnDataReceived.HasDelegate)
+            await OnDataReceived.InvokeAsync(_lastReceived);
+    }
+
+    [JSInvokable]
+    public async Task OnRxErrorAsync(string message)
+    {
+        _state = SgAudioLinkState.Listening;
+        AddLog("RX", $"Ошибка фрейма: {message}", "error");
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnErrorAsync(string message, string errorType)
+    {
+        _error = message;
+        _state = SgAudioLinkState.Error;
+        if (errorType == "rx_start") { _rxActive = false; }
+        AddLog(errorType.StartsWith("tx") ? "TX" : "RX", message, "error");
+        await InvokeAsync(StateHasChanged);
+
+        if (OnError.HasDelegate)
+            await OnError.InvokeAsync(new SgAudioLinkErrorEventArgs
+            {
+                Message = message, ErrorType = errorType
+            });
+    }
+
+    // ── Dispose ────────────────────────────────────────────────────────────────
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("dispose", ResolvedId);
+    }
+}

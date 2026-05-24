@@ -61,6 +61,21 @@ namespace SuperUI.Components
         /// <summary>Render points on line/area datasets.</summary>
         public bool ShowPoints { get; set; } = true;
 
+        /// <summary>Shows values directly on chart points.</summary>
+        public bool ShowDataLabels { get; set; }
+
+        /// <summary>Decimal places for data label values. Default 2.</summary>
+        public int DataLabelDecimals { get; set; } = 2;
+
+        /// <summary>Suffix appended to data label values (e.g. "₽", "%").</summary>
+        public string? DataLabelSuffix { get; set; }
+
+        /// <summary>
+        /// Show label every N-th point. 0 = auto (based on dataset size).
+        /// Use 1 to show all, 5 to show every 5th, etc.
+        /// </summary>
+        public int DataLabelStep { get; set; } = 0;
+
         /// <summary>Stack bar/area datasets along the value axis.</summary>
         public bool Stacked { get; set; }
 

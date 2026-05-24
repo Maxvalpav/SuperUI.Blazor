@@ -1,0 +1,350 @@
+@page "/cbr-demo"
+@using SuperUI.Components
+@using SuperUI.Services.Data
+@using SuperUI.Enums
+@using System.Globalization
+@inject SgCbrService CbrService
+
+<PageTitle>Финансовые данные ЦБ РФ — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <SgStack Align="SgAlignItems.Center" Gap="12px">
+        <SgIcon Icon="Bank" Size="28" Color="var(--sg-primary)" />
+        <div>
+            <h1 class="sg-demo-title">Индикаторы ЦБ РФ</h1>
+            <p class="sg-demo-subtitle">Интеграция с XML-сервисами Банка России: курсы валют, драгоценные металлы и динамика рынка.</p>
+        </div>
+    </SgStack>
+</div>
+
+<SgStack Orientation="SgOrientation.Vertical" Gap="24px" Padding="0 0 24px 0">
+
+    @if (_loadingDaily && _loadingDynamics && _loadingMetals)
+    {        <SgCard Variant="SgCardVariant.Glass">
+            <SgStack Align="SgAlignItems.Center" Justify="SgJustifyContent.Center" Height="200px" Orientation="SgOrientation.Vertical" Gap="12px">
+                <SgSpinner Size="SgSize.Lg" />
+                <div style="color: var(--sg-text-secondary)">Инициализация финансовых сервисов...</div>
+            </SgStack>
+        </SgCard>
+    }
+    else
+    {
+        @if (_isMockMode)
+        {
+            <SgAlert Variant="SgAlertVariant.Warn" ShowIcon="true" Style="margin-bottom: 16px;">
+                <strong>Демо-режим:</strong> Данные получены из встроенного генератора (CORS блокировка или ошибка сети).
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="LoadAllDataAsync" Style="margin-left: 12px;">Повторить запрос</SgButton>
+            </SgAlert>
+        }
+
+        <!-- ── KPI Cards ── -->
+        <SgRow Gutter="16">
+            <SgCol Span="6">
+                <SgKPICard Title="Доллар США" 
+                          Value="@((double?)(_usd?.Value))" 
+                          Prefix="₽" 
+                          TrendValue="@((double)_usdTrendValue)"
+                          IsLoading="_loadingDaily"
+                          Footer="Курс на сегодня" />
+            </SgCol>
+            <SgCol Span="6">
+                <SgKPICard Title="Евро" 
+                          Value="@((double?)(_eur?.Value))" 
+                          Prefix="₽" 
+                          TrendValue="@((double)_eurTrendValue)"
+                          IsLoading="_loadingDaily"
+                          Footer="Курс на сегодня" />
+            </SgCol>
+            <SgCol Span="6">
+                <SgKPICard Title="Золото" 
+                          Value="@((double?)_gold)" 
+                          Prefix="₽/г" 
+                          Variant="SgKPIVariant.Warning"
+                          IsLoading="_loadingMetals"
+                          Footer="Учетная цена ЦБ" />
+            </SgCol>
+            <SgCol Span="6">
+                <SgKPICard Title="Серебро" 
+                          Value="@((double?)_silver)" 
+                          Prefix="₽/г" 
+                          Variant="SgKPIVariant.Default"
+                          IsLoading="_loadingMetals"
+                          Footer="Учетная цена ЦБ" />
+            </SgCol>
+        </SgRow>
+
+        <SgRow Gutter="16">
+            <!-- ── Dynamics Chart ── -->
+            <SgCol Span="16">
+                <SgCard Title="Динамика валют" Subtitle="Изменение курса USD и EUR за последние 30 дней" Variant="SgCardVariant.Glass" IsLoading="_loadingDynamics">
+                    <ActionContent>
+                        <SgStack Gap="8px">
+                            <SgButton Size="SgSize.Sm" OnClick="LoadDynamicsAsync">Обновить</SgButton>
+                        </SgStack>
+                    </ActionContent>
+                    <ChildContent>
+                        <SgChart TItem="CbrPoint"
+                                ChartType="SgChartType.Line"
+                                Data="@_dynamicData"
+                                Series="@_dynamicSeries"
+                                Options="@_chartOpts"
+                                Height="400px" />
+                    </ChildContent>
+                </SgCard>
+            </SgCol>
+
+            <!-- ── Metals Chart ── -->
+            <SgCol Span="8">
+                <SgCard Title="Драгоценные металлы" Subtitle="Динамика цен на золото (Au)" Variant="SgCardVariant.Glass" IsLoading="_loadingMetals">
+                    <SgChart TItem="CbrPoint"
+                             ChartType="SgChartType.Line"
+                             Data="@_metalData"
+                             Series="@_metalSeries"
+                             Options="@_chartOpts"
+                             Height="400px" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+
+        <!-- ── Daily Rates Table ── -->
+        <SgCard Title="Ежедневные курсы валют" Variant="SgCardVariant.Glass" IsLoading="_loadingDaily">
+            <ActionContent>
+                 <SgStack Align="SgAlignItems.Center" Gap="12px">
+                    <span style="font-size: 13px; color: var(--sg-text-secondary)">Дата:</span>
+                    <SgDatePicker @bind-Value="_selectedDate" Size="SgSize.Sm" Style="width: 150px;" OnValueChange="@(() => LoadDailyAsync())" />
+                 </SgStack>
+            </ActionContent>
+            <ChildContent>
+            <SgDataGrid TItem="SgCbrValute" Items="@(_dailyRates?.Valutes ?? new())" ShowSearch="true" Height="500px">
+                <SgDataGridColumn TItem="SgCbrValute" ColumnKey="CharCode" Title="Код"      Value="@(v => v.CharCode)" Width="100px" Sortable="true" />
+                <SgDataGridColumn TItem="SgCbrValute" ColumnKey="Nominal"  Title="Номинал"  Value="@(v => v.Nominal)"  Width="100px" Sortable="true" />
+                <SgDataGridColumn TItem="SgCbrValute" ColumnKey="Name"     Title="Валюта"   Value="@(v => v.Name)"     Sortable="true" />
+                <SgDataGridColumn TItem="SgCbrValute" ColumnKey="Value"    Title="Курс (₽)" Value="@(v => v.Value)"    Width="150px"  Sortable="true">
+                    <Template>
+                        <span style="font-weight: 600;">@context.Value.ToString("F4")</span>
+                    </Template>
+                </SgDataGridColumn>
+            </SgDataGrid>
+            </ChildContent>
+        </SgCard>
+    }
+</SgStack>
+
+@code {
+    private bool _loadingDaily = true;
+    private bool _loadingDynamics = true;
+    private bool _loadingMetals = true;
+    private bool _isMockMode = false;
+    private DateTime? _selectedDate = DateTime.Today;
+    private SgCbrDailyRates? _dailyRates;
+    private SgCbrValute? _usd;
+    private SgCbrValute? _eur;
+    private decimal? _gold;
+    private decimal? _silver;
+
+    private decimal _usdTrendValue;
+    private decimal _eurTrendValue;
+
+    // Chart data
+    private List<CbrPoint> _dynamicData = new();
+    private List<SgChartSeries<CbrPoint>> _dynamicSeries = new();
+    private List<CbrPoint> _metalData = new();
+    private List<SgChartSeries<CbrPoint>> _metalSeries = new();
+    private SgChartOptions _chartOpts = new() { ShowLegend = true, ShowDataLabels = true };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAllDataAsync();
+    }
+
+    private async Task LoadAllDataAsync()
+    {
+        _isMockMode = false;
+        
+        // Start all tasks independently to allow partial UI updates
+        var t1 = LoadDailyAsync();
+        var t2 = LoadDynamicsAsync();
+        var t3 = LoadMetalsAsync();
+
+        await Task.WhenAll(t1, t2, t3);
+
+        if ((_dailyRates == null || _dynamicData.Count == 0 || (_gold ?? 0) == 0) && !_isMockMode)
+        {
+            _isMockMode = true;
+            GenerateMockData();
+            StateHasChanged();
+        }
+    }
+
+    private void GenerateMockData()
+    {
+        _dailyRates = new SgCbrDailyRates
+        {
+            Valutes = new List<SgCbrValute>
+            {
+                new() { CharCode = "USD", Name = "Доллар США", Nominal = 1, ValueString = "92,45" },
+                new() { CharCode = "EUR", Name = "Евро", Nominal = 1, ValueString = "100,12" },
+                new() { CharCode = "CNY", Name = "Китайский юань", Nominal = 1, ValueString = "12,78" },
+                new() { CharCode = "GBP", Name = "Фунт стерлингов", Nominal = 1, ValueString = "115,30" },
+                new() { CharCode = "JPY", Name = "Японская иена", Nominal = 100, ValueString = "61,45" }
+            }
+        };
+        _usd = _dailyRates.Valutes[0];
+        _eur = _dailyRates.Valutes[1];
+        _usdTrendValue = 0.15m;
+        _eurTrendValue = -0.22m;
+
+        _gold = 6500.45m;
+        _silver = 82.12m;
+
+        _dynamicData = Enumerable.Range(0, 30).Select(i => new CbrPoint
+        {
+            Label = DateTime.Today.AddDays(-30 + i).ToString("dd.MM"),
+            Usd = 90 + (decimal)(Math.Sin(i * 0.5) * 2),
+            Eur = 98 + (decimal)(Math.Cos(i * 0.5) * 2)
+        }).ToList();
+
+        _dynamicSeries = new List<SgChartSeries<CbrPoint>>
+        {
+            new() { Name = "USD", Value = p => (double)p.Usd },
+            new() { Name = "EUR", Value = p => (double)p.Eur }
+        };
+
+        _metalData = Enumerable.Range(0, 30).Select(i => new CbrPoint
+        {
+            Label = DateTime.Today.AddDays(-30 + i).ToString("dd.MM"),
+            Value = 6000 + (decimal)(i * 20 + Math.Sin(i) * 100)
+        }).ToList();
+
+        _metalSeries = new List<SgChartSeries<CbrPoint>>
+        {
+            new() { Name = "Gold (Au)", Value = p => (double)p.Value }
+        };
+
+        _loadingDaily = false;
+        _loadingDynamics = false;
+        _loadingMetals = false;
+    }
+
+    private async Task LoadDailyAsync()
+    {
+        if (!_selectedDate.HasValue) return;
+        _loadingDaily = true;
+        StateHasChanged();
+
+        try
+        {
+            // Запрашиваем сегодня и вчера параллельно
+            var todayTask     = CbrService.GetDailyRatesAsync(_selectedDate.Value);
+            var yesterdayTask = CbrService.GetDailyRatesAsync(_selectedDate.Value.AddDays(-1));
+            await Task.WhenAll(todayTask, yesterdayTask);
+
+            _dailyRates = todayTask.Result;
+            _usd = _dailyRates?.Valutes.FirstOrDefault(v => v.CharCode == "USD");
+            _eur = _dailyRates?.Valutes.FirstOrDefault(v => v.CharCode == "EUR");
+
+            var yesterday = yesterdayTask.Result;
+            if (yesterday != null && _usd != null && _eur != null)
+            {
+                var usdPrev = yesterday.Valutes.FirstOrDefault(v => v.CharCode == "USD")?.Value ?? 0;
+                var eurPrev = yesterday.Valutes.FirstOrDefault(v => v.CharCode == "EUR")?.Value ?? 0;
+                _usdTrendValue = _usd.Value - usdPrev;
+                _eurTrendValue = _eur.Value - eurPrev;
+            }
+        }
+        finally
+        {
+            _loadingDaily = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadDynamicsAsync()
+    {
+        _loadingDynamics = true;
+        StateHasChanged();
+
+        try
+        {
+            var toDate   = DateTime.Today;
+            var fromDate = toDate.AddDays(-30);
+
+            // Запрашиваем USD и EUR параллельно
+            var usdTask = CbrService.GetDynamicRatesAsync(fromDate, toDate, "R01235");
+            var eurTask = CbrService.GetDynamicRatesAsync(fromDate, toDate, "R01239");
+            await Task.WhenAll(usdTask, eurTask);
+
+            var usdDyn = usdTask.Result;
+            var eurDyn = eurTask.Result;
+
+            if (usdDyn != null && eurDyn != null)
+            {
+                var dates = usdDyn.Records.Select(r => r.Date)
+                    .Union(eurDyn.Records.Select(r => r.Date))
+                    .OrderBy(d => d)
+                    .ToList();
+
+                _dynamicData = dates.Select(d => new CbrPoint
+                {
+                    Label = d.ToString("dd.MM"),
+                    Usd   = usdDyn.Records.FirstOrDefault(r => r.Date == d)?.Value ?? 0,
+                    Eur   = eurDyn.Records.FirstOrDefault(r => r.Date == d)?.Value ?? 0
+                }).ToList();
+
+                _dynamicSeries = new List<SgChartSeries<CbrPoint>>
+                {
+                    new() { Name = "USD", Value = p => (double)p.Usd },
+                    new() { Name = "EUR", Value = p => (double)p.Eur }
+                };
+            }
+        }
+        finally
+        {
+            _loadingDynamics = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadMetalsAsync()
+    {
+        _loadingMetals = true;
+        StateHasChanged();
+
+        try 
+        {
+            var toDate = DateTime.Today;
+            var fromDate = toDate.AddDays(-30);
+            var metals = await CbrService.GetMetalsAsync(fromDate, toDate);
+
+            if (metals != null)
+            {
+                _gold = metals.Records.Where(r => r.Code == 1).OrderByDescending(r => r.Date).FirstOrDefault()?.Buy;
+                _silver = metals.Records.Where(r => r.Code == 2).OrderByDescending(r => r.Date).FirstOrDefault()?.Buy;
+
+                _metalData = metals.Records.Where(r => r.Code == 1).OrderBy(r => r.Date).Select(r => new CbrPoint
+                {
+                    Label = r.Date.ToString("dd.MM"),
+                    Value = r.Buy
+                }).ToList();
+
+                _metalSeries = new List<SgChartSeries<CbrPoint>>
+                {
+                    new() { Name = "Gold (Au)", Value = p => (double)p.Value }
+                };
+            }
+        }
+        finally
+        {
+            _loadingMetals = false;
+            StateHasChanged();
+        }
+    }
+
+    public class CbrPoint
+    {
+        public string Label { get; set; } = string.Empty;
+        public decimal Usd { get; set; }
+        public decimal Eur { get; set; }
+        public decimal Value { get; set; }
+    }
+}

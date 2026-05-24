@@ -1,0 +1,127 @@
+@page "/vehicle-tracking"
+@using SuperUI.Components
+@using SuperUI.Enums
+@implements IDisposable
+
+<PageTitle>Мониторинг транспорта — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <SgStack Align="SgAlignItems.Center" Gap="12px">
+        <SgIcon Icon="Route" Size="28" Color="var(--sg-primary)" />
+        <div>
+            <h1 class="sg-demo-title">Мониторинг транспорта</h1>
+            <p class="sg-demo-subtitle">Плавная анимация движения по GPS-координатам с использованием Turf.js и RequestAnimationFrame.</p>
+        </div>
+    </SgStack>
+</div>
+
+<SgRow Gutter="24">
+    <SgCol Span="16">
+        <SgCard FullHeight>
+            <SgVehicleTracker @ref="_tracker" 
+                              CenterLat="55.7558" 
+                              CenterLon="37.6176" 
+                              Zoom="14" 
+                              Height="600px" />
+        </SgCard>
+    </SgCol>
+
+    <SgCol Span="8">
+        <SgStack Orientation="SgOrientation.Vertical" Gap="24px">
+            <SgCard Title="Управление симуляцией">
+                <SgStack Orientation="SgOrientation.Vertical" Gap="16px">
+                    <SgAlert Variant="SgAlertVariant.Info" ShowIcon="true">
+                        Машины получают новые координаты каждые 5 секунд. JS сглаживает движение, интерполируя путь.
+                    </SgAlert>
+                    
+                    <SgButton Variant="@(_isRunning ? SgButtonVariant.Danger : SgButtonVariant.Primary)" 
+                              OnClick="ToggleSimulation" Block="true">
+                        @(_isRunning ? "Остановить мониторинг" : "Запустить мониторинг")
+                    </SgButton>
+
+                    <div style="font-size: 13px; color: var(--sg-text-secondary)">
+                        <strong>Активных машин:</strong> @_vehicles.Count
+                    </div>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Лог перемещений">
+                <div style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; background: var(--sg-bg-subtle); padding: 8px; border-radius: 4px;">
+                    @foreach (var log in _logs)
+                    {
+                        <div style="margin-bottom: 4px; border-bottom: 1px solid var(--sg-border-light); padding-bottom: 2px;">
+                            <span style="color: var(--sg-text-secondary)">[@DateTime.Now:HH:mm:ss]</span> @log
+                        </div>
+                    }
+                </div>
+            </SgCard>
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+@code {
+    private SgVehicleTracker? _tracker;
+    private bool _isRunning;
+    private System.Timers.Timer? _timer;
+    private List<string> _logs = new();
+    
+    private List<VehicleState> _vehicles = new()
+    {
+        new() { Id = "taxi-1", Label = "Такси #102", Lat = 55.7558, Lon = 37.6176, Speed = 0.002, Icon = "https://cdn-icons-png.flaticon.com/512/3202/3202926.png" },
+        new() { Id = "truck-1", Label = "Грузовик #A55", Lat = 55.7500, Lon = 37.6100, Speed = 0.001, Icon = "https://cdn-icons-png.flaticon.com/512/2555/2555013.png" }
+    };
+
+    private void ToggleSimulation()
+    {
+        _isRunning = !_isRunning;
+        if (_isRunning)
+        {
+            _timer = new System.Timers.Timer(5000);
+            _timer.Elapsed += async (s, e) => await UpdatePositions();
+            _timer.Start();
+            _logs.Insert(0, "Симуляция запущена");
+        }
+        else
+        {
+            _timer?.Stop();
+            _timer?.Dispose();
+            _logs.Insert(0, "Симуляция остановлена");
+        }
+    }
+
+    private async Task UpdatePositions()
+    {
+        var random = new Random();
+        foreach (var v in _vehicles)
+        {
+            // Simulate movement
+            v.Lat += (random.NextDouble() - 0.5) * v.Speed;
+            v.Lon += (random.NextDouble() - 0.5) * v.Speed;
+
+            if (_tracker != null)
+            {
+                await _tracker.UpdateVehicleAsync(v.Id, v.Lat, v.Lon, 5000, v.Label, v.Icon);
+            }
+        }
+        
+        _logs.Insert(0, $"Обновлено {_vehicles.Count} координат");
+        if (_logs.Count > 20) _logs.RemoveAt(20);
+        
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _timer?.Dispose();
+    }
+
+    private class VehicleState
+    {
+        public string Id { get; set; } = "";
+        public string Label { get; set; } = "";
+        public double Lat { get; set; }
+        public double Lon { get; set; }
+        public double Speed { get; set; }
+        public string Icon { get; set; } = "";
+    }
+}

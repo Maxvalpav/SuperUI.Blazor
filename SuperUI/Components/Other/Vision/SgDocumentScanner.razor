@@ -1,0 +1,110 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sgc-doc-scanner").Build()" style="@Styles().Build()">
+    <div class="sgc-doc-scanner-viewport">
+        <video @ref="_videoRef" class="sgc-doc-scanner-video" playsinline muted></video>
+        <canvas @ref="_canvasRef" class="sgc-doc-scanner-canvas"></canvas>
+        
+        @if (!_isStarted)
+        {
+            <div class="sgc-doc-scanner-overlay">
+                <SgButton Variant="SgButtonVariant.Primary" OnClick="StartScannerAsync" Text="Запустить сканер" />
+            </div>
+        }
+        else
+        {
+            <div class="sgc-doc-scanner-controls">
+                <SgButton Variant="SgButtonVariant.Danger" OnClick="StopScannerAsync">
+                    <Icon><SgIcon Icon="@SgIcons.X" /></Icon>
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Primary" OnClick="CaptureAsync" Size="SgSize.Lg">
+                    <Icon><SgIcon Icon="@SgIcons.Camera" /></Icon>
+                </SgButton>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .sgc-doc-scanner {
+        position: relative;
+        width: 100%;
+        max-width: 800px;
+        margin: 0 auto;
+        border-radius: var(--sg-radius-lg);
+        overflow: hidden;
+        background: #000;
+        box-shadow: var(--sg-shadow-xl);
+    }
+    .sgc-doc-scanner-viewport {
+        position: relative;
+        aspect-ratio: 4/3;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .sgc-doc-scanner-video {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0;
+    }
+    .sgc-doc-scanner-canvas {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    .sgc-doc-scanner-overlay {
+        position: absolute;
+        z-index: 10;
+    }
+    .sgc-doc-scanner-controls {
+        position: absolute;
+        bottom: 24px;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: center;
+        gap: 16px;
+        z-index: 20;
+    }
+</style>
+
+@code {
+    private ElementReference _videoRef;
+    private ElementReference _canvasRef;
+    private bool _isStarted;
+
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public EventCallback<string> OnScan { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-doc-scanner.js";
+
+    public async Task StartScannerAsync()
+    {
+        _isStarted = await SafeInvokeAsync<bool>("startScanner", _videoRef, _canvasRef);
+        StateHasChanged();
+    }
+
+    public async Task StopScannerAsync()
+    {
+        await SafeInvokeVoidAsync("stopScanner");
+        _isStarted = false;
+        StateHasChanged();
+    }
+
+    public async Task CaptureAsync()
+    {
+        var dataUrl = await SafeInvokeAsync<string>("captureAndProcess");
+        await OnScan.InvokeAsync(dataUrl);
+        await StopScannerAsync();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try { await StopScannerAsync(); } catch { }
+        await base.DisposeAsync();
+    }
+}

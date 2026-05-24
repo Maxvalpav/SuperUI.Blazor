@@ -87,6 +87,10 @@ async function _ensureChart(sources) {
         console.log('[SgChart] Loading Matrix plugin:', sources.matrixScript);
         pluginLoads.push(_loadScript(sources.matrixScript).catch(e => console.warn(e)));
     }
+    if (sources?.dataLabelsScript) {
+        console.log('[SgChart] Loading DataLabels plugin:', sources.dataLabelsScript);
+        pluginLoads.push(_loadScript(sources.dataLabelsScript).catch(e => console.warn(e)));
+    }
     
     if (pluginLoads.length) {
         await Promise.all(pluginLoads);
@@ -127,6 +131,9 @@ function applyThemeDefaults(Chart) {
 }
 
 function applyOptionalPlugins(Chart, config) {
+    const sgOpts = config.options?.__sgOptions || {};
+    if (config.options) delete config.options.__sgOptions;
+
     if (window.ChartZoom) {
         try { Chart.register(window.ChartZoom); } catch { }
         config.options ??= {};
@@ -142,6 +149,55 @@ function applyOptionalPlugins(Chart, config) {
     }
     if (window.MatrixController) {
         try { Chart.register(window.MatrixController); } catch { }
+    }
+    if (window.ChartDataLabels) {
+        try { Chart.register(window.ChartDataLabels); } catch { }
+        config.options ??= {};
+        config.options.plugins ??= {};
+
+        const enabled = !!sgOpts.showDataLabels;
+        const decimals = sgOpts.dataLabelDecimals ?? 2;
+        const suffix   = sgOpts.dataLabelSuffix   ?? '';
+        const step     = sgOpts.dataLabelStep      ?? 0; // 0 = auto
+
+        config.options.plugins.datalabels = {
+            display: function(ctx) {
+                if (!enabled) return false;
+                // Auto-thin: show every N-th point to avoid overlap
+                const total = ctx.dataset?.data?.length ?? 0;
+                const autoStep = step > 0 ? step
+                    : total > 60 ? 10
+                    : total > 30 ? 5
+                    : total > 15 ? 3
+                    : total > 8  ? 2
+                    : 1;
+                return ctx.dataIndex % autoStep === 0;
+            },
+            align: 'top',
+            anchor: 'end',
+            offset: 6,
+            font: { weight: '600', size: 11, family: readCssVar('--sg-font', 'system-ui') },
+            color: function(ctx) {
+                // Use dataset border color for matching label color
+                return ctx.dataset?.borderColor ?? ctx.dataset?.backgroundColor ?? '#374151';
+            },
+            backgroundColor: function(ctx) {
+                const bg = readCssVar('--sg-bg', '#ffffff');
+                return bg + 'cc'; // 80% opacity
+            },
+            borderRadius: 3,
+            padding: { top: 2, bottom: 2, left: 4, right: 4 },
+            formatter: (v) => {
+                if (v === null || v === undefined) return '';
+                const val = (typeof v === 'object') ? (v.y ?? v.v ?? 0) : v;
+                if (typeof val !== 'number') return String(val);
+                const formatted = val.toLocaleString('ru-RU', {
+                    minimumFractionDigits: decimals,
+                    maximumFractionDigits: decimals
+                });
+                return suffix ? `${formatted}${suffix}` : formatted;
+            }
+        };
     }
 }
 

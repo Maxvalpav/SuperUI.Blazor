@@ -1,0 +1,282 @@
+@namespace SuperUI.Components
+@using SuperUI.Components.Navigation.Tour
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <div class="sgc-tour-overlay @(CurrentStep?.Mask == true ? "with-mask" : "")" 
+         style="@OverlayStyle"
+         @onkeydown="HandleKeyDown"
+         tabindex="0"
+         @ref="_overlayRef">
+        @if (CurrentStep?.Mask == true && _targetRect != null)
+        {
+            <div class="sgc-tour-highlight" style="@HighlightStyle"></div>
+        }
+
+        <div class="sgc-tour-popover" style="@PopoverStyle" role="dialog" aria-modal="true" aria-labelledby="tour-title">
+            <div class="sgc-tour-content">
+                <div class="sgc-tour-header">
+                    @if (CurrentStep?.HeaderContent != null)
+                    {
+                        @CurrentStep.HeaderContent
+                    }
+                    else
+                    {
+                        <span class="sgc-tour-title" id="tour-title">@CurrentStep?.Title</span>
+                    }
+                    <button class="sgc-tour-close" @onclick="CloseAsync" aria-label="Закрыть тур">&times;</button>
+                </div>
+                
+                <div class="sgc-tour-body">
+                    @if (CurrentStep?.ChildContent != null)
+                    {
+                        @CurrentStep.ChildContent
+                    }
+                    else
+                    {
+                        @CurrentStep?.Content
+                    }
+                </div>
+
+                <div class="sgc-tour-footer">
+                    <div class="sgc-tour-steps-info">
+                        @(CurrentStepIndex + 1) / @_steps.Count
+                    </div>
+                    <SgSpace Size="small">
+                        @if (CurrentStepIndex > 0)
+                        {
+                            <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm" OnClick="PrevAsync" aria-label="Предыдущий шаг">Назад</SgButton>
+                        }
+                        
+                        @if (CurrentStepIndex < _steps.Count - 1)
+                        {
+                            <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="NextAsync" aria-label="Следующий шаг">Далее</SgButton>
+                        }
+                        else
+                        {
+                            <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm" OnClick="CloseAsync" aria-label="Завершить тур">Завершить</SgButton>
+                        }
+                    </SgSpace>
+                </div>
+            </div>
+            <div class="sgc-tour-arrow" style="@ArrowStyle"></div>
+        </div>
+    </div>
+}
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+<style>
+    .sgc-tour-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: var(--sg-z-tour, 2000);
+        pointer-events: none;
+        outline: none;
+    }
+    .sgc-tour-overlay.with-mask {
+        pointer-events: auto;
+    }
+    .sgc-tour-highlight {
+        position: absolute;
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.5);
+        border-radius: var(--sg-radius-sm);
+        transition: all var(--sg-transition-normal);
+        pointer-events: none;
+    }
+    .sgc-tour-popover {
+        position: absolute;
+        width: 320px;
+        max-width: calc(100vw - 32px);
+        background: var(--sg-surface);
+        border-radius: var(--sg-radius-lg);
+        box-shadow: var(--sg-shadow-xl);
+        pointer-events: auto;
+        transition: all var(--sg-transition-normal);
+    }
+    @@media (max-width: 640px) {
+        .sgc-tour-popover {
+            width: calc(100vw - 32px);
+            left: 16px !important;
+            /* На мобильных центрируем если не помещается */
+        }
+    }
+    .sgc-tour-content { padding: var(--sg-spacing-4); }
+    .sgc-tour-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--sg-spacing-3); }
+    .sgc-tour-title { font-weight: var(--sg-font-weight-bold); font-size: var(--sg-text-lg); color: var(--sg-text); }
+    .sgc-tour-close { 
+        background: none; border: none; font-size: 24px; cursor: pointer; color: var(--sg-text-muted); 
+        width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;
+    }
+    .sgc-tour-body { font-size: var(--sg-text-sm); color: var(--sg-text-muted); margin-bottom: var(--sg-spacing-4); }
+    .sgc-tour-footer { display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--sg-border); padding-top: var(--sg-spacing-3); }
+    .sgc-tour-steps-info { font-size: var(--sg-text-xs); color: var(--sg-text-muted); }
+    .sgc-tour-arrow {
+        position: absolute;
+        width: 12px; height: 12px;
+        background: var(--sg-surface);
+        transform: rotate(45deg);
+    }
+</style>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public int CurrentStepIndex { get; set; } = 0;
+    [Parameter] public EventCallback<int> CurrentStepIndexChanged { get; set; }
+
+    private List<SgTourStep> _steps = new();
+    private SgTourRect? _targetRect;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<SgTour>? _selfRef;
+    private ElementReference _overlayRef;
+
+    public SgTourStep? CurrentStep => _steps.Count > CurrentStepIndex ? _steps[CurrentStepIndex] : null;
+
+    internal void AddStep(SgTourStep step)
+    {
+        if (!_steps.Contains(step))
+        {
+            _steps.Add(step);
+            StateHasChanged();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsOpen)
+        {
+            await UpdatePositionAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (IsOpen && _overlayRef.Id != null)
+        {
+            try { await _overlayRef.FocusAsync(); } catch { }
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        switch (e.Key)
+        {
+            case "Escape":
+                await CloseAsync();
+                break;
+            case "ArrowRight":
+                if (CurrentStepIndex < _steps.Count - 1) await NextAsync();
+                break;
+            case "ArrowLeft":
+                if (CurrentStepIndex > 0) await PrevAsync();
+                break;
+        }
+    }
+
+    private async Task UpdatePositionAsync()
+    {
+        if (CurrentStep == null || string.IsNullOrEmpty(CurrentStep.Target))
+        {
+            _targetRect = null;
+            return;
+        }
+
+        if (_module == null)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-tour.js");
+            _selfRef = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync("observeWindow", _selfRef);
+        }
+
+        await _module.InvokeVoidAsync("scrollToElement", CurrentStep.Target);
+        _targetRect = await _module.InvokeAsync<SgTourRect>("getTargetRect", CurrentStep.Target);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnWindowChanged()
+    {
+        if (IsOpen)
+        {
+            await UpdatePositionAsync();
+        }
+    }
+
+    private async Task NextAsync()
+    {
+        CurrentStepIndex++;
+        await CurrentStepIndexChanged.InvokeAsync(CurrentStepIndex);
+        await UpdatePositionAsync();
+    }
+
+    private async Task PrevAsync()
+    {
+        CurrentStepIndex--;
+        await CurrentStepIndexChanged.InvokeAsync(CurrentStepIndex);
+        await UpdatePositionAsync();
+    }
+
+    private async Task CloseAsync()
+    {
+        IsOpen = false;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private string OverlayStyle => IsOpen ? "" : "display:none;";
+    
+    private string HighlightStyle => _targetRect == null ? "display:none;" : 
+        $"top: {_targetRect.Top - 5}px; left: {_targetRect.Left - 5}px; width: {_targetRect.Width + 10}px; height: {_targetRect.Height + 10}px;";
+
+    private string PopoverStyle
+    {
+        get
+        {
+            if (_targetRect == null) return "top: 50%; left: 50%; transform: translate(-50%, -50%);";
+            
+            // Basic positioning logic based on placement
+            double top = 0, left = 0;
+            var p = CurrentStep?.Placement ?? SgTourPlacement.Bottom;
+
+            switch (p)
+            {
+                case SgTourPlacement.Bottom:
+                    top = _targetRect.Bottom + 15;
+                    left = _targetRect.Left + (_targetRect.Width / 2) - 150;
+                    break;
+                case SgTourPlacement.Top:
+                    top = _targetRect.Top - 15 - 200; // rough height
+                    left = _targetRect.Left + (_targetRect.Width / 2) - 150;
+                    break;
+                case SgTourPlacement.Right:
+                    top = _targetRect.Top + (_targetRect.Height / 2) - 100;
+                    left = _targetRect.Right + 15;
+                    break;
+                case SgTourPlacement.Left:
+                    top = _targetRect.Top + (_targetRect.Height / 2) - 100;
+                    left = _targetRect.Left - 15 - 300;
+                    break;
+            }
+
+            return $"top: {top}px; left: {left}px;";
+        }
+    }
+
+    private string ArrowStyle => ""; // To be implemented with proper SVG or CSS arrows
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module != null)
+        {
+            try { await _module.InvokeVoidAsync("dispose"); } catch { }
+            await _module.DisposeAsync();
+        }
+        _selfRef?.Dispose();
+    }
+}

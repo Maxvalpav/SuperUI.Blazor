@@ -39,4 +39,10 @@ public sealed class SgChartSources
     /// </summary>
     public string? MatrixScript { get; set; } =
         "https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.0/dist/chartjs-chart-matrix.min.js";
+
+    /// <summary>
+    /// chartjs-plugin-datalabels — shows data values directly on the chart points.
+    /// </summary>
+    public string? DataLabelsScript { get; set; } =
+        "https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js";
 }

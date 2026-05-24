@@ -6,6 +6,8 @@
 @inject SgToastService ToastService
 @using SuperUI.Services.Llm
 @using SuperUI.Themes
+@using SuperUI.Services.Analytics
+@inject SgHeatmapService HeatmapService
 
 <div class="sgc-settings-container" style="@Style">
     <SgTabs Vertical="true">
@@ -118,6 +120,29 @@
             </ChildContent>
         </SgTabPanel>
 
+        <SgTabPanel Title="Аналитика">
+            <Icon>@((MarkupString)SgIcons.Activity)</Icon>
+            <ChildContent>
+                <div class="sgc-settings-section">
+                    <h3>Пользовательская аналитика</h3>
+                    <div class="sgc-settings-grid">
+                        <div class="sgc-setting-item">
+                            <label>Тепловая карта кликов</label>
+                            <SgSwitch @bind-Value="IsHeatmapAdminMode" Label="Режим визуализации (Heatmap)" />
+                            <p style="font-size: 12px; color: var(--sg-text-secondary); margin-top: 4px;">
+                                Накладывает полупрозрачный слой с активностью кликов поверх интерфейса.
+                            </p>
+                        </div>
+                        <div class="sgc-setting-item">
+                            <SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="OnClearHeatmapData">
+                                Очистить данные аналитики
+                            </SgButton>
+                        </div>
+                    </div>
+                </div>
+            </ChildContent>
+        </SgTabPanel>
+
         <SgTabPanel Title="@Localizer["Settings_System"]">
             <Icon>@((MarkupString)SgIcons.Terminal)</Icon>
             <ChildContent>
@@ -196,6 +221,22 @@
     {
         get => SettingsService.IsTabbedMode;
         set => _ = SettingsService.SetTabbedModeAsync(value);
+    }
+
+    private bool IsHeatmapAdminMode
+    {
+        get => HeatmapService.IsAdminMode;
+        set => _ = HeatmapService.ToggleAdminModeAsync(value);
+    }
+
+    private async Task OnClearHeatmapData()
+    {
+        var confirmed = await ConfirmService.ConfirmAsync("Вы уверены, что хотите удалить все накопленные данные о кликах?", "Очистка аналитики");
+        if (confirmed)
+        {
+            await HeatmapService.ClearDataAsync();
+            ToastService.Success("Данные аналитики очищены");
+        }
     }
 
     private string _currentLanguage = "ru-RU";

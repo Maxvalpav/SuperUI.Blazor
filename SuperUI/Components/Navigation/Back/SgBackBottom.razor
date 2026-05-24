@@ -5,7 +5,7 @@
 @if (_visible)
 {
     <button type="button"
-            class="sgc-backtop @CssClass"
+            class="sgc-backbottom @CssClass"
             style="@PositionStyle"
             title="@Title"
             aria-label="@Title"
@@ -16,19 +16,19 @@
         }
         else
         {
-            <span class="sgc-backtop-icon">@((MarkupString)SgIcons.ArrowUp)</span>
+            <span class="sgc-backtop-icon">@((MarkupString)SgIcons.ArrowDown)</span>
         }
     </button>
 }
 
 @code {
     /// <summary>
-    /// Optional custom content. When null, an arrow-up icon is rendered.
+    /// Optional custom content. When null, an arrow-down icon is rendered.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    /// Scroll distance (in pixels) before the button becomes visible. Default 200.
+    /// Scroll distance (in pixels) from bottom before the button becomes visible. Default 200.
     /// </summary>
     [Parameter] public int VisibilityHeight { get; set; } = 200;
 
@@ -53,9 +53,9 @@
     [Parameter] public int Right { get; set; } = 32;
 
     /// <summary>
-    /// Tooltip text. Default "Back to top".
+    /// Tooltip text. Default "Scroll to bottom".
     /// </summary>
-    [Parameter] public string Title { get; set; } = "Back to top";
+    [Parameter] public string Title { get; set; } = "Scroll to bottom";
 
     /// <summary>
     /// Additional CSS class for the button.
@@ -68,7 +68,7 @@
     [Parameter] public EventCallback OnClick { get; set; }
 
     private IJSObjectReference? _module;
-    private DotNetObjectReference<SgBackTop>? _self;
+    private DotNetObjectReference<SgBackBottom>? _self;
     private int _handleId = -1;
     private bool _isDisposed;
     private bool _visible;
@@ -87,7 +87,7 @@
             if (firstRender || _handleId < 0)
             {
                 _handleId = await _module.InvokeAsync<int>("backtopAttach", _self,
-                    new { target = Target, threshold = VisibilityHeight });
+                    new { target = Target, threshold = VisibilityHeight, direction = "bottom" });
             }
         }
         catch (JSException) { }
@@ -104,43 +104,24 @@
 
     private async Task OnClickAsync()
     {
-        if (_module is null) return;
-        try
+        if (_module is not null)
         {
-            await _module.InvokeVoidAsync("scrollToTop", Target, Smooth);
+            await _module.InvokeVoidAsync("scrollToBottom", Target, Smooth);
+            await OnClick.InvokeAsync();
         }
-        catch (JSException) { }
-        if (OnClick.HasDelegate) await OnClick.InvokeAsync();
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
         _isDisposed = true;
-        
-        // Notify JS to dispose and clear dotnet reference
         if (_handleId >= 0 && _module is not null)
         {
-            try { await _module.InvokeVoidAsync("backtopDetach", _handleId); }
-            catch (JSException) { } 
-            catch (TaskCanceledException) { } 
-            catch (ObjectDisposedException) { }
-            _handleId = -1;
+            try { await _module.InvokeVoidAsync("backtopDetach", _handleId); } catch { }
         }
-        
-        // Dispose DotNetObjectReference
-        var self = _self;
-        _self = null;
-        self?.Dispose();
-
-        // Dispose JS module
+        _self?.Dispose();
         if (_module is not null)
         {
-            try { await _module.DisposeAsync(); }
-            catch (JSException) { } 
-            catch (TaskCanceledException) { } 
-            catch (ObjectDisposedException) { }
-            _module = null;
+            try { await _module.DisposeAsync(); } catch { }
         }
     }
 }

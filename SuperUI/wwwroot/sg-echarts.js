@@ -366,7 +366,12 @@ export async function initECharts(dotnetRef, containerRef, instanceId, chartType
     await disposeECharts(instanceId);
 
     const ec = await _ensureECharts(sources);
-    const chart = ec.init(containerRef, null, { renderer: 'canvas' });
+    
+    // Explicitly use devicePixelRatio for High DPI support
+    const chart = ec.init(containerRef, null, { 
+        renderer: 'canvas',
+        devicePixelRatio: window.devicePixelRatio || 1
+    });
 
     const option = _buildOption(chartType, data, graphData, candleData, opts ?? {});
     chart.setOption(option);

@@ -2,15 +2,16 @@
 @using SuperUI.Localization
 @using SuperUI.Enums
 @using System.Linq.Expressions
+@using System.Xml.Serialization
 @inject ISuperUILocalizer Localizer
 @implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-date @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="sgc-date sgc-@Size.ToString().ToLowerInvariant() @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="dialog"
@@ -173,8 +174,20 @@
     /// <summary>Gets or sets the callback invoked when the selected date changes.</summary>
     [Parameter] public EventCallback<DateTime?> ValueChanged { get; set; }
 
+    /// <summary>Gets or sets the callback invoked after the value has changed.</summary>
+    [Parameter] public EventCallback OnValueChange { get; set; }
+
     /// <summary>Gets or sets the date format string. Default is "d" (short date pattern).</summary>
     [Parameter] public string Format { get; set; } = "d";
+
+    /// <summary>Gets or sets the size of the date picker. Default is Md.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Gets or sets the CSS style string for the root element.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Gets or sets any additional HTML attributes to be applied to the root element.</summary>
+    [Parameter] public IDictionary<string, object>? AdditionalAttributes { get; set; }
 
     /// <summary>Gets or sets the placeholder text shown when no date is selected.</summary>
     [Parameter] public string? Placeholder { get; set; }
@@ -292,6 +305,7 @@
         if (IsDateDisabled(d)) return;
         _open = false;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(d.Date);
+        if (OnValueChange.HasDelegate) await OnValueChange.InvokeAsync();
         _binder?.NotifyFieldChanged();
     }
 
@@ -301,6 +315,7 @@
     {
         _open = false;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
+        if (OnValueChange.HasDelegate) await OnValueChange.InvokeAsync();
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }

@@ -64,6 +64,8 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<SgRagService>();
         services.TryAddScoped<Services.AI.SgLangGraphService>();
         services.TryAddScoped<Services.Data.SgDexieService>();
+        services.TryAddScoped<Services.Data.SgCbrService>();
+        services.TryAddScoped<Services.Analytics.SgHeatmapService>();
         services.TryAddScoped<Services.Llm.ILlmService, Services.Llm.SgLlmService>();
         services.TryAddScoped<Services.Llm.IOpenRouterService, Services.Llm.SgOpenRouterService>();
         services.TryAddScoped<Services.Llm.SgChatHistoryService>();

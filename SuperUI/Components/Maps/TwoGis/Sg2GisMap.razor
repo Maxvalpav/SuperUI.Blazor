@@ -1,0 +1,113 @@
+@using Microsoft.JSInterop
+@using SuperUI.Enums
+@inherits SgJsComponentBase
+@namespace SuperUI.Components
+
+<div @ref="_container" id="@Id" class="sg-2gis-map" style="height: @Height; width: @Width; @Style">
+</div>
+
+@code {
+    private ElementReference _container;
+    private bool _ready;
+    private IEnumerable<SgMapMarker>? _lastMarkersRef;
+    private IEnumerable<SgMapPolyline>? _lastPolylinesRef;
+    private IEnumerable<SgMapPolygon>? _lastPolygonsRef;
+    private Sg2GisMapOptions? _lastOptsRef;
+    private bool _refreshScheduled;
+
+    protected override string ModulePath => "./_content/SuperUI/sg-2gis.js";
+    protected override string IdPrefix => "sg-2gis";
+
+    [Parameter] public Sg2GisMapOptions? Options { get; set; }
+    [Parameter] public IEnumerable<SgMapMarker>? Markers { get; set; }
+    [Parameter] public IEnumerable<SgMapPolyline>? Polylines { get; set; }
+    [Parameter] public IEnumerable<SgMapPolygon>? Polygons { get; set; }
+    [Parameter] public string Height { get; set; } = "400px";
+    [Parameter] public string Width { get; set; } = "100%";
+
+    [Parameter] public EventCallback<SgMapMarkerClickEventArgs> OnMarkerClick { get; set; }
+    [Parameter] public EventCallback<SgMapClickEventArgs> OnMapClick { get; set; }
+    [Parameter] public EventCallback<Sg2GisMapViewChangedEventArgs> OnViewChanged { get; set; }
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _ready = true;
+        await InitMapAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!_ready) return;
+
+        var changed = !ReferenceEquals(Markers, _lastMarkersRef) ||
+                      !ReferenceEquals(Polylines, _lastPolylinesRef) ||
+                      !ReferenceEquals(Polygons, _lastPolygonsRef) ||
+                      !ReferenceEquals(Options, _lastOptsRef);
+
+        if (changed && !_refreshScheduled)
+        {
+            _refreshScheduled = true;
+            _ = ScheduleRefreshAsync();
+        }
+    }
+
+    private async Task ScheduleRefreshAsync()
+    {
+        await Task.Yield();
+        _refreshScheduled = false;
+
+        if (Options != _lastOptsRef)
+        {
+            await InitMapAsync();
+        }
+        else
+        {
+            if (Markers != _lastMarkersRef)
+            {
+                await SafeInvokeVoidAsync("updateMarkers", Id, Markers);
+                _lastMarkersRef = Markers;
+            }
+            if (Polylines != _lastPolylinesRef)
+            {
+                await SafeInvokeVoidAsync("updatePolylines", Id, Polylines);
+                _lastPolylinesRef = Polylines;
+            }
+            if (Polygons != _lastPolygonsRef)
+            {
+                await SafeInvokeVoidAsync("updatePolygons", Id, Polygons);
+                _lastPolygonsRef = Polygons;
+            }
+        }
+    }
+
+    private async Task InitMapAsync()
+    {
+        if (Options == null) return;
+        
+        await SafeInvokeVoidAsync("initMap", 
+            DotNetObjectReference.Create(this), 
+            _container, 
+            Id, 
+            Options, 
+            Markers, 
+            Polylines, 
+            Polygons);
+
+        _lastMarkersRef = Markers;
+        _lastPolylinesRef = Polylines;
+        _lastPolygonsRef = Polygons;
+        _lastOptsRef = Options;
+    }
+
+    [JSInvokable]
+    public async Task HandleMarkerClick(SgMapMarkerClickEventArgs args) => await OnMarkerClick.InvokeAsync(args);
+
+    [JSInvokable]
+    public async Task HandleMapClick(SgMapClickEventArgs args) => await OnMapClick.InvokeAsync(args);
+
+    [JSInvokable]
+    public async Task HandleViewChanged(Sg2GisMapViewChangedEventArgs args) => await OnViewChanged.InvokeAsync(args);
+
+    public async Task SetCenterAsync(double lon, double lat, double? zoom = null) 
+        => await SafeInvokeVoidAsync("setCenter", Id, lon, lat, zoom);
+}

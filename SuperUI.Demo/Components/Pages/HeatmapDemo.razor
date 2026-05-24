@@ -1,0 +1,88 @@
+@page "/heatmap-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using SuperUI.Services.Analytics
+@inject SgHeatmapService HeatmapService
+
+<PageTitle>Тепловая карта кликов — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <SgStack Align="SgAlignItems.Center" Gap="12px">
+        <SgIcon Icon="Activity" Size="28" Color="var(--sg-primary)" />
+        <div>
+            <h1 class="sg-demo-title">Тепловая карта кликов</h1>
+            <p class="sg-demo-subtitle">Инструмент визуальной аналитики на базе Heatmap.js. Собирает данные о кликах и визуализирует зоны интереса.</p>
+        </div>
+    </SgStack>
+</div>
+
+<SgRow Gutter="24">
+    <SgCol Span="16">
+        <SgStack Orientation="SgOrientation.Vertical" Gap="24px">
+            <SgCard Title="Интерактивная зона" Subtitle="Покликайте в разных местах этой карточки, чтобы накопить данные">
+                <div style="height: 400px; background: var(--sg-bg-subtle); border: 2px dashed var(--sg-border-light); border-radius: 8px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+                    <SgStack Orientation="SgOrientation.Vertical" Align="SgAlignItems.Center" Gap="20px">
+                        <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Lg">Кнопка А</SgButton>
+                        <SgButton Variant="SgButtonVariant.Default">Кнопка Б</SgButton>
+                        <SgButton Variant="SgButtonVariant.Ghost">Кнопка В</SgButton>
+                    </SgStack>
+                    
+                    <div style="position: absolute; top: 20px; left: 20px; width: 60px; height: 60px; background: rgba(255,0,0,0.1); border-radius: 50%; border: 1px solid rgba(255,0,0,0.2);"></div>
+                    <div style="position: absolute; bottom: 20px; right: 20px; width: 80px; height: 40px; background: rgba(0,0,255,0.1); border-radius: 4px; border: 1px solid rgba(0,0,255,0.2);"></div>
+                </div>
+            </SgCard>
+
+            <SgCard Title="Как это работает?">
+                <SgTimeline Items="_explanationItems" />
+            </SgCard>
+        </SgStack>
+    </SgCol>
+
+    <SgCol Span="8">
+        <SgStack Orientation="SgOrientation.Vertical" Gap="24px">
+            <SgCard Title="Управление">
+                <SgStack Orientation="SgOrientation.Vertical" Gap="16px">
+                    <SgAlert Variant="SgAlertVariant.Info" ShowIcon="true">
+                        Используйте переключатель в левом нижнем углу экрана для активации тепловой карты.
+                    </SgAlert>
+                    
+                    <SgButton OnClick="ClearData" Variant="SgButtonVariant.Danger" Block="true">
+                        Очистить данные кликов
+                    </SgButton>
+
+                    <SgDivider />
+
+                    <div style="font-size: 13px; color: var(--sg-text-secondary)">
+                        <strong>Статус:</strong> @(HeatmapService.IsTracking ? "Сбор активен" : "Сбор остановлен") <br />
+                        <strong>Режим админа:</strong> @(HeatmapService.IsAdminMode ? "Включен" : "Выключен")
+                    </div>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Преимущества">
+                <ul style="padding-left: 20px; line-height: 1.6;">
+                    <li>Никаких внешних сервисов (Self-hosted)</li>
+                    <li>Полная конфиденциальность (данные в IndexedDB)</li>
+                    <li>Минимальное влияние на производительность</li>
+                    <li>Поддержка SPA-навигации</li>
+                </ul>
+            </SgCard>
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+@code {
+    private List<TimelineItem> _explanationItems = new()
+    {
+        new() { Title = "Сбор данных", Description = "JS-модуль слушает глобальное событие click и сохраняет координаты (x, y)." },
+        new() { Title = "Буферизация", Description = "Клики накапливаются в JS и пачками по 5 штук отправляются в C# сервис." },
+        new() { Title = "Хранение", Description = "C# сервис сохраняет данные в локальную БД браузера (IndexedDB) через SgDexieService." },
+        new() { Title = "Визуализация", Description = "В режиме администратора данные извлекаются из БД и накладываются на страницу с помощью heatmap.js." }
+    };
+
+    private async Task ClearData()
+    {
+        await HeatmapService.ClearDataAsync();
+        StateHasChanged();
+    }
+}

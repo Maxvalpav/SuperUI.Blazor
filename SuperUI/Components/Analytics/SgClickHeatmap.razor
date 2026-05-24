@@ -1,0 +1,50 @@
+@using SuperUI.Services.Analytics
+@namespace SuperUI.Components
+@inject SgHeatmapService HeatmapService
+@inject NavigationManager NavManager
+@implements IDisposable
+
+@* This component is invisible and handles global click tracking and heatmap overlay management *@
+
+@code {
+    [Parameter] public bool AutoStart { get; set; } = true;
+    [Parameter] public bool InitialAdminMode { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AutoStart)
+        {
+            await HeatmapService.StartTrackingAsync();
+        }
+        NavManager.LocationChanged += HandleLocationChanged;
+        
+        if (InitialAdminMode)
+        {
+            await HeatmapService.ToggleAdminModeAsync(true);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && HeatmapService.IsAdminMode)
+        {
+            await Task.Delay(1000); // Give some time for the page to stabilize
+            await HeatmapService.ToggleAdminModeAsync(true);
+        }
+    }
+
+    private async void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        if (HeatmapService.IsAdminMode)
+        {
+            // Refresh heatmap for new page
+            await Task.Delay(500); // Wait for page to render
+            await HeatmapService.ToggleAdminModeAsync(true);
+        }
+    }
+
+    public void Dispose()
+    {
+        NavManager.LocationChanged -= HandleLocationChanged;
+    }
+}
