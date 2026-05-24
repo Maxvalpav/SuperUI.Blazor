@@ -55,9 +55,9 @@ public sealed class SgConfirmService : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(localizer);
         _localizer = localizer;
         var o = options?.Value;
-        _defaultTitle       = o?.DefaultConfirmTitle ?? _localizer["Common_Confirmation"];
-        _defaultConfirmText = o?.DefaultConfirmText  ?? _localizer["Common_Confirm"];
-        _defaultCancelText  = o?.DefaultCancelText   ?? _localizer["Common_Cancel"];
+        _defaultTitle       = _localizer["Common_Confirmation"];
+        _defaultConfirmText = _localizer["Common_Confirm"];
+        _defaultCancelText  = _localizer["Common_Cancel"];
     }
 
     /// <summary>Возникает, когда запрашивается confirm. Подписывается <c>SgConfirmHost</c>.</summary>
