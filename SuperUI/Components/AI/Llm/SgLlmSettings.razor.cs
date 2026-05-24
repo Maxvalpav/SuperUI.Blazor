@@ -433,6 +433,11 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
             if (_modelIds.Any())
             {
+                if (string.IsNullOrWhiteSpace(Config.ModelId) || !_modelIds.Contains(Config.ModelId, StringComparer.OrdinalIgnoreCase))
+                {
+                    Config.ModelId = PickPreferredModelId();
+                }
+
                 _lastStatus = "Success";
                 _statusText = Localizer["Llm_ModelsUpdated"];
             }
@@ -453,6 +458,24 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     }
 
     private static List<string> FallbackModelIds(SgLlmProvider provider) => SgLlmProviderRegistry.FallbackModels(provider).Select(m => m.Id).ToList();
+
+    /// <summary>
+    /// Returns the best default model for the current provider. Prefers a recommended
+    /// model that survived the active filters, then any free model, then the first
+    /// id from the registry fallback list — never auto-picks a hard-coded "gemini".
+    /// </summary>
+    private string? PickPreferredModelId()
+    {
+        var ids = FilteredModelIds;
+        var fromApi = _models.FirstOrDefault(m => ids.Contains(m.Id) && m.IsRecommended)
+                      ?? _models.FirstOrDefault(m => ids.Contains(m.Id) && IsModelFree(m))
+                      ?? _models.FirstOrDefault(m => ids.Contains(m.Id));
+        if (fromApi is not null) return fromApi.Id;
+
+        var registry = SgLlmProviderRegistry.FallbackModels(Config.Provider);
+        return registry.FirstOrDefault(m => m.IsRecommended)?.Id
+               ?? registry.FirstOrDefault()?.Id;
+    }
 
     private SgLlmRouteConfig GetRoute(string purpose)
     {

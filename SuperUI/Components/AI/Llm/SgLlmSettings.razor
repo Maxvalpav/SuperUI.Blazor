@@ -14,35 +14,23 @@
     @if (Compact)
     {
         <div class="sgc-llm-compact-row">
-            <SgPopover Title="Провайдер LLM" Placement="SgPlacement.BottomStart">
-                <TriggerContent>
-                    <button type="button" class="sgc-provider-pill" title="Выбрать провайдера">
-                        <span class="sgc-provider-dot"></span>
-                        <span>@ProviderLabel(Config.Provider)</span>
-                        <span class="sgc-provider-chevron">⌄</span>
-                    </button>
-                </TriggerContent>
-                <ChildContent>
-                    <div class="sgc-llm-provider-grid sgc-llm-provider-grid-compact">
-                        @foreach (var provider in _providers)
-                        {
-                            <button type="button"
-                                    class="sgc-provider-card @(Config.Provider == provider ? "active" : "")"
-                                    @onclick="@(() => OnProviderChanged(provider))">
-                                <span class="sgc-provider-card-title">@ProviderLabel(provider)</span>
-                                <span class="sgc-provider-card-desc">@ProviderShortHint(provider)</span>
-                            </button>
-                        }
-                    </div>
-                </ChildContent>
-            </SgPopover>
+            <div class="sgc-mini-field sgc-mini-provider">
+                <span>Провайдер</span>
+                <SgSelect TValue="SgLlmProvider"
+                          Items="_providers"
+                          Value="Config.Provider"
+                          ValueChanged="OnProviderChanged"
+                          LabelSelector="ProviderLabel"
+                          Placeholder="Выберите провайдера"
+                          Style="width: 100%;" />
+            </div>
 
             @if (Config.Provider != SgLlmProvider.None)
             {
                 <div class="sgc-mini-field sgc-mini-model">
                     <span>Модель</span>
                     <SgAutoComplete TItem="string" @bind-Value="Config.ModelId" Items="FilteredModelIds"
-                                    Placeholder="выберите или введите модель" MaxResults="200"
+                                    Placeholder="выберите модель" MaxResults="200"
                                     Style="width: 100%;" />
                 </div>
 
@@ -105,15 +93,17 @@
                     <span>Провайдер</span>
                     <small>@ProviderShortHint(Config.Provider)</small>
                 </div>
-                <div class="sgc-llm-provider-grid">
-                    @foreach (var provider in _providers)
+                <div class="sgc-llm-provider-pickrow">
+                    <SgSelect TValue="SgLlmProvider"
+                              Items="_providers"
+                              Value="Config.Provider"
+                              ValueChanged="OnProviderChanged"
+                              LabelSelector="ProviderLabel"
+                              Placeholder="Выберите провайдера"
+                              Style="min-width: 240px; flex: 1;" />
+                    @if (LlmService.CurrentConfig?.Provider is { } current && current == Config.Provider)
                     {
-                        <button type="button"
-                                class="sgc-provider-card @(Config.Provider == provider ? "active" : "") @(LlmService.CurrentConfig?.Provider == provider ? "current" : "")"
-                                @onclick="@(() => OnProviderChanged(provider))">
-                            <span class="sgc-provider-card-title">@ProviderLabel(provider)</span>
-                            <span class="sgc-provider-card-desc">@ProviderShortHint(provider)</span>
-                        </button>
+                        <span class="sgc-provider-applied">● применён</span>
                     }
                 </div>
             </div>
@@ -665,10 +655,10 @@
     }
     .sgc-llm-compact-row {
         display: flex;
-        align-items: center;
+        align-items: flex-end;
         gap: 8px;
-        flex-wrap: nowrap;
-        padding: 5px 7px;
+        flex-wrap: wrap;
+        padding: 6px 8px;
         background: var(--sg-bg, #fff);
         border: 1px solid var(--sg-border, #d8dee8);
         border-radius: 10px;
@@ -676,27 +666,10 @@
         max-width: 100%;
     }
     .sg-providerless { color: var(--sg-fg-muted); }
-    .sgc-provider-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 7px;
-        height: 32px;
-        padding: 0 10px;
-        border: 1px solid var(--sg-color-primary, #2563eb);
-        background: var(--sgc-soft);
-        color: var(--sg-color-primary, #2563eb);
-        border-radius: 9px;
-        font-size: 12px;
-        font-weight: 650;
-        cursor: pointer;
-        white-space: nowrap;
-    }
-    .sgc-provider-dot { width: 7px; height: 7px; border-radius: 999px; background: currentColor; box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 15%, transparent); }
-    .sgc-provider-chevron { opacity: .7; font-size: 12px; }
     .sgc-mini-field {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 3px;
         min-width: 0;
     }
     .sgc-mini-field > span {
@@ -704,12 +677,26 @@
         line-height: 1;
         color: var(--sg-fg-muted, #64748b);
         padding-left: 2px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-weight: 650;
     }
-    .sgc-mini-model { flex: 1 1 260px; min-width: 180px; }
-    .sgc-mini-url { flex: 0 1 250px; min-width: 190px; }
-    .sgc-mini-key { flex: 0 1 180px; min-width: 150px; }
-    .sgc-llm-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+    .sgc-mini-provider { flex: 0 1 200px; min-width: 170px; }
+    .sgc-mini-model { flex: 1 1 240px; min-width: 180px; }
+    .sgc-mini-url { flex: 1 1 220px; min-width: 180px; }
+    .sgc-mini-key { flex: 1 1 180px; min-width: 150px; }
+    .sgc-llm-actions { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; align-self: flex-end; padding-bottom: 1px; }
     .sgc-llm-popover-panel { min-width: 520px; max-width: min(720px, 92vw); }
+    .sgc-llm-provider-pickrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .sgc-provider-applied {
+        font-size: 11px;
+        color: var(--sg-color-success, #16a34a);
+        background: color-mix(in srgb, var(--sg-color-success, #16a34a) 12%, transparent);
+        border: 1px solid color-mix(in srgb, var(--sg-color-success, #16a34a) 35%, transparent);
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-weight: 650;
+    }
 
     .sgc-llm-full-layout { display: flex; flex-direction: column; gap: 14px; }
     .sgc-llm-heading {
