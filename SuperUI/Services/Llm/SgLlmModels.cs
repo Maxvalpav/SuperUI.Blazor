@@ -259,6 +259,83 @@ public class SgLlmConfig
 
     // --- User identification (abuse tracking on OpenAI/Anthropic) ---
     public string? UserIdentifier { get; set; }
+
+    /// <summary>
+    /// Updates all properties from another configuration object.
+    /// </summary>
+    public void UpdateFrom(SgLlmConfig source)
+    {
+        if (source == null) return;
+        Provider = source.Provider;
+        ModelId = source.ModelId;
+        ApiKey = source.ApiKey;
+        BaseUrl = source.BaseUrl;
+        SystemPrompt = source.SystemPrompt;
+        Stream = source.Stream;
+        ExtraHeaders = source.ExtraHeaders != null ? new Dictionary<string, string>(source.ExtraHeaders) : null;
+        Routes = source.Routes != null ? new Dictionary<string, SgLlmRouteConfig>(source.Routes) : null;
+        PersistApiKey = source.PersistApiKey;
+        UseBackendProxy = source.UseBackendProxy;
+        ProxyUrl = source.ProxyUrl;
+        TimeoutSeconds = source.TimeoutSeconds;
+        RetryCount = source.RetryCount;
+        RetryDelayMs = source.RetryDelayMs;
+        FallbackProvider = source.FallbackProvider;
+        FallbackBaseUrl = source.FallbackBaseUrl;
+        GigaAuthMode = source.GigaAuthMode;
+        GigaScope = source.GigaScope;
+        GigaOAuthUrl = source.GigaOAuthUrl;
+        UseResponsesApi = source.UseResponsesApi;
+        OnlyFreeModels = source.OnlyFreeModels;
+        WarnOnPaidModels = source.WarnOnPaidModels;
+        DailyTokenLimit = source.DailyTokenLimit;
+        RequestTokenLimit = source.RequestTokenLimit;
+        UseAdvanced = source.UseAdvanced;
+        Temperature = source.Temperature;
+        TopP = source.TopP;
+        MaxTokens = source.MaxTokens;
+        PresencePenalty = source.PresencePenalty;
+        FrequencyPenalty = source.FrequencyPenalty;
+        Seed = source.Seed;
+        Stop = source.Stop != null ? new List<string>(source.Stop) : null;
+        TopK = source.TopK;
+        MinP = source.MinP;
+        RepetitionPenalty = source.RepetitionPenalty;
+        ResponseFormat = source.ResponseFormat;
+        JsonSchema = source.JsonSchema;
+        LogProbs = source.LogProbs;
+        TopLogProbs = source.TopLogProbs;
+        ParallelToolCalls = source.ParallelToolCalls;
+        StreamUsage = source.StreamUsage;
+        ReasoningEffort = source.ReasoningEffort;
+        Verbosity = source.Verbosity;
+        AnthropicThinking = source.AnthropicThinking;
+        AnthropicThinkingBudgetTokens = source.AnthropicThinkingBudgetTokens;
+        GeminiSafetyThreshold = source.GeminiSafetyThreshold;
+        GeminiThinkingBudget = source.GeminiThinkingBudget;
+        GeminiIncludeThoughts = source.GeminiIncludeThoughts;
+        OrFallbackModels = source.OrFallbackModels != null ? new List<string>(source.OrFallbackModels) : null;
+        OrProviderSort = source.OrProviderSort;
+        OrAllowedProviders = source.OrAllowedProviders != null ? new List<string>(source.OrAllowedProviders) : null;
+        OrIgnoredProviders = source.OrIgnoredProviders != null ? new List<string>(source.OrIgnoredProviders) : null;
+        OrRequireParameters = source.OrRequireParameters;
+        OrAllowDataCollection = source.OrAllowDataCollection;
+        OrTransforms = source.OrTransforms;
+        ServiceTier = source.ServiceTier;
+        AzureDeployment = source.AzureDeployment;
+        AzureApiVersion = source.AzureApiVersion;
+        UserIdentifier = source.UserIdentifier;
+    }
+
+    /// <summary>
+    /// Creates a deep copy of the configuration.
+    /// </summary>
+    public SgLlmConfig Clone()
+    {
+        var clone = new SgLlmConfig();
+        clone.UpdateFrom(this);
+        return clone;
+    }
 }
 
 public class SgLlmPromptOptions

@@ -1,5 +1,10 @@
 @inherits LayoutComponentBase
 @using SuperUI.Components
+@using SuperUI.Services
+@inject SgPageTabsService TabsService
+@inject SgSettingsService SettingsService
+@inject NavigationManager NavigationManager
+@implements IDisposable
 
 <SgNavigation />
 
@@ -34,6 +39,11 @@
             </ActionsContent>
         </SgHeader>
 
+        @if (SettingsService.IsTabbedMode)
+        {
+            <SgPageTabs />
+        }
+
         <div class="sui-content">
             @Body
         </div>
@@ -66,6 +76,57 @@
     private AppNav? _appNav;
     private bool _showSettings;
 
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        SettingsService.OnSettingsChanged += OnSettingsChanged;
+        // Initial page
+        UpdateTabs(NavigationManager.Uri);
+    }
+
+    private void OnSettingsChanged()
+    {
+        UpdateTabs(NavigationManager.Uri);
+        StateHasChanged();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        UpdateTabs(e.Location);
+        StateHasChanged();
+    }
+
+    private void UpdateTabs(string uri)
+    {
+        if (!SettingsService.IsTabbedMode) return;
+
+        var relativeUri = NavigationManager.ToBaseRelativePath(uri);
+        // Extract title from URI or some mapping
+        var title = GetTitleFromUri(relativeUri);
+        
+        TabsService.OpenTab(relativeUri, title);
+    }
+
+    private string GetTitleFromUri(string uri)
+    {
+        if (string.IsNullOrEmpty(uri)) return "Home";
+        
+        // Simple heuristic: convert kebab-case to Title Case
+        var parts = uri.Split('/');
+        var lastPart = parts[^1];
+        if (lastPart.EndsWith("-demo")) lastPart = lastPart[..^5];
+        
+        var textInfo = System.Globalization.CultureInfo.CurrentCulture.TextInfo;
+        return textInfo.ToTitleCase(lastPart.Replace("-", " "));
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        SettingsService.OnSettingsChanged -= OnSettingsChanged;
+    }
+
     private Task ToggleNavAsync() =>
         _appNav?.ToggleAsync() ?? Task.CompletedTask;
 }
+

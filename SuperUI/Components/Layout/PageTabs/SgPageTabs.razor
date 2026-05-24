@@ -1,0 +1,68 @@
+@namespace SuperUI.Components
+@inject SgPageTabsService TabsService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<div class="sgc-page-tabs">
+    <div class="sgc-page-tabs-container">
+        @foreach (var tab in TabsService.Tabs)
+        {
+            <div class="@GetTabClass(tab)" @onclick="() => ActivateTab(tab)">
+                @if (!string.IsNullOrEmpty(tab.Icon))
+                {
+                    <span class="sgc-page-tab-icon">
+                        @if (tab.Icon.StartsWith("<svg"))
+                        {
+                            @((MarkupString)tab.Icon)
+                        }
+                        else
+                        {
+                            @tab.Icon
+                        }
+                    </span>
+                }
+                <span class="sgc-page-tab-title">@tab.Title</span>
+                <span class="sgc-page-tab-close" @onclick:stopPropagation="true" @onclick="() => CloseTab(tab)">
+                    @((MarkupString)SgIcons.X)
+                </span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        TabsService.OnChanged += StateHasChanged;
+    }
+
+    private string GetTabClass(SgPageTab tab)
+    {
+        var activeClass = TabsService.ActiveTab == tab ? "is-active" : "";
+        return $"sgc-page-tab {activeClass}";
+    }
+
+    private void ActivateTab(SgPageTab tab)
+    {
+        TabsService.SetActiveTab(tab.Href);
+        NavigationManager.NavigateTo(tab.Href);
+    }
+
+    private void CloseTab(SgPageTab tab)
+    {
+        TabsService.RemoveTab(tab.Href);
+        if (TabsService.ActiveTab != null)
+        {
+            NavigationManager.NavigateTo(TabsService.ActiveTab.Href);
+        }
+        else
+        {
+            NavigationManager.NavigateTo("");
+        }
+    }
+
+    public void Dispose()
+    {
+        TabsService.OnChanged -= StateHasChanged;
+    }
+}

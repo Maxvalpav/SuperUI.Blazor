@@ -178,15 +178,14 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
     private static string Fingerprint(SgLlmConfig config)
     {
-        var copy = CopyConfig(config);
+        var copy = config.Clone();
         copy.ApiKey = string.IsNullOrWhiteSpace(copy.ApiKey) ? "" : "***";
         return System.Text.Json.JsonSerializer.Serialize(copy);
     }
 
     private static SgLlmConfig CopyConfig(SgLlmConfig source)
     {
-        var json = System.Text.Json.JsonSerializer.Serialize(source);
-        return System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json) ?? new();
+        return source.Clone();
     }
 
     private string RawRequestPreview
@@ -288,64 +287,7 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
 
         if (LlmService.CurrentConfig != null && string.IsNullOrEmpty(Config.ModelId))
         {
-            var c = LlmService.CurrentConfig;
-            Config.Provider = c.Provider;
-            Config.ModelId = c.ModelId;
-            Config.ApiKey = c.ApiKey;
-            Config.BaseUrl = c.BaseUrl;
-            Config.SystemPrompt = c.SystemPrompt;
-            Config.Temperature = c.Temperature;
-            Config.TopP = c.TopP;
-            Config.MaxTokens = c.MaxTokens;
-            Config.PresencePenalty = c.PresencePenalty;
-            Config.FrequencyPenalty = c.FrequencyPenalty;
-            Config.UseAdvanced = c.UseAdvanced;
-            Config.Seed = c.Seed;
-            Config.Stop = c.Stop;
-            Config.TopK = c.TopK;
-            Config.MinP = c.MinP;
-            Config.RepetitionPenalty = c.RepetitionPenalty;
-            Config.ResponseFormat = c.ResponseFormat;
-            Config.JsonSchema = c.JsonSchema;
-            Config.LogProbs = c.LogProbs;
-            Config.TopLogProbs = c.TopLogProbs;
-            Config.ParallelToolCalls = c.ParallelToolCalls;
-            Config.StreamUsage = c.StreamUsage;
-            Config.ReasoningEffort = c.ReasoningEffort;
-            Config.Verbosity = c.Verbosity;
-            Config.AnthropicThinking = c.AnthropicThinking;
-            Config.AnthropicThinkingBudgetTokens = c.AnthropicThinkingBudgetTokens;
-            Config.GeminiSafetyThreshold = c.GeminiSafetyThreshold;
-            Config.GeminiThinkingBudget = c.GeminiThinkingBudget;
-            Config.GeminiIncludeThoughts = c.GeminiIncludeThoughts;
-            Config.OrFallbackModels = c.OrFallbackModels;
-            Config.OrProviderSort = c.OrProviderSort;
-            Config.OrAllowedProviders = c.OrAllowedProviders;
-            Config.OrIgnoredProviders = c.OrIgnoredProviders;
-            Config.OrRequireParameters = c.OrRequireParameters;
-            Config.OrAllowDataCollection = c.OrAllowDataCollection;
-            Config.OrTransforms = c.OrTransforms;
-            Config.ServiceTier = c.ServiceTier;
-            Config.AzureDeployment = c.AzureDeployment;
-            Config.AzureApiVersion = c.AzureApiVersion;
-            Config.UserIdentifier = c.UserIdentifier;
-            Config.PersistApiKey = c.PersistApiKey;
-            Config.UseBackendProxy = c.UseBackendProxy;
-            Config.ProxyUrl = c.ProxyUrl;
-            Config.TimeoutSeconds = c.TimeoutSeconds;
-            Config.RetryCount = c.RetryCount;
-            Config.RetryDelayMs = c.RetryDelayMs;
-            Config.FallbackProvider = c.FallbackProvider;
-            Config.FallbackBaseUrl = c.FallbackBaseUrl;
-            Config.GigaAuthMode = c.GigaAuthMode;
-            Config.GigaScope = c.GigaScope;
-            Config.GigaOAuthUrl = c.GigaOAuthUrl;
-            Config.UseResponsesApi = c.UseResponsesApi;
-            Config.OnlyFreeModels = c.OnlyFreeModels;
-            Config.WarnOnPaidModels = c.WarnOnPaidModels;
-            Config.DailyTokenLimit = c.DailyTokenLimit;
-            Config.RequestTokenLimit = c.RequestTokenLimit;
-
+            Config.UpdateFrom(LlmService.CurrentConfig);
             _lastStatus = "Success";
             _statusText = Localizer["Llm_LoadedFromService"];
         }
@@ -355,6 +297,15 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         await LoadModelsAsync();
         await LoadUsageAsync();
         _lastAppliedFingerprint = Fingerprint(Config);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Config != null)
+        {
+            EnsureBaseUrl();
+            _lastAppliedFingerprint = Fingerprint(Config);
+        }
     }
 
     private async Task OnProviderChanged(SgLlmProvider provider)

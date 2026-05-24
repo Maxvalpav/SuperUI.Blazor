@@ -26,23 +26,36 @@ public class SgSettingsService
 
     public string DateFormat { get; private set; } = "DD.MM.YYYY";
     public string NumberSeparator { get; private set; } = "space"; // "space", "comma", "none"
+    public bool IsTabbedMode { get; private set; }
+
+    public event Action? OnSettingsChanged;
 
     public async Task InitializeAsync()
     {
         DateFormat = await _js.InvokeAsync<string>("localStorage.getItem", "sui-date-format") ?? "DD.MM.YYYY";
         NumberSeparator = await _js.InvokeAsync<string>("localStorage.getItem", "sui-number-separator") ?? "space";
+        IsTabbedMode = await _js.InvokeAsync<string>("localStorage.getItem", "sui-tabbed-mode") == "true";
+    }
+
+    public async Task SetTabbedModeAsync(bool enabled)
+    {
+        IsTabbedMode = enabled;
+        await _js.InvokeVoidAsync("localStorage.setItem", "sui-tabbed-mode", enabled.ToString().ToLower());
+        OnSettingsChanged?.Invoke();
     }
 
     public async Task SetDateFormatAsync(string format)
     {
         DateFormat = format;
         await _js.InvokeVoidAsync("localStorage.setItem", "sui-date-format", format);
+        OnSettingsChanged?.Invoke();
     }
 
     public async Task SetNumberSeparatorAsync(string separator)
     {
         NumberSeparator = separator;
         await _js.InvokeVoidAsync("localStorage.setItem", "sui-number-separator", separator);
+        OnSettingsChanged?.Invoke();
     }
 
     public async Task ResetAllSettingsAsync()
