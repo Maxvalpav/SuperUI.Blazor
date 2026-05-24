@@ -1,0 +1,95 @@
+@namespace SuperUI.Components.AI.LangGraph
+@using SuperUI.Services.AI
+@using SuperUI.Enums
+
+<SgCard Title="Checkpoint Manager" Compact="true">
+    <SgStack Orientation="SgOrientation.Vertical" Gap="8px">
+        <div class="sgc-checkpoint-info">
+            <small>Thread ID: @(Provider?.Config?.ThreadId ?? "default")</small>
+        </div>
+        <SgButtonGroup Size="SgSize.Sm">
+            <SgButton Text="Save" Variant="SgButtonVariant.Outlined" OnClick="SaveCheckpointAsync" />
+            <SgButton Text="Load" Variant="SgButtonVariant.Outlined" OnClick="LoadCheckpointAsync" />
+            <SgButton Text="Reset" Variant="SgButtonVariant.Danger" OnClick="ResetThreadAsync" />
+        </SgButtonGroup>
+        
+        @if (_history.Any())
+        {
+            <div class="sgc-checkpoint-history">
+                <h6>History (Time Travel)</h6>
+                <div class="sgc-history-list">
+                    @foreach (var entry in _history)
+                    {
+                        <div class="sgc-history-item" @onclick="() => RestoreToStep(entry)">
+                            <span>@entry.Node</span>
+                            <small>@entry.Timestamp.ToString("HH:mm:ss")</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </SgStack>
+</SgCard>
+
+<style>
+    .sgc-checkpoint-info { font-size: 11px; color: var(--sg-fg-muted); }
+    .sgc-checkpoint-history { margin-top: 12px; border-top: 1px solid var(--sg-border); padding-top: 8px; }
+    .sgc-checkpoint-history h6 { margin: 0 0 8px 0; font-size: 12px; }
+    .sgc-history-list { max-height: 150px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+    .sgc-history-item { 
+        padding: 4px 8px; 
+        border-radius: 4px; 
+        background: var(--sg-bg-subtle); 
+        cursor: pointer; 
+        display: flex; 
+        justify-content: space-between;
+        font-size: 11px;
+    }
+    .sgc-history-item:hover { background: var(--sg-bg-hover); }
+</style>
+
+@code {
+    [CascadingParameter] public LangGraphProvider? Provider { get; set; }
+
+    private List<HistoryEntry> _history = new();
+
+    protected override void OnInitialized()
+    {
+        if (Provider != null)
+        {
+            Provider.StepReceived += (step) => {
+                _history.Add(new HistoryEntry { Node = step.Node, State = step.State, Timestamp = DateTime.Now });
+                InvokeAsync(StateHasChanged);
+            };
+        }
+    }
+
+    private async Task SaveCheckpointAsync()
+    {
+        // Placeholder for real checkpoint saving logic
+        // In LangGraph.js this usually involves the checkpointer (SqliteSaver/MemorySaver)
+    }
+
+    private async Task LoadCheckpointAsync()
+    {
+        // Placeholder for loading logic
+    }
+
+    private async Task ResetThreadAsync()
+    {
+        _history.Clear();
+        // Trigger reset in JS
+    }
+
+    private void RestoreToStep(HistoryEntry entry)
+    {
+        // Placeholder for Time Travel logic
+    }
+
+    private class HistoryEntry
+    {
+        public string Node { get; set; } = string.Empty;
+        public object? State { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+}

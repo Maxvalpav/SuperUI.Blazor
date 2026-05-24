@@ -1,0 +1,200 @@
+@namespace SuperUI.Components.Data.Dexie
+@using SuperUI.Services.Data
+@using SuperUI.Enums
+@using System.Text.Json
+
+<SgCard Title="Dexie Database Explorer" Subtitle="@(Provider?.DbName)" Compact="true">
+    <SgStack Orientation="SgOrientation.Vertical" Gap="12px">
+        <SgRow>
+            <SgCol Span="6">
+                <div class="sg-table-list">
+                    @foreach (var table in _tables)
+                    {
+                        <div class="sg-table-item @(table.Name == _selectedTable ? "active" : "")" @onclick="() => HandleTableClick(table)">
+                            <span>@table.Name</span>
+                            <SgBadge Variant="SgBadgeVariant.Info" Count="table.Count" Standalone="true" />
+                        </div>
+                    }
+                </div>
+                <SgDivider />
+                <SgButton Variant="SgButtonVariant.Outlined" FullWidth="true" OnClick="RefreshTablesAsync">
+                    <Icon>@((MarkupString)RefreshIcon)</Icon>
+                    <ChildContent>Refresh Tables</ChildContent>
+                </SgButton>
+            </SgCol>
+            <SgCol Span="18">
+                @if (!string.IsNullOrEmpty(_selectedTable))
+                {
+                    <SgStack Orientation="SgOrientation.Horizontal" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                        <h5>Table: @_selectedTable</h5>
+                        <SgButtonGroup>
+                            <SgButton Variant="SgButtonVariant.Danger" OnClick="HandleClearTable">
+                                <Icon>@((MarkupString)TrashIcon)</Icon>
+                                <ChildContent>Clear</ChildContent>
+                            </SgButton>
+                            <SgButton Variant="SgButtonVariant.Outlined" OnClick="HandleExport">
+                                <Icon>@((MarkupString)DownloadIcon)</Icon>
+                                <ChildContent>Export JSON</ChildContent>
+                            </SgButton>
+                        </SgButtonGroup>
+                    </SgStack>
+                    
+                    <div class="sg-data-grid-container">
+                        @if (_tableData != null && _tableData.Any())
+                        {
+                            <table class="sg-dexie-table">
+                                <thead>
+                                    <tr>
+                                        @foreach (var key in GetKeys(_tableData.First()))
+                                        {
+                                            <th>@key</th>
+                                        }
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in _tableData)
+                                    {
+                                        <tr>
+                                            @foreach (var key in GetKeys(row))
+                                            {
+                                                <td>@GetValue(row, key)</td>
+                                            }
+                                            <td>
+                                                <SgButton Variant="SgButtonVariant.Ghost" OnClick="() => HandleDeleteRow(row)">
+                                                    <Icon>@((MarkupString)DeleteIcon)</Icon>
+                                                </SgButton>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        }
+                        else
+                        {
+                            <div class="sg-empty-state">Нет данных в таблице</div>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <div class="sg-empty-state">Выберите таблицу для просмотра данных</div>
+                }
+            </SgCol>
+        </SgRow>
+    </SgStack>
+</SgCard>
+
+<style>
+    .sg-table-list { display: flex; flex-direction: column; gap: 4px; }
+    .sg-table-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; cursor: pointer; border-radius: 4px; }
+    .sg-table-item:hover { background: var(--sg-bg-hover); }
+    .sg-table-item.active { background: var(--sg-color-primary-subtle); color: var(--sg-color-primary); }
+    .sg-data-grid-container { margin-top: 12px; max-height: 500px; overflow: auto; border: 1px solid var(--sg-border); border-radius: 4px; }
+    .sg-dexie-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .sg-dexie-table th { background: var(--sg-bg-subtle); padding: 8px; text-align: left; position: sticky; top: 0; border-bottom: 2px solid var(--sg-border); }
+    .sg-dexie-table td { padding: 8px; border-bottom: 1px solid var(--sg-border); }
+    .sg-empty-state { padding: 40px; text-align: center; color: var(--sg-fg-muted); }
+</style>
+
+@code {
+    [CascadingParameter] public SgDexieProvider? Provider { get; set; }
+
+    private List<DexieTableInfo> _tables = new();
+    private string? _selectedTable;
+    private List<JsonElement>? _tableData;
+
+    // Icons from Lucide (embedded as strings for simplicity)
+    private const string RefreshIcon = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8""/><path d=""M21 3v5h-5""/><path d=""M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16""/><path d=""M3 21v-5h5""/></svg>";
+    private const string TrashIcon = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M3 6h18""/><path d=""M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6""/><path d=""M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2""/><line x1=""10"" x2=""10"" y1=""11"" y2=""17""/><line x1=""14"" x2=""14"" y1=""11"" y2=""17""/></svg>";
+    private const string DeleteIcon = @"<svg width=""12"" height=""12"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M18 6 6 18""/><path d=""m6 6 12 12""/></svg>";
+    private const string DownloadIcon = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4""/><polyline points=""7 10 12 15 17 10""/><line x1=""12"" x2=""12"" y1=""15"" y2=""3""/></svg>";
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshTablesAsync();
+    }
+
+    private async Task RefreshTablesAsync()
+    {
+        if (Provider != null)
+        {
+            _tables = await Provider.Service.GetTablesAsync(Provider.DbName);
+            // In a real app, we might need to count rows per table here
+            foreach (var t in _tables)
+            {
+                var data = await Provider.Service.GetAllAsync<JsonElement>(Provider.DbName, t.Name);
+                t.Count = data.Count;
+            }
+        }
+    }
+
+    private async Task HandleTableClick(DexieTableInfo table)
+    {
+        _selectedTable = table.Name;
+        await LoadTableDataAsync();
+    }
+
+    private async Task LoadTableDataAsync()
+    {
+        if (Provider != null && !string.IsNullOrEmpty(_selectedTable))
+        {
+            _tableData = await Provider.Service.GetAllAsync<JsonElement>(Provider.DbName, _selectedTable);
+        }
+    }
+
+    private async Task HandleDeleteRow(JsonElement row)
+    {
+        if (Provider != null && !string.IsNullOrEmpty(_selectedTable))
+        {
+            // Try to find an 'id' or 'Id' property
+            if (row.TryGetProperty("id", out var idProp) || row.TryGetProperty("Id", out idProp))
+            {
+                object id = idProp.ValueKind == JsonValueKind.Number ? idProp.GetInt32() : idProp.GetString()!;
+                await Provider.DeleteAsync(_selectedTable, id);
+                await LoadTableDataAsync();
+                await RefreshTablesAsync();
+            }
+        }
+    }
+
+    private async Task HandleClearTable()
+    {
+        if (Provider != null && !string.IsNullOrEmpty(_selectedTable))
+        {
+            await Provider.ClearTableAsync(_selectedTable);
+            await LoadTableDataAsync();
+            await RefreshTablesAsync();
+        }
+    }
+
+    private void HandleExport()
+    {
+        // Simple console log for demo
+        Console.WriteLine(JsonSerializer.Serialize(_tableData));
+    }
+
+    private IEnumerable<string> GetKeys(JsonElement element)
+    {
+        if (element.ValueKind != JsonValueKind.Object) return Enumerable.Empty<string>();
+        return element.EnumerateObject().Select(p => p.Name);
+    }
+
+    private string GetValue(JsonElement element, string key)
+    {
+        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty(key, out var prop))
+        {
+            return prop.ValueKind switch
+            {
+                JsonValueKind.String => prop.GetString() ?? "",
+                JsonValueKind.Number => prop.GetRawText(),
+                JsonValueKind.True => "true",
+                JsonValueKind.False => "false",
+                JsonValueKind.Null => "null",
+                _ => prop.GetRawText()
+            };
+        }
+        return "";
+    }
+}

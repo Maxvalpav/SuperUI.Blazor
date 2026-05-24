@@ -1,0 +1,102 @@
+@namespace SuperUI.Components.AI.LangGraph
+@using SuperUI.Services.AI
+@implements IAsyncDisposable
+@inject SgLangGraphService LangGraphService
+
+<CascadingValue Value="this" IsFixed="true">
+    @ChildContent
+</CascadingValue>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public SgLangGraphConfig? Config { get; set; }
+    [Parameter] public EventCallback<SgLangGraphStep> OnStep { get; set; }
+    [Parameter] public EventCallback<string> OnError { get; set; }
+    [Parameter] public EventCallback<SgLangGraphSchema> OnInitialized { get; set; }
+    [Parameter] public EventCallback<SgLangGraphInterrupt> OnInterrupt { get; set; }
+    [Parameter] public Func<string, object, Task<SgLangGraphNodeResult>>? OnNodeExecute { get; set; }
+
+    public event Action<SgLangGraphStep>? StepReceived;
+    public event Action<string>? ErrorReceived;
+    public event Action<SgLangGraphSchema>? InitializedReceived;
+    public event Action<SgLangGraphInterrupt>? InterruptReceived;
+
+    public SgLangGraphService Service => LangGraphService;
+    public SgLangGraphStep? CurrentStep { get; private set; }
+    public SgLangGraphSchema? Schema { get; private set; }
+    public bool IsInitialized { get; private set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        LangGraphService.OnStep += HandleStep;
+        LangGraphService.OnError += HandleError;
+        LangGraphService.OnInitialized += HandleInitialized;
+        LangGraphService.OnInterrupt += HandleInterrupt;
+        LangGraphService.OnNodeExecute += HandleNodeExecute;
+
+        if (Config != null)
+        {
+            await LangGraphService.InitializeAsync(Config);
+        }
+    }
+
+    private async Task<SgLangGraphNodeResult> HandleNodeExecute(string nodeId, object state)
+    {
+        if (OnNodeExecute != null)
+        {
+            return await OnNodeExecute.Invoke(nodeId, state);
+        }
+        return new SgLangGraphNodeResult { State = state };
+    }
+
+    private async void HandleStep(SgLangGraphStep step)
+    {
+        CurrentStep = step;
+        await OnStep.InvokeAsync(step);
+        StepReceived?.Invoke(step);
+        StateHasChanged();
+    }
+
+    private async void HandleError(string error)
+    {
+        await OnError.InvokeAsync(error);
+        ErrorReceived?.Invoke(error);
+        StateHasChanged();
+    }
+
+    private async void HandleInitialized(SgLangGraphSchema schema)
+    {
+        Schema = schema;
+        IsInitialized = true;
+        await OnInitialized.InvokeAsync(schema);
+        InitializedReceived?.Invoke(schema);
+        StateHasChanged();
+    }
+
+    private async void HandleInterrupt(SgLangGraphInterrupt interrupt)
+    {
+        await OnInterrupt.InvokeAsync(interrupt);
+        InterruptReceived?.Invoke(interrupt);
+        StateHasChanged();
+    }
+
+    public async Task SendMessageAsync(string message)
+    {
+        await LangGraphService.SendMessageAsync(message);
+    }
+
+    public async Task RespondToInterruptAsync(object data)
+    {
+        await LangGraphService.RespondToInterruptAsync(data);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        LangGraphService.OnStep -= HandleStep;
+        LangGraphService.OnError -= HandleError;
+        LangGraphService.OnInitialized -= HandleInitialized;
+        LangGraphService.OnInterrupt -= HandleInterrupt;
+        LangGraphService.OnNodeExecute -= HandleNodeExecute;
+        await LangGraphService.DisposeAsync();
+    }
+}

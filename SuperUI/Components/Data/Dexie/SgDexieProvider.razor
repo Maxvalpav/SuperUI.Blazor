@@ -1,0 +1,59 @@
+@namespace SuperUI.Components.Data.Dexie
+@using SuperUI.Services.Data
+@inject SgDexieService DexieService
+
+<CascadingValue Value="this" IsFixed="true">
+    @if (_isInitialized)
+    {
+        @ChildContent
+    }
+    else
+    {
+        <div class="sg-dexie-loading">
+            <SgSpinner Size="SgSize.Md" />
+            <span>Инициализация базы данных @DbName...</span>
+        </div>
+    }
+</CascadingValue>
+
+@code {
+    [Parameter] public string DbName { get; set; } = "SuperUIDB";
+    [Parameter] public Dictionary<string, string> Schema { get; set; } = new();
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public EventCallback OnInitialized { get; set; }
+
+    private bool _isInitialized;
+
+    public SgDexieService Service => DexieService;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Schema.Count > 0)
+        {
+            await DexieService.InitializeAsync(DbName, Schema);
+            _isInitialized = true;
+            await OnInitialized.InvokeAsync();
+        }
+    }
+
+    public async Task AddAsync<T>(string tableName, T item) => await DexieService.AddAsync(DbName, tableName, item);
+    public async Task BulkAddAsync<T>(string tableName, IEnumerable<T> items) => await DexieService.BulkAddAsync(DbName, tableName, items);
+    public async Task PutAsync<T>(string tableName, T item) => await DexieService.PutAsync(DbName, tableName, item);
+    public async Task<T?> GetAsync<T>(string tableName, object id) => await DexieService.GetAsync<T>(DbName, tableName, id);
+    public async Task<List<T>> GetAllAsync<T>(string tableName) => await DexieService.GetAllAsync<T>(DbName, tableName);
+    public async Task<List<T>> QueryAsync<T>(string tableName, object? filter = null) => await DexieService.QueryAsync<T>(DbName, tableName, filter);
+    public async Task DeleteAsync(string tableName, object id) => await DexieService.DeleteAsync(DbName, tableName, id);
+    public async Task ClearTableAsync(string tableName) => await DexieService.ClearTableAsync(DbName, tableName);
+}
+
+<style>
+    .sg-dexie-loading {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px;
+        gap: 16px;
+        color: var(--sg-fg-muted);
+    }
+</style>

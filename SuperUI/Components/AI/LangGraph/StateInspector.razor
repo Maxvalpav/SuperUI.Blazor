@@ -1,0 +1,52 @@
+@namespace SuperUI.Components.AI.LangGraph
+@using SuperUI.Services.AI
+@using SuperUI.Enums
+
+<SgCard Title="State Inspector" Compact="true">
+    <div class="sgc-state-inspector">
+        @if (_currentState == null)
+        {
+            <div class="sgc-state-empty">Состояние пусто</div>
+        }
+        else
+        {
+            <pre>@JsonState</pre>
+        }
+    </div>
+</SgCard>
+
+<style>
+    .sgc-state-inspector { 
+        max-height: 400px; 
+        overflow: auto; 
+        background: #1e1e1e; 
+        color: #d4d4d4; 
+        padding: 12px; 
+        border-radius: 4px;
+        font-family: var(--sg-font-mono);
+        font-size: 11px;
+    }
+    .sgc-state-empty { color: var(--sg-fg-muted); text-align: center; padding: 20px; }
+    pre { margin: 0; white-space: pre-wrap; word-break: break-all; }
+</style>
+
+@code {
+    [CascadingParameter] public LangGraphProvider? Provider { get; set; }
+
+    private object? _currentState;
+
+    protected override void OnInitialized()
+    {
+        if (Provider != null)
+        {
+            Provider.StepReceived += (step) => {
+                _currentState = step.State;
+                InvokeAsync(StateHasChanged);
+            };
+        }
+    }
+
+    private string JsonState => _currentState != null 
+        ? System.Text.Json.JsonSerializer.Serialize(_currentState, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })
+        : "{}";
+}

@@ -1,0 +1,38 @@
+@namespace SuperUI.Components.AI.LangGraph
+@using SuperUI.Services.AI
+@implements IDisposable
+
+@code {
+    [CascadingParameter] public LangGraphProvider? Provider { get; set; }
+    [Parameter] public EventCallback<ToolCallEventArgs> OnToolCall { get; set; }
+
+    protected override void OnInitialized()
+    {
+        if (Provider != null)
+        {
+            Provider.Service.OnToolCall += HandleToolCall;
+        }
+    }
+
+    private async Task<string> HandleToolCall(string toolName, string argsJson)
+    {
+        var args = new ToolCallEventArgs { ToolName = toolName, ArgsJson = argsJson };
+        await OnToolCall.InvokeAsync(args);
+        return args.ResultJson ?? "{}";
+    }
+
+    public void Dispose()
+    {
+        if (Provider != null)
+        {
+            Provider.Service.OnToolCall -= HandleToolCall;
+        }
+    }
+
+    public class ToolCallEventArgs
+    {
+        public string ToolName { get; set; } = string.Empty;
+        public string ArgsJson { get; set; } = string.Empty;
+        public string? ResultJson { get; set; }
+    }
+}

@@ -1,0 +1,132 @@
+@page "/dexie-demo"
+@using SuperUI.Components.Data.Dexie
+@using SuperUI.Services.Data
+@using SuperUI.Enums
+
+<PageTitle>Dexie.js (IndexedDB) — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <h1>Dexie.js (IndexedDB)</h1>
+    <p class="sg-text-muted">Offline-first data management for industrial applications</p>
+</div>
+
+<SgStack Orientation="SgOrientation.Vertical" Gap="16px">
+        
+        <SgDexieProvider DbName="IndustrialPlantDB" Schema="@_schema" @ref="_provider">
+            <SgRow>
+                <SgCol Span="16">
+                    <SgDexieExplorer />
+                </SgCol>
+                <SgCol Span="8">
+                    <SgCard Title="Data Generation" Compact="true">
+                        <SgStack Orientation="SgOrientation.Vertical" Gap="12px">
+                            <p class="sg-text-muted">Генерация тестовых данных для IndexedDB:</p>
+                            <SgButton Variant="SgButtonVariant.Primary" OnClick="AddProductionLogs" FullWidth="true">
+                                <Icon>@((MarkupString)AddIcon)</Icon>
+                                <ChildContent>Add 10 Production Logs</ChildContent>
+                            </SgButton>
+                            <SgButton Variant="SgButtonVariant.Outlined" OnClick="AddWorkOrders" FullWidth="true">
+                                <Icon>@((MarkupString)OrderIcon)</Icon>
+                                <ChildContent>Add 5 Work Orders</ChildContent>
+                            </SgButton>
+                            <SgDivider />
+                            <SgButton Variant="SgButtonVariant.Danger" OnClick="DeleteDb" FullWidth="true">
+                                <Icon>@((MarkupString)DeleteDbIcon)</Icon>
+                                <ChildContent>Delete Database</ChildContent>
+                            </SgButton>
+                        </SgStack>
+                    </SgCard>
+                    
+                    <SgCard Title="Direct Query Demo" Compact="true" Style="margin-top: 12px;">
+                        <SgStack Orientation="SgOrientation.Vertical" Gap="8px">
+                            <SgButton Variant="SgButtonVariant.Ghost" OnClick="QueryErrors">
+                                <ChildContent>Get Logs with Status 'Error'</ChildContent>
+                            </SgButton>
+                            @if (_queryResult != null)
+                            {
+                                <div class="sg-query-results">
+                                    <small>Found: @_queryResult.Count items</small>
+                                    @foreach (var item in _queryResult.Take(3))
+                                    {
+                                        <div class="sg-query-item">
+                                            <b>@item.GetProperty("timestamp").GetString()</b>: 
+                                            @item.GetProperty("message").GetString()
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </SgDexieProvider>
+
+    </SgStack>
+
+<style>
+    .sg-query-results { margin-top: 8px; font-size: 11px; background: var(--sg-bg-subtle); padding: 8px; border-radius: 4px; }
+    .sg-query-item { border-bottom: 1px solid var(--sg-border); padding: 4px 0; }
+    .sg-text-muted { font-size: 12px; color: var(--sg-fg-muted); }
+</style>
+
+@code {
+    private SgDexieProvider? _provider;
+    private List<System.Text.Json.JsonElement>? _queryResult;
+
+    private Dictionary<string, string> _schema = new()
+    {
+        { "production_logs", "++id, timestamp, status, machine_id" },
+        { "work_orders", "++id, order_no, priority, status" },
+        { "settings", "key" }
+    };
+
+    private async Task AddProductionLogs()
+    {
+        if (_provider == null) return;
+
+        var logs = Enumerable.Range(1, 10).Select(i => new
+        {
+            timestamp = DateTime.Now.AddMinutes(-i * 5).ToString("yyyy-MM-dd HH:mm:ss"),
+            machine_id = $"CNC-{100 + i}",
+            status = i % 4 == 0 ? "Error" : "Running",
+            message = i % 4 == 0 ? "Critical overheating detected" : "Normal operation",
+            operator_id = "OP-42"
+        });
+
+        await _provider.BulkAddAsync("production_logs", logs);
+        StateHasChanged();
+    }
+
+    private async Task AddWorkOrders()
+    {
+        if (_provider == null) return;
+
+        var orders = Enumerable.Range(1, 5).Select(i => new
+        {
+            order_no = $"WO-2026-{500 + i}",
+            priority = i % 2 == 0 ? "High" : "Normal",
+            status = "Pending",
+            created_at = DateTime.Now.ToString("yyyy-MM-dd")
+        });
+
+        await _provider.BulkAddAsync("work_orders", orders);
+        StateHasChanged();
+    }
+
+    private async Task QueryErrors()
+    {
+        if (_provider == null) return;
+        _queryResult = await _provider.QueryAsync<System.Text.Json.JsonElement>("production_logs", new { status = "Error" });
+    }
+
+    private async Task DeleteDb()
+    {
+        if (_provider == null) return;
+        await _provider.Service.DeleteDatabaseAsync(_provider.DbName);
+        // Page reload or state reset needed here
+    }
+
+    private const string AddIcon = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M12 5v14""/><path d=""M5 12h14""/></svg>";
+    private const string OrderIcon = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2""/><circle cx=""9"" cy=""7"" r=""4""/><path d=""M22 21v-2a4 4 0 0 0-3-3.87""/><path d=""M16 3.13a4 4 0 0 1 0 7.75""/></svg>";
+    private const string DeleteDbIcon = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2"" stroke-linecap=""round"" stroke-linejoin=""round""><path d=""M3 6h18""/><path d=""M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6""/><path d=""M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2""/></svg>";
+}

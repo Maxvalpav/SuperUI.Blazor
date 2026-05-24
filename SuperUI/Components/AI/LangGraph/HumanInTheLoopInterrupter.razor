@@ -1,0 +1,92 @@
+@namespace SuperUI.Components.AI.LangGraph
+@using SuperUI.Services.AI
+@using SuperUI.Enums
+
+@if (_currentInterrupt != null)
+{
+    <div class="sgc-interrupt-overlay">
+        <SgCard Title="Требуется одобрение" Subtitle="@_currentInterrupt.Node">
+            <div class="sgc-interrupt-body">
+                <p>Агент хочет выполнить действие:</p>
+                <div class="sgc-interrupt-data">
+                    <pre>@JsonData</pre>
+                </div>
+                <p class="sgc-interrupt-msg">@_currentInterrupt.Message</p>
+            </div>
+            <SgDivider />
+            <SgStack Orientation="SgOrientation.Horizontal" Gap="12px" Justify="SgJustifyContent.End">
+                <SgButton Text="Отклонить" Variant="SgButtonVariant.Danger" OnClick="RejectAsync" />
+                <SgButton Text="Одобрить" Variant="SgButtonVariant.Primary" OnClick="ApproveAsync" />
+            </SgStack>
+        </SgCard>
+    </div>
+}
+
+<style>
+    .sgc-interrupt-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: var(--sg-zindex-modal, 1000);
+        padding: 20px;
+    }
+    .sgc-interrupt-body { padding: 12px 0; }
+    .sgc-interrupt-data { 
+        background: var(--sg-bg-subtle); 
+        padding: 8px; 
+        border-radius: 4px; 
+        font-family: var(--sg-font-mono); 
+        font-size: 11px;
+        margin: 8px 0;
+        max-height: 200px;
+        overflow: auto;
+    }
+    .sgc-interrupt-msg { font-weight: 500; }
+</style>
+
+@code {
+    [CascadingParameter] public LangGraphProvider? Provider { get; set; }
+
+    private SgLangGraphInterrupt? _currentInterrupt;
+
+    protected override void OnInitialized()
+    {
+        if (Provider != null)
+        {
+            Provider.InterruptReceived += HandleInterrupt;
+        }
+    }
+
+    private void HandleInterrupt(SgLangGraphInterrupt interrupt)
+    {
+        _currentInterrupt = interrupt;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (Provider != null && _currentInterrupt != null)
+        {
+            await Provider.RespondToInterruptAsync(new { approved = true });
+            _currentInterrupt = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RejectAsync()
+    {
+        if (Provider != null && _currentInterrupt != null)
+        {
+            await Provider.RespondToInterruptAsync(new { approved = false });
+            _currentInterrupt = null;
+            StateHasChanged();
+        }
+    }
+
+    private string JsonData => _currentInterrupt?.Data != null 
+        ? System.Text.Json.JsonSerializer.Serialize(_currentInterrupt.Data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })
+        : "No data";
+}

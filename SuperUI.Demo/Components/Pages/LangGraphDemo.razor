@@ -1,0 +1,344 @@
+@page "/langgraph-demo"
+@using SuperUI.Services.AI
+@using SuperUI.Services.Llm
+@using SuperUI.Components.AI.LangGraph
+@using System.Text.Json
+@inject ILlmService LlmService
+
+<PageTitle>LangGraph.js Integration — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <h1>LangGraph.js Integration</h1>
+    <p class="sg-text-muted">Stateful Multi-Agent Workflows in Blazor</p>
+</div>
+
+<SgStack Orientation="SgOrientation.Vertical" Gap="16px">
+        
+        <SgRow>
+            <SgCol Span="8">
+                <SgCard Title="Workflow Selection" Compact="true">
+                    <SgSelect TValue="string" 
+                              Items="@(new[] { "Standard Agent", "Industrial Incident Resolver" })" 
+                              Value="_currentScenario" 
+                              Label="Выберите сценарий"
+                              ValueChanged="OnScenarioChanged" />
+                </SgCard>
+                <SgCard Title="Workflow Configuration" Compact="true" Style="margin-top: 12px;">
+                    <SgLlmSettings Compact="true" />
+                    <SgDivider Text="Graph State" />
+                    <AgentCheckpointManager />
+                </SgCard>
+            </SgCol>
+            <SgCol Span="16">
+                <LangGraphProvider Config="_config" 
+                                   OnStep="HandleStep" 
+                                   OnInitialized="HandleInitialized"
+                                   OnInterrupt="HandleInterrupt"
+                                   OnNodeExecute="HandleNodeExecute">
+                    
+                    <SgTabs>
+                        <SgTabPanel Title="Chat & Execution">
+                            <SgRow>
+                                <SgCol Span="16">
+                                    <GraphStreamingChat />
+                                </SgCol>
+                                <SgCol Span="8">
+                                    <StateInspector />
+                                </SgCol>
+                            </SgRow>
+                        </SgTabPanel>
+                        
+                        <SgTabPanel Title="Visualization">
+                            <LangGraphVisualizer />
+                        </SgTabPanel>
+                    </SgTabs>
+
+                    <HumanInTheLoopInterrupter />
+                    
+                    <BlazorToolExecutor OnToolCall="HandleToolCall" />
+
+                </LangGraphProvider>
+            </SgCol>
+        </SgRow>
+
+    </SgStack>
+@code {
+    private string _currentScenario = "Standard Agent";
+    private SgLangGraphConfig _config = new();
+
+    protected override void OnInitialized()
+    {
+        SetupScenario();
+    }
+
+    private async Task OnScenarioChanged(string scenario)
+    {
+        _currentScenario = scenario;
+        SetupScenario();
+        // Force re-initialization of the provider
+        if (_config != null)
+        {
+            await LlmService.IsReadyAsync(); // Ensure LLM is ready
+        }
+    }
+
+    private void SetupScenario()
+    {
+        if (_currentScenario == "Standard Agent")
+        {
+            _config = new SgLangGraphConfig
+            {
+                ThreadId = "real-agent-thread",
+                Nodes = new List<SgLangGraphNode>
+                {
+                    new() { Id = "start", Label = "Start", Type = "entry" },
+                    new() { Id = "agent", Label = "Agent (LLM)", Type = "node" },
+                    new() { Id = "tools", Label = "C# Tools", Type = "node" },
+                    new() { Id = "end", Label = "End", Type = "exit" }
+                },
+                Edges = new List<SgLangGraphEdge>
+                {
+                    new() { SourceId = "start", TargetId = "agent" },
+                    new() { SourceId = "agent", TargetId = "tools", Label = "tool_call" },
+                    new() { SourceId = "tools", TargetId = "agent", Label = "tool_result" },
+                    new() { SourceId = "agent", TargetId = "end", Label = "finish" }
+                }
+            };
+        }
+        else
+        {
+            _config = new SgLangGraphConfig
+            {
+                ThreadId = "industrial-thread",
+                Nodes = new List<SgLangGraphNode>
+                {
+                    new() { Id = "start", Label = "Start", Type = "entry" },
+                    new() { Id = "rag_search", Label = "RAG: Поиск мануалов", Type = "node" },
+                    new() { Id = "iot_telemetry", Label = "IoT: Данные датчиков", Type = "node" },
+                    new() { Id = "analysis", Label = "Анализ инцидента", Type = "node" },
+                    new() { Id = "action", Label = "Выполнение действий", Type = "node" },
+                    new() { Id = "end", Label = "End", Type = "exit" }
+                },
+                Edges = new List<SgLangGraphEdge>
+                {
+                    new() { SourceId = "start", TargetId = "rag_search" },
+                    new() { SourceId = "rag_search", TargetId = "iot_telemetry" },
+                    new() { SourceId = "iot_telemetry", TargetId = "analysis" },
+                    new() { SourceId = "analysis", TargetId = "action" },
+                    new() { SourceId = "action", TargetId = "end" }
+                }
+            };
+        }
+    }
+
+    private void HandleStep(SgLangGraphStep step)
+    {
+        // UI updates automatically via CascadingParameter in child components
+    }
+
+    private void HandleInitialized(SgLangGraphSchema schema) { }
+
+    private void HandleInterrupt(SgLangGraphInterrupt interrupt) { }
+
+    private async Task<SgLangGraphNodeResult> HandleNodeExecute(string nodeId, object rawState)
+    {
+        var stateJson = JsonSerializer.Serialize(rawState);
+        var state = JsonSerializer.Deserialize<GraphState>(stateJson) ?? new GraphState();
+
+        if (_currentScenario == "Industrial Incident Resolver")
+        {
+            return await HandleIndustrialNode(nodeId, state);
+        }
+
+        switch (nodeId)
+        {
+            case "start":
+                return new SgLangGraphNodeResult { State = state, Content = "Инициализация графа..." };
+
+            case "agent":
+                return await ExecuteAgentNode(state);
+
+            case "tools":
+                return await ExecuteToolsNode(state);
+
+            default:
+                return new SgLangGraphNodeResult { State = state };
+        }
+    }
+
+    private async Task<SgLangGraphNodeResult> HandleIndustrialNode(string nodeId, GraphState state)
+    {
+        switch (nodeId)
+        { 
+            case "start":
+                return new SgLangGraphNodeResult { State = state, Content = "Запуск протокола анализа инцидента..." };
+
+            case "rag_search":
+                // Simulate RAG search in documentation
+                state.knowledge_base_info = "Мануал станка CNC-400: Ошибка E-102 указывает на перегрев шпинделя из-за засорения фильтра охлаждения.";
+                return new SgLangGraphNodeResult { 
+                    State = state, 
+                    Content = "Найдены релевантные инструкции в базе знаний." 
+                };
+
+            case "iot_telemetry":
+                // Simulate fetching real-time data from MQTT/Sensors
+                state.sensor_data = new { temperature = 94.5, pressure = 1.2, status = "Warning" };
+                return new SgLangGraphNodeResult { 
+                    State = state, 
+                    Content = "Получена телеметрия: Температура шпинделя 94.5°C (Порог: 85°C)." 
+                };
+
+            case "analysis":
+                // LLM analyzes RAG + IoT data
+                var analysisPrompt = $"Проанализируй данные инцидента. База знаний: {state.knowledge_base_info}. Телеметрия: {JsonSerializer.Serialize(state.sensor_data)}. Предложи решение.";
+                var analysisResult = "";
+                
+                // Ensure we handle events safely
+                async void HandleToken(string token) 
+                { 
+                    analysisResult += token; 
+                    await InvokeAsync(StateHasChanged); 
+                }
+
+                LlmService.OnTokenReceived += HandleToken;
+                try
+                {
+                    await LlmService.ChatAsync(analysisPrompt);
+                }
+                finally
+                {
+                    LlmService.OnTokenReceived -= HandleToken;
+                }
+
+                state.messages.Add(new GraphMessage { role = "assistant", content = analysisResult });
+                return new SgLangGraphNodeResult { State = state, Content = "Анализ завершен. Требуется техническое вмешательство." };
+
+            case "action":
+                // Interrupt for critical action
+                if (state.lastInterruptResponse == null)
+                {
+                    return new SgLangGraphNodeResult
+                    {
+                        State = state,
+                        Interrupt = new SgLangGraphInterrupt
+                        {
+                            Node = "action",
+                            Message = "Рекомендуется немедленная продувка фильтров и снижение оборотов до 20%. Выполнить?",
+                            Data = new { command = "CLEAN_FILTER", rpm_reduction = 0.2 }
+                        }
+                    };
+                }
+
+                var approved = state.lastInterruptResponse.Value.TryGetProperty("approved", out var appProp) && appProp.GetBoolean();
+                if (approved)
+                {
+                    state.messages.Add(new GraphMessage { role = "assistant", content = "Команды отправлены на контроллер. Температура начала снижаться." });
+                    return new SgLangGraphNodeResult { State = state, Content = "Действия успешно выполнены." };
+                }
+                else
+                {
+                    state.messages.Add(new GraphMessage { role = "assistant", content = "Действие отменено оператором. Станок остается в режиме Warning." });
+                    return new SgLangGraphNodeResult { State = state, Content = "Операция отменена." };
+                }
+
+            default:
+                return new SgLangGraphNodeResult { State = state };
+        }
+    }
+
+    private async Task<SgLangGraphNodeResult> ExecuteAgentNode(GraphState state)
+    {
+        var lastMessage = state.messages.LastOrDefault()?.content ?? "";
+        
+        // Simple router logic: if contains "баланс", go to tools. Otherwise finish.
+        if (lastMessage.Contains("баланс", StringComparison.OrdinalIgnoreCase))
+        {
+            state.next_node = "tools";
+            return new SgLangGraphNodeResult { 
+                State = state, 
+                Content = "Анализирую запрос... Требуется вызов инструмента для проверки баланса." 
+            };
+        }
+
+        // Call real LLM
+        var prompt = $"Ты полезный ассистент. Ответь на сообщение пользователя: {lastMessage}";
+        var result = "";
+        
+        Action<string> handler = (token) => { result += token; StateHasChanged(); };
+        LlmService.OnTokenReceived += handler;
+        try
+        {
+            await LlmService.ChatAsync(prompt);
+        }
+        finally
+        {
+            LlmService.OnTokenReceived -= handler;
+        }
+        
+        state.messages.Add(new GraphMessage { role = "assistant", content = result });
+        state.next_node = "end";
+
+        return new SgLangGraphNodeResult { 
+            State = state, 
+            Content = result 
+        };
+    }
+
+    private async Task<SgLangGraphNodeResult> ExecuteToolsNode(GraphState state)
+    {
+        // Simulate a dangerous action check
+        if (state.messages.Any(m => m.content.Contains("удалить", StringComparison.OrdinalIgnoreCase)) && state.lastInterruptResponse == null)
+        {
+            return new SgLangGraphNodeResult
+            {
+                State = state,
+                Interrupt = new SgLangGraphInterrupt
+                {
+                    Node = "tools",
+                    Message = "Внимание: вы запросили удаление данных. Подтвердить?",
+                    Data = new { action = "delete_all", danger_level = "high" }
+                }
+            };
+        }
+
+        // Real tool logic
+        var balance = 12500.75; // Imagine this comes from a real service
+        state.balance = balance;
+        state.messages.Add(new GraphMessage { role = "assistant", content = $"Ваш баланс составляет {balance} руб." });
+        state.next_node = "agent";
+
+        return new SgLangGraphNodeResult { 
+            State = state, 
+            Content = $"Инструмент выполнен. Получен баланс: {balance} руб." 
+        };
+    }
+
+    private async Task HandleToolCall(BlazorToolExecutor.ToolCallEventArgs args)
+    {
+        // This is used if the JS side calls tools directly
+        if (args.ToolName == "get_user_balance")
+        {
+            args.ResultJson = "{\"balance\": 12500.75}";
+        }
+    }
+
+    public class GraphState
+    {
+        public List<GraphMessage> messages { get; set; } = new();
+        public string? threadId { get; set; }
+        public string? next_node { get; set; }
+        public double? balance { get; set; }
+        public JsonElement? lastInterruptResponse { get; set; }
+        
+        // Industrial properties
+        public string? knowledge_base_info { get; set; }
+        public object? sensor_data { get; set; }
+    }
+
+    public class GraphMessage
+    {
+        public string role { get; set; } = "";
+        public string content { get; set; } = "";
+    }
+}
