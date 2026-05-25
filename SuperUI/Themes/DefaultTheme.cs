@@ -162,7 +162,7 @@ public sealed class DefaultTheme : ThemeBase
             --sg-table-padding: 6px 10px;
             border: 1px solid var(--sg-border);
             border-radius: 3px;
-            overflow: hidden;
+            /* overflow: hidden убран — ломает position:sticky на thead th в SgDataGrid */
         }
         [data-theme-id="superui-default"] .sgc-table thead th {
             background: var(--sg-bg-subtle);

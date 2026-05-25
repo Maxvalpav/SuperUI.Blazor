@@ -1,0 +1,82 @@
+@page "/smart-suggest-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+
+<PageTitle>Smart Context Suggestbox - SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <h1>Smart Context Suggestbox</h1>
+    <p>AI-powered autocomplete that learns from user input history using Markov chains.</p>
+</div>
+
+<SgStack Vertical Spacing="24">
+    <SgRow Gutter="24">
+        <SgCol Span="12">
+            <SgCard Title="Invoice Form" Subtitle="Simulating repetitive data entry">
+                <SgStack Vertical Spacing="16">
+                    <SgSelect Label="Product Type" @bind-Value="_productType" Items="_productTypes" />
+
+                    <SgSmartSuggestbox Label="Supplier (Learns from Product)" 
+                                      @bind-Value="_supplier" 
+                                      Context="@_productType"
+                                      Items="@_suppliers"
+                                      Placeholder="Select or type supplier..." />
+
+                    <SgSmartSuggestbox Label="Warehouse (Learns from Supplier)" 
+                                      @bind-Value="_warehouse" 
+                                      Context="@_supplier"
+                                      Items="@_warehouses"
+                                      Placeholder="Select or type warehouse..." />
+
+                    <div style="display:flex; justify-content:flex-end; gap: 8px;">
+                        <SgButton OnClick="ResetForm">Clear Form</SgButton>
+                        <SgButton Color="SgColor.Primary" OnClick="SubmitForm">Submit & Learn</SgButton>
+                    </div>
+                </SgStack>
+            </SgCard>
+        </SgCol>
+
+        <SgCol Span="12">
+            <SgCard Title="How Contextual Learning Works">
+                <SgStack Vertical Spacing="12">
+                    <p>
+                        This component uses a <strong>Markov Chain</strong> model to track transitions between fields. 
+                        It doesn't just suggest fixed items; it prioritizes suggestions based on the value of the <code>Context</code> parameter.
+                    </p>
+                    <SgAlert Variant="SgAlertVariant.Info" Text="Try this: Select 'Cable', type 'North Factory' as supplier, and submit. Next time you select 'Cable', 'North Factory' will be at the top of the list." />
+                    
+                    <div style="margin-top: 16px;">
+                        <strong>Current Model State:</strong>
+                        <p style="font-size: 0.85rem; opacity: 0.7;">
+                            The model is stored in a Scoped service, persisting during your session. 
+                            In a real app, this could be backed by IndexedDB or a database.
+                        </p>
+                    </div>
+                </SgStack>
+            </SgCard>
+        </SgCol>
+    </SgRow>
+</SgStack>
+
+@code {
+    private string? _productType = "Cable";
+    private string? _supplier;
+    private string? _warehouse;
+
+    private List<string> _productTypes = new() { "Cable", "Cement", "Tool" };
+    private List<string> _suppliers = new() { "Global Logistics", "North Factory", "South Supply Co.", "East Industrial", "West Partners" };
+    private List<string> _warehouses = new() { "Central Hub", "Dock 4", "Cold Storage", "Express Depot", "Safety Zone" };
+
+    private void ResetForm()
+    {
+        _supplier = null;
+        _warehouse = null;
+    }
+
+    private void SubmitForm()
+    {
+        // Learning happens automatically in SgSmartSuggestbox when AutoLearn=true (default)
+        // and a value is selected. We just clear for next entry.
+        ResetForm();
+    }
+}

@@ -195,6 +195,15 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         }
     }
 
+    // Streaming throttles. Each token used to trigger StateHasChanged + a
+    // smooth-scroll JS interop, which on a long answer pegged the renderer.
+    // We now coalesce updates by wall-clock time so visible UI advances at
+    // ~60 fps regardless of token arrival rate.
+    private DateTime _lastUiTickUtc = DateTime.MinValue;
+    private DateTime _lastMarkdownUtc = DateTime.MinValue;
+    private static readonly TimeSpan UiTickInterval = TimeSpan.FromMilliseconds(60);
+    private static readonly TimeSpan MarkdownInterval = TimeSpan.FromMilliseconds(180);
+
     private void HandleToken(string token)
     {
         if (_disposed) return;
@@ -204,15 +213,29 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
             if (_streamingMsg == null)
             {
                 _streamingMsg = new SgLlmMessage { Role = "assistant", Content = "" };
-                // Don't add to session yet, wait for complete
+                // Add to the session immediately so the assistant bubble (and
+                // the "thinking" dots) is part of the foreach _messages render
+                // loop. HandleComplete will persist the session, not duplicate
+                // the message.
+                _currentSession?.Messages.Add(_streamingMsg);
                 _isThinking = false;
+                _lastUiTickUtc = DateTime.MinValue;
+                _lastMarkdownUtc = DateTime.MinValue;
             }
             _streamingMsg.Content += token;
             _tokenCount = _streamingMsg.Content.Length / 4;
-            _renderCounter++;
-            if (_renderCounter % RenderEvery == 0)
+
+            var now = DateTime.UtcNow;
+            if (now - _lastMarkdownUtc >= MarkdownInterval)
+            {
+                _lastMarkdownUtc = now;
                 await RenderMarkdownAsync(_streamingMsg);
-            if (_disposed) return;
+                if (_disposed) return;
+            }
+
+            if (now - _lastUiTickUtc < UiTickInterval) return;
+            _lastUiTickUtc = now;
+
             StateHasChanged();
             await ScrollToBottomAsync();
         });
@@ -229,12 +252,10 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
             if (_currentSession != null && _streamingMsg != null)
             {
-                _currentSession.Messages.Add(new SgLlmMessage
-                {
-                    Role = "assistant",
-                    Content = _streamingMsg.Content,
-                    Timestamp = DateTime.UtcNow
-                });
+                // The streaming message is already part of the session (added
+                // in HandleToken). Stamp it and persist the whole session so
+                // history reflects the assistant's final answer.
+                _streamingMsg.Timestamp = DateTime.UtcNow;
                 _currentSession.UpdatedAt = DateTime.UtcNow;
                 await HistoryService.SaveSessionAsync(_currentSession);
             }
@@ -259,6 +280,13 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
             _error = error;
             _isThinking = false;
             _streaming = false;
+            // Drop the half-filled assistant bubble so the user can retry
+            // without an empty/orphaned message stuck in the transcript.
+            if (_streamingMsg is not null && _currentSession is not null)
+            {
+                _currentSession.Messages.Remove(_streamingMsg);
+            }
+            _streamingMsg = null;
             StateHasChanged();
         });
     }
@@ -285,17 +313,13 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private async Task ScrollToBottomAsync()
     {
+        // The module call is cheaper than eval and avoids a smooth-scroll
+        // animation per token, which previously stalled the layout engine.
         try
         {
-            await JS.InvokeVoidAsync("eval", @"
-                const el = document.querySelector('.sg-chat-messages');
-                if (el) {
-                    el.scrollTo({
-                        top: el.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                }
-            ");
+            await EnsureModuleAsync();
+            if (_llmModule is not null)
+                await _llmModule.InvokeVoidAsync("scrollChatToBottom", ".sg-chat-messages");
         }
         catch { }
     }
@@ -304,8 +328,6 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
 
     private IJSObjectReference? _llmModule;
     private readonly Dictionary<string, string> _htmlCache = new();
-    private int _renderCounter;
-    private const int RenderEvery = 6;
 
     private string GetHtml(SgLlmMessage msg)
     {

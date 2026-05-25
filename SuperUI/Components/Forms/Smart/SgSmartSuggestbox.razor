@@ -1,0 +1,155 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.AI
+@using SuperUI.Localization
+@using System.Linq.Expressions
+@inherits SgComponentBase
+@inject SgMarkovChainService MarkovService
+@inject ISuperUILocalizer Localizer
+
+<div class="@Css("sgc-field").AddClass("sgc-block", Block).ToString()" style="@Style">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    
+    <div class="sgc-combo sgc-ac @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "")"
+         role="combobox"
+         @onclick:stopPropagation="true">
+        
+        <div class="sgc-combo-control">
+            <input class="sgc-combo-input"
+                   @bind="_search"
+                   @bind:event="oninput"
+                   placeholder="@Placeholder"
+                   disabled="@Disabled"
+                   @onfocus="OpenAsync"
+                   @onblur="HandleBlurAsync" />
+            
+            @if (IsSmartActive && Predictions.Any())
+            {
+                <div class="sg-smart-indicator" title="Smart predictions active">
+                    <SgIcon Icon="@SgIcons.Sparkles" Size="14" Color="#722ed1" />
+                </div>
+            }
+            
+            <span class="sgc-combo-caret">@((MarkupString)SgIcons.ChevronDown)</span>
+        </div>
+
+        @if (_open)
+        {
+            <div class="sgc-combo-menu" role="listbox">
+                @{
+                    var filtered = GetItems();
+                }
+
+                @if (!filtered.Any())
+                {
+                    <div class="sgc-combo-empty">@Localizer["NoMatches"]</div>
+                }
+                else
+                {
+                    @foreach (var item in filtered)
+                    {
+                        var isPrediction = Predictions.Contains(item.Label);
+                        <div class="sgc-combo-option @(isPrediction ? "sg-prediction-item" : "")"
+                             @onclick="() => SelectItem(item)">
+                            @if (isPrediction)
+                            {
+                                <SgIcon Icon="@SgIcons.History" Size="12" style="margin-right: 8px; opacity: 0.6;" />
+                            }
+                            @item.Label
+                        </div>
+                    }
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Context { get; set; }
+    [Parameter] public IEnumerable<string> Items { get; set; } = Array.Empty<string>();
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public bool Block { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Required { get; set; }
+    [Parameter] public bool AutoLearn { get; set; } = true;
+
+    private bool _open;
+    private string _search = "";
+    private List<string> Predictions { get; set; } = new();
+    private bool IsSmartActive => !string.IsNullOrEmpty(Context);
+
+    protected override void OnParametersSet()
+    {
+        if (IsSmartActive)
+        {
+            Predictions = MarkovService.Predict(Context!);
+        }
+        else
+        {
+            Predictions.Clear();
+        }
+
+        if (string.IsNullOrEmpty(_search) && !string.IsNullOrEmpty(Value))
+        {
+            _search = Value;
+        }
+    }
+
+    private IEnumerable<ItemModel> GetItems()
+    {
+        var allItems = Items.Select(x => new ItemModel { Label = x, IsPrediction = false }).ToList();
+        
+        // Add predictions if they match the search and aren't in the list
+        foreach (var pred in Predictions)
+        {
+            if (!allItems.Any(x => x.Label == pred))
+            {
+                allItems.Insert(0, new ItemModel { Label = pred, IsPrediction = true });
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(_search))
+        {
+            // If empty search, show predictions first, then others
+            return allItems.OrderByDescending(x => Predictions.Contains(x.Label)).Take(20);
+        }
+
+        return allItems
+            .Where(x => x.Label.Contains(_search, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(x => Predictions.Contains(x.Label));
+    }
+
+    private async Task SelectItem(ItemModel item)
+    {
+        Value = item.Label;
+        _search = item.Label;
+        _open = false;
+
+        if (AutoLearn && !string.IsNullOrEmpty(Context))
+        {
+            MarkovService.Learn(Context, item.Label);
+        }
+
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private void OpenAsync() => _open = true;
+
+    private async Task HandleBlurAsync()
+    {
+        await Task.Delay(200); // Wait for click to register
+        _open = false;
+        StateHasChanged();
+    }
+
+    private class ItemModel
+    {
+        public string Label { get; set; } = "";
+        public bool IsPrediction { get; set; }
+    }
+}

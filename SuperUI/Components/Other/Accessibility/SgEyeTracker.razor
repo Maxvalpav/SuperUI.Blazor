@@ -87,7 +87,22 @@
 
     public async Task StartTrackerAsync()
     {
-        _isActive = await SafeInvokeAsync<bool>("initEyeTracker", _dotRef, _dotInnerRef);
+        _isActive = true;
+        StateHasChanged();
+        
+        // Даем Blazor время отрендерить элементы _dotRef
+        await Task.Yield();
+        
+        try 
+        {
+            var result = await SafeInvokeAsync<bool>("initEyeTracker", _dotRef, _dotInnerRef);
+            if (!result) _isActive = false;
+        }
+        catch
+        {
+            _isActive = false;
+        }
+        
         StateHasChanged();
     }
 
@@ -105,7 +120,7 @@
 
     public override async ValueTask DisposeAsync()
     {
-        try { await StopTrackerAsync(); } catch { }
+        try { await SafeInvokeVoidAsync("dispose"); } catch { }
         await base.DisposeAsync();
     }
 

@@ -1,0 +1,178 @@
+@using SuperUI.Components.Network.Models
+@using SuperUI.Services.Network
+@using SuperUI.Base.ComponentBases
+@using SuperUI.Components
+@using SuperUI.Enums
+
+@namespace SuperUI.Components
+@inherits SgComponentBase
+@inject SgFirewallService FirewallService
+
+<div class="@Css("sg-packet-tool").ToString()" style="@Styles().ToString()">
+    <SgRow Gutter="16">
+        <SgCol Span="14">
+            <SgCard Title="Packet Constructor" Subtitle="Define L2, L3 and L4 headers">
+                <SgTabs>
+                    <SgTabPanel Title="Ethernet (L2)">
+                        <SgStack Vertical Spacing="12" Padding="16">
+                            <SgTextBox Label="Source MAC" @bind-Value="Packet.Ethernet.SrcMac" />
+                            <SgTextBox Label="Destination MAC" @bind-Value="Packet.Ethernet.DestMac" />
+                            <SgNumberInput Label="EtherType (hex)" @bind-Value="EtherTypeProxy" Format="X4" />
+                        </SgStack>
+                    </SgTabPanel>
+                    
+                    <SgTabPanel Title="IPv4 (L3)">
+                        <SgStack Vertical Spacing="12" Padding="16">
+                            <SgRow Gutter="8">
+                                <SgCol Span="12"><SgTextBox Label="Source IP" @bind-Value="Packet.IP.SrcIp" /></SgCol>
+                                <SgCol Span="12"><SgTextBox Label="Destination IP" @bind-Value="Packet.IP.DestIp" /></SgCol>
+                            </SgRow>
+                            <SgRow Gutter="8">
+                                <SgCol Span="8"><SgNumberInput Label="TTL" @bind-Value="TtlProxy" Min="0" Max="255" /></SgCol>
+                                <SgCol Span="16">
+                                    <SgSelect TValue="int" Label="Protocol" @bind-Value="ProtocolProxy" Items="_protocolValues" LabelSelector="GetProtocolLabel" />
+                                </SgCol>
+                            </SgRow>
+                        </SgStack>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="Transport (L4)">
+                        <SgStack Vertical Spacing="12" Padding="16">
+                            @if (Packet.L4 is TcpHeader tcp)
+                            {
+                                <SgRow Gutter="8">
+                                    <SgCol Span="12"><SgNumberInput Label="Src Port" @bind-Value="tcp.SrcPort" /></SgCol>
+                                    <SgCol Span="12"><SgNumberInput Label="Dest Port" @bind-Value="tcp.DestPort" /></SgCol>
+                                </SgRow>
+                                <div class="sg-packet-flags">
+                                    <SgCheckBox Label="SYN" @bind-Value="tcp.SYN" />
+                                    <SgCheckBox Label="ACK" @bind-Value="tcp.ACK" />
+                                    <SgCheckBox Label="FIN" @bind-Value="tcp.FIN" />
+                                    <SgCheckBox Label="RST" @bind-Value="tcp.RST" />
+                                    <SgCheckBox Label="PSH" @bind-Value="tcp.PSH" />
+                                </div>
+                            }
+                            else if (Packet.L4 is UdpHeader udp)
+                            {
+                                <SgRow Gutter="8">
+                                    <SgCol Span="12"><SgNumberInput Label="Src Port" @bind-Value="udp.SrcPort" /></SgCol>
+                                    <SgCol Span="12"><SgNumberInput Label="Dest Port" @bind-Value="udp.DestPort" /></SgCol>
+                                </SgRow>
+                            }
+                        </SgStack>
+                    </SgTabPanel>
+
+                    <SgTabPanel Title="Payload">
+                        <div style="padding: 16px;">
+                            <SgTextArea Label="Data" @bind-Value="Packet.Payload" Rows="4" Placeholder="Raw data or string content..." />
+                        </div>
+                    </SgTabPanel>
+                </SgTabs>
+
+                <div style="margin-top: 24px; display: flex; gap: 12px; justify-content: flex-end;">
+                    <SgButton Color="SgColor.Secondary" OnClick="ResetPacket">Reset</SgButton>
+                    <SgButton Color="SgColor.Primary" OnClick="Simulate">Simulate Transmission</SgButton>
+                </div>
+            </SgCard>
+        </SgCol>
+
+        <SgCol Span="10">
+            <SgCard Title="Visual Structure" Subtitle="Packet Layer Stack">
+                <div class="sg-packet-visualizer">
+                    <div class="sg-layer sg-layer-l4" @onclick='() => ActiveLayer = "L4"'>
+                        <span class="sg-layer-label">L4: @(Packet.L4 is TcpHeader ? "TCP" : "UDP")</span>
+                        <div class="sg-layer-details">
+                            Port: @(Packet.L4 is TcpHeader t ? t.DestPort : (Packet.L4 is UdpHeader u ? u.DestPort : 0))
+                        </div>
+                    </div>
+                    <div class="sg-layer sg-layer-l3" @onclick='() => ActiveLayer = "L3"'>
+                        <span class="sg-layer-label">L3: IPv4</span>
+                        <div class="sg-layer-details">@Packet.IP.SrcIp -> @Packet.IP.DestIp</div>
+                    </div>
+                    <div class="sg-layer sg-layer-l2" @onclick='() => ActiveLayer = "L2"'>
+                        <span class="sg-layer-label">L2: Ethernet</span>
+                        <div class="sg-layer-details">Type: 0x@Packet.Ethernet.EtherType.ToString("X4")</div>
+                    </div>
+                    <div class="sg-layer sg-layer-payload">
+                        <span class="sg-layer-label">Payload</span>
+                        <div class="sg-layer-details">@Packet.Payload.Length bytes</div>
+                    </div>
+                </div>
+
+                @if (Result != null)
+                {
+                    <div style="margin-top: 20px;">
+                        <SgAlert Variant="@(Result.Success ? SgAlertVariant.Success : SgAlertVariant.Danger)" 
+                                Title="@(Result.Success ? "Packet Delivered" : "Packet Dropped")"
+                                Text="@Result.Message" />
+                        
+                        <div class="sg-hop-log">
+                            @foreach (var hop in Result.HopLog)
+                            {
+                                <div class="sg-hop-item">
+                                    <SgIcon Icon="@SgIcons.ChevronRight" Size="12" />
+                                    <span>@hop</span>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                }
+            </SgCard>
+
+            <SgCard Title="Hex Preview" Style="margin-top: 16px;">
+                <div class="sg-hex-dump">
+                    @BitConverter.ToString(Packet.ToBytes()).Replace("-", " ")
+                </div>
+            </SgCard>
+        </SgCol>
+    </SgRow>
+</div>
+
+@code {
+    public SgNetworkPacket Packet { get; set; } = new();
+    public SgSimulationResult? Result { get; set; }
+    public string ActiveLayer { get; set; } = "L3";
+
+    private List<int> _protocolValues = new() { 6, 17 };
+
+    private string GetProtocolLabel(int value) => value switch
+    {
+        6 => "TCP (6)",
+        17 => "UDP (17)",
+        _ => value.ToString()
+    };
+
+    private int EtherTypeProxy 
+    { 
+        get => Packet.Ethernet.EtherType; 
+        set => Packet.Ethernet.EtherType = (ushort)value; 
+    }
+
+    private int TtlProxy
+    {
+        get => Packet.IP.TTL;
+        set => Packet.IP.TTL = (byte)value;
+    }
+
+    private int ProtocolProxy
+    {
+        get => Packet.IP.Protocol;
+        set 
+        {
+            Packet.IP.Protocol = (byte)value;
+            if (value == 6 && Packet.L4 is not TcpHeader) Packet.L4 = new TcpHeader();
+            else if (value == 17 && Packet.L4 is not UdpHeader) Packet.L4 = new UdpHeader();
+        }
+    }
+
+    private void ResetPacket()
+    {
+        Packet = new();
+        Result = null;
+    }
+
+    private void Simulate()
+    {
+        Result = FirewallService.SimulatePacket(Packet);
+    }
+}

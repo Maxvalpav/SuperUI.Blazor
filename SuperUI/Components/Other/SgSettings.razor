@@ -9,161 +9,230 @@
 @using SuperUI.Services.Analytics
 @inject SgHeatmapService HeatmapService
 
+@*
+    Settings UI is organised around three principles:
+      1. **Search-first** — every label, hint and section title is indexed so a
+         user can locate any switch in one keystroke instead of guessing which
+         tab it lives under.
+      2. **Predictable feedback** — settings save instantly; a transient
+         "Saved ✓" pill confirms it. The user never wonders whether the click
+         did anything.
+      3. **One layout, repeated** — every row uses the same shape:
+         label · helper text · control. No inline ad-hoc styles per tab.
+*@
+
 <div class="sgc-settings-container" style="@Style">
-    <SgTabs Vertical="true">
-        <SgTabPanel Title="@Localizer["Settings_Appearance"]">
-            <Icon>@((MarkupString)SgIcons.Palette)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>@Localizer["Settings_Appearance_Title"]</h3>
-                    <div class="sgc-settings-grid">
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_Theme"]</label>
-                            <div class="sgc-theme-grid">
-                                @foreach (var theme in _themes)
-                                {
-                                    <div class="sgc-theme-card @(ThemeService.CurrentTheme.Id == theme.Id ? "sgc-active" : "")" 
-                                         @onclick="() => ThemeService.SetThemeAsync(theme)">
-                                        <div class="sgc-theme-preview" style="background: @theme.Primitives.Primary500;"></div>
-                                        <span>@theme.Name</span>
-                                    </div>
-                                }
-                            </div>
-                        </div>
+    <header class="sgc-settings-header">
+        <div class="sgc-settings-title-row">
+            <h2 class="sgc-settings-title">@Localizer["Settings_Title"]</h2>
+            @if (_showSavedPill)
+            {
+                <span class="sgc-settings-saved-pill" role="status" aria-live="polite">
+                    <span aria-hidden="true">✓</span> @Localizer["Settings_Saved"]
+                </span>
+            }
+        </div>
+        <div class="sgc-settings-search-wrap">
+            <span class="sgc-settings-search-icon" aria-hidden="true">@((MarkupString)SgIcons.Search)</span>
+            <input type="search"
+                   class="sgc-settings-search"
+                   placeholder="@Localizer["Settings_Search"]"
+                   aria-label="@Localizer["Settings_Search"]"
+                   @bind="_searchText"
+                   @bind:event="oninput" />
+            @if (!string.IsNullOrEmpty(_searchText))
+            {
+                <button type="button" class="sgc-settings-search-clear" @onclick="@(() => _searchText = string.Empty)" aria-label="Clear">✕</button>
+            }
+        </div>
+    </header>
 
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_Mode"]</label>
-                            <SgSegmented TValue="string" @bind-Value="CurrentMode" Options="_modeOptions" />
-                        </div>
+    @if (IsSearching && !HasAnyMatch)
+    {
+        <div class="sgc-settings-empty">
+            <span aria-hidden="true">🔍</span>
+            <p>@Localizer["Settings_NoSearchResults"]</p>
+        </div>
+    }
+    else
+    {
+        <SgTabs Vertical="true">
+            @if (TabVisible(_appearanceKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_Appearance"]">
+                    <Icon>@((MarkupString)SgIcons.Palette)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_Appearance_Title"], Localizer["Settings_AppearanceHint"])
 
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_Density"]</label>
-                            <SgSegmented TValue="string" @bind-Value="CurrentDensity" Options="_densityOptions" />
-                        </div>
+                        @if (Match(Localizer["Settings_Theme"]))
+                        {
+                            @SettingRow(Localizer["Settings_Theme"], null,
+                                @<div class="sgc-theme-grid" role="radiogroup" aria-label="@Localizer["Settings_Theme"]">
+                                    @foreach (var theme in _themes)
+                                    {
+                                        var isActive = ThemeService.CurrentTheme.Id == theme.Id;
+                                        <button type="button"
+                                                role="radio"
+                                                aria-checked="@(isActive ? "true" : "false")"
+                                                class="sgc-theme-card @(isActive ? "sgc-active" : "")"
+                                                @onclick="() => OnPickThemeAsync(theme)">
+                                            <span class="sgc-theme-preview" style="background: @theme.Primitives.Primary500;"></span>
+                                            <span class="sgc-theme-name">@theme.Name</span>
+                                            @if (isActive)
+                                            {
+                                                <span class="sgc-theme-check" aria-hidden="true">✓</span>
+                                            }
+                                        </button>
+                                    }
+                                </div>)
+                        }
 
-                        <div class="sgc-setting-item">
-                            <label>Многовкладочный режим</label>
-                            <SgSwitch @bind-Value="IsTabbedMode" Label="Включить вкладки страниц" />
-                        </div>
-                    </div>
-                </div>
-            </ChildContent>
-        </SgTabPanel>
+                        @if (Match(Localizer["Settings_Mode"]))
+                        {
+                            @SettingRow(Localizer["Settings_Mode"], null,
+                                @<SgSegmented TValue="string" @bind-Value="CurrentMode" Options="_modeOptions" />)
+                        }
 
-        <SgTabPanel Title="@Localizer["Settings_Typography"]">
-            <Icon>@((MarkupString)SgIcons.Type)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>@Localizer["Settings_Typography"]</h3>
-                    <div class="sgc-settings-grid">
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_FontSize"]</label>
-                            <SgSegmented TValue="string" @bind-Value="CurrentFontSize" Options="_fontSizeOptions" />
-                        </div>
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_FontFamily"]</label>
-                            <SgSegmented TValue="string" @bind-Value="CurrentFontFamily" Options="_fontFamilyOptions" />
-                        </div>
-                    </div>
-                </div>
-            </ChildContent>
-        </SgTabPanel>
+                        @if (Match(Localizer["Settings_Density"]))
+                        {
+                            @SettingRow(Localizer["Settings_Density"], null,
+                                @<SgSegmented TValue="string" @bind-Value="CurrentDensity" Options="_densityOptions" />)
+                        }
 
-        <SgTabPanel Title="@Localizer["Settings_Formats"]">
-            <Icon>@((MarkupString)SgIcons.Calendar)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>@Localizer["Settings_Formats"]</h3>
-                    <div class="sgc-settings-grid">
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_DateFormat"]</label>
-                            <SgSelect TValue="string" Items="_dateFormats" @bind-Value="CurrentDateFormat" />
-                        </div>
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_NumberSeparator"]</label>
-                            <SgSegmented TValue="string" @bind-Value="CurrentNumberSeparator" Options="_numberSeparatorOptions" />
-                        </div>
-                    </div>
-                </div>
-            </ChildContent>
-        </SgTabPanel>
+                        @if (Match(Localizer["Settings_TabbedMode"], Localizer["Settings_TabbedModeHint"]))
+                        {
+                            @SettingRow(Localizer["Settings_TabbedMode"], Localizer["Settings_TabbedModeHint"],
+                                @<SgSwitch @bind-Value="IsTabbedMode" Label="@Localizer["Settings_TabbedModeLabel"]" />)
+                        }
+                    </ChildContent>
+                </SgTabPanel>
+            }
 
-        <SgTabPanel Title="@Localizer["Settings_Language"]">
-            <Icon>@((MarkupString)SgIcons.Globe)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>@Localizer["Settings_Language_Title"]</h3>
-                    <div class="sgc-settings-grid">
-                        <div class="sgc-setting-item">
-                            <label>@Localizer["Settings_SelectLanguage"]</label>
-                            <SgSelect TValue="string" 
-                                      Items="_languages" 
-                                      @bind-Value="CurrentLanguage" 
-                                      LabelSelector="GetLanguageLabel" />
-                        </div>
-                    </div>
-                </div>
-            </ChildContent>
-        </SgTabPanel>
+            @if (TabVisible(_typographyKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_Typography"]">
+                    <Icon>@((MarkupString)SgIcons.Type)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_Typography"], Localizer["Settings_TypographyHint"])
 
-        <SgTabPanel Title="AI Настройки">
-            <Icon>@((MarkupString)SgIcons.Cpu)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>Глобальные настройки LLM</h3>
-                    <p style="font-size: 13px; color: var(--sg-fg-subtle); margin-bottom: 16px;">
-                        Эти настройки будут использоваться по умолчанию во всех компонентах (Чат, Формы, Экстрактор), 
-                        если в них не заданы локальные параметры.
-                    </p>
-                    <SgLlmSettings Config="_llmConfig" ConfigChanged="OnLlmConfigChanged" />
-                </div>
-            </ChildContent>
-        </SgTabPanel>
+                        @if (Match(Localizer["Settings_FontSize"]))
+                        {
+                            @SettingRow(Localizer["Settings_FontSize"], null,
+                                @<SgSegmented TValue="string" @bind-Value="CurrentFontSize" Options="_fontSizeOptions" />)
+                        }
 
-        <SgTabPanel Title="Аналитика">
-            <Icon>@((MarkupString)SgIcons.Activity)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>Пользовательская аналитика</h3>
-                    <div class="sgc-settings-grid">
-                        <div class="sgc-setting-item">
-                            <label>Тепловая карта кликов</label>
-                            <SgSwitch @bind-Value="IsHeatmapAdminMode" Label="Режим визуализации (Heatmap)" />
-                            <p style="font-size: 12px; color: var(--sg-text-secondary); margin-top: 4px;">
-                                Накладывает полупрозрачный слой с активностью кликов поверх интерфейса.
-                            </p>
-                        </div>
-                        <div class="sgc-setting-item">
-                            <SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="OnClearHeatmapData">
-                                Очистить данные аналитики
-                            </SgButton>
-                        </div>
-                    </div>
-                </div>
-            </ChildContent>
-        </SgTabPanel>
+                        @if (Match(Localizer["Settings_FontFamily"]))
+                        {
+                            @SettingRow(Localizer["Settings_FontFamily"], null,
+                                @<SgSegmented TValue="string" @bind-Value="CurrentFontFamily" Options="_fontFamilyOptions" />)
+                        }
+                    </ChildContent>
+                </SgTabPanel>
+            }
 
-        <SgTabPanel Title="@Localizer["Settings_System"]">
-            <Icon>@((MarkupString)SgIcons.Terminal)</Icon>
-            <ChildContent>
-                <div class="sgc-settings-section">
-                    <h3>@Localizer["Settings_System"]</h3>
-                    <div class="sgc-settings-grid">
-                        <div class="sgc-setting-item">
-                            <SgButton Variant="SgButtonVariant.Outlined" OnClick="OnClearCache">
-                                @Localizer["Settings_ClearCache"]
-                            </SgButton>
-                        </div>
-                        <div class="sgc-setting-item">
-                            <SgButton Variant="SgButtonVariant.Danger" OnClick="OnResetAll">
-                                @Localizer["Settings_ResetAll"]
-                            </SgButton>
-                        </div>
-                    </div>
-                </div>
-            </ChildContent>
-        </SgTabPanel>
-    </SgTabs>
+            @if (TabVisible(_formatsKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_Formats"]">
+                    <Icon>@((MarkupString)SgIcons.Calendar)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_Formats"], Localizer["Settings_FormatsHint"])
+
+                        @if (Match(Localizer["Settings_DateFormat"]))
+                        {
+                            @SettingRow(Localizer["Settings_DateFormat"], null,
+                                @<SgSelect TValue="string" Items="_dateFormats" @bind-Value="CurrentDateFormat" />)
+                        }
+
+                        @if (Match(Localizer["Settings_NumberSeparator"]))
+                        {
+                            @SettingRow(Localizer["Settings_NumberSeparator"], null,
+                                @<SgSegmented TValue="string" @bind-Value="CurrentNumberSeparator" Options="_numberSeparatorOptions" />)
+                        }
+                    </ChildContent>
+                </SgTabPanel>
+            }
+
+            @if (TabVisible(_languageKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_Language"]">
+                    <Icon>@((MarkupString)SgIcons.Globe)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_Language_Title"], Localizer["Settings_LanguageHint"])
+
+                        @if (Match(Localizer["Settings_SelectLanguage"]))
+                        {
+                            @SettingRow(Localizer["Settings_SelectLanguage"], null,
+                                @<SgSelect TValue="string"
+                                           Items="_languages"
+                                           @bind-Value="CurrentLanguage"
+                                           LabelSelector="GetLanguageLabel" />)
+                        }
+                    </ChildContent>
+                </SgTabPanel>
+            }
+
+            @if (TabVisible(_aiKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_AI"]">
+                    <Icon>@((MarkupString)SgIcons.Cpu)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_AI"], Localizer["Settings_AIHint"])
+                        <SgLlmSettings Config="_llmConfig" ConfigChanged="OnLlmConfigChanged" />
+                    </ChildContent>
+                </SgTabPanel>
+            }
+
+            @if (TabVisible(_analyticsKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_Analytics"]">
+                    <Icon>@((MarkupString)SgIcons.Activity)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_Analytics"], Localizer["Settings_AnalyticsHint"])
+
+                        @if (Match(Localizer["Settings_HeatmapAdmin"], Localizer["Settings_HeatmapAdminHint"]))
+                        {
+                            @SettingRow(Localizer["Settings_HeatmapAdmin"], Localizer["Settings_HeatmapAdminHint"],
+                                @<SgSwitch @bind-Value="IsHeatmapAdminMode" Label="@Localizer["Settings_HeatmapAdminLabel"]" />)
+                        }
+
+                        @if (Match(Localizer["Settings_ClearAnalytics"]))
+                        {
+                            @SettingRow(Localizer["Settings_ClearAnalytics"], null,
+                                @<SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="OnClearHeatmapData">
+                                    @Localizer["Settings_ClearAnalytics"]
+                                </SgButton>)
+                        }
+                    </ChildContent>
+                </SgTabPanel>
+            }
+
+            @if (TabVisible(_systemKeys))
+            {
+                <SgTabPanel Title="@Localizer["Settings_System"]">
+                    <Icon>@((MarkupString)SgIcons.Terminal)</Icon>
+                    <ChildContent>
+                        @SectionHeader(Localizer["Settings_System"], Localizer["Settings_SystemHint"])
+
+                        @if (Match(Localizer["Settings_ClearCache"], Localizer["Settings_ClearCacheHint"]))
+                        {
+                            @SettingRow(Localizer["Settings_ClearCache"], Localizer["Settings_ClearCacheHint"],
+                                @<SgButton Variant="SgButtonVariant.Outlined" OnClick="OnClearCache">
+                                    @Localizer["Settings_ClearCache"]
+                                </SgButton>)
+                        }
+
+                        @if (Match(Localizer["Settings_ResetAll"], Localizer["Settings_ResetAllHint"]))
+                        {
+                            @SettingRow(Localizer["Settings_ResetAll"], Localizer["Settings_ResetAllHint"],
+                                @<SgButton Variant="SgButtonVariant.Danger" OnClick="OnResetAll">
+                                    @Localizer["Settings_ResetAll"]
+                                </SgButton>)
+                        }
+                    </ChildContent>
+                </SgTabPanel>
+            }
+        </SgTabs>
+    }
 </div>
 
 @code {
@@ -176,66 +245,176 @@
     private List<SgSegmentedOption<string>> _fontSizeOptions = new();
     private List<SgSegmentedOption<string>> _fontFamilyOptions = new();
     private List<SgSegmentedOption<string>> _numberSeparatorOptions = new();
-    
+
     private List<string> _languages = new() { "en-US", "ru-RU" };
     private List<string> _dateFormats = new() { "DD.MM.YYYY", "YYYY-MM-DD", "MM/DD/YYYY" };
     private SgLlmConfig _llmConfig = new();
 
+    // ── Search filter ─────────────────────────────────────────────────────
+    private string _searchText = string.Empty;
+    private bool IsSearching => !string.IsNullOrWhiteSpace(_searchText);
+    private bool HasAnyMatch => _appearanceKeys.Concat(_typographyKeys).Concat(_formatsKeys)
+                                              .Concat(_languageKeys).Concat(_aiKeys)
+                                              .Concat(_analyticsKeys).Concat(_systemKeys)
+                                              .Any(MatchPair);
+
+    // Per-tab haystacks. Each entry is "label|hint" — Match() picks them apart.
+    private IEnumerable<string> _appearanceKeys => new[]
+    {
+        $"{Localizer["Settings_Appearance_Title"]}|{Localizer["Settings_AppearanceHint"]}",
+        $"{Localizer["Settings_Theme"]}|",
+        $"{Localizer["Settings_Mode"]}|",
+        $"{Localizer["Settings_Density"]}|",
+        $"{Localizer["Settings_TabbedMode"]}|{Localizer["Settings_TabbedModeHint"]}",
+    };
+    private IEnumerable<string> _typographyKeys => new[]
+    {
+        $"{Localizer["Settings_Typography"]}|{Localizer["Settings_TypographyHint"]}",
+        $"{Localizer["Settings_FontSize"]}|",
+        $"{Localizer["Settings_FontFamily"]}|",
+    };
+    private IEnumerable<string> _formatsKeys => new[]
+    {
+        $"{Localizer["Settings_Formats"]}|{Localizer["Settings_FormatsHint"]}",
+        $"{Localizer["Settings_DateFormat"]}|",
+        $"{Localizer["Settings_NumberSeparator"]}|",
+    };
+    private IEnumerable<string> _languageKeys => new[]
+    {
+        $"{Localizer["Settings_Language_Title"]}|{Localizer["Settings_LanguageHint"]}",
+        $"{Localizer["Settings_SelectLanguage"]}|",
+    };
+    private IEnumerable<string> _aiKeys => new[]
+    {
+        $"{Localizer["Settings_AI"]}|{Localizer["Settings_AIHint"]}",
+    };
+    private IEnumerable<string> _analyticsKeys => new[]
+    {
+        $"{Localizer["Settings_Analytics"]}|{Localizer["Settings_AnalyticsHint"]}",
+        $"{Localizer["Settings_HeatmapAdmin"]}|{Localizer["Settings_HeatmapAdminHint"]}",
+        $"{Localizer["Settings_ClearAnalytics"]}|",
+    };
+    private IEnumerable<string> _systemKeys => new[]
+    {
+        $"{Localizer["Settings_System"]}|{Localizer["Settings_SystemHint"]}",
+        $"{Localizer["Settings_ClearCache"]}|{Localizer["Settings_ClearCacheHint"]}",
+        $"{Localizer["Settings_ResetAll"]}|{Localizer["Settings_ResetAllHint"]}",
+    };
+
+    private bool TabVisible(IEnumerable<string> keys) => !IsSearching || keys.Any(MatchPair);
+    private bool MatchPair(string pair)
+    {
+        if (!IsSearching) return true;
+        var parts = pair.Split('|', 2);
+        return Match(parts[0], parts.Length > 1 ? parts[1] : null);
+    }
+    private bool Match(string? primary, string? secondary = null)
+    {
+        if (!IsSearching) return true;
+        var q = _searchText.Trim();
+        bool Contains(string? s) => !string.IsNullOrEmpty(s) && s.Contains(q, StringComparison.OrdinalIgnoreCase);
+        return Contains(primary) || Contains(secondary);
+    }
+
+    // ── Saved-pill feedback ───────────────────────────────────────────────
+    private bool _showSavedPill;
+    private CancellationTokenSource? _savedPillCts;
+    private async Task FlashSavedAsync()
+    {
+        _savedPillCts?.Cancel();
+        _savedPillCts = new CancellationTokenSource();
+        var token = _savedPillCts.Token;
+        _showSavedPill = true;
+        StateHasChanged();
+        try
+        {
+            await Task.Delay(1500, token);
+            _showSavedPill = false;
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { /* superseded by another save */ }
+    }
+
+    // ── Two-way bound properties ──────────────────────────────────────────
+    // Two-way bindings must be synchronous, so the async setters are
+    // fire-and-forget. We wrap them so a failure surfaces as a toast instead
+    // of leaving the UI showing the old value next to a silent service error.
     private string CurrentMode
     {
         get => ThemeService.CurrentMode;
-        set => _ = ThemeService.SetModeAsync(value);
+        set => SafeFireAndForget(ThemeService.SetModeAsync(value), Localizer["Settings_Mode"]);
     }
-
     private string CurrentDensity
     {
         get => ThemeService.Density;
-        set => _ = ThemeService.SetDensityAsync(value);
+        set => SafeFireAndForget(ThemeService.SetDensityAsync(value), Localizer["Settings_Density"]);
     }
-
     private string CurrentFontSize
     {
         get => ThemeService.FontSize;
-        set => _ = ThemeService.SetFontSizeAsync(value);
+        set => SafeFireAndForget(ThemeService.SetFontSizeAsync(value), Localizer["Settings_FontSize"]);
     }
-
     private string CurrentFontFamily
     {
         get => ThemeService.FontFamily;
-        set => _ = ThemeService.SetFontFamilyAsync(value);
+        set => SafeFireAndForget(ThemeService.SetFontFamilyAsync(value), Localizer["Settings_FontFamily"]);
     }
-
     private string CurrentDateFormat
     {
         get => SettingsService.DateFormat;
-        set => _ = SettingsService.SetDateFormatAsync(value);
+        set => SafeFireAndForget(SettingsService.SetDateFormatAsync(value), Localizer["Settings_DateFormat"]);
     }
-
     private string CurrentNumberSeparator
     {
         get => SettingsService.NumberSeparator;
-        set => _ = SettingsService.SetNumberSeparatorAsync(value);
+        set => SafeFireAndForget(SettingsService.SetNumberSeparatorAsync(value), Localizer["Settings_NumberSeparator"]);
     }
-
     private bool IsTabbedMode
     {
         get => SettingsService.IsTabbedMode;
-        set => _ = SettingsService.SetTabbedModeAsync(value);
+        set => SafeFireAndForget(SettingsService.SetTabbedModeAsync(value), Localizer["Settings_TabbedMode"]);
     }
-
     private bool IsHeatmapAdminMode
     {
         get => HeatmapService.IsAdminMode;
-        set => _ = HeatmapService.ToggleAdminModeAsync(value);
+        set => SafeFireAndForget(HeatmapService.ToggleAdminModeAsync(value), Localizer["Settings_HeatmapAdmin"]);
+    }
+
+    private async void SafeFireAndForget(Task work, string label)
+    {
+        try
+        {
+            await work;
+            await FlashSavedAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"{label}: {ex.Message}");
+        }
+    }
+
+    private async Task OnPickThemeAsync(IThemeDefinition theme)
+    {
+        try
+        {
+            await ThemeService.SetThemeAsync(theme);
+            await FlashSavedAsync();
+        }
+        catch (Exception ex)
+        {
+            ToastService.Error($"{Localizer["Settings_Theme"]}: {ex.Message}");
+        }
     }
 
     private async Task OnClearHeatmapData()
     {
-        var confirmed = await ConfirmService.ConfirmAsync("Вы уверены, что хотите удалить все накопленные данные о кликах?", "Очистка аналитики");
+        var confirmed = await ConfirmService.ConfirmAsync(
+            Localizer["Settings_ClearAnalyticsConfirm"],
+            Localizer["Settings_ClearAnalyticsTitle"]);
         if (confirmed)
         {
             await HeatmapService.ClearDataAsync();
-            ToastService.Success("Данные аналитики очищены");
+            ToastService.Success(Localizer["Settings_ClearAnalyticsDone"]);
         }
     }
 
@@ -243,12 +422,12 @@
     private string CurrentLanguage
     {
         get => _currentLanguage;
-        set 
+        set
         {
             if (_currentLanguage != value)
             {
                 _currentLanguage = value;
-                _ = SettingsService.SetLanguageAsync(value);
+                SafeFireAndForget(SettingsService.SetLanguageAsync(value), Localizer["Settings_Language"]);
             }
         }
     }
@@ -268,34 +447,35 @@
 
         _densityOptions = new List<SgSegmentedOption<string>>
         {
-            new() { Value = "compact", Label = "Compact" },
-            new() { Value = "relaxed", Label = "Relaxed" }
+            new() { Value = "compact", Label = Localizer["Density_Compact"] },
+            new() { Value = "relaxed", Label = Localizer["Density_Relaxed"] }
         };
 
         _fontSizeOptions = new List<SgSegmentedOption<string>>
         {
-            new() { Value = "sm", Label = "Small" },
-            new() { Value = "md", Label = "Medium" },
-            new() { Value = "lg", Label = "Large" }
+            new() { Value = "sm", Label = Localizer["FontSize_Small"] },
+            new() { Value = "md", Label = Localizer["FontSize_Medium"] },
+            new() { Value = "lg", Label = Localizer["FontSize_Large"] }
         };
 
         _fontFamilyOptions = new List<SgSegmentedOption<string>>
         {
-            new() { Value = "sans", Label = "Sans-Serif" },
-            new() { Value = "mono", Label = "Monospace" }
+            new() { Value = "sans", Label = Localizer["FontFamily_Sans"] },
+            new() { Value = "mono", Label = Localizer["FontFamily_Mono"] }
         };
 
         _numberSeparatorOptions = new List<SgSegmentedOption<string>>
         {
-            new() { Value = "space", Label = "[ 1 000 ]" },
-            new() { Value = "comma", Label = "[ 1,000 ]" },
-            new() { Value = "none", Label = "[ 1000 ]" }
+            new() { Value = "space", Label = "1 000" },
+            new() { Value = "comma", Label = "1,000" },
+            new() { Value = "none",  Label = "1000" }
         };
     }
 
     private async Task OnLlmConfigChanged(SgLlmConfig config)
     {
         await SettingsService.SaveDefaultLlmConfigAsync(config);
+        await FlashSavedAsync();
     }
 
     private string GetLanguageLabel(string lang) => lang switch
@@ -308,7 +488,7 @@
     private async Task OnClearCache()
     {
         await SettingsService.ClearCacheAsync();
-        ToastService.Success("Кэш очищен");
+        ToastService.Success(Localizer["Settings_ClearCacheDone"]);
     }
 
     private async Task OnResetAll()
@@ -318,115 +498,283 @@
             await SettingsService.ResetAllSettingsAsync();
         }
     }
+
+    // ── Render helpers ────────────────────────────────────────────────────
+    // One row, one shape: label, optional hint, control. Inlined to keep the
+    // markup readable instead of a forest of tiny components.
+    private RenderFragment SectionHeader(string title, string? hint) => __builder =>
+    {
+        <div class="sgc-settings-section-head">
+            <h3 class="sgc-settings-section-title">@title</h3>
+            @if (!string.IsNullOrEmpty(hint))
+            {
+                <p class="sgc-settings-section-hint">@hint</p>
+            }
+        </div>
+    };
+
+    private RenderFragment SettingRow(string label, string? hint, RenderFragment control) => __builder =>
+    {
+        <div class="sgc-setting-row">
+            <div class="sgc-setting-info">
+                <label class="sgc-setting-label">@label</label>
+                @if (!string.IsNullOrEmpty(hint))
+                {
+                    <p class="sgc-setting-hint">@hint</p>
+                }
+            </div>
+            <div class="sgc-setting-control">
+                @control
+            </div>
+        </div>
+    };
 }
 
 <style>
 .sgc-settings-container {
     background: var(--sg-bg);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
 }
-.sgc-settings-section {
-    padding: 4px 8px;
+
+/* ── Sticky header: title, saved-pill, search ───────────────────────── */
+.sgc-settings-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 20px 12px;
+    background: var(--sg-bg);
+    border-bottom: 1px solid var(--sg-border);
 }
-.sgc-settings-section h3 {
-    margin: 0 0 20px 0;
-    font-size: 16px;
+.sgc-settings-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.sgc-settings-title {
+    margin: 0;
+    font-size: 18px;
     font-weight: 600;
     color: var(--sg-fg);
+    letter-spacing: -0.01em;
+}
+.sgc-settings-saved-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--sg-color-success, #2e7d32);
+    background: var(--sg-color-success-subtle, rgba(46, 125, 50, 0.1));
+    border-radius: 999px;
+    animation: sgc-fade-in 0.18s ease-out;
+}
+@@keyframes sgc-fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.sgc-settings-search-wrap {
+    position: relative;
     display: flex;
     align-items: center;
-    gap: 8px;
 }
-.sgc-settings-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 28px;
+.sgc-settings-search-icon {
+    position: absolute;
+    left: 12px;
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    color: var(--sg-fg-subtle);
+    pointer-events: none;
 }
-.sgc-setting-item {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+.sgc-settings-search-icon :deep(svg) { width: 16px; height: 16px; }
+.sgc-settings-search {
+    width: 100%;
+    height: 36px;
+    padding: 0 36px 0 36px;
+    font-size: 13px;
+    background: var(--sg-bg-subtle);
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius-md, 8px);
+    color: var(--sg-fg);
+    outline: none;
+    transition: border-color 0.15s ease, background 0.15s ease;
 }
-.sgc-setting-item label {
+.sgc-settings-search:focus {
+    border-color: var(--sg-color-primary);
+    background: var(--sg-bg);
+}
+.sgc-settings-search-clear {
+    position: absolute;
+    right: 8px;
+    height: 22px;
+    width: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    background: transparent;
+    color: var(--sg-fg-subtle);
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 12px;
+}
+.sgc-settings-search-clear:hover { background: var(--sg-bg-hover); color: var(--sg-fg); }
+
+/* ── Empty search state ─────────────────────────────────────────────── */
+.sgc-settings-empty {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--sg-fg-subtle);
+}
+.sgc-settings-empty span { font-size: 28px; display: block; margin-bottom: 12px; }
+.sgc-settings-empty p { margin: 0; font-size: 14px; }
+
+/* ── Section header inside each tab ─────────────────────────────────── */
+.sgc-settings-section-head {
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--sg-border-subtle, var(--sg-border));
+}
+.sgc-settings-section-title {
+    margin: 0 0 4px 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--sg-fg);
+}
+.sgc-settings-section-hint {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: var(--sg-fg-subtle);
+}
+
+/* ── Row: label + hint on the left, control on the right ────────────── */
+.sgc-setting-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 24px;
+    align-items: start;
+    padding: 16px 0;
+    border-bottom: 1px solid var(--sg-border-subtle, transparent);
+}
+.sgc-setting-row:last-child { border-bottom: none; }
+
+.sgc-setting-info { min-width: 0; }
+.sgc-setting-label {
+    display: block;
     font-size: 13px;
     font-weight: 600;
-    color: var(--sg-fg-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+    color: var(--sg-fg);
+    margin-bottom: 4px;
 }
+.sgc-setting-hint {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--sg-fg-subtle);
+    max-width: 52ch;
+}
+.sgc-setting-control {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    min-width: 200px;
+}
+
+/* The theme grid spans the whole row width — it doesn't fit the
+   info+control split, so we let the control column hold it full-width. */
+.sgc-setting-row:has(.sgc-theme-grid) { grid-template-columns: 1fr; }
+.sgc-setting-row:has(.sgc-theme-grid) .sgc-setting-control { justify-content: stretch; min-width: 0; }
+
+/* Collapse to one column on narrow viewports. */
+@@media (max-width: 720px) {
+    .sgc-setting-row { grid-template-columns: 1fr; gap: 8px; }
+    .sgc-setting-control { justify-content: flex-start; min-width: 0; }
+}
+
+/* ── Theme cards ────────────────────────────────────────────────────── */
 .sgc-theme-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    width: 100%;
 }
 .sgc-theme-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 24px 16px;
+    gap: 10px;
+    padding: 16px 12px;
     border: 1px solid var(--sg-border);
-    border-radius: var(--sg-radius-lg);
+    border-radius: var(--sg-radius-md, 8px);
     cursor: pointer;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     background: var(--sg-bg-subtle);
-    position: relative;
+    color: var(--sg-fg);
+    font: inherit;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 .sgc-theme-card:hover {
+    border-color: var(--sg-color-primary-muted, var(--sg-color-primary));
     background: var(--sg-bg-hover);
-    border-color: var(--sg-color-primary-muted);
-    transform: translateY(-2px);
-    box-shadow: var(--sg-shadow-md);
+}
+.sgc-theme-card:focus-visible {
+    outline: 2px solid var(--sg-color-primary);
+    outline-offset: 2px;
 }
 .sgc-theme-card.sgc-active {
     border-color: var(--sg-color-primary);
-    background: var(--sg-color-primary-subtle);
-    box-shadow: 0 0 0 1px var(--sg-color-primary);
+    background: var(--sg-color-primary-subtle, var(--sg-bg-subtle));
 }
-.sgc-theme-card.sgc-active::after {
-    content: "✓";
+.sgc-theme-preview {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    border: 2px solid var(--sg-bg);
+}
+.sgc-theme-name {
+    font-size: 12px;
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.3;
+}
+.sgc-theme-check {
     position: absolute;
     top: 6px;
     right: 8px;
     color: var(--sg-color-primary);
-    font-weight: bold;
-    font-size: 14px;
+    font-weight: 700;
+    font-size: 12px;
+    line-height: 1;
 }
-.sgc-theme-preview {
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    border: 2px solid var(--sg-bg);
-}
-.sgc-theme-card span {
-    font-size: 11px;
-    font-weight: 600;
-    text-align: center;
-    color: var(--sg-fg);
-}
-/* Стили для табов внутри Drawer */
-::deep .sgc-tabs-vertical {
-    border: none;
-}
+
+/* ── Vertical tabs inside the drawer ────────────────────────────────── */
+::deep .sgc-tabs-vertical { border: none; height: 100%; }
 ::deep .sgc-tabs-vertical .sgc-tabs-strip {
-    width: 180px;
+    width: 200px;
     background: var(--sg-bg-subtle);
-    padding: 12px 0;
+    padding: 12px 8px;
+    border-right: 1px solid var(--sg-border);
 }
 ::deep .sgc-tabs-vertical .sgc-tab {
-    padding: 12px 24px;
+    padding: 10px 14px;
+    margin-bottom: 2px;
+    border-radius: var(--sg-radius-md, 8px);
     justify-content: flex-start;
 }
-::deep .sgc-tabs-vertical .sgc-tab-icon {
-    margin-right: 16px;
-}
-::deep .sgc-tabs-vertical .sgc-tab-text {
-    display: block; 
-    font-size: 14px;
-    font-weight: 500;
-}
-::deep .sgc-tabs-vertical .sgc-tabs-body {
-    padding: 20px;
-}
+::deep .sgc-tabs-vertical .sgc-tab:hover { background: var(--sg-bg-hover); }
+::deep .sgc-tabs-vertical .sgc-tab.sgc-tab-active { background: var(--sg-color-primary-subtle, var(--sg-bg-hover)); }
+::deep .sgc-tabs-vertical .sgc-tab-icon { margin-right: 12px; }
+::deep .sgc-tabs-vertical .sgc-tab-text { display: block; font-size: 13.5px; font-weight: 500; }
+::deep .sgc-tabs-vertical .sgc-tabs-body { padding: 24px 28px; overflow-y: auto; }
 </style>

@@ -411,12 +411,39 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
   let fullAnswer = '';
   let toolCalls = [];
 
+  // Batch tokens so each network chunk doesn't bounce through .NET interop —
+  // every JSInvokable call is a synchronisation hop that floods the Blazor
+  // renderer on long answers. We flush at most once per animation frame
+  // (~16 ms), which keeps streaming visibly smooth without freezing the UI.
+  let _pendingBuf = '';
+  let _flushScheduled = false;
+  const _flush = () => {
+    _flushScheduled = false;
+    if (!_pendingBuf) return;
+    const chunk = _pendingBuf;
+    _pendingBuf = '';
+    try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenCallback', chunk); } catch (_) {}
+  };
   const _sendToken = (token) => {
+    if (!token) return;
     fullAnswer += token;
-    try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenCallback', token); } catch (_) {}
+    _pendingBuf += token;
+    if (!_flushScheduled) {
+      _flushScheduled = true;
+      const raf = (typeof requestAnimationFrame === 'function') ? requestAnimationFrame : (cb) => setTimeout(cb, 16);
+      raf(_flush);
+    }
   };
 
   const _sendComplete = () => {
+    // Drain any tokens still waiting in the rAF buffer so the final chunk
+    // isn't lost between the last delta and the completion event.
+    if (_pendingBuf) {
+      const chunk = _pendingBuf;
+      _pendingBuf = '';
+      _flushScheduled = false;
+      try { inst.dotnetRef.invokeMethodAsync('OnStreamTokenCallback', chunk); } catch (_) {}
+    }
     inst._directHistory.push(userTurn);
     inst._directHistory.push({ role: 'assistant', content: fullAnswer, tool_calls: toolCalls.length ? toolCalls : undefined });
     if (inst._directHistory.length > 20) inst._directHistory = inst._directHistory.slice(-20);
@@ -736,6 +763,17 @@ export async function chatDirectStream(instanceId, message, systemPrompt, attach
 export function clearDirectHistory(instanceId) {
   const inst = _instances.get(instanceId);
   if (inst) inst._directHistory = [];
+}
+
+// Cheap, non-smooth scroll-to-bottom for streaming chat. The previous
+// implementation used document.querySelector + smooth behavior + eval on every
+// token, which thrashed the layout engine and froze the UI on long answers.
+export function scrollChatToBottom(selector) {
+  try {
+    const el = document.querySelector(selector || '.sg-chat-messages');
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  } catch (_) {}
 }
 
 export async function renderMarkdown(text, markedSrc) {

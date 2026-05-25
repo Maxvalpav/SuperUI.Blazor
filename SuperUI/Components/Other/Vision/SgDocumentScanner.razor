@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @inherits SgJsComponentBase
+@using SuperUI.Enums
 
 <div class="@Css("sgc-doc-scanner").Build()" style="@Styles().Build()">
     <div class="sgc-doc-scanner-viewport">
@@ -9,7 +10,17 @@
         @if (!_isStarted)
         {
             <div class="sgc-doc-scanner-overlay">
-                <SgButton Variant="SgButtonVariant.Primary" OnClick="StartScannerAsync" Text="Запустить сканер" />
+                @if (_isLoading)
+                {
+                    <SgStack Vertical Spacing="12" Align="SgAlignItems.Center">
+                        <SgSpinner Size="SgSize.Lg" />
+                        <span style="color: #fff; font-size: 0.9rem;">Загрузка OpenCV.js...</span>
+                    </SgStack>
+                }
+                else
+                {
+                    <SgButton Variant="SgButtonVariant.Primary" OnClick="StartScannerAsync" Text="Запустить сканер" />
+                }
             </div>
         }
         else
@@ -50,6 +61,7 @@
         height: 100%;
         object-fit: cover;
         opacity: 0;
+        pointer-events: none;
     }
     .sgc-doc-scanner-canvas {
         width: 100%;
@@ -59,6 +71,10 @@
     .sgc-doc-scanner-overlay {
         position: absolute;
         z-index: 10;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
     }
     .sgc-doc-scanner-controls {
         position: absolute;
@@ -76,6 +92,7 @@
     private ElementReference _videoRef;
     private ElementReference _canvasRef;
     private bool _isStarted;
+    private bool _isLoading;
 
     [Parameter] public string? Class { get; set; }
     [Parameter] public EventCallback<string> OnScan { get; set; }
@@ -84,8 +101,18 @@
 
     public async Task StartScannerAsync()
     {
-        _isStarted = await SafeInvokeAsync<bool>("startScanner", _videoRef, _canvasRef);
+        _isLoading = true;
         StateHasChanged();
+
+        try
+        {
+            _isStarted = await SafeInvokeAsync<bool>("startScanner", _videoRef, _canvasRef);
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
     }
 
     public async Task StopScannerAsync()

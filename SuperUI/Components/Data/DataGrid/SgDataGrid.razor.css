@@ -9,13 +9,16 @@
     --sg-accent: var(--sg-color-primary);
     --sg-accent-soft: var(--sg-color-primary-subtle);
     --sg-toolbar-bg: var(--sg-bg-subtle);
+    /* Переменная для max-height sg-scroll.
+       Когда Height задан на компоненте — inline style переопределяет в none,
+       и sg-scroll занимает всё пространство через flex:1.
+       Когда Height не задан — fallback 560px гарантирует скролл внутри компонента. */
+    --sg-scroll-max-height: 560px;
 
     background: var(--sg-bg);
     color: var(--sg-fg);
     border: 1px solid var(--sg-border);
     border-radius: var(--sg-radius-md);
-    /* overflow: clip не создаёт scroll-контейнер и не ломает position:sticky у потомков */
-    overflow: clip;
     font-family: var(--sg-font);
     font-size: 12px;
     display: flex;
@@ -28,10 +31,12 @@
     /* display: none; */
 }
 
-/* When any modal is open — prevent sticky thead from overlapping the modal backdrop */
+/* When any modal is open — prevent sticky thead from overlapping the modal backdrop.
+   !important теперь нужен, потому что базовое правило для thead th тоже important
+   (см. .sg-table thead th — там sticky закреплён жёстко). */
 .sg-root.sg-modal-open .sg-table thead th {
-    position: relative;
-    z-index: 0;
+    position: relative !important;
+    z-index: 0 !important;
 }
 
 .sg-root.sg-modal-open .sg-pinned {
@@ -195,9 +200,8 @@
     overflow: auto;
     flex: 1;
     min-height: 0;
-    max-height: 560px;
+    max-height: var(--sg-scroll-max-height);
     scrollbar-gutter: stable;
-    /* contain: style убран — он может мешать position:sticky в thead */
     scrollbar-width: thin;
     scrollbar-color: var(--sg-border-strong) transparent;
 }
@@ -238,9 +242,16 @@
 }
 
 .sg-table thead th {
-    position: sticky;
+    /* Закрепление заголовка: !important нужен, потому что у части ячеек есть
+       inline-style для горизонтального sticky (pinned columns) — без важности
+       inline горизонталь не объединится с вертикальным sticky из CSS, и колонка
+       будет либо приклеена только по горизонтали, либо только по вертикали. */
+    position: sticky !important;
     top: 0;
     background: var(--sg-header-bg);
+    /* z-index: 2 — выше неприлепленных tbody-ячеек (1) и ниже зафиксированных
+       по горизонтали (3). Pinned-thead перекрывает горизонтальные ячейки
+       значением 4 (см. ниже). */
     z-index: 2;
     text-align: left;
     font-weight: 600;
