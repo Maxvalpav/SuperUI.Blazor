@@ -67,6 +67,12 @@ public partial class SgRow : ComponentBase
     /// <summary>Stretch the row to 100% width of its parent. Default <c>true</c>.</summary>
     [Parameter] public bool FullWidth { get; set; } = true;
 
+    /// <summary>Optional CSS min-height for the row.</summary>
+    [Parameter] public string? MinHeight { get; set; }
+
+    /// <summary>Optional background color / CSS value.</summary>
+    [Parameter] public string? Background { get; set; }
+
     /// <summary>HTML tag to render. Default <c>div</c>. Allowed: <c>div, section, header, footer, nav, main, ul</c>.</summary>
     [Parameter] public string Tag { get; set; } = "div";
 
@@ -183,6 +189,9 @@ public partial class SgRow : ComponentBase
             sb.Append("align-items:").Append(AlignCss).Append(';');
             sb.Append("justify-content:").Append(JustifyCss).Append(';');
             if (FullWidth && !Inline) sb.Append("width:100%;");
+
+            if (!string.IsNullOrWhiteSpace(MinHeight)) sb.Append("min-height:").Append(MinHeight).Append(';');
+            if (!string.IsNullOrWhiteSpace(Background)) sb.Append("background:").Append(Background).Append(';');
 
             // Reset list defaults if rendered as <ul>
             if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase))

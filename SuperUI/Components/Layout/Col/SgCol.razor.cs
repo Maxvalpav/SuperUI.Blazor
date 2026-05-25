@@ -63,6 +63,13 @@ public partial class SgCol : ComponentBase
     [Parameter] public int OffsetLg { get; set; }
     [Parameter] public int OffsetXl { get; set; }
 
+    // Responsive hidden — hides the column at specific breakpoints
+    [Parameter] public bool HideXs { get; set; }
+    [Parameter] public bool HideSm { get; set; }
+    [Parameter] public bool HideMd { get; set; }
+    [Parameter] public bool HideLg { get; set; }
+    [Parameter] public bool HideXl { get; set; }
+
     /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
@@ -97,6 +104,12 @@ public partial class SgCol : ComponentBase
                 if (Lg is >= 1 and <= 12) sb.Append(" sg-col-lg-").Append(Lg);
                 if (Xl is >= 1 and <= 12) sb.Append(" sg-col-xl-").Append(Xl);
             }
+            // Responsive hidden classes
+            if (HideXs) sb.Append(" sg-col-xs-hidden");
+            if (HideSm) sb.Append(" sg-col-sm-hidden");
+            if (HideMd) sb.Append(" sg-col-md-hidden");
+            if (HideLg) sb.Append(" sg-col-lg-hidden");
+            if (HideXl) sb.Append(" sg-col-xl-hidden");
             if (!string.IsNullOrWhiteSpace(CssClass)) sb.Append(' ').Append(CssClass);
             return sb.ToString();
         }
