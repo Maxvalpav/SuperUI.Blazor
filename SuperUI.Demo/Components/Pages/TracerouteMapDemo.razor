@@ -1,0 +1,160 @@
+@page "/traceroute-map-demo"
+@using SuperUI.Components
+@using SuperUI.Services.Network
+@using SuperUI.Enums
+@inject SgTracerouteService TracerouteService
+
+<PageTitle>Visual Traceroute Map - SuperUI</PageTitle>
+
+<div class="sg-demo-header" style="margin-bottom: 24px;">
+    <SgStack Vertical Spacing="4">
+        <h1 style="margin:0; font-weight:700; color:var(--sui-text-primary);">Visual Traceroute Map</h1>
+        <p style="margin:0; opacity:0.7;">Визуализация сетевого маршрута и диагностика задержек в реальном времени.</p>
+    </SgStack>
+</div>
+
+<SgStack Vertical Spacing="24">
+    <!-- 1. Controls & Stats -->
+    <SgCard>
+        <SgRow Gutter="24" Align="SgAlignItems.Center">
+            <SgCol Span="10">
+                <SgStack Vertical Spacing="8">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--sui-text-muted);">Target Configuration</div>
+                    <SgRow Gutter="8">
+                        <SgCol Span="16">
+                            <SgTextBox @bind-Value="_target" Placeholder="IP or Hostname (e.g. ya.ru)" Block />
+                        </SgCol>
+                        <SgCol Span="8">
+                            <SgButton Variant="SgButtonVariant.Primary" OnClick="StartTrace" Disabled="_isTracing" Block>
+                                @if (_isTracing) { <SgSpinner Size="SgSize.Sm" style="margin-right:8px;"/> }
+                                Trace
+                            </SgButton>
+                        </SgCol>
+                    </SgRow>
+                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                        <SgTag Color="processing" style="cursor:pointer" @onclick='() => SetTarget("8.8.8.8")'>Google</SgTag>
+                        <SgTag Color="success" style="cursor:pointer" @onclick='() => SetTarget("ya.ru")'>Yandex</SgTag>
+                        <SgTag Color="warning" style="cursor:pointer" @onclick='() => SetTarget("1.1.1.1")'>Cloudflare</SgTag>
+                    </div>
+                </SgStack>
+            </SgCol>
+
+            <SgCol Span="14">
+                <SgRow Gutter="12">
+                    <SgCol Span="8">
+                        <SgCard style="background: var(--sui-bg-secondary); border: none;">
+                            <SgStatistic Title="Total Hops" Value="@_hops.Count.ToString()" />
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Span="8">
+                        <SgCard style="background: var(--sui-bg-secondary); border: none;">
+                            <SgStatistic Title="Max Latency" Value="@(MaxLatency.ToString("F1"))" Suffix="ms" />
+                        </SgCard>
+                    </SgCol>
+                    <SgCol Span="8">
+                        <SgCard style="background: var(--sui-bg-secondary); border: none;">
+                            <SgStatistic Title="Avg Latency" Value="@(AvgLatency.ToString("F1"))" Suffix="ms" />
+                        </SgCard>
+                    </SgCol>
+                </SgRow>
+            </SgCol>
+        </SgRow>
+    </SgCard>
+
+    <!-- 2. Map & Table Split -->
+    <SgRow Gutter="24">
+        <SgCol Span="14">
+            <SgCard Title="Geographic Path Visualization" style="height: 100%;">
+                <div style="height: 600px;">
+                    <SgTracerouteMap Hops="_hops" />
+                </div>
+            </SgCard>
+        </SgCol>
+
+        <SgCol Span="10">
+            <SgCard Title="Hop Analysis" style="height: 100%;">
+                <div style="height: 600px; overflow: auto;">
+                    <SgTable Items="_hops" TItem="SgTracerouteHop" ShowSearch="false" EnablePaging="false">
+                        <ChildContent>
+                            <SgTableColumn TItem="SgTracerouteHop" Title="#" Value="@(context => context.HopIndex)" Width="50px" />
+                            <SgTableColumn TItem="SgTracerouteHop" Title="IP / Location">
+                                <Template>
+                                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                                        <code style="font-size: 11px; font-weight: 600;">@context.Ip</code>
+                                        <div style="font-size: 10px; opacity: 0.7; display: flex; align-items: center; gap: 4px;">
+                                            @if (!string.IsNullOrEmpty(context.Country))
+                                            {
+                                                <span style="font-size: 12px;">@GetFlag(context.Country)</span>
+                                                <span>@context.City</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Unknown Location</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </Template>
+                            </SgTableColumn>
+                            <SgTableColumn TItem="SgTracerouteHop" Title="Latency" Width="100px">
+                                <Template>
+                                    <SgTag Color="@GetLatencyColor(context.LatencyMs)">
+                                        @context.LatencyMs.ToString("F1") ms
+                                    </SgTag>
+                                </Template>
+                            </SgTableColumn>
+                        </ChildContent>
+                    </SgTable>
+                </div>
+            </SgCard>
+        </SgCol>
+    </SgRow>
+</SgStack>
+
+@code {
+    private string _target = "8.8.8.8";
+    private List<SgTracerouteHop> _hops = new();
+    private bool _isTracing;
+
+    private double MaxLatency => _hops.Any() ? _hops.Max(h => h.LatencyMs) : 0;
+    private double AvgLatency => _hops.Any() ? _hops.Average(h => h.LatencyMs) : 0;
+
+    private void SetTarget(string host)
+    {
+        _target = host;
+        StateHasChanged();
+    }
+
+    private async Task StartTrace()
+    {
+        _isTracing = true;
+        _hops = new();
+        StateHasChanged();
+
+        try
+        {
+            _hops = await TracerouteService.TraceAsync(_target);
+        }
+        finally
+        {
+            _isTracing = false;
+            StateHasChanged();
+        }
+    }
+
+    private string GetLatencyColor(double ms) => ms switch
+    {
+        < 50 => "success",
+        < 150 => "warning",
+        _ => "error"
+    };
+
+    private string GetFlag(string country) => country.ToLower() switch
+    {
+        "russia" or "россия" => "🇷🇺",
+        "usa" or "сша" or "united states" => "🇺🇸",
+        "germany" or "германия" => "🇩🇪",
+        "netherlands" or "нидерланды" => "🇳🇱",
+        "internal" => "🏠",
+        _ => "🌐"
+    };
+}

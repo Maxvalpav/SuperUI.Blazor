@@ -1,0 +1,119 @@
+@page "/lifecycle-demo"
+@using SuperUI.Components
+
+<PageTitle>Lifecycle Visualizer — SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <h1>Blazor Lifecycle Visualizer</h1>
+    <p class="sg-text-muted">
+        Интерактивный учебник жизненного цикла Blazor-компонента.
+        Изменяйте параметры и наблюдайте, как проходят этапы жизненного цикла в реальном времени.
+    </p>
+</div>
+
+<SgStack Orientation="SgOrientation.Vertical" Gap="20px">
+
+    @* ── Controls ── *@
+    <SgCard Title="Управление" Compact="true">
+        <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; padding:4px 0;">
+
+            <SgButton Variant="SgButtonVariant.Primary" OnClick="ChangeValue">
+                Изменить параметр
+            </SgButton>
+
+            <SgButton Variant="SgButtonVariant.Outlined" OnClick="TriggerStateHasChanged">
+                Вызвать StateHasChanged
+            </SgButton>
+
+            <SgButton Variant="SgButtonVariant.Ghost" OnClick="RecreateComponent">
+                Пересоздать компонент (@_componentKey)
+            </SgButton>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+                <label style="font-size:13px; color:var(--sg-text-muted,#888);">Value:</label>
+                <input type="range"
+                       min="0" max="100"
+                       value="@_value"
+                       @oninput="OnSliderInput"
+                       style="width:140px;" />
+                <span style="font-size:13px; font-weight:600; min-width:28px;">@_value</span>
+            </div>
+
+        </div>
+    </SgCard>
+
+    @* ── Visualizer ── *@
+    <SgCard Title="SgLifecycleVisualizer" Compact="true">
+        <SgLifecycleVisualizer @ref="_visualizer"
+                               @key="_componentKey"
+                               Value="@_value"
+                               Label="Demo Component"
+                               ShowChild="true" />
+    </SgCard>
+
+    @* ── Child component ── *@
+    @if (_showChild)
+    {
+        <SgCard Title="SgLifecycleChild — дочерний компонент" Compact="true">
+            <SgLifecycleChild @key="_componentKey"
+                              Value="@_value"
+                              Label="Child Demo"
+                              OnLifecycleEvent="OnChildEvent" />
+
+            @if (_childEvents.Count > 0)
+            {
+                <div style="margin-top:12px; padding:10px 14px; background:var(--sg-bg-subtle,#fafafa);
+                            border:1px solid var(--sg-border,#e0e0e0); border-radius:8px;
+                            max-height:160px; overflow-y:auto; font-size:11px; font-family:monospace;">
+                    @foreach (var ev in _childEvents)
+                    {
+                        <div style="padding:2px 0; color:var(--sg-text-muted,#888);">
+                            <span style="color:#aaa;">@ev.Time.ToString("HH:mm:ss.fff")</span>
+                            <span style="margin-left:6px; color:#555;">@ev.Message</span>
+                        </div>
+                    }
+                </div>
+            }
+        </SgCard>
+    }
+
+</SgStack>
+
+@code {
+    private SgLifecycleVisualizer? _visualizer;
+    private int _value = 42;
+    private int _componentKey = 1;
+    private bool _showChild = true;
+
+    private record ChildEvent(DateTime Time, string Message);
+    private readonly List<ChildEvent> _childEvents = new();
+
+    private void ChangeValue()
+    {
+        _value = Random.Shared.Next(0, 101);
+    }
+
+    private void OnSliderInput(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var v))
+            _value = v;
+    }
+
+    private void TriggerStateHasChanged()
+    {
+        _visualizer?.TriggerStateHasChanged();
+    }
+
+    private void RecreateComponent()
+    {
+        _componentKey++;
+        _childEvents.Clear();
+    }
+
+    private void OnChildEvent(string message)
+    {
+        _childEvents.Add(new ChildEvent(DateTime.Now, message));
+        if (_childEvents.Count > 100) _childEvents.RemoveAt(0);
+        StateHasChanged();
+    }
+}

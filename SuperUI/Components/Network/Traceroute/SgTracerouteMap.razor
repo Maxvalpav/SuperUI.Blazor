@@ -1,0 +1,87 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@using SuperUI.Services.Network
+@using SuperUI.Enums
+
+<div class="@Css("sg-traceroute-container").Build()" style="@Styles().Build()">
+    <div id="@_containerId" class="sg-traceroute-map"></div>
+</div>
+
+<style>
+    .sg-traceroute-container {
+        width: 100%;
+        height: 500px;
+        border-radius: var(--sg-radius-lg);
+        overflow: hidden;
+        border: 1px solid var(--sg-border-color);
+        background: var(--sg-bg-secondary);
+    }
+    .sg-traceroute-map {
+        width: 100%;
+        height: 100%;
+    }
+</style>
+
+@code {
+    private string _containerId = $"map_{Guid.NewGuid():N}";
+    [Parameter] public List<SgTracerouteHop> Hops { get; set; } = new();
+
+    private List<SgTracerouteHop> _previousHops = new();
+
+    protected override string ModulePath => "./_content/SuperUI/sg-traceroute-map.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        // Ensure Leaflet is loaded (could be in index.html or dynamic)
+        await EnsureLeafletAsync();
+        await SafeInvokeVoidAsync("initTracerouteMap", _containerId);
+
+        if (Hops.Any())
+        {
+            await SafeInvokeVoidAsync("updateHops", _containerId, Hops);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        if (Hops != _previousHops && Module != null)
+        {
+            _previousHops = Hops;
+            await SafeInvokeVoidAsync("updateHops", _containerId, Hops);
+        }
+    }
+
+    private async Task EnsureLeafletAsync()
+    {
+        // Динамическая загрузка Leaflet если его нет
+        await JS.InvokeVoidAsync("eval", @"
+            if (!window.L) {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                document.head.appendChild(link);
+                
+                const script = document.createElement('script');
+                script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                document.head.appendChild(script);
+            }
+        ");
+        
+        // Ждем пока L появится в window
+        int retries = 0;
+        while (retries < 50) 
+        {
+            var isLoaded = await JS.InvokeAsync<bool>("eval", "window.L !== undefined");
+            if (isLoaded) break;
+            await Task.Delay(100);
+            retries++;
+        }
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try { await SafeInvokeVoidAsync("dispose", _containerId); } catch { }
+        await base.DisposeAsync();
+    }
+}

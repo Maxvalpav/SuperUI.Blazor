@@ -1,0 +1,80 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+@implements IAsyncDisposable
+
+<div class="@Css("sg-pfd-wrap").Build()" style="@Styles().Build()" @attributes="AttributesWithoutClassAndStyle">
+    <canvas @ref="_canvasRef"
+            class="sg-pfd-canvas"
+            role="img"
+            aria-label="Primary Flight Display"
+            width="480"
+            height="360"
+            style="width:@Width;height:@Height;"></canvas>
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private readonly string _instanceId = SgIdGenerator.NewId("sg-pfd");
+    private Timer? _demoTimer;
+    private double _demoT;
+
+    [Parameter] public SgPFDTelemetry Telemetry { get; set; } = new();
+    [Parameter] public string Width { get; set; } = "480px";
+    [Parameter] public string Height { get; set; } = "360px";
+    [Parameter] public bool DemoMode { get; set; } = false;
+
+    protected override string ModulePath => "./_content/SuperUI/sg-pfd.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("init", SelfRef, _canvasRef, _instanceId);
+        await SafeInvokeVoidAsync("update", _instanceId, Telemetry);
+
+        if (DemoMode)
+            StartDemoTimer();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        if (Module is not null && !DemoMode)
+            await SafeInvokeVoidAsync("update", _instanceId, Telemetry);
+
+        if (DemoMode && _demoTimer is null && Module is not null)
+            StartDemoTimer();
+        else if (!DemoMode && _demoTimer is not null)
+            StopDemoTimer();
+    }
+
+    private void StartDemoTimer()
+    {
+        _demoTimer = new Timer(async _ =>
+        {
+            if (IsDisposed) return;
+            _demoT += 0.05;
+            var t = new SgPFDTelemetry
+            {
+                Pitch = 15 * Math.Sin(_demoT * 0.7),
+                Roll = 30 * Math.Sin(_demoT * 0.4),
+                Heading = ((_demoT * 8) % 360 + 360) % 360,
+                Altitude = 2000 + 500 * Math.Sin(_demoT * 0.3),
+                Speed = 280 + 40 * Math.Sin(_demoT * 0.5),
+                VerticalSpeed = 200 * Math.Cos(_demoT * 0.3),
+                Throttle = 60 + 20 * Math.Sin(_demoT * 0.6),
+            };
+            await SafeInvokeVoidAsync("update", _instanceId, t);
+        }, null, 0, 50);
+    }
+
+    private void StopDemoTimer()
+    {
+        _demoTimer?.Dispose();
+        _demoTimer = null;
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        StopDemoTimer();
+        await SafeInvokeVoidAsync("dispose", _instanceId);
+    }
+}

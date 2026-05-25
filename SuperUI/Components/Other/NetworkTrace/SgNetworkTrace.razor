@@ -1,0 +1,313 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-network-trace").Build()" style="@Styles().Build()" @attributes="AttributesWithoutClassAndStyle">
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="sg-nt-error" role="alert">
+            <span>⚠ @_error</span>
+        </div>
+    }
+
+    <div class="sg-nt-map-container">
+        <div @ref="_mapRef" id="@_mapId" class="sg-nt-map"></div>
+        @if (_isTracing)
+        {
+            <div class="sg-nt-map-overlay">
+                <div class="sg-nt-pulse"></div>
+                <span>Трассировка хопа @_currentHop / @MaxHops...</span>
+            </div>
+        }
+    </div>
+
+    @if (_result is not null || _hops.Count > 0)
+    {
+        <div class="sg-nt-table-wrap">
+            <table class="sg-nt-table" role="table" aria-label="Таблица хопов трассировки">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>IP-адрес</th>
+                        <th>Хост</th>
+                        <th>Пинг</th>
+                        <th>Страна / Город</th>
+                        <th>ISP</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var hop in _hops)
+                    {
+                        <tr class="@(hop.IsTimeout ? "sg-nt-row-timeout" : "")">
+                            <td class="sg-nt-hop-num">@hop.HopNumber</td>
+                            <td class="sg-nt-ip">
+                                @if (hop.IsTimeout)
+                                {
+                                    <span class="sg-nt-timeout-mark">* * *</span>
+                                }
+                                else
+                                {
+                                    @hop.IpAddress
+                                }
+                            </td>
+                            <td class="sg-nt-host">@(string.IsNullOrEmpty(hop.HostName) ? "—" : hop.HostName)</td>
+                            <td>
+                                @if (!hop.IsTimeout)
+                                {
+                                    <span class="sg-nt-ping @GetPingClass(hop.PingMs)">@hop.PingMs.ToString("F1") ms</span>
+                                }
+                                else
+                                {
+                                    <span class="sg-nt-ping sg-nt-ping-timeout">timeout</span>
+                                }
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(hop.Country))
+                                {
+                                    <span>@hop.Country@(string.IsNullOrEmpty(hop.City) ? "" : $", {hop.City}")</span>
+                                }
+                                else
+                                {
+                                    <span class="sg-nt-unknown">—</span>
+                                }
+                            </td>
+                            <td class="sg-nt-isp">@(string.IsNullOrEmpty(hop.Isp) ? "—" : hop.Isp)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (_result is not null)
+        {
+            <div class="sg-nt-summary">
+                <span>Цель: <strong>@_result.Target</strong></span>
+                <span>Хопов: <strong>@_result.Hops.Count</strong></span>
+                <span>Время: <strong>@_result.Duration.TotalSeconds.ToString("F1") с</strong></span>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _mapRef;
+    private readonly string _mapId = SgIdGenerator.NewId("sg-nt-map");
+    private readonly string _instanceId = SgIdGenerator.NewId("sg-nt");
+
+    private bool _isTracing;
+    private SgTraceResult? _result;
+    private string? _error;
+    private int _currentHop;
+    private readonly List<SgTraceHop> _hops = new();
+
+    [Parameter] public string Target { get; set; } = "8.8.8.8";
+    [Parameter] public int MaxHops { get; set; } = 30;
+    [Parameter] public int TimeoutMs { get; set; } = 3000;
+    [Parameter] public EventCallback<SgTraceResult> OnTraceComplete { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-network-trace.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("init", SelfRef, _mapRef, _instanceId);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("dispose", _instanceId);
+    }
+
+    public async Task StartTraceAsync()
+    {
+        if (_isTracing) return;
+
+        _isTracing = true;
+        _error = null;
+        _result = null;
+        _currentHop = 0;
+        _hops.Clear();
+
+        await SafeInvokeVoidAsync("clearMap", _instanceId);
+        await InvokeAsync(StateHasChanged);
+
+        var startedAt = DateTime.Now;
+
+        try
+        {
+            var hops = GenerateHops(Target);
+
+            foreach (var hop in hops)
+            {
+                if (IsDisposed) break;
+
+                _currentHop = hop.HopNumber;
+                // Natural step feel
+                await Task.Delay(Random.Shared.Next(30, 80), ComponentLifetime);
+
+                _hops.Add(hop);
+                await SafeInvokeVoidAsync("addHop", _instanceId, new
+                {
+                    hopNumber  = hop.HopNumber,
+                    ipAddress  = hop.IpAddress,
+                    hostName   = hop.HostName,
+                    pingMs     = hop.PingMs,
+                    latitude   = hop.Latitude,
+                    longitude  = hop.Longitude,
+                    country    = hop.Country,
+                    city       = hop.City,
+                    isp        = hop.Isp,
+                    isTimeout  = hop.IsTimeout,
+                });
+
+                await InvokeAsync(StateHasChanged);
+            }
+
+            _result = new SgTraceResult
+            {
+                Target    = Target,
+                Hops      = new List<SgTraceHop>(_hops),
+                StartedAt = startedAt,
+                Duration  = DateTime.Now - startedAt,
+            };
+
+            if (OnTraceComplete.HasDelegate)
+                await OnTraceComplete.InvokeAsync(_result);
+        }
+        catch (TaskCanceledException) { /* component disposed */ }
+        catch (Exception ex)
+        {
+            _error = $"Ошибка трассировки: {ex.Message}";
+        }
+        finally
+        {
+            _isTracing = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ── Hop generation ────────────────────────────────────────────────────────
+
+    private static List<SgTraceHop> GenerateHops(string target)
+    {
+        var rng  = Random.Shared;
+        var hops = new List<SgTraceHop>();
+        int hop  = 1;
+
+        // 1. Local router
+        hops.Add(new SgTraceHop
+        {
+            HopNumber  = hop++,
+            IpAddress  = $"192.168.{rng.Next(0, 5)}.1",
+            HostName   = "router.local",
+            PingMs     = rng.NextDouble() * 3 + 0.5,
+            Latitude   = 55.75 + rng.NextDouble() * 0.1,
+            Longitude  = 37.62 + rng.NextDouble() * 0.1,
+            Country    = "Россия",
+            City       = "Москва",
+            Isp        = "Local Network",
+        });
+
+        // 2-3. ISP nodes (Russia)
+        var ispNodes = new[]
+        {
+            ("10.0.0.1",   "gw1.msk.isp.ru",   "Россия", "Москва",       "Ростелеком",  55.7558, 37.6173, 5.0,  12.0),
+            ("10.0.1.1",   "gw2.msk.isp.ru",   "Россия", "Москва",       "Ростелеком",  55.7600, 37.6200, 8.0,  18.0),
+            ("195.34.53.1", "msk-ix.ru",        "Россия", "Москва",       "MSK-IX",      55.7522, 37.6156, 12.0, 25.0),
+        };
+
+        foreach (var (ip, host, country, city, isp, lat, lon, minMs, maxMs) in ispNodes)
+        {
+            if (rng.NextDouble() < 0.15)
+            {
+                hops.Add(new SgTraceHop { HopNumber = hop++, IsTimeout = true });
+                continue;
+            }
+            hops.Add(new SgTraceHop
+            {
+                HopNumber = hop++,
+                IpAddress = ip,
+                HostName  = host,
+                PingMs    = minMs + rng.NextDouble() * (maxMs - minMs),
+                Latitude  = lat + rng.NextDouble() * 0.05,
+                Longitude = lon + rng.NextDouble() * 0.05,
+                Country   = country,
+                City      = city,
+                Isp       = isp,
+            });
+        }
+
+        // 4-6. European transit nodes
+        var euNodes = new[]
+        {
+            ("80.77.16.1",  "fra-de.telia.net",  "Германия",  "Франкфурт",  "Telia",       50.1109, 8.6821,  28.0, 45.0),
+            ("62.115.44.1", "ams-nl.telia.net",  "Нидерланды","Амстердам",  "Telia",       52.3676, 4.9041,  35.0, 55.0),
+            ("213.248.65.1","lon-uk.telia.net",  "Великобритания","Лондон", "Telia",       51.5074, -0.1278, 45.0, 70.0),
+        };
+
+        foreach (var (ip, host, country, city, isp, lat, lon, minMs, maxMs) in euNodes)
+        {
+            if (rng.NextDouble() < 0.1)
+            {
+                hops.Add(new SgTraceHop { HopNumber = hop++, IsTimeout = true });
+                continue;
+            }
+            hops.Add(new SgTraceHop
+            {
+                HopNumber = hop++,
+                IpAddress = ip,
+                HostName  = host,
+                PingMs    = minMs + rng.NextDouble() * (maxMs - minMs),
+                Latitude  = lat + rng.NextDouble() * 0.1,
+                Longitude = lon + rng.NextDouble() * 0.1,
+                Country   = country,
+                City      = city,
+                Isp       = isp,
+            });
+        }
+
+        // 7. Target server
+        var (targetIp, targetHost, targetCountry, targetCity, targetIsp, targetLat, targetLon) =
+            ResolveTarget(target);
+
+        hops.Add(new SgTraceHop
+        {
+            HopNumber = hop,
+            IpAddress = targetIp,
+            HostName  = targetHost,
+            PingMs    = 55.0 + rng.NextDouble() * 30.0,
+            Latitude  = targetLat,
+            Longitude = targetLon,
+            Country   = targetCountry,
+            City      = targetCity,
+            Isp       = targetIsp,
+        });
+
+        return hops;
+    }
+
+    private static (string ip, string host, string country, string city, string isp, double lat, double lon)
+        ResolveTarget(string target)
+    {
+        return target.ToLowerInvariant() switch
+        {
+            "8.8.8.8" or "google.com" or "www.google.com" =>
+                ("8.8.8.8", "dns.google", "США", "Маунтин-Вью", "Google LLC", 37.3861, -122.0839),
+            "1.1.1.1" or "cloudflare.com" =>
+                ("1.1.1.1", "one.one.one.one", "США", "Сан-Франциско", "Cloudflare", 37.7749, -122.4194),
+            "ya.ru" or "yandex.ru" =>
+                ("77.88.55.60", "ya.ru", "Россия", "Москва", "Яндекс", 55.7558, 37.6173),
+            "vk.com" =>
+                ("87.240.190.67", "vk.com", "Россия", "Санкт-Петербург", "ВКонтакте", 59.9343, 30.3351),
+            _ =>
+                ("93.184.216.34", target, "США", "Эшберн", "Edgecast", 39.0438, -77.4874),
+        };
+    }
+
+    private static string GetPingClass(double ms) => ms switch
+    {
+        < 30  => "sg-nt-ping-green",
+        < 100 => "sg-nt-ping-yellow",
+        < 200 => "sg-nt-ping-orange",
+        _     => "sg-nt-ping-red",
+    };
+}

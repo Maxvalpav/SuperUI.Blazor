@@ -42,6 +42,12 @@ This document is the absolute source of truth for all components and services in
 | **SgTimePicker** | `SgTimePicker.razor`, `.css` | Clock-based time selector. | `stable` |
 | **SgTransfer** | `SgTransfer.razor`, `SgTransferItem.cs` | Dual-list item mover. | `stable` |
 | **SgTreeSelect** | `SgTreeSelect.razor` | Tree-structured dropdown. | `stable` |
+| **SgTerminal** | `SgTerminal.razor`, `.js` | Industrial xterm.js wrapper. | `stable` |
+| **SgPalletPacker** | `SgPalletPacker.razor`, `.js` | 3D Bin Packing visualization. | `experiment beta` |
+| **SgNetworkTrace** | `SgNetworkTrace.razor`, `.js` | Traceroute visualization on map. | `experiment beta` |
+| **SgPdfSuite** | `SgPdfViewer.razor`, `SgPdfFormFiller.razor` | PDF viewing and form filling. | `stable` |
+| **SgEyeTracker** | `SgEyeTracker.razor`, `.js` | WebGazer.js eye tracking bridge. | `experiment beta` |
+| **SgExcalidraw** | `SgExcalidraw.razor`, `.js` | Collaborative whiteboard (React). | `experiment beta` |
 
 ## 📐 Layout & Containers (`SuperUI/Components/Layout`)
 *Structural components and layout grids.*
@@ -197,6 +203,9 @@ This document is the absolute source of truth for all components and services in
 | **SgFeatureFlagService** | `SuperUI/Services/FeatureFlags/SgFeatureFlagService.cs` | Runtime feature toggling. |
 | **SgCalendarService** | `SuperUI/Services/Data/SgCalendarService.cs` | Industrial calendar and holidays. |
 | **SgMqttService** | `SuperUI/Services/IoT/SgMqttService.cs` | MQTT/IIoT messaging bridge. |
+| **SgPdfService** | `SuperUI/Services/Other/SgPdfService.cs` | PDF generation and processing. |
+| **SgWeatherService** | `SuperUI/Services/SgWeatherService.cs` | Weather API connector. |
+| **SgHeatmapService** | `SuperUI/Services/Analytics/SgHeatmapService.cs` | Click and scroll heatmap tracker. |
 
 ---
 *Inventory Audit v5.0 | Total: ~225 Components | ~35 Services | Generated: 2026-05-24*

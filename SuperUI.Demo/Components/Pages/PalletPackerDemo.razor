@@ -1,0 +1,386 @@
+@page "/pallet-packer-demo"
+@using SuperUI.Components
+
+<PageTitle>3D Pallet Cargo Packer - SuperUI</PageTitle>
+
+<div class="sg-demo-header" style="margin-bottom: 24px;">
+    <SgStack Vertical Spacing="4">
+        <h1 style="margin:0; font-weight:700; color:var(--sui-text-primary);">3D Pallet Cargo Packer</h1>
+        <p style="margin:0; opacity:0.7;">Алгоритм 3D-упаковки грузов (Bottom-Left-Fill) с визуализацией Three.js.</p>
+    </SgStack>
+</div>
+
+<SgRow Gutter="24">
+    <!-- Left panel: Configuration -->
+    <SgCol Span="7">
+        <SgStack Vertical Spacing="20">
+            
+            <!-- 1. Presets -->
+            <SgCard Title="Шаблоны" Padding="12px">
+                <SgStack Horizontal Spacing="8" Wrap>
+                    <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="ApplyEuroPallet">Euro-Pallet</SgButton>
+                    <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="ApplyIndustrialPallet">Industrial</SgButton>
+                    <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="ApplyContainerSmall">Container S</SgButton>
+                </SgStack>
+            </SgCard>
+
+            <!-- 2. Add Box Form -->
+            <SgCard Title="Добавить груз" Subtitle="Габариты и количество">
+                <SgStack Vertical Spacing="16">
+                    <SgTextBox Label="Название" @bind-Value="_newBox.Name" Placeholder="Напр. Коробка A" Block />
+                    
+                    <SgRow Gutter="8">
+                        <SgCol Span="8">
+                            <SgNumberInput Label="Ш (см)" @bind-Value="_newBox.Width" Min="1" Max="120" Block />
+                        </SgCol>
+                        <SgCol Span="8">
+                            <SgNumberInput Label="В (см)" @bind-Value="_newBox.Height" Min="1" Max="144" Block />
+                        </SgCol>
+                        <SgCol Span="8">
+                            <SgNumberInput Label="Г (см)" @bind-Value="_newBox.Depth" Min="1" Max="80" Block />
+                        </SgCol>
+                    </SgRow>
+
+                    <SgRow Gutter="8" Align="SgAlignItems.End">
+                        <SgCol Span="10">
+                            <SgNumberInput Label="Вес (кг)" @bind-Value="_newBox.Weight" Min="0.1" Step="0.1" Block />
+                        </SgCol>
+                        <SgCol Span="10">
+                            <SgNumberInput Label="Кол-во" @bind-Value="_newBox.Quantity" Min="1" Max="50" Block />
+                        </SgCol>
+                        <SgCol Span="4">
+                            <div class="color-picker-container">
+                                <span class="color-label">Цвет</span>
+                                <input type="color" @bind="_newBox.Color" class="color-input" />
+                            </div>
+                        </SgCol>
+                    </SgRow>
+
+                    <SgButton Variant="SgButtonVariant.Primary" OnClick="AddBox" Block>
+                        <Icon><SgIcon Icon="@SgIcons.Plus" /></Icon>
+                        <ChildContent>Добавить в список</ChildContent>
+                    </SgButton>
+                </SgStack>
+            </SgCard>
+
+            <!-- 3. Box List -->
+            @if (_boxes.Count > 0)
+            {
+                <SgCard Title="@($"Список грузов ({_boxes.Count})")" Padding="0">
+                    <div class="pp-box-list">
+                        @foreach (var b in _boxes)
+                        {
+                            <div class="pp-box-item">
+                                <div class="pp-box-color" style="background:@b.Color;"></div>
+                                <div class="pp-box-info">
+                                    <div class="pp-box-name">@(string.IsNullOrEmpty(b.Name) ? b.Id : b.Name)</div>
+                                    <div class="pp-box-details">@b.Width × @b.Height × @b.Depth см · @b.Weight кг</div>
+                                </div>
+                                <div class="pp-box-qty">×@b.Quantity</div>
+                                <SgButton Variant="SgButtonVariant.Ghost" 
+                                          Size="SgSize.Sm" 
+                                          OnClick="() => RemoveBox(b)" 
+                                          class="remove-btn">
+                                    <SgIcon Icon="@SgIcons.X" Size="14px" />
+                                </SgButton>
+                            </div>
+                        }
+                    </div>
+                </SgCard>
+            }
+
+            <!-- 4. Pallet Settings -->
+            <SgCard Title="Параметры паллеты">
+                <SgStack Vertical Spacing="12">
+                    <SgRow Gutter="8">
+                        <SgCol Span="8">
+                            <SgNumberInput Label="Ш (см)" Value="_pallet.Width" ValueChanged="(double v) => { _pallet.Width = v; StateHasChanged(); }" Min="10" Block />
+                        </SgCol>
+                        <SgCol Span="8">
+                            <SgNumberInput Label="В (см)" Value="_pallet.Height" ValueChanged="(double v) => { _pallet.Height = v; StateHasChanged(); }" Min="10" Block />
+                        </SgCol>
+                        <SgCol Span="8">
+                            <SgNumberInput Label="Г (см)" Value="_pallet.Depth" ValueChanged="(double v) => { _pallet.Depth = v; StateHasChanged(); }" Min="10" Block />
+                        </SgCol>
+                    </SgRow>
+                    <SgNumberInput Label="Макс. нагрузка (кг)" @bind-Value="_pallet.MaxWeight" Min="1" Block />
+                    
+                    <SgButton Variant="SgButtonVariant.Primary" 
+                              OnClick="PackAsync" 
+                              Disabled="_boxes.Count == 0 || _packing" 
+                              Block 
+                              class="pack-btn">
+                        @if (_packing)
+                        {
+                            <SgSpinner Size="SgSize.Sm" style="margin-right:8px;" />
+                            <span>Расчёт...</span>
+                        }
+                        else
+                        {
+                            <SgIcon Icon="@SgIcons.Layers" style="margin-right:8px;" />
+                            <span>📦 Рассчитать укладку</span>
+                        }
+                    </SgButton>
+                </SgStack>
+            </SgCard>
+
+        </SgStack>
+    </SgCol>
+
+    <!-- Right panel: Visualization & Results -->
+    <SgCol Span="17">
+        <SgStack Vertical Spacing="20">
+            
+            <!-- 3D View -->
+            <SgCard NoPadding="true" class="viz-card">
+                <div class="viz-toolbar">
+                    <SgStack Horizontal Spacing="12" Align="SgAlignItems.Center">
+                        <SgIcon Icon="@SgIcons.Box" Size="20" />
+                        <span class="viz-title">3D Представление</span>
+                        <div style="flex-grow: 1;"></div>
+                        <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="ResetCamera" Title="Сбросить камеру">
+                            <SgIcon Icon="@SgIcons.Maximize" />
+                        </SgButton>
+                    </SgStack>
+                </div>
+                <div class="viz-container">
+                    <SgPalletPacker @ref="_packer"
+                                    Boxes="_boxes"
+                                    Pallet="_pallet"
+                                    OnPackingComplete="OnPackingComplete" />
+                    
+                    @if (_packing)
+                    {
+                        <div class="viz-overlay">
+                            <SgStack Vertical Align="SgAlignItems.Center" Spacing="12">
+                                <SgSpinner Size="SgSize.Lg" />
+                                <span class="overlay-text">Оптимизация пространства...</span>
+                            </SgStack>
+                        </div>
+                    }
+                </div>
+            </SgCard>
+
+            <!-- Detailed Results -->
+            @if (_result is not null)
+            {
+                <SgCard Title="Аналитика размещения">
+                    <SgRow Gutter="16">
+                        <SgCol Span="6">
+                            <div class="stat-item">
+                                <SgStatistic Title="ИСПОЛЬЗОВАНИЕ" 
+                                             Value="@(_result.Utilization.ToString("F1"))" 
+                                             Suffix="%" 
+                                             Color="@(_result.Utilization > 75 ? "var(--sui-success)" : "var(--sui-warning)")" />
+                                <SgProgress Value="@_result.Utilization" Size="SgSize.Sm" Variant="@(_result.Utilization > 75 ? SgSpinnerVariant.Success : SgSpinnerVariant.Warn)" />
+                            </div>
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgStatistic Title="ВЕС НЕТТО" Value="@(_result.TotalWeight.ToString("F1"))" Suffix="кг" />
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgStatistic Title="УЛОЖЕНО" Value="@(_result.PackedBoxes.Count.ToString())" Suffix="шт" />
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgStatistic Title="НЕ УЛОЖЕНО" 
+                                         Value="@(_result.UnpackedBoxes.Count.ToString())" 
+                                         Suffix="шт"
+                                         Color="@(_result.UnpackedBoxes.Count > 0 ? "var(--sui-danger)" : "var(--sui-success)")" />
+                        </SgCol>
+                    </SgRow>
+                </SgCard>
+            }
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+<style>
+    .color-picker-container {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+    .color-label {
+        font-size: 12px;
+        color: var(--sui-text-muted);
+    }
+    .color-input {
+        width: 100%;
+        height: 32px;
+        padding: 0;
+        border: 1px solid var(--sui-border);
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .remove-btn {
+        color: var(--sui-danger);
+        min-width: 32px;
+        padding: 0;
+    }
+    .pack-btn {
+        height: 48px;
+        font-weight: 700;
+        font-size: 16px;
+    }
+    .viz-card {
+        background: #0f172a;
+        border: 1px solid #1e293b;
+    }
+    .viz-toolbar {
+        background: #1e293b;
+        padding: 10px 16px;
+        color: #94a3b8;
+        border-bottom: 1px solid #334155;
+    }
+    .viz-title {
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .viz-container {
+        height: 600px;
+        position: relative;
+    }
+    .viz-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.7);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+        backdrop-filter: blur(2px);
+    }
+    .overlay-text {
+        color: white;
+        font-weight: 600;
+        font-size: 14px;
+    }
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .pp-box-list {
+        max-height: 350px;
+        overflow-y: auto;
+    }
+    .pp-box-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--sui-border-light);
+        transition: background 0.2s;
+    }
+    .pp-box-item:hover {
+        background: var(--sui-bg-hover);
+    }
+    .pp-box-item:last-child {
+        border-bottom: none;
+    }
+    .pp-box-color {
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        flex-shrink: 0;
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+    }
+    .pp-box-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .pp-box-name {
+        font-weight: 600;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .pp-box-details {
+        font-size: 11px;
+        color: var(--sui-text-muted);
+        margin-top: 2px;
+    }
+    .pp-box-qty {
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--sui-primary);
+        background: var(--sui-primary-bg);
+        padding: 2px 8px;
+        border-radius: 12px;
+    }
+</style>
+
+@code {
+    private SgPalletPacker? _packer;
+    private SgBox _newBox = CreateDefaultBox();
+    private List<SgBox> _boxes = new();
+    private SgPallet _pallet = new();
+    private SgPackingResult? _result;
+    private bool _packing = false;
+
+    private void ApplyEuroPallet() { _pallet = new SgPallet { Width = 80, Height = 144, Depth = 120, MaxWeight = 1500 }; StateHasChanged(); }
+    private void ApplyIndustrialPallet() { _pallet = new SgPallet { Width = 100, Height = 180, Depth = 120, MaxWeight = 2000 }; StateHasChanged(); }
+    private void ApplyContainerSmall() { _pallet = new SgPallet { Width = 230, Height = 230, Depth = 580, MaxWeight = 20000 }; StateHasChanged(); }
+
+    private static SgBox CreateDefaultBox() => new()
+    {
+        Name = "Коробка A",
+        Width = 40,
+        Height = 30,
+        Depth = 30,
+        Weight = 5.5,
+        Quantity = 5,
+        Color = "#3b82f6"
+    };
+
+    private void AddBox()
+    {
+        _boxes.Add(new SgBox
+        {
+            Id = Guid.NewGuid().ToString("N")[..8],
+            Name = _newBox.Name,
+            Width = _newBox.Width,
+            Height = _newBox.Height,
+            Depth = _newBox.Depth,
+            Weight = _newBox.Weight,
+            Quantity = _newBox.Quantity,
+            Color = _newBox.Color
+        });
+        _newBox = CreateDefaultBox();
+        StateHasChanged();
+    }
+
+    private void RemoveBox(SgBox box)
+    {
+        _boxes.Remove(box);
+        StateHasChanged();
+    }
+
+    private async Task PackAsync()
+    {
+        if (_packer is null || _packing) return;
+        _packing = true;
+        _result = null;
+        StateHasChanged();
+
+        await _packer.PackAsync();
+    }
+
+    private void OnPackingComplete(SgPackingResult result)
+    {
+        _result = result;
+        _packing = false;
+        StateHasChanged();
+    }
+
+    private async Task ResetCamera()
+    {
+        if (_packer is not null)
+        {
+            await _packer.ResetCameraAsync();
+        }
+    }
+}

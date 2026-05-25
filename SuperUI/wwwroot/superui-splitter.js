@@ -1,55 +1,133 @@
-export function attach(bar, first, vertical, min, max, dotnet) {
-    if (!bar) return;
+export function attach(bar, first, vertical, min, max, dotnet, disabled) {
+    if (!bar || !first || disabled) return;
 
-    // Clean up existing listeners if any
-    if (bar._sgOnDown) {
-        bar.removeEventListener('pointerdown', bar._sgOnDown);
-    }
+    let isDragging = false;
+    let startX, startY, startSize;
 
-    let isDisposed = false;
-
-    const onDown = (e) => {
-        if (isDisposed || !dotnet) return;
+    const onMouseDown = (e) => {
         if (e.button !== 0) return;
+        isDragging = true;
+        bar.classList.add('active');
+        dotnet.invokeMethodAsync('SetDragging', true);
+        
+        startX = e.clientX;
+        startY = e.clientY;
+        const rect = first.getBoundingClientRect();
+        startSize = vertical ? rect.height : rect.width;
+        currentSize = startSize;
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = vertical ? 'row-resize' : 'col-resize';
+        document.body.style.userSelect = 'none';
         e.preventDefault();
-
-        const rect     = first.getBoundingClientRect();
-        const startX   = e.clientX;
-        const startY   = e.clientY;
-        const startSize = vertical ? rect.height : rect.width;
-
-        const onMove = (ev) => {
-            if (isDisposed || !dotnet) return;
-            const delta = vertical ? (ev.clientY - startY) : (ev.clientX - startX);
-            let next = startSize + delta;
-            if (next < min) next = min;
-            if (next > max) next = max;
-            if (vertical) first.style.height = next + 'px';
-            else          first.style.width  = next + 'px';
-            try { dotnet.invokeMethodAsync('SetSize', next).catch(() => {}); } catch { /* noop */ }
-        };
-
-        const onUp = () => {
-            document.removeEventListener('pointermove',   onMove);
-            document.removeEventListener('pointerup',     onUp);
-            document.removeEventListener('pointercancel', onUp);
-        };
-
-        // Listen on document so events keep firing even when cursor leaves the bar
-        document.addEventListener('pointermove',   onMove);
-        document.addEventListener('pointerup',     onUp, { once: true });
-        document.addEventListener('pointercancel', onUp, { once: true });
     };
 
-    bar._sgOnDown = onDown;
-    bar._dispose  = function () { isDisposed = true; dotnet = null; };
-    bar.addEventListener('pointerdown', bar._sgOnDown);
+    let currentSize = 0;
+
+    const clamp = (value) => {
+        if (value < min && value > min / 2) return min;
+        if (value <= min / 2) return 0;
+        if (value > max) return max;
+        return value;
+    };
+
+    const onMouseMove = (e) => {
+        if (!isDragging) return;
+        const delta = vertical ? (e.clientY - startY) : (e.clientX - startX);
+        currentSize = clamp(startSize + delta);
+        
+        // Update DOM directly — no Blazor re-render during drag
+        if (vertical) first.style.height = currentSize + 'px';
+        else          first.style.width  = currentSize + 'px';
+    };
+
+    const onMouseUp = async () => {
+        if (!isDragging) return;
+        isDragging = false;
+        bar.classList.remove('active');
+        
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+
+        // Notify Blazor only once after drag ends — size first, then dragging state
+        await dotnet.invokeMethodAsync('SetSize', currentSize);
+        dotnet.invokeMethodAsync('SetDragging', false);
+    };
+
+    const onDoubleClick = (e) => {
+        // Only reset if clicked directly on the bar, not on buttons
+        if (e.target === bar || e.target.classList.contains('sgc-split-handle')) {
+            dotnet.invokeMethodAsync('OnReset');
+        }
+    };
+
+    bar.addEventListener('mousedown', onMouseDown);
+    bar.addEventListener('dblclick', onDoubleClick);
+
+    // Touch support
+    const onTouchStart = (e) => {
+        if (e.touches.length !== 1) return;
+        // Don't drag if clicking on collapse buttons
+        if (e.target.closest('.sgc-split-collapse-btn')) return;
+
+        isDragging = true;
+        bar.classList.add('active');
+        dotnet.invokeMethodAsync('SetDragging', true);
+        
+        const touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        const rect = first.getBoundingClientRect();
+        startSize = vertical ? rect.height : rect.width;
+        currentSize = startSize;
+
+        document.addEventListener('touchmove', onTouchMove, { passive: false });
+        document.addEventListener('touchend', onTouchEnd);
+        // e.preventDefault(); // Removed to allow clicks on buttons
+    };
+
+    const onTouchMove = (e) => {
+        if (!isDragging || e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        const delta = vertical ? (touch.clientY - startY) : (touch.clientX - startX);
+        currentSize = clamp(startSize + delta);
+
+        // Update DOM directly — no Blazor re-render during drag
+        if (vertical) first.style.height = currentSize + 'px';
+        else          first.style.width  = currentSize + 'px';
+
+        e.preventDefault();
+    };
+
+    const onTouchEnd = async () => {
+        if (!isDragging) return;
+        isDragging = false;
+        bar.classList.remove('active');
+        document.removeEventListener('touchmove', onTouchMove);
+        document.removeEventListener('touchend', onTouchEnd);
+
+        // Notify Blazor only once after drag ends — size first, then dragging state
+        await dotnet.invokeMethodAsync('SetSize', currentSize);
+        dotnet.invokeMethodAsync('SetDragging', false);
+    };
+
+    bar.addEventListener('touchstart', onTouchStart, { passive: false });
+
+    bar._sgSplitter = {
+        dispose: () => {
+            bar.removeEventListener('mousedown', onMouseDown);
+            bar.removeEventListener('dblclick', onDoubleClick);
+            bar.removeEventListener('touchstart', onTouchStart);
+        }
+    };
 }
 
 export function detach(bar) {
-    if (!bar) return;
-    if (bar._dispose)   bar._dispose();
-    if (bar._sgOnDown)  bar.removeEventListener('pointerdown', bar._sgOnDown);
-    delete bar._sgOnDown;
-    delete bar._dispose;
+    if (bar && bar._sgSplitter) {
+        bar._sgSplitter.dispose();
+        delete bar._sgSplitter;
+    }
 }

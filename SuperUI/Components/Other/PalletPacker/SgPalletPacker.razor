@@ -1,0 +1,167 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-pallet-packer").Build()" style="@Styles().Build()" @attributes="AttributesWithoutClassAndStyle">
+    <canvas @ref="_canvasRef"
+            class="sg-pp-canvas"
+            role="img"
+            aria-label="3D Pallet Packer"
+            width="600"
+            height="450"></canvas>
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private readonly string _instanceId = SgIdGenerator.NewId("sg-pp");
+
+    [Parameter] public IEnumerable<SgBox>? Boxes { get; set; }
+    [Parameter] public SgPallet Pallet { get; set; } = new();
+    [Parameter] public EventCallback<SgPackingResult> OnPackingComplete { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-pallet-packer.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("init", SelfRef, _canvasRef, _instanceId);
+        await UpdatePalletAsync();
+    }
+
+    private double _lastW, _lastH, _lastD;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        if (IsInteractive && Module is not null)
+        {
+            if (Pallet.Width != _lastW || Pallet.Height != _lastH || Pallet.Depth != _lastD)
+            {
+                _lastW = Pallet.Width;
+                _lastH = Pallet.Height;
+                _lastD = Pallet.Depth;
+                await UpdatePalletAsync();
+            }
+        }
+    }
+
+    private async Task UpdatePalletAsync()
+    {
+        var jsPallet = new { Pallet.Width, Pallet.Height, Pallet.Depth };
+        await SafeInvokeVoidAsync("updatePallet", _instanceId, jsPallet);
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("dispose", _instanceId);
+    }
+
+    public async Task ResetCameraAsync()
+    {
+        await SafeInvokeVoidAsync("resetCamera", _instanceId);
+    }
+
+    public async Task<SgPackingResult> PackAsync()
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var result = new SgPackingResult();
+
+        if (Boxes is null)
+        {
+            sw.Stop();
+            result.ComputeTime = sw.Elapsed;
+            return result;
+        }
+
+        // Expand boxes by quantity and sort by volume descending (BLF heuristic)
+        var allBoxes = Boxes
+            .SelectMany(b => Enumerable.Range(0, b.Quantity).Select(_ => new SgBox
+            {
+                Id = SgIdGenerator.NewId("b"),
+                Name = b.Name,
+                Width = b.Width,
+                Height = b.Height,
+                Depth = b.Depth,
+                Weight = b.Weight,
+                Color = b.Color,
+                Quantity = 1,
+            }))
+            .OrderByDescending(b => b.Width * b.Height * b.Depth)
+            .ToList();
+
+        double totalWeight = 0;
+        var packed = new List<SgPackedBox>();
+        var unpacked = new List<SgBox>();
+
+        // Candidate positions: start with (0,0,0)
+        var candidates = new List<(double x, double y, double z)> { (0, 0, 0) };
+
+        int step = 0;
+        foreach (var box in allBoxes)
+        {
+            if (totalWeight + box.Weight > Pallet.MaxWeight)
+            {
+                unpacked.Add(box);
+                continue;
+            }
+
+            bool placed = false;
+            // Sort candidates: bottom-left-front first
+            var sorted = candidates.OrderBy(c => c.y).ThenBy(c => c.z).ThenBy(c => c.x).ToList();
+
+            foreach (var (cx, cy, cz) in sorted)
+            {
+                if (cx + box.Width > Pallet.Width + 0.001) continue;
+                if (cy + box.Height > Pallet.Height + 0.001) continue;
+                if (cz + box.Depth > Pallet.Depth + 0.001) continue;
+
+                // Check collision with already placed boxes
+                bool collision = packed.Any(pb =>
+                    cx < pb.X + pb.Box.Width  && cx + box.Width  > pb.X &&
+                    cy < pb.Y + pb.Box.Height && cy + box.Height > pb.Y &&
+                    cz < pb.Z + pb.Box.Depth  && cz + box.Depth  > pb.Z);
+
+                if (!collision)
+                {
+                    packed.Add(new SgPackedBox { Box = box, X = cx, Y = cy, Z = cz, Step = step++ });
+                    totalWeight += box.Weight;
+
+                    // Add new candidate positions
+                    candidates.Add((cx + box.Width, cy, cz));
+                    candidates.Add((cx, cy + box.Height, cz));
+                    candidates.Add((cx, cy, cz + box.Depth));
+
+                    placed = true;
+                    break;
+                }
+            }
+
+            if (!placed)
+                unpacked.Add(box);
+        }
+
+        sw.Stop();
+
+        double palletVolume = Pallet.Width * Pallet.Height * Pallet.Depth;
+        double usedVolume = packed.Sum(pb => pb.Box.Width * pb.Box.Height * pb.Box.Depth);
+
+        result.PackedBoxes = packed;
+        result.UnpackedBoxes = unpacked;
+        result.Utilization = palletVolume > 0 ? usedVolume / palletVolume * 100.0 : 0;
+        result.TotalWeight = totalWeight;
+        result.ComputeTime = sw.Elapsed;
+
+        // Render in JS
+        var jsPallet = new { Pallet.Width, Pallet.Height, Pallet.Depth };
+        var jsBoxes = packed.Select(pb => new
+        {
+            box = new { pb.Box.Width, pb.Box.Height, pb.Box.Depth, pb.Box.Color },
+            pb.X, pb.Y, pb.Z, pb.Step,
+        }).ToList();
+
+        await SafeInvokeVoidAsync("render", _instanceId, jsPallet, jsBoxes);
+
+        if (OnPackingComplete.HasDelegate)
+            await OnPackingComplete.InvokeAsync(result);
+
+        return result;
+    }
+}

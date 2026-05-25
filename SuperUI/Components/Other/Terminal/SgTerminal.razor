@@ -1,0 +1,98 @@
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div @ref="_containerRef" class="@Css("sg-terminal-container").Build()" style="@Styles().Build()">
+</div>
+
+<style>
+    .sg-terminal-container {
+        width: 100%;
+        height: 100%;
+        min-height: 200px;
+        background: #1e1e1e;
+        padding: 8px;
+        border-radius: var(--sg-radius-md);
+        overflow: hidden;
+    }
+    .sg-terminal-container .xterm {
+        padding: 4px;
+    }
+</style>
+
+@code {
+    private ElementReference _containerRef;
+    private string? _terminalId;
+    private DotNetObjectReference<SgTerminal>? _objRef;
+
+    [Parameter] public int FontSize { get; set; } = 14;
+    [Parameter] public string FontFamily { get; set; } = "Consolas, 'Courier New', monospace";
+    [Parameter] public TerminalTheme? Theme { get; set; }
+    [Parameter] public EventCallback<string> OnData { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-terminal.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+        
+        var options = new {
+            fontSize = FontSize,
+            fontFamily = FontFamily,
+            theme = Theme
+        };
+
+        _terminalId = await SafeInvokeAsync<string>("initTerminal", _containerRef, options, _objRef);
+    }
+
+    public async Task WriteAsync(string data)
+    {
+        if (_terminalId != null)
+            await SafeInvokeVoidAsync("write", _terminalId, data);
+    }
+
+    public async Task WritelnAsync(string data)
+    {
+        if (_terminalId != null)
+            await SafeInvokeVoidAsync("writeln", _terminalId, data);
+    }
+
+    public async Task ClearAsync()
+    {
+        if (_terminalId != null)
+            await SafeInvokeVoidAsync("clear", _terminalId);
+    }
+
+    [JSInvokable]
+    public async Task OnDataReceived(string data)
+    {
+        await OnData.InvokeAsync(data);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_terminalId != null)
+        {
+            try { await SafeInvokeVoidAsync("dispose", _terminalId); } catch { }
+        }
+        _objRef?.Dispose();
+        await base.DisposeAsync();
+    }
+
+    public class TerminalTheme
+    {
+        public string? Background { get; set; }
+        public string? Foreground { get; set; }
+        public string? Cursor { get; set; }
+        public string? Selection { get; set; }
+        public string? Black { get; set; }
+        public string? Red { get; set; }
+        public string? Green { get; set; }
+        public string? Yellow { get; set; }
+        public string? Blue { get; set; }
+        public string? Magenta { get; set; }
+        public string? Cyan { get; set; }
+        public string? White { get; set; }
+    }
+}

@@ -19,6 +19,14 @@
     }
     else
     {
+        @if (!_isInitializedJs)
+        {
+            <div class="sgc-eye-tracker-loading">
+                <SgSpinner Size="SgSize.Lg" />
+                <p>Инициализация трекера...</p>
+            </div>
+        }
+        
         <div @ref="_dotRef" class="sgc-eye-tracker-dot">
             <div @ref="_dotInnerRef" class="sgc-eye-tracker-dot-inner"></div>
         </div>
@@ -35,27 +43,74 @@
         position: fixed;
         top: 0;
         left: 0;
-        width: 40px;
-        height: 40px;
-        margin-left: -20px;
-        margin-top: -20px;
-        border: 2px solid var(--sg-primary);
-        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        margin-left: -22px;
+        margin-top: -22px;
         z-index: 10000;
         pointer-events: none;
-        transition: transform 0.1s ease-out;
+        transition: transform 0.08s ease-out;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(var(--sg-primary-rgb), 0.1);
-        backdrop-filter: blur(2px);
+        --dwell-progress: 0%;
     }
+
+    /* Кольцо прогресса задержки взгляда */
+    .sgc-eye-tracker-dot::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        padding: 3px; /* Толщина кольца */
+        background: conic-gradient(var(--sg-primary) var(--dwell-progress), rgba(var(--sg-primary-rgb), 0.2) 0);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+
+    .sgc-eye-tracker-dot.is-dwelling::before {
+        opacity: 1;
+    }
+
     .sgc-eye-tracker-dot-inner {
-        width: 8px;
-        height: 8px;
+        width: 10px;
+        height: 10px;
         background: var(--sg-primary);
         border-radius: 50%;
-        box-shadow: 0 0 10px var(--sg-primary);
+        box-shadow: 0 0 12px var(--sg-primary);
+        transition: transform 0.2s;
+    }
+
+    .sgc-eye-tracker-dot.is-dwelling .sgc-eye-tracker-dot-inner {
+        transform: scale(1.5);
+    }
+
+    .sgc-eye-tracker-loading {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(var(--sg-bg-rgb), 0.8);
+        backdrop-filter: blur(4px);
+        z-index: 100;
+        border-radius: var(--sg-radius-lg);
+    }
+
+    /* Эффект клика */
+    .sgc-eye-tracker-dot.gaze-clicked .sgc-eye-tracker-dot-inner {
+        animation: gaze-pop 0.3s ease-out;
+    }
+
+    @@keyframes gaze-pop {
+        0% { transform: scale(1.5); opacity: 1; }
+        50% { transform: scale(3); opacity: 0.5; }
+        100% { transform: scale(1); opacity: 1; }
     }
     .sgc-eye-tracker-toolbar {
         position: fixed;
@@ -80,6 +135,7 @@
     private ElementReference _dotRef;
     private ElementReference _dotInnerRef;
     private bool _isActive;
+    private bool _isInitializedJs;
 
     [Parameter] public EventCallback<SgGazePoint> OnGazeUpdate { get; set; }
 
@@ -88,6 +144,7 @@
     public async Task StartTrackerAsync()
     {
         _isActive = true;
+        _isInitializedJs = false;
         StateHasChanged();
         
         // Даем Blazor время отрендерить элементы _dotRef
@@ -96,7 +153,14 @@
         try 
         {
             var result = await SafeInvokeAsync<bool>("initEyeTracker", _dotRef, _dotInnerRef);
-            if (!result) _isActive = false;
+            if (!result) 
+            {
+                _isActive = false;
+            }
+            else
+            {
+                _isInitializedJs = true;
+            }
         }
         catch
         {

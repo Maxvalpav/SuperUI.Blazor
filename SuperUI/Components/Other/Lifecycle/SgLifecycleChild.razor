@@ -1,0 +1,159 @@
+@namespace SuperUI.Components
+@using SuperUI.Base.ComponentBases
+@inherits SgComponentBase
+
+<div class="sg-lv-child">
+    <div class="sg-lv-child-header">
+        <span class="sg-lv-child-label">@(Label ?? "Child Component")</span>
+        <span class="sg-lv-child-renders">Renders: <strong>@_renderCount</strong></span>
+    </div>
+    <div class="sg-lv-child-body">
+        <div class="sg-lv-child-row">
+            <span class="sg-lv-child-key">Value</span>
+            <span class="sg-lv-child-val @(_flash ? "flash" : "")">@Value</span>
+        </div>
+        <div class="sg-lv-child-row">
+            <span class="sg-lv-child-key">Label</span>
+            <span class="sg-lv-child-val">@(Label ?? "—")</span>
+        </div>
+        <div class="sg-lv-child-row">
+            <span class="sg-lv-child-key">Status</span>
+            <span class="sg-lv-child-val">@_status</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .sg-lv-child {
+        border: 1px solid var(--sg-border, #e0e0e0);
+        border-radius: 8px;
+        overflow: hidden;
+        font-size: 13px;
+    }
+    .sg-lv-child-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: var(--sg-bg-subtle, #f5f5f5);
+        border-bottom: 1px solid var(--sg-border, #e0e0e0);
+        font-weight: 600;
+    }
+    .sg-lv-child-label { color: var(--sg-text, #333); }
+    .sg-lv-child-renders { font-size: 11px; color: var(--sg-text-muted, #888); }
+    .sg-lv-child-renders strong { color: var(--sg-color-primary, #1890ff); }
+    .sg-lv-child-body { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+    .sg-lv-child-row { display: flex; gap: 8px; align-items: center; }
+    .sg-lv-child-key { width: 50px; font-size: 11px; color: var(--sg-text-muted, #888); flex-shrink: 0; }
+    .sg-lv-child-val {
+        font-family: 'Consolas', monospace;
+        font-size: 12px;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: var(--sg-bg-subtle, #f0f0f0);
+        transition: background 0.3s;
+    }
+    .sg-lv-child-val.flash {
+        animation: sg-lv-child-flash 0.5s ease;
+    }
+    @@keyframes sg-lv-child-flash {
+        0%   { background: #fff1b8; }
+        100% { background: var(--sg-bg-subtle, #f0f0f0); }
+    }
+</style>
+
+@code {
+    [Parameter] public int Value { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public EventCallback<string> OnLifecycleEvent { get; set; }
+
+    private int _renderCount = 0;
+    private bool _flash = false;
+    private string _status = "idle";
+    private int _prevValue;
+    private bool _initialized = false;
+
+    private async Task NotifyAsync(string message)
+    {
+        if (OnLifecycleEvent.HasDelegate)
+            await OnLifecycleEvent.InvokeAsync(message);
+    }
+
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        _status = "SetParametersAsync";
+        await NotifyAsync("[Child] SetParametersAsync");
+        await base.SetParametersAsync(parameters);
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _prevValue = Value;
+        _initialized = true;
+        _status = "Initialized";
+        _ = NotifyAsync("[Child] OnInitialized");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        await NotifyAsync("[Child] OnInitializedAsync");
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        _status = "OnParametersSet";
+
+        if (_initialized && Value != _prevValue)
+        {
+            _flash = true;
+            _prevValue = Value;
+            _ = NotifyAsync($"[Child] OnParametersSet — Value changed to {Value}");
+        }
+        else
+        {
+            _ = NotifyAsync("[Child] OnParametersSet");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        await NotifyAsync("[Child] OnParametersSetAsync");
+    }
+
+    protected override bool ShouldRender()
+    {
+        _ = NotifyAsync("[Child] ShouldRender → true");
+        return true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        _renderCount++;
+        _status = firstRender ? "Ready" : $"Re-rendered #{_renderCount}";
+        _ = NotifyAsync(firstRender ? "[Child] OnAfterRender (first)" : $"[Child] OnAfterRender #{_renderCount}");
+
+        if (_flash)
+        {
+            _flash = false;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        await NotifyAsync("[Child] OnAfterRenderAsync");
+    }
+
+    public override void Dispose()
+    {
+        _status = "Disposed";
+        _ = NotifyAsync("[Child] Dispose");
+        base.Dispose();
+    }
+}

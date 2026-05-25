@@ -18,7 +18,7 @@
 
     @if (HasHeader)
     {
-        <div class="sgc-card-header">
+        <div class="sgc-card-header" style="@HeaderStyle">
             @if (HeaderContent is not null)
             {
                 @HeaderContent
@@ -66,10 +66,17 @@
 
     @if (!IsCollapsed)
     {
-        <div class="sgc-card-body @(NoPadding ? "sgc-card-body-flush" : "")">
+        <div class="sgc-card-body @(NoPadding ? "sgc-card-body-flush" : "")" style="@BodyStyle">
             @if (Loading)
             {
                 <div class="sgc-card-loading">
+                    <div style="display:flex; gap:12px; align-items:center; margin-bottom:16px;">
+                        <SgSkeleton Shape="SgSkeletonShape.Circle" Width="40px" Height="40px" />
+                        <div style="flex:1;">
+                            <SgSkeleton Width="40%" Height="12px" Style="margin-bottom:8px;" />
+                            <SgSkeleton Width="25%" Height="10px" />
+                        </div>
+                    </div>
                     <SgSkeleton Width="100%" Height="14px" CssClass="sgc-card-skel-line" />
                     <SgSkeleton Width="100%" Height="14px" CssClass="sgc-card-skel-line" />
                     <SgSkeleton Width="60%"  Height="14px" />
@@ -83,7 +90,7 @@
 
         @if (FooterContent is not null)
         {
-            <div class="sgc-card-footer">@FooterContent</div>
+            <div class="sgc-card-footer" style="@FooterStyle">@FooterContent</div>
         }
     }
 </div>
@@ -110,6 +117,15 @@
     /// <summary>Card size affecting paddings and font sizes.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
+    /// <summary>Shadow depth.</summary>
+    [Parameter] public SgShadow Shadow { get; set; } = SgShadow.None;
+
+    /// <summary>Border radius size.</summary>
+    [Parameter] public SgSize Radius { get; set; } = SgSize.Md;
+
+    /// <summary>Whether the card should take 100% height of its container.</summary>
+    [Parameter] public bool FullHeight { get; set; }
+
     /// <summary>Optional accent stripe on the left side.</summary>
     [Parameter] public SgCardStatus Status { get; set; } = SgCardStatus.None;
 
@@ -118,6 +134,9 @@
 
     /// <summary>Lift on hover (shadow + translate).</summary>
     [Parameter] public bool Hoverable { get; set; }
+
+    /// <summary>Shows pointer cursor and hover state without full lifting.</summary>
+    [Parameter] public bool Clickable { get; set; }
 
     /// <summary>Clip overflowing children (useful with <see cref="CoverContent"/>).</summary>
     [Parameter] public bool OverflowHidden { get; set; }
@@ -173,6 +192,15 @@
     /// <summary>Inline styles appended to computed styles.</summary>
     [Parameter] public string? Style { get; set; }
 
+    /// <summary>Style for the card header.</summary>
+    [Parameter] public string? HeaderStyle { get; set; }
+
+    /// <summary>Style for the card body.</summary>
+    [Parameter] public string? BodyStyle { get; set; }
+
+    /// <summary>Style for the card footer.</summary>
+    [Parameter] public string? FooterStyle { get; set; }
+
     /// <summary>Captures unmatched HTML attributes (id, data-*, aria-*, …).</summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -194,7 +222,11 @@
             var cls = new List<string> { "sgc-card", $"sgc-card-{VariantKey}", $"sgc-card-size-{SizeKey}" };
             if (Variant == SgCardVariant.Default && Bordered) cls.Add("sgc-bordered");
             if (Variant == SgCardVariant.Outlined) cls.Add("sgc-bordered");
-            if (Hoverable && !Disabled) cls.Add("sgc-hoverable");
+            if ((Hoverable || Clickable) && !Disabled) cls.Add("sgc-hoverable");
+            if (Clickable && !Disabled) cls.Add("sgc-clickable");
+            if (Shadow != SgShadow.None) cls.Add($"sg-shadow-{Shadow.ToString().ToLower()}");
+            if (Radius != SgSize.Md) cls.Add($"sg-radius-{Radius.ToString().ToLower()}");
+            if (FullHeight) cls.Add("sg-full-height");
             if (OverflowHidden) cls.Add("sgc-overflow-hidden");
             if (Compact) cls.Add("sgc-card-compact");
             if (Selectable) cls.Add("sgc-card-selectable");
@@ -208,7 +240,16 @@
         }
     }
 
-    private string? RootStyle => string.IsNullOrWhiteSpace(Style) ? null : Style;
+    private string? RootStyle
+    {
+        get
+        {
+            var styles = new List<string>();
+            if (FullHeight) styles.Add("height: 100%");
+            if (!string.IsNullOrWhiteSpace(Style)) styles.Add(Style);
+            return styles.Any() ? string.Join("; ", styles) : null;
+        }
+    }
 
     private string VariantKey => Variant switch
     {

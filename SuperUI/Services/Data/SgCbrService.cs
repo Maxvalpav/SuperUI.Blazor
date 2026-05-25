@@ -87,7 +87,8 @@ public class SgCbrService
         {
             $"https://api.allorigins.win/raw?url={Uri.EscapeDataString(targetUrl)}",
             $"https://corsproxy.io/?{Uri.EscapeDataString(targetUrl)}",
-            $"https://thingproxy.freeboard.io/fetch/{targetUrl}",
+            $"https://api.codetabs.com/v1/proxy?url={Uri.EscapeDataString(targetUrl)}",
+            $"https://shcors.vercel.app/api?url={Uri.EscapeDataString(targetUrl)}",
         };
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));

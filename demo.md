@@ -11,6 +11,9 @@ This document lists all demonstration pages in the `SuperUI.Demo` project and th
 | **Smart Forms** | `SmartFormDemo.razor` | `SgSmartForm`, `SgSmartFormBuilder`, `SgLlmSettings` |
 | **Voice Forms** | `VoiceFormDemo.razor` | `SgSmartForm`, `SgVoiceInput`, `SgLlmSettings` |
 | **Document Extractor**| `DocumentExtractorDemo.razor` | `SgDocumentExtractor` |
+| **Eye Tracking** | `AccessibilityDemo.razor` | `SgEyeTracker` |
+| **Whiteboard** | `ExcalidrawDemo.razor` | `SgExcalidraw` |
+| **Web Terminal** | `TerminalDemo.razor` | `SgTerminal` |
 
 ## 📊 Data Management
 | Page | File Path | Components Showcased |
@@ -33,6 +36,8 @@ This document lists all demonstration pages in the `SuperUI.Demo` project and th
 | **Diagram Editor** | `OrgChartDemo.razor` | `SgDiagram`, `SgDiagramEditor`, `SgOrgChart` |
 | **BPMN Viewer** | `BpmnDemo.razor` | `SgBpmn` |
 | **3D Digital Twin** | `ThreeDemo.razor` | `SgThree`, `SgWarehouseCell` |
+| **3D Pallet Packer** | `PalletPackerDemo.razor` | `SgPalletPacker` |
+| **Network Trace** | `NetworkTraceDemo.razor` | `SgNetworkTrace` |
 | **Konva 2D Graphics** | `KonvaDemo.razor` | `SgKonva`, `SgFloorRoom` |
 | **Mermaid Diagrams** | `MermaidDemo.razor` | `SgMermaid` |
 
@@ -64,6 +69,7 @@ This document lists all demonstration pages in the `SuperUI.Demo` project and th
 | **Display Widgets** | `DataDisplayDemo.razor` | `SgBadge`, `SgTag`, `SgAvatar`, `SgTimeline`, `SgActivityFeed`, `SgStatistic`, `SgEmpty`, `SgSkeleton` |
 | **Feedback UI** | `FeedbackDemo.razor` | `SgResult`, `SgSpinner`, `SgLoader` |
 | **Overlays** | `ModalDemo.razor` | `SgModal`, `SgDrawer`, `SgTooltip`, `SgPopover`, `SgDropdown` |
+| **PDF Suite** | `PdfSuiteDemo.razor` | `SgPdfViewer`, `SgPdfFormFiller` |
 | **Weather** | `WeatherDemo.razor` | `SgWeatherDashboard` |
 
 ---

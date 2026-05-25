@@ -1,0 +1,147 @@
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@using SuperUI.Components.Other.Pdf
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-pdf-ai-search").Build()" style="@Styles().Build()">
+    <SgRow Gutter="24">
+        <SgCol Span="8">
+            <SgCard Title="AI Поиск по документу" Subtitle="Задайте вопрос к содержимому">
+                <SgStack Vertical Spacing="16">
+                    <div class="sg-search-box">
+                        <SgTextBox Placeholder="Что вы хотите найти?" @bind-Value="_query" Block />
+                        <SgButton Variant="SgButtonVariant.Primary" OnClick="PerformSearch" Disabled="_isIndexing" Block>
+                            @if (_isIndexing) { <SgSpinner Size="SgSize.Sm" /> }
+                            Найти
+                        </SgButton>
+                    </div>
+
+                    <div class="sg-search-results">
+                        @if (_results != null)
+                        {
+                            <p style="font-size: 0.8rem; opacity: 0.6;">Найдено: @_results.Count совпадений</p>
+                            @foreach (var res in _results)
+                            {
+                                <div class="sg-search-result-item" @onclick="() => GoToResult(res)">
+                                    <div class="sg-result-header">
+                                        <SgTag Color="SgColor.Info">Стр. @res.PageNum</SgTag>
+                                    </div>
+                                    <p class="sg-result-snippet">@((MarkupString)res.Snippet)</p>
+                                </div>
+                            }
+                        }
+                    </div>
+                </SgStack>
+            </SgCard>
+        </SgCol>
+
+        <SgCol Span="16">
+            <SgPdfAnnotator FileUrl="@FileUrl" @ref="_annotator" />
+        </SgCol>
+    </SgRow>
+</div>
+
+<style>
+    .sg-search-results {
+        max-height: 500px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .sg-search-result-item {
+        padding: 12px;
+        background: var(--sg-bg-primary);
+        border: 1px solid var(--sg-border-color);
+        border-radius: var(--sg-radius-md);
+        cursor: pointer;
+        transition: border-color 0.2s;
+    }
+    .sg-search-result-item:hover {
+        border-color: var(--sg-primary-color);
+    }
+    .sg-result-snippet {
+        font-size: 0.85rem;
+        margin: 4px 0 0;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .sg-search-result-item mark {
+        background: yellow;
+        padding: 0 2px;
+    }
+</style>
+
+@code {
+    [Parameter] public string? FileUrl { get; set; }
+    
+    private string? _query;
+    private bool _isIndexing = true;
+    private List<PageText>? _documentContent;
+    private List<SearchResult>? _results;
+    private SgPdfAnnotator? _annotator;
+
+    protected override string ModulePath => "./_content/SuperUI/sg-pdf-suite.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (string.IsNullOrEmpty(FileUrl)) return;
+
+        _documentContent = await SafeInvokeAsync<List<PageText>>("extractText", FileUrl);
+        _isIndexing = false;
+        StateHasChanged();
+    }
+
+    private void PerformSearch()
+    {
+        if (string.IsNullOrEmpty(_query) || _documentContent == null) return;
+
+        _results = new List<SearchResult>();
+        foreach (var page in _documentContent)
+        {
+            if (page.Text.Contains(_query, StringComparison.OrdinalIgnoreCase))
+            {
+                var index = page.Text.IndexOf(_query, StringComparison.OrdinalIgnoreCase);
+                var start = Math.Max(0, index - 50);
+                var length = Math.Min(page.Text.Length - start, _query.Length + 100);
+                var snippet = page.Text.Substring(start, length);
+                
+                // Highlight snippet
+                snippet = System.Text.RegularExpressions.Regex.Replace(
+                    snippet, 
+                    $"({System.Text.RegularExpressions.Regex.Escape(_query)})", 
+                    "<mark>$1</mark>", 
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+                _results.Add(new SearchResult 
+                { 
+                    PageNum = page.PageNum, 
+                    Snippet = "..." + snippet + "..." 
+                });
+            }
+        }
+    }
+
+    private async Task GoToResult(SearchResult res)
+    {
+        if (_annotator != null && !string.IsNullOrEmpty(_query))
+        {
+            await _annotator.HighlightTextAsync(res.PageNum, _query);
+        }
+    }
+
+    private class PageText
+    {
+        public int PageNum { get; set; }
+        public string Text { get; set; } = "";
+    }
+
+    private class SearchResult
+    {
+        public int PageNum { get; set; }
+        public string Snippet { get; set; } = "";
+    }
+}

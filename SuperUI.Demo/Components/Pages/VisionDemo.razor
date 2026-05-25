@@ -1,56 +1,178 @@
 @page "/vision-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
 
-<PageTitle>Vision — SuperUI</PageTitle>
+<PageTitle>Smart Document Scanner - SuperUI</PageTitle>
 
-<div class="sg-demo-header">
-    <SgStack Align="SgAlignItems.Center" Gap="12px">
-        <SgIcon Icon="@SgIcons.Camera" Size="28" Color="var(--sg-primary)" />
-        <div>
-            <h1 class="sg-demo-title">Компьютерное зрение</h1>
-            <p class="sg-demo-subtitle">Инструменты для обработки документов и изображений в реальном времени.</p>
-        </div>
+<div class="sg-demo-header" style="margin-bottom: 24px;">
+    <SgStack Vertical Spacing="4">
+        <h1 style="margin:0; font-weight:700; color:var(--sui-text-primary);">Smart Document Scanner</h1>
+        <p style="margin:0; opacity:0.7;">Компьютерное зрение на базе OpenCV.js для автоматического захвата и коррекции документов.</p>
     </SgStack>
 </div>
 
-<SgStack Orientation="SgOrientation.Vertical" Gap="24px">
-    
-    <SgRow Gutter="16">
-        <SgCol Span="16">
-            <SgCard Title="Умный сканер документов" Subtitle="Автоматический поиск контуров и коррекция перспективы (OpenCV.js)">
-                <ChildContent>
-                    <SgDocumentScanner OnScan="HandleScan" />
-                </ChildContent>
-            </SgCard>
-        </SgCol>
-        
-        <SgCol Span="8">
-            <SgCard Title="Результат сканирования" Variant="SgCardVariant.Glass">
-                <ChildContent>
-                    <SgStack Orientation="SgOrientation.Vertical" Align="SgAlignItems.Center" Gap="16px">
-                        @if (string.IsNullOrEmpty(_lastScan))
-                        {
-                            <div style="height: 300px; display: flex; align-items: center; justify-content: center; color: var(--sg-text-secondary); border: 2px dashed var(--sg-border); border-radius: 12px; width: 100%;">
-                                <SgStack Orientation="SgOrientation.Vertical" Align="SgAlignItems.Center" Gap="8px">
-                                    <SgIcon Icon="@SgIcons.FileText" Style="width: 48px; height: 48px; opacity: 0.3;" />
-                                    <span>Ожидание скана...</span>
-                                </SgStack>
-                            </div>
-                        }
-                        else
-                        {
-                            <img src="@_lastScan" style="width: 100%; border-radius: 8px; box-shadow: var(--sg-shadow-md);" />
-                            <SgButton Variant="SgButtonVariant.Success" OnClick="() => _lastScan = null" Text="Очистить">
-                                <Icon><SgIcon Icon="@SgIcons.RefreshCw" /></Icon>
-                            </SgButton>
-                        }
-                    </SgStack>
-                </ChildContent>
-            </SgCard>
-        </SgCol>
-    </SgRow>
+<SgRow Gutter="24">
+    <!-- Scanner View -->
+    <SgCol Span="16">
+        <SgCard Title="Видеопоток" Subtitle="Держите документ в центре кадра для автозахвата">
+            <div class="scanner-container">
+                <SgDocumentScanner OnScan="HandleScan" />
+                
+                <div class="scanner-overlay">
+                    <div class="scanner-corner tl"></div>
+                    <div class="scanner-corner tr"></div>
+                    <div class="scanner-corner bl"></div>
+                    <div class="scanner-corner br"></div>
+                    <div class="scanner-line"></div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 16px;">
+                <SgAlert Type="SgAlertType.Info" ShowIcon="true">
+                    Используется алгоритм поиска контуров (FindContours) и дескрипторы для исправления перспективных искажений.
+                </SgAlert>
+            </div>
+        </SgCard>
+    </SgCol>
 
-</SgStack>
+    <!-- Results Panel -->
+    <SgCol Span="8">
+        <SgStack Vertical Spacing="20">
+            <SgCard Title="Результат сканирования" style="height: 100%;">
+                <div class="scan-result-preview">
+                    @if (string.IsNullOrEmpty(_lastScan))
+                    {
+                        <SgStack Vertical Align="SgAlignItems.Center" Spacing="16" style="padding: 40px 0;">
+                            <div class="empty-scan-icon">
+                                <SgIcon Icon="@SgIcons.FileText" Size="48" />
+                            </div>
+                            <div style="text-align: center;">
+                                <div style="font-weight: 600; color: var(--sui-text-muted);">Ожидание захвата...</div>
+                                <div style="font-size: 12px; color: var(--sui-text-muted); margin-top: 4px;">Нажмите «Запустить сканер» и наведите камеру на документ</div>
+                            </div>
+                        </SgStack>
+                    }
+                    else
+                    {
+                        <div class="result-image-wrapper">
+                            <img src="@_lastScan" class="result-image" />
+                            <div class="result-actions">
+                                <SgButton Variant="SgButtonVariant.Primary" OnClick="DownloadScan" Size="SgSize.Sm">
+                                    <SgIcon Icon="@SgIcons.Download" style="margin-right:4px;"/> Сохранить
+                                </SgButton>
+                                <SgButton Variant="SgButtonVariant.Ghost" OnClick="() => _lastScan = null" Size="SgSize.Sm" style="color:white;">
+                                    <SgIcon Icon="@SgIcons.Trash" />
+                                </SgButton>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </SgCard>
+
+            <SgCard Title="Параметры">
+                <SgStack Vertical Spacing="12">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:13px;">Автозахват</span>
+                        <SgSwitch Checked="true" />
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:13px;">Улучшение текста</span>
+                        <SgSwitch Checked="false" />
+                    </div>
+                    <SgDivider />
+                    <div style="font-size: 11px; color: var(--sui-text-muted);">
+                        Библиотека: OpenCV.js 4.5.5<br/>
+                        Метод: Canny + WarpPerspective
+                    </div>
+                </SgStack>
+            </SgCard>
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+<style>
+    .scanner-container {
+        position: relative;
+        background: #000;
+        border-radius: 12px;
+        overflow: hidden;
+        aspect-ratio: 16/9;
+    }
+    .scanner-overlay {
+        position: absolute;
+        inset: 40px;
+        pointer-events: none;
+        z-index: 5;
+    }
+    .scanner-corner {
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        border: 3px solid var(--sui-primary);
+        opacity: 0.6;
+    }
+    .tl { top: 0; left: 0; border-right: none; border-bottom: none; }
+    .tr { top: 0; right: 0; border-left: none; border-bottom: none; }
+    .bl { bottom: 0; left: 0; border-right: none; border-top: none; }
+    .br { bottom: 0; right: 0; border-left: none; border-top: none; }
+    
+    .scanner-line {
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 2px;
+        background: linear-gradient(to right, transparent, var(--sui-primary), transparent);
+        box-shadow: 0 0 15px var(--sui-primary);
+        animation: scanMove 3s ease-in-out infinite;
+    }
+    @@keyframes scanMove {
+        0%, 100% { top: 0%; opacity: 0; }
+        10%, 90% { opacity: 1; }
+        50% { top: 100%; }
+    }
+
+    .scan-result-preview {
+        background: var(--sui-bg-secondary);
+        border-radius: 8px;
+        min-height: 300px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .empty-scan-icon {
+        width: 80px;
+        height: 80px;
+        background: var(--sui-bg-elevated);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--sui-text-muted);
+        opacity: 0.5;
+    }
+    .result-image-wrapper {
+        position: relative;
+        padding: 12px;
+    }
+    .result-image {
+        width: 100%;
+        border-radius: 4px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+    }
+    .result-actions {
+        position: absolute;
+        bottom: 24px;
+        left: 24px;
+        right: 24px;
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    .result-image-wrapper:hover .result-actions {
+        opacity: 1;
+    }
+</style>
 
 @code {
     private string? _lastScan;
@@ -59,5 +181,10 @@
     {
         _lastScan = dataUrl;
         StateHasChanged();
+    }
+
+    private void DownloadScan()
+    {
+        // В реальном приложении здесь был бы вызов JS для скачивания
     }
 }

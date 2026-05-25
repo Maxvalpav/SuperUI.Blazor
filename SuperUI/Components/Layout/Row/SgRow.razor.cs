@@ -40,6 +40,9 @@ public partial class SgRow : ComponentBase
     /// <summary>Total columns in the grid. Default 12. Use 24 for finer control.</summary>
     [Parameter] public int Columns { get; set; } = 12;
 
+    /// <summary>Gutter size from theme. If set, overrides <see cref="Gutter"/>.</summary>
+    [Parameter] public SgSize? Space { get; set; }
+
     /// <summary>Cross-axis alignment. Default <see cref="SgAlignItems.Stretch"/>.</summary>
     [Parameter] public SgAlignItems Align { get; set; } = SgAlignItems.Stretch;
 
@@ -84,12 +87,21 @@ public partial class SgRow : ComponentBase
     {
         _context = new SgRowContext
         {
-            Gutter = Gutter,
+            Gutter = ResolvedGutter,
             RowGutter = RowGutter,
             ColumnGutter = ColumnGutter,
             Columns = Columns <= 0 ? 12 : Columns
         };
     }
+
+    private string? ResolvedGutter => Space switch
+    {
+        SgSize.Sm => "var(--sg-spacing-2)",
+        SgSize.Md => "var(--sg-spacing-4)",
+        SgSize.Lg => "var(--sg-spacing-8)",
+        SgSize.Xl => "var(--sg-spacing-12)",
+        _ => Gutter
+    };
 
     private string AlignCss => Align switch
     {
@@ -181,12 +193,12 @@ public partial class SgRow : ComponentBase
             var hasAxisGutter = !string.IsNullOrWhiteSpace(RowGutter) || !string.IsNullOrWhiteSpace(ColumnGutter);
             if (hasAxisGutter)
             {
-                sb.Append("row-gap:").Append(RowGutter ?? Gutter ?? "0").Append(';');
-                sb.Append("column-gap:").Append(ColumnGutter ?? Gutter ?? "0").Append(';');
+                sb.Append("row-gap:").Append(RowGutter ?? ResolvedGutter ?? "0").Append(';');
+                sb.Append("column-gap:").Append(ColumnGutter ?? ResolvedGutter ?? "0").Append(';');
             }
-            else if (!string.IsNullOrWhiteSpace(Gutter))
+            else if (!string.IsNullOrWhiteSpace(ResolvedGutter))
             {
-                sb.Append("gap:").Append(Gutter).Append(';');
+                sb.Append("gap:").Append(ResolvedGutter).Append(';');
             }
 
             if (!string.IsNullOrWhiteSpace(Style)) sb.Append(Style);

@@ -1,0 +1,252 @@
+@namespace SuperUI.Components
+@using SuperUI.Base.ComponentBases
+@inherits SgComponentBase
+@implements IDisposable
+
+<div class="@Css("sg-lv-root").Build()">
+
+    @* ── Left: Diagram ── *@
+    <div class="sg-lv-diagram">
+
+        @* Binding Tracker *@
+        <div class="sg-lv-binding @(_valueFlash ? "flash" : "")">
+            <span class="sg-lv-binding-label">Binding Tracker</span>
+            <div class="sg-lv-binding-row">
+                <span class="sg-lv-binding-source">Parent</span>
+                <svg width="32" height="16" viewBox="0 0 32 16" aria-hidden="true">
+                    <path d="M2 8 L28 8" stroke="var(--sg-color-primary,#1890ff)" stroke-width="2" marker-end="url(#lv-arrow-head)" />
+                    <defs>
+                        <marker id="lv-arrow-head" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                            <path d="M0,0 L6,3 L0,6 Z" fill="var(--sg-color-primary,#1890ff)" />
+                        </marker>
+                    </defs>
+                </svg>
+                <span class="sg-lv-binding-dest">Child</span>
+                <span class="sg-lv-binding-value">Value = <strong>@Value</strong></span>
+            </div>
+        </div>
+
+        @* Stage diagram *@
+        <div class="sg-lv-stages">
+            @foreach (var stage in _stages)
+            {
+                <div class="sg-lv-stage-wrap">
+                    <div class="sg-lv-stage @GetStageClass(stage.Key)" title="@stage.Description">
+                        <div class="sg-lv-stage-icon" aria-hidden="true">@stage.Icon</div>
+                        <div class="sg-lv-stage-body">
+                            <div class="sg-lv-stage-name">@stage.Name</div>
+                            <div class="sg-lv-stage-desc">@stage.Description</div>
+                        </div>
+                        <div class="sg-lv-stage-status">
+                            @if (_currentStage == stage.Key)
+                            {
+                                <span class="sg-lv-badge active">●</span>
+                            }
+                            else if (_doneStages.Contains(stage.Key))
+                            {
+                                <span class="sg-lv-badge done">✓</span>
+                            }
+                        </div>
+                    </div>
+                    @if (stage.Key != "dispose")
+                    {
+                        <div class="sg-lv-arrow" aria-hidden="true">
+                            <svg width="2" height="20" viewBox="0 0 2 20">
+                                <line x1="1" y1="0" x2="1" y2="20" stroke="var(--sg-border,#e0e0e0)" stroke-width="2" stroke-dasharray="4 2" />
+                            </svg>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+
+        @* Re-render note *@
+        <div class="sg-lv-rerender-note">
+            <span>🔄 Re-render cycle: <em>OnParametersSet → ShouldRender → BuildRenderTree → OnAfterRender</em></span>
+        </div>
+
+        @* Render counter *@
+        <div class="sg-lv-render-count">
+            Renders: <strong>@_renderCount</strong>
+        </div>
+    </div>
+
+    @* ── Right: Log ── *@
+    <div class="sg-lv-log" @ref="_logRef">
+        <div class="sg-lv-log-header">
+            <span class="sg-lv-log-title">Event Log</span>
+            <button class="sg-lv-clear-btn" @onclick="ClearLog" type="button">Clear</button>
+        </div>
+        <div class="sg-lv-log-entries">
+            @foreach (var entry in _log)
+            {
+                <div class="sg-lv-log-entry @entry.Level">
+                    <span class="sg-lv-log-time">@entry.Time.ToString("HH:mm:ss.fff")</span>
+                    <span class="sg-lv-log-stage">[@entry.Stage]</span>
+                    <span class="sg-lv-log-msg">@entry.Message</span>
+                </div>
+            }
+        </div>
+    </div>
+
+</div>
+
+@code {
+    // ── Parameters ──────────────────────────────────────────────────────────
+    [Parameter] public int Value { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public bool ShowChild { get; set; } = true;
+
+    // ── State ────────────────────────────────────────────────────────────────
+    private string _currentStage = "idle";
+    private readonly HashSet<string> _doneStages = new();
+    private readonly List<LifecycleLogEntry> _log = new();
+    private int _renderCount = 0;
+    private bool _valueFlash = false;
+    private int _prevValue;
+    private bool _initialized = false;
+    private ElementReference _logRef;
+
+    // ── Stage definitions ────────────────────────────────────────────────────
+    private record StageInfo(string Key, string Name, string Icon, string Description);
+
+    private readonly List<StageInfo> _stages = new()
+    {
+        new("set-parameters",      "SetParametersAsync",       "⚙️", "Receives and applies parameters from parent"),
+        new("on-initialized",      "OnInitialized(Async)",     "🚀", "Runs once after first render setup"),
+        new("on-parameters-set",   "OnParametersSet(Async)",   "📥", "Runs after every parameter update"),
+        new("should-render",       "ShouldRender",             "🤔", "Decides whether to re-render"),
+        new("build-render-tree",   "BuildRenderTree",          "🌳", "Builds the component render tree"),
+        new("on-after-render",     "OnAfterRender(Async)",     "✅", "Runs after DOM is updated"),
+        new("dispose",             "Dispose",                  "🗑️", "Component is removed from DOM"),
+    };
+
+    // ── Log model ────────────────────────────────────────────────────────────
+    private record LifecycleLogEntry(DateTime Time, string Stage, string Message, string Level);
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    private string GetStageClass(string key)
+    {
+        if (_currentStage == key) return "active";
+        if (_doneStages.Contains(key)) return "done";
+        return "pending";
+    }
+
+    private void AddLog(string stage, string message, string level = "lifecycle")
+    {
+        _log.Add(new LifecycleLogEntry(DateTime.Now, stage, message, level));
+        // Keep log bounded
+        if (_log.Count > 200) _log.RemoveAt(0);
+    }
+
+    private void MarkStage(string key)
+    {
+        _currentStage = key;
+        _doneStages.Add(key);
+    }
+
+    // ── Public API ───────────────────────────────────────────────────────────
+    public void TriggerStateHasChanged()
+    {
+        AddLog("manual", "StateHasChanged() called manually", "lifecycle");
+        StateHasChanged();
+    }
+
+    public void ClearLog()
+    {
+        _log.Clear();
+        _renderCount = 0;
+        _doneStages.Clear();
+        _currentStage = "idle";
+        StateHasChanged();
+    }
+
+    // ── Lifecycle overrides ──────────────────────────────────────────────────
+    public override async Task SetParametersAsync(ParameterView parameters)
+    {
+        MarkStage("set-parameters");
+        AddLog("SetParametersAsync", "Receiving parameters from parent", "lifecycle");
+        await base.SetParametersAsync(parameters);
+    }
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _prevValue = Value;
+        _initialized = true;
+        MarkStage("on-initialized");
+        AddLog("OnInitialized", "Component initialized for the first time", "success");
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await base.OnInitializedAsync();
+        AddLog("OnInitializedAsync", "Async initialization complete", "success");
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        MarkStage("on-parameters-set");
+
+        if (_initialized && Value != _prevValue)
+        {
+            AddLog("OnParametersSet", $"Value changed: {_prevValue} → {Value}", "parameter");
+            _valueFlash = true;
+            _prevValue = Value;
+        }
+        else
+        {
+            AddLog("OnParametersSet", $"Parameters set (Value={Value})", "parameter");
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        AddLog("OnParametersSetAsync", "Async parameters processing complete", "parameter");
+    }
+
+    protected override bool ShouldRender()
+    {
+        MarkStage("should-render");
+        AddLog("ShouldRender", "Evaluating render necessity → true", "lifecycle");
+        return true;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        base.OnAfterRender(firstRender);
+        MarkStage("on-after-render");
+        _renderCount++;
+
+        if (firstRender)
+        {
+            AddLog("OnAfterRender", "First render complete — DOM is ready", "success");
+        }
+        else
+        {
+            AddLog("OnAfterRender", $"Re-render #{_renderCount} complete", "success");
+        }
+
+        if (_valueFlash)
+        {
+            _valueFlash = false;
+            // Trigger another render to remove flash class
+            InvokeAsync(StateHasChanged);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        AddLog("OnAfterRenderAsync", firstRender ? "First async after-render" : "Async after-render", "success");
+    }
+
+    public override void Dispose()
+    {
+        MarkStage("dispose");
+        AddLog("Dispose", "Component disposed and removed from DOM", "dispose");
+        base.Dispose();
+    }
+}

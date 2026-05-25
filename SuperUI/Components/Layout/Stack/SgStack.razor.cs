@@ -18,6 +18,12 @@ public partial class SgStack : SgComponentBase
     /// <summary>Stack orientation. Default is <see cref="SgOrientation.Horizontal"/>.</summary>
     [Parameter] public SgOrientation Orientation { get; set; } = SgOrientation.Horizontal;
 
+    /// <summary>Shortcut: renders the stack horizontally. Equivalent to <c>Orientation="SgOrientation.Horizontal"</c>.</summary>
+    [Parameter] public bool Horizontal { get; set; }
+
+    /// <summary>Shortcut: renders the stack vertically. Equivalent to <c>Orientation="SgOrientation.Vertical"</c>.</summary>
+    [Parameter] public bool Vertical { get; set; }
+
     /// <summary>If <c>true</c>, items are laid out in reverse order along the main axis.</summary>
     [Parameter] public bool Reverse { get; set; }
 
@@ -31,7 +37,13 @@ public partial class SgStack : SgComponentBase
     [Parameter] public string? ColumnGap { get; set; }
 
     /// <summary>Alias for <see cref="Gap"/>.</summary>
-    [Parameter] public string Spacing { get => Gap; set => Gap = value; }
+    [Parameter] public string? Spacing { get => Gap; set => Gap = value; }
+
+    /// <summary>Spacing size from theme. If set, overrides <see cref="Gap"/>.</summary>
+    [Parameter] public SgSize? Space { get; set; }
+
+    /// <summary>If <c>true</c>, adds a divider between items.</summary>
+    [Parameter] public bool ShowDividers { get; set; }
 
     /// <summary>Cross-axis alignment of items. Default <see cref="SgAlignItems.Stretch"/>.</summary>
     [Parameter] public SgAlignItems Align { get; set; } = SgAlignItems.Stretch;
@@ -90,6 +102,11 @@ public partial class SgStack : SgComponentBase
     /// <summary>Click event on the stack root.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
 
+    private SgOrientation ResolvedOrientation =>
+        Vertical ? SgOrientation.Vertical :
+        Horizontal ? SgOrientation.Horizontal :
+        Orientation;
+
     private string AlignCss => Align switch
     {
         SgAlignItems.Start    => "flex-start",
@@ -113,7 +130,7 @@ public partial class SgStack : SgComponentBase
     {
         get
         {
-            var dir = Orientation == SgOrientation.Vertical ? "column" : "row";
+            var dir = ResolvedOrientation == SgOrientation.Vertical ? "column" : "row";
             return Reverse ? dir + "-reverse" : dir;
         }
     }
@@ -121,8 +138,9 @@ public partial class SgStack : SgComponentBase
     private string ComputedClass => Css("sg-stack")
         .AddClass("sg-stack-inline",    Inline)
         .AddClass("sg-stack-wrap",      Wrap)
-        .AddClass("sg-stack-vertical",  Orientation == SgOrientation.Vertical)
-        .AddClass("sg-stack-horizontal",Orientation != SgOrientation.Vertical)
+        .AddClass("sg-stack-vertical",  ResolvedOrientation == SgOrientation.Vertical)
+        .AddClass("sg-stack-horizontal",ResolvedOrientation != SgOrientation.Vertical)
+        .AddClass("sg-stack-dividers",  ShowDividers)
         .Build();
 
     private string FixUnit(string? value)
@@ -135,11 +153,20 @@ public partial class SgStack : SgComponentBase
         return value;
     }
 
+    private string? ResolvedGap => Space switch
+    {
+        SgSize.Sm => "var(--sg-spacing-2)",
+        SgSize.Md => "var(--sg-spacing-4)",
+        SgSize.Lg => "var(--sg-spacing-8)",
+        SgSize.Xl => "var(--sg-spacing-12)",
+        _ => !string.IsNullOrWhiteSpace(Gap) ? FixUnit(Gap) : null
+    };
+
     private string ComputedStyle => Styles()
         .AddStyle("display",          Inline ? "inline-flex" : "flex")
         .AddStyle("flex-direction",   FlexDirectionCss)
-        .AddStyle("row-gap",          FixUnit(RowGap ?? Gap), !string.IsNullOrWhiteSpace(Gap))
-        .AddStyle("column-gap",       FixUnit(ColumnGap ?? Gap), !string.IsNullOrWhiteSpace(Gap))
+        .AddStyle("row-gap",          FixUnit(RowGap) ?? ResolvedGap, ResolvedGap != null || RowGap != null)
+        .AddStyle("column-gap",       FixUnit(ColumnGap) ?? ResolvedGap, ResolvedGap != null || ColumnGap != null)
         .AddStyle("align-items",      AlignCss)
         .AddStyle("justify-content",  JustifyCss)
         .AddStyle("flex-wrap",        Wrap ? "wrap" : "nowrap")

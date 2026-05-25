@@ -1,0 +1,176 @@
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@using SuperUI.Components.Other.Pdf
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-pdf-annotator").Build()" style="@Styles().Build()">
+    <div class="sg-pdf-toolbar">
+        <SgStack Spacing="8" Align="SgAlignItems.Center">
+            <SgButton Variant="SgButtonVariant.Ghost" OnClick="() => ChangePage(-1)" Disabled="_currentPage <= 1">
+                <Icon><SgIcon Icon="@SgIcons.ChevronLeft" /></Icon>
+            </SgButton>
+            <span>Страница @_currentPage из @_totalPages</span>
+            <SgButton Variant="SgButtonVariant.Ghost" OnClick="() => ChangePage(1)" Disabled="_currentPage >= _totalPages">
+                <Icon><SgIcon Icon="@SgIcons.ChevronRight" /></Icon>
+            </SgButton>
+            
+            <SgDivider Vertical />
+            
+            <SgButton Variant="@(_mode == "select" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)" 
+                      OnClick='() => SetMode("select")' Title="Выбор">
+                <Icon><SgIcon Icon="@SgIcons.MousePointer" /></Icon>
+            </SgButton>
+            <SgButton Variant="@(_mode == "pencil" ? SgButtonVariant.Primary : SgButtonVariant.Ghost)" 
+                      OnClick='() => SetMode("pencil")' Title="Карандаш">
+                <Icon><SgIcon Icon="@SgIcons.Edit" /></Icon>
+            </SgButton>
+            
+            <SgButton Variant="SgButtonVariant.Ghost" OnClick="SaveAnnotations" Title="Сохранить">
+                <Icon><SgIcon Icon="@SgIcons.Check" /></Icon>
+            </SgButton>
+        </SgStack>
+    </div>
+
+    <div @ref="_containerRef" class="sg-pdf-viewport">
+        @if (_isLoading)
+        {
+            <div class="sg-pdf-loading">
+                <SgSpinner Size="SgSize.Lg" />
+                <p>Загрузка PDF...</p>
+            </div>
+        }
+    </div>
+</div>
+
+<style>
+    .sg-pdf-annotator {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--sg-border-color);
+        border-radius: var(--sg-radius-lg);
+        overflow: hidden;
+        background: var(--sg-bg-secondary);
+        height: 800px;
+    }
+    .sg-pdf-toolbar {
+        padding: 8px 16px;
+        background: var(--sg-bg-primary);
+        border-bottom: 1px solid var(--sg-border-color);
+    }
+    .sg-pdf-viewport {
+        flex: 1;
+        overflow: auto;
+        padding: 20px;
+        position: relative;
+    }
+    .sg-pdf-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+    }
+</style>
+
+@code {
+    private ElementReference _containerRef;
+    private string? _instanceId;
+    private int _currentPage = 1;
+    private int _totalPages = 0;
+    private bool _isLoading = true;
+    private string _mode = "select";
+    private DotNetObjectReference<SgPdfAnnotator>? _objRef;
+
+    [Parameter] public string? FileUrl { get; set; }
+    [Parameter] public EventCallback<List<SgPdfAnnotation>> OnSave { get; set; }
+
+    // Словарь: Номер страницы -> Fabric JSON
+    private Dictionary<int, string> _pageAnnotations = new();
+
+    protected override string ModulePath => "./_content/SuperUI/sg-pdf-suite.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (string.IsNullOrEmpty(FileUrl)) return;
+
+        _objRef = DotNetObjectReference.Create(this);
+        
+        var result = await SafeInvokeAsync<AnnotatorInitResult>("initAnnotator", _containerRef, _objRef, FileUrl);
+        _instanceId = result.InstanceId;
+        _totalPages = result.TotalPages;
+        _isLoading = false;
+        
+        StateHasChanged();
+    }
+
+    public async Task JumpToPageAsync(int pageNum)
+    {
+        if (pageNum < 1 || pageNum > _totalPages) return;
+        _currentPage = pageNum;
+        await SafeInvokeVoidAsync("renderPage", _instanceId, _currentPage);
+        
+        if (_pageAnnotations.TryGetValue(_currentPage, out var json))
+        {
+            await SafeInvokeVoidAsync("loadAnnotations", _instanceId, _currentPage, json);
+        }
+        await SafeInvokeVoidAsync("setDrawingMode", _instanceId, _currentPage, _mode);
+        StateHasChanged();
+    }
+
+    public async Task HighlightTextAsync(int pageNum, string text)
+    {
+        if (pageNum < 1 || pageNum > _totalPages) return;
+        _currentPage = pageNum;
+        await SafeInvokeVoidAsync("highlightText", _instanceId, pageNum, text);
+        StateHasChanged();
+    }
+
+    private async Task ChangePage(int delta)
+    {
+        await JumpToPageAsync(_currentPage + delta);
+    }
+
+    private async Task SetMode(string mode)
+    {
+        _mode = mode;
+        await SafeInvokeVoidAsync("setDrawingMode", _instanceId, _currentPage, _mode);
+    }
+
+    [JSInvokable]
+    public void OnAnnotationsChanged(int pageNum, string json)
+    {
+        _pageAnnotations[pageNum] = json;
+    }
+
+    private async Task SaveAnnotations()
+    {
+        var annotations = new List<SgPdfAnnotation>();
+        foreach (var entry in _pageAnnotations)
+        {
+            annotations.Add(new SgPdfAnnotation 
+            { 
+                PageNumber = entry.Key, 
+                Type = SgPdfAnnotationType.Drawing,
+                FabricJson = entry.Value 
+            });
+        }
+        await OnSave.InvokeAsync(annotations);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_instanceId != null)
+        {
+            try { await SafeInvokeVoidAsync("dispose", _instanceId); } catch { }
+        }
+        _objRef?.Dispose();
+        await base.DisposeAsync();
+    }
+
+    private class AnnotatorInitResult
+    {
+        public string InstanceId { get; set; } = "";
+        public int TotalPages { get; set; }
+    }
+}

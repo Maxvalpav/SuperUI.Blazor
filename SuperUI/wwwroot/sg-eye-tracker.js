@@ -35,6 +35,11 @@ export function loadWebGazer() {
 
 let _dot = null;
 let _dotInner = null;
+let _dwellTimer = null;
+let _currentElement = null;
+let _dwellStartTime = 0;
+const DWELL_DURATION = 1000; // ms
+const GHOST_CURSOR_RADIUS = 30; // pixels to consider "staying"
 
 export async function initEyeTracker(dotElement, dotInnerElement) {
     try {
@@ -58,25 +63,103 @@ export async function initEyeTracker(dotElement, dotInnerElement) {
             const y = data.y;
 
             // Плавное перемещение точки через CSS
-            _dot.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+            if (_dot && _dot.style) {
+                _dot.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+            }
+
+            // Логика задержки взгляда (Gaze-dwell)
+            handleDwell(x, y);
         });
 
         // Запуск
         await webgazer.begin();
         
         // Скрываем стандартные элементы UI WebGazer
-        webgazer.showVideo(false)
-                .showPredictionPoints(false);
+        if (typeof webgazer.showVideo === 'function') webgazer.showVideo(false);
+        if (typeof webgazer.showPredictionPoints === 'function') webgazer.showPredictionPoints(false);
         
         // Отключаем логирование в консоль для производительности
-        webgazer.setStatic(true); 
+        if (typeof webgazer.setStatic === 'function') {
+            webgazer.setStatic(true); 
+        }
 
         _isInitialized = true;
         console.log('[SgEyeTracker] WebGazer initialized and started');
         return true;
     } catch (err) {
         console.error('[SgEyeTracker] Initialization error:', err);
-        throw err;
+        // Не выбрасываем ошибку, чтобы не ломать Blazor, но возвращаем false
+        return false;
+    }
+}
+
+function handleDwell(x, y) {
+    if (!_dot) return;
+    
+    // Получаем элемент под курсором взгляда
+    // Скрываем курсор на мгновение, чтобы не поймать его самого
+    _dot.style.pointerEvents = 'none';
+    const element = document.elementFromPoint(x, y);
+    _dot.style.pointerEvents = 'auto'; // Возвращаем обратно
+
+    // Нас интересуют интерактивные элементы или те, что помечены как gaze-target
+    const interactive = element && (
+        element.classList.contains('gaze-target') || 
+        element.tagName === 'BUTTON' || 
+        element.tagName === 'A' ||
+        element.closest('.gaze-target')
+    );
+
+    if (interactive && element === _currentElement) {
+        const elapsed = Date.now() - _dwellStartTime;
+        const percent = Math.min(100, (elapsed / DWELL_DURATION) * 100);
+        
+        // Визуальное обновление прогресса
+        _dot.style.setProperty('--dwell-progress', `${percent}%`);
+        
+        if (elapsed >= DWELL_DURATION) {
+            // Клик!
+            triggerGazeClick(element);
+            resetDwell();
+        }
+    } else if (interactive) {
+        // Новый элемент
+        _currentElement = element;
+        _dwellStartTime = Date.now();
+        _dot.classList.add('is-dwelling');
+    } else {
+        // Взгляд ушел с интерактивного элемента
+        resetDwell();
+    }
+}
+
+function triggerGazeClick(element) {
+    if (!element || !_dot) return;
+    
+    const rect = _dot.getBoundingClientRect();
+    const clickEvent = new MouseEvent('click', {
+        view: window,
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2
+    });
+    
+    element.dispatchEvent(clickEvent);
+    
+    // Эффект всплеска
+    _dot.classList.add('gaze-clicked');
+    setTimeout(() => {
+        if (_dot) _dot.classList.remove('gaze-clicked');
+    }, 300);
+}
+
+function resetDwell() {
+    _currentElement = null;
+    _dwellStartTime = 0;
+    if (_dot) {
+        _dot.classList.remove('is-dwelling');
+        _dot.style.setProperty('--dwell-progress', '0%');
     }
 }
 

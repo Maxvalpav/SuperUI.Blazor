@@ -1,0 +1,142 @@
+@page "/pfd-demo"
+@using SuperUI.Components
+@implements IAsyncDisposable
+
+<PageTitle>Aviation PFD HUD - SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <h1>Aviation PFD HUD</h1>
+    <p>Primary Flight Display — авиационный индикатор пилотажных параметров.</p>
+</div>
+
+<SgStack Spacing="20" Wrap Align="SgAlignItems.Start">
+    <div style="flex:0 0 auto;">
+        <SgPrimaryFlightDisplay Telemetry="_telemetry"
+                                Width="480px"
+                                Height="360px"
+                                DemoMode="_demoMode" />
+    </div>
+
+    <div style="flex:1;min-width:280px;">
+        <SgStack Vertical Spacing="16">
+            <SgCard Title="Управление">
+                <SgStack Spacing="10" Align="SgAlignItems.Center">
+                    <SgButton Variant="@(_demoMode ? SgButtonVariant.Danger : SgButtonVariant.Primary)"
+                              OnClick="ToggleDemoMode">
+                        @(_demoMode ? "⏹ Стоп Demo" : "▶ Demo Mode")
+                    </SgButton>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Параметры телеметрии">
+                <div class="pfd-sliders">
+                    <label>Тангаж (Pitch): <strong>@_telemetry.Pitch.ToString("F1")°</strong></label>
+                    <input type="range" min="-45" max="45" step="0.5"
+                           value="@_telemetry.Pitch"
+                           @oninput="e => UpdateTelemetry(pitch: ParseDouble(e))"
+                           disabled="@_demoMode" />
+
+                    <label>Крен (Roll): <strong>@_telemetry.Roll.ToString("F1")°</strong></label>
+                    <input type="range" min="-60" max="60" step="1"
+                           value="@_telemetry.Roll"
+                           @oninput="e => UpdateTelemetry(roll: ParseDouble(e))"
+                           disabled="@_demoMode" />
+
+                    <label>Курс (Heading): <strong>@_telemetry.Heading.ToString("F0")°</strong></label>
+                    <input type="range" min="0" max="360" step="1"
+                           value="@_telemetry.Heading"
+                           @oninput="e => UpdateTelemetry(heading: ParseDouble(e))"
+                           disabled="@_demoMode" />
+
+                    <label>Высота (Altitude): <strong>@_telemetry.Altitude.ToString("F0") м</strong></label>
+                    <input type="range" min="0" max="5000" step="10"
+                           value="@_telemetry.Altitude"
+                           @oninput="e => UpdateTelemetry(altitude: ParseDouble(e))"
+                           disabled="@_demoMode" />
+
+                    <label>Скорость (Speed): <strong>@_telemetry.Speed.ToString("F0") км/ч</strong></label>
+                    <input type="range" min="0" max="500" step="5"
+                           value="@_telemetry.Speed"
+                           @oninput="e => UpdateTelemetry(speed: ParseDouble(e))"
+                           disabled="@_demoMode" />
+
+                    <label>Тяга (Throttle): <strong>@_telemetry.Throttle.ToString("F0")%</strong></label>
+                    <input type="range" min="0" max="100" step="1"
+                           value="@_telemetry.Throttle"
+                           @oninput="e => UpdateTelemetry(throttle: ParseDouble(e))"
+                           disabled="@_demoMode" />
+                </div>
+            </SgCard>
+        </SgStack>
+    </div>
+</SgStack>
+
+<style>
+    .pfd-sliders {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .pfd-sliders label {
+        font-size: 12px;
+        color: var(--sg-text-secondary, #6b7280);
+        margin-bottom: 2px;
+    }
+    .pfd-sliders input[type=range] {
+        width: 100%;
+        accent-color: var(--sg-primary, #006fee);
+    }
+</style>
+
+@code {
+    private SgPFDTelemetry _telemetry = new()
+    {
+        Pitch = 0,
+        Roll = 0,
+        Heading = 45,
+        Altitude = 2000,
+        Speed = 280,
+        VerticalSpeed = 0,
+        Throttle = 65,
+    };
+
+    private bool _demoMode = false;
+
+    private void ToggleDemoMode()
+    {
+        _demoMode = !_demoMode;
+        StateHasChanged();
+    }
+
+    private void UpdateTelemetry(
+        double? pitch = null,
+        double? roll = null,
+        double? heading = null,
+        double? altitude = null,
+        double? speed = null,
+        double? throttle = null)
+    {
+        _telemetry = new SgPFDTelemetry
+        {
+            Pitch = pitch ?? _telemetry.Pitch,
+            Roll = roll ?? _telemetry.Roll,
+            Heading = heading ?? _telemetry.Heading,
+            Altitude = altitude ?? _telemetry.Altitude,
+            Speed = speed ?? _telemetry.Speed,
+            VerticalSpeed = _telemetry.VerticalSpeed,
+            Throttle = throttle ?? _telemetry.Throttle,
+        };
+        StateHasChanged();
+    }
+
+    private static double ParseDouble(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var v))
+            return v;
+        return 0;
+    }
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}

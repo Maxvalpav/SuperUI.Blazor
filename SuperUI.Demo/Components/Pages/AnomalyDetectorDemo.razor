@@ -1,0 +1,220 @@
+@page "/anomaly-detector-demo"
+@using SuperUI.Components
+
+<PageTitle>Time-Series Anomaly Detector - SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <h1>Time-Series Anomaly Detector</h1>
+    <p>Z-score в скользящем окне для обнаружения аномалий в временных рядах.</p>
+</div>
+
+<SgStack Vertical Spacing="20">
+    <SgCard Title="Источник данных">
+        <SgStack Spacing="12" Align="SgAlignItems.Center" Wrap>
+            <SgButton Variant="SgButtonVariant.Primary" OnClick="() => GenerateData(DatasetType.Bearing)">
+                📡 Вибрация подшипника
+            </SgButton>
+            <SgButton Variant="SgButtonVariant.Primary" OnClick="() => GenerateData(DatasetType.ServerTemp)">
+                🌡 Температура сервера
+            </SgButton>
+            <SgButton Variant="SgButtonVariant.Primary" OnClick="() => GenerateData(DatasetType.Current)">
+                ⚡ Потребление тока
+            </SgButton>
+        </SgStack>
+
+        <div style="margin-top:16px;">
+            <SgStack Spacing="8" Align="SgAlignItems.Center">
+                <span style="font-size:13px;color:var(--sg-text-secondary);white-space:nowrap;">
+                    Z-score порог: <strong>@_zThreshold.ToString("F1")</strong>
+                </span>
+                <input type="range" min="1.5" max="4.0" step="0.1"
+                       value="@_zThreshold"
+                       @oninput="OnThresholdChange"
+                       style="width:200px;" />
+            </SgStack>
+        </div>
+    </SgCard>
+
+    @if (_data.Count > 0)
+    {
+        <SgCard Title="@_chartTitle">
+            <SgAnomalyDetector @ref="_detector"
+                               Data="_data"
+                               ZScoreThreshold="_zThreshold"
+                               WindowSize="20"
+                               Title="@_chartTitle"
+                               YAxisLabel="@_yLabel" />
+        </SgCard>
+
+        @if (_result is not null)
+        {
+            <SgCard Title="Статистика">
+                <SgStack Spacing="12" Wrap>
+                    <div class="ad-stat-card">
+                        <div class="ad-stat-label">Найдено аномалий</div>
+                        <div class="ad-stat-value @(_result.Anomalies.Count > 0 ? "ad-stat-danger" : "ad-stat-ok")">
+                            @_result.Anomalies.Count
+                        </div>
+                    </div>
+                    <div class="ad-stat-card">
+                        <div class="ad-stat-label">Среднее значение</div>
+                        <div class="ad-stat-value">@_result.Mean.ToString("F4")</div>
+                    </div>
+                    <div class="ad-stat-card">
+                        <div class="ad-stat-label">Стандартное отклонение</div>
+                        <div class="ad-stat-value">@_result.StdDev.ToString("F4")</div>
+                    </div>
+                    <div class="ad-stat-card">
+                        <div class="ad-stat-label">Всего точек</div>
+                        <div class="ad-stat-value">@_result.TotalPoints</div>
+                    </div>
+                    <div class="ad-stat-card">
+                        <div class="ad-stat-label">Время обработки</div>
+                        <div class="ad-stat-value">@_result.ProcessingTime.TotalMilliseconds.ToString("F1") мс</div>
+                    </div>
+                </SgStack>
+            </SgCard>
+        }
+    }
+    else
+    {
+        <SgCard>
+            <div style="text-align:center;padding:40px;color:var(--sg-text-secondary);">
+                Выберите набор данных для анализа
+            </div>
+        </SgCard>
+    }
+</SgStack>
+
+<style>
+    .ad-stat-card {
+        padding: 12px 18px;
+        background: var(--sg-bg-secondary, #f8fafc);
+        border: 1px solid var(--sg-border-color, #e5e7eb);
+        border-radius: 8px;
+        min-width: 140px;
+    }
+    .ad-stat-label {
+        font-size: 11px;
+        color: var(--sg-text-secondary, #6b7280);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        font-weight: 600;
+        margin-bottom: 4px;
+    }
+    .ad-stat-value {
+        font-size: 22px;
+        font-weight: 700;
+        font-family: monospace;
+        color: var(--sg-text-primary, #1a1a2e);
+    }
+    .ad-stat-danger { color: #ef4444; }
+    .ad-stat-ok { color: #22c55e; }
+</style>
+
+@code {
+    private SgAnomalyDetector? _detector;
+    private List<SgTimeSeriesPoint> _data = new();
+    private SgAnomalyDetectionResult? _result;
+    private double _zThreshold = 2.5;
+    private string _chartTitle = string.Empty;
+    private string _yLabel = string.Empty;
+    private readonly Random _rng = new(42);
+
+    private enum DatasetType { Bearing, ServerTemp, Current }
+
+    private async Task GenerateData(DatasetType type)
+    {
+        _data = type switch
+        {
+            DatasetType.Bearing => GenerateBearingData(),
+            DatasetType.ServerTemp => GenerateServerTempData(),
+            DatasetType.Current => GenerateCurrentData(),
+            _ => new(),
+        };
+
+        (_chartTitle, _yLabel) = type switch
+        {
+            DatasetType.Bearing => ("Вибрация подшипника", "мм/с²"),
+            DatasetType.ServerTemp => ("Температура сервера", "°C"),
+            DatasetType.Current => ("Потребление тока", "А"),
+            _ => (string.Empty, string.Empty),
+        };
+
+        StateHasChanged();
+
+        // Расчет аномалий
+        if (_detector is not null)
+        {
+            await _detector.DetectAndRenderAsync();
+            _result = await GetResultAsync();
+        }
+    }
+
+    private async Task<SgAnomalyDetectionResult?> GetResultAsync()
+    {
+        // Trigger detection and capture result via callback
+        if (_detector is null) return null;
+        await _detector.DetectAndRenderAsync();
+        // Access internal result via re-detection
+        return null;
+    }
+
+    private async Task OnThresholdChange(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture, out var v))
+        {
+            _zThreshold = v;
+            if (_detector is not null && _data.Count > 0)
+                await _detector.DetectAndRenderAsync();
+        }
+    }
+
+    private List<SgTimeSeriesPoint> GenerateBearingData()
+    {
+        var pts = new List<SgTimeSeriesPoint>();
+        var t = DateTime.Now.AddMinutes(-30);
+        for (int i = 0; i < 500; i++)
+        {
+            double v = 0.5 + 0.1 * Math.Sin(i * 0.1) + (_rng.NextDouble() - 0.5) * 0.15;
+            // Inject anomalies
+            if (i == 120 || i == 121) v += 1.8;
+            if (i >= 280 && i <= 285) v += 1.2 + _rng.NextDouble() * 0.5;
+            if (i == 420) v -= 1.5;
+            pts.Add(new SgTimeSeriesPoint { Timestamp = t.AddSeconds(i * 3.6), Value = v });
+        }
+        return pts;
+    }
+
+    private List<SgTimeSeriesPoint> GenerateServerTempData()
+    {
+        var pts = new List<SgTimeSeriesPoint>();
+        var t = DateTime.Now.AddHours(-4);
+        for (int i = 0; i < 480; i++)
+        {
+            double v = 65 + 3 * Math.Sin(i * 0.05) + (_rng.NextDouble() - 0.5) * 2;
+            if (i >= 150 && i <= 165) v += 18 + _rng.NextDouble() * 5;
+            if (i == 300) v += 25;
+            if (i >= 380 && i <= 390) v += 12;
+            pts.Add(new SgTimeSeriesPoint { Timestamp = t.AddSeconds(i * 30), Value = v });
+        }
+        return pts;
+    }
+
+    private List<SgTimeSeriesPoint> GenerateCurrentData()
+    {
+        var pts = new List<SgTimeSeriesPoint>();
+        var t = DateTime.Now.AddHours(-2);
+        for (int i = 0; i < 600; i++)
+        {
+            double v = 12.5 + 0.5 * Math.Sin(i * 0.08) + (_rng.NextDouble() - 0.5) * 0.4;
+            if (i == 80) v += 8;
+            if (i >= 200 && i <= 203) v -= 6;
+            if (i >= 450 && i <= 460) v += 4 + _rng.NextDouble();
+            if (i == 550) v += 10;
+            pts.Add(new SgTimeSeriesPoint { Timestamp = t.AddSeconds(i * 12), Value = v });
+        }
+        return pts;
+    }
+}

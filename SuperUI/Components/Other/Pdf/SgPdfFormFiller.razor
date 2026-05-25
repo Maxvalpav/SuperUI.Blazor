@@ -1,0 +1,124 @@
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@using SuperUI.Components.Other.Pdf
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-pdf-form-filler").Build()" style="@Styles().Build()">
+    <SgRow Gutter="24">
+        <SgCol Span="8">
+            <SgCard Title="Поля формы" Subtitle="Заполните данные документа">
+                @if (_fields == null)
+                {
+                    <SgSpinner />
+                }
+                else if (!_fields.Any())
+                {
+                    <SgAlert Variant="SgAlertVariant.Info" Text="В этом PDF не найдено интерактивных полей формы." />
+                }
+                else
+                {
+                    <div style="max-height: 500px; overflow-y: auto; padding-right: 8px;">
+                        <SgRow Gutter="12">
+                            @foreach (var field in _fields)
+                            {
+                                <SgCol Span="12">
+                                    <div class="sg-form-field-item" style="margin-bottom: 12px;">
+                                        @if (field.Type.Contains("CheckBox"))
+                                        {
+                                            <SgCheckBox Label="@field.Name" @bind-Value="@field.BoolValue" />
+                                        }
+                                        else
+                                        {
+                                            <SgTextBox Label="@field.Name" @bind-Value="@field.Value" Placeholder="@field.Name" />
+                                        }
+                                    </div>
+                                </SgCol>
+                            }
+                        </SgRow>
+                    </div>
+                    
+                    <SgButton Variant="SgButtonVariant.Primary" OnClick="GeneratePdf" Block Style="margin-top: 16px;">
+                        Обновить предпросмотр
+                    </SgButton>
+                }
+            </SgCard>
+        </SgCol>
+        
+        <SgCol Span="16">
+            <SgCard Title="Предпросмотр" Style="height: 100%; min-height: 600px;">
+                @if (!string.IsNullOrEmpty(_previewUrl))
+                {
+                    <iframe src="@_previewUrl" style="width: 100%; height: 600px; border: none;"></iframe>
+                }
+                else
+                {
+                    <div class="sg-pdf-placeholder">
+                        <SgIcon Icon="@SgIcons.FileText" Size="48" style="opacity: 0.2;" />
+                        <p>Загрузите или заполните форму для предпросмотра</p>
+                    </div>
+                }
+            </SgCard>
+        </SgCol>
+    </SgRow>
+</div>
+
+<style>
+    .sg-pdf-placeholder {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 600px;
+        opacity: 0.5;
+    }
+</style>
+
+@code {
+    [Parameter] public string? FileUrl { get; set; }
+    
+    private List<FormFieldProxy>? _fields;
+    private string? _previewUrl;
+
+    protected override string ModulePath => "./_content/SuperUI/sg-pdf-suite.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (string.IsNullOrEmpty(FileUrl)) return;
+
+        var rawFields = await SafeInvokeAsync<List<SgPdfFormField>>("getFormFields", FileUrl);
+        _fields = rawFields.Select(f => new FormFieldProxy(f)).ToList();
+        _previewUrl = FileUrl;
+        
+        StateHasChanged();
+    }
+
+    private async Task GeneratePdf()
+    {
+        if (string.IsNullOrEmpty(FileUrl) || _fields == null) return;
+
+        var data = _fields.ToDictionary(f => f.Name, f => f.Type.Contains("CheckBox") ? f.BoolValue.ToString().ToLower() : f.Value ?? "");
+        _previewUrl = await SafeInvokeAsync<string>("fillForm", FileUrl, data);
+        
+        StateHasChanged();
+    }
+
+    private class FormFieldProxy
+    {
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public string? Value { get; set; }
+        public bool BoolValue { get; set; }
+
+        public FormFieldProxy(SgPdfFormField field)
+        {
+            Name = field.Name;
+            Type = field.Type;
+            Value = field.Value;
+            if (Type.Contains("CheckBox"))
+            {
+                BoolValue = field.Value?.ToLower() == "true";
+            }
+        }
+    }
+}

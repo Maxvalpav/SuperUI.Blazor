@@ -131,8 +131,31 @@ public partial class SgCol : ComponentBase
                     if (span >= 1 && span <= cols)
                     {
                         var pct = (double)span / cols * 100.0;
-                        sb.Append("flex:0 0 ").Append(Pct(pct)).Append(';');
-                        sb.Append("max-width:").Append(Pct(pct)).Append(';');
+                        var gutter = RowContext?.Gutter ?? RowContext?.ColumnGutter ?? LegacyGutter;
+
+                        if (!string.IsNullOrWhiteSpace(gutter) && gutter != "0" && gutter != "0px")
+                        {
+                            // Correct flex calculation: flex: 0 0 calc(PERCENT - GUTTER + (GUTTER * SPAN / TOTAL))
+                            // But for simple "gap" usage in Row, we just need box-sizing: border-box and proper width.
+                            // If Row uses 'gap', then width should be calculated considering gaps.
+                            // However, the current SgRow implementation uses 'gap' on the container.
+                            // To prevent overflow, we should use flex: 0 0 calc((100% - (GAPS_COUNT * GAP)) * (SPAN / TOTAL))
+                            // A simpler way with 'gap' is flex: 0 0 calc((100% - (TOTAL - 1) * GAP) / TOTAL * SPAN + (SPAN - 1) * GAP)
+                            // Even simpler: width: calc((100% - (TOTAL/SPAN - 1) * GAP) / (TOTAL/SPAN))
+                            
+                            // Let's use the most robust CSS Grid-like math for Flexbox with gaps:
+                            // width = (100% - (TOTAL - 1) * GAP) / TOTAL * SPAN + (SPAN - 1) * GAP
+                            // Simplified: width = PERCENT - (GAP * (1 - SPAN/TOTAL))
+                            
+                            var spanRatio = (double)span / cols;
+                            sb.Append("flex:0 0 calc(").Append(Pct(pct)).Append(" - (").Append(gutter).Append(" * ").Append((1.0 - spanRatio).ToString("0.######", CultureInfo.InvariantCulture)).Append("));");
+                            sb.Append("max-width:calc(").Append(Pct(pct)).Append(" - (").Append(gutter).Append(" * ").Append((1.0 - spanRatio).ToString("0.######", CultureInfo.InvariantCulture)).Append("));");
+                        }
+                        else
+                        {
+                            sb.Append("flex:0 0 ").Append(Pct(pct)).Append(';');
+                            sb.Append("max-width:").Append(Pct(pct)).Append(';');
+                        }
                     }
                 }
             }

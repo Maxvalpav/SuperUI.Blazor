@@ -1,0 +1,228 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-octave-analyzer").Build()" style="@Styles().Build()" @attributes="AttributesWithoutClassAndStyle">
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <div class="sg-oa-error" role="alert">
+            <span>⚠ @_error</span>
+        </div>
+    }
+
+    <div class="sg-oa-header">
+        <div class="sg-oa-overall">
+            <span class="sg-oa-overall-label">Общий уровень</span>
+            <span class="sg-oa-overall-value @GetLevelClass(_overallDb)">
+                @_overallDb.ToString("F1") dB(@Weighting)
+            </span>
+        </div>
+        <div class="sg-oa-status @(_isRunning ? "sg-oa-status-active" : "")">
+            @if (_isRunning)
+            {
+                <span class="sg-oa-dot"></span>
+                <span>Измерение</span>
+            }
+            else
+            {
+                <span>Остановлено</span>
+            }
+        </div>
+    </div>
+
+    <div class="sg-oa-canvas-wrap">
+        <canvas @ref="_canvasRef"
+                id="@_canvasId"
+                class="sg-oa-canvas"
+                role="img"
+                aria-label="Октавный анализатор спектра"
+                width="800"
+                height="220"></canvas>
+    </div>
+
+    <div class="sg-oa-bands-row">
+        @foreach (var band in _bands)
+        {
+            <div class="sg-oa-band-cell">
+                <div class="sg-oa-band-freq">@band.Label</div>
+                <div class="sg-oa-band-db @GetLevelClass(band.WeightedDb)">
+                    @band.WeightedDb.ToString("F1")
+                </div>
+                <div class="sg-oa-band-raw">@band.RawDb.ToString("F1")</div>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private readonly string _canvasId    = SgIdGenerator.NewId("sg-oa-canvas");
+    private readonly string _instanceId  = SgIdGenerator.NewId("sg-oa");
+
+    private bool _isRunning;
+    private string? _error;
+    private double _overallDb;
+    private List<SgOctaveBand> _bands = InitBands();
+
+    // A-weighting corrections (dB) for 10 octave bands
+    private static readonly double[] AWeighting = { -39.4, -26.2, -16.1, -8.6, -3.2, 0.0, +1.2, +1.0, -1.1, -6.6 };
+
+    // C-weighting corrections
+    private static readonly double[] CWeighting = { -3.0, -0.8, -0.2, 0.0, 0.0, 0.0, -0.2, -0.8, -3.0, -8.5 };
+
+    // Z-weighting (flat, no correction)
+    private static readonly double[] ZWeighting = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
+
+    private static readonly double[] CenterFreqs = { 31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000 };
+    private static readonly string[] FreqLabels  = { "31.5", "63", "125", "250", "500", "1k", "2k", "4k", "8k", "16k" };
+
+    [Parameter] public SgWeightingCurve Weighting { get; set; } = SgWeightingCurve.A;
+    [Parameter] public int UpdateIntervalMs { get; set; } = 100;
+    [Parameter] public bool ShowPeakHold { get; set; } = true;
+    [Parameter] public EventCallback<SgOctaveReading> OnReading { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-octave-analyzer.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("init", SelfRef, _canvasRef, _instanceId, new
+        {
+            updateIntervalMs = UpdateIntervalMs,
+            showPeakHold     = ShowPeakHold,
+        });
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("dispose", _instanceId);
+    }
+
+    public async Task StartAsync()
+    {
+        if (_isRunning) return;
+        _error = null;
+        try
+        {
+            await SafeInvokeVoidAsync("start", _instanceId);
+            _isRunning = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось получить доступ к микрофону: {ex.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    public async Task StopAsync()
+    {
+        if (!_isRunning) return;
+        await SafeInvokeVoidAsync("stop", _instanceId);
+        _isRunning = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // Called from JS with FFT data
+    [Microsoft.JSInterop.JSInvokable]
+    public async Task OnFftDataAsync(float[] fftData, int sampleRate)
+    {
+        if (IsDisposed) return;
+
+        var weights = Weighting switch
+        {
+            SgWeightingCurve.A => AWeighting,
+            SgWeightingCurve.C => CWeighting,
+            _                  => ZWeighting,
+        };
+
+        int fftSize = fftData.Length * 2;
+        double freqResolution = (double)sampleRate / fftSize;
+
+        for (int i = 0; i < _bands.Count; i++)
+        {
+            double fc   = CenterFreqs[i];
+            double fLow = fc / Math.Sqrt(2.0);
+            double fHigh= fc * Math.Sqrt(2.0);
+
+            int binLow  = Math.Max(1, (int)Math.Floor(fLow  / freqResolution));
+            int binHigh = Math.Min(fftData.Length - 1, (int)Math.Ceiling(fHigh / freqResolution));
+
+            double energy = 0.0;
+            int count = 0;
+            for (int b = binLow; b <= binHigh; b++)
+            {
+                double mag = fftData[b];
+                energy += mag * mag;
+                count++;
+            }
+
+            double rawDb = count > 0
+                ? 10.0 * Math.Log10(energy / count + 1e-12)
+                : -96.0;
+
+            rawDb = Math.Max(-96.0, Math.Min(0.0, rawDb));
+            double weightedDb = rawDb + weights[i];
+
+            _bands[i].RawDb      = rawDb;
+            _bands[i].WeightedDb = weightedDb;
+            if (weightedDb > _bands[i].PeakDb)
+                _bands[i].PeakDb = weightedDb;
+        }
+
+        // Overall Leq
+        double sumEnergy = _bands.Sum(b => Math.Pow(10.0, b.WeightedDb / 10.0));
+        _overallDb = 10.0 * Math.Log10(sumEnergy + 1e-12);
+
+        if (OnReading.HasDelegate)
+        {
+            var reading = new SgOctaveReading
+            {
+                Timestamp  = DateTime.Now,
+                Bands      = _bands.Select(b => new SgOctaveBand
+                {
+                    CenterFreq  = b.CenterFreq,
+                    Label       = b.Label,
+                    RawDb       = b.RawDb,
+                    WeightedDb  = b.WeightedDb,
+                    PeakDb      = b.PeakDb,
+                }).ToList(),
+                OverallDb  = _overallDb,
+                Weighting  = Weighting,
+            };
+            await OnReading.InvokeAsync(reading);
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void ResetPeaks()
+    {
+        foreach (var b in _bands) b.PeakDb = -96.0;
+        StateHasChanged();
+    }
+
+    private static List<SgOctaveBand> InitBands()
+    {
+        var bands = new List<SgOctaveBand>();
+        for (int i = 0; i < CenterFreqs.Length; i++)
+        {
+            bands.Add(new SgOctaveBand
+            {
+                CenterFreq = CenterFreqs[i],
+                Label      = FreqLabels[i],
+                RawDb      = -96.0,
+                WeightedDb = -96.0,
+                PeakDb     = -96.0,
+            });
+        }
+        return bands;
+    }
+
+    private static string GetLevelClass(double db) => db switch
+    {
+        > -10 => "sg-oa-level-danger",
+        > -20 => "sg-oa-level-warning",
+        > -40 => "sg-oa-level-ok",
+        _     => "sg-oa-level-low",
+    };
+}

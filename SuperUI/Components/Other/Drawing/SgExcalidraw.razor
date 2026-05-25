@@ -1,0 +1,72 @@
+@using Microsoft.JSInterop
+@using SuperUI.Base.ComponentBases
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div id="@_containerId" @ref="_containerRef" class="@Css("sg-excalidraw-wrapper").Build()" style="@Styles().Build()">
+</div>
+
+<style>
+    .sg-excalidraw-wrapper {
+        width: 100%;
+        height: 600px;
+        border: 1px solid var(--sg-border-color);
+        border-radius: var(--sg-radius-lg);
+        overflow: hidden;
+        background: #fdfdfd;
+    }
+</style>
+
+@code {
+    private string _containerId = $"excal_{Guid.NewGuid():N}";
+    private ElementReference _containerRef;
+    private DotNetObjectReference<SgExcalidraw>? _objRef;
+    private bool _isReady;
+
+    [Parameter] public object? InitialData { get; set; }
+    [Parameter] public string Theme { get; set; } = "light";
+    [Parameter] public EventCallback OnReady { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-excalidraw.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        _objRef = DotNetObjectReference.Create(this);
+        
+        var options = new {
+            initialData = InitialData,
+            theme = Theme
+        };
+
+        await SafeInvokeVoidAsync("initExcalidraw", _containerRef, _objRef, options);
+    }
+
+    [JSInvokable]
+    public async Task OnReadyCallback()
+    {
+        _isReady = true;
+        await OnReady.InvokeAsync();
+    }
+
+    public async Task<string?> ExportAsBase64Async(string mimeType = "image/png")
+    {
+        if (!_isReady) return null;
+        return await SafeInvokeAsync<string?>("exportToBlob", _containerId, new { mimeType });
+    }
+
+    public async Task UpdateSceneAsync(object sceneData)
+    {
+        if (!_isReady) return;
+        await SafeInvokeVoidAsync("updateScene", _containerId, sceneData);
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_isReady)
+        {
+            try { await SafeInvokeVoidAsync("dispose", _containerId); } catch { }
+        }
+        _objRef?.Dispose();
+        await base.DisposeAsync();
+    }
+}

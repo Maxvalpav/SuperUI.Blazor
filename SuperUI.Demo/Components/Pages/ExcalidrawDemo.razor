@@ -1,0 +1,149 @@
+@page "/excalidraw-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+
+<PageTitle>Excalidraw Whiteboard - SuperUI</PageTitle>
+
+<div class="sg-demo-header" style="margin-bottom: 24px;">
+    <SgStack Vertical Spacing="4">
+        <h1 style="margin:0; font-weight:700; color:var(--sui-text-primary);">Excalidraw Whiteboard</h1>
+        <p style="margin:0; opacity:0.7;">Профессиональный инструмент для эскизов и диаграмм, интегрированный из React в Blazor.</p>
+    </SgStack>
+</div>
+
+<SgRow Gutter="24">
+    <!-- Main Canvas -->
+    <SgCol Span="17">
+        <SgCard Padding="0" style="overflow: hidden; border: 1px solid var(--sui-border);">
+            <div style="height: 750px; position: relative;">
+                <SgExcalidraw @ref="_excalidraw" OnReady="HandleReady" />
+                
+                @if (!_isReady)
+                {
+                    <div style="position: absolute; inset: 0; background: var(--sui-bg-secondary); display: flex; align-items: center; justify-content: center; z-index: 10;">
+                        <SgStack Vertical Align="SgAlignItems.Center" Spacing="16">
+                            <SgSpinner Size="SgSize.Lg" />
+                            <div style="font-weight: 600; color: var(--sui-text-muted);">Загрузка React-компонента Excalidraw...</div>
+                        </SgStack>
+                    </div>
+                }
+            </div>
+        </SgCard>
+    </SgCol>
+
+    <!-- Controls & Info -->
+    <SgCol Span="7">
+        <SgStack Vertical Spacing="20">
+            <SgCard Title="Инструменты">
+                <SgStack Vertical Spacing="12">
+                    <SgButton Color="SgColor.Primary" OnClick="ExportImage" Block style="height: 40px;">
+                        <SgIcon Icon="@SgIcons.Download" style="margin-right:8px;"/> Экспортировать в PNG
+                    </SgButton>
+                    <SgButton Variant="SgButtonVariant.Outlined" OnClick="LoadTemplate" Block>
+                        <SgIcon Icon="@SgIcons.Plus" style="margin-right:8px;"/> Загрузить шаблон
+                    </SgButton>
+                    <SgButton Variant="SgButtonVariant.Ghost" OnClick="ClearBoard" Block style="color: var(--sui-danger);">
+                        <SgIcon Icon="@SgIcons.Trash" style="margin-right:8px;"/> Очистить доску
+                    </SgButton>
+                </SgStack>
+            </SgCard>
+
+            @if (!string.IsNullOrEmpty(_lastExport))
+            {
+                <SgCard Title="Последний экспорт" Subtitle="Превью в Base64">
+                    <div style="text-align: center; background: var(--sui-bg-secondary); padding: 12px; border-radius: 8px; border: 1px dashed var(--sui-border);">
+                        <img src="data:image/png;base64,@_lastExport" style="max-width: 100%; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" />
+                        <div style="margin-top: 8px; font-size: 11px; color: var(--sui-text-muted);">Нажмите правой кнопкой для сохранения</div>
+                    </div>
+                </SgCard>
+            }
+
+            <SgCard Title="Особенности реализации">
+                <SgStack Vertical Spacing="12">
+                    <div class="feat-item">
+                        <SgIcon Icon="@SgIcons.Zap" Size="14" Color="var(--sui-primary)" />
+                        <span><strong>React-in-Blazor:</strong> Полный доступ к экосистеме React через ReactDOM.createRoot.</span>
+                    </div>
+                    <div class="feat-item">
+                        <SgIcon Icon="@SgIcons.Cpu" Size="14" Color="var(--sui-success)" />
+                        <span><strong>Бинарный мост:</strong> Передача сцены через JSON и экспорт в Base64 без потерь.</span>
+                    </div>
+                    <div class="feat-item">
+                        <SgIcon Icon="@SgIcons.Shield" Size="14" Color="var(--sui-warning)" />
+                        <span><strong>Умный Dispose:</strong> Корректный unmount React-дерева при переходе между страницами.</span>
+                    </div>
+                </SgStack>
+            </SgCard>
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+<style>
+    .feat-item {
+        display: flex;
+        gap: 8px;
+        font-size: 13px;
+        line-height: 1.4;
+    }
+    .feat-item strong { color: var(--sui-text-primary); }
+</style>
+
+@code {
+    private SgExcalidraw? _excalidraw;
+    private string? _lastExport;
+    private bool _isReady;
+
+    private void HandleReady()
+    {
+        _isReady = true;
+        StateHasChanged();
+    }
+
+    private async Task ExportImage()
+    {
+        if (_excalidraw != null)
+        {
+            _lastExport = await _excalidraw.ExportAsBase64Async();
+            StateHasChanged();
+        }
+    }
+
+    private async Task ClearBoard()
+    {
+        if (_excalidraw != null)
+        {
+            await _excalidraw.UpdateSceneAsync(new { elements = Array.Empty<object>() });
+        }
+    }
+
+    private async Task LoadTemplate()
+    {
+        if (_excalidraw != null)
+        {
+            var template = new {
+                elements = new object[] {
+                    new {
+                        type = "rectangle",
+                        x = 100, y = 100, width = 200, height = 120,
+                        backgroundColor = "#e7f5ff", strokeColor = "#1971c2",
+                        strokeWidth = 2, roughness = 1, roundness = new { type = 3 }
+                    },
+                    new {
+                        type = "text",
+                        x = 120, y = 145,
+                        text = "SuperUI + React",
+                        fontSize = 20, fontFamily = 1
+                    },
+                    new {
+                        type = "arrow",
+                        x = 310, y = 160,
+                        width = 100, height = 50,
+                        points = new[] { new[] { 0, 0 }, new[] { 100, 50 } },
+                        strokeColor = "#1971c2"
+                    }
+                }
+            };
+            await _excalidraw.UpdateSceneAsync(template);
+        }
+    }
+}

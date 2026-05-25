@@ -5,7 +5,8 @@ using SuperUI.Enums;
 namespace SuperUI.Components;
 
 /// <summary>
-/// Set components spacing.
+/// Set components spacing. Arranges children with consistent gaps, optional separators,
+/// and supports both horizontal and vertical orientations.
 /// </summary>
 public partial class SgSpace : SgComponentBase
 {
@@ -16,10 +17,15 @@ public partial class SgSpace : SgComponentBase
     [Parameter] public SgOrientation Orientation { get; set; } = SgOrientation.Horizontal;
 
     /// <summary>
-    /// Space size. Can be "small", "middle", "large" or a custom pixel value (e.g. "16px").
+    /// Space size. Can be "small", "middle", "large" or a custom CSS length (e.g. "16px").
     /// Default is "small" (8px).
     /// </summary>
     [Parameter] public string Size { get; set; } = "small";
+
+    /// <summary>
+    /// Space size from design system. If set, overrides <see cref="Size"/>.
+    /// </summary>
+    [Parameter] public SgSize? Space { get; set; }
 
     /// <summary>Alignment of items. Default is <see cref="SgAlignItems.Center"/>.</summary>
     [Parameter] public SgAlignItems Align { get; set; } = SgAlignItems.Center;
@@ -27,18 +33,28 @@ public partial class SgSpace : SgComponentBase
     /// <summary>Whether to wrap lines. Only works in horizontal orientation.</summary>
     [Parameter] public bool Wrap { get; set; }
 
-    /// <summary>Optional separator between items.</summary>
+    /// <summary>Optional separator rendered between each child item.</summary>
     [Parameter] public RenderFragment? Split { get; set; }
 
     /// <summary>If true, the space fills the full width of its parent.</summary>
     [Parameter] public bool FullWidth { get; set; }
 
-    private string GapValue => Size.ToLower() switch
+    /// <summary>If true, renders as inline-flex instead of flex.</summary>
+    [Parameter] public bool Inline { get; set; }
+
+    private string ResolvedGap => Space switch
     {
-        "small"  => "8px",
-        "middle" => "16px",
-        "large"  => "24px",
-        _        => Size.Contains("px") ? Size : $"{Size}px"
+        SgSize.Sm => "var(--sg-spacing-2)",   // 8px
+        SgSize.Md => "var(--sg-spacing-4)",   // 16px
+        SgSize.Lg => "var(--sg-spacing-8)",   // 32px
+        SgSize.Xl => "var(--sg-spacing-12)",  // 48px
+        _ => Size.ToLower() switch
+        {
+            "small"  => "8px",
+            "middle" => "16px",
+            "large"  => "24px",
+            _ => Size.Contains("px") || Size.Contains("rem") || Size.Contains("var") ? Size : $"{Size}px"
+        }
     };
 
     private string AlignCss => Align switch
@@ -50,14 +66,21 @@ public partial class SgSpace : SgComponentBase
         _                     => "stretch"
     };
 
-    private string ComputedStyle => 
-        $"display: {(FullWidth ? "flex" : "inline-flex")};" +
-        $"flex-direction: {(Orientation == SgOrientation.Horizontal ? "row" : "column")};" +
-        $"gap: {GapValue};" +
-        $"align-items: {AlignCss};" +
-        $"flex-wrap: {(Wrap ? "wrap" : "nowrap")};" +
-        (FullWidth ? "width: 100%;" : "") +
-        Style;
+    private bool IsVertical => Orientation == SgOrientation.Vertical;
 
-    private string ComputedClass => $"sgc-space {CssClass}";
+    private string ComputedStyle
+    {
+        get
+        {
+            var display = (FullWidth && !Inline) ? "flex" : "inline-flex";
+            var direction = IsVertical ? "column" : "row";
+            var wrapVal = Wrap ? "wrap" : "nowrap";
+            var style = $"display:{display};flex-direction:{direction};gap:{ResolvedGap};align-items:{AlignCss};flex-wrap:{wrapVal};";
+            if (FullWidth) style += "width:100%;";
+            if (!string.IsNullOrWhiteSpace(Style)) style += Style;
+            return style;
+        }
+    }
+
+    private string ComputedClass => $"sgc-space{(!string.IsNullOrWhiteSpace(CssClass) ? " " + CssClass : "")}";
 }

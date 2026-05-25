@@ -1,6 +1,10 @@
 @page "/duckdb-demo"
 @using SuperUI.Components
 @using System.Text.Json
+@using System.Linq
+@using System.IO
+@using System.Globalization
+@using System.Diagnostics
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -1509,6 +1513,8 @@
         StateHasChanged();
         try
         {
+            if (_module is null) return;
+            
             // Build column definitions
             var colDefs = _ctorColumns.Select(c =>
             {
@@ -1520,7 +1526,7 @@
 
             var createSql = $"DROP TABLE IF EXISTS \"{name}\";\nCREATE TABLE \"{name}\" ({string.Join(", ", colDefs)});";
 
-            var execRes = await _module!.InvokeAsync<JsonElement>("execute", createSql);
+            var execRes = await _module.InvokeAsync<JsonElement>("execute", createSql);
             if (!execRes.GetProperty("ok").GetBoolean())
             {
                 _ctorError = execRes.TryGetProperty("error", out var e) ? e.GetString() : "Ошибка создания";

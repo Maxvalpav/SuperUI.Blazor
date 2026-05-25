@@ -11,28 +11,41 @@ export function loadOpenCV() {
         
         console.log('[SgDocScanner] Loading OpenCV.js from CDN...');
         const script = document.createElement('script');
-        // Используем более стабильный CDN
-        script.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.6.0.1/dist/opencv.js';
+        // Используем официальный CDN или стабильный jsdelivr
+        script.src = 'https://docs.opencv.org/4.5.5/opencv.js'; 
         script.async = true;
         
-        window.Module = {
-            onRuntimeInitialized: () => {
-                console.log('[SgDocScanner] OpenCV.js Runtime Initialized');
-                resolve(window.cv);
-            }
-        };
+        // Предотвращаем конфликты с другими модулями
+        if (!window.Module) {
+            window.Module = {
+                onRuntimeInitialized: () => {
+                    console.log('[SgDocScanner] OpenCV.js Runtime Initialized');
+                    resolve(window.cv);
+                }
+            };
+        }
 
         script.onload = () => {
             console.log('[SgDocScanner] OpenCV.js script loaded');
-            // В некоторых сборках cv инициализируется сразу
-            if (window.cv && window.cv.Mat) {
-                resolve(window.cv);
-            }
+            // Если onRuntimeInitialized не сработал вовремя, проверяем наличие cv
+            setTimeout(() => {
+                if (window.cv && window.cv.Mat) {
+                    resolve(window.cv);
+                }
+            }, 500);
         };
         
         script.onerror = () => {
-            cvPromise = null;
-            reject(new Error('Failed to load OpenCV.js'));
+            console.warn('[SgDocScanner] Failed to load from official CDN, trying fallback...');
+            const fallback = document.createElement('script');
+            fallback.src = 'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.6.0.1/dist/opencv.js';
+            fallback.async = true;
+            fallback.onload = () => resolve(window.cv);
+            fallback.onerror = () => {
+                cvPromise = null;
+                reject(new Error('Failed to load OpenCV.js from all sources'));
+            };
+            document.head.appendChild(fallback);
         };
         document.head.appendChild(script);
     });

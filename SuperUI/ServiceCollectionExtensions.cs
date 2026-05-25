@@ -67,6 +67,7 @@ public static class ServiceCollectionExtensions
         services.TryAddScoped<Services.Data.SgDexieService>();
         services.TryAddScoped<Services.Data.SgCbrService>();
         services.TryAddScoped<Services.Network.SgFirewallService>();
+        services.TryAddScoped<Services.Network.SgTracerouteService>();
         services.TryAddScoped<Services.Analytics.SgHeatmapService>();
         services.TryAddScoped<Services.Llm.ILlmService, Services.Llm.SgLlmService>();
         services.TryAddScoped<Services.Llm.IOpenRouterService, Services.Llm.SgOpenRouterService>();

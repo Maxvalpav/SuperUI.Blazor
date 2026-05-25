@@ -1,0 +1,281 @@
+@page "/network-trace-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+
+<PageTitle>Network Traceroute Map - SuperUI</PageTitle>
+
+<div class="sg-demo-header" style="margin-bottom: 24px;">
+    <SgStack Vertical Spacing="4">
+        <h1 style="margin:0; font-weight:700; color:var(--sui-text-primary);">Network Traceroute Map</h1>
+        <p style="margin:0; opacity:0.7;">Визуализация маршрута сетевых пакетов по всему миру с диагностикой задержек.</p>
+    </SgStack>
+</div>
+
+<SgRow Gutter="24">
+    <!-- Left: Map and Controls -->
+    <SgCol Span="16">
+        <SgStack Vertical Spacing="24">
+            <SgCard Title="Центр управления трассировкой">
+                <SgRow Gutter="16" Align="SgAlignItems.End">
+                    <SgCol Span="14">
+                        <SgTextBox Label="Целевой хост / IP" @bind-Value="_target" Placeholder="Напр. 8.8.8.8" Block />
+                    </SgCol>
+                    <SgCol Span="6">
+                        <SgButton Variant="SgButtonVariant.Primary" OnClick="StartTrace" Disabled="_isTracing" Block class="trace-btn">
+                            @if (_isTracing)
+                            {
+                                <SgSpinner Size="SgSize.Sm" style="margin-right:8px;"/>
+                                <span>Диагностика...</span>
+                            }
+                            else
+                            {
+                                <SgIcon Icon="@SgIcons.Search" style="margin-right:8px;"/>
+                                <span>Запустить</span>
+                            }
+                        </SgButton>
+                    </SgCol>
+                    <SgCol Span="4">
+                        <SgButton Variant="SgButtonVariant.Ghost" OnClick="ClearTrace" Block Title="Сброс">
+                            <SgIcon Icon="@SgIcons.RefreshCw" />
+                        </SgButton>
+                    </SgCol>
+                </SgRow>
+
+                <div class="popular-targets">
+                    <span class="label">Популярные:</span>
+                    <SgTag Color="processing" Clickable OnClick='() => SetTarget("8.8.8.8")'>Google</SgTag>
+                    <SgTag Color="processing" Clickable OnClick='() => SetTarget("1.1.1.1")'>Cloudflare</SgTag>
+                    <SgTag Color="processing" Clickable OnClick='() => SetTarget("yandex.ru")'>Yandex</SgTag>
+                    <SgTag Color="processing" Clickable OnClick='() => SetTarget("amazon.com")'>Amazon (AWS)</SgTag>
+                </div>
+                
+                <div class="map-container shadow-inner">
+                    <SgNetworkTrace @ref="_trace"
+                                    Target="@_target"
+                                    MaxHops="30"
+                                    TimeoutMs="5000"
+                                    OnTraceComplete="OnTraceComplete"
+                                    Style="height: 100%; width: 100%;" />
+                    
+                    <div class="map-legend">
+                        <div class="legend-item"><span class="dot green"></span> &lt; 50ms</div>
+                        <div class="legend-item"><span class="dot yellow"></span> 50-150ms</div>
+                        <div class="legend-item"><span class="dot red"></span> &gt; 150ms</div>
+                    </div>
+                </div>
+            </SgCard>
+
+            @if (_lastResult?.Hops?.Any() == true)
+            {
+                <SgCard Title="Детальный лог маршрутизации" NoPadding="true">
+                    <SgTable Items="_lastResult.Hops" TItem="SgTraceHop" ShowSearch="false" EnablePaging="false">
+                        <ChildContent>
+                            <SgTableColumn TItem="SgTraceHop" Title="№" Value="@(c => c.HopNumber)" Width="50px" />
+                            <SgTableColumn TItem="SgTraceHop" Title="IP-адрес" Width="140px">
+                                <Template>
+                                    <code class="ip-code">@context.IpAddress</code>
+                                </Template>
+                            </SgTableColumn>
+                            <SgTableColumn TItem="SgTraceHop" Title="Задержка" Width="100px">
+                                <Template>
+                                    @if (context.IsTimeout)
+                                    {
+                                        <SgBadge Status="SgStatus.Error" Text="Timeout" />
+                                    }
+                                    else
+                                    {
+                                        <div class="ping-cell">
+                                            <div class="ping-bar" style="width: @(Math.Min(100, context.PingMs / 2))%; background: @GetPingColor(context.PingMs)"></div>
+                                            <span>@context.PingMs.ToString("F1") ms</span>
+                                        </div>
+                                    }
+                                </Template>
+                            </SgTableColumn>
+                            <SgTableColumn TItem="SgTraceHop" Title="Страна" Value="@(c => c.Country)" Width="120px" />
+                            <SgTableColumn TItem="SgTraceHop" Title="Город / ISP" Value="@(c => c.City)" />
+                        </ChildContent>
+                    </SgTable>
+                </SgCard>
+            }
+        </SgStack>
+    </SgCol>
+
+    <!-- Right: Stats -->
+    <SgCol Span="8">
+        <SgStack Vertical Spacing="20">
+            <SgCard Title="Статистика канала">
+                <SgStack Vertical Spacing="16">
+                    <div class="nt-stat-card">
+                        <div class="nt-stat-label">ЦЕЛЕВОЙ ХОСТ</div>
+                        <div class="nt-stat-value">@(_lastResult?.Target ?? _target)</div>
+                    </div>
+                    
+                    <SgRow Gutter="12">
+                        <SgCol Span="12">
+                            <div class="nt-mini-stat">
+                                <div class="label">ХОПОВ</div>
+                                <div class="value">@(_lastResult?.Hops.Count.ToString() ?? "0")</div>
+                            </div>
+                        </SgCol>
+                        <SgCol Span="12">
+                            <div class="nt-mini-stat">
+                                <div class="label">ТАЙМАУТЫ</div>
+                                <div class="value @(_lastResult?.Hops.Any(h => h.IsTimeout) == true ? "text-warning" : "")">
+                                    @(_lastResult?.Hops.Count(h => h.IsTimeout).ToString() ?? "0")
+                                </div>
+                            </div>
+                        </SgCol>
+                    </SgRow>
+
+                    <div class="nt-stat-card">
+                        <div class="nt-stat-label">МАКСИМАЛЬНЫЙ ПИНГ</div>
+                        <div class="nt-stat-value" style="color: @GetPingColor(MaxPing)">
+                            @MaxPing.ToString("F1") <small>ms</small>
+                        </div>
+                    </div>
+
+                    <div class="nt-stat-card">
+                        <div class="nt-stat-label">ВРЕМЯ СКАНИРОВАНИЯ</div>
+                        <div class="nt-stat-value">@(_lastResult?.Duration.TotalSeconds.ToString("F1") ?? "0") <small>сек</small></div>
+                    </div>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Диагностика">
+                <SgStack Vertical Spacing="12">
+                    @if (_lastResult == null)
+                    {
+                        <SgEmpty Description="Ожидание запуска трассировки" />
+                    }
+                    else if (MaxPing > 200)
+                    {
+                        <SgAlert Variant="SgAlertVariant.Warn" Title="Высокая задержка">
+                            Обнаружены узлы с задержкой более 200мс. Это может влиять на работу real-time приложений.
+                        </SgAlert>
+                    }
+                    else if (_lastResult.Hops.Any(h => h.IsTimeout))
+                    {
+                        <SgAlert Variant="SgAlertVariant.Danger" Title="Потери пакетов">
+                            Некоторые узлы не ответили на ICMP запросы. Возможна блокировка трафика или нестабильный канал.
+                        </SgAlert>
+                    }
+                    else
+                    {
+                        <SgAlert Variant="SgAlertVariant.Success" Title="Канал стабилен">
+                            Маршрут построен без потерь, средняя задержка в пределах нормы.
+                        </SgAlert>
+                    }
+                </SgStack>
+            </SgCard>
+        </SgStack>
+    </SgCol>
+</SgRow>
+
+<style>
+    .trace-btn { height: 40px; font-weight: 600; }
+    .popular-targets { margin-top: 12px; display: flex; gap: 8px; align-items: center; }
+    .popular-targets .label { font-size: 12px; color: var(--sui-text-muted); margin-right: 4px; }
+    
+    .map-container { 
+        height: 500px; 
+        margin-top: 24px; 
+        background: #0f172a; 
+        border-radius: 12px; 
+        overflow: hidden; 
+        position: relative; 
+        border: 1px solid #1e293b;
+    }
+
+    .map-legend {
+        position: absolute;
+        bottom: 16px;
+        left: 16px;
+        background: rgba(15, 23, 42, 0.8);
+        backdrop-filter: blur(4px);
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: 1px solid #334155;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        z-index: 1000;
+    }
+
+    .legend-item { display: flex; align-items: center; gap: 8px; font-size: 11px; color: #94a3b8; }
+    .legend-item .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .legend-item .dot.green { background: var(--sui-success); }
+    .legend-item .dot.yellow { background: var(--sui-warning); }
+    .legend-item .dot.red { background: var(--sui-danger); }
+
+    .nt-stat-card {
+        background: var(--sui-bg-secondary);
+        padding: 16px;
+        border-radius: 10px;
+        border: 1px solid var(--sui-border-light);
+    }
+    .nt-stat-label { font-size: 11px; color: var(--sui-text-muted); font-weight: 600; margin-bottom: 4px; text-transform: uppercase; }
+    .nt-stat-value { font-size: 20px; font-weight: 700; color: var(--sui-text-primary); }
+    .nt-stat-value small { font-size: 14px; opacity: 0.6; margin-left: 2px; }
+
+    .nt-mini-stat {
+        background: var(--sui-bg-secondary);
+        padding: 12px;
+        border-radius: 10px;
+        border: 1px solid var(--sui-border-light);
+        text-align: center;
+    }
+    .nt-mini-stat .label { font-size: 10px; color: var(--sui-text-muted); font-weight: 600; margin-bottom: 2px; }
+    .nt-mini-stat .value { font-size: 18px; font-weight: 700; }
+    .text-warning { color: var(--sui-warning); }
+
+    .ip-code { font-size: 12px; background: var(--sui-bg-secondary); padding: 2px 6px; border-radius: 4px; color: var(--sui-primary); }
+    
+    .ping-cell { position: relative; height: 20px; display: flex; align-items: center; padding-left: 4px; font-size: 12px; font-weight: 600; }
+    .ping-bar { position: absolute; left: 0; top: 0; bottom: 0; opacity: 0.2; border-radius: 0 4px 4px 0; transition: width 0.3s; }
+</style>
+
+@code {
+    private SgNetworkTrace? _trace;
+    private string _target = "8.8.8.8";
+    private bool _isTracing;
+    private SgTraceResult? _lastResult;
+
+    private double MaxPing => _lastResult?.Hops.Where(h => !h.IsTimeout).Select(h => h.PingMs).DefaultIfEmpty(0).Max() ?? 0;
+
+    private string GetPingColor(double ms) => ms switch {
+        < 50 => "var(--sui-success)",
+        < 150 => "var(--sui-warning)",
+        _ => "var(--sui-danger)"
+    };
+
+    private void SetTarget(string target)
+    {
+        _target = target;
+        StateHasChanged();
+    }
+
+    private async Task StartTrace()
+    {
+        if (_trace is null || _isTracing) return;
+        _isTracing = true;
+        _lastResult = null;
+        StateHasChanged();
+        await _trace.StartTraceAsync();
+    }
+
+    private async Task ClearTrace()
+    {
+        _lastResult = null;
+        _isTracing = false;
+        if (_trace != null) await _trace.StartTraceAsync(); // Actually restart/reset
+        StateHasChanged();
+    }
+
+    private Task OnTraceComplete(SgTraceResult result)
+    {
+        _lastResult = result;
+        _isTracing = false;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+}

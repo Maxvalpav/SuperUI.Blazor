@@ -1,0 +1,198 @@
+@namespace SuperUI.Components
+@inherits SgJsComponentBase
+
+<div class="@Css("sg-anomaly-detector").Build()" style="@Styles().Build()" @attributes="AttributesWithoutClassAndStyle">
+
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <div class="sg-ad-title">@Title</div>
+    }
+
+    <div class="sg-ad-canvas-wrap">
+        <canvas @ref="_canvasRef"
+                class="sg-ad-canvas"
+                role="img"
+                aria-label="Time-series anomaly chart"
+                width="900"
+                height="260"></canvas>
+    </div>
+
+    @if (_result is not null)
+    {
+        <div class="sg-ad-stats">
+            <div class="sg-ad-stat">
+                <span class="sg-ad-stat-label">Точек</span>
+                <span class="sg-ad-stat-value">@_result.TotalPoints</span>
+            </div>
+            <div class="sg-ad-stat">
+                <span class="sg-ad-stat-label">Среднее</span>
+                <span class="sg-ad-stat-value">@_result.Mean.ToString("F3")</span>
+            </div>
+            <div class="sg-ad-stat">
+                <span class="sg-ad-stat-label">Ст. откл.</span>
+                <span class="sg-ad-stat-value">@_result.StdDev.ToString("F3")</span>
+            </div>
+            <div class="sg-ad-stat sg-ad-stat-anomaly">
+                <span class="sg-ad-stat-label">Аномалий</span>
+                <span class="sg-ad-stat-value @(_result.Anomalies.Count > 0 ? "sg-ad-anomaly-count" : "")">@_result.Anomalies.Count</span>
+            </div>
+            <div class="sg-ad-stat">
+                <span class="sg-ad-stat-label">Время</span>
+                <span class="sg-ad-stat-value">@_result.ProcessingTime.TotalMilliseconds.ToString("F1") мс</span>
+            </div>
+        </div>
+
+        @if (_result.Anomalies.Count > 0)
+        {
+            <div class="sg-ad-anomaly-list">
+                <div class="sg-ad-anomaly-list-title">Обнаруженные аномалии</div>
+                @foreach (var a in _result.Anomalies)
+                {
+                    <div class="sg-ad-anomaly-item">
+                        <span class="sg-ad-anomaly-badge">@a.Type</span>
+                        <span class="sg-ad-anomaly-time">@a.StartTime.ToString("HH:mm:ss") – @a.EndTime.ToString("HH:mm:ss")</span>
+                        <span class="sg-ad-anomaly-dev">Δ @a.MaxDeviation.ToString("F2")σ</span>
+                        @if (!string.IsNullOrEmpty(a.Description))
+                        {
+                            <span class="sg-ad-anomaly-desc">@a.Description</span>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private ElementReference _canvasRef;
+    private readonly string _instanceId = SgIdGenerator.NewId("sg-ad");
+    private SgAnomalyDetectionResult? _result;
+
+    [Parameter] public IEnumerable<SgTimeSeriesPoint>? Data { get; set; }
+    [Parameter] public double ZScoreThreshold { get; set; } = 2.5;
+    [Parameter] public int WindowSize { get; set; } = 20;
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? YAxisLabel { get; set; }
+
+    protected override string ModulePath => "./_content/SuperUI/sg-anomaly-detector.js";
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        await SafeInvokeVoidAsync("init", SelfRef, _canvasRef, _instanceId);
+        await DetectAndRenderAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+        if (Module is not null)
+            await DetectAndRenderAsync();
+    }
+
+    public async Task DetectAndRenderAsync()
+    {
+        if (Data is null) return;
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var points = Data.ToList();
+        if (points.Count == 0) return;
+
+        // Compute global mean and stddev
+        double mean = points.Average(p => p.Value);
+        double variance = points.Average(p => (p.Value - mean) * (p.Value - mean));
+        double stdDev = Math.Sqrt(variance);
+
+        var anomalyIndices = new List<(int index, double zScore)>();
+
+        // Z-score in sliding window
+        for (int i = 0; i < points.Count; i++)
+        {
+            int start = Math.Max(0, i - WindowSize / 2);
+            int end = Math.Min(points.Count - 1, i + WindowSize / 2);
+            var window = points.Skip(start).Take(end - start + 1).ToList();
+
+            double wMean = window.Average(p => p.Value);
+            double wVariance = window.Average(p => (p.Value - wMean) * (p.Value - wMean));
+            double wStdDev = Math.Sqrt(wVariance);
+
+            if (wStdDev < 1e-10) continue;
+
+            double z = Math.Abs((points[i].Value - wMean) / wStdDev);
+            if (z >= ZScoreThreshold)
+                anomalyIndices.Add((i, z));
+        }
+
+        // Group consecutive anomaly indices
+        var anomalies = new List<SgAnomaly>();
+        if (anomalyIndices.Count > 0)
+        {
+            int groupStart = anomalyIndices[0].index;
+            int groupEnd = anomalyIndices[0].index;
+            double maxZ = anomalyIndices[0].zScore;
+
+            for (int i = 1; i < anomalyIndices.Count; i++)
+            {
+                var (idx, z) = anomalyIndices[i];
+                if (idx <= groupEnd + 3)
+                {
+                    groupEnd = idx;
+                    if (z > maxZ) maxZ = z;
+                }
+                else
+                {
+                    anomalies.Add(BuildAnomaly(points, groupStart, groupEnd, maxZ));
+                    groupStart = idx;
+                    groupEnd = idx;
+                    maxZ = z;
+                }
+            }
+            anomalies.Add(BuildAnomaly(points, groupStart, groupEnd, maxZ));
+        }
+
+        sw.Stop();
+
+        _result = new SgAnomalyDetectionResult
+        {
+            Anomalies = anomalies,
+            Mean = mean,
+            StdDev = stdDev,
+            TotalPoints = points.Count,
+            ProcessingTime = sw.Elapsed,
+        };
+
+        await InvokeAsync(StateHasChanged);
+
+        // Serialize for JS
+        var jsPoints = points.Select(p => new { timestamp = p.Timestamp, value = p.Value }).ToList();
+        var jsAnomalies = anomalies.Select(a => new
+        {
+            startIndex = a.StartIndex,
+            endIndex = a.EndIndex,
+            maxDeviation = a.MaxDeviation,
+            type = a.Type,
+        }).ToList();
+        var opts = new { yAxisLabel = YAxisLabel ?? string.Empty };
+
+        await SafeInvokeVoidAsync("render", _instanceId, jsPoints, jsAnomalies, opts);
+    }
+
+    private static SgAnomaly BuildAnomaly(List<SgTimeSeriesPoint> points, int start, int end, double maxZ)
+    {
+        string type = maxZ > 4.0 ? "extreme" : maxZ > 3.0 ? "spike" : "deviation";
+        return new SgAnomaly
+        {
+            StartIndex = start,
+            EndIndex = end,
+            StartTime = points[start].Timestamp,
+            EndTime = points[end].Timestamp,
+            MaxDeviation = maxZ,
+            Type = type,
+            Description = $"Z-score: {maxZ:F2}, точки [{start}–{end}]",
+        };
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("dispose", _instanceId);
+    }
+}

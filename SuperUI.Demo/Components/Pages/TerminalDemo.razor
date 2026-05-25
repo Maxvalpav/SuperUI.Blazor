@@ -1,0 +1,297 @@
+@page "/terminal-demo"
+@using SuperUI.Components
+
+<PageTitle>Terminal (xterm.js) - SuperUI</PageTitle>
+
+<div class="sg-demo-header">
+    <SgStack Align="SgAlignItems.Center" Gap="12px">
+        <SgIcon Icon="@SgIcons.Terminal" Size="28" Color="var(--sg-primary)" />
+        <div>
+            <h1 class="sg-demo-title">Web Terminal</h1>
+            <p class="sg-demo-subtitle">Индустриальный xterm.js для CLI, логов и интерактивных сессий.</p>
+        </div>
+    </SgStack>
+</div>
+
+<div class="terminal-container shadow-lg">
+    <div class="terminal-header">
+        <SgStack Horizontal Align="SgAlignItems.Center" Gap="16px" Style="width: 100%;">
+            <div class="terminal-dots">
+                <span class="dot red"></span>
+                <span class="dot yellow"></span>
+                <span class="dot green"></span>
+            </div>
+            
+            <div class="terminal-tab active">
+                <SgIcon Icon="@SgIcons.Terminal" Size="14" />
+                <span>bash — super_user</span>
+            </div>
+
+            <div style="flex-grow: 1;"></div>
+
+            <SgStack Horizontal Spacing="4">
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="SimulateLogs" Title="Запустить логи">
+                    <Icon><SgIcon Icon="@SgIcons.Play" /></Icon>
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="PrintColors" Title="Тест цветов">
+                    <Icon><SgIcon Icon="@SgIcons.Palette" /></Icon>
+                </SgButton>
+                <SgDivider Vertical />
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" OnClick="ClearTerminal" Style="color: var(--sg-danger);" Title="Очистить">
+                    <Icon><SgIcon Icon="@SgIcons.Trash" /></Icon>
+                </SgButton>
+            </SgStack>
+            
+            <div class="terminal-status">
+                <SgBadge Status="SgStatus.Success" Dot />
+                <span>Connected</span>
+            </div>
+        </SgStack>
+    </div>
+
+    <div class="terminal-body">
+        <div class="terminal-sidebar">
+            <div class="sidebar-section">
+                <h6>БЫСТРЫЕ КОМАНДЫ</h6>
+                <div class="quick-cmd" @onclick='() => RunCommand("help")'>help</div>
+                <div class="quick-cmd" @onclick='() => RunCommand("date")'>date</div>
+                <div class="quick-cmd" @onclick='() => RunCommand("whoami")'>whoami</div>
+                <div class="quick-cmd" @onclick='() => RunCommand("clear")'>clear</div>
+            </div>
+            
+            <div class="sidebar-section">
+                <h6>ИСТОРИЯ</h6>
+                @foreach (var cmd in _history.TakeLast(5))
+                {
+                    <div class="history-item">@cmd</div>
+                }
+            </div>
+        </div>
+
+        <div class="terminal-content">
+            <SgTerminal @ref="_terminal" OnData="HandleData" />
+        </div>
+    </div>
+</div>
+
+<style>
+    .terminal-container {
+        background: #1e1e1e;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+        height: 600px;
+    }
+
+    .terminal-header {
+        background: #2d2d2d;
+        padding: 8px 16px;
+        border-bottom: 1px solid #333;
+        user-select: none;
+    }
+
+    .terminal-dots {
+        display: flex;
+        gap: 8px;
+    }
+
+    .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+
+    .dot.red { background: #ff5f56; }
+    .dot.yellow { background: #ffbd2e; }
+    .dot.green { background: #27c93f; }
+
+    .terminal-tab {
+        background: #1e1e1e;
+        padding: 6px 16px;
+        border-radius: 8px 8px 0 0;
+        color: #ccc;
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        border: 1px solid #333;
+        border-bottom: none;
+    }
+
+    .terminal-status {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #888;
+        background: #252525;
+        padding: 4px 10px;
+        border-radius: 4px;
+    }
+
+    .terminal-body {
+        display: flex;
+        flex-grow: 1;
+        overflow: hidden;
+    }
+
+    .terminal-sidebar {
+        width: 180px;
+        background: #252525;
+        border-right: 1px solid #333;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+    }
+
+    .sidebar-section h6 {
+        color: #666;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 12px;
+    }
+
+    .quick-cmd {
+        color: #aaa;
+        font-size: 13px;
+        padding: 4px 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .quick-cmd:hover {
+        background: #333;
+        color: #fff;
+    }
+
+    .history-item {
+        color: #666;
+        font-size: 12px;
+        font-family: monospace;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .terminal-content {
+        flex-grow: 1;
+        padding: 8px;
+        position: relative;
+    }
+</style>
+
+@code {
+    private SgTerminal? _terminal;
+    private string _currentLine = "";
+    private List<string> _history = new();
+
+    private async Task RunCommand(string cmd)
+    {
+        if (_terminal == null) return;
+        await _terminal.WriteAsync(cmd + "\r");
+        // HandleData will pick up the \r and process it
+    }
+
+    private async Task ClearTerminal()
+    {
+        if (_terminal != null) await _terminal.ClearAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await Task.Delay(100);
+            await SimulateLogs();
+            await _terminal!.WriteAsync("$ ");
+        }
+    }
+
+    private async Task HandleData(string data)
+    {
+        if (_terminal == null) return;
+
+        foreach (var c in data)
+        {
+            if (c == '\r') // Enter
+            {
+                await _terminal.WriteAsync("\r\n");
+                var cmd = _currentLine.Trim();
+                if (!string.IsNullOrEmpty(cmd))
+                {
+                    _history.Add(cmd);
+                    if (_history.Count > 20) _history.RemoveAt(0);
+                }
+                await ProcessCommand(cmd);
+                _currentLine = "";
+                await _terminal.WriteAsync("$ ");
+            }
+            else if (c == '\u007f') // Backspace
+            {
+                if (_currentLine.Length > 0)
+                {
+                    _currentLine = _currentLine[..^1];
+                    await _terminal.WriteAsync("\b \b");
+                }
+            }
+            else
+            {
+                _currentLine += c;
+                await _terminal.WriteAsync(c.ToString());
+            }
+        }
+        StateHasChanged();
+    }
+
+    private async Task ProcessCommand(string cmd)
+    {
+        if (string.IsNullOrWhiteSpace(cmd)) return;
+
+        switch (cmd.ToLower().Trim())
+        {
+            case "help":
+                await _terminal!.WritelnAsync("Available commands: help, clear, date, whoami");
+                break;
+            case "clear":
+                await _terminal!.ClearAsync();
+                break;
+            case "date":
+                await _terminal!.WritelnAsync(DateTime.Now.ToString("F"));
+                break;
+            case "whoami":
+                await _terminal!.WritelnAsync("super_user");
+                break;
+            default:
+                await _terminal!.WritelnAsync($"Command not found: {cmd}");
+                break;
+        }
+    }
+
+    private async Task SimulateLogs()
+    {
+        if (_terminal is null) return;
+
+        await _terminal.WritelnAsync("[INFO] Starting SuperUI Terminal...");
+        await _terminal.WritelnAsync("[INFO] Loading system modules...");
+        await _terminal.WritelnAsync("[SUCCESS] Kernel loaded.");
+        await _terminal.WritelnAsync("[SUCCESS] Network interface up.");
+        await _terminal.WritelnAsync("");
+        await _terminal.WritelnAsync("Welcome to SuperUI Console.");
+        await _terminal.WritelnAsync("Type 'help' for available commands.");
+        await _terminal.WritelnAsync("");
+    }
+
+    private async Task PrintColors()
+    {
+        if (_terminal == null) return;
+        await _terminal.WritelnAsync("\r\nANSI Color Test:");
+        await _terminal.WritelnAsync("\x1b[31mRed\x1b[0m \x1b[32mGreen\x1b[0m \x1b[33mYellow\x1b[0m \x1b[34mBlue\x1b[0m \x1b[35mMagenta\x1b[0m \x1b[36mCyan\x1b[0m");
+        await _terminal.WritelnAsync("\x1b[41;37m White on Red \x1b[0m \x1b[42;30m Black on Green \x1b[0m");
+        await _terminal.WriteAsync("$ ");
+    }
+}
