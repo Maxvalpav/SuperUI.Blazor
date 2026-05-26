@@ -2,103 +2,290 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<nav class="sgc-nav @(_mini ? "sgc-nav-mini" : "") @(_collapsed ? "sgc-nav-collapsed" : "") @(_mobileOpen ? "sgc-nav-mobile-open" : "") @CssClass">
+@{
+    var navClass = string.Join(" ", new[]
+    {
+        "sgc-nav",
+        Mini ? "sgc-nav-mini" : "",
+        Borderless ? "sgc-nav-borderless" : "",
+        Rounded ? "sgc-nav-rounded" : "",
+        _collapsed ? "sgc-nav-collapsed" : "",
+        CssClass
+    }.Where(x => !string.IsNullOrEmpty(x)));
+}
+<nav class="@navClass">
     <div class="sgc-nav-header">
-        @if (!_mini)
-        {
-            @if (LogoContent is not null)
+            @if (!Mini)
             {
-                <div class="sgc-nav-logo">@LogoContent</div>
+                @if (HeaderContent is not null)
+                {
+                    @HeaderContent
+                }
+                else if (LogoContent is not null)
+                {
+                    <div class="sgc-nav-logo">@LogoContent</div>
+                }
+                else if (!string.IsNullOrEmpty(Title))
+                {
+                    <span class="sgc-nav-brand">@Title</span>
+                }
             }
-            else if (!string.IsNullOrEmpty(Title))
+            else
             {
-                <span class="sgc-nav-brand">@Title</span>
+                <div class="sgc-nav-logo-mini">
+                    <svg width="22" height="22" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                        <rect width="32" height="32" rx="5" fill="rgba(255,255,255,0.15)"/>
+                        <rect x="3" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.9)"/>
+                        <rect x="17" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+                        <rect x="3" y="17" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+                        <rect x="17" y="17" width="12" height="12" rx="2" fill="rgba(255,255,255,0.15)"/>
+                        <rect x="20" y="20" width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.7)"/>
+                    </svg>
+                </div>
             }
-        }
-        else
-        {
-            <div class="sgc-nav-logo-mini">
-                <svg width="22" height="22" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                    <rect width="32" height="32" rx="5" fill="rgba(255,255,255,0.15)"/>
-                    <rect x="3" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.9)"/>
-                    <rect x="17" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
-                    <rect x="3" y="17" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
-                    <rect x="17" y="17" width="12" height="12" rx="2" fill="rgba(255,255,255,0.15)"/>
-                    <rect x="20" y="20" width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.7)"/>
-                </svg>
-            </div>
-        }
-        @{ var collapseTitle = _mini ? Localizer["Expand"] : Localizer["Collapse"]; }
-        <button type="button" class="sgc-nav-collapse-btn" @onclick="ToggleMiniAsync" title="@collapseTitle">
-            @(_mini ? "›" : "‹")
-        </button>
-        <button type="button" class="sgc-nav-toggle" @onclick="ToggleMobileAsync" aria-label="Меню">
+            @if (Collapsible)
+            {
+                var collapseTitle = Mini ? Localizer["Expand"] : Localizer["Collapse"];
+                <button type="button" class="sgc-nav-collapse-btn" @onclick="ToggleMiniAsync" title="@collapseTitle">
+                    @(Mini ? "›" : "‹")
+                </button>
+            }
+        <button type="button" class="sgc-nav-toggle" @onclick="ToggleMobileAsync" aria-label="@Localizer["Menu"]">
             <span></span><span></span><span></span>
         </button>
     </div>
+    @if (ShowSearch && !Mini)
+    {
+        <div class="sgc-nav-search">
+            <span class="sgc-nav-search-icon">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </span>
+            <input type="text"
+                   class="sgc-nav-search-input"
+                   placeholder="@SearchPlaceholder"
+                   value="@_searchQuery"
+                   @oninput="OnSearchAsync"
+                   aria-label="@SearchPlaceholder" />
+            @if (!string.IsNullOrEmpty(_searchQuery))
+            {
+                <button type="button" class="sgc-nav-search-clear" @onclick="ClearSearchAsync" aria-label="Clear search">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(_searchQuery))
+        {
+            <div class="sgc-nav-search-hint">@_searchQuery</div>
+        }
+    }
     <div class="sgc-nav-body">
         <CascadingValue Value="this" IsFixed="true">
-            <CascadingValue Value="_mini">
-                @ChildContent
+            <CascadingValue Value="Mini">
+                    <CascadingValue Value="_searchQuery">
+                        <CascadingValue Value="Accordion">
+                            <CascadingValue Value="(Action<SgNavGroup>?)CollapseSiblings">
+                                @ChildContent
+                                @if (BottomContent is not null)
+                                {
+                                    <div class="sgc-nav-bottom">@BottomContent</div>
+                                }
+                            </CascadingValue>
+                        </CascadingValue>
+                    </CascadingValue>
             </CascadingValue>
         </CascadingValue>
     </div>
     @if (FooterContent is not null)
     {
         <div class="sgc-nav-footer">
-            @if (!_mini) { @FooterContent }
+            @if (!Mini) { @FooterContent }
         </div>
     }
 </nav>
 
-@if (_mobileOpen)
+@if (_collapsed)
 {
-    <div class="sgc-nav-backdrop sgc-show" @onclick="CloseMobileAsync"></div>
-}
-else if (_collapsed)
-{
-    <div class="sgc-nav-backdrop" @onclick="ToggleAsync"></div>
+    <div class="sgc-nav-backdrop" @onclick="ToggleMobileAsync"></div>
 }
 
 @code {
-    private bool _mini = false;
-    private bool _collapsed = false;
-    private bool _mobileOpen = false;
+    private bool _collapsed;
+    private string _searchQuery = "";
+    private readonly List<SgNavGroup> _topGroups = new();
+    private readonly List<SgNavGroup> _allGroups = new();
 
+    /// <summary>
+    /// Gets or sets the navigation title.
+    /// </summary>
     [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom logo content.
+    /// </summary>
     [Parameter] public RenderFragment? LogoContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets custom header content (replaces logo/title).
+    /// </summary>
+    [Parameter] public RenderFragment? HeaderContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets the child content (links and groups).
+    /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets content pinned to the bottom of the nav body.
+    /// </summary>
+    [Parameter] public RenderFragment? BottomContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets footer content.
+    /// </summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes.
+    /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private Task ToggleMiniAsync()
+    /// <summary>
+    /// Gets or sets whether the collapse button is visible. Default true.
+    /// </summary>
+    [Parameter] public bool Collapsible { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether to show a search input. Default false.
+    /// </summary>
+    [Parameter] public bool ShowSearch { get; set; }
+
+    /// <summary>
+    /// Gets or sets the search placeholder text.
+    /// </summary>
+    [Parameter] public string SearchPlaceholder { get; set; } = "Search...";
+
+    /// <summary>
+    /// Gets or sets whether to scroll to the active link on navigation.
+    /// </summary>
+    [Parameter] public bool ScrollToActive { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the sidebar is in mini (icon-only) mode.
+    /// </summary>
+    [Parameter] public bool Mini { get; set; }
+
+    /// <summary>
+    /// Fired when the mini mode changes.
+    /// </summary>
+    [Parameter] public EventCallback<bool> MiniChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to remove the sidebar border.
+    /// </summary>
+    [Parameter] public bool Borderless { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to add rounded corners to the sidebar.
+    /// </summary>
+    [Parameter] public bool Rounded { get; set; }
+
+    /// <summary>
+    /// Gets or sets accordion mode: only one group expanded at a time. Default false.
+    /// </summary>
+    [Parameter] public bool Accordion { get; set; }
+
+    /// <summary>
+    /// Gets the current search query.
+    /// </summary>
+    public string SearchQuery => _searchQuery;
+
+    /// <summary>
+    /// Expands all groups.
+    /// </summary>
+    public async Task ExpandAllAsync()
     {
-        _mini = !_mini;
-        return InvokeAsync(StateHasChanged);
+        foreach (var g in _allGroups.ToArray())
+            g.Expand();
+        await InvokeAsync(StateHasChanged);
     }
 
-    private Task ToggleAsync()
+    /// <summary>
+    /// Collapses all groups.
+    /// </summary>
+    public async Task CollapseAllAsync()
+    {
+        foreach (var g in _allGroups.ToArray())
+            g.Collapse();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    internal void RegisterGroup(SgNavGroup group)
+    {
+        if (!_allGroups.Contains(group))
+            _allGroups.Add(group);
+    }
+
+    internal void UnregisterGroup(SgNavGroup group)
+    {
+        _allGroups.Remove(group);
+    }
+
+    internal void RegisterTopGroup(SgNavGroup group)
+    {
+        if (!_topGroups.Contains(group))
+            _topGroups.Add(group);
+    }
+
+    internal void UnregisterTopGroup(SgNavGroup group)
+    {
+        _topGroups.Remove(group);
+    }
+
+    internal void CollapseSiblings(SgNavGroup expandingGroup)
+    {
+        foreach (var g in _topGroups)
+        {
+            if (g != expandingGroup)
+                g.Collapse();
+        }
+    }
+
+    private async Task ToggleMiniAsync()
+    {
+        Mini = !Mini;
+        await MiniChanged.InvokeAsync(Mini);
+    }
+
+    /// <summary>
+    /// Toggles the mobile menu.
+    /// </summary>
+    public Task ToggleMobileAsync()
     {
         _collapsed = !_collapsed;
         return InvokeAsync(StateHasChanged);
     }
 
-    public Task CollapseAsync()
-    {
-        _collapsed = false;
-        _mobileOpen = false;
-        return InvokeAsync(StateHasChanged);
-    }
-
-    public Task ToggleMobileAsync()
-    {
-        _mobileOpen = !_mobileOpen;
-        return InvokeAsync(StateHasChanged);
-    }
-
+    /// <summary>
+    /// Closes the mobile menu.
+    /// </summary>
     public Task CloseMobileAsync()
     {
-        _mobileOpen = false;
+        _collapsed = false;
         return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Clears the search query.
+    /// </summary>
+    public Task ClearSearchAsync()
+    {
+        _searchQuery = "";
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnSearchAsync(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        await InvokeAsync(StateHasChanged);
     }
 }

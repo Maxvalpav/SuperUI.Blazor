@@ -1,40 +1,64 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 @implements IDisposable
+@inject NavigationManager Navigation
 
-<NavLink class="@("sgc-nav-link " + CssClass)" 
-         href="@Href" 
-         Match="@Match" 
-         aria-current="@(Match == NavLinkMatch.All ? "page" : null)"
-         @onclick="OnClickAsync">
-    @if (!string.IsNullOrEmpty(Icon))
+@{
+    var linkClass = string.Join(" ", new[]
     {
-        <span class="sgc-nav-icon" aria-hidden="true">
-            @if (Icon.StartsWith("<svg"))
-            {
-                @((MarkupString)Icon)
-            }
-            else
-            {
-                @Icon
-            }
-        </span>
+        "sgc-nav-link",
+        Disabled ? "sgc-disabled" : "",
+        _isExternal ? "sgc-nav-external" : "",
+        CssClass
+    }.Where(x => !string.IsNullOrEmpty(x)));
+    var hidden = !string.IsNullOrEmpty(SearchQuery) && !string.IsNullOrEmpty(Text) &&
+        !Text.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) &&
+        !(Title?.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase) ?? true);
+}
+
+@if (!string.IsNullOrEmpty(Href) && !Disabled)
+{
+    @if (ForceLoad)
+    {
+        <a class="@linkClass"
+           href="@Href"
+           target="@Target"
+           title="@Title"
+           style="@(hidden ? "display:none" : null)"
+           @onclick="OnClickForceAsync">
+            @NavLinkContent
+        </a>
     }
-    <span class="sgc-nav-label">@ChildContent@Text</span>
-</NavLink>
+    else
+    {
+        <NavLink class="@linkClass"
+                 href="@Href"
+                 Match="@Match"
+                 target="@Target"
+                 title="@Title"
+                 ActiveClass="@(ActiveClass ?? "active")"
+                 aria-current="@(Match == NavLinkMatch.All ? "page" : null)"
+                 style="@(hidden ? "display:none" : null)"
+                 @onclick="OnClickAsync">
+            @NavLinkContent
+        </NavLink>
+    }
+}
+else
+{
+    <span class="@linkClass" title="@Title" style="@(hidden ? "display:none" : null)" @onclick="OnClickAsync">
+        @NavLinkContent
+    </span>
+}
 
 @code {
     [CascadingParameter] public SgNavGroup? Parent { get; set; }
     [CascadingParameter] public SgNavMenu? Menu { get; set; }
+    [CascadingParameter] public string? SearchQuery { get; set; }
 
-    private bool _registered;
-
-    protected override void OnParametersSet()
+    protected override void OnInitialized()
     {
-        if (!_registered)
-        {
-            _registered = true;
-            Parent?.Register(this);
-        }
+        Parent?.Register(this);
     }
 
     public void Dispose()
@@ -46,43 +70,132 @@
     /// Gets or sets the navigation URL.
     /// </summary>
     [Parameter] public string? Href { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the link text.
     /// </summary>
     [Parameter] public string? Text { get; set; }
-    
+
     /// <summary>
-    /// Gets or sets the icon to display before the link text.
-    /// Supports SVG markup or text.
+    /// Gets or sets the icon (SVG markup or text).
     /// </summary>
     [Parameter] public string? Icon { get; set; }
-    
+
     /// <summary>
-    /// Gets or sets the custom content to render inside the link.
-    /// Takes precedence over <see cref="Text"/>.
+    /// Gets or sets custom content (overrides Text).
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
+
     /// <summary>
-    /// Gets or sets the URL matching behavior for determining active state.
-    /// Default is <see cref="NavLinkMatch.Prefix"/>.
+    /// Gets or sets URL matching behavior. Default Prefix.
     /// </summary>
     [Parameter] public NavLinkMatch Match { get; set; } = NavLinkMatch.Prefix;
-    
+
     /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
+    /// Gets or sets the link target.
+    /// </summary>
+    [Parameter] public string? Target { get; set; }
+
+    /// <summary>
+    /// Gets or sets the tooltip title.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// Gets or sets badge text.
+    /// </summary>
+    [Parameter] public string? BadgeText { get; set; }
+
+    /// <summary>
+    /// Gets or sets badge color variant. Default Default.
+    /// </summary>
+    [Parameter] public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
+
+    /// <summary>
+    /// Gets or sets whether the link is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
+
     /// <summary>
-    /// Gets or sets the callback invoked when the link is clicked.
+    /// Gets or sets the click callback.
     /// </summary>
     [Parameter] public EventCallback OnClick { get; set; }
 
+    /// <summary>
+    /// Gets or sets custom suffix content (replaces badge when set).
+    /// </summary>
+    [Parameter] public RenderFragment? SuffixContent { get; set; }
+
+    /// <summary>
+    /// Gets or sets keyboard shortcut hint (e.g. "Ctrl+K").
+    /// </summary>
+    [Parameter] public string? ShortcutHint { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show external link icon. Default true.
+    /// </summary>
+    [Parameter] public bool ShowExternalIcon { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the active CSS class name. Default "active".
+    /// </summary>
+    [Parameter] public string? ActiveClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to force a full page navigation. Default false.
+    /// </summary>
+    [Parameter] public bool ForceLoad { get; set; }
+
+    private bool _isExternal => ShowExternalIcon && !string.IsNullOrEmpty(Href) &&
+        (Href.StartsWith("http://") || Href.StartsWith("https://") || Href.StartsWith("//") || Target == "_blank");
+
+    private RenderFragment NavLinkContent => __builder =>
+    {
+        if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="sgc-nav-icon" aria-hidden="true">
+                @if (Icon.StartsWith("<svg")) { @((MarkupString)Icon) } else { @Icon }
+            </span>
+        }
+        <span class="sgc-nav-label">@ChildContent@Text</span>
+        @if (!string.IsNullOrEmpty(ShortcutHint))
+        {
+            <kbd class="sgc-nav-shortcut">@ShortcutHint</kbd>
+        }
+        @if (SuffixContent is not null)
+        {
+            <span class="sgc-nav-suffix">@SuffixContent</span>
+        }
+        else if (!string.IsNullOrEmpty(BadgeText))
+        {
+            <span class="sgc-nav-badge sgc-nav-badge-@BadgeVariant.ToString().ToLowerInvariant()">@BadgeText</span>
+        }
+        @if (_isExternal)
+        {
+            <span class="sgc-nav-external-icon">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </span>
+        }
+    };
+
     private async Task OnClickAsync()
     {
+        if (Disabled) return;
         if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+        if (Menu is not null) await Menu.CloseMobileAsync();
+    }
+
+    private async Task OnClickForceAsync()
+    {
+        if (Disabled) return;
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+        if (!string.IsNullOrEmpty(Href))
+            Navigation.NavigateTo(Href, forceLoad: true);
         if (Menu is not null) await Menu.CloseMobileAsync();
     }
 }

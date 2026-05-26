@@ -1,12 +1,27 @@
 @namespace SuperUI.Components
-
+@using SuperUI.Enums
 @inject NavigationManager Navigation
 @implements IDisposable
 
-<div class="sgc-nav-group @(_expanded ? "expanded" : "") @(IsMini ? "mini" : "") @(_isActive ? "sgc-active" : "")">
-    <div class="sgc-nav-group-header" 
+@{
+    var titleMatch = !string.IsNullOrEmpty(SearchQuery) && !string.IsNullOrEmpty(Title) &&
+        Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase);
+    var groupClass = string.Join(" ", new[]
+    {
+        "sgc-nav-group",
+        (_expanded || !string.IsNullOrEmpty(SearchQuery)) ? "expanded" : "",
+        _isActive ? "sgc-active" : "",
+        IsMini ? "mini" : "",
+        Disabled ? "sgc-disabled" : "",
+        titleMatch ? "sgc-nav-group-search-match" : "",
+        CssClass
+    }.Where(x => !string.IsNullOrEmpty(x)));
+}
+
+<div class="@groupClass">
+    <div class="sgc-nav-group-header"
          role="button"
-         tabindex="0"
+         tabindex="@(Disabled ? "-1" : "0")"
          aria-expanded="@(_expanded ? "true" : "false")"
          aria-label="@Title"
          @onclick="Toggle"
@@ -15,23 +30,20 @@
         @if (!string.IsNullOrEmpty(Icon))
         {
             <span class="sgc-nav-icon" aria-hidden="true">
-                @if (Icon.StartsWith("<svg"))
-                {
-                    @((MarkupString)Icon)
-                }
-                else
-                {
-                    @Icon
-                }
+                @if (Icon.StartsWith("<svg")) { @((MarkupString)Icon) } else { @Icon }
             </span>
         }
         @if (!IsMini)
         {
             <span class="sgc-nav-label">@Title</span>
+            @if (!string.IsNullOrEmpty(BadgeText))
+            {
+                <span class="sgc-nav-badge sgc-nav-badge-@BadgeVariant.ToString().ToLowerInvariant()">@BadgeText</span>
+            }
             <span class="sgc-nav-arrow" aria-hidden="true">@(_expanded ? "▾" : "▸")</span>
         }
     </div>
-    @if (_expanded && !IsMini)
+    @if ((_expanded || !string.IsNullOrEmpty(SearchQuery)) && !IsMini)
     {
         <div class="sgc-nav-group-items" role="group" aria-label="@Title items">
             <CascadingValue Value="this" IsFixed="true">
@@ -43,6 +55,8 @@
 
 @code {
     private readonly List<SgNavLink> _links = new();
+    private bool _expanded;
+    private bool _isActive;
 
     internal void Register(SgNavLink link)
     {
@@ -58,41 +72,108 @@
         _links.Remove(link);
         CheckActiveState();
     }
-    /// <summary>
-    /// Gets or sets whether the navigation is in mini (collapsed) mode.
-    /// </summary>
+
+    internal void OnChildActiveChanged(bool isActive)
+    {
+        var prev = _activeChildCount > 0;
+        if (isActive) _activeChildCount++; else _activeChildCount--;
+        if (_activeChildCount < 0) _activeChildCount = 0;
+        if ((_activeChildCount > 0) != prev)
+        {
+            if (_activeChildCount > 0 && !_expanded)
+            {
+                _expanded = true;
+            }
+            ParentGroup?.OnChildActiveChanged(_activeChildCount > 0);
+            StateHasChanged();
+        }
+    }
+
+    internal void NotifyChildExpanding(SgNavGroup child)
+    {
+        ParentGroup?.NotifyChildExpanding(child);
+    }
+
+    private int _activeChildCount;
+
     [CascadingParameter] public bool IsMini { get; set; }
-    
+    [CascadingParameter] public SgNavGroup? ParentGroup { get; set; }
+    [CascadingParameter] public SgNavMenu? Menu { get; set; }
+    [CascadingParameter] public string? SearchQuery { get; set; }
+    [CascadingParameter] public bool AccordionMode { get; set; }
+    [CascadingParameter] public Action<SgNavGroup>? AccordionNotifier { get; set; }
+
     /// <summary>
-    /// Gets or sets the group title text.
+    /// Gets or sets the group title.
     /// </summary>
     [Parameter] public string? Title { get; set; }
-    
+
     /// <summary>
-    /// Gets or sets the icon to display before the group title.
-    /// Supports SVG markup or text.
+    /// Gets or sets the icon (SVG markup or text).
     /// </summary>
     [Parameter] public string? Icon { get; set; }
-    
+
     /// <summary>
-    /// Gets or sets the child content containing navigation links.
+    /// Gets or sets child content.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the group is initially expanded.
-    /// Default is false.
-    /// </summary>
-    [Parameter] public bool Expanded { get; set; } = false;
 
-    private bool _expanded;
-    private bool _isActive;
+    /// <summary>
+    /// Gets or sets whether the group is initially expanded. Default false.
+    /// </summary>
+    [Parameter] public bool Expanded { get; set; }
+
+    /// <summary>
+    /// Gets or sets badge text.
+    /// </summary>
+    [Parameter] public string? BadgeText { get; set; }
+
+    /// <summary>
+    /// Gets or sets badge color variant.
+    /// </summary>
+    [Parameter] public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
+
+    /// <summary>
+    /// Gets or sets whether the group is disabled.
+    /// </summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS classes.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Fired when the group expands or collapses.
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnToggle { get; set; }
 
     protected override void OnInitialized()
     {
         _expanded = Expanded;
+        Menu?.RegisterGroup(this);
         Navigation.LocationChanged += HandleLocationChanged;
         CheckActiveState();
+        if (ParentGroup is null)
+            Menu?.RegisterTopGroup(this);
+    }
+
+    internal void Expand()
+    {
+        if (!_expanded)
+        {
+            _expanded = true;
+            StateHasChanged();
+        }
+    }
+
+    internal void Collapse()
+    {
+        if (_expanded)
+        {
+            _expanded = false;
+            StateHasChanged();
+        }
     }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -104,11 +185,11 @@
     private void CheckActiveState()
     {
         var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
-        var isActive = _links.Any(link => 
+        var isActive = _links.Any(link =>
         {
             if (string.IsNullOrEmpty(link.Href)) return false;
             var linkPath = link.Href.TrimStart('/');
-            return link.Match == NavLinkMatch.All 
+            return link.Match == NavLinkMatch.All
                 ? relativePath.Equals(linkPath, StringComparison.OrdinalIgnoreCase)
                 : relativePath.StartsWith(linkPath, StringComparison.OrdinalIgnoreCase);
         });
@@ -116,26 +197,38 @@
         if (_isActive != isActive)
         {
             _isActive = isActive;
+            if (_isActive && !_expanded)
+            {
+                _expanded = true;
+            }
+            ParentGroup?.OnChildActiveChanged(_isActive || _activeChildCount > 0);
             StateHasChanged();
         }
     }
 
-    private void Toggle()
+    private async Task Toggle()
     {
+        if (Disabled) return;
+        var wasExpanded = _expanded;
         _expanded = !_expanded;
+        if (_expanded && AccordionMode && AccordionNotifier is not null)
+            AccordionNotifier(this);
+        await OnToggle.InvokeAsync(_expanded);
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" || e.Key == " ")
+        if (Disabled) return;
+        if (e.Key is "Enter" or " ")
         {
-            Toggle();
+            await Toggle();
             await InvokeAsync(StateHasChanged);
         }
     }
 
     public void Dispose()
     {
+        Menu?.UnregisterGroup(this);
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 }

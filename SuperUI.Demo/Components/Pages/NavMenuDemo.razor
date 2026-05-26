@@ -1,80 +1,808 @@
 @page "/navmenu-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
 
-<PageTitle>NavMenu - SUI</PageTitle>
+<PageTitle>SgNavMenu — Navigation Components — SuperUI</PageTitle>
 
-<SgCard Title="SgNavMenu - Боковое меню навигации"
-        Subtitle="Компонент для создания боковой панели навигации приложения. Поддерживает вложенные группы ссылок, свертывание, кастомный логотип и подвал.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Пример использования</h2>
-        <p>SgNavMenu с группами и ссылками.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgNavMenu — Sidebar Navigation                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgNavMenu — Sidebar Navigation
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                A collapsible sidebar with nested groups, search, mini mode, badges,
+                and full responsive mobile behavior. All parameters optional.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Пример">
-                <div style="height: 400px; border: 1px solid var(--sui-border); border-radius: 4px; overflow: hidden;">
-                    <SgNavMenu Title="SuperUI">
-                        <SgNavLink Href="/" Icon="🏠" Match="NavLinkMatch.All">Главная</SgNavLink>
-                        <SgNavGroup Title="Компоненты" Icon="🧩" Expanded="true">
-                            <SgNavLink Href="/inputs" Icon="⌨️">Ввод</SgNavLink>
-                            <SgNavLink Href="/feedback" Icon="💬">Обратная связь</SgNavLink>
-                            <SgNavLink Href="/layout" Icon="📐">Макет</SgNavLink>
+        <div class="demo-two-col">
+            <SgCard Title="Live Preview" Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true">
+                <div class="demo-nav-preview">
+                    <SgNavMenu Title="SuperUI"
+                               Collapsible="@_navCollapsible"
+                               ShowSearch="@_navShowSearch"
+                               SearchPlaceholder="Search..."
+                               Borderless="@_navBorderless"
+                               Rounded="@_navRounded"
+                               Mini="@_navMini"
+                               MiniChanged="@((v) => { _navMini = v; StateHasChanged(); })"
+                               Accordion="@_navAccordion">
+                        <SgNavLink Href="/navmenu-demo" Icon="@SgIcons.Home" Match="NavLinkMatch.All">Dashboard</SgNavLink>
+                        <SgNavGroup Title="Components" Icon="@SgIcons.Box" Expanded="@_navGroup1Expanded" OnToggle="@((v) => { _navGroup1Expanded = v; StateHasChanged(); })">
+                            <SgNavLink Href="/inputs" Icon="@SgIcons.Edit">Input Controls</SgNavLink>
+                            <SgNavLink Href="/feedback" Icon="@SgIcons.Bell">Feedback</SgNavLink>
+                            <SgNavLink Href="/layout" Icon="@SgIcons.Layout">Layout</SgNavLink>
+                            <SgNavLink Href="/data" Icon="@SgIcons.Table" BadgeText="New" BadgeVariant="SgBadgeVariant.Success">Data Grid</SgNavLink>
                         </SgNavGroup>
-                        <SgNavGroup Title="Настройки" Icon="⚙️" Expanded="false">
-                            <SgNavLink Href="/profile" Icon="👤">Профиль</SgNavLink>
-                            <SgNavLink Href="/security" Icon="🔒">Безопасность</SgNavLink>
+                        <SgNavGroup Title="Analytics" Icon="@SgIcons.Chart" Expanded="@_navGroup2Expanded" OnToggle="@((v) => { _navGroup2Expanded = v; StateHasChanged(); })" BadgeText="Pro" BadgeVariant="SgBadgeVariant.Info">
+                            <SgNavLink Href="/charts" Icon="@SgIcons.BarChart">Charts</SgNavLink>
+                            <SgNavLink Href="/reports" Icon="@SgIcons.FileText" BadgeText="3" BadgeVariant="SgBadgeVariant.Info">Reports</SgNavLink>
+                            <SgNavLink Href="/dashboard" Icon="@SgIcons.Gauge">Dashboard</SgNavLink>
                         </SgNavGroup>
-                        <SgNavLink Href="/docs" Icon="📖">Документация</SgNavLink>
+                        <SgNavGroup Title="Settings" Icon="@SgIcons.Settings" Expanded="@_navGroup3Expanded" OnToggle="@((v) => { _navGroup3Expanded = v; StateHasChanged(); })" Disabled="@_navGroupDisabled">
+                            <SgNavLink Href="/profile" Icon="@SgIcons.User">Profile</SgNavLink>
+                            <SgNavLink Href="/security" Icon="@SgIcons.Shield">Security</SgNavLink>
+                        </SgNavGroup>
+                        <SgNavLink Href="/docs" Icon="@SgIcons.Book">Documentation</SgNavLink>
+                        <SgNavLink Href="/help" Icon="@SgIcons.HelpCircle" BadgeText="?" BadgeVariant="SgBadgeVariant.Default">Help Center</SgNavLink>
                     </SgNavMenu>
                 </div>
             </SgCard>
 
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_navMenuProperties" />
+            <SgCard Title="Controls" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Collapsible</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navCollapsible"
+                                     ValueChanged="v => { _navCollapsible = v; StateHasChanged(); UpdateNavCode(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">ShowSearch</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navShowSearch"
+                                     ValueChanged="v => { _navShowSearch = v; StateHasChanged(); UpdateNavCode(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Mini Mode</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navMini"
+                                     ValueChanged="v => { _navMini = v; StateHasChanged(); UpdateNavCode(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Borderless</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navBorderless"
+                                     ValueChanged="v => { _navBorderless = v; StateHasChanged(); UpdateNavCode(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Rounded</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navRounded"
+                                     ValueChanged="v => { _navRounded = v; StateHasChanged(); UpdateNavCode(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Accordion</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navAccordion"
+                                     ValueChanged="v => { _navAccordion = v; StateHasChanged(); UpdateNavCode(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Settings Disabled</SgTypography>
+                        <SgSegmented TValue="bool"
+                                     Value="_navGroupDisabled"
+                                     ValueChanged="v => { _navGroupDisabled = v; StateHasChanged(); }"
+                                     Size="sm"
+                                     Options="@_boolSegOffOn" />
+                    </SgStack>
+
+                    <SgDivider />
+
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                        <div class="code-block" style="max-height:200px;overflow-y:auto;">
+                            @foreach (var line in _navCodeLines)
+                            {
+                                <code>@line</code>
+                            }
+                        </div>
+                    </SgStack>
+                </SgStack>
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Вложенные компоненты</h2>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgNavLink">
-                <PropertyTable Items="_navLinkProperties" />
-            </SgCard>
-            <SgCard Title="SgNavGroup">
-                <PropertyTable Items="_navGroupProperties" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. SgNavGroup & SgNavLink — Nested Navigation Features              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgNavGroup & SgNavLink — Feature Showcase
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Groups with expand/collapse, badges, disabled items, nested groups,
+                external links, keyboard shortcut hints, and full active-state detection.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Group Features" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Badge on Group
+                                <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">BadgeText + BadgeVariant</SgTag>
+                            </SgTypography>
+                            <div class="demo-nav-mini">
+                                <SgNavGroup Title="Notifications" Icon="@SgIcons.Bell" Expanded="true" BadgeText="12" BadgeVariant="SgBadgeVariant.Warn">
+                                    <SgNavLink Href="#" Text="Inbox" />
+                                    <SgNavLink Href="#" Text="Archived" />
+                                </SgNavGroup>
+                            </div>
+                        </div>
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Disabled Group
+                                <SgTag Variant="SgTagVariant.Warn" Size="SgSize.Sm" Style="margin-left:8px;">Disabled=true</SgTag>
+                            </SgTypography>
+                            <div class="demo-nav-mini">
+                                <SgNavGroup Title="Coming Soon" Icon="@SgIcons.Tag" Expanded="false" Disabled="true">
+                                    <SgNavLink Href="#" Text="Feature A" />
+                                    <SgNavLink Href="#" Text="Feature B" />
+                                </SgNavGroup>
+                            </div>
+                        </div>
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Nested Groups
+                                <SgTag Variant="SgTagVariant.Success" Size="SgSize.Sm" Style="margin-left:8px;">Group in Group</SgTag>
+                            </SgTypography>
+                            <div class="demo-nav-mini">
+                                <SgNavGroup Title="Visuals" Icon="@SgIcons.PieChart" Expanded="true">
+                                    <SgNavGroup Title="Charts" Icon="@SgIcons.BarChart" Expanded="true">
+                                        <SgNavLink Href="#" Text="Chart.js" ActiveClass="active" />
+                                        <SgNavLink Href="#" Text="D3.js" />
+                                    </SgNavGroup>
+                                    <SgNavGroup Title="Maps" Icon="@SgIcons.Globe" Expanded="false">
+                                        <SgNavLink Href="#" Text="OpenLayers" />
+                                        <SgNavLink Href="#" Text="Leaflet" />
+                                    </SgNavGroup>
+                                </SgNavGroup>
+                            </div>
+                        </div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+
+            <SgCol Md="6">
+                <SgCard Title="Link Features" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Badge on Link
+                                <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">BadgeText + BadgeVariant</SgTag>
+                            </SgTypography>
+                            <div class="demo-nav-mini">
+                                <SgNavLink Href="#" Text="Inbox" Icon="@SgIcons.Bell" BadgeText="99+" BadgeVariant="SgBadgeVariant.Danger" />
+                                <SgNavLink Href="#" Text="Tasks" Icon="@SgIcons.Check" BadgeText="5" BadgeVariant="SgBadgeVariant.Info" />
+                                <SgNavLink Href="#" Text="Drafts" Icon="@SgIcons.Edit" BadgeText="2" BadgeVariant="SgBadgeVariant.Warn" />
+                            </div>
+                        </div>
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Shortcut Hints
+                                <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">ShortcutHint</SgTag>
+                            </SgTypography>
+                            <div class="demo-nav-mini">
+                                <SgNavLink Href="#" Text="Quick Search" Icon="@SgIcons.Search" ShortcutHint="Ctrl+K" />
+                                <SgNavLink Href="#" Text="New Document" Icon="@SgIcons.Edit" ShortcutHint="Ctrl+N" />
+                                <SgNavLink Href="#" Text="Save All" Icon="@SgIcons.Download" ShortcutHint="Ctrl+S" />
+                            </div>
+                        </div>
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                External Link & Disabled
+                                <SgTag Variant="SgTagVariant.Warn" Size="SgSize.Sm" Style="margin-left:8px;">Target / Disabled</SgTag>
+                            </SgTypography>
+                            <div class="demo-nav-mini">
+                                <SgNavLink Href="https://google.com" Text="Google (External)" Icon="@SgIcons.Globe" Target="_blank" ShowExternalIcon="true" />
+                                <SgNavLink Href="#" Text="Disabled Link" Icon="@SgIcons.Shield" Disabled="true" />
+                            </div>
+                        </div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+
+        <SgRow Space="SgSize.Lg" Style="margin-top:24px;">
+            <SgCol Md="6">
+                <SgCard Title="SgNavGroup Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_navGroupProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="SgNavLink Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_navLinkProperties" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgNav Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Build a custom nav menu interactively. Toggle features and copy the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Title -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Nav Title</SgTypography>
+                            <input type="text" class="demo-ctrl-input"
+                                   value="@_ctorTitle"
+                                   @oninput="OnCtorTitleChange"
+                                   placeholder="My App" />
+                        </SgStack>
+
+                        <!-- Toggles -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Collapsible</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorCollapsible"
+                                                 ValueChanged="v => { _ctorCollapsible = v; UpdateCtorCode(); }"
+                                                 Size="sm"
+                                                 Block="true"
+                                                 Options="@_boolSegYesNo" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Search</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorShowSearch"
+                                                 ValueChanged="v => { _ctorShowSearch = v; UpdateCtorCode(); }"
+                                                 Size="sm"
+                                                 Block="true"
+                                                 Options="@_boolSegYesNo" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Accordion</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorAccordion"
+                                                 ValueChanged="v => { _ctorAccordion = v; UpdateCtorCode(); }"
+                                                 Size="sm"
+                                                 Block="true"
+                                                 Options="@_boolSegYesNo" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Mini</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorMini"
+                                                 ValueChanged="v => { _ctorMini = v; UpdateCtorCode(); }"
+                                                 Size="sm"
+                                                 Block="true"
+                                                 Options="@_boolSegYesNo" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Borderless</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorBorderless"
+                                                 ValueChanged="v => { _ctorBorderless = v; UpdateCtorCode(); }"
+                                                 Size="sm"
+                                                 Block="true"
+                                                 Options="@_boolSegYesNo" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Rounded</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorRounded"
+                                                 ValueChanged="v => { _ctorRounded = v; UpdateCtorCode(); }"
+                                                 Size="sm"
+                                                 Block="true"
+                                                 Options="@_boolSegYesNo" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Groups -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Group Count</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="_ctorGroupCount"
+                                         ValueChanged="v => { _ctorGroupCount = v; UpdateCtorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="@_groupCountOptions" />
+                        </SgStack>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Title</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorTitle" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Groups</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="@_ctorGroupCount.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Mode</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@(_ctorMini ? "Mini" : _ctorAccordion ? "Accordion" : "Normal")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview" id="ctor-preview">
+                                <SgNavMenu Title="@_ctorTitle"
+                                           Collapsible="@_ctorCollapsible"
+                                           ShowSearch="@_ctorShowSearch"
+                                           Mini="@_ctorMini"
+                                           Borderless="@_ctorBorderless"
+                                           Rounded="@_ctorRounded"
+                                           Accordion="@_ctorAccordion">
+                                    @for (int i = 0; i < _ctorGroupCount; i++)
+                                    {
+                                        var idx = i;
+                                        <SgNavGroup Title="@_groupNames[idx % _groupNames.Length]"
+                                                     Icon="@_groupIcons[idx % _groupIcons.Length]"
+                                                     Expanded="@(i == 0)">
+                                            @for (int j = 0; j < 3; j++)
+                                            {
+                                                <SgNavLink Href="#" Text="@_linkNames[(idx * 3 + j) % _linkNames.Length]" />
+                                            }
+                                        </SgNavGroup>
+                                    }
+                                    <SgNavLink Href="#" Text="Home" Icon="@SgIcons.Home" />
+                                </SgNavMenu>
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCtorCodeAsync">
+                                    <span id="ctor-copy-icon">@_ctorCopyIcon</span>
+                                    <span id="ctor-copy-text" style="font-size:11px;font-weight:600;">@_ctorCopyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="ctor-code-block">
+                                @foreach (var line in _ctorCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Nav preview ────────────────────────────────────────────────────────── */
+    .demo-nav-preview {
+        height: 420px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--sg-bg);
+        transition: border-color 0.2s ease;
+    }
+    .demo-nav-mini {
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--sg-bg);
+        max-width: 260px;
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 0;
+        min-height: 100px;
+        max-height: 420px;
+        overflow: hidden;
+        transition: all 0.3s ease;
+    }
+    .constructor-preview .sgc-nav {
+        border: none;
+        background: var(--sg-bg);
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .ctrl-summary .sgc-stack-horizontal + .sgc-stack-horizontal {
+        margin-top: 6px;
+    }
+    .demo-ctrl-input {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        background: var(--sg-bg);
+        color: var(--sg-fg);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        box-sizing: border-box;
+    }
+    .demo-ctrl-input:focus {
+        border-color: var(--sg-color-primary);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-primary) 15%, transparent);
+    }
+
+    /* ── Code block ─────────────────────────────────────────────────────────── */
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* ── Viewport indicator ─────────────────────────────────────────────────── */
+    .demo-viewport-indicator {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 2px 10px;
+        font-size: 11px;
+    }
+</style>
+
 @code {
-    private List<PropertyPanelItem> _navMenuProperties = new()
+    // ═══════════════════════════════════════════════════════════════════════
+    // Main header
+    // ═══════════════════════════════════════════════════════════════════════
+    private RenderFragment _mainHeader => __builder =>
     {
-        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Collapsible", Value = "bool", BadgeText = "Сворачиваемое", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Collapsed", Value = "bool", BadgeText = "Свёрнуто", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "LogoContent", Value = "RenderFragment", BadgeText = "Логотип", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "FooterContent", Value = "RenderFragment", BadgeText = "Подвал", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "CssClass", Value = "string", BadgeText = "CSS класс", BadgeVariant = SgBadgeVariant.Info }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                    <polyline points="9 22 9 12 15 12 15 22"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Navigation Components</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgNavMenu / SgNavGroup / SgNavLink — sidebar navigation with collapsible groups, badges, icons, search, accordion mode, and responsive mobile behavior.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
     };
 
-    private List<PropertyPanelItem> _navLinkProperties = new()
+    // ═══════════════════════════════════════════════════════════════════════
+    // Section 1 — NavMenu state
+    // ═══════════════════════════════════════════════════════════════════════
+    private bool _navMini;
+    private bool _navBorderless;
+    private bool _navRounded;
+    private bool _navCollapsible = true;
+    private bool _navShowSearch = true;
+    private bool _navAccordion;
+    private bool _navGroupDisabled;
+    private bool _navGroup1Expanded = true;
+    private bool _navGroup2Expanded;
+    private bool _navGroup3Expanded = true;
+
+    private string[] _navCodeLines = Array.Empty<string>();
+
+    private void UpdateNavCode()
     {
-        new() { Label = "Href", Value = "string", BadgeText = "Ссылка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Icon", Value = "string", BadgeText = "Иконка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Text", Value = "string", BadgeText = "Текст", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Match", Value = "NavLinkMatch", BadgeText = "Совпадение", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Содержимое", BadgeVariant = SgBadgeVariant.Info }
+        var lines = new List<string>();
+        lines.Add("<SgNavMenu Title=\"SuperUI\"");
+        if (!_navCollapsible) lines.Add("           Collapsible=\"false\"");
+        if (_navShowSearch) lines.Add("           ShowSearch=\"true\"");
+        if (_navMini) lines.Add("           Mini=\"true\"");
+        if (_navBorderless) lines.Add("           Borderless=\"true\"");
+        if (_navRounded) lines.Add("           Rounded=\"true\"");
+        if (_navAccordion) lines.Add("           Accordion=\"true\"");
+        lines.Add("           SearchPlaceholder=\"Search...\">");
+        lines.Add("    <SgNavLink Href=\"/\" Icon=\"@SgIcons.Home\">Dashboard</SgNavLink>");
+        lines.Add("    <SgNavGroup Title=\"Components\" Icon=\"@SgIcons.Box\">");
+        lines.Add("        <SgNavLink Href=\"/inputs\" Icon=\"@SgIcons.Edit\">Inputs</SgNavLink>");
+        lines.Add("        <SgNavLink Href=\"/data\" Icon=\"@SgIcons.Table\" BadgeText=\"New\">Data Grid</SgNavLink>");
+        lines.Add("    </SgNavGroup>");
+        lines.Add("    <SgNavGroup Title=\"Analytics\" Icon=\"@SgIcons.Chart\" BadgeText=\"Pro\">");
+        lines.Add("        <SgNavLink Href=\"/charts\" Icon=\"@SgIcons.BarChart\">Charts</SgNavLink>");
+        lines.Add("    </SgNavGroup>");
+        lines.Add("</SgNavMenu>");
+        _navCodeLines = lines.ToArray();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Section 3 — Constructor state
+    // ═══════════════════════════════════════════════════════════════════════
+    private string _ctorTitle = "My App";
+    private bool _ctorCollapsible = true;
+    private bool _ctorShowSearch = true;
+    private bool _ctorMini;
+    private bool _ctorBorderless;
+    private bool _ctorRounded;
+    private bool _ctorAccordion;
+    private int _ctorGroupCount = 3;
+
+    private string _ctorCopyIcon = "📋";
+    private string _ctorCopyLabel = "Copy";
+    private string[] _ctorCodeLines = Array.Empty<string>();
+
+    private readonly string[] _groupNames = { "Getting Started", "Components", "Settings", "Analytics", "Tools" };
+    private readonly string[] _groupIcons = { SgIcons.Book, SgIcons.Box, SgIcons.Settings, SgIcons.Chart, SgIcons.Zap };
+    private readonly string[] _groupIconNames = { "SgIcons.Book", "SgIcons.Box", "SgIcons.Settings", "SgIcons.Chart", "SgIcons.Zap" };
+    private readonly string[] _linkNames = { "Introduction", "Installation", "Configuration", "Buttons", "Forms", "Tables", "Profile", "Security", "Billing", "Reports", "Dashboard", "Metrics", "Calculator", "Converter", "Export" };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOffOn = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegYesNo = new()
+    {
+        new() { Value = true,  Label = "Yes" },
+        new() { Value = false, Label = "No" },
+    };
+
+    private readonly List<SgSegmentedOption<int>> _groupCountOptions = new()
+    {
+        new() { Value = 1, Label = "1" },
+        new() { Value = 2, Label = "2" },
+        new() { Value = 3, Label = "3" },
+        new() { Value = 4, Label = "4" },
+        new() { Value = 5, Label = "5" },
+    };
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Lifecycle
+    // ═══════════════════════════════════════════════════════════════════════
+    protected override void OnInitialized()
+    {
+        UpdateNavCode();
+        UpdateCtorCode();
+    }
+
+    private void OnCtorTitleChange(ChangeEventArgs e)
+    {
+        _ctorTitle = e.Value?.ToString() ?? "My App";
+        UpdateCtorCode();
+    }
+
+    private void UpdateCtorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgNavMenu Title=\"{_ctorTitle}\"");
+        if (!_ctorCollapsible) lines.Add($"           Collapsible=\"false\"");
+        if (_ctorShowSearch) lines.Add($"           ShowSearch=\"true\"");
+        if (_ctorMini) lines.Add($"           Mini=\"true\"");
+        if (_ctorBorderless) lines.Add($"           Borderless=\"true\"");
+        if (_ctorRounded) lines.Add($"           Rounded=\"true\"");
+        if (_ctorAccordion) lines.Add($"           Accordion=\"true\"");
+        lines.Add($"           SearchPlaceholder=\"Search...\">");
+        for (int i = 0; i < _ctorGroupCount; i++)
+        {
+            var name = _groupNames[i % _groupNames.Length];
+            var iconName = _groupIconNames[i % _groupIconNames.Length];
+            lines.Add($"    <SgNavGroup Title=\"{name}\" Icon=\"@{iconName}\">");
+            lines.Add($"        <SgNavLink Href=\"#\" Text=\"Item {i * 3 + 1}\" />");
+            lines.Add($"        <SgNavLink Href=\"#\" Text=\"Item {i * 3 + 2}\" />");
+            lines.Add($"        <SgNavLink Href=\"#\" Text=\"Item {i * 3 + 3}\" />");
+            lines.Add($"    </SgNavGroup>");
+        }
+        lines.Add($"    <SgNavLink Href=\"#\" Text=\"Home\" Icon=\"@SgIcons.Home\" />");
+        lines.Add("</SgNavMenu>");
+        _ctorCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCtorCodeAsync()
+    {
+        var code = string.Join("\n", _ctorCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _ctorCopyIcon = "✓";
+            _ctorCopyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _ctorCopyIcon = "✗";
+            _ctorCopyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Property tables
+    // ═══════════════════════════════════════════════════════════════════════
+    private List<PropertyPanelItem> _navMenuProperties = new()
+    {
+        new() { Label = "Title",        Value = "string?",         BadgeText = "Brand",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "LogoContent",  Value = "RenderFragment?", BadgeText = "Custom logo",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "HeaderContent",Value = "RenderFragment?", BadgeText = "Full header",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "FooterContent",Value = "RenderFragment?", BadgeText = "Footer",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "BottomContent",Value = "RenderFragment?", BadgeText = "Pinned bottom", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Collapsible",  Value = "bool",            BadgeText = "Collapse btn",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowSearch",   Value = "bool",            BadgeText = "Search input",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SearchPlaceholder",Value = "string",      BadgeText = "Placeholder",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ScrollToActive",Value = "bool",           BadgeText = "Auto scroll",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Mini",         Value = "bool",            BadgeText = "Icon mode",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "MiniChanged",  Value = "EventCallback",   BadgeText = "Two-way",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Borderless",   Value = "bool",            BadgeText = "No border",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Rounded",      Value = "bool",            BadgeText = "Radius",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Accordion",    Value = "bool",            BadgeText = "Single open",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "CssClass",     Value = "string?",         BadgeText = "Custom class",  BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _navGroupProperties = new()
     {
-        new() { Label = "Title", Value = "string", BadgeText = "Заголовок", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Icon", Value = "string", BadgeText = "Иконка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Expanded", Value = "bool", BadgeText = "Развёрнуто", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Содержимое", BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Title",        Value = "string?",         BadgeText = "Group title",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",         Value = "string?",         BadgeText = "SVG/emoji",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Expanded",     Value = "bool",            BadgeText = "Open/closed",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "OnToggle",     Value = "EventCallback",   BadgeText = "Toggle event", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "BadgeText",    Value = "string?",         BadgeText = "Badge",        BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant",  BadgeText = "Badge color",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",     Value = "bool",            BadgeText = "Disabled",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "CssClass",     Value = "string?",         BadgeText = "Custom class", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ChildContent", Value = "RenderFragment",  BadgeText = "Links/groups", BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _navLinkProperties = new()
+    {
+        new() { Label = "Href",         Value = "string?",         BadgeText = "URL link",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Text",         Value = "string?",         BadgeText = "Link text",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",         Value = "string?",         BadgeText = "SVG/emoji",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Match",        Value = "NavLinkMatch",    BadgeText = "URL match",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Target",       Value = "string?",         BadgeText = "_blank/_self", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Title",        Value = "string?",         BadgeText = "Tooltip",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "BadgeText",    Value = "string?",         BadgeText = "Badge label",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant",  BadgeText = "Badge color",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShortcutHint", Value = "string?",         BadgeText = "Kbd shortcut", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SuffixContent",Value = "RenderFragment?", BadgeText = "Custom suffix",BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",     Value = "bool",            BadgeText = "Disabled",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ForceLoad",    Value = "bool",            BadgeText = "Full nav",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ActiveClass",  Value = "string?",         BadgeText = "Active CSS",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowExternalIcon",Value = "bool",         BadgeText = "External icon",BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnClick",      Value = "EventCallback",   BadgeText = "Click event",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ChildContent", Value = "RenderFragment",  BadgeText = "Content",      BadgeVariant = SgBadgeVariant.Info    },
     };
 }

@@ -2,7 +2,7 @@
 @using SuperUI.Enums
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-stepper @GetSizeCss() @(Vertical ? "sgc-vertical" : "") @(Animated ? "sgc-stepper-animated" : "") @(Compact ? "sgc-stepper-compact" : "") @CssClass"
+<div class="sgc-stepper @GetSizeCss() @(Vertical ? "sgc-vertical" : "") @(Animated ? "sgc-stepper-animated" : "") @(Compact ? "sgc-stepper-compact" : "") @(AllowSkip ? "sgc-stepper-skip" : "") @CssClass"
      role="navigation"
      aria-label="@Localizer["StepperNavigation"]">
     @{ var arr = (Steps ?? Array.Empty<StepperItem>()).ToList(); }
@@ -30,13 +30,13 @@
              @onclick="() => GoAsync(idx)"
              @onkeydown="(e) => OnKeyDownAsync(e, idx)">
             <div class="sgc-step-mark" aria-hidden="true">
-                @if (status == SgStepStatus.Done)
+                @if (status == SgStepStatus.Done && string.IsNullOrEmpty(s.Icon))
                 {
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="20 6 9 17 4 12" />
                     </svg>
                 }
-                else if (status == SgStepStatus.Error)
+                else if (status == SgStepStatus.Error && string.IsNullOrEmpty(s.Icon))
                 {
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                         <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -107,6 +107,18 @@
     [Parameter] public bool Linear { get; set; }
 
     /// <summary>
+    /// Gets or sets whether users can skip steps (navigate to any clickable step).
+    /// When <c>true</c>, overrides Linear for forward navigation.
+    /// Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool AllowSkip { get; set; }
+
+    /// <summary>
+    /// Gets or sets the custom text for completed steps instead of the checkmark icon.
+    /// </summary>
+    [Parameter] public string? CompletedText { get; set; }
+
+    /// <summary>
     /// Gets or sets the stepper size variant.
     /// Supported values: <c>Sm</c>, <c>Md</c> (default), <c>Lg</c>.
     /// </summary>
@@ -173,6 +185,7 @@
     private bool CanNavigateTo(int idx)
     {
         if (!Clickable) return false;
+        if (AllowSkip) return true;
         if (!Linear) return true;
         return idx == Active || GetStepStatus(idx, GetItemOrDefault(idx)) == SgStepStatus.Done || idx == Active + 1;
     }
