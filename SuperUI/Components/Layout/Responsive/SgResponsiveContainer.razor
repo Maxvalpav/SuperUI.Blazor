@@ -3,42 +3,124 @@
 @using SuperUI.Base.ComponentBases
 @inherits SgJsComponentBase
 
-<div @ref="RootRef" class="sgc-responsive-container">
-    @if (_width < NarrowThreshold)
+<div @ref="RootRef"
+     class="@ContainerClass"
+     style="@ContainerStyle"
+     @attributes="AdditionalAttributes">
+
+    @if (TransitionEnabled)
     {
-        @OnNarrow
-    }
-    else if (_width < WideThreshold)
-    {
-        @OnMedium
+        <div class="sgc-responsive-transition @(_transitioning ? "sgc-responsive-transition-in" : "sgc-responsive-transition-out")">
+            @RenderCurrentBreakpoint
+        </div>
     }
     else
     {
-        @OnWide
+        @RenderCurrentBreakpoint
     }
 </div>
 
 @code {
     private double _width;
+    private string _previousBreakpoint = "wide";
+    private bool _transitioning;
 
     [Parameter] public RenderFragment? OnNarrow { get; set; }
     [Parameter] public RenderFragment? OnMedium { get; set; }
     [Parameter] public RenderFragment? OnWide { get; set; }
-
     [Parameter] public int NarrowThreshold { get; set; } = 400;
     [Parameter] public int WideThreshold { get; set; } = 800;
+    [Parameter] public bool TransitionEnabled { get; set; }
+    [Parameter] public int ObserveDebounceMs { get; set; } = 50;
+    [Parameter] public string? ClassName { get; set; }
+    [Parameter] public string? MinHeight { get; set; } = "100%";
+    [Parameter] public string? Padding { get; set; } = "0";
+    [Parameter] public EventCallback<string> BreakpointChanged { get; set; }
+
+    [Parameter] public EventCallback<double> WidthChanged { get; set; }
+
+    public string CurrentBreakpoint
+    {
+        get
+        {
+            if (_width < NarrowThreshold) return "narrow";
+            if (_width < WideThreshold) return "medium";
+            return "wide";
+        }
+    }
+
+    public double CurrentWidth => _width;
+
+    private RenderFragment? RenderCurrentBreakpoint => CurrentBreakpoint switch
+    {
+        "narrow" => OnNarrow,
+        "medium" => OnMedium,
+        _ => OnWide
+    };
+
+    private string ContainerClass
+    {
+        get
+        {
+            var bp = CurrentBreakpoint;
+            return $"sgc-responsive-container sgc-responsive-{bp}{(ClassName != null ? " " + ClassName : "")}";
+        }
+    }
+
+    private string ContainerStyle
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(MinHeight)) parts.Add($"min-height:{MinHeight}");
+            if (!string.IsNullOrEmpty(Padding)) parts.Add($"padding:{Padding}");
+            var styles = Styles().Build();
+            if (!string.IsNullOrEmpty(styles)) parts.Add(styles);
+            return string.Join(";", parts);
+        }
+    }
 
     protected override string ModulePath => "./_content/SuperUI/superui-responsive.js";
+    protected override string IdPrefix => "sg-responsive";
 
     protected override async ValueTask OnInteractiveAsync()
     {
-        await SafeInvokeVoidAsync("observeResize", RootRef, SelfRef);
+        await SafeInvokeVoidAsync("observeResize", RootRef, SelfRef, ObserveDebounceMs);
     }
 
     [JSInvokable]
     public void OnResize(double width)
     {
+        var prev = CurrentBreakpoint;
         _width = width;
+        var next = CurrentBreakpoint;
+
+        if (WidthChanged.HasDelegate)
+            _ = WidthChanged.InvokeAsync(width);
+
+        if (prev != next)
+        {
+            if (TransitionEnabled)
+            {
+                _transitioning = false;
+                StateHasChanged();
+                _ = InvokeAsync(async () =>
+                {
+                    await Task.Yield();
+                    _transitioning = true;
+                    StateHasChanged();
+                });
+            }
+
+            if (BreakpointChanged.HasDelegate)
+                _ = BreakpointChanged.InvokeAsync(next);
+        }
+
         StateHasChanged();
+    }
+
+    protected override async ValueTask OnDisposingAsync()
+    {
+        await SafeInvokeVoidAsync("disconnect", RootRef);
     }
 }

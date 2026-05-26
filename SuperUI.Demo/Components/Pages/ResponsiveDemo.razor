@@ -1,63 +1,294 @@
 @page "/responsive-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
 
-<PageTitle>Responsive Container - SUI</PageTitle>
+<PageTitle>Responsive Container — SuperUI</PageTitle>
 
-<SgCard Title="SgResponsiveContainer - Адаптивный контейнер"
-        Subtitle="Компонент, меняющий содержимое в зависимости от своего размера (Container Queries), а не размера экрана.">
+<SgCard Title="SgResponsiveContainer — Adaptive container"
+        Subtitle="Switches content based on its own width using ResizeObserver (container queries), not the viewport. Supports 3 breakpoints, transition animations, and debounced observation."
+        CssClass="sgc-card-flush">
 
-    <div style="margin-top: 32px;">
-        <h2>Демонстрация Container Queries</h2>
-        <p>Меняйте размер внешнего контейнера с помощью разделителя (Splitter), чтобы увидеть адаптивность внутреннего компонента.</p>
-        
-        <div style="height: 400px; border: 1px solid var(--sui-border-color); border-radius: 8px; overflow: hidden;">
-            <SgSplitter Size="300">
-                <First>
-                    <div style="padding: 16px; height: 100%; background: #fafafa;">
-                        <p>Перетащите разделитель вправо, чтобы увеличить область справа.</p>
-                    </div>
-                </First>
-                <Second>
-                    <div style="padding: 24px; height: 100%;">
-                        <SgResponsiveContainer NarrowThreshold="350" WideThreshold="600">
-                            <OnNarrow>
-                                <div style="background: #fff1f0; border: 1px solid #ffa39e; padding: 24px; border-radius: 8px; text-align: center;">
-                                    <SgIcon Icon="@SgIcons.Monitor" Size="32px" />
-                                    <h3>Узкий вид (Narrow)</h3>
-                                    <p>Ширина менее 350px. Используется компактная разметка.</p>
-                                </div>
-                            </OnNarrow>
-                            <OnMedium>
-                                <div style="background: #e6f7ff; border: 1px solid #91d5ff; padding: 24px; border-radius: 8px; text-align: center;">
-                                    <div style="display: flex; align-items: center; justify-content: center; gap: 16px;">
-                                        <SgIcon Icon="@SgIcons.Monitor" Size="48px" />
-                                        <div style="text-align: left;">
-                                            <h3>Средний вид (Medium)</h3>
-                                            <p>Ширина от 350px до 600px.</p>
-                                        </div>
+    @* ── Interactive Demo ─────────────────────────────────────────────────── *@
+    <div class="sgc-demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading2">Interactive Demo</SgTypography>
+            <span class="demo-live-badge">Interactive</span>
+        </div>
+        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+            Drag the splitter handle to resize the right panel. The container adapts its content automatically.
+            Current width: <strong style="font-family:monospace;color:var(--sg-color-primary);">@($"{_currentWidth:F0}") px</strong> —
+            breakpoint: <SgBadge Text="@_currentBreakpoint" Variant="@_breakpointBadgeVariant" />
+        </SgTypography>
+
+        <div class="demo-grid-adaptive">
+            <SgCard Title="Live Demo" CssClass="demo-interactive-card">
+                <div style="height:420px;border:1px solid var(--sg-border);border-radius:var(--sg-radius-md);overflow:hidden;">
+                    <SgSplitter Size="280">
+                        <First>
+                            <div style="padding:16px;height:100%;background:var(--sg-surface-alt);display:flex;flex-direction:column;gap:12px;">
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold">Sidebar</SgTypography>
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                    Drag the divider to the right to expand the responsive area. The container switches between Narrow, Medium, and Wide layouts.
+                                </SgTypography>
+                                <div style="margin-top:auto;display:flex;flex-direction:column;gap:6px;">
+                                    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--sg-text-muted);">
+                                        <span style="width:8px;height:8px;border-radius:50%;background:var(--sg-color-danger);flex-shrink:0;"></span>
+                                        Narrow: &lt; @_narrowThreshold px
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--sg-text-muted);">
+                                        <span style="width:8px;height:8px;border-radius:50%;background:var(--sg-color-info);flex-shrink:0;"></span>
+                                        Medium: @_narrowThreshold – @_wideThreshold px
+                                    </div>
+                                    <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--sg-text-muted);">
+                                        <span style="width:8px;height:8px;border-radius:50%;background:var(--sg-color-success);flex-shrink:0;"></span>
+                                        Wide: &ge; @_wideThreshold px
                                     </div>
                                 </div>
-                            </OnMedium>
-                            <OnWide>
-                                <div style="background: #f6ffed; border: 1px solid #b7eb8f; padding: 48px; border-radius: 8px;">
-                                    <div style="display: grid; grid-template-columns: auto 1fr; gap: 32px; align-items: center;">
-                                        <SgIcon Icon="@SgIcons.Monitor" Size="64px" />
-                                        <div>
-                                            <h3>Широкий вид (Wide)</h3>
-                                            <p>Ширина более 600px. Доступно максимум пространства для деталей.</p>
-                                            <div style="display: flex; gap: 8px; margin-top: 16px;">
-                                                <SgButton Text="Действие 1" Variant="SgButtonVariant.Primary" />
-                                                <SgButton Text="Действие 2" />
+                            </div>
+                        </First>
+                        <Second>
+                            <div style="padding:0;height:100%;">
+                                <SgResponsiveContainer NarrowThreshold="@_narrowThreshold"
+                                                         WideThreshold="@_wideThreshold"
+                                                         TransitionEnabled="@_transitionEnabled"
+                                                         ObserveDebounceMs="@_debounceMs"
+                                                         BreakpointChanged="@OnBreakpointChanged"
+                                                         WidthChanged="@(w => { _currentWidth = w; StateHasChanged(); })"
+                                                         ClassName="sgc-responsive-preview"
+                                                         MinHeight="100%"
+                                                         Padding="24px">
+                                    <OnNarrow>
+                                        <div class="sgc-responsive-preview sgc-responsive-narrow">
+                                            <SgIcon Icon="@SgIcons.Monitor" Size="36px" Color="var(--sg-color-danger)" />
+                                            <SgTypography Variant="SgTypographyVariant.Heading3" Color="var(--sg-fg)">Narrow</SgTypography>
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                                Compact single-column layout. Width is less than @_narrowThreshold px.
+                                            </SgTypography>
+                                            <SgBadge Text="@($"{_currentWidth:F0} px")" Variant="SgBadgeVariant.Danger" />
+                                        </div>
+                                    </OnNarrow>
+                                    <OnMedium>
+                                        <div class="sgc-responsive-preview sgc-responsive-medium">
+                                            <div style="display:flex;align-items:center;gap:16px;">
+                                                <SgIcon Icon="@SgIcons.Monitor" Size="48px" Color="var(--sg-color-info)" />
+                                                <div style="text-align:left;">
+                                                    <SgTypography Variant="SgTypographyVariant.Heading3" Color="var(--sg-fg)">Medium</SgTypography>
+                                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                                        Two-column layout with side details. Width @_narrowThreshold – @_wideThreshold px.
+                                                    </SgTypography>
+                                                </div>
                                             </div>
+                                            <SgBadge Text="@($"{_currentWidth:F0} px")" Variant="SgBadgeVariant.Info" />
                                         </div>
-                                    </div>
-                                </div>
-                            </OnWide>
-                        </SgResponsiveContainer>
+                                    </OnMedium>
+                                    <OnWide>
+                                        <div class="sgc-responsive-preview sgc-responsive-wide">
+                                            <div style="display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;width:100%;max-width:500px;">
+                                                <SgIcon Icon="@SgIcons.Monitor" Size="56px" Color="var(--sg-color-success)" />
+                                                <div style="text-align:left;">
+                                                    <SgTypography Variant="SgTypographyVariant.Heading3" Color="var(--sg-fg)">Wide</SgTypography>
+                                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                                        Full-featured layout with maximum space. Width is @_wideThreshold px or more.
+                                                    </SgTypography>
+                                                    <div style="display:flex;gap:8px;margin-top:12px;">
+                                                        <SgButton Text="Primary action" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" />
+                                                        <SgButton Text="Secondary" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <SgBadge Text="@($"{_currentWidth:F0} px")" Variant="SgBadgeVariant.Success" />
+                                        </div>
+                                    </OnWide>
+                                </SgResponsiveContainer>
+                            </div>
+                        </Second>
+                    </SgSplitter>
+                </div>
+            </SgCard>
+
+            @* ── Controls panel ── *@
+            <SgCard Title="Controls" CssClass="demo-interactive-card">
+                <div class="demo-flex-col" style="gap:14px;">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                            Narrow threshold
+                        </SgTypography>
+                        <div class="demo-flex-row" style="align-items:center;gap:10px;margin-top:4px;">
+                            <input type="range" min="200" max="500" step="10"
+                                   @bind="_narrowThreshold" @bind:after="() => StateHasChanged()"
+                                   style="flex:1;accent-color:var(--sg-color-primary);" />
+                            <SgBadge Text="@($"{_narrowThreshold}px")" Variant="SgBadgeVariant.Info" />
+                        </div>
                     </div>
-                </Second>
-            </SgSplitter>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                            Wide threshold
+                        </SgTypography>
+                        <div class="demo-flex-row" style="align-items:center;gap:10px;margin-top:4px;">
+                            <input type="range" min="400" max="900" step="10"
+                                   @bind="_wideThreshold" @bind:after="() => StateHasChanged()"
+                                   style="flex:1;accent-color:var(--sg-color-primary);" />
+                            <SgBadge Text="@($"{_wideThreshold}px")" Variant="SgBadgeVariant.Warn" />
+                        </div>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                            Transition animation
+                        </SgTypography>
+                        <div class="demo-flex-row" style="align-items:center;gap:10px;margin-top:4px;">
+                            <SgSwitch @bind-Value="_transitionEnabled" />
+                            <SgBadge Text="@(_transitionEnabled ? "ON" : "OFF")" Variant="@(_transitionEnabled ? SgBadgeVariant.Success : SgBadgeVariant.Muted)" />
+                        </div>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                            Debounce
+                        </SgTypography>
+                        <div class="demo-flex-row" style="align-items:center;gap:10px;margin-top:4px;">
+                            <SgNumberInput TValue="int" @bind-Value="_debounceMs" Min="0" Max="500" Step="10" Style="width:80px;" />
+                            <SgBadge Text="@(_debounceMs > 0 ? $"{_debounceMs}ms" : "None")" Variant="SgBadgeVariant.Info" />
+                        </div>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                            Current state
+                        </SgTypography>
+                        <div style="display:flex;flex-direction:column;gap:6px;margin-top:6px;font-family:monospace;font-size:12px;">
+                            <div>Width: <span style="color:var(--sg-color-primary);font-weight:600;">@($"{_currentWidth:F0}") px</span></div>
+                            <div>Breakpoint: <SgBadge Text="@_currentBreakpoint" Variant="@_breakpointBadgeVariant" /></div>
+                            <div>Changes: <span style="color:var(--sg-text-muted);">@_changeCount</span></div>
+                        </div>
+                    </div>
+                </div>
+            </SgCard>
+        </div>
+
+        @* ── Action log ── *@
+        @if (_log.Count > 0)
+        {
+            <div style="margin-top:12px;">
+                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">
+                    Breakpoint log
+                </SgTypography>
+                <div style="margin-top:6px;padding:8px 12px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:8px;">
+                    @foreach (var entry in _log)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:11px;font-family:'Cascadia Code','Consolas',monospace;color:var(--sg-text-muted);">
+                            <span style="width:5px;height:5px;border-radius:50%;background:var(--sg-color-primary);flex-shrink:0;"></span>
+                            <span>@entry</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Code constructor ── *@
+        <div style="margin-top:24px;">
+            <SgTypography Variant="SgTypographyVariant.Heading3">Code constructor</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Style="margin-bottom:8px;display:block;">
+                Basic responsive container with three breakpoints.
+            </SgTypography>
+            <pre class="demo-code-block"><span class="demo-code-comment">&lt;!-- SgResponsiveContainer with breakpoints --&gt;</span>
+<span class="demo-code-keyword">&lt;SgResponsiveContainer</span>
+    <span class="demo-code-attr">NarrowThreshold</span>=<span class="demo-code-string">"400"</span>
+    <span class="demo-code-attr">WideThreshold</span>=<span class="demo-code-string">"800"</span>
+    <span class="demo-code-attr">TransitionEnabled</span>=<span class="demo-code-string">"true"</span>
+    <span class="demo-code-attr">BreakpointChanged</span>=<span class="demo-code-string">"@@OnBreakpoint"</span><span class="demo-code-keyword">&gt;</span>
+    <span class="demo-code-keyword">&lt;OnNarrow&gt;</span>
+        <span class="demo-code-comment">&lt;!-- compact layout for &lt; 400px --&gt;</span>
+    <span class="demo-code-keyword">&lt;/OnNarrow&gt;</span>
+    <span class="demo-code-keyword">&lt;OnMedium&gt;</span>
+        <span class="demo-code-comment">&lt;!-- balanced layout for 400–800px --&gt;</span>
+    <span class="demo-code-keyword">&lt;/OnMedium&gt;</span>
+    <span class="demo-code-keyword">&lt;OnWide&gt;</span>
+        <span class="demo-code-comment">&lt;!-- full layout for &gt;= 800px --&gt;</span>
+    <span class="demo-code-keyword">&lt;/OnWide&gt;</span>
+<span class="demo-code-keyword">&lt;/SgResponsiveContainer&gt;</span></pre>
+
+            <pre class="demo-code-block" style="margin-top:8px;"><span class="demo-code-comment">&lt;!-- Using CSS container queries in child elements --&gt;</span>
+<span class="demo-code-comment">&lt;!-- The component adds container-type: inline-size automatically --&gt;</span>
+<span class="demo-code-keyword">@@container</span> sgc-responsive (max-width: 400px) {
+    <span class="demo-code-keyword">.my-widget</span> {
+        grid-template-columns: <span class="demo-code-number">1fr</span>;
+    }
+}</pre>
         </div>
     </div>
 
+    @* ── Component Properties ─────────────────────────────────────────────── *@
+    <div class="sgc-demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading2">Component Properties</SgTypography>
+        </div>
+
+        <SgCard Title="SgResponsiveContainer" Style="margin-top:12px;">
+            <PropertyTable Items="_props" />
+        </SgCard>
+    </div>
+
 </SgCard>
+
+@code {
+    // ── Interactive state ──────────────────────────────────────────────────────
+    private int _narrowThreshold = 350;
+    private int _wideThreshold = 600;
+    private bool _transitionEnabled = true;
+    private int _debounceMs = 50;
+    private double _currentWidth;
+    private string _currentBreakpoint = "medium";
+    private int _changeCount;
+    private readonly List<string> _log = new();
+
+    private SgBadgeVariant _breakpointBadgeVariant => _currentBreakpoint switch
+    {
+        "narrow" => SgBadgeVariant.Danger,
+        "medium" => SgBadgeVariant.Info,
+        "wide" => SgBadgeVariant.Success,
+        _ => SgBadgeVariant.Default
+    };
+
+    private void OnBreakpointChanged(string bp)
+    {
+        _currentBreakpoint = bp;
+        _changeCount++;
+        Log($"Breakpoint: {bp}");
+        StateHasChanged();
+    }
+
+    private void Log(string msg)
+    {
+        _log.Insert(0, $"[{DateTime.Now:HH:mm:ss}] {msg}");
+        if (_log.Count > 10) _log.RemoveAt(_log.Count - 1);
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            Log("Component initialized");
+        }
+    }
+
+    // ── Property table ─────────────────────────────────────────────────────
+    private List<PropertyPanelItem> _props = new()
+    {
+        new() { Label = "OnNarrow",              Value = "RenderFragment?",           BadgeText = "Width < NarrowThreshold",    BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "OnMedium",              Value = "RenderFragment?",           BadgeText = "Narrow–Wide threshold",       BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "OnWide",                Value = "RenderFragment?",           BadgeText = "Width ≥ WideThreshold",      BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "NarrowThreshold",       Value = "int (default 400)",          BadgeText = "Narrow upper bound (px)",    BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "WideThreshold",         Value = "int (default 800)",          BadgeText = "Wide lower bound (px)",      BadgeVariant = SgBadgeVariant.Warn   },
+        new() { Label = "TransitionEnabled",     Value = "bool",                      BadgeText = "Animate breakpoint changes", BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "ObserveDebounceMs",     Value = "int (default 50)",           BadgeText = "Resize debounce (ms)",        BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ClassName",             Value = "string?",                   BadgeText = "CSS class",                  BadgeVariant = SgBadgeVariant.Default},
+        new() { Label = "MinHeight",             Value = "string? (default \"100%\")", BadgeText = "Min height",                 BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "Padding",               Value = "string? (default \"0\")",    BadgeText = "Padding",                    BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "BreakpointChanged",     Value = "EventCallback<string>",     BadgeText = "Breakpoint callback",        BadgeVariant = SgBadgeVariant.Success},
+        new() { Label = "CurrentBreakpoint",     Value = "string (readonly)",         BadgeText = "\"narrow\"/\"medium\"/\"wide\"", BadgeVariant = SgBadgeVariant.Info},
+        new() { Label = "CurrentWidth",          Value = "double (readonly)",         BadgeText = "Container width (px)",       BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "ChildContent",          Value = "not used (use slots)",       BadgeText = "Use OnNarrow/Medium/Wide",   BadgeVariant = SgBadgeVariant.Default},
+    };
+}
