@@ -49,6 +49,12 @@ public partial class SgCol : ComponentBase
     /// <summary>Override cross-axis alignment of THIS column (CSS <c>align-self</c>).</summary>
     [Parameter] public SgAlignItems? AlignSelf { get; set; }
 
+    /// <summary>If <c>true</c>, the column lifts on hover with a subtle scale effect.</summary>
+    [Parameter] public bool Hoverable { get; set; }
+
+    /// <summary>If <c>true</c>, shows pointer cursor on hover.</summary>
+    [Parameter] public bool Clickable { get; set; }
+
     // Responsive spans
     [Parameter] public int Xs { get; set; }
     [Parameter] public int Sm { get; set; }
@@ -110,6 +116,8 @@ public partial class SgCol : ComponentBase
             if (HideMd) sb.Append(" sg-col-md-hidden");
             if (HideLg) sb.Append(" sg-col-lg-hidden");
             if (HideXl) sb.Append(" sg-col-xl-hidden");
+            if (Hoverable) sb.Append(" sg-col-hoverable");
+            if (Clickable) sb.Append(" sg-col-clickable");
             if (!string.IsNullOrWhiteSpace(CssClass)) sb.Append(' ').Append(CssClass);
             return sb.ToString();
         }

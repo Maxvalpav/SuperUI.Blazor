@@ -73,6 +73,18 @@ public partial class SgRow : ComponentBase
     /// <summary>Optional background color / CSS value.</summary>
     [Parameter] public string? Background { get; set; }
 
+    /// <summary>Optional CSS padding (e.g. "12px" or "var(--sg-spacing-2)").</summary>
+    [Parameter] public string? Padding { get; set; }
+
+    /// <summary>Optional CSS border-radius (e.g. "8px" or "var(--sg-radius-md)").</summary>
+    [Parameter] public string? BorderRadius { get; set; }
+
+    /// <summary>If <c>true</c>, the row lifts on hover with a subtle shadow transition.</summary>
+    [Parameter] public bool Hoverable { get; set; }
+
+    /// <summary>If <c>true</c>, shows pointer cursor on hover.</summary>
+    [Parameter] public bool Clickable { get; set; }
+
     /// <summary>HTML tag to render. Default <c>div</c>. Allowed: <c>div, section, header, footer, nav, main, ul</c>.</summary>
     [Parameter] public string Tag { get; set; } = "div";
 
@@ -170,6 +182,8 @@ public partial class SgRow : ComponentBase
             var sb = new StringBuilder("sg-row");
             if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase)) sb.Append(" sg-row-list");
             if (Inline) sb.Append(" sg-row-inline");
+            if (Hoverable) sb.Append(" sg-row-hoverable");
+            if (Clickable) sb.Append(" sg-row-clickable");
             if (!string.IsNullOrWhiteSpace(CssClass))
             {
                 sb.Append(' ').Append(CssClass);
@@ -192,6 +206,8 @@ public partial class SgRow : ComponentBase
 
             if (!string.IsNullOrWhiteSpace(MinHeight)) sb.Append("min-height:").Append(MinHeight).Append(';');
             if (!string.IsNullOrWhiteSpace(Background)) sb.Append("background:").Append(Background).Append(';');
+            if (!string.IsNullOrWhiteSpace(Padding)) sb.Append("padding:").Append(Padding).Append(';');
+            if (!string.IsNullOrWhiteSpace(BorderRadius)) sb.Append("border-radius:").Append(BorderRadius).Append(';');
 
             // Reset list defaults if rendered as <ul>
             if (string.Equals(Tag, "ul", StringComparison.OrdinalIgnoreCase))

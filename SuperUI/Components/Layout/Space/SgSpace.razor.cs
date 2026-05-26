@@ -42,6 +42,9 @@ public partial class SgSpace : SgComponentBase
     /// <summary>If true, renders as inline-flex instead of flex.</summary>
     [Parameter] public bool Inline { get; set; }
 
+    /// <summary>If <c>true</c>, the container lifts on hover.</summary>
+    [Parameter] public bool Hoverable { get; set; }
+
     private string ResolvedGap => Space switch
     {
         SgSize.Sm => "var(--sg-spacing-2)",   // 8px
@@ -82,5 +85,6 @@ public partial class SgSpace : SgComponentBase
         }
     }
 
-    private string ComputedClass => $"sgc-space{(!string.IsNullOrWhiteSpace(CssClass) ? " " + CssClass : "")}";
+    private string ComputedClass =>
+        $"sgc-space{(Hoverable ? " sg-row-hoverable" : "")}{(!string.IsNullOrWhiteSpace(CssClass) ? " " + CssClass : "")}";
 }

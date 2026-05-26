@@ -99,6 +99,12 @@ public partial class SgStack : SgComponentBase
     /// <summary>If <c>true</c>, the stack fills the full height of its parent.</summary>
     [Parameter] public bool FullHeight { get; set; }
 
+    /// <summary>HTML tag to render. Default <c>div</c>. Allowed: <c>div, section, header, footer, nav, main</c>.</summary>
+    [Parameter] public string Tag { get; set; } = "div";
+
+    /// <summary>If <c>true</c>, the stack lifts on hover with a subtle shadow transition.</summary>
+    [Parameter] public bool Hoverable { get; set; }
+
     /// <summary>Click event on the stack root.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
 
@@ -141,6 +147,7 @@ public partial class SgStack : SgComponentBase
         .AddClass("sg-stack-vertical",  ResolvedOrientation == SgOrientation.Vertical)
         .AddClass("sg-stack-horizontal",ResolvedOrientation != SgOrientation.Vertical)
         .AddClass("sg-stack-dividers",  ShowDividers)
+        .AddClass("sg-row-hoverable",   Hoverable)
         .Build();
 
     private string FixUnit(string? value)
