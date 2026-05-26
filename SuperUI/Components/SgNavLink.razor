@@ -1,0 +1,80 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<NavLink class="@("sgc-nav-link " + CssClass)" 
+         href="@Href" 
+         Match="@Match" 
+         aria-current="@(Match == NavLinkMatch.All ? "page" : null)"
+         @onclick="OnClickAsync">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="sgc-nav-icon" aria-hidden="true">
+            @if (Icon.StartsWith("<svg"))
+            {
+                @((MarkupString)Icon)
+            }
+            else
+            {
+                @Icon
+            }
+        </span>
+    }
+    <span class="sgc-nav-label">@ChildContent@Text</span>
+</NavLink>
+
+@code {
+    [CascadingParameter] public SgNavGroup? Parent { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Parent?.Register(this);
+    }
+
+    public void Dispose()
+    {
+        Parent?.Unregister(this);
+    }
+
+    /// <summary>
+    /// Gets or sets the navigation URL.
+    /// </summary>
+    [Parameter] public string? Href { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the link text.
+    /// </summary>
+    [Parameter] public string? Text { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the icon to display before the link text.
+    /// Supports SVG markup or text.
+    /// </summary>
+    [Parameter] public string? Icon { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the custom content to render inside the link.
+    /// Takes precedence over <see cref="Text"/>.
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the URL matching behavior for determining active state.
+    /// Default is <see cref="NavLinkMatch.Prefix"/>.
+    /// </summary>
+    [Parameter] public NavLinkMatch Match { get; set; } = NavLinkMatch.Prefix;
+    
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the callback invoked when the link is clicked.
+    /// </summary>
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    private async Task OnClickAsync()
+    {
+        if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+    }
+}

@@ -1,0 +1,86 @@
+@namespace SuperUI.Components
+@using SuperUI.Localization
+@inject ISuperUILocalizer Localizer
+
+<nav class="sgc-nav @(_mini ? "sgc-nav-mini" : "") @(_collapsed ? "sgc-nav-collapsed" : "") @CssClass">
+    <div class="sgc-nav-header">
+        @if (!_mini)
+        {
+            @if (LogoContent is not null)
+            {
+                <div class="sgc-nav-logo">@LogoContent</div>
+            }
+            else if (!string.IsNullOrEmpty(Title))
+            {
+                <span class="sgc-nav-brand">@Title</span>
+            }
+        }
+        else
+        {
+            <div class="sgc-nav-logo-mini">
+                <svg width="22" height="22" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                    <rect width="32" height="32" rx="5" fill="rgba(255,255,255,0.15)"/>
+                    <rect x="3" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.9)"/>
+                    <rect x="17" y="3" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+                    <rect x="3" y="17" width="12" height="12" rx="2" fill="rgba(255,255,255,0.4)"/>
+                    <rect x="17" y="17" width="12" height="12" rx="2" fill="rgba(255,255,255,0.15)"/>
+                    <rect x="20" y="20" width="6" height="6" rx="1.5" fill="rgba(255,255,255,0.7)"/>
+                </svg>
+            </div>
+        }
+        @{ var collapseTitle = _mini ? Localizer["Expand"] : Localizer["Collapse"]; }
+        <button type="button" class="sgc-nav-collapse-btn" @onclick="ToggleMiniAsync" title="@collapseTitle">
+            @(_mini ? "›" : "‹")
+        </button>
+        <button type="button" class="sgc-nav-toggle" @onclick="ToggleAsync" aria-label="Меню">
+            <span></span><span></span><span></span>
+        </button>
+    </div>
+    <div class="sgc-nav-body">
+        <CascadingValue Value="this" IsFixed="true">
+            <CascadingValue Value="_mini">
+                @ChildContent
+            </CascadingValue>
+        </CascadingValue>
+    </div>
+    @if (FooterContent is not null)
+    {
+        <div class="sgc-nav-footer">
+            @if (!_mini) { @FooterContent }
+        </div>
+    }
+</nav>
+
+@if (_collapsed)
+{
+    <div class="sgc-nav-backdrop" @onclick="ToggleAsync"></div>
+}
+
+@code {
+    private bool _mini = false;
+    private bool _collapsed = false;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public RenderFragment? LogoContent { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+
+    private Task ToggleMiniAsync()
+    {
+        _mini = !_mini;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private Task ToggleAsync()
+    {
+        _collapsed = !_collapsed;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public Task CollapseAsync()
+    {
+        _collapsed = false;
+        return InvokeAsync(StateHasChanged);
+    }
+}
