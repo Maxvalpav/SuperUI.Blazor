@@ -1,7 +1,8 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 
 <CascadingValue Value="this" IsFixed="true">
-    <div class="sgc-menu @CssClass" style="@Style" role="menu" @onkeydown="OnKeyDownAsync">
+    <div class="@GetCssClasses()" style="@Style" role="menu" @onkeydown="OnKeyDownAsync">
         @ChildContent
     </div>
 </CascadingValue>
@@ -14,21 +15,60 @@
     /// Gets or sets the menu content containing menu items.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
+
+    /// <summary>
+    /// Gets or sets the visual variant of the menu container.
+    /// Supported: <c>Default</c>, <c>Bordered</c>, <c>Elevated</c>, <c>Ghost</c>.
+    /// </summary>
+    [Parameter] public SgMenuVariant Variant { get; set; } = SgMenuVariant.Default;
+
+    /// <summary>
+    /// Gets or sets the size of the menu items.
+    /// Supported: <c>Sm</c>, <c>Md</c> (default), <c>Lg</c>.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Gets or sets whether the menu uses compact padding.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
+
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
-    
+
     /// <summary>
     /// Gets or sets additional inline styles to apply to the component.
     /// </summary>
     [Parameter] public string? Style { get; set; }
 
     /// <summary>
-    /// Gets or sets the callback invoked when the menu is closed.
+    /// Gets or sets the callback invoked when the menu is closed (Escape key).
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// Fires when any non-disabled menu item is clicked.
+    /// </summary>
+    [Parameter] public EventCallback<SgMenuItem> OnItemClick { get; set; }
+
+    private string GetCssClasses()
+    {
+        var classes = new List<string> { "sgc-menu" };
+        classes.Add(Variant switch
+        {
+            SgMenuVariant.Bordered => "sgc-menu-bordered",
+            SgMenuVariant.Elevated => "sgc-menu-elevated",
+            SgMenuVariant.Ghost    => "sgc-menu-ghost",
+            _ => ""
+        });
+        if (Size == SgSize.Sm) classes.Add("sgc-menu-sm");
+        else if (Size == SgSize.Lg) classes.Add("sgc-menu-lg");
+        if (Compact) classes.Add("sgc-menu-compact");
+        if (!string.IsNullOrEmpty(CssClass)) classes.Add(CssClass);
+        return string.Join(" ", classes.Where(c => !string.IsNullOrEmpty(c)));
+    }
 
     internal void RegisterItem(SgMenuItem item)
     {
@@ -43,28 +83,53 @@
             _focusedIndex = _items.Count - 1;
     }
 
+    internal async Task NotifyItemClicked(SgMenuItem item)
+    {
+        if (OnItemClick.HasDelegate)
+            await OnItemClick.InvokeAsync(item);
+    }
+
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "ArrowDown")
+        switch (e.Key)
         {
-            var nextIndex = _focusedIndex + 1;
-            if (nextIndex >= _items.Count)
-                nextIndex = 0;
-            _focusedIndex = nextIndex;
-            await FocusItemAsync(_focusedIndex);
-        }
-        else if (e.Key == "ArrowUp")
-        {
-            var prevIndex = _focusedIndex - 1;
-            if (prevIndex < 0)
-                prevIndex = _items.Count - 1;
-            _focusedIndex = prevIndex;
-            await FocusItemAsync(_focusedIndex);
-        }
-        else if (e.Key == "Escape")
-        {
-            if (OnClose.HasDelegate)
-                await OnClose.InvokeAsync();
+            case "ArrowDown":
+            {
+                var next = _focusedIndex + 1;
+                if (next >= _items.Count) next = 0;
+                _focusedIndex = next;
+                await FocusItemAsync(_focusedIndex);
+                break;
+            }
+            case "ArrowUp":
+            {
+                var prev = _focusedIndex - 1;
+                if (prev < 0) prev = _items.Count - 1;
+                _focusedIndex = prev;
+                await FocusItemAsync(_focusedIndex);
+                break;
+            }
+            case "Home":
+            {
+                _focusedIndex = 0;
+                await FocusItemAsync(_focusedIndex);
+                break;
+            }
+            case "End":
+            {
+                _focusedIndex = _items.Count - 1;
+                await FocusItemAsync(_focusedIndex);
+                break;
+            }
+            case "Escape":
+            {
+                // Close all open sub-menus
+                foreach (var item in _items)
+                    item.CloseSubMenu();
+                if (OnClose.HasDelegate)
+                    await OnClose.InvokeAsync();
+                break;
+            }
         }
     }
 

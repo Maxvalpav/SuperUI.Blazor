@@ -2,26 +2,49 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-@if (_visible)
+@if (_visible || _persist)
 {
     <button type="button"
-            class="sgc-backtop @CssClass"
+            class="@GetClassNames()"
             style="@PositionStyle"
             title="@Title"
             aria-label="@Title"
-            @onclick="OnClickAsync">
-        @if (ChildContent is not null)
+            @onclick="OnClickAsync"
+            @onmouseenter="OnMouseEnter"
+            @onmouseleave="OnMouseLeave">
+        @if (ShowProgress && _progress >= 0)
         {
-            @ChildContent
+            <svg class="sgc-backtop-progress-ring" viewBox="0 0 36 36" aria-hidden="true">
+                <circle class="sgc-backtop-progress-bg"
+                        cx="18" cy="18" r="15"
+                        fill="none"
+                        stroke-width="2.5" />
+                <circle class="sgc-backtop-progress-fill"
+                        cx="18" cy="18" r="15"
+                        fill="none"
+                        stroke-width="2.5"
+                        stroke-dasharray="@($"{Circumference} {Circumference}")"
+                        stroke-dashoffset="@GetProgressOffset()"
+                        stroke-linecap="round"
+                        transform="rotate(-90, 18, 18)" />
+            </svg>
         }
-        else
-        {
-            <span class="sgc-backtop-icon">@((MarkupString)SgIcons.ArrowUp)</span>
-        }
+        <span class="sgc-backtop-icon">
+            @if (ChildContent is not null)
+            {
+                @ChildContent
+            }
+            else
+            {
+                @((MarkupString)SgIcons.ArrowUp)
+            }
+        </span>
     </button>
 }
 
 @code {
+    private const double Circumference = 2 * Math.PI * 15; // ~94.2478
+
     /// <summary>
     /// Optional custom content. When null, an arrow-up icon is rendered.
     /// </summary>
@@ -43,14 +66,24 @@
     [Parameter] public bool Smooth { get; set; } = true;
 
     /// <summary>
-    /// Bottom offset in pixels. Default 32.
+    /// Bottom offset in pixels. Default 32. Ignored if <see cref="Top"/> is set.
     /// </summary>
     [Parameter] public int Bottom { get; set; } = 32;
 
     /// <summary>
-    /// Right offset in pixels. Default 32.
+    /// Right offset in pixels. Default 32. Ignored if <see cref="Left"/> is set.
     /// </summary>
     [Parameter] public int Right { get; set; } = 32;
+
+    /// <summary>
+    /// Top offset in pixels. When set, overrides <see cref="Bottom"/>.
+    /// </summary>
+    [Parameter] public int? Top { get; set; }
+
+    /// <summary>
+    /// Left offset in pixels. When set, overrides <see cref="Right"/>.
+    /// </summary>
+    [Parameter] public int? Left { get; set; }
 
     /// <summary>
     /// Tooltip text. Default "Back to top".
@@ -67,13 +100,92 @@
     /// </summary>
     [Parameter] public EventCallback OnClick { get; set; }
 
+    /// <summary>
+    /// Animation style for appear/disappear transitions. Default <see cref="SgBackTopAnimation.Scale"/>.
+    /// </summary>
+    [Parameter] public SgBackTopAnimation Animation { get; set; } = SgBackTopAnimation.Scale;
+
+    /// <summary>
+    /// When true, renders a circular progress indicator that fills as the user scrolls down.
+    /// Default false.
+    /// </summary>
+    [Parameter] public bool ShowProgress { get; set; }
+
+    /// <summary>
+    /// CSS color of the progress ring fill. Default uses the primary color.
+    /// </summary>
+    [Parameter] public string? ProgressColor { get; set; }
+
+    /// <summary>
+    /// Whether the button is currently visible. Two-way bindable for manual control.
+    /// </summary>
+    [Parameter] public bool Visible { get; set; }
+
+    /// <summary>
+    /// Fired when visibility changes (by scroll or externally).
+    /// </summary>
+    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
+
+    /// <summary>
+    /// When true, the button element is always present in DOM (for smooth animations). Default false.
+    /// </summary>
+    [Parameter] public bool Persistent { get; set; }
+
+    /// <summary>
+    /// Current scroll progress percentage (0-100). Useful for binding or external display.
+    /// </summary>
+    [Parameter] public int Progress { get; set; } = -1;
+
+    /// <summary>
+    /// Fired when scroll progress changes.
+    /// </summary>
+    [Parameter] public EventCallback<int> ProgressChanged { get; set; }
+
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgBackTop>? _self;
     private int _handleId = -1;
     private bool _isDisposed;
     private bool _visible;
+    private bool _hovered;
+    private int _progress = -1;
+    private bool _persist;
 
-    private string PositionStyle => $"bottom:{Bottom}px;right:{Right}px;";
+    private string PositionStyle
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (Top.HasValue) parts.Add($"top:{Top.Value}px");
+            else parts.Add($"bottom:{Bottom}px");
+            if (Left.HasValue) parts.Add($"left:{Left.Value}px");
+            else parts.Add($"right:{Right}px");
+            return string.Join(";", parts) + ";";
+        }
+    }
+
+    private string GetClassNames()
+    {
+        var list = new List<string> { "sgc-backtop" };
+        if (_visible) list.Add("sgc-backtop-visible");
+        if (_hovered) list.Add("sgc-backtop-hovered");
+        if (ShowProgress) list.Add("sgc-backtop-with-progress");
+        switch (Animation)
+        {
+            case SgBackTopAnimation.None:   list.Add("sgc-backtop-anim-none"); break;
+            case SgBackTopAnimation.Fade:   list.Add("sgc-backtop-anim-fade"); break;
+            case SgBackTopAnimation.SlideUp:list.Add("sgc-backtop-anim-slide"); break;
+            case SgBackTopAnimation.Bounce: list.Add("sgc-backtop-anim-bounce"); break;
+            default:                        list.Add("sgc-backtop-anim-scale"); break;
+        }
+        if (!string.IsNullOrEmpty(CssClass)) list.Add(CssClass);
+        return string.Join(" ", list);
+    }
+
+    private double GetProgressOffset()
+    {
+        var p = Math.Clamp(_progress, 0, 100) / 100.0;
+        return Circumference * (1 - p);
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -83,11 +195,16 @@
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-affix.js");
             if (_isDisposed) return;
             _self ??= DotNetObjectReference.Create(this);
-            
+
             if (firstRender || _handleId < 0)
             {
                 _handleId = await _module.InvokeAsync<int>("backtopAttach", _self,
-                    new { target = Target, threshold = VisibilityHeight });
+                    new
+                    {
+                        target = Target,
+                        threshold = VisibilityHeight,
+                        trackProgress = ShowProgress
+                    });
             }
         }
         catch (JSException) { }
@@ -99,6 +216,20 @@
     {
         if (_isDisposed || _visible == visible) return;
         _visible = visible;
+        _persist = Persistent && (_visible || _persist);
+        if (!Persistent) _persist = _visible;
+        Visible = _visible;
+        await VisibleChanged.InvokeAsync(_visible);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task OnScrollProgress(int percentage)
+    {
+        if (_isDisposed || !ShowProgress) return;
+        _progress = Math.Clamp(percentage, 0, 100);
+        Progress = _progress;
+        await ProgressChanged.InvokeAsync(_progress);
         await InvokeAsync(StateHasChanged);
     }
 
@@ -113,32 +244,32 @@
         if (OnClick.HasDelegate) await OnClick.InvokeAsync();
     }
 
+    private void OnMouseEnter() { _hovered = true; }
+    private void OnMouseLeave() { _hovered = false; }
+
     public async ValueTask DisposeAsync()
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        
-        // Notify JS to dispose and clear dotnet reference
+
         if (_handleId >= 0 && _module is not null)
         {
             try { await _module.InvokeVoidAsync("backtopDetach", _handleId); }
-            catch (JSException) { } 
-            catch (TaskCanceledException) { } 
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
             _handleId = -1;
         }
-        
-        // Dispose DotNetObjectReference
+
         var self = _self;
         _self = null;
         self?.Dispose();
 
-        // Dispose JS module
         if (_module is not null)
         {
             try { await _module.DisposeAsync(); }
-            catch (JSException) { } 
-            catch (TaskCanceledException) { } 
+            catch (JSException) { }
+            catch (TaskCanceledException) { }
             catch (ObjectDisposedException) { }
             _module = null;
         }

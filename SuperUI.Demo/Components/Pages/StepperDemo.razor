@@ -1,166 +1,791 @@
 ﻿@page "/stepper-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Пошаговый процесс - SUI</PageTitle>
+<PageTitle>SgStepper — Step Progress — SuperUI</PageTitle>
 
-<SgCard Title="SgStepper - Пошаговый процесс"
-        Subtitle="Компонент для отображения пошагового процесса. Поддерживает горизонтальный и вертикальный режимы, кликабельные шаги.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Горизонтальный степпер</h2>
-        <p>Стандартный горизонтальный пошаговый процесс с навигацией.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Horizontal Stepper — Interactive Registration                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Horizontal Stepper — Interactive Registration
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                A complete multi-step form with validation and navigation. Each step shows relevant input fields. Try navigating with the stepper or the buttons below.
+            </SgTypography>
+        </div>
 
-        <SgCard Title="Процесс регистрации" Style="margin-top: 16px;">
-            <SgStepper Steps="_registrationSteps" Active="_currentStep" ActiveChanged="v => _currentStep = v" />
+        <SgCard Title="User Registration" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgStack Vertical Space="SgSize.Md">
+                <SgStepper Steps="_registrationSteps" Active="_currentStep"
+                           ActiveChanged="v => _currentStep = v"
+                           Size="SgSize.Md"
+                           Animated="true"
+                           ShowLines="true"
+                           Linear="_linearReg" />
 
-            <div style="margin-top: 24px; padding: 16px; border: 1px solid var(--sui-border); border-radius: 8px; min-height: 100px;">
-                @switch (_currentStep)
-                {
-                    case 0:
-                        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 400px;">
-                            <SgTextBox TValue="string" @bind-Value="@_regName" Label="Полное имя" Placeholder="Иван Петров" />
-                            <SgDatePicker @bind-Value="@_regBirthDate" Label="Дата рождения" />
-                        </div>
-                        break;
-                    case 1:
-                        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 400px;">
-                            <SgTextBox TValue="string" @bind-Value="@_regEmail" Label="Email" Type="email" Placeholder="ivan@example.com" />
-                            <SgTextBox TValue="string" @bind-Value="@_regPhone" Label="Телефон" Type="tel" Placeholder="+7 (999) 999-99-99" />
-                        </div>
-                        break;
-                    case 2:
-                        <div style="display: flex; flex-direction: column; gap: 12px; max-width: 400px;">
-                            <SgTextBox TValue="string" @bind-Value="@_regPassword" Label="Пароль" Type="password" Placeholder="Минимум 8 символов" />
-                            <SgCheckBox @bind-Value="@_regTerms" Label="Согласен с условиями использования" />
-                        </div>
-                        break;
-                    case 3:
-                        <div>
-                            <SgResult Status="SgResultStatus.Success" Title="Регистрация завершена!" SubTitle="Добро пожаловать в SuperUI." />
-                        </div>
-                        break;
-                }
-            </div>
+                <div class="demo-step-content">
+                    @switch (_currentStep)
+                    {
+                        case 0:
+                            <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Start">
+                                <SgTypography Variant="SgTypographyVariant.Heading6">Personal Information</SgTypography>
+                                <SgRow Space="SgSize.Md" Style="width:100%;max-width:480px;">
+                                    <SgCol Span="12">
+                                        <SgTextBox TValue="string" @bind-Value="_regName" Label="Full Name" Placeholder="John Doe" />
+                                    </SgCol>
+                                    <SgCol Xs="12" Md="6">
+                                        <SgDatePicker @bind-Value="_regBirthDate" Label="Date of Birth" />
+                                    </SgCol>
+                                    <SgCol Xs="12" Md="6">
+                                        <SgSelect TValue="string" @bind-Value="_regGender"
+                                                  Label="Gender"
+                                                  Items="_genderOptions"
+                                                  LabelSelector="x => x"
+                                                  Block="true" />
+                                    </SgCol>
+                                </SgRow>
+                            </SgStack>
+                            break;
+                        case 1:
+                            <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Start">
+                                <SgTypography Variant="SgTypographyVariant.Heading6">Contact Details</SgTypography>
+                                <SgRow Space="SgSize.Md" Style="width:100%;max-width:480px;">
+                                    <SgCol Span="12">
+                                        <SgTextBox TValue="string" @bind-Value="_regEmail" Label="Email" Type="email" Placeholder="john@example.com" />
+                                    </SgCol>
+                                    <SgCol Span="12">
+                                        <SgTextBox TValue="string" @bind-Value="_regPhone" Label="Phone" Type="tel" Placeholder="+1 (555) 123-4567" />
+                                    </SgCol>
+                                </SgRow>
+                            </SgStack>
+                            break;
+                        case 2:
+                            <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Start">
+                                <SgTypography Variant="SgTypographyVariant.Heading6">Security</SgTypography>
+                                <SgRow Space="SgSize.Md" Style="width:100%;max-width:480px;">
+                                    <SgCol Span="12">
+                                        <SgTextBox TValue="string" @bind-Value="_regPassword" Label="Password" Type="password" Placeholder="Min 8 characters" />
+                                    </SgCol>
+                                    <SgCol Span="12">
+                                        <SgCheckBox @bind-Value="_regTerms" Label="I agree to the Terms of Service" />
+                                    </SgCol>
+                                </SgRow>
+                            </SgStack>
+                            break;
+                        case 3:
+                            <SgStack Vertical Space="SgSize.Lg" Align="SgAlignItems.Center">
+                                <SgResult Status="SgResultStatus.Success"
+                                          Title="Registration Complete!"
+                                          SubTitle="Welcome to SuperUI."
+                                          Size="SgSize.Sm">
+                                    <ExtraContent>
+                                        <SgSpace Size="middle">
+                                            <SgButton Variant="SgButtonVariant.Primary" OnClick="@(() => _currentStep = 0)">
+                                                Start Over
+                                            </SgButton>
+                                            <SgButton Variant="SgButtonVariant.Outlined">
+                                                View Dashboard
+                                            </SgButton>
+                                        </SgSpace>
+                                    </ExtraContent>
+                                </SgResult>
+                            </SgStack>
+                            break;
+                    }
+                </div>
 
-            <div style="margin-top: 16px; display: flex; gap: 12px;">
-                <SgButton Text="← Назад"
-                          OnClick="@(() => _currentStep = Math.Max(0, _currentStep - 1))"
-                          Disabled="@(_currentStep == 0)" />
-                @if (_currentStep < _registrationSteps.Count - 1)
-                {
-                    <SgButton Text="Далее →"
-                              Variant=SgButtonVariant.Primary"
-                              OnClick="@(() => _currentStep = Math.Min(_registrationSteps.Count - 1, _currentStep + 1))" />
-                }
-                else
-                {
-                    <SgButton Text="Начать заново" OnClick="@(() => _currentStep = 0)" />
-                }
-            </div>
+                <SgRow Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                    <SgCol Auto="true">
+                        <SgButton Text="← Back"
+                                  OnClick="@(() => _currentStep = Math.Max(0, _currentStep - 1))"
+                                  Disabled="@(_currentStep == 0)"
+                                  Variant="SgButtonVariant.Outlined" />
+                    </SgCol>
+                    <SgCol Auto="true">
+                        <SgSpace Size="small">
+                            <SgCheckBox @bind-Value="_linearReg" Label="Linear" Size="SgSize.Sm" />
+                        </SgSpace>
+                    </SgCol>
+                    <SgCol Auto="true">
+                        @if (_currentStep < _registrationSteps.Count - 1)
+                        {
+                            <SgButton Text="Next →"
+                                      Variant="SgButtonVariant.Primary"
+                                      OnClick="@(() => _currentStep = Math.Min(_registrationSteps.Count - 1, _currentStep + 1))" />
+                        }
+                        else
+                        {
+                            <SgBadge Variant="SgBadgeVariant.Success" Text="✓ Completed" Standalone="true" />
+                        }
+                    </SgCol>
+                </SgRow>
+            </SgStack>
         </SgCard>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Вертикальный степпер</h2>
-        <p>Вертикальный режим для отображения в боковой панели.</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Статусы задачи">
-                <SgStepper Steps="_taskSteps" Active="_taskStep" ActiveChanged="v => _taskStep = v" Vertical="true" Clickable="true" />
-            </SgCard>
-
-            <SgCard Title="Прогресс проекта">
-                <SgStepper Steps="_projectSteps" Active="2" Vertical="true" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Vertical + Non-interactive Examples                              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Vertical &amp; Use Case Examples
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Vertical orientation for side panels, and specialized use cases with custom statuses, optional steps, and icons.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="6" Lg="4">
+                <SgCard Title="Task Workflow" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgStepper Steps="_taskSteps" Active="_taskStep"
+                                   ActiveChanged="v => _taskStep = v"
+                                   Vertical="true"
+                                   Clickable="true"
+                                   Size="SgSize.Md" />
+                        <SgSpace Size="small">
+                            <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined"
+                                      OnClick="@(() => _taskStep = Math.Max(0, _taskStep - 1))"
+                                      Disabled="@(_taskStep == 0)">← Prev</SgButton>
+                            <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
+                                      OnClick="@(() => _taskStep = Math.Min(_taskSteps.Count - 1, _taskStep + 1))"
+                                      Disabled="@(_taskStep >= _taskSteps.Count - 1)">Next →</SgButton>
+                        </SgSpace>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+
+            <SgCol Xs="12" Md="6" Lg="4">
+                <SgCard Title="Project Milestones" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStepper Steps="_projectSteps" Active="2" Vertical="true" Clickable="false" Size="SgSize.Sm" />
+                </SgCard>
+            </SgCol>
+
+            <SgCol Xs="12" Lg="4">
+                <SgCard Title="Custom Statuses &amp; Options" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStepper Steps="_customSteps" Active="1" Vertical="true" Clickable="false" Size="SgSize.Sm" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Свойства компонента</h2>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgStepper">
-                <PropertyTable Items="_stepperProperties" />
-            </SgCard>
-            <SgCard Title="StepperItem">
-                <PropertyTable Items="_stepperItemProperties" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Size Variants                                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Size Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                The <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Size</SgTypography> parameter changes the overall scale: <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Sm</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Md</SgTypography> (default), <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Lg</SgTypography>.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Small (Sm)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStepper Steps="_sizeExampleSteps" Active="1" Size="SgSize.Sm" />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Medium (Md) — Default" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStepper Steps="_sizeExampleSteps" Active="1" Size="SgSize.Md" />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Large (Lg)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStepper Steps="_sizeExampleSteps" Active="1" Size="SgSize.Lg" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <!-- Enum + code -->
-    <div style="margin-top: 32px;">
-        <h2>Перечисление SgStepStatus и примеры кода</h2>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgStepStatus">
-                <PropertyTable Items="_stepStatusEnum" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Live Constructor                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live Stepper Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click <strong>Copy</strong> to grab the generated code.
+            </SgTypography>
         </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Step count -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Step Count</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="_ceStepCount"
+                                         ValueChanged="v => { _ceStepCount = v; _ceActiveStep = Math.Min(_ceActiveStep, v - 1); UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_stepCountOptions" />
+                        </SgStack>
+
+                        <!-- Active step -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Active Step</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="_ceActiveStep"
+                                         ValueChanged="v => { _ceActiveStep = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_ceActiveOptions" />
+                        </SgStack>
+
+                        <!-- Size -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                            <SgSegmented TValue="SgSize"
+                                         Value="_ceSize"
+                                         ValueChanged="v => { _ceSize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_sizeSegOptions" />
+                        </SgStack>
+
+                        <!-- Orientation -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Orientation</SgTypography>
+                            <SgSegmented TValue="string"
+                                         Value="_ceOrientation"
+                                         ValueChanged="v => { _ceOrientation = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_orientSegOptions" />
+                        </SgStack>
+
+                        <!-- Toggles -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Linear</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceLinear"
+                                                 ValueChanged="v => { _ceLinear = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Animated</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceAnimated"
+                                                 ValueChanged="v => { _ceAnimated = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Show Lines</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceShowLines"
+                                                 ValueChanged="v => { _ceShowLines = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Clickable</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceClickable"
+                                                 ValueChanged="v => { _ceClickable = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Compact -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Compact</SgTypography>
+                            <SgSegmented TValue="bool"
+                                         Value="_ceCompact"
+                                         ValueChanged="v => { _ceCompact = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_boolSegOptions" />
+                        </SgStack>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Steps</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ceStepCount.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Active</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Warn" Text="@_ceActiveStep.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Orientation</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ceOrientation" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Linear</SgTypography>
+                                    <SgBadge Variant="@(_ceLinear ? SgBadgeVariant.Info : SgBadgeVariant.Muted)" Text="@(_ceLinear ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgCol Auto="true">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                                </SgCol>
+                                <SgCol Auto="true">
+                                    <div class="demo-viewport-indicator" id="viewport-indicator">
+                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                            <span id="bp-label">xs</span>
+                                        </SgTypography>
+                                    </div>
+                                </SgCol>
+                            </SgRow>
+                            <div class="constructor-preview" id="constructor-preview">
+                                <SgStepper Steps="_ceSteps"
+                                           Active="_ceActiveStep"
+                                           ActiveChanged="v => { _ceActiveStep = v; UpdateConstructorCode(); }"
+                                           Size="_ceSize"
+                                           Vertical="@(_ceOrientation == "Vertical")"
+                                           Linear="_ceLinear"
+                                           Animated="_ceAnimated"
+                                           ShowLines="_ceShowLines"
+                                           Clickable="_ceClickable"
+                                           Compact="_ceCompact" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgCol Auto="true">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                </SgCol>
+                                <SgCol Auto="true">
+                                    <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                        <span id="copy-icon">@_copyIcon</span>
+                                        <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                    </button>
+                                </SgCol>
+                            </SgRow>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Properties                                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Component API
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Full list of configurable parameters for <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgStepper</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">StepperItem</SgTypography>, and the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgStepStatus</SgTypography> enum.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="6" Lg="4">
+                <SgCard Title="SgStepper" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_stepperProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="6" Lg="4">
+                <SgCard Title="StepperItem" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_stepperItemProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Lg="4">
+                <SgCard Title="SgStepStatus Enum" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_stepStatusEnum" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+</ChildContent>
 </SgCard>
 
-@code {
-    private int _currentStep = 0;
-    private int _taskStep = 1;
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
 
-    // Registration form fields
+    /* ── Step content panel ─────────────────────────────────────────────────── */
+    .demo-step-content {
+        padding: 20px;
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        min-height: 140px;
+        background: var(--sg-surface);
+        transition: all 0.25s ease;
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+
+    /* ── Viewport indicator ─────────────────────────────────────────────────── */
+    .demo-viewport-indicator {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 2px 10px;
+        font-size: 11px;
+    }
+</style>
+
+@code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-color-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgStepper</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Multi-step progress indicator with horizontal/vertical orientation, interactive navigation, linear mode, size variants, animations, and full customization.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Registration state ───────────────────────────────────────────────
+    private int _currentStep = 0;
+    private bool _linearReg;
+
     private string? _regName;
     private DateTime? _regBirthDate;
+    private string? _regGender = "Male";
     private string? _regEmail;
     private string? _regPhone;
     private string? _regPassword;
     private bool _regTerms;
 
+    private readonly List<string> _genderOptions = new() { "Male", "Female", "Other" };
+
     private List<StepperItem> _registrationSteps = new()
     {
-        new() { Title = "Личные данные", Description = "Имя и дата рождения" },
-        new() { Title = "Контакты", Description = "Email и телефон" },
-        new() { Title = "Безопасность", Description = "Пароль и условия" },
-        new() { Title = "Готово", Description = "Регистрация завершена" }
+        new() { Title = "Personal Info", Description = "Name & date of birth" },
+        new() { Title = "Contacts", Description = "Email & phone" },
+        new() { Title = "Security", Description = "Password & terms" },
+        new() { Title = "Complete", Description = "All set!" }
     };
 
+    // ── Task steps ───────────────────────────────────────────────────────
+    private int _taskStep = 1;
     private List<StepperItem> _taskSteps = new()
     {
-        new() { Title = "Создана", Description = "15.04.2026" },
-        new() { Title = "В работе", Description = "16.04.2026" },
-        new() { Title = "На проверке", Description = "Ожидает" },
-        new() { Title = "Завершена", Description = "Ожидает" }
+        new() { Title = "Created", Description = "May 15, 2026" },
+        new() { Title = "In Progress", Description = "May 16, 2026" },
+        new() { Title = "Review", Description = "Pending" },
+        new() { Title = "Completed", Description = "Pending" }
     };
 
+    // ── Project steps (read-only) ────────────────────────────────────────
     private List<StepperItem> _projectSteps = new()
     {
-        new() { Title = "Планирование", Description = "Завершено" },
-        new() { Title = "Дизайн", Description = "Завершено" },
-        new() { Title = "Разработка", Description = "В процессе" },
-        new() { Title = "Тестирование", Description = "Ожидает" },
-        new() { Title = "Релиз", Description = "Ожидает" }
+        new() { Title = "Planning", Description = "Done", Status = SgStepStatus.Done },
+        new() { Title = "Design", Description = "Done", Status = SgStepStatus.Done },
+        new() { Title = "Development", Description = "In progress", Status = SgStepStatus.Process },
+        new() { Title = "Testing", Description = "Pending" },
+        new() { Title = "Release", Description = "Pending" }
     };
 
+    // ── Custom steps ─────────────────────────────────────────────────────
+    private List<StepperItem> _customSteps = new()
+    {
+        new() { Title = "Requirements", Description = "Completed", Status = SgStepStatus.Done },
+        new() { Title = "Development", Description = "In progress", Status = SgStepStatus.Process, Icon = "⚡" },
+        new() { Title = "QA Review", Description = "Has issues", Status = SgStepStatus.Error, Icon = "🐛" },
+        new() { Title = "Deployment", Description = "Optional", Optional = true },
+        new() { Title = "Release", Description = "Not started" }
+    };
+
+    // ── Size example steps ───────────────────────────────────────────────
+    private List<StepperItem> _sizeExampleSteps = new()
+    {
+        new() { Title = "Research", Description = "Market analysis" },
+        new() { Title = "Design", Description = "UI/UX mockups" },
+        new() { Title = "Develop", Description = "Implementation" },
+        new() { Title = "Launch", Description = "Go live" }
+    };
+
+    // ── Constructor state ────────────────────────────────────────────────
+    private int _ceStepCount = 4;
+    private int _ceActiveStep = 1;
+    private SgSize _ceSize = SgSize.Md;
+    private string _ceOrientation = "Horizontal";
+    private bool _ceLinear;
+    private bool _ceAnimated = true;
+    private bool _ceShowLines = true;
+    private bool _ceClickable = true;
+    private bool _ceCompact;
+
+    private List<StepperItem> _ceSteps => Enumerable.Range(0, _ceStepCount).Select(i => new StepperItem
+    {
+        Title = $"Step {i + 1}",
+        Description = $"Description for step {i + 1}"
+    }).ToList();
+
+    // ── Code generation ──────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    // ── Segmented options ────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<int>> _stepCountOptions = new()
+    {
+        new() { Value = 2, Label = "2" },
+        new() { Value = 3, Label = "3" },
+        new() { Value = 4, Label = "4" },
+        new() { Value = 5, Label = "5" },
+        new() { Value = 6, Label = "6" },
+    };
+
+    private List<SgSegmentedOption<int>> _ceActiveOptions =>
+        Enumerable.Range(0, _ceStepCount).Select(i => new SgSegmentedOption<int>
+        {
+            Value = i,
+            Label = (i + 1).ToString()
+        }).ToList();
+
+    private readonly List<SgSegmentedOption<SgSize>> _sizeSegOptions = new()
+    {
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
+    };
+
+    private readonly List<SgSegmentedOption<string>> _orientSegOptions = new()
+    {
+        new() { Value = "Horizontal", Label = "Horizontal" },
+        new() { Value = "Vertical", Label = "Vertical" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true, Label = "On" },
+    };
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgStepper Steps=\"@_mySteps\"");
+        lines.Add($"           Active=\"@_activeStep\"");
+        if (_ceSize != SgSize.Md)
+            lines.Add($"           Size=\"SgSize.{_ceSize}\"");
+        if (_ceOrientation == "Vertical")
+            lines.Add($"           Vertical=\"true\"");
+        if (_ceLinear)
+            lines.Add($"           Linear=\"true\"");
+        if (!_ceAnimated)
+            lines.Add($"           Animated=\"false\"");
+        if (!_ceShowLines)
+            lines.Add($"           ShowLines=\"false\"");
+        if (!_ceClickable)
+            lines.Add($"           Clickable=\"false\"");
+        if (_ceCompact)
+            lines.Add($"           Compact=\"true\"");
+        lines.Add($"           ActiveChanged=\"v => _activeStep = v\" />");
+        lines.Add("");
+        lines.Add($"@code {{");
+        lines.Add($"    private int _activeStep = {_ceActiveStep};");
+        lines.Add($"    private List<StepperItem> _mySteps = new() {{");
+        for (int i = 0; i < _ceStepCount; i++)
+        {
+            lines.Add($"        new() {{ Title = \"Step {i + 1}\", Description = \"...\" }},");
+        }
+        lines.Add($"    }};");
+        lines.Add($"}}");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ──────────────────────────────────────────────────
     private List<PropertyPanelItem> _stepperProperties = new()
     {
-        new() { Label = "Steps", Value = "IEnumerable<StepperItem>", BadgeText = "Шаги", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Active", Value = "int", BadgeText = "Активный шаг", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "ActiveChanged", Value = "EventCallback<int>", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Vertical", Value = "bool", BadgeText = "Вертикально", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Clickable", Value = "bool", BadgeText = "Кликабельно", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CssClass", Value = "string", BadgeText = "CSS класс", BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Steps", Value = "IEnumerable<StepperItem>", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Active", Value = "int (0-based)", BadgeText = "Current step", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ActiveChanged", Value = "EventCallback<int>", BadgeText = "Two-way bind", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Vertical", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Clickable", Value = "bool", BadgeText = "true", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Linear", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Size", Value = "SgSize", BadgeText = "Sm/Md/Lg", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ShowLines", Value = "bool", BadgeText = "true", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animated", Value = "bool", BadgeText = "true", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Compact", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "BeforeChangeAsync", Value = "Func<int,int,Task<bool>>?", BadgeText = "Interceptor", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnStepChanged", Value = "EventCallback<int>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "CSS", BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _stepperItemProperties = new()
     {
-        new() { Label = "Title",       Value = "string",          BadgeText = "Заголовок",  BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Description", Value = "string",          BadgeText = "Описание",   BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Status",      Value = "SgStepStatus?",   BadgeText = "Статус",     BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Title", Value = "string", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Description", Value = "string?", BadgeText = "Subtitle", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Status", Value = "SgStepStatus?", BadgeText = "Override", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Icon", Value = "string?", BadgeText = "Custom icon", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Optional", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Per-step CSS", BadgeVariant = SgBadgeVariant.Default },
     };
 
-    // ── Enum tables ──────────────────────────────────────────────────────────
     private List<PropertyPanelItem> _stepStatusEnum = new()
     {
-        new() { Label = "SgStepStatus.Pending", Value = "Pending", BadgeText = "Ожидает (по умолч.)", BadgeVariant = SgBadgeVariant.Muted },
-        new() { Label = "SgStepStatus.Process", Value = "Process", BadgeText = "В процессе",          BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgStepStatus.Done",    Value = "Done",    BadgeText = "Завершён",             BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "SgStepStatus.Error",   Value = "Error",   BadgeText = "Ошибка",               BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "SgStepStatus.Pending", Value = "Pending", BadgeText = "Not yet reached", BadgeVariant = SgBadgeVariant.Muted },
+        new() { Label = "SgStepStatus.Process", Value = "Process", BadgeText = "Currently active", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgStepStatus.Done", Value = "Done", BadgeText = "Completed", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SgStepStatus.Error", Value = "Error", BadgeText = "Has error", BadgeVariant = SgBadgeVariant.Danger },
     };
 }

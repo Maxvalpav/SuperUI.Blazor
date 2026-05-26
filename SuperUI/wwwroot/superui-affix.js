@@ -178,9 +178,11 @@ export function backtopAttach(dotnet, opts) {
     let target    = targetSelector ? document.querySelector(targetSelector) : window;
     const threshold = opts?.threshold ?? 200;
     const direction = opts?.direction ?? 'top';
+    const trackProgress = opts?.trackProgress ?? false;
     let visible   = false;
     let isDisposed = false;
     let listenerAttached = false;
+    let lastProgress = -1;
 
     function getY() {
         if (!target) return 0;
@@ -193,6 +195,16 @@ export function backtopAttach(dotnet, opts) {
             return document.documentElement.scrollHeight - window.innerHeight;
         }
         return target.scrollHeight - target.clientHeight;
+    }
+
+    function getScrollPercentage() {
+        const maxY = getMaxY();
+        if (maxY <= 0) return 0;
+        const y = getY();
+        if (direction === 'top') {
+            return Math.round((y / maxY) * 100);
+        }
+        return Math.round(((maxY - y) / maxY) * 100);
     }
 
     function check() {
@@ -210,6 +222,17 @@ export function backtopAttach(dotnet, opts) {
                 if (dotnet && !isDisposed)
                     dotnet.invokeMethodAsync('OnVisibilityChanged', visible).catch(() => {});
             } catch { /* noop */ }
+        }
+
+        if (trackProgress) {
+            const pct = getScrollPercentage();
+            if (pct !== lastProgress) {
+                lastProgress = pct;
+                try {
+                    if (dotnet && !isDisposed)
+                        dotnet.invokeMethodAsync('OnScrollProgress', pct).catch(() => {});
+                } catch { /* noop */ }
+            }
         }
     }
 

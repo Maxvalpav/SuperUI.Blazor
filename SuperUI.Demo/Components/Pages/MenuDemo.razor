@@ -1,0 +1,824 @@
+@page "/menu-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<PageTitle>SgMenu — Menu Component — SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Menu & Variants                                          -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Menu &amp; Item Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Simple menus, disabled items, danger variant, active state, and labeled separators. Use keyboard arrows, Home/End to navigate.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="6" Lg="4">
+                <SgCard Title="Simple Menu" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic items with click feedback
+                        </SgTypography>
+                        <SgMenu>
+                            <SgMenuItem Text="New File" Icon="📄" OnClick="@(() => _lastAction = "New File")" />
+                            <SgMenuItem Text="Open..." Icon="📂" OnClick="@(() => _lastAction = "Open...")" />
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Save" Icon="💾" OnClick="@(() => _lastAction = "Save")" />
+                            <SgMenuItem Text="Save As..." Icon="💿" OnClick="@(() => _lastAction = "Save As...")" />
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Exit" Icon="🚪" OnClick="@(() => _lastAction = "Exit")" />
+                        </SgMenu>
+                        @if (!string.IsNullOrEmpty(_lastAction))
+                        {
+                            <SgBadge Variant="SgBadgeVariant.Info" Text="@_lastAction" Standalone="true" />
+                        }
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+
+            <SgCol Xs="12" Md="6" Lg="4">
+                <SgCard Title="Variants &amp; States" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Default, disabled, danger, success
+                        </SgTypography>
+                        <SgMenu>
+                            <SgMenuItem Text="Normal Item" Icon="✅" />
+                            <SgMenuItem Text="Disabled Item" Icon="🚫" Disabled="true" />
+                            <SgMenuItem Text="Active Item" Icon="⭐" Active="true" />
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Danger Action" Icon="⚠️" Variant="SgMenuItemVariant.Danger" OnClick="@(() => _lastAction = "Danger!")" />
+                            <SgMenuItem Text="Success Action" Icon="🎉" Variant="SgMenuItemVariant.Success" OnClick="@(() => _lastAction = "Success!")" />
+                        </SgMenu>
+                        @if (_lastAction == "Danger!" || _lastAction == "Success!")
+                        {
+                            <SgBadge Variant="@(_lastAction == "Danger!" ? SgBadgeVariant.Danger : SgBadgeVariant.Success)" Text="@_lastAction" Standalone="true" />
+                        }
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+
+            <SgCol Xs="12" Lg="4">
+                <SgCard Title="With Descriptions &amp; Badges" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Subtitle, notification badges, shortcuts
+                        </SgTypography>
+                        <SgMenu>
+                            <SgMenuItem Text="Inbox" Icon="📬" Description="3 unread messages" BadgeText="3" BadgeVariant="SgBadgeVariant.Danger" />
+                            <SgMenuItem Text="Sent" Icon="📤" Description="All outgoing mail" />
+                            <SgMenuItem Text="Drafts" Icon="📝" Description="2 pending drafts" BadgeText="2" BadgeVariant="SgBadgeVariant.Warn" />
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Notifications" Icon="🔔" BadgeText="12" BadgeVariant="SgBadgeVariant.Info" />
+                            <SgMenuItem Text="Settings" Icon="⚙️" Shortcut="Ctrl+S" />
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Profile" Icon="👤" Description="Manage your account" />
+                        </SgMenu>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Sub-menus, Sections, Shortcuts                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Sub-menus, Sections &amp; Shortcuts
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Nested sub-menus with keyboard navigation, labeled sections with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgMenuSeparator Label</SgTypography>, and keyboard shortcut hints.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="6">
+                <SgCard Title="Sub-menus" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Hover or use ArrowRight to open sub-menus
+                        </SgTypography>
+                        <SgMenu Style="max-width:260px;">
+                            <SgMenuItem Text="File" Icon="📁">
+                                <SubMenu>
+                                    <SgMenuItem Text="New" Icon="📄" Shortcut="Ctrl+N" />
+                                    <SgMenuItem Text="Open" Icon="📂" Shortcut="Ctrl+O" />
+                                    <SgMenuSeparator />
+                                    <SgMenuItem Text="Save" Icon="💾" Shortcut="Ctrl+S" />
+                                    <SgMenuItem Text="Save As..." Icon="💿" Shortcut="Ctrl+Shift+S" />
+                                    <SgMenuSeparator />
+                                    <SgMenuItem Text="Export" Icon="📤">
+                                        <SubMenu>
+                                            <SgMenuItem Text="PDF" Icon="📕" />
+                                            <SgMenuItem Text="CSV" Icon="📊" />
+                                            <SgMenuItem Text="HTML" Icon="🌐" />
+                                        </SubMenu>
+                                    </SgMenuItem>
+                                </SubMenu>
+                            </SgMenuItem>
+                            <SgMenuItem Text="Edit" Icon="✏️">
+                                <SubMenu>
+                                    <SgMenuItem Text="Undo" Icon="↩️" Shortcut="Ctrl+Z" />
+                                    <SgMenuItem Text="Redo" Icon="↪️" Shortcut="Ctrl+Y" />
+                                    <SgMenuSeparator />
+                                    <SgMenuItem Text="Cut" Icon="✂️" Shortcut="Ctrl+X" />
+                                    <SgMenuItem Text="Copy" Icon="📋" Shortcut="Ctrl+C" />
+                                    <SgMenuItem Text="Paste" Icon="📌" Shortcut="Ctrl+V" />
+                                </SubMenu>
+                            </SgMenuItem>
+                            <SgMenuItem Text="View" Icon="👁️">
+                                <SubMenu>
+                                    <SgMenuItem Text="Zoom In" Icon="🔍" Shortcut="Ctrl++" />
+                                    <SgMenuItem Text="Zoom Out" Icon="🔍" Shortcut="Ctrl+-" />
+                                    <SgMenuItem Text="Full Screen" Icon="🖥️" Shortcut="F11" />
+                                </SubMenu>
+                            </SgMenuItem>
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Help" Icon="❓" Shortcut="F1" />
+                        </SgMenu>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+
+            <SgCol Xs="12" Md="6">
+                <SgCard Title="Labeled Sections" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Grouped items with section headers
+                        </SgTypography>
+                        <SgMenu Style="max-width:260px;">
+                            <SgMenuSeparator Label="Account" />
+                            <SgMenuItem Text="Profile" Icon="👤" Description="Edit your profile" Active="true" />
+                            <SgMenuItem Text="Security" Icon="🔒" Description="Password & 2FA" />
+                            <SgMenuItem Text="Billing" Icon="💳" Description="Plans & invoices" BadgeText="Pro" BadgeVariant="SgBadgeVariant.Success" />
+                            <SgMenuSeparator Label="Workspace" />
+                            <SgMenuItem Text="Members" Icon="👥" Description="Team management" />
+                            <SgMenuItem Text="Integrations" Icon="🔗" Description="Connected apps" BadgeText="New" BadgeVariant="SgBadgeVariant.Info" />
+                            <SgMenuSeparator />
+                            <SgMenuItem Text="Log Out" Icon="🚪" Variant="SgMenuItemVariant.Danger" />
+                        </SgMenu>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Menu Layout Variants (Size, Compact, Container Variants)        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Layout Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                The <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Size</SgTypography> parameter changes item sizing. The <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Variant</SgTypography> parameter changes the container appearance (Default, Bordered, Elevated, Ghost).
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Small (Sm) + Default" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgMenu Size="SgSize.Sm">
+                        <SgMenuItem Text="Small Item 1" Icon="🔹" />
+                        <SgMenuItem Text="Small Item 2" Icon="🔸" />
+                        <SgMenuSeparator />
+                        <SgMenuItem Text="Small Item 3" Icon="🔹" Shortcut="Alt+1" />
+                    </SgMenu>
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Medium (Md) — Default" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgMenu Size="SgSize.Md">
+                        <SgMenuItem Text="Medium Item 1" Icon="🔹" />
+                        <SgMenuItem Text="Medium Item 2" Icon="🔸" />
+                        <SgMenuSeparator />
+                        <SgMenuItem Text="Medium Item 3" Icon="🔹" Shortcut="Alt+2" />
+                    </SgMenu>
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Large (Lg) + Elevated" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgMenu Size="SgSize.Lg" Variant="SgMenuVariant.Elevated">
+                        <SgMenuItem Text="Large Item 1" Icon="🔹" />
+                        <SgMenuItem Text="Large Item 2" Icon="🔸" Description="With description" />
+                        <SgMenuSeparator />
+                        <SgMenuItem Text="Large Item 3" Icon="🔹" Shortcut="Alt+3" />
+                    </SgMenu>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+
+        <SgRow Space="SgSize.Lg" Style="margin-top:16px;">
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Bordered Variant" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgMenu Variant="SgMenuVariant.Bordered">
+                        <SgMenuItem Text="Bordered" Icon="📦" />
+                        <SgMenuItem Text="No shadow" Icon="📦" />
+                        <SgMenuSeparator />
+                        <SgMenuItem Text="Clean & flat" Icon="🧹" />
+                    </SgMenu>
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Ghost Variant" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgMenu Variant="SgMenuVariant.Ghost">
+                        <SgMenuItem Text="Transparent" Icon="👻" />
+                        <SgMenuItem Text="No border" Icon="👻" />
+                        <SgMenuSeparator />
+                        <SgMenuItem Text="Minimal" Icon="✨" />
+                    </SgMenu>
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="Compact Mode" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgMenu Compact="true">
+                        <SgMenuItem Text="Compact 1" Icon="📋" />
+                        <SgMenuItem Text="Compact 2" Icon="📋" Description="No desc in compact" />
+                        <SgMenuSeparator />
+                        <SgMenuItem Text="Compact 3" Icon="📋" Shortcut="Esc" />
+                    </SgMenu>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Checkable Items & Sub-menu Positioning                          -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Checkable Items &amp; Sub-menu Positioning
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Checkable</SgTypography> + <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Checked</SgTypography> for checkbox/radio items. <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SubMenuPosition="Left"</SgTypography> opens sub-menus to the left. Click the ripple effect!
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="6">
+                <SgCard Title="Checkbox &amp; Radio Items" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Checkboxes (multi-select) — click to toggle
+                        </SgTypography>
+                        <SgMenu Style="max-width:280px;">
+                            <SgMenuItem Text="Show toolbar" Icon="🔧"
+                                        Checkable="true" @bind-Checked="_checkToolbar" />
+                            <SgMenuItem Text="Show status bar" Icon="📊"
+                                        Checkable="true" @bind-Checked="_checkStatusBar" />
+                            <SgMenuItem Text="Show minimap" Icon="🗺️"
+                                        Checkable="true" @bind-Checked="_checkMinimap" />
+                            <SgMenuSeparator Label="Theme" />
+                            <SgMenuItem Text="Light" Icon="☀️"
+                                        Checkable="true" CheckType="SgCheckType.Radio"
+                                        Checked="_themeRadio == 0" CheckedChanged="v => { if(v) _themeRadio = 0; }" />
+                            <SgMenuItem Text="Dark" Icon="🌙"
+                                        Checkable="true" CheckType="SgCheckType.Radio"
+                                        Checked="_themeRadio == 1" CheckedChanged="v => { if(v) _themeRadio = 1; }" />
+                            <SgMenuItem Text="System" Icon="💻"
+                                        Checkable="true" CheckType="SgCheckType.Radio"
+                                        Checked="_themeRadio == 2" CheckedChanged="v => { if(v) _themeRadio = 2; }" />
+                        </SgMenu>
+                        <SgStack Horizontal Space="SgSize.Sm" Wrap="true">
+                            <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:2px 8px;border-radius:4px;background:@(_checkToolbar ? "var(--sg-color-primary-bg)" : "transparent");color:var(--sg-text-secondary);border:1px solid var(--sg-border);">Toolbar: @_checkToolbar</span>
+                            <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:2px 8px;border-radius:4px;background:@(_checkStatusBar ? "var(--sg-color-primary-bg)" : "transparent");color:var(--sg-text-secondary);border:1px solid var(--sg-border);">Status: @_checkStatusBar</span>
+                            <span style="display:inline-flex;align-items:center;gap:4px;font-size:0.8rem;padding:2px 8px;border-radius:4px;background:@(_checkMinimap ? "var(--sg-color-primary-bg)" : "transparent");color:var(--sg-text-secondary);border:1px solid var(--sg-border);">Minimap: @_checkMinimap</span>
+                        </SgStack>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+
+            <SgCol Xs="12" Md="6">
+                <SgCard Title="Sub-Menu Left Position" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">SubMenuPosition="Left"</SgTypography> — opens to the left
+                        </SgTypography>
+                        <div style="display:flex;justify-content:flex-end;">
+                            <SgMenu Style="max-width:240px;">
+                                <SgMenuItem Text="Align Left" Icon="⬅️" SubMenuPosition="SgSubMenuPosition.Left">
+                                    <SubMenu>
+                                        <SgMenuItem Text="Left Edge" Icon="↔️" />
+                                        <SgMenuItem Text="Center" Icon="↔️" />
+                                        <SgMenuItem Text="Right Edge" Icon="↔️" />
+                                    </SubMenu>
+                                </SgMenuItem>
+                                <SgMenuItem Text="More Options" Icon="⚙️" SubMenuPosition="SgSubMenuPosition.Left">
+                                    <SubMenu>
+                                        <SgMenuItem Text="Settings" Icon="⚙️" />
+                                        <SgMenuItem Text="Advanced" Icon="🔬" />
+                                        <SgMenuSeparator />
+                                        <SgMenuItem Text="Reset All" Icon="🔄" Variant="SgMenuItemVariant.Danger" />
+                                    </SubMenu>
+                                </SgMenuItem>
+                                <SgMenuSeparator />
+                                <SgMenuItem Text="Normal (right)" Icon="➡️">
+                                    <SubMenu>
+                                        <SgMenuItem Text="Default right" Icon="👉" />
+                                    </SubMenu>
+                                </SgMenuItem>
+                            </SgMenu>
+                        </div>
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Sub-menyu ochiq <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">SubMenuPosition.Left</SgTypography> agar joy etishmasa chap tomondan ochiladi.
+                        </SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live Menu Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click <strong>Copy</strong> to grab the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Size -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                            <SgSegmented TValue="SgSize"
+                                         Value="_ceSize"
+                                         ValueChanged="v => { _ceSize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_sizeSegOptions" />
+                        </SgStack>
+
+                        <!-- Variant -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Container Variant</SgTypography>
+                            <SgSegmented TValue="SgMenuVariant"
+                                         Value="_ceVariant"
+                                         ValueChanged="v => { _ceVariant = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_variantSegOptions" />
+                        </SgStack>
+
+                        <!-- Toggles -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Compact</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceCompact"
+                                                 ValueChanged="v => { _ceCompact = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Item 1 Active</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceItem1Active"
+                                                 ValueChanged="v => { _ceItem1Active = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Item 2 Disabled</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceItem2Disabled"
+                                                 ValueChanged="v => { _ceItem2Disabled = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Show Badge</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ceShowBadge"
+                                                 ValueChanged="v => { _ceShowBadge = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ceSize.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Variant</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ceVariant.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Compact</SgTypography>
+                                    <SgBadge Variant="@(_ceCompact ? SgBadgeVariant.Warn : SgBadgeVariant.Muted)" Text="@(_ceCompact ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Items</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="3" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgCol Auto="true">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                                </SgCol>
+                                <SgCol Auto="true">
+                                    <div class="demo-viewport-indicator" id="viewport-indicator">
+                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                            <span id="bp-label">xs</span>
+                                        </SgTypography>
+                                    </div>
+                                </SgCol>
+                            </SgRow>
+                            <div class="constructor-preview" style="min-height:180px;">
+                                <SgMenu Size="_ceSize"
+                                        Variant="_ceVariant"
+                                        Compact="_ceCompact">
+                                    <SgMenuItem Text="Item One" Icon="📋"
+                                                Active="@_ceItem1Active"
+                                                OnClick="@(() => _ceLastClicked = "Item One")" />
+                                    <SgMenuItem Text="Item Two" Icon="📌"
+                                                Disabled="@_ceItem2Disabled"
+                                                OnClick="@(() => _ceLastClicked = "Item Two")" />
+                                    <SgMenuSeparator />
+                                    <SgMenuItem Text="Item Three" Icon="📎"
+                                                BadgeText="@(_ceShowBadge ? "New" : null)"
+                                                BadgeVariant="SgBadgeVariant.Info"
+                                                Shortcut="Ctrl+T"
+                                                OnClick="@(() => _ceLastClicked = "Item Three")" />
+                                </SgMenu>
+                                @if (!string.IsNullOrEmpty(_ceLastClicked))
+                                {
+                                    <div style="margin-top:12px;">
+                                        <SgBadge Variant="SgBadgeVariant.Info" Text="@("Clicked: " + _ceLastClicked)" Standalone="true" />
+                                    </div>
+                                }
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgCol Auto="true">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                </SgCol>
+                                <SgCol Auto="true">
+                                    <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                        <span id="copy-icon">@_copyIcon</span>
+                                        <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                    </button>
+                                </SgCol>
+                            </SgRow>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Properties                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Component API
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Full list of configurable parameters for <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgMenu</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgMenuItem</SgTypography>, and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgMenuSeparator</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="SgMenu" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_menuProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="SgMenuItem" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_menuItemProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Md="4">
+                <SgCard Title="SgMenuSeparator + Enum" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_separatorProperties" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+</ChildContent>
+</SgCard>
+
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+
+    /* ── Viewport indicator ─────────────────────────────────────────────────── */
+    .demo-viewport-indicator {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 2px 10px;
+        font-size: 11px;
+    }
+</style>
+
+@code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-color-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgMenu</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Versatile menu component with icons, descriptions, badges, sub-menus, keyboard navigation, labeled sections, size variants, and container styles.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Interaction state ──────────────────────────────────────────────
+    private string? _lastAction;
+
+    // ── Checkable demo state ──────────────────────────────────────────────
+    private bool _checkToolbar = true;
+    private bool _checkStatusBar;
+    private bool _checkMinimap = true;
+    private int _themeRadio;
+
+    // ── Constructor state ────────────────────────────────────────────────
+    private SgSize _ceSize = SgSize.Md;
+    private SgMenuVariant _ceVariant = SgMenuVariant.Default;
+    private bool _ceCompact;
+    private bool _ceItem1Active;
+    private bool _ceItem2Disabled;
+    private bool _ceShowBadge = true;
+    private string? _ceLastClicked;
+
+    // ── Code generation ──────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    // ── Segmented options ────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<SgSize>> _sizeSegOptions = new()
+    {
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
+    };
+
+    private readonly List<SgSegmentedOption<SgMenuVariant>> _variantSegOptions = new()
+    {
+        new() { Value = SgMenuVariant.Default, Label = "Default" },
+        new() { Value = SgMenuVariant.Bordered, Label = "Bordered" },
+        new() { Value = SgMenuVariant.Elevated, Label = "Elevated" },
+        new() { Value = SgMenuVariant.Ghost, Label = "Ghost" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true, Label = "On" },
+    };
+
+    // ── Lifecycle ────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgMenu" + (_ceSize != SgSize.Md ? $" Size=\"SgSize.{_ceSize}\"" : ""));
+        if (_ceVariant != SgMenuVariant.Default)
+            lines[^1] += $" Variant=\"SgMenuVariant.{_ceVariant}\"";
+        if (_ceCompact)
+            lines[^1] += " Compact=\"true\"";
+        lines[^1] += ">";
+
+        lines.Add("    <SgMenuItem Text=\"Item One\" Icon=\"📋\"");
+        if (_ceItem1Active) lines.Add("                Active=\"true\"");
+        lines[^1] += " />";
+
+        lines.Add("    <SgMenuItem Text=\"Item Two\" Icon=\"📌\"");
+        if (_ceItem2Disabled) lines.Add("                Disabled=\"true\"");
+        lines[^1] += " />";
+
+        lines.Add("    <SgMenuSeparator />");
+
+        lines.Add("    <SgMenuItem Text=\"Item Three\" Icon=\"📎\"");
+        if (_ceShowBadge) lines.Add("                BadgeText=\"New\" BadgeVariant=\"SgBadgeVariant.Info\"");
+        lines.Add("                Shortcut=\"Ctrl+T\" />");
+
+        lines.Add("</SgMenu>");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ──────────────────────────────────────────────────
+    private List<PropertyPanelItem> _menuProperties = new()
+    {
+        new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Content", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Variant", Value = "SgMenuVariant", BadgeText = "Default|Bordered|Elevated|Ghost", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Size", Value = "SgSize", BadgeText = "Sm|Md|Lg", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Compact", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "OnClose", Value = "EventCallback", BadgeText = "Escape", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnItemClick", Value = "EventCallback<SgMenuItem>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "CSS", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Style", Value = "string?", BadgeText = "Inline", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _menuItemProperties = new()
+    {
+        new() { Label = "Text", Value = "string?", BadgeText = "Label", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Icon", Value = "string?", BadgeText = "Emoji/text", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "IconContent", Value = "RenderFragment?", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Description", Value = "string?", BadgeText = "Subtitle", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Shortcut", Value = "string?", BadgeText = "Hotkey", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Variant", Value = "SgMenuItemVariant", BadgeText = "danger|success", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Active", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "BadgeText", Value = "string?", BadgeText = "Notif count", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant", BadgeText = "Color", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SubMenu", Value = "RenderFragment?", BadgeText = "Nested", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Checkable", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Checked", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CheckedChanged", Value = "EventCallback<bool>", BadgeText = "Two-way", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CheckType", Value = "SgCheckType", BadgeText = "Checkbox|Radio", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SubMenuPosition", Value = "SgSubMenuPosition", BadgeText = "Right|Left", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Href", Value = "string?", BadgeText = "Nav URL", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Target", Value = "string?", BadgeText = "_blank", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnClick", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "CSS", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _separatorProperties = new()
+    {
+        new() { Label = "SgMenuSeparator", Value = "Horizontal line divider", BadgeText = "default", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgMenuSeparator.Label", Value = "string?", BadgeText = "Section header", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgMenuItemVariant.Default", Value = "Normal style", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgMenuItemVariant.Danger", Value = "Red/destructive", BadgeText = "Danger", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "SgMenuItemVariant.Success", Value = "Green/success", BadgeText = "Success", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SgMenuVariant", Value = "Default|Bordered|Elevated|Ghost", BadgeText = "Container", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgCheckType", Value = "Checkbox|Radio", BadgeText = "Check style", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgSubMenuPosition", Value = "Right|Left", BadgeText = "Sub-menu side", BadgeVariant = SgBadgeVariant.Info },
+    };
+}

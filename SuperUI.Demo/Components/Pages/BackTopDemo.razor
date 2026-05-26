@@ -1,75 +1,666 @@
 @page "/backtop-demo"
-
-<PageTitle>BackTop - SUI</PageTitle>
-
-<SgCard Title="SgBackTop - Кнопка «Наверх»"
-        Subtitle="Плавающая кнопка возврата к началу страницы. Появляется после прокрутки на заданное расстояние.">
-
-    <div style="margin-top: 32px;">
-        <h2>Базовое использование</h2>
-        <p>Прокрутите страницу вниз — в правом нижнем углу появится круглая кнопка. Нажмите её, чтобы плавно вернуться наверх.</p>
-
-        <div style="height: 1600px; padding: 16px; border: 1px dashed var(--sui-border); border-radius: var(--sui-radius-md); color: var(--sui-muted); display:flex; align-items:flex-end; justify-content:center;">
-            Конец длинного контента — кнопка должна быть видна в углу.
-        </div>
-    </div>
-
-    <div style="margin-top: 32px;">
-        <h2>Кастомный контент (Навигация Вверх/Вниз)</h2>
-        <p>Пример использования пары кнопок для быстрой навигации по длинной странице.</p>
-        
-        <SgStack Orientation="SgOrientation.Vertical" Gap="4px" Style="position: fixed; bottom: 100px; right: 32px; z-index: 1000;">
-            <SgBackTop Target=".sui-content" VisibilityHeight="100" Smooth="true" CssClass="sgc-nav-custom">
-                <SgIcon Icon="@SgIcons.ChevronUp" />
-            </SgBackTop>
-            
-            <SgBackBottom Target=".sui-content" VisibilityHeight="100" Smooth="true" CssClass="sgc-nav-custom">
-                <SgIcon Icon="@SgIcons.ChevronDown" />
-            </SgBackBottom>
-        </SgStack>
-    </div>
-
-    <style>
-        .sgc-nav-custom {
-            position: static !important; /* Stack handles position */
-            width: 44px !important;
-            height: 44px !important;
-            border-radius: 4px !important;
-            background: var(--sg-bg-subtle) !important;
-            color: var(--sg-color-primary) !important;
-            border: 1px solid var(--sg-border) !important;
-            box-shadow: var(--sg-shadow-sm) !important;
-        }
-        .sgc-nav-custom:hover {
-            background: var(--sg-color-primary) !important;
-            color: white !important;
-        }
-    </style>
-
-    <div style="margin-top: 32px;">
-        <h2>Свойства</h2>
-        <SgCard Title="SgBackTop" Style="margin-top: 16px;">
-            <PropertyTable Items="_props" />
-        </SgCard>
-    </div>
-
-    <!-- Code example -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
-    </div>
-
+@using SuperUI.Components
+@using SuperUI.Enums
+@using SuperUI.Demo.Models
+<PageTitle>BackTop - SuperUI</PageTitle>
+<SgCard Title="SgBackTop &amp; SgBackBottom"
+        Subtitle="Navigation helpers that auto-appear on scroll. Circular progress, custom animations, smooth scrolling, and full interactive control."
+        CssClass="sgc-card-flush">
+    <SgSpace Orientation="SgOrientation.Vertical" Size="large" Style="margin-top: 24px;">
+        @* {-1;basic-usage} *@
+        <DemoSection BadgeText="Interactive" BadgeVariant="SgBadgeVariant.Success">
+            <HeaderContent>
+                <div class="demo-section-header">
+                    <SgTypography Variant="SgTypographyVariant.Heading3" Weight="SgTypographyWeight.Semibold">Basic Usage</SgTypography>
+                    <span class="demo-live-badge">Interactive</span>
+                </div>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+                    Scroll down the page — the buttons appear when you pass the threshold. Use the controls below to customize behavior live.
+                </SgTypography>
+            </HeaderContent>
+            <ChildContent>
+                <div class="demo-grid-adaptive">
+                    <SgCard Title="Live Demo" CssClass="demo-interactive-card">
+                        <div class="sgc-demo-flex-col">
+                            <div style="display:flex;align-items:center;gap:16px;padding:24px 16px;border:1px dashed var(--sg-border);border-radius:10px;background:linear-gradient(180deg,transparent,var(--sg-bg-subtle));">
+                                <SgStack Orientation="SgOrientation.Vertical" Gap="4px" Grow="true">
+                                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold">Visual Preview</SgTypography>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                        Configure the component below. The preview shows how it will appear on your page.
+                                        Scroll the main page to see the <strong>global</strong> BackTop in action.
+                                    </SgTypography>
+                                </SgStack>
+                                <div class="sgc-demo-status-indicator sgc-demo-status-indicator-active">
+                                    <span class="sgc-demo-status-dot"></span>
+                                    Preview
+                                </div>
+                            </div>
+                            <SgDivider />
+                            <div class="sgc-demo-controls" style="margin-bottom:0;">
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Threshold (px)</span>
+                                    <div class="sgc-demo-control-row">
+                                        <input type="range" class="sgc-demo-slider"
+                                               min="50" max="800" step="10"
+                                               @bind="_basicThreshold" />
+                                        <span class="sgc-demo-slider-value">@_basicThreshold</span>
+                                    </div>
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Animation</span>
+                                    <div class="sgc-demo-control-row">
+                                        <select class="sgc-demo-select" @bind="_basicAnimSelect">
+                                            <option value="Scale">Scale</option>
+                                            <option value="Fade">Fade</option>
+                                            <option value="SlideUp">Slide Up</option>
+                                            <option value="Bounce">Bounce</option>
+                                            <option value="None">None</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Direction</span>
+                                    <div class="sgc-demo-control-row">
+                                        <select class="sgc-demo-select" @bind="_basicDirection">
+                                            <option value="top">Back to Top</option>
+                                            <option value="bottom">Back to Bottom</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="sgc-demo-controls" style="margin-bottom:0;">
+                                <div class="sgc-demo-control-group">
+                                    <SgCheckBox @bind-Value="_basicSmooth" Label="Smooth scroll" />
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <SgCheckBox @bind-Value="_basicShowProgress" Label="Show progress" />
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <SgCheckBox @bind-Value="_basicPersistent" Label="Persistent DOM" />
+                                </div>
+                            </div>
+                            @* Visual preview — not a live component to avoid scroll listener conflicts *@
+                            <div style="display:flex;align-items:center;justify-content:center;gap:16px;padding:24px;border:1px solid var(--sg-border);border-radius:12px;background:var(--sg-surface-alt);">
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Font="SgTypographyFont.Mono">
+                                    @_basicDirection switch { "top" => "SgBackTop", _ => "SgBackBottom" }
+                                </SgTypography>
+                                <div style="position:relative;width:52px;height:52px;">
+                                    <div style="position:absolute;inset:0;border-radius:50%;background:var(--sg-primary);color:var(--sg-primary-foreground);display:flex;align-items:center;justify-content:center;
+                                                @(!_basicShowProgress ? $"transition:all 0.3s ease;opacity:1;transform:scale(1)" : $"transition:all 0.3s ease;opacity:1;transform:scale(1)")
+                                                border:1px solid var(--sg-primary);box-shadow:var(--sg-shadow-lg);">
+                                        <SgIcon Icon="@(_basicDirection == "top" ? SgIcons.ArrowUp : SgIcons.ArrowDown)" Size="22px" />
+                                    </div>
+                                    @if (_basicShowProgress)
+                                    {
+                                        <svg class="sgc-backtop-progress-ring" viewBox="0 0 36 36" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">
+                                            <circle cx="18" cy="18" r="15" fill="none" stroke="var(--sg-border)" stroke-width="2.5" opacity="0.4" />
+                                            <circle cx="18" cy="18" r="15" fill="none" stroke="var(--sg-primary-foreground)" stroke-width="2.5"
+                                                    stroke-dasharray="94.2478" stroke-dashoffset="@(94.2478 * (1 - _basicPreviewProgress / 100.0))"
+                                                    stroke-linecap="round" transform="rotate(-90, 18, 18)" style="transition:stroke-dashoffset 0.1s linear;" />
+                                        </svg>
+                                    }
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:2px;">
+                                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold">
+                                        @(_basicDirection switch { "top" => "Back to Top", _ => "Back to Bottom" })
+                                    </SgTypography>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                        @_basicAnimSelect animation · @_basicThreshold px threshold
+                                    </SgTypography>
+                                </div>
+                            </div>
+                        </div>
+                    </SgCard>
+                    <SgCard Title="Config">
+                        <PropertyTable Items="_basicProps" />
+                    </SgCard>
+                </div>
+                <DemoCodeBlock Code="@_basicCode" Title="Live configuration" Language="Razor" />
+            </ChildContent>
+        </DemoSection>
+        <DemoSection BadgeText="Progress" BadgeVariant="SgBadgeVariant.Info">
+            <HeaderContent>
+                <div class="demo-section-header">
+                    <SgTypography Variant="SgTypographyVariant.Heading3" Weight="SgTypographyWeight.Semibold">Progress Ring</SgTypography>
+                    <span class="demo-live-badge">Visual</span>
+                </div>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+                    Circular progress indicator shows how far you've scrolled. The ring fills clockwise as you progress through the page.
+                </SgTypography>
+            </HeaderContent>
+            <ChildContent>
+                <div class="demo-grid-adaptive">
+                    <SgCard Title="Progress Demo" CssClass="demo-interactive-card">
+                        <div class="sgc-demo-flex-col">
+                            <div style="display:flex;align-items:center;gap:24px;padding:32px 16px;border:1px dashed var(--sg-border);border-radius:10px;">
+                                <div style="position:relative;width:80px;height:80px;flex-shrink:0;">
+                                    <svg viewBox="0 0 36 36" style="width:100%;height:100%;">
+                                        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--sg-border)" stroke-width="2.5" opacity="0.3" />
+                                        <circle cx="18" cy="18" r="15" fill="none" stroke="var(--sg-primary)" stroke-width="2.5"
+                                                stroke-dasharray="94.2478" stroke-dashoffset="@(94.2478 * (1 - _progressValue / 100.0))"
+                                                stroke-linecap="round" transform="rotate(-90, 18, 18)"
+                                                style="transition:stroke-dashoffset 0.15s linear;" />
+                                    </svg>
+                                    <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">
+                                        <SgTypography Weight="SgTypographyWeight.Bold" Size="SgTypographySize.Xl" Color="var(--sg-primary)">
+                                            @_progressValue%
+                                        </SgTypography>
+                                    </div>
+                                </div>
+                                <SgStack Orientation="SgOrientation.Vertical" Gap="4px" Grow="true">
+                                    <SgTypography Weight="SgTypographyWeight.Semibold">Scroll Progress</SgTypography>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                        The ring fills as you scroll. The BackTop button also shows a built-in progress ring.
+                                    </SgTypography>
+                                </SgStack>
+                            </div>
+                            <SgDivider />
+                            <div class="sgc-demo-controls" style="margin-bottom:0;">
+                                <div class="sgc-demo-control-group" style="flex:1;">
+                                    <span class="sgc-demo-control-label">Simulate scroll</span>
+                                    <div class="sgc-demo-control-row">
+                                        <input type="range" class="sgc-demo-slider"
+                                               min="0" max="100" step="1"
+                                               @bind="_progressValue" />
+                                        <span class="sgc-demo-slider-value">@_progressValue</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                The real <code>SgBackTop</code> with <code>ShowProgress="true"</code> tracks actual scroll position automatically.
+                                Enable <code>ShowProgress</code> on your production component.
+                            </SgTypography>
+                        </div>
+                    </SgCard>
+                    <SgCard Title="Properties">
+                        <PropertyTable Items="_progressProps" />
+                    </SgCard>
+                </div>
+                <DemoCodeBlock Code="@_progressCode" Title="Progress ring setup" Language="Razor" />
+            </ChildContent>
+        </DemoSection>
+        <DemoSection BadgeText="Animations" BadgeVariant="SgBadgeVariant.Info">
+            <HeaderContent>
+                <div class="demo-section-header">
+                    <SgTypography Variant="SgTypographyVariant.Heading3" Weight="SgTypographyWeight.Semibold">Animation Styles</SgTypography>
+                    <span class="demo-live-badge">Visual</span>
+                </div>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+                    Choose from five different appear/disappear animations. Each uses CSS transitions — no extra JS required.
+                </SgTypography>
+            </HeaderContent>
+            <ChildContent>
+                <div class="sgc-demo-flex-col">
+                    <div class="sgc-demo-controls">
+                        <div class="sgc-demo-control-group">
+                            <span class="sgc-demo-control-label">Animation</span>
+                            <div class="sgc-demo-control-row">
+                                <select class="sgc-demo-select" @bind="_selectedAnimation">
+                                    <option value="Scale">Scale (default)</option>
+                                    <option value="Fade">Fade</option>
+                                    <option value="SlideUp">Slide Up</option>
+                                    <option value="Bounce">Bounce</option>
+                                    <option value="None">None</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="sgc-demo-control-group">
+                            <span class="sgc-demo-control-label">State</span>
+                            <div class="sgc-demo-status-indicator @(_animVisible ? "sgc-demo-status-indicator-active" : "sgc-demo-status-indicator-inactive")">
+                                <span class="sgc-demo-status-dot"></span>
+                                @(_animVisible ? "Visible" : "Hidden")
+                            </div>
+                        </div>
+                        <div class="sgc-demo-control-group">
+                            <SgButton Text="@(_animVisible ? "Hide" : "Show")"
+                                      Variant="SgButtonVariant.Primary"
+                                      Size="SgSize.Sm"
+                                      OnClick="@(() => { _animVisible = !_animVisible; })" />
+                        </div>
+                    </div>
+                    <div class="demo-grid-adaptive">
+                        <SgCard Title="Animation Preview" CssClass="demo-interactive-card">
+                            <div style="min-height:180px;display:flex;align-items:center;justify-content:center;border:1px dashed var(--sg-border);border-radius:10px;position:relative;overflow:hidden;">
+                                <div style="position:absolute;top:16px;left:16px;">
+                                    <SgTypography Size="SgTypographySize.Xs" Font="SgTypographyFont.Mono" Color="var(--sg-text-muted)">
+                                        @(_selectedAnimation.ToLower())
+                                    </SgTypography>
+                                </div>
+                                <div class="sgc-anim-preview-dot @(_animVisible ? "sgc-anim-preview-visible" : "")"
+                                     data-anim="@_selectedAnimation.ToLower()">
+                                    <SgIcon Icon="@SgIcons.ArrowUp" Size="28px" />
+                                </div>
+                            </div>
+                        </SgCard>
+                        <SgCard Title="Animation Options">
+                            <PropertyTable Items="_animationProps" />
+                        </SgCard>
+                    </div>
+                </div>
+                <DemoCodeBlock Code="@_animationCode" Title="Animation setup" Language="Razor" />
+                @* Live animation demo buttons *@
+                <div style="margin-top:16px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:8px;">Quick toggle all animations</SgTypography>
+                    <div class="sgc-demo-flex-row" style="gap:12px;">
+                        @foreach (var anim in new[] { "Scale", "Fade", "SlideUp", "Bounce", "None" })
+                        {
+                            <SgButton Text="@anim"
+                                      Variant="@(_selectedAnimation == anim ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                                      Size="SgSize.Sm"
+                                      OnClick="@(() => { _selectedAnimation = anim; _animVisible = true; })" />
+                        }
+                    </div>
+                </div>
+            </ChildContent>
+        </DemoSection>
+        <DemoSection BadgeText="Custom" BadgeVariant="SgBadgeVariant.Warn">
+            <HeaderContent>
+                <div class="demo-section-header">
+                    <SgTypography Variant="SgTypographyVariant.Heading3" Weight="SgTypographyWeight.Semibold">Custom Content</SgTypography>
+                </div>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+                    Replace the default arrow with any icon or custom Blazor content via <code>ChildContent</code>. Combine with any animation style.
+                </SgTypography>
+            </HeaderContent>
+            <ChildContent>
+                <div class="sgc-demo-flex-col">
+                    <div class="sgc-demo-controls" style="margin-bottom:0;">
+                        <div class="sgc-demo-control-group">
+                            <span class="sgc-demo-control-label">Icon</span>
+                            <div class="sgc-demo-control-row">
+                                <select class="sgc-demo-select" @bind="_selectedIcon">
+                                    <option value="ArrowUp">Arrow Up</option>
+                                    <option value="ChevronUp">Chevron Up</option>
+                                    <option value="Sparkles">Sparkles</option>
+                                    <option value="Star">Star</option>
+                                    <option value="Rocket">Rocket</option>
+                                    <option value="ArrowUpCircle">Arrow Up Circle</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="sgc-demo-control-group">
+                            <span class="sgc-demo-control-label">Animation</span>
+                            <div class="sgc-demo-control-row">
+                                <select class="sgc-demo-select" @bind="_customAnimation">
+                                    <option value="Scale">Scale</option>
+                                    <option value="Fade">Fade</option>
+                                    <option value="SlideUp">Slide Up</option>
+                                    <option value="Bounce">Bounce</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="demo-grid-adaptive">
+                        <SgCard Title="Icon Variations" CssClass="demo-interactive-card">
+                            <div class="sgc-demo-flex-row" style="gap:16px;">
+                                @foreach (var icon in new[] { "ArrowUp", "ChevronUp", "Sparkles", "Star" })
+                                {
+                                    <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px;border:1px solid var(--sg-border);border-radius:8px;">
+                                        <div style="width:44px;height:44px;border-radius:50%;background:var(--sg-primary);color:var(--sg-primary-foreground);display:flex;align-items:center;justify-content:center;">
+                                            <SgIcon Icon="@GetIcon(icon)" Size="22px" />
+                                        </div>
+                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@icon</SgTypography>
+                                    </div>
+                                }
+                            </div>
+                        </SgCard>
+                        <SgCard Title="Properties">
+                            <PropertyTable Items="_customProps" />
+                        </SgCard>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:16px;padding:16px;border:1px solid var(--sg-border);border-radius:10px;background:var(--sg-surface-alt);margin-top:8px;">
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold">Live preview:</SgTypography>
+                        <div style="width:52px;height:52px;border-radius:50%;background:var(--sg-primary);color:var(--sg-primary-foreground);display:flex;align-items:center;justify-content:center;box-shadow:var(--sg-shadow-lg);">
+                            <SgIcon Icon="@GetIcon(_selectedIcon)" Size="22px" />
+                        </div>
+                        <SgStack Orientation="SgOrientation.Vertical" Gap="2px">
+                            <SgTypography Size="SgTypographySize.Sm">@_selectedIcon icon</SgTypography>
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@_customAnimation animation</SgTypography>
+                        </SgStack>
+                    </div>
+                    <SgButtonGroup Variant="SgButtonVariant.Ghost" Style="border:1px solid var(--sg-border);border-radius:8px;margin-top:8px;">
+                        <SgButton Size="SgSize.Sm" OnClick="@(() => _selectedIcon = "ArrowUp")">Arrow</SgButton>
+                        <SgButton Size="SgSize.Sm" OnClick="@(() => _selectedIcon = "ChevronUp")">Chevron</SgButton>
+                        <SgButton Size="SgSize.Sm" OnClick="@(() => _selectedIcon = "Sparkles")">Sparkles</SgButton>
+                        <SgButton Size="SgSize.Sm" OnClick="@(() => _selectedIcon = "Star")">Star</SgButton>
+                    </SgButtonGroup>
+                </div>
+                <DemoCodeBlock Code="@_customCode" Title="Custom content usage" Language="Razor" />
+            </ChildContent>
+        </DemoSection>
+        <DemoSection BadgeText="Live Builder" BadgeVariant="SgBadgeVariant.Success">
+            <HeaderContent>
+                <div class="demo-section-header">
+                    <SgTypography Variant="SgTypographyVariant.Heading3" Weight="SgTypographyWeight.Semibold">Code Constructor</SgTypography>
+                    <span class="demo-live-badge">Interactive</span>
+                </div>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+                    Toggle options below to generate the <code>SgBackTop</code> code matching your configuration.
+                </SgTypography>
+            </HeaderContent>
+            <ChildContent>
+                <div class="demo-grid-adaptive">
+                    <SgCard Title="Constructor Options" CssClass="demo-interactive-card">
+                        <div class="sgc-demo-flex-col">
+                            <div class="sgc-demo-controls" style="margin-bottom:0;">
+                                <div class="sgc-demo-control-group">
+                                    <SgCheckBox @bind-Value="_ctorShowProgress" Label="ShowProgress" />
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <SgCheckBox @bind-Value="_ctorPersistent" Label="Persistent" />
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <SgCheckBox @bind-Value="_ctorSmooth" Label="Smooth" />
+                                </div>
+                            </div>
+                            <div class="sgc-demo-controls" style="margin-bottom:0;">
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Animation</span>
+                                    <select class="sgc-demo-select" @bind="_ctorAnim" style="width:100%;">
+                                        <option value="Scale">Scale</option>
+                                        <option value="Fade">Fade</option>
+                                        <option value="SlideUp">SlideUp</option>
+                                        <option value="Bounce">Bounce</option>
+                                        <option value="None">None</option>
+                                    </select>
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Threshold</span>
+                                    <div class="sgc-demo-control-row">
+                                        <input type="range" class="sgc-demo-slider"
+                                               min="50" max="600" step="10"
+                                               @bind="_ctorThreshold" />
+                                        <span class="sgc-demo-slider-value">@_ctorThreshold</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="sgc-demo-controls" style="margin-bottom:0;">
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Bottom (px)</span>
+                                    <input type="number" class="sgc-demo-select" style="width:80px;" @bind="_ctorBottom" />
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Right (px)</span>
+                                    <input type="number" class="sgc-demo-select" style="width:80px;" @bind="_ctorRight" />
+                                </div>
+                                <div class="sgc-demo-control-group">
+                                    <span class="sgc-demo-control-label">Target</span>
+                                    <input type="text" class="sgc-demo-select" style="width:140px;" @bind="_ctorTarget" placeholder=".sui-content" />
+                                </div>
+                            </div>
+                        </div>
+                    </SgCard>
+                    <SgCard Title="Options">
+                        <PropertyTable Items="_ctorProps" />
+                    </SgCard>
+                </div>
+                <DemoCodeBlock Code="@_ctorCode" Title="Generated code" Language="Razor" />
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="margin-top:8px;display:flex;align-items:center;gap:6px;">
+                    <SgIcon Icon="@SgIcons.Copy" Size="14px" />
+                    Copy the code above into your page. The component works with any scrollable container via the <code>Target</code> parameter.
+                </SgTypography>
+            </ChildContent>
+        </DemoSection>
+        <DemoSection Title="Component Properties">
+            <ChildContent>
+                <div class="demo-grid-two-col">
+                    <SgCard Title="SgBackTop">
+                        <PropertyTable Items="_backTopProps" />
+                    </SgCard>
+                    <SgCard Title="SgBackBottom">
+                        <PropertyTable Items="_backBottomProps" />
+                    </SgCard>
+                </div>
+            </ChildContent>
+        </DemoSection>
+        <DemoSection Title="SgBackTopAnimation Enum">
+            <ChildContent>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc" style="margin-bottom:16px;">
+                    All supported animation values for the <code>Animation</code> parameter.
+                </SgTypography>
+                <SgCard Title="Animation Values">
+                    <PropertyTable Items="_animationEnumProps" />
+                </SgCard>
+            </ChildContent>
+        </DemoSection>
+        <DemoSection Title="Navigation Pair" BadgeText="Pro Tip" BadgeVariant="SgBadgeVariant.Success">
+            <ChildContent>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" CssClass="demo-section-desc" style="margin-bottom:16px;">
+                    Stack <code>SgBackTop</code> and <code>SgBackBottom</code> together inside an <code>SgStack</code> for two-way scroll navigation.
+                </SgTypography>
+                <SgCard Title="Example" CssClass="demo-interactive-card">
+                    <div style="padding:16px;border:1px dashed var(--sg-border);border-radius:10px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                        <SgStack Orientation="SgOrientation.Vertical" Gap="4px">
+                            <SgTypography Weight="SgTypographyWeight.Semibold">Two-Way Navigation</SgTypography>
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                Scroll-to-top and scroll-to-bottom buttons stacked vertically in the corner.
+                            </SgTypography>
+                        </SgStack>
+                        <SgStack Orientation="SgOrientation.Horizontal" Gap="8px">
+                            <SgIconButton Icon="@SgIcons.ChevronUp" Title="Scroll up"
+                                          Variant="SgButtonVariant.Primary"
+                                          OnClick="@(async () => await JS.InvokeVoidAsync("eval", "document.querySelector('.sui-content')?.scrollTo({top:0,behavior:'smooth'})"))" />
+                            <SgIconButton Icon="@SgIcons.ChevronDown" Title="Scroll down"
+                                          Variant="SgButtonVariant.Ghost"
+                                          OnClick="@(async () => await JS.InvokeVoidAsync("eval", "var c=document.querySelector('.sui-content');c?.scrollTo({top:c.scrollHeight,behavior:'smooth'})"))" />
+                        </SgStack>
+                    </div>
+                </SgCard>
+                <DemoCodeBlock Code="@_navPairCode" Title="Navigation pair" Language="Razor" />
+            </ChildContent>
+        </DemoSection>
+    </SgSpace>
 </SgCard>
-
+<style>
+    .sgc-anim-preview-dot {
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        background: var(--sg-primary);
+        color: var(--sg-primary-foreground);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        transition: opacity 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+                    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+        opacity: 0;
+        transform: scale(0);
+    }
+    .sgc-anim-preview-dot.sgc-anim-preview-visible {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+    .sgc-anim-preview-dot[data-anim="fade"] {
+        transform: scale(1);
+    }
+    .sgc-anim-preview-dot[data-anim="fade"].sgc-anim-preview-visible {
+        opacity: 1;
+    }
+    .sgc-anim-preview-dot[data-anim="slideup"] {
+        transform: translateY(24px);
+    }
+    .sgc-anim-preview-dot[data-anim="slideup"].sgc-anim-preview-visible {
+        transform: translateY(0);
+    }
+    .sgc-anim-preview-dot[data-anim="bounce"] {
+        transform: scale(0) translateY(30px);
+    }
+    .sgc-anim-preview-dot[data-anim="bounce"].sgc-anim-preview-visible {
+        transform: scale(1) translateY(0);
+    }
+    .sgc-anim-preview-dot[data-anim="none"] {
+        transform: none;
+    }
+</style>
 @code {
-    private List<PropertyPanelItem> _props = new()
+    [Inject] private IJSRuntime JS { get; set; } = null!;
+    // ── Section 1: Basic Usage ──
+    private int _basicThreshold = 200;
+    private int _basicPreviewProgress = 40;
+    private bool _basicSmooth = true;
+    private string _basicDirection = "top";
+    private string _basicAnimSelect = "Scale";
+    private bool _basicShowProgress;
+    private bool _basicPersistent;
+    private string _basicCode => $@"@* Dynamic BackTop — configurable via parameters *@
+<{( _basicDirection == "top" ? "SgBackTop" : "SgBackBottom")}
+    VisibilityHeight=""{_basicThreshold}""
+    Animation=""SgBackTopAnimation.{_basicAnimSelect}""{(_basicShowProgress ? $@"
+    ShowProgress=""true""" : "")}{(_basicPersistent ? $@"
+    Persistent=""true""" : "")} />";
+    private List<PropertyPanelItem> _basicProps => new()
     {
-        new() { Label = "VisibilityHeight", Value = "int (default 200)", BadgeText = "Порог появления",        BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Target",           Value = "string?",           BadgeText = "CSS-селектор контейнера",BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Smooth",           Value = "bool (default true)",BadgeText = "Плавный скролл",        BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Bottom",           Value = "int (default 32)",  BadgeText = "Отступ снизу (px)",      BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Right",            Value = "int (default 32)",  BadgeText = "Отступ справа (px)",     BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Title",            Value = "string",            BadgeText = "Tooltip",                BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "OnClick",          Value = "EventCallback",     BadgeText = "Событие клика",          BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "ChildContent",     Value = "RenderFragment?",   BadgeText = "Кастомный контент",      BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "VisibilityHeight", Value = $"int ({_basicThreshold})", BadgeText = "Threshold", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation", Value = _basicAnimSelect, BadgeText = "Style", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowProgress", Value = _basicShowProgress ? "true" : "false", BadgeText = "Progress", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Smooth", Value = _basicSmooth ? "true" : "false", BadgeText = "Scroll", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Target", Value = "window (default)", BadgeText = "Container", BadgeVariant = SgBadgeVariant.Info }
     };
+    // ── Section 2: Progress ──
+    private int _progressValue = 65;
+    private string _progressCode =>
+        @"<!-- SgBackTop with progress ring -->
+<SgBackTop VisibilityHeight=""200""
+           ShowProgress=""true""
+           Persistent=""true""
+           Animation=""SgBackTopAnimation.Scale"" />";
+    private List<PropertyPanelItem> _progressProps => new()
+    {
+        new() { Label = "ShowProgress", Value = "bool (default false)", BadgeText = "Progress ring", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ProgressColor", Value = "string?", BadgeText = "Ring color", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Progress", Value = "int (-1 = auto)", BadgeText = "Value (0-100)", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ProgressChanged", Value = "EventCallback<int>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Persistent", Value = "bool (default false)", BadgeText = "Always in DOM", BadgeVariant = SgBadgeVariant.Warn }
+    };
+    // ── Section 3: Animation ──
+    private string _selectedAnimation = "Scale";
+    private bool _animVisible = true;
+    private SgBackTopAnimation _parsedAnim => Enum.TryParse<SgBackTopAnimation>(_selectedAnimation, out var a) ? a : SgBackTopAnimation.Scale;
+    private string _animationCode => $@"<!-- SgBackTop with {_selectedAnimation.ToLower()} animation -->
+<SgBackTop VisibilityHeight=""200""
+           Animation=""SgBackTopAnimation.{_selectedAnimation}"" />";
+    private List<PropertyPanelItem> _animationProps => new()
+    {
+        new() { Label = "Animation", Value = "SgBackTopAnimation", BadgeText = "Default: Scale", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation.None", Value = "Instant show/hide", BadgeText = "No transition", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Animation.Scale", Value = "Scale up/down", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation.Fade", Value = "Fade in/out", BadgeText = "Smooth", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation.SlideUp", Value = "Slide up/down", BadgeText = "Slide", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation.Bounce", Value = "Elastic bounce", BadgeText = "Playful", BadgeVariant = SgBadgeVariant.Success }
+    };
+    // ── Section 4: Custom Content ──
+    private string _selectedIcon = "ChevronUp";
+    private string _customAnimation = "Scale";
+    private string GetIcon(string name) => name switch
+    {
+        "ArrowUp" => SgIcons.ArrowUp,
+        "ChevronUp" => SgIcons.ChevronUp,
+        "Sparkles" => SgIcons.Sparkles,
+        "Star" => SgIcons.Star,
+        "ArrowUpCircle" => SgIcons.ArrowUp,
+        _ => SgIcons.ChevronUp
+    };
+    private string _customCode =>
+        $@"<!-- Custom icon via ChildContent -->
+<SgBackTop VisibilityHeight=""200""
+           Animation=""SgBackTopAnimation.{_customAnimation}""
+           ShowProgress=""true"">
+    <SgIcon Icon=""@SgIcons.{_selectedIcon}"" Size=""22px"" Color=""currentColor"" />
+</SgBackTop>";
+    private List<PropertyPanelItem> _customProps => new()
+    {
+        new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Custom HTML/icon", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title", Value = "string", BadgeText = "Tooltip", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Extra classes", BadgeVariant = SgBadgeVariant.Info }
+    };
+    // ── Section 5: Code Constructor ──
+    private bool _ctorShowProgress = true;
+    private bool _ctorPersistent = true;
+    private bool _ctorSmooth = true;
+    private string _ctorAnim = "Scale";
+    private int _ctorThreshold = 200;
+    private int _ctorBottom = 32;
+    private int _ctorRight = 32;
+    private string _ctorTarget = ".sui-content";
+    private string _ctorCode
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"<SgBackTop");
+            sb.AppendLine($"    VisibilityHeight=\"{_ctorThreshold}\"");
+            if (_ctorSmooth) sb.AppendLine($"    Smooth=\"true\"");
+            if (_ctorShowProgress) sb.AppendLine($"    ShowProgress=\"true\"");
+            if (_ctorPersistent) sb.AppendLine($"    Persistent=\"true\"");
+            sb.AppendLine($"    Animation=\"SgBackTopAnimation.{_ctorAnim}\"");
+            sb.AppendLine($"    Bottom=\"{_ctorBottom}\"");
+            sb.AppendLine($"    Right=\"{_ctorRight}\"");
+            if (!string.IsNullOrEmpty(_ctorTarget))
+                sb.AppendLine($"    Target=\"{_ctorTarget}\"");
+            sb.Append(" />");
+            return sb.ToString();
+        }
+    }
+    private List<PropertyPanelItem> _ctorProps => new()
+    {
+        new() { Label = "VisibilityHeight", Value = _ctorThreshold.ToString(), BadgeText = "Threshold", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowProgress", Value = _ctorShowProgress ? "true" : "false", BadgeText = "Progress", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Animation", Value = _ctorAnim, BadgeText = "Style", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Target", Value = string.IsNullOrEmpty(_ctorTarget) ? "window" : _ctorTarget, BadgeText = "Container", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Smooth", Value = _ctorSmooth ? "true" : "false", BadgeText = "Smooth scroll", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Persistent", Value = _ctorPersistent ? "true" : "false", BadgeText = "Keep in DOM", BadgeVariant = SgBadgeVariant.Warn }
+    };
+    // ── Properties ──
+    private List<PropertyPanelItem> _backTopProps => new()
+    {
+        new() { Label = "VisibilityHeight", Value = "int (default 200)", BadgeText = "Scroll threshold", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Target", Value = "string?", BadgeText = "CSS container selector", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Smooth", Value = "bool (default true)", BadgeText = "Smooth scroll", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Bottom", Value = "int (default 32)", BadgeText = "Bottom offset", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Right", Value = "int (default 32)", BadgeText = "Right offset", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation", Value = "SgBackTopAnimation", BadgeText = "Appear/disappear style", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowProgress", Value = "bool (default false)", BadgeText = "Progress ring", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ProgressColor", Value = "string?", BadgeText = "Ring color", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Progress", Value = "int (-1 = auto)", BadgeText = "Value (0-100)", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ProgressChanged", Value = "EventCallback<int>", BadgeText = "Progress event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Visible", Value = "bool", BadgeText = "Two-way visible binding", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "VisibleChanged", Value = "EventCallback<bool>", BadgeText = "Visibility event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Persistent", Value = "bool (default false)", BadgeText = "Always in DOM", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Title", Value = "string", BadgeText = "Tooltip / aria-label", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Extra CSS classes", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Custom icon/content", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnClick", Value = "EventCallback", BadgeText = "Click event", BadgeVariant = SgBadgeVariant.Success }
+    };
+    private List<PropertyPanelItem> _backBottomProps => new()
+    {
+        new() { Label = "VisibilityHeight", Value = "int (default 200)", BadgeText = "Scroll threshold", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Target", Value = "string?", BadgeText = "CSS container selector", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Smooth", Value = "bool (default true)", BadgeText = "Smooth scroll", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Bottom", Value = "int (default 32)", BadgeText = "Bottom offset", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Right", Value = "int (default 32)", BadgeText = "Right offset", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Animation", Value = "SgBackTopAnimation", BadgeText = "Appear/disappear style", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowProgress", Value = "bool (default false)", BadgeText = "Progress ring", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Visible", Value = "bool", BadgeText = "Two-way visible binding", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Persistent", Value = "bool (default false)", BadgeText = "Always in DOM", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Title", Value = "string", BadgeText = "Tooltip / aria-label", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Extra CSS classes", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Custom icon/content", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnClick", Value = "EventCallback", BadgeText = "Click event", BadgeVariant = SgBadgeVariant.Success }
+    };
+    private List<PropertyPanelItem> _animationEnumProps => new()
+    {
+        new() { Label = "SgBackTopAnimation.None", Value = "\"None\"", BadgeText = "Instant — no transition", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgBackTopAnimation.Scale", Value = "\"Scale\"", BadgeText = "Scale up/down (default)", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBackTopAnimation.Fade", Value = "\"Fade\"", BadgeText = "Opacity fade in/out", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgBackTopAnimation.SlideUp", Value = "\"SlideUp\"", BadgeText = "Slide from bottom", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "SgBackTopAnimation.Bounce", Value = "\"Bounce\"", BadgeText = "Elastic bounce", BadgeVariant = SgBadgeVariant.Success }
+    };
+    private string _navPairCode =>
+        @"<!-- Two-way scroll navigation pair -->
+<SgStack Orientation=""SgOrientation.Vertical"" Gap=""8px""
+         Style=""position: fixed; bottom: 32px; right: 32px; z-index: 1000;"">
+    <SgBackTop Target="".sui-content"" VisibilityHeight=""400"" />
+    <SgBackBottom Target="".sui-content"" VisibilityHeight=""400"" />
+</SgStack>";
 }

@@ -2,7 +2,9 @@
 @using SuperUI.Enums
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-stepper @(Vertical ? "sgc-vertical" : "") @CssClass" role="navigation" aria-label="Progress steps">
+<div class="sgc-stepper @GetSizeCss() @(Vertical ? "sgc-vertical" : "") @(Animated ? "sgc-stepper-animated" : "") @(Compact ? "sgc-stepper-compact" : "") @CssClass"
+     role="navigation"
+     aria-label="@Localizer["StepperNavigation"]">
     @{ var arr = (Steps ?? Array.Empty<StepperItem>()).ToList(); }
     @for (var i = 0; i < arr.Count; i++)
     {
@@ -11,31 +13,60 @@
         var status = GetStepStatus(idx, s);
         var state = status.ToString().ToLowerInvariant();
         var isCurrent = status == SgStepStatus.Process;
-        var icon = status switch
+        var isDisabled = s.Disabled || !CanNavigateTo(idx);
+        var icon = s.Icon ?? (status switch
         {
             SgStepStatus.Done => "✓",
             SgStepStatus.Error => "✕",
             _ => (idx + 1).ToString()
-        };
-        <div class="sgc-step sgc-@state @(CanNavigateTo(idx) ? "" : "sgc-disabled")"
-             role="@(Clickable && CanNavigateTo(idx) ? "button" : null)"
-             tabindex="@(Clickable && CanNavigateTo(idx) ? (isCurrent ? "0" : "-1") : "-1")"
+        });
+
+        <div class="sgc-step sgc-@state @(isDisabled ? "sgc-disabled" : "") @s.CssClass"
+             role="@(Clickable && !isDisabled ? "button" : "listitem")"
+             tabindex="@(Clickable && !isDisabled ? (isCurrent ? "0" : "-1") : "-1")"
              aria-current="@(isCurrent ? "step" : null)"
-             aria-label="@(Localizer.GetString("StepLabel", idx + 1, s.Title, GetStatusLabel(status)))"
+             aria-label="@Localizer.GetString("StepLabel", idx + 1, s.Title, GetStatusLabel(status))"
+             title="@s.Description"
              @onclick="() => GoAsync(idx)"
              @onkeydown="(e) => OnKeyDownAsync(e, idx)">
-            <div class="sgc-step-mark" aria-hidden="true">@icon</div>
+            <div class="sgc-step-mark" aria-hidden="true">
+                @if (status == SgStepStatus.Done)
+                {
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                }
+                else if (status == SgStepStatus.Error)
+                {
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                }
+                else
+                {
+                    @icon
+                }
+            </div>
             <div class="sgc-step-text">
-                <div class="sgc-step-title">@s.Title</div>
+                <div class="sgc-step-title">
+                    @s.Title
+                    @if (s.Optional)
+                    {
+                        <span class="sgc-step-optional-badge">@Localizer["Optional"]</span>
+                    }
+                </div>
                 @if (!string.IsNullOrEmpty(s.Description))
                 {
                     <div class="sgc-step-desc">@s.Description</div>
                 }
             </div>
         </div>
-        @if (idx < arr.Count - 1)
+        @if (ShowLines && idx < arr.Count - 1)
         {
-            <div class="sgc-step-line" aria-hidden="true"></div>
+            var lineFill = GetLineFillPercent(arr, idx);
+            <div class="sgc-step-line" aria-hidden="true">
+                <div class="sgc-step-line-fill" style="width:@(lineFill)%;height:@(lineFill)%;@(Vertical ? "width:100%;" : "")"></div>
+            </div>
         }
     }
 </div>
@@ -58,22 +89,46 @@
 
     /// <summary>
     /// Gets or sets whether the stepper is displayed vertically.
-    /// Default is false (horizontal).
+    /// Default is <c>false</c> (horizontal).
     /// </summary>
     [Parameter] public bool Vertical { get; set; }
 
     /// <summary>
     /// Gets or sets whether steps can be clicked to navigate.
-    /// Default is true.
+    /// Default is <c>true</c>.
     /// </summary>
     [Parameter] public bool Clickable { get; set; } = true;
 
     /// <summary>
     /// Gets or sets whether the stepper uses linear navigation.
-    /// When true, users can only navigate to completed steps or the next pending step.
-    /// Default is false.
+    /// When <c>true</c>, users can only navigate to completed steps or the next pending step.
+    /// Default is <c>false</c>.
     /// </summary>
     [Parameter] public bool Linear { get; set; }
+
+    /// <summary>
+    /// Gets or sets the stepper size variant.
+    /// Supported values: <c>Sm</c>, <c>Md</c> (default), <c>Lg</c>.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Gets or sets whether the stepper shows connecting lines between steps.
+    /// Default is <c>true</c>.
+    /// </summary>
+    [Parameter] public bool ShowLines { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether steps appear with entrance animations.
+    /// Default is <c>true</c>.
+    /// </summary>
+    [Parameter] public bool Animated { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets whether the stepper uses compact padding.
+    /// Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
 
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
@@ -81,9 +136,23 @@
     [Parameter] public string? CssClass { get; set; }
 
     /// <summary>
-    /// Callback invoked before changing steps. Return false to prevent navigation.
+    /// Callback invoked before changing steps. Return <c>false</c> to prevent navigation.
+    /// Parameters are <c>(oldIndex, newIndex)</c>.
     /// </summary>
     [Parameter] public Func<int, int, Task<bool>>? BeforeChangeAsync { get; set; }
+
+    /// <summary>
+    /// Fires after a step has been successfully changed.
+    /// Provides the new active index.
+    /// </summary>
+    [Parameter] public EventCallback<int> OnStepChanged { get; set; }
+
+    private string GetSizeCss() => Size switch
+    {
+        SgSize.Sm => "sgc-stepper-sm",
+        SgSize.Lg => "sgc-stepper-lg",
+        _ => ""
+    };
 
     private SgStepStatus GetStepStatus(int idx, StepperItem item)
     {
@@ -103,14 +172,22 @@
 
     private bool CanNavigateTo(int idx)
     {
+        if (!Clickable) return false;
         if (!Linear) return true;
-        // In linear mode, allow navigation to completed steps, current step, or the immediate next step
-        return idx <= Active + 1 || GetStepStatus(idx, (Steps ?? Array.Empty<StepperItem>()).ElementAtOrDefault(idx) ?? new StepperItem()) == SgStepStatus.Done;
+        return idx == Active || GetStepStatus(idx, GetItemOrDefault(idx)) == SgStepStatus.Done || idx == Active + 1;
+    }
+
+    private StepperItem GetItemOrDefault(int idx)
+    {
+        var arr = Steps ?? Array.Empty<StepperItem>();
+        return idx >= 0 && idx < arr.Count() ? arr.ElementAt(idx) : new StepperItem();
     }
 
     private async Task GoAsync(int i)
     {
-        if (!Clickable || i == Active || !CanNavigateTo(i)) return;
+        if (i == Active) return;
+        var item = GetItemOrDefault(i);
+        if (item.Disabled || !Clickable || !CanNavigateTo(i)) return;
 
         if (BeforeChangeAsync is not null)
         {
@@ -120,14 +197,23 @@
 
         Active = i;
         if (ActiveChanged.HasDelegate) await ActiveChanged.InvokeAsync(i);
+        if (OnStepChanged.HasDelegate) await OnStepChanged.InvokeAsync(i);
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e, int idx)
     {
         if (!Clickable) return;
-        if (e.Key == "Enter" || e.Key == " ")
+        if (e.Key is "Enter" or " ")
         {
             await GoAsync(idx);
         }
+    }
+
+    private int GetLineFillPercent(List<StepperItem> arr, int lineIdx)
+    {
+        // Line between step[lineIdx] and step[lineIdx+1]
+        // Fill if first step is done, 50% if first is active, 0% otherwise
+        var firstStatus = GetStepStatus(lineIdx, arr[lineIdx]);
+        return firstStatus == SgStepStatus.Done ? 100 : firstStatus == SgStepStatus.Process ? 50 : 0;
     }
 }

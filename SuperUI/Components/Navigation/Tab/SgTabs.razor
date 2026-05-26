@@ -1,10 +1,15 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
 <CascadingValue Value="this" IsFixed="true">
     @ChildContent
-    <div class="sgc-tabs @(Vertical ? "sgc-tabs-vertical" : "") @CssClass" style="@Style">
-        <div class="sgc-tabs-strip" role="tablist">
+    <div class="sgc-tabs @GetVariantClass() @(Vertical ? "sgc-tabs-vertical" : "") @GetAlignClass() @GetSizeClass() @(Scrollable ? "sgc-tabs-scrollable" : "") @CssClass" style="@Style">
+        <div class="sgc-tabs-strip" role="tablist" @ref="_stripRef">
+            @if (AddOnBefore is not null)
+            {
+                <div class="sgc-tabs-addon sgc-tabs-addon-before">@AddOnBefore</div>
+            }
             @foreach (var t in _tabs)
             {
                 var tLocal = t;
@@ -16,6 +21,8 @@
                      aria-disabled="@(tLocal.Disabled ? "true" : null)"
                      aria-controls="@tLocal.PanelId"
                      tabindex="@(isActive ? "0" : "-1")"
+                     title="@tLocal.Tooltip"
+                     @ref="tLocal.TabElementRef"
                      @onclick="() => { if (!tLocal.Disabled) _ = ActivateAsync(tLocal); }"
                      @onkeydown="@(e => OnKeyDownAsync(e, tLocal))">
                     @if (tLocal.Icon is not null)
@@ -28,6 +35,10 @@
                         <SgBadge Variant="@tLocal.BadgeVariant" CssClass="sgc-tab-badge">@tLocal.Badge</SgBadge>
                     }
                 </div>
+            }
+            @if (AddOnAfter is not null)
+            {
+                <div class="sgc-tabs-addon sgc-tabs-addon-after">@AddOnAfter</div>
             }
         </div>
         <div class="sgc-tabs-body">
@@ -51,16 +62,48 @@
 @code {
     private readonly List<SgTabPanel> _tabs = new();
     private SgTabPanel? _active;
+    private ElementReference _stripRef;
 
     /// <summary>
-    /// Whether to display tabs vertically.
+    /// Whether to display tabs vertically (side panel layout).
     /// </summary>
     [Parameter] public bool Vertical { get; set; }
+
+    /// <summary>
+    /// When true, the tab strip becomes horizontally scrollable if tabs overflow.
+    /// Useful for many tabs in constrained containers.
+    /// </summary>
+    [Parameter] public bool Scrollable { get; set; }
+
+    /// <summary>
+    /// The visual variant of the tab strip. Default is <see cref="SgTabsVariant.Line"/>.
+    /// </summary>
+    [Parameter] public SgTabsVariant Variant { get; set; } = SgTabsVariant.Line;
+
+    /// <summary>
+    /// Horizontal alignment of tab headers within the strip. Default is <see cref="SgTabsAlign.Start"/>.
+    /// </summary>
+    [Parameter] public SgTabsAlign Align { get; set; } = SgTabsAlign.Start;
+
+    /// <summary>
+    /// Size of the tab headers. Default is <see cref="SgSize.Md"/>.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
     /// <summary>
     /// Gets or sets the child content containing <see cref="SgTabPanel"/> components.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Optional content rendered at the start of the tab strip (before tab headers).
+    /// </summary>
+    [Parameter] public RenderFragment? AddOnBefore { get; set; }
+
+    /// <summary>
+    /// Optional content rendered at the end of the tab strip (after tab headers).
+    /// </summary>
+    [Parameter] public RenderFragment? AddOnAfter { get; set; }
 
     /// <summary>
     /// Gets or sets additional CSS class names to apply to the tabs container.
@@ -82,13 +125,34 @@
     /// </summary>
     [Parameter] public EventCallback<string> ActiveTitleChanged { get; set; }
 
+    private string GetVariantClass() => Variant switch
+    {
+        SgTabsVariant.Card => "sgc-tabs-card",
+        SgTabsVariant.Pills => "sgc-tabs-pill",
+        SgTabsVariant.Underline => "sgc-tabs-underline",
+        _ => ""
+    };
+
+    private string GetAlignClass() => Align switch
+    {
+        SgTabsAlign.Center => "sgc-tabs-align-center",
+        SgTabsAlign.End => "sgc-tabs-align-end",
+        _ => ""
+    };
+
+    private string GetSizeClass() => Size switch
+    {
+        SgSize.Sm => "sgc-tabs-sm",
+        SgSize.Lg => "sgc-tabs-lg",
+        _ => ""
+    };
+
     internal void Register(SgTabPanel panel)
     {
         if (_tabs.Contains(panel)) return;
         _tabs.Add(panel);
         if (_active is null || (ActiveTitle is not null && panel.Title == ActiveTitle))
             _active = panel;
-        // Schedule a re-render after the current render cycle completes
         _ = InvokeAsync(StateHasChanged);
     }
 
@@ -108,6 +172,16 @@
         if (ActiveTitleChanged.HasDelegate)
             await ActiveTitleChanged.InvokeAsync(tab.Title);
         await InvokeAsync(StateHasChanged);
+
+        if (Scrollable)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"document.getElementById('{tab.TabId}')?.scrollIntoView({{behavior:'smooth',block:'nearest',inline:'nearest'}})");
+            }
+            catch { }
+        }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e, SgTabPanel tab)

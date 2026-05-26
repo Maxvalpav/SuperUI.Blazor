@@ -1,0 +1,527 @@
+@page "/breadcrumb-demo"
+@using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+
+<PageTitle>Breadcrumb — SgBreadcrumb — SuperUI</PageTitle>
+
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Usage — Interactive                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Usage
+            </SgTypography>
+            <span class="demo-live-badge">Live</span>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Standard breadcrumbs with configurable separators, sizes, icons, and collapse mode.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Default Separator" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Arrow (default)
+                        </SgTypography>
+                        <SgBreadcrumb Items="_basicItems1" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Slash /
+                        </SgTypography>
+                        <SgBreadcrumb Items="_basicItems2" Separator="/" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Chevron ›
+                        </SgTypography>
+                        <SgBreadcrumb Items="_basicItems3" Separator=">" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            SVG Icon
+                        </SgTypography>
+                        <SgBreadcrumb Items="_basicItems1" Separator="@_svgChevron" />
+                    </div>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Interactive Controls" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Separator</SgTypography>
+                        <SgSegmented TValue="string"
+                                     Options="@_separatorOptions"
+                                     @bind-Value="_selectedSeparator" />
+                    </SgStack>
+
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                        <SgSegmented TValue="string"
+                                     Options="@_sizeOptions"
+                                     @bind-Value="_selectedSize" />
+                    </SgStack>
+
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Options</SgTypography>
+                        <SgSwitch @bind-Value="_showDisabled" Label="Include disabled item" />
+                        <SgSwitch @bind-Value="_showIcons" Label="Show icons" />
+                        <SgSwitch @bind-Value="_enableCollapse" Label="Collapse (max 3 items)" />
+                    </SgStack>
+
+                    @* ── Live Preview ── *@
+                    <SgCard Title="Live Preview" Variant="SgCardVariant.Outlined" NoPadding="true">
+                        <div style="padding: 16px;">
+                            <SgBreadcrumb Items="@GetLiveItems()"
+                                          Separator="@GetLiveSeparator()"
+                                          Size="@GetLiveSize()"
+                                          MaxItems="@(_enableCollapse ? 3 : null)"
+                                          OnItemClick="HandleItemClick" />
+                        </div>
+                    </SgCard>
+
+                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                        Click a breadcrumb link to trigger the click event. Check console for demo output.
+                    </SgTypography>
+                </SgStack>
+            </SgCard>
+        </div>
+    </div>
+
+    <DemoCodeBlock Code="@_basicCode" Title="Interactive breadcrumb with all features" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Icons                                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                With Icons
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Breadcrumbs with emoji, SVG, or custom icon markers.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="File System" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                        <SgBreadcrumb Items="_iconItems1" Separator="/" />
+                    </div>
+                    <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                        <SgBreadcrumb Items="_iconItems2" />
+                    </div>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="SVG Icons" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                    <SgBreadcrumb Items="_svgIconItems" Separator="›" />
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <DemoCodeBlock Code="@_iconCode" Title="Breadcrumb with icon support" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Size Variants                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Size Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Three size options: <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Sm</SgTypography>,
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Md</SgTypography> (default),
+                and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Lg</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="Size Comparison" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgStack Vertical Space="SgSize.Lg">
+                <div>
+                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                        Sm <SgTag Variant="SgTagVariant.Warn" Size="SgSize.Sm" Style="margin-left:8px;">Compact</SgTag>
+                    </SgTypography>
+                    <div style="padding: 8px 12px; background: var(--sg-bg-elevated); border-radius: 6px;">
+                        <SgBreadcrumb Items="_sizeDemoItems" Separator="/" Size="SgSize.Sm" />
+                    </div>
+                </div>
+                <div>
+                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                        Md (default) <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">Default</SgTag>
+                    </SgTypography>
+                    <div style="padding: 8px 12px; background: var(--sg-bg-elevated); border-radius: 6px;">
+                        <SgBreadcrumb Items="_sizeDemoItems" Separator="/" Size="SgSize.Md" />
+                    </div>
+                </div>
+                <div>
+                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                        Lg <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">Spacious</SgTag>
+                    </SgTypography>
+                    <div style="padding: 8px 12px; background: var(--sg-bg-elevated); border-radius: 6px;">
+                        <SgBreadcrumb Items="_sizeDemoItems" Separator="/" Size="SgSize.Lg" />
+                    </div>
+                </div>
+            </SgStack>
+        </SgCard>
+    </div>
+
+    <DemoCodeBlock Code="@_sizeCode" Title="Breadcrumb with size variants" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Collapse Mode                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Collapse Mode
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Automatically collapses breadcrumbs when they exceed the specified item count. Click the dashed button to expand hidden items.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Collapsed (max 3)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                    <SgBreadcrumb Items="_longPath" Separator="/" MaxItems="3" />
+                </div>
+            </SgCard>
+            <SgCard Title="Collapsed (max 4)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                    <SgBreadcrumb Items="_longPath" Separator="›" MaxItems="4" />
+                </div>
+            </SgCard>
+        </div>
+    </div>
+
+    <DemoCodeBlock Code="@_collapseCode" Title="Breadcrumb with collapse mode" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Disabled & Auto-Generation                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Disabled Items &amp; Auto-Generation
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Breadcrumb items can be disabled to indicate unavailable routes. The component can also auto-generate breadcrumbs from the current URI.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Disabled Items" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Sm">
+                    <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                        <SgBreadcrumb Items="_disabledItems" Separator="/" />
+                    </div>
+                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                        "Archived Projects" is disabled and not clickable.
+                    </SgTypography>
+                </SgStack>
+            </SgCard>
+            <SgCard Title="Auto-Generated from URI" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Sm">
+                    <div style="padding: 12px; border: 1px solid var(--sg-border); border-radius: 8px;">
+                        <SgBreadcrumb AutoGenerate="true" Separator="›" />
+                    </div>
+                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                        Breadcrumbs are automatically generated from the current URL. Navigate to see real-time updates.
+                    </SgTypography>
+                </SgStack>
+            </SgCard>
+        </div>
+    </div>
+
+    <DemoCodeBlock Code="@_disabledCode" Title="Disabled items and auto-generation" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Component Properties                                            -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Component Properties
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="SgBreadcrumb" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_breadcrumbProperties" />
+            </SgCard>
+            <SgCard Title="BreadcrumbItem" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_itemProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+</ChildContent>
+</SgCard>
+
+<style>
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+</style>
+
+@code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 20l6-16" stroke="#fff" opacity="0.6"/>
+                    <path d="M4 12h4l2-8 4 16 2-8h4" stroke="#fff"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgBreadcrumb</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Smart navigation breadcrumb with auto-generation, icon support, size variants, collapse mode, disabled items, and custom separators.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Interactive state ──
+    private string _selectedSeparator = "chevron";
+    private string _selectedSize = "md";
+    private bool _showDisabled;
+    private bool _showIcons = true;
+    private bool _enableCollapse;
+
+    private SgSize GetLiveSize() => _selectedSize switch
+    {
+        "sm" => SgSize.Sm,
+        "lg" => SgSize.Lg,
+        _ => SgSize.Md
+    };
+
+    private string GetLiveSeparator() => _selectedSeparator switch
+    {
+        "slash" => "/",
+        "chevron" => "›",
+        "arrow" => @_svgChevron,
+        _ => "/"
+    };
+
+    private List<BreadcrumbItem> GetLiveItems()
+    {
+        var items = new List<BreadcrumbItem>
+        {
+            new("🏠 Home", "/"),
+            new("📁 Documents", "/docs"),
+            new("📄 Reports", "/docs/reports"),
+        };
+
+        if (_showIcons)
+        {
+            items = new List<BreadcrumbItem>
+            {
+                new("🏠 Home", "/"),
+                new("⚙️ Settings", "/settings"),
+                new("🔒 Security", "/settings/security"),
+                new("🔑 Password")
+            };
+        }
+
+        if (_showDisabled && items.Count >= 3)
+        {
+            items[^2].Disabled = true;
+        }
+
+        return items;
+    }
+
+    private async Task HandleItemClick(BreadcrumbItem item)
+    {
+        Console.WriteLine($"Breadcrumb clicked: {item.Text}");
+    }
+
+    // ── Separator options ──
+    private List<SgSegmentedOption<string>> _separatorOptions = new()
+    {
+        new() { Value = "chevron", Label = "› Chevron" },
+        new() { Value = "slash",   Label = "/ Slash" },
+        new() { Value = "arrow",   Label = "▸ Arrow" }
+    };
+
+    private List<SgSegmentedOption<string>> _sizeOptions = new()
+    {
+        new() { Value = "sm", Label = "Sm" },
+        new() { Value = "md", Label = "Md" },
+        new() { Value = "lg", Label = "Lg" }
+    };
+
+    private string _svgChevron = @"<svg width=""14"" height=""14"" viewBox=""0 0 24 24"" fill=""none"" stroke=""currentColor"" stroke-width=""2.5"" stroke-linecap=""round"" stroke-linejoin=""round""><polyline points=""9 18 15 12 9 6""/></svg>";
+
+    // ── Demo data ──
+    private List<BreadcrumbItem> _basicItems1 = new()
+    {
+        new("Home", "/"),
+        new("Components", "/components"),
+        new("Navigation")
+    };
+
+    private List<BreadcrumbItem> _basicItems2 = new()
+    {
+        new("Home", "/"),
+        new("Catalog", "/catalog"),
+        new("Electronics", "/catalog/electronics"),
+        new("Smartphones")
+    };
+
+    private List<BreadcrumbItem> _basicItems3 = new()
+    {
+        new("Docs", "/docs"),
+        new("Guide", "/docs/guide"),
+        new("Installation")
+    };
+
+    private List<BreadcrumbItem> _iconItems1 = new()
+    {
+        new("📁 Documents", "/") { Icon = "📁" },
+        new("📄 Projects", "/projects") { Icon = "📄" },
+        new("✏️ Draft") { Icon = "✏️" }
+    };
+
+    private List<BreadcrumbItem> _iconItems2 = new()
+    {
+        new("⚙️ Settings", "/settings") { Icon = "⚙️" },
+        new("🔒 Security", "/settings/security") { Icon = "🔒" },
+        new("🔑 Password") { Icon = "🔑" }
+    };
+
+    private List<BreadcrumbItem> _svgIconItems = new()
+    {
+        new("Dashboard", "/") { Icon = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><rect width='7' height='9' x='3' y='3' rx='1'/><rect width='7' height='5' x='14' y='3' rx='1'/><rect width='7' height='5' x='14' y='12' rx='1'/><rect width='7' height='9' x='3' y='12' rx='1'/></svg>" },
+        new("Analytics", "/analytics") { Icon = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><path d='M22 12h-4l-3 9L9 3l-3 9H2'/></svg>" },
+        new("Reports") { Icon = "<svg width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'><line x1='12' x2='12' y1='20' y2='10'/><line x1='18' x2='18' y1='20' y2='4'/><line x1='6' x2='6' y1='20' y2='16'/></svg>" }
+    };
+
+    private List<BreadcrumbItem> _sizeDemoItems = new()
+    {
+        new("Home", "/"),
+        new("Products", "/products"),
+        new("Categories", "/products/categories"),
+        new("Electronics")
+    };
+
+    private List<BreadcrumbItem> _longPath = new()
+    {
+        new("Root", "/"),
+        new("Projects", "/projects"),
+        new("Frontend", "/projects/frontend"),
+        new("SuperUI", "/projects/frontend/superui"),
+        new("Components", "/projects/frontend/superui/components"),
+        new("Navigation", "/projects/frontend/superui/components/navigation"),
+        new("Breadcrumb")
+    };
+
+    private List<BreadcrumbItem> _disabledItems = new()
+    {
+        new("Home", "/"),
+        new("Workspace", "/workspace"),
+        new("Archived Projects", "/workspace/archived") { Disabled = true },
+        new("Q1 2026")
+    };
+
+    // ── Property tables ──
+    private List<PropertyPanelItem> _breadcrumbProperties = new()
+    {
+        new() { Label = "Items", Value = "IEnumerable<BreadcrumbItem>?", BadgeText = "Data", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AutoGenerate", Value = "bool", BadgeText = "Auto", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Separator", Value = "string", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Size", Value = "SgSize", BadgeText = "Sm / Md / Lg", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "MaxItems", Value = "int?", BadgeText = "Collapse", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CollapsedText", Value = "string", BadgeText = "Collapse label", BadgeVariant = SgBadgeVariant.Muted },
+        new() { Label = "OnItemClick", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "AriaLabel", Value = "string", BadgeText = "A11y", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Style", BadgeVariant = SgBadgeVariant.Muted }
+    };
+
+    private List<PropertyPanelItem> _itemProperties = new()
+    {
+        new() { Label = "Text", Value = "string", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Href", Value = "string?", BadgeText = "Link", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Icon", Value = "string?", BadgeText = "Icon / Emoji", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "State", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "MaxWidth", Value = "int?", BadgeText = "Truncate", BadgeVariant = SgBadgeVariant.Muted }
+    };
+
+    // ── Code examples ──
+    private string _basicCode => @"<!-- Interactive breadcrumb with all features -->
+<SgBreadcrumb Items=""_items"" Separator=""›"" Size=""SgSize.Md"" MaxItems=""3"" />
+
+@* Hide the code-behind section in display *@
+<style>.sgc-demo-code-content .hide-in-code {{ display: none; }}</style>
+<span class=""hide-in-code"">
+private List&lt;BreadcrumbItem&gt; _items = new()
+{
+    new(""🏠 Home"", ""/""),
+    new(""⚙️ Settings"", ""/settings""),
+    new(""🔒 Security"", ""/settings/security""),
+    new(""🔑 Password"")
+};
+</span>";
+
+    private string _iconCode => @"<!-- Breadcrumb with emoji icons -->
+<SgBreadcrumb Items=""_items"" Separator=""/"" />
+
+@* Data *@
+private List&lt;BreadcrumbItem&gt; _items = new()
+{
+    new() {{ Text = ""📁 Documents"", Href = ""/"", Icon = ""📁"" }},
+    new() {{ Text = ""📄 Projects"", Href = ""/projects"", Icon = ""📄"" }},
+    new() {{ Text = ""✏️ Draft"", Icon = ""✏️"" }}
+};";
+
+    private string _sizeCode => @"<!-- Size variants -->
+<SgBreadcrumb Items=""_items"" Separator=""/"" Size=""SgSize.Sm"" />
+<SgBreadcrumb Items=""_items"" Separator=""/"" Size=""SgSize.Md"" />
+<SgBreadcrumb Items=""_items"" Separator=""/"" Size=""SgSize.Lg"" />";
+
+    private string _collapseCode => @"<!-- Collapse long breadcrumbs -->
+<SgBreadcrumb Items=""_items"" Separator=""/"" MaxItems=""3"" />
+
+@* Data *@
+private List&lt;BreadcrumbItem&gt; _items = new()
+{
+    new(""Root"", ""/""),
+    new(""Projects"", ""/projects""),
+    new(""Frontend"", ""/projects/frontend""),
+    new(""Components""),
+};";
+
+    private string _disabledCode => @"<!-- Disabled items -->
+<SgBreadcrumb Items=""_items"" Separator=""/"" />
+
+@* Auto-generated from current URI *@
+<SgBreadcrumb AutoGenerate=""true"" Separator=""›"" />";
+}

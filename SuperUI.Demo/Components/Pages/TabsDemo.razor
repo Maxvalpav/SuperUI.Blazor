@@ -1,158 +1,826 @@
 ﻿@page "/tabs-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Вкладки - SUI</PageTitle>
+<PageTitle>SgTabs — Tabs — SuperUI</PageTitle>
 
-<SgCard Title="SgTabs - Вкладки"
-        Subtitle="Компонент для организации контента в несколько вкладок. Поддерживает различные стили и позиции.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Базовые вкладки</h2>
-        <p>Стандартные вкладки для организации контента.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Usage + Interactive Controls                              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Usage
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Organize content with tabs. Supports icons, badges, keyboard navigation (<SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">←</SgTypography> <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">→</SgTypography>), and multiple visual variants.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Примеры использования" Style="grid-column: 1 / -1;">
-                <SgTabs>
-                    <SgTabPanel Title="Описание">
-                        <div style="padding: 16px 0;">
-                            <p>Это содержимое первой вкладки. Здесь может быть любой контент — текст, компоненты, формы.</p>
-                            <SgAlert Variant="SgAlertVariant.Info" Text="Вкладки помогают организовать большой объём информации." />
-                        </div>
-                    </SgTabPanel>
-                    <SgTabPanel Title="Детали">
-                        <div style="padding: 16px 0;">
-                            <p>Это содержимое второй вкладки с дополнительной информацией.</p>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
-                                <SgStatistic Title="Версия" Value="1.0.0" />
-                                <SgStatistic Title="Компонентов" Value="50+" />
+        <div class="demo-two-col">
+            <SgCard Title="Live Example" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTabs Variant="@_constructorVariant"
+                        Align="@_constructorAlign"
+                        Size="@_constructorSize"
+                        Vertical="@_constructorVertical"
+                        @bind-ActiveTitle="_activeTab">
+                    <SgTabPanel Title="Analytics" Tooltip="View analytics dashboard">
+                        <SgStack Vertical Space="SgSize.Md" Style="min-height:140px;">
+                            <SgTypography>Real-time analytics and performance metrics.</SgTypography>
+                            <div class="demo-grid-mini">
+                                <SgStatistic Title="Visitors" Value="12 345" TrendValue="0.12" Size="SgSize.Sm" />
+                                <SgStatistic Title="Conversion" Value="3.2%" TrendValue="-0.02" Size="SgSize.Sm" />
+                                <SgStatistic Title="Revenue" Value="98 765 ₽" TrendValue="0.25" Size="SgSize.Sm" />
+                                <SgStatistic Title="Orders" Value="342" TrendValue="0.08" Size="SgSize.Sm" />
                             </div>
-                        </div>
+                        </SgStack>
                     </SgTabPanel>
-                    <SgTabPanel Title="Настройки">
-                        <div style="padding: 16px 0; display: flex; flex-direction: column; gap: 12px;">
-                            <SgSwitch @bind-Value="@_setting1" Label="Включить уведомления" />
-                            <SgSwitch @bind-Value="@_setting2" Label="Тёмная тема" />
-                            <SgSwitch @bind-Value="@_setting3" Label="Автосохранение" />
-                        </div>
+                    <SgTabPanel Title="Team" Badge="4" BadgeVariant="SgBadgeVariant.Info" Tooltip="Team members">
+                        <Icon><span>👥</span></Icon>
+                        <ChildContent>
+                            <SgStack Vertical Space="SgSize.Sm" Style="min-height:140px;">
+                                @foreach (var user in _users)
+                                {
+                                    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--sg-border);border-radius:6px;">
+                                        <SgAvatar Initials="@user.Initials" Color="@user.Color" Size="SgSize.Sm" />
+                                        <div style="flex:1;">
+                                            <SgTypography Weight="SgTypographyWeight.Medium" Size="SgTypographySize.Sm">@user.Name</SgTypography>
+                                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@user.Role</SgTypography>
+                                        </div>
+                                        <SgBadge Text="@user.Status" Variant="@user.StatusVariant" Size="SgSize.Sm" />
+                                    </div>
+                                }
+                            </SgStack>
+                        </ChildContent>
                     </SgTabPanel>
-                    <SgTabPanel Title="История">
-                        <div style="padding: 16px 0;">
-                            <SgTimeline Items="_tabTimelineItems" />
-                        </div>
+                    <SgTabPanel Title="Settings" Badge="99" BadgeVariant="SgBadgeVariant.Warn" Tooltip="Configure preferences">
+                        <Icon><span>⚙</span></Icon>
+                        <ChildContent>
+                            <SgStack Vertical Space="SgSize.Sm" Style="min-height:140px;max-width:340px;">
+                                <SgTextBox TValue="string" @bind-Value="@_siteName" Label="Site name" Size="SgSize.Sm" />
+                                <SgSelect TValue="string" @bind-Value="@_language" Items="@_languages" Label="Language" Size="SgSize.Sm" />
+                                <SgSwitch @bind-Value="@_maintenance" Label="Maintenance mode" Size="SgSize.Sm" />
+                            </SgStack>
+                        </ChildContent>
+                    </SgTabPanel>
+                    <SgTabPanel Title="History" Badge="3" BadgeVariant="SgBadgeVariant.Success" Tooltip="Recent activity">
+                        <SgStack Vertical Space="SgSize.Sm" Style="min-height:140px;">
+                            @foreach (var evt in _events)
+                            {
+                                <div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+                                    <span style="width:6px;height:6px;border-radius:50%;background:@evt.Color;flex-shrink:0;"></span>
+                                    <SgTypography Size="SgTypographySize.Sm">@evt.Text</SgTypography>
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="margin-left:auto;">@evt.Time</SgTypography>
+                                </div>
+                            }
+                        </SgStack>
+                    </SgTabPanel>
+                    <SgTabPanel Title="Locked" Disabled="true" Tooltip="This tab is not available">
+                        <div style="padding:20px;text-align:center;color:var(--sg-text-muted);">🔒 Content locked</div>
                     </SgTabPanel>
                 </SgTabs>
+
+                <SgDivider />
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                    Active tab: <SgTypography Font="SgTypographyFont.Mono" Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold">@_activeTab</SgTypography>
+                </SgTypography>
+            </SgCard>
+
+            <SgCard Title="Interactive Controls" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Variant</SgTypography>
+                        <SgSegmented TValue="SgTabsVariant"
+                                     Options="@_variantOptions"
+                                     @bind-Value="_constructorVariant" />
+                    </SgStack>
+
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Alignment</SgTypography>
+                        <SgSegmented TValue="SgTabsAlign"
+                                     Options="@_alignOptions"
+                                     @bind-Value="_constructorAlign" />
+                    </SgStack>
+
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                        <SgSegmented TValue="SgSize"
+                                     Options="@_sizeSegOptions"
+                                     @bind-Value="_constructorSize" />
+                    </SgStack>
+
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Vertical Layout</SgTypography>
+                        <SgSwitch @bind-Value="_constructorVertical" Label="Vertical mode" />
+                    </SgStack>
+
+                    <div class="ctrl-summary">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Variant</SgTypography>
+                                <SgBadge Variant="SgBadgeVariant.Info" Text="@_constructorVariant.ToString()" Standalone="true" />
+                            </SgStack>
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Align</SgTypography>
+                                <SgBadge Variant="SgBadgeVariant.Default" Text="@_constructorAlign.ToString()" Standalone="true" />
+                            </SgStack>
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                <SgBadge Variant="SgBadgeVariant.Default" Text="@_constructorSize.ToString()" Standalone="true" />
+                            </SgStack>
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Vertical</SgTypography>
+                                <SgBadge Variant="@(_constructorVertical ? SgBadgeVariant.Success : SgBadgeVariant.Muted)" Text="@(_constructorVertical ? "Yes" : "No")" Standalone="true" />
+                            </SgStack>
+                        </SgStack>
+                    </div>
+                </SgStack>
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Вкладки с иконками</h2>
-        <p>Вкладки с эмодзи-иконками для лучшей навигации.</p>
+    <DemoCodeBlock Code="@_basicCode" Title="Standard tabs with all features" />
 
-        <SgCard Title="Примеры использования" Style="margin-top: 16px;">
-            <SgTabs>
-                <SgTabPanel Title="📊 Аналитика">
-                    <div style="padding: 16px 0;">
-                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
-                            <SgStatistic Title="Посетители" Value="12 345" TrendValue="0.12" />
-                            <SgStatistic Title="Конверсия" Value="3.2%" TrendValue="-0.02" />
-                            <SgStatistic Title="Доход" Value="98 765 ₽" TrendValue="0.25" />
-                            <SgStatistic Title="Заказы" Value="342" TrendValue="0.08" />
-                        </div>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Variants                                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Tab Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Four visual styles — <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Line</SgTypography> (default),
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Card</SgTypography>,
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Pills</SgTypography>,
+                and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Underline</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Md">
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Line" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTabs Variant="SgTabsVariant.Line">
+                        <SgTabPanel Title="Alpha"><div style="padding:12px 0;">Content A</div></SgTabPanel>
+                        <SgTabPanel Title="Beta"><div style="padding:12px 0;">Content B</div></SgTabPanel>
+                        <SgTabPanel Title="Gamma"><div style="padding:12px 0;">Content C</div></SgTabPanel>
+                    </SgTabs>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Card" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTabs Variant="SgTabsVariant.Card">
+                        <SgTabPanel Title="Alpha"><div style="padding:12px 0;">Content A</div></SgTabPanel>
+                        <SgTabPanel Title="Beta"><div style="padding:12px 0;">Content B</div></SgTabPanel>
+                        <SgTabPanel Title="Gamma"><div style="padding:12px 0;">Content C</div></SgTabPanel>
+                    </SgTabs>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Pills" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTabs Variant="SgTabsVariant.Pills">
+                        <SgTabPanel Title="Alpha"><div style="padding:12px 0;">Content A</div></SgTabPanel>
+                        <SgTabPanel Title="Beta"><div style="padding:12px 0;">Content B</div></SgTabPanel>
+                        <SgTabPanel Title="Gamma"><div style="padding:12px 0;">Content C</div></SgTabPanel>
+                    </SgTabs>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Underline" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTabs Variant="SgTabsVariant.Underline">
+                        <SgTabPanel Title="Alpha"><div style="padding:12px 0;">Content A</div></SgTabPanel>
+                        <SgTabPanel Title="Beta"><div style="padding:12px 0;">Content B</div></SgTabPanel>
+                        <SgTabPanel Title="Gamma"><div style="padding:12px 0;">Content C</div></SgTabPanel>
+                    </SgTabs>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <DemoCodeBlock Code="@_variantCode" Title="All four tab variants" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Alignment & Sizes                                               -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Alignment &amp; Sizes
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Tabs can be aligned to the start (default), center, or end. Three sizes: Sm, Md (default), Lg.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Alignment" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Align = Start (default)
+                        </SgTypography>
+                        <SgTabs Align="SgTabsAlign.Start">
+                            <SgTabPanel Title="First"><div style="padding:8px 0;">First content</div></SgTabPanel>
+                            <SgTabPanel Title="Second"><div style="padding:8px 0;">Second content</div></SgTabPanel>
+                            <SgTabPanel Title="Third"><div style="padding:8px 0;">Third content</div></SgTabPanel>
+                        </SgTabs>
                     </div>
-                </SgTabPanel>
-                <SgTabPanel Title="👥 Пользователи">
-                    <div style="padding: 16px 0;">
-                        <p>Список пользователей системы.</p>
-                        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 12px;">
-                            @foreach (var user in _users)
-                            {
-                                <div style="display: flex; align-items: center; gap: 12px; padding: 8px; border: 1px solid var(--sui-border); border-radius: 6px;">
-                                    <SgAvatar Initials="@user.Initials" Color="@user.Color" Size="SgSize.Sm" />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Align = Center
+                        </SgTypography>
+                        <SgTabs Align="SgTabsAlign.Center">
+                            <SgTabPanel Title="First"><div style="padding:8px 0;">First content</div></SgTabPanel>
+                            <SgTabPanel Title="Second"><div style="padding:8px 0;">Second content</div></SgTabPanel>
+                            <SgTabPanel Title="Third"><div style="padding:8px 0;">Third content</div></SgTabPanel>
+                        </SgTabs>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Align = End
+                        </SgTypography>
+                        <SgTabs Align="SgTabsAlign.End">
+                            <SgTabPanel Title="First"><div style="padding:8px 0;">First content</div></SgTabPanel>
+                            <SgTabPanel Title="Second"><div style="padding:8px 0;">Second content</div></SgTabPanel>
+                            <SgTabPanel Title="Third"><div style="padding:8px 0;">Third content</div></SgTabPanel>
+                        </SgTabs>
+                    </div>
+                </SgStack>
+            </SgCard>
+            <SgCard Title="Size Variants" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Sm <SgTag Variant="SgTagVariant.Warn" Size="SgSize.Sm" Style="margin-left:8px;">Compact</SgTag>
+                        </SgTypography>
+                        <SgTabs Size="SgSize.Sm">
+                            <SgTabPanel Title="Alpha"><div style="padding:8px 0;">Compact content</div></SgTabPanel>
+                            <SgTabPanel Title="Beta"><div style="padding:8px 0;">Compact content</div></SgTabPanel>
+                            <SgTabPanel Title="Gamma"><div style="padding:8px 0;">Compact content</div></SgTabPanel>
+                        </SgTabs>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Md (default) <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">Default</SgTag>
+                        </SgTypography>
+                        <SgTabs Size="SgSize.Md">
+                            <SgTabPanel Title="Alpha"><div style="padding:8px 0;">Standard content</div></SgTabPanel>
+                            <SgTabPanel Title="Beta"><div style="padding:8px 0;">Standard content</div></SgTabPanel>
+                            <SgTabPanel Title="Gamma"><div style="padding:8px 0;">Standard content</div></SgTabPanel>
+                        </SgTabs>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Lg <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="margin-left:8px;">Spacious</SgTag>
+                        </SgTypography>
+                        <SgTabs Size="SgSize.Lg">
+                            <SgTabPanel Title="Alpha"><div style="padding:8px 0;">Spacious content</div></SgTabPanel>
+                            <SgTabPanel Title="Beta"><div style="padding:8px 0;">Spacious content</div></SgTabPanel>
+                            <SgTabPanel Title="Gamma"><div style="padding:8px 0;">Spacious content</div></SgTabPanel>
+                        </SgTabs>
+                    </div>
+                </SgStack>
+            </SgCard>
+        </div>
+    </div>
+
+    <DemoCodeBlock Code="@_alignSizeCode" Title="Alignment and size variants" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Vertical Tabs (Enhanced)                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Vertical Tabs
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Side-panel layout ideal for settings pages, profiles, and dashboards.
+                Supports <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">↑</SgTypography> <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">↓</SgTypography> <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Home</SgTypography> <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">End</SgTypography> keyboard navigation.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Md">
+            <SgCol Md="6">
+                <SgCard Title="Vertical + Line" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTabs Vertical="true" Variant="SgTabsVariant.Line">
+                        <SgTabPanel Title="Profile">
+                            <SgStack Vertical Space="SgSize.Sm" Style="padding:4px 0;">
+                                <div style="display:flex;align-items:center;gap:14px;">
+                                    <SgAvatar Initials="AD" Color="#1890ff" Size="SgSize.Lg" />
                                     <div>
-                                        <div style="font-weight: 500;">@user.Name</div>
-                                        <div style="font-size: 12px; color: var(--sui-text-muted);">@user.Role</div>
+                                        <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">Alex Demidov</SgTypography>
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">alex@example.com</SgTypography>
                                     </div>
-                                    <SgBadge Text="@user.Status" Variant="@user.StatusVariant" />
                                 </div>
-                            }
+                                <SgDivider />
+                                <SgTypography>Senior software engineer with 8+ years of experience in full-stack development.</SgTypography>
+                            </SgStack>
+                        </SgTabPanel>
+                        <SgTabPanel Title="Security" Badge="2" BadgeVariant="SgBadgeVariant.Warn">
+                            <SgStack Vertical Space="SgSize.Sm" Style="padding:4px 0;max-width:320px;">
+                                <SgTextBox TValue="string" Label="Current password" Type="password" Size="SgSize.Sm" />
+                                <SgTextBox TValue="string" Label="New password" Type="password" Size="SgSize.Sm" />
+                                <SgTextBox TValue="string" Label="Confirm password" Type="password" Size="SgSize.Sm" />
+                            </SgStack>
+                        </SgTabPanel>
+                        <SgTabPanel Title="Notifications">
+                            <SgStack Vertical Space="SgSize.Sm" Style="padding:4px 0;">
+                                <SgSwitch Label="Email notifications" Size="SgSize.Sm" />
+                                <SgSwitch Label="Push notifications" Size="SgSize.Sm" />
+                                <SgSwitch Label="SMS alerts" Size="SgSize.Sm" />
+                            </SgStack>
+                        </SgTabPanel>
+                    </SgTabs>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Vertical + Pills" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTabs Vertical="true" Variant="SgTabsVariant.Pills">
+                        <SgTabPanel Title="📊 Dashboard">
+                            <SgTypography>Dashboard widgets and overview with real-time metrics.</SgTypography>
+                        </SgTabPanel>
+                        <SgTabPanel Title="👥 Users" Badge="12" BadgeVariant="SgBadgeVariant.Info">
+                            <SgTypography>User management panel with role-based access control.</SgTypography>
+                        </SgTabPanel>
+                        <SgTabPanel Title="Settings" Badge="99" BadgeVariant="SgBadgeVariant.Warn">
+                            <SgTypography>Application settings and configuration options.</SgTypography>
+                        </SgTabPanel>
+                        <SgTabPanel Title="🔒 Archived" Disabled="true">
+                            <SgTypography>Archived content (locked).</SgTypography>
+                        </SgTabPanel>
+                    </SgTabs>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <DemoCodeBlock Code="@_verticalCode" Title="Vertical tabs with different variants" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Live Constructor                                               -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgTabs Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click to copy the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Variant</SgTypography>
+                            <SgSegmented TValue="SgTabsVariant"
+                                         Value="@_constructorVariant"
+                                         ValueChanged="v => { _constructorVariant = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Options="@_variantOptions" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Alignment</SgTypography>
+                            <SgSegmented TValue="SgTabsAlign"
+                                         Value="@_constructorAlign"
+                                         ValueChanged="v => { _constructorAlign = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Options="@_alignOptions" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                            <SgSegmented TValue="SgSize"
+                                         Value="@_constructorSize"
+                                         ValueChanged="v => { _constructorSize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Options="@_sizeSegOptions" />
+                        </SgStack>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Vertical</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="@_constructorVertical"
+                                                 ValueChanged="v => { _constructorVertical = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="@_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Disabled tab</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="@_constructorDisabled"
+                                                 ValueChanged="v => { _constructorDisabled = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="@_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Variant</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_constructorVariant.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Align</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_constructorAlign.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_constructorSize.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Vertical</SgTypography>
+                                    <SgBadge Variant="@(_constructorVertical ? SgBadgeVariant.Success : SgBadgeVariant.Muted)" Text="@(_constructorVertical ? "Yes" : "No")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Disabled tab</SgTypography>
+                                    <SgBadge Variant="@(_constructorDisabled ? SgBadgeVariant.Warn : SgBadgeVariant.Muted)" Text="@(_constructorDisabled ? "Yes" : "No")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
                         </div>
-                    </div>
-                </SgTabPanel>
-                <SgTabPanel Title="⚙️ Настройки">
-                    <div style="padding: 16px 0; display: flex; flex-direction: column; gap: 12px; max-width: 400px;">
-                        <SgTextBox TValue="string" @bind-Value="@_siteName" Label="Название сайта" />
-                        <SgSelect TValue="string" @bind-Value="@_language" Items="@_languages" Label="Язык" />
-                        <SgSwitch @bind-Value="@_maintenance" Label="Режим обслуживания" />
-                    </div>
-                </SgTabPanel>
-            </SgTabs>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Preview</SgTypography>
+                            <div class="constructor-preview" id="constructor-preview">
+                                <SgTabs Variant="@_constructorVariant"
+                                        Align="@_constructorAlign"
+                                        Size="@_constructorSize"
+                                        Vertical="@_constructorVertical">
+                                    <SgTabPanel Title="Tab A">
+                                        <SgTypography>Content for Tab A</SgTypography>
+                                    </SgTabPanel>
+                                    <SgTabPanel Title="Tab B" Badge="5" BadgeVariant="SgBadgeVariant.Info" Disabled="@_constructorDisabled">
+                                        <SgTypography>Content for Tab B</SgTypography>
+                                    </SgTabPanel>
+                                    <SgTabPanel Title="Tab C">
+                                        <SgTypography>Content for Tab C</SgTypography>
+                                    </SgTabPanel>
+                                </SgTabs>
+                            </div>
+                        </SgStack>
+
+                        <!-- Code -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="tabs-copy-icon" style="font-size:12px;">@_copyIcon</span>
+                                    <span id="tabs-copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="tabs-code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
         </SgCard>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Свойства компонента</h2>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Component Properties                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Component Properties
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgTabs">
+        <div class="demo-two-col">
+            <SgCard Title="SgTabs" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_tabsProperties" />
             </SgCard>
-            <SgCard Title="SgTabPanel">
+            <SgCard Title="SgTabPanel" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_tabPanelProperties" />
             </SgCard>
         </div>
     </div>
 
-    <!-- Code examples -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-        </div>
-    </div>
-
+</ChildContent>
 </SgCard>
 
-@code {
-    private bool _setting1 = true;
-    private bool _setting2;
-    private bool _setting3 = true;
-    private string? _siteName = "SuperUI Demo";
-    private string? _language = "Русский";
-    private bool _maintenance;
-    private List<string> _languages = new() { "Русский", "English", "Deutsch", "Français" };
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
 
-    private List<TimelineItem> _tabTimelineItems = new()
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    .demo-grid-mini {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+    }
+
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 100px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active { transform: scale(0.95); }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+</style>
+
+@code {
+    private RenderFragment _mainHeader => __builder =>
     {
-        new() { Title = "Компонент создан", Time = "2026-01-10", Color = "#52c41a" },
-        new() { Title = "Добавлены иконки", Time = "2026-02-15", Color = "#52c41a" },
-        new() { Title = "Улучшена доступность", Time = "2026-03-20", Color = "#faad14" }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="7" height="7" rx="1" stroke="#fff" opacity="0.6"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1" stroke="#fff" opacity="0.6"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1" stroke="#fff"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1" stroke="#fff"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgTabs</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Versatile tab component with variant styles, icon support, badges, disabled states,
+                    keyboard navigation, and vertical layout. Fully accessible with ARIA attributes.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
     };
 
+    // ── Interactive state ──
+    private string _activeTab = "Analytics";
+    private string? _siteName = "SuperUI Demo";
+    private string? _language = "English";
+    private bool _maintenance;
+    private List<string> _languages = new() { "English", "Russian", "Deutsch", "Français" };
+
+    // ── Constructor state ──
+    private SgTabsVariant _constructorVariant = SgTabsVariant.Line;
+    private SgTabsAlign _constructorAlign = SgTabsAlign.Start;
+    private SgSize _constructorSize = SgSize.Md;
+    private bool _constructorVertical;
+    private bool _constructorDisabled;
+
+    // ── Code generation ──
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    // ── Segmented options ──
+    private readonly List<SgSegmentedOption<SgTabsVariant>> _variantOptions = new()
+    {
+        new() { Value = SgTabsVariant.Line,      Label = "Line" },
+        new() { Value = SgTabsVariant.Card,       Label = "Card" },
+        new() { Value = SgTabsVariant.Pills,      Label = "Pills" },
+        new() { Value = SgTabsVariant.Underline,  Label = "Underline" },
+    };
+
+    private readonly List<SgSegmentedOption<SgTabsAlign>> _alignOptions = new()
+    {
+        new() { Value = SgTabsAlign.Start,  Label = "Start" },
+        new() { Value = SgTabsAlign.Center, Label = "Center" },
+        new() { Value = SgTabsAlign.End,    Label = "End" },
+    };
+
+    private readonly List<SgSegmentedOption<SgSize>> _sizeSegOptions = new()
+    {
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    // ── Demo data ──
     private record UserItem(string Name, string Initials, string Color, string Role, string Status, SgBadgeVariant StatusVariant);
 
     private List<UserItem> _users = new()
     {
-        new("Иван Петров", "ИП", "#1890ff", "Администратор", "Активен", SgBadgeVariant.Success),
-        new("Мария Сидорова", "МС", "#52c41a", "Менеджер", "Активен", SgBadgeVariant.Success),
-        new("Алексей Козлов", "АК", "#722ed1", "Разработчик", "Отпуск", SgBadgeVariant.Warn),
-        new("Елена Новикова", "ЕН", "#fa8c16", "Дизайнер", "Неактивен", SgBadgeVariant.Muted)
+        new("Ivan Petrov", "IP", "#1890ff", "Administrator", "Active", SgBadgeVariant.Success),
+        new("Maria Sidorova", "MS", "#52c41a", "Manager", "Active", SgBadgeVariant.Success),
+        new("Alex Kozlov", "AK", "#722ed1", "Developer", "Vacation", SgBadgeVariant.Warn),
+        new("Elena Novikova", "EN", "#fa8c16", "Designer", "Inactive", SgBadgeVariant.Muted)
     };
 
+    private record EventItem(string Text, string Time, string Color);
+
+    private List<EventItem> _events = new()
+    {
+        new("Component created", "10 Jan", "#52c41a"),
+        new("Icons added", "15 Feb", "#1890ff"),
+        new("A11y improved", "20 Mar", "#faad14"),
+        new("v2.0 released", "05 Apr", "#722ed1"),
+    };
+
+    // ── Lifecycle ──
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgTabs" + (_constructorVariant != SgTabsVariant.Line ? $"\n    Variant=\"SgTabsVariant.{_constructorVariant}\"" : ""));
+        if (_constructorAlign != SgTabsAlign.Start)
+            lines.Add($"    Align=\"SgTabsAlign.{_constructorAlign}\"");
+        if (_constructorSize != SgSize.Md)
+            lines.Add($"    Size=\"SgSize.{_constructorSize}\"");
+        if (_constructorVertical)
+            lines.Add($"    Vertical=\"true\"");
+        lines.Add(">");
+        lines.Add("    <SgTabPanel Title=\"Tab A\">");
+        lines.Add("        <div>Content A</div>");
+        lines.Add("    </SgTabPanel>");
+        if (_constructorDisabled)
+            lines.Add("    <SgTabPanel Title=\"Tab B\" Badge=\"5\" Disabled=\"true\">");
+        else
+            lines.Add("    <SgTabPanel Title=\"Tab B\" Badge=\"5\">");
+        lines.Add("        <div>Content B</div>");
+        lines.Add("    </SgTabPanel>");
+        lines.Add("    <SgTabPanel Title=\"Tab C\">");
+        lines.Add("        <div>Content C</div>");
+        lines.Add("    </SgTabPanel>");
+        lines.Add("</SgTabs>");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ──
     private List<PropertyPanelItem> _tabsProperties = new()
     {
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Вкладки", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ActiveTitle", Value = "string", BadgeText = "Активная вкладка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "CssClass", Value = "string", BadgeText = "CSS класс", BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Tab panels", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ActiveTitle", Value = "string?", BadgeText = "Two-way bind", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ActiveTitleChanged", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Variant", Value = "SgTabsVariant", BadgeText = "Line/Card/Pills/UL", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Align", Value = "SgTabsAlign", BadgeText = "Start/Center/End", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Size", Value = "SgSize", BadgeText = "Sm / Md / Lg", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Vertical", Value = "bool", BadgeText = "Side layout", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AddOnBefore", Value = "RenderFragment?", BadgeText = "Strip start", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "AddOnAfter", Value = "RenderFragment?", BadgeText = "Strip end", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CssClass", Value = "string?", BadgeText = "Style", BadgeVariant = SgBadgeVariant.Muted },
+        new() { Label = "Style", Value = "string?", BadgeText = "Inline style", BadgeVariant = SgBadgeVariant.Muted }
     };
 
     private List<PropertyPanelItem> _tabPanelProperties = new()
     {
-        new() { Label = "Title",        Value = "string",         BadgeText = "Заголовок вкладки", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Содержимое",        BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Disabled",     Value = "bool",           BadgeText = "Отключена",         BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Icon",         Value = "RenderFragment", BadgeText = "Иконка",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Badge",        Value = "object?",        BadgeText = "Значок",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "BadgeVariant", Value = "string",         BadgeText = "Стиль значка",      BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Title", Value = "string", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Content", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Icon", Value = "RenderFragment?", BadgeText = "Icon", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Badge", Value = "object?", BadgeText = "Badge count", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant", BadgeText = "Badge style", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "Locked", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Tooltip", Value = "string?", BadgeText = "Hover hint", BadgeVariant = SgBadgeVariant.Muted }
     };
+
+    // ── Code examples ──
+    private string _basicCode => @"<!-- Tabs with all features -->
+<SgTabs @bind-ActiveTitle=""_activeTab"" Variant=""SgTabsVariant.Card"" Size=""SgSize.Md"">
+    <SgTabPanel Title=""Analytics"" Tooltip=""View analytics"">
+        <SgStatistic Title=""Visitors"" Value=""12 345"" />
+    </SgTabPanel>
+    <SgTabPanel Title=""Team"" Badge=""4"" BadgeVariant=""SgBadgeVariant.Info"">
+        <Icon><span>👥</span></Icon>
+        <div>User list here</div>
+    </SgTabPanel>
+    <SgTabPanel Title=""Settings"" Disabled=""true"">
+        <div>Locked content</div>
+    </SgTabPanel>
+</SgTabs>";
+
+    private string _variantCode => @"<!-- Four visual variants -->
+<SgTabs Variant=""SgTabsVariant.Line"">...</SgTabs>
+<SgTabs Variant=""SgTabsVariant.Card"">...</SgTabs>
+<SgTabs Variant=""SgTabsVariant.Pills"">...</SgTabs>
+<SgTabs Variant=""SgTabsVariant.Underline"">...</SgTabs>";
+
+    private string _alignSizeCode => @"<!-- Alignment -->
+<SgTabs Align=""SgTabsAlign.Center"">...</SgTabs>
+
+<!-- Size -->
+<SgTabs Size=""SgSize.Sm"">Compact tabs</SgTabs>
+<SgTabs Size=""SgSize.Lg"">Spacious tabs</SgTabs>";
+
+    private string _verticalCode => @"<!-- Vertical tabs -->
+<SgTabs Vertical=""true"" Variant=""SgTabsVariant.Pills"">
+    <SgTabPanel Title=""Profile"">...</SgTabPanel>
+    <SgTabPanel Title=""Security"" Badge=""2"">...</SgTabPanel>
+    <SgTabPanel Title=""Notifications"">...</SgTabPanel>
+</SgTabs>";
 }

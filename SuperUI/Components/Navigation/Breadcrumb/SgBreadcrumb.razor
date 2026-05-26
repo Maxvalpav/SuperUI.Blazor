@@ -1,43 +1,77 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 
 @inject NavigationManager Navigation
 @inject ISuperUILocalizer Localizer
 @using System.Globalization
 @implements IDisposable
 
-<nav class="sgc-bc @CssClass" role="navigation" aria-label="breadcrumb">
+@{
+    var arr = GetItems();
+    var total = arr.Count;
+    var showCollapsed = MaxItems.HasValue && MaxItems.Value > 0 && total > MaxItems.Value;
+    var half = showCollapsed ? (MaxItems!.Value - 2) / 2 : total;
+}
+
+<nav class="@GetNavClass()" role="navigation" aria-label="@AriaLabel">
     <ol class="sgc-bc-list" role="list">
-        @{ var arr = GetItems(); }
-        @for (var i = 0; i < arr.Count; i++)
+        @for (var i = 0; i < total; i++)
         {
             var it = arr[i];
-            var last = i == arr.Count - 1;
-            <li class="sgc-bc-item" role="listitem">
-                @if (!last && !string.IsNullOrEmpty(it.Href))
-                {
-                    <a class="sgc-bc-link" href="@it.Href" aria-label="@it.Text">@it.Text</a>
-                }
-                else
-                {
-                    <span class="@(last ? "sgc-bc-current" : "sgc-bc-text")"
-                          aria-current="@(last ? "page" : null)">@it.Text</span>
-                }
-                @if (!last)
-                {
-                    <span class="sgc-bc-sep" aria-hidden="true">@Separator</span>
-                }
-            </li>
+            var last = i == total - 1;
+            var isCollapsed = showCollapsed && i > 0 && i < total - 1
+                && !(i < half || i >= total - (MaxItems!.Value - half - 1));
+
+            @if (isCollapsed && i == half)
+            {
+                <li class="sgc-bc-item sgc-bc-collapsed" role="listitem">
+                    <button type="button" class="sgc-bc-collapse-btn" title="@CollapsedTooltip" @onclick="ToggleCollapsed">
+                        <span class="sgc-bc-collapse-text">@CollapsedText</span>
+                    </button>
+                    <span class="sgc-bc-sep" aria-hidden="true">@GetSeparatorContent()</span>
+                </li>
+            }
+
+            if (!isCollapsed)
+            {
+                <li class="@GetItemClass(it, last)" role="listitem" style="@GetItemStyle(it)">
+                    @if (!string.IsNullOrEmpty(it.Icon))
+                    {
+                        <span class="sgc-bc-icon">@((MarkupString)it.Icon)</span>
+                    }
+                    @if (!last && !string.IsNullOrEmpty(it.Href) && !it.Disabled)
+                    {
+                        <a class="sgc-bc-link" href="@it.Href"
+                           aria-label="@it.Text"
+                           @onclick="() => HandleItemClick(it)"
+                           @onclick:preventDefault="false">
+                            @it.Text
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="@(last ? "sgc-bc-current" : "sgc-bc-text")"
+                              aria-current="@(last ? "page" : null)">@it.Text</span>
+                    }
+                    @if (!last)
+                    {
+                        <span class="sgc-bc-sep" aria-hidden="true">@GetSeparatorContent()</span>
+                    }
+                </li>
+            }
         }
     </ol>
 </nav>
 
 @code {
+    private bool _collapsedExpanded;
+
     /// <summary>
     /// Gets or sets the collection of breadcrumb items to display.
     /// If not provided, items will be auto-generated from the current URI.
     /// </summary>
     [Parameter] public IEnumerable<BreadcrumbItem>? Items { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether to auto-generate breadcrumbs from the current URI.
     /// Default is true if <see cref="Items"/> is not provided.
@@ -45,19 +79,95 @@
     [Parameter] public bool AutoGenerate { get; set; } = true;
 
     /// <summary>
-    /// Gets or sets the separator character displayed between breadcrumb items.
-    /// Default is "/".
+    /// Gets or sets the separator content displayed between breadcrumb items.
+    /// Default is "/". Can be HTML/SVG markup for custom separators.
     /// </summary>
     [Parameter] public string Separator { get; set; } = "/";
-    
+
+    /// <summary>
+    /// Gets or sets the size variant of the breadcrumb.
+    /// Supports <see cref="SgSize.Sm"/>, <see cref="SgSize.Md"/> (default), and <see cref="SgSize.Lg"/>.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Gets or sets the maximum number of items to display before collapsing.
+    /// Set to 0 or null to disable collapsing. Default is null (no collapse).
+    /// </summary>
+    [Parameter] public int? MaxItems { get; set; }
+
+    /// <summary>
+    /// Gets or sets the text displayed for collapsed breadcrumb items.
+    /// Default is "...".
+    /// </summary>
+    [Parameter] public string CollapsedText { get; set; } = "...";
+
+    /// <summary>
+    /// Gets or sets the tooltip for the collapsed expand button.
+    /// </summary>
+    [Parameter] public string CollapsedTooltip { get; set; } = "Show all breadcrumbs";
+
+    /// <summary>
+    /// Gets or sets the aria-label for the breadcrumb navigation landmark.
+    /// </summary>
+    [Parameter] public string AriaLabel { get; set; } = "Breadcrumb";
+
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    /// <summary>
+    /// Fired when any breadcrumb link is clicked, with the clicked item.
+    /// </summary>
+    [Parameter] public EventCallback<BreadcrumbItem> OnItemClick { get; set; }
+
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += HandleLocationChanged;
+    }
+
+    private string GetNavClass()
+    {
+        var sizeClass = Size switch
+        {
+            SgSize.Sm => "sgc-bc-sm",
+            SgSize.Lg => "sgc-bc-lg",
+            _ => ""
+        };
+        return $"sgc-bc {sizeClass} {CssClass}".Trim();
+    }
+
+    private string GetItemClass(BreadcrumbItem item, bool last)
+    {
+        var classes = new List<string> { "sgc-bc-item" };
+        if (last) classes.Add("sgc-bc-item-current");
+        if (item.Disabled) classes.Add("sgc-bc-item-disabled");
+        return string.Join(" ", classes);
+    }
+
+    private string? GetItemStyle(BreadcrumbItem item)
+    {
+        return item.MaxWidth.HasValue ? $"max-width:{item.MaxWidth}px" : null;
+    }
+
+    private RenderFragment GetSeparatorContent() => builder =>
+    {
+        if (string.IsNullOrEmpty(Separator)) return;
+
+        if (Separator.Contains('<') || Separator.Contains('&'))
+        {
+            builder.AddMarkupContent(0, Separator);
+        }
+        else
+        {
+            builder.AddContent(0, Separator);
+        }
+    };
+
+    private void ToggleCollapsed()
+    {
+        _collapsedExpanded = !_collapsedExpanded;
     }
 
     private void HandleLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -65,6 +175,14 @@
         if (Items == null && AutoGenerate)
         {
             _ = InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleItemClick(BreadcrumbItem item)
+    {
+        if (OnItemClick.HasDelegate)
+        {
+            await OnItemClick.InvokeAsync(item);
         }
     }
 
@@ -83,7 +201,7 @@
         foreach (var part in parts)
         {
             if (string.IsNullOrEmpty(part)) continue;
-            
+
             path += "/" + part;
             var text = part.Replace("-", " ");
             if (text.Length > 0)

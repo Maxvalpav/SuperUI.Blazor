@@ -1,7 +1,10 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
+@inject NavigationManager? Navigation
 
-<div class="sgc-menu-item @VariantClass @(Disabled ? "sgc-disabled" : "") @(_open ? "sgc-open" : "") @CssClass"
-     role="menuitem"
+<div class="sgc-menu-item @VariantClass @(Disabled ? "sgc-disabled" : "") @(_open ? "sgc-open" : "") @(Active ? "sgc-active" : "") @(Checkable ? "sgc-checkable" : "") @(Checked ? "sgc-checked" : "") @(CheckType == SgCheckType.Radio ? "sgc-radio" : "") @CssClass"
+     role="@(Checkable ? "menuitemcheckbox" : SubMenu is not null ? "menuitem" : "menuitem")"
+     aria-checked="@(Checkable ? (Checked ? "true" : "false") : null)"
      aria-haspopup="@(SubMenu is not null ? "true" : null)"
      aria-expanded="@(SubMenu is not null ? (_open ? "true" : "false") : null)"
      tabindex="@(Disabled ? "-1" : "0")"
@@ -11,18 +14,69 @@
      @onkeydown="OnKeyDownAsync"
      @onmouseenter="OnMouseEnter"
      @onmouseleave="OnMouseLeave">
-    @if (Icon is not null) { <span class="sgc-menu-icon" aria-hidden="true">@Icon</span> }
-    <span class="sgc-menu-text">@ChildContent@Text</span>
+    @* Ripple *@
+    <span class="sgc-menu-ripple" aria-hidden="true"></span>
+
+    @* Check mark (before icon) *@
+    @if (Checkable)
+    {
+        <span class="sgc-menu-check" aria-hidden="true">
+            @if (Checked)
+            {
+                @if (CheckType == SgCheckType.Radio)
+                {
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><circle cx="12" cy="12" r="6"/></svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                }
+            }
+        </span>
+    }
+
+    @* Icon *@
+    @if (IconContent is not null)
+    {
+        <span class="sgc-menu-icon" aria-hidden="true">@IconContent</span>
+    }
+    else if (!string.IsNullOrEmpty(Icon))
+    {
+        <span class="sgc-menu-icon sgc-menu-icon-str" aria-hidden="true">@Icon</span>
+    }
+
+    @* Text *@
+    <span class="sgc-menu-text">
+        <span class="sgc-menu-title">@ChildContent@Text</span>
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <span class="sgc-menu-desc">@Description</span>
+        }
+    </span>
+
+    @* Badge *@
+    @if (!string.IsNullOrEmpty(BadgeText))
+    {
+        <span class="sgc-menu-badge sgc-menu-badge-@BadgeVariantClass">@BadgeText</span>
+    }
+
+    @* Sub-menu arrow *@
     @if (SubMenu is not null)
     {
-        <span class="sgc-menu-arrow" aria-hidden="true">▶</span>
+        <span class="sgc-menu-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+            </svg>
+        </span>
         @if (_open)
         {
-            <div class="sgc-menu-sub">
+            <div class="sgc-menu-sub @(SubMenuPosition == SgSubMenuPosition.Left ? "sgc-menu-sub-left" : "")"
+                 @onmouseenter="OnSubEnter" @onmouseleave="OnSubLeave">
                 @SubMenu
             </div>
         }
     }
+    @* Shortcut *@
     else if (!string.IsNullOrEmpty(Shortcut))
     {
         <span class="sgc-menu-shortcut" aria-label="Keyboard shortcut: @Shortcut">@Shortcut</span>
@@ -32,6 +86,7 @@
 @code {
     private bool _open;
     private ElementReference _element;
+    private CancellationTokenSource? _closeCts;
 
     [CascadingParameter] private SgMenu? ParentMenu { get; set; }
 
@@ -46,84 +101,188 @@
         }
     }
 
+    internal void CloseSubMenu()
+    {
+        _closeCts?.Cancel();
+        _open = false;
+        StateHasChanged();
+    }
+
     private void OnMouseEnter()
     {
         if (Disabled || SubMenu is null) return;
+        _closeCts?.Cancel();
         _open = true;
     }
 
     private void OnMouseLeave()
     {
         if (SubMenu is null) return;
-        _open = false;
+        _closeCts?.Cancel();
+        _closeCts = new CancellationTokenSource();
+        _ = DelayedCloseAsync(_closeCts.Token);
     }
 
-    /// <summary>
-    /// Gets or sets the menu item text.
-    /// </summary>
+    private void OnSubEnter()
+    {
+        _closeCts?.Cancel();
+    }
+
+    private void OnSubLeave()
+    {
+        if (SubMenu is null) return;
+        _closeCts?.Cancel();
+        _closeCts = new CancellationTokenSource();
+        _ = DelayedCloseAsync(_closeCts.Token);
+    }
+
+    private async Task DelayedCloseAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(150, ct);
+            if (!ct.IsCancellationRequested)
+            {
+                _open = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    /// <summary>Gets or sets the menu item text.</summary>
     [Parameter] public string? Text { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the custom content to render inside the menu item.
-    /// Takes precedence over <see cref="Text"/>.
-    /// </summary>
+
+    /// <summary>Custom content. Takes precedence over <see cref="Text"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    /// Gets or sets the nested sub-menu content.
-    /// </summary>
+    /// <summary>Nested sub-menu content.</summary>
     [Parameter] public RenderFragment? SubMenu { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the icon to display before the menu item text.
-    /// </summary>
-    [Parameter] public RenderFragment? Icon { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the keyboard shortcut text to display on the right side.
-    /// </summary>
+
+    /// <summary>Icon as a RenderFragment.</summary>
+    [Parameter] public RenderFragment? IconContent { get; set; }
+
+    /// <summary>Simple text/emoji icon. Used when <see cref="IconContent"/> is null.</summary>
+    [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Subtitle shown below the title.</summary>
+    [Parameter] public string? Description { get; set; }
+
+    /// <summary>Keyboard shortcut text shown on the right.</summary>
     [Parameter] public string? Shortcut { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the visual variant of the menu item. Default is <see cref="SgMenuItemVariant.Default"/>.
-    /// </summary>
+
+    /// <summary>Visual variant: Default, Danger, Success.</summary>
     [Parameter] public SgMenuItemVariant Variant { get; set; } = SgMenuItemVariant.Default;
-    
-    /// <summary>
-    /// Gets or sets whether the menu item is disabled.
-    /// </summary>
+
+    /// <summary>Whether the item is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets additional CSS classes to apply to the component.
-    /// </summary>
+
+    /// <summary>Whether the item is in an active/selected state (left accent bar).</summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the menu item is clicked.
-    /// </summary>
+
+    /// <summary>Click callback.</summary>
     [Parameter] public EventCallback OnClick { get; set; }
 
-    private string VariantClass => Variant == SgMenuItemVariant.Danger ? "sgc-danger" : "";
+    /// <summary>Badge text (e.g. notification count).</summary>
+    [Parameter] public string? BadgeText { get; set; }
+
+    /// <summary>Badge color variant.</summary>
+    [Parameter] public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
+
+    /// <summary>Navigation URL.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>Link target (e.g. "_blank").</summary>
+    [Parameter] public string? Target { get; set; }
+
+    /// <summary>
+    /// Whether the item is checkable (shows a checkbox/radio indicator).
+    /// Default is <c>false</c>.
+    /// </summary>
+    [Parameter] public bool Checkable { get; set; }
+
+    /// <summary>
+    /// Whether the checkable item is currently checked.
+    /// Two-way bindable via <see cref="CheckedChanged"/>.
+    /// </summary>
+    [Parameter] public bool Checked { get; set; }
+
+    /// <summary>Fires when <see cref="Checked"/> changes.</summary>
+    [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+
+    /// <summary>
+    /// Check style: Checkbox (default) or Radio.
+    /// Only applies when <see cref="Checkable"/> is <c>true</c>.
+    /// </summary>
+    [Parameter] public SgCheckType CheckType { get; set; } = SgCheckType.Checkbox;
+
+    /// <summary>
+    /// Controls which side the sub-menu opens.
+    /// Default is <see cref="SgSubMenuPosition.Right"/>.
+    /// </summary>
+    [Parameter] public SgSubMenuPosition SubMenuPosition { get; set; } = SgSubMenuPosition.Right;
+
+    private string VariantClass => Variant switch
+    {
+        SgMenuItemVariant.Danger  => "sgc-danger",
+        SgMenuItemVariant.Success => "sgc-success",
+        _ => ""
+    };
+
+    private string BadgeVariantClass => BadgeVariant switch
+    {
+        SgBadgeVariant.Success => "success",
+        SgBadgeVariant.Danger  => "danger",
+        SgBadgeVariant.Warn    => "warn",
+        SgBadgeVariant.Info    => "info",
+        SgBadgeVariant.Muted   => "muted",
+        _ => "default"
+    };
 
     private async Task OnClickAsync()
     {
         if (Disabled) return;
+
+        // Toggle check
+        if (Checkable)
+        {
+            if (CheckType == SgCheckType.Radio && !Checked)
+            {
+                Checked = true;
+                if (CheckedChanged.HasDelegate) await CheckedChanged.InvokeAsync(true);
+            }
+            else if (CheckType == SgCheckType.Checkbox)
+            {
+                Checked = !Checked;
+                if (CheckedChanged.HasDelegate) await CheckedChanged.InvokeAsync(Checked);
+            }
+        }
+
+        // Navigate
+        if (!string.IsNullOrEmpty(Href) && Target != "_blank")
+        {
+            Navigation?.NavigateTo(Href);
+        }
+
         if (OnClick.HasDelegate) await OnClick.InvokeAsync();
+        if (ParentMenu is not null) await ParentMenu.NotifyItemClicked(this);
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (Disabled) return;
-        if (e.Key == "Enter" || e.Key == " ")
+        if (e.Key is "Enter" or " ")
         {
             if (SubMenu is not null)
             {
                 _open = !_open;
             }
-            else if (OnClick.HasDelegate)
+            else
             {
-                await OnClick.InvokeAsync();
+                await OnClickAsync();
             }
         }
         else if (e.Key == "ArrowRight" && SubMenu is not null)
@@ -131,6 +290,10 @@
             _open = true;
         }
         else if (e.Key == "ArrowLeft" && SubMenu is not null)
+        {
+            _open = false;
+        }
+        else if (e.Key == "Escape")
         {
             _open = false;
         }
