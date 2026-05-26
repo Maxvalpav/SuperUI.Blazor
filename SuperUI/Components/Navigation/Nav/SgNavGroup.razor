@@ -3,7 +3,54 @@
 @inject NavigationManager Navigation
 @implements IDisposable
 
-@{
+@if (IsHorizontal)
+{
+    @* Horizontal mode: dropdown trigger *@
+    var hClass = string.Join(" ", new[]
+    {
+        "sgc-nav-group",
+        "sgc-nav-group-horizontal",
+        IsMini ? "mini" : "",
+        Disabled ? "sgc-disabled" : "",
+        _dropdownOpen ? "sgc-nav-dropdown-open" : "",
+        CssClass
+    }.Where(x => !string.IsNullOrEmpty(x)));
+    <div class="@hClass">
+        <button type="button"
+                class="sgc-nav-dropdown-toggle"
+                disabled="@Disabled"
+                @onclick="ToggleDropdown"
+                @onkeydown="OnDropdownKeyDownAsync"
+                aria-haspopup="true"
+                aria-expanded="@(_dropdownOpen ? "true" : "false")"
+                title="@Title">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <span class="sgc-nav-icon" aria-hidden="true">
+                    @if (Icon.StartsWith("<svg")) { @((MarkupString)Icon) } else { @Icon }
+                </span>
+            }
+            <span class="sgc-nav-label">@Title</span>
+            @if (!string.IsNullOrEmpty(BadgeText))
+            {
+                <span class="sgc-nav-badge sgc-nav-badge-@BadgeVariant.ToString().ToLowerInvariant()">@BadgeText</span>
+            }
+            <span class="sgc-nav-arrow" aria-hidden="true">@(_dropdownOpen ? "▾" : "▸")</span>
+        </button>
+        @if (_dropdownOpen)
+        {
+            <div class="sgc-nav-dropdown" role="menu" aria-label="@Title">
+                <CascadingValue Value="this" IsFixed="true">
+                    @ChildContent
+                </CascadingValue>
+            </div>
+            <div class="sgc-nav-dropdown-backdrop" @onclick="CloseDropdown"></div>
+        }
+    </div>
+}
+else
+{
+    @* Vertical mode: expandable group *@
     var titleMatch = !string.IsNullOrEmpty(SearchQuery) && !string.IsNullOrEmpty(Title) &&
         Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase);
     var groupClass = string.Join(" ", new[]
@@ -16,42 +63,41 @@
         titleMatch ? "sgc-nav-group-search-match" : "",
         CssClass
     }.Where(x => !string.IsNullOrEmpty(x)));
-}
-
-<div class="@groupClass">
-    <div class="sgc-nav-group-header"
-         role="button"
-         tabindex="@(Disabled ? "-1" : "0")"
-         aria-expanded="@(_expanded ? "true" : "false")"
-         aria-label="@Title"
-         @onclick="Toggle"
-         @onkeydown="OnKeyDownAsync"
-         title="@Title">
-        @if (!string.IsNullOrEmpty(Icon))
-        {
-            <span class="sgc-nav-icon" aria-hidden="true">
-                @if (Icon.StartsWith("<svg")) { @((MarkupString)Icon) } else { @Icon }
-            </span>
-        }
-        @if (!IsMini)
-        {
-            <span class="sgc-nav-label">@Title</span>
-            @if (!string.IsNullOrEmpty(BadgeText))
+    <div class="@groupClass">
+        <div class="sgc-nav-group-header"
+             role="button"
+             tabindex="@(Disabled ? "-1" : "0")"
+             aria-expanded="@(_expanded ? "true" : "false")"
+             aria-label="@Title"
+             @onclick="Toggle"
+             @onkeydown="OnKeyDownAsync"
+             title="@Title">
+            @if (!string.IsNullOrEmpty(Icon))
             {
-                <span class="sgc-nav-badge sgc-nav-badge-@BadgeVariant.ToString().ToLowerInvariant()">@BadgeText</span>
+                <span class="sgc-nav-icon" aria-hidden="true">
+                    @if (Icon.StartsWith("<svg")) { @((MarkupString)Icon) } else { @Icon }
+                </span>
             }
-            <span class="sgc-nav-arrow" aria-hidden="true">@(_expanded ? "▾" : "▸")</span>
+            @if (!IsMini)
+            {
+                <span class="sgc-nav-label">@Title</span>
+                @if (!string.IsNullOrEmpty(BadgeText))
+                {
+                    <span class="sgc-nav-badge sgc-nav-badge-@BadgeVariant.ToString().ToLowerInvariant()">@BadgeText</span>
+                }
+                <span class="sgc-nav-arrow" aria-hidden="true">@(_expanded ? "▾" : "▸")</span>
+            }
+        </div>
+        @if ((_expanded || !string.IsNullOrEmpty(SearchQuery)) && !IsMini)
+        {
+            <div class="sgc-nav-group-items" role="group" aria-label="@Title items">
+                <CascadingValue Value="this" IsFixed="true">
+                    @ChildContent
+                </CascadingValue>
+            </div>
         }
     </div>
-    @if ((_expanded || !string.IsNullOrEmpty(SearchQuery)) && !IsMini)
-    {
-        <div class="sgc-nav-group-items" role="group" aria-label="@Title items">
-            <CascadingValue Value="this" IsFixed="true">
-                @ChildContent
-            </CascadingValue>
-        </div>
-    }
-</div>
+}
 
 @code {
     private readonly List<SgNavLink> _links = new();
@@ -95,6 +141,7 @@
     }
 
     private int _activeChildCount;
+    private bool _dropdownOpen;
 
     [CascadingParameter] public bool IsMini { get; set; }
     [CascadingParameter] public SgNavGroup? ParentGroup { get; set; }
@@ -102,6 +149,7 @@
     [CascadingParameter] public string? SearchQuery { get; set; }
     [CascadingParameter] public bool AccordionMode { get; set; }
     [CascadingParameter] public Action<SgNavGroup>? AccordionNotifier { get; set; }
+    [CascadingParameter] public bool IsHorizontal { get; set; }
 
     /// <summary>
     /// Gets or sets the group title.
@@ -173,6 +221,36 @@
         {
             _expanded = false;
             StateHasChanged();
+        }
+    }
+
+    internal void CloseDropdown()
+    {
+        if (_dropdownOpen)
+        {
+            _dropdownOpen = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ToggleDropdown()
+    {
+        if (Disabled) return;
+        _dropdownOpen = !_dropdownOpen;
+    }
+
+    private async Task OnDropdownKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (Disabled) return;
+        if (e.Key is "Enter" or " " or "ArrowDown")
+        {
+            _dropdownOpen = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        else if (e.Key is "Escape")
+        {
+            _dropdownOpen = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
