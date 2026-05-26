@@ -9,6 +9,7 @@ export function attach(host, fixedEl, dotnet, opts) {
         offsetTop:    opts?.offsetTop    ?? null,
         offsetBottom: opts?.offsetBottom ?? null,
         target:       opts?.target       || null,  // CSS selector for scroll container; null = window
+        zIndex:       opts?.ZIndex       ?? 100,
     };
 
     // Resolve scroller lazily — element may not be in DOM yet on first render
@@ -77,6 +78,7 @@ export function attach(host, fixedEl, dotnet, opts) {
             fixedEl.style.position = 'fixed';
             fixedEl.style.width    = w + 'px';
             fixedEl.style.left     = left + 'px';
+            fixedEl.style.zIndex   = options.zIndex + '';
             if (top !== null) {
                 fixedEl.style.top    = top + 'px';
                 fixedEl.style.bottom = '';
@@ -99,6 +101,7 @@ export function attach(host, fixedEl, dotnet, opts) {
             fixedEl.style.left     = '';
             fixedEl.style.top      = '';
             fixedEl.style.bottom   = '';
+            fixedEl.style.zIndex   = '';
             if (active) {
                 active = false;
                 try {

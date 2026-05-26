@@ -1,0 +1,69 @@
+@namespace SuperUI.Demo.Components
+@inject IJSRuntime JS
+
+<SgCard CssClass="sgc-demo-code-card" Variant="SgCardVariant.Outlined" NoPadding="true" OverflowHidden="true">
+    <div class="sgc-demo-code-header">
+        <div class="sgc-demo-code-header-left">
+            <SgTypography Size="SgTypographySize.Xs" Font="SgTypographyFont.Mono" Color="var(--sg-text-muted)" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide">
+                @(Language ?? "Razor")
+            </SgTypography>
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                    — @Title
+                </SgTypography>
+            }
+        </div>
+        <div class="sgc-demo-code-header-right">
+            <span class="sgc-demo-code-copy-status @(_copied ? "sgc-demo-code-copied" : "")">
+                @if (_copied)
+                {
+                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-color-success)">Copied!</SgTypography>
+                }
+            </span>
+            <SgIconButton Icon="@SgIcons.Copy"
+                          Title="Copy to clipboard"
+                          Size="SgSize.Sm"
+                          Variant="SgButtonVariant.Ghost"
+                          OnClick="@CopyCodeAsync"
+                          CssClass="sgc-demo-code-copy-btn" />
+        </div>
+    </div>
+    <pre class="sgc-demo-code-pre"><code class="sgc-demo-code-content">@Code</code></pre>
+</SgCard>
+
+@code {
+    [Parameter] public string Code { get; set; } = string.Empty;
+    [Parameter] public string? Language { get; set; } = "Razor";
+    [Parameter] public string? Title { get; set; }
+
+    private bool _copied;
+
+    private async Task CopyCodeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Code);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Fallback for older browsers
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"navigator.clipboard?.writeText?.(\"{Code.Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "")}\")");
+                _copied = true;
+                StateHasChanged();
+                await Task.Delay(2000);
+                _copied = false;
+                await InvokeAsync(StateHasChanged);
+            }
+            catch { }
+        }
+    }
+}

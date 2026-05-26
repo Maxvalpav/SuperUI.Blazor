@@ -2,8 +2,11 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="sgc-affix @(_isBottom ? "sgc-affix-bottom" : "sgc-affix-top") @CssClass" @ref="_host">
-    <div class="sgc-affix-inner @(_affixed ? "sgc-affix-active" : "")" @ref="_inner">
+<div class="sgc-affix @(_isBottom ? "sgc-affix-bottom" : "sgc-affix-top") @CssClass"
+     style="@Style"
+     @attributes="AdditionalAttributes"
+     @ref="_host">
+    <div class="sgc-affix-inner @(_affixed ? "sgc-affix-active" : "") @(!Animated ? "sgc-affix-no-anim" : "")" @ref="_inner">
         @if (Template is not null)
         {
             @Template(_affixed)
@@ -63,6 +66,26 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    /// <summary>
+    /// Z-index for the affixed element when pinned. Defaults to 100.
+    /// </summary>
+    [Parameter] public int ZIndex { get; set; } = 100;
+
+    /// <summary>
+    /// Whether to animate the affix transition. Defaults to true.
+    /// </summary>
+    [Parameter] public bool Animated { get; set; } = true;
+
+    /// <summary>
+    /// Inline style for the host wrapper.
+    /// </summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Additional HTML attributes for the host wrapper.
+    /// </summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
     private ElementReference _host;
     private ElementReference _inner;
     private IJSObjectReference? _module;
@@ -87,7 +110,7 @@
             int? offsetTop = OffsetBottom.HasValue ? null : (OffsetTop ?? 0);
             int? offsetBottom = OffsetBottom;
             await _module.InvokeVoidAsync("attach", _host, _inner, _self,
-                new { offsetTop, offsetBottom, target = Target });
+                new { offsetTop, offsetBottom, target = Target, ZIndex });
             _attached = true;
         }
         catch (JSException) { }
