@@ -1,6 +1,7 @@
 @namespace SuperUI.Components
 @using System.Linq.Expressions
 @using SuperUI.Localization
+@using System.Globalization
 @inject ISuperUILocalizer Localizer
 @inject IJSRuntime JS
 @implements IAsyncDisposable
@@ -11,7 +12,7 @@
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
     
-    <div class="sgc-combo sgc-combo-time @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="sgc-combo sgc-combo-time sgc-size-@Size.ToString().ToLowerInvariant() @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="dialog"
@@ -25,7 +26,16 @@
          @onfocusout="HandleFocusOutAsync"
          @onclick:stopPropagation="true">
         <div class="sgc-combo-control" @onclick="ToggleAsync">
-            @if (Value.HasValue)
+            @if (AllowInput)
+            {
+                <input class="sgc-combo-input sgc-time-input"
+                       value="@(_inputText ?? GetDisplayTime())"
+                       @onchange="HandleInputChangeAsync"
+                       @onclick:stopPropagation="true"
+                       placeholder="@Placeholder"
+                       readonly="@(Disabled || ReadOnly)" />
+            }
+            else if (Value.HasValue)
             {
                 <span class="sgc-combo-value">@GetDisplayTime()</span>
             }
@@ -114,13 +124,14 @@
                     {
                         <div class="sgc-time-lists">
                              <div class="sgc-time-list-col">
-                                @for (int h = 0; h < (UseAmPm ? 12 : 24); h++)
+                                @for (int h = 0; h < (UseAmPm ? 12 : 24); h += HourStep)
                                 {
                                     var hour = h;
                                     if (UseAmPm && h == 0) hour = 12;
                                     var currentH = hour;
-                                    <div class="sgc-time-list-item @(IsHourSelected(currentH) ? "sgc-selected" : "")" 
-                                         @onclick="() => { SetHour(currentH); _mode = PickerMode.Minutes; }">
+                                    var isOutOfRange = IsHourOutOfRange(currentH);
+                                    <div class="sgc-time-list-item @(IsHourSelected(currentH) ? "sgc-selected" : "") @(isOutOfRange ? "sgc-disabled" : "")" 
+                                         @onclick="() => { if (!isOutOfRange) { SetHour(currentH); _mode = PickerMode.Minutes; } }">
                                         @currentH.ToString("D2")
                                     </div>
                                 }
@@ -129,8 +140,9 @@
                                 @for (int m = 0; m < 60; m += MinuteStep)
                                 {
                                     var min = m;
-                                    <div class="sgc-time-list-item @(_pendingValue.Minutes == min ? "sgc-selected" : "")" 
-                                         @onclick="() => { SetMinute(min); if(ShowSeconds) _mode = PickerMode.Seconds; }">
+                                    var isOutOfRange = IsMinuteOutOfRange(min);
+                                    <div class="sgc-time-list-item @(_pendingValue.Minutes == min ? "sgc-selected" : "") @(isOutOfRange ? "sgc-disabled" : "")" 
+                                         @onclick="() => { if (!isOutOfRange) { SetMinute(min); if(ShowSeconds) _mode = PickerMode.Seconds; } }">
                                         @min.ToString("D2")
                                     </div>
                                 }
@@ -138,7 +150,7 @@
                             @if (ShowSeconds)
                             {
                                 <div class="sgc-time-list-col">
-                                    @for (int s = 0; s < 60; s += 5)
+                                    @for (int s = 0; s < 60; s += SecondStep)
                                     {
                                         var sec = s;
                                         <div class="sgc-time-list-item @(_pendingValue.Seconds == sec ? "sgc-selected" : "")" 
@@ -163,9 +175,13 @@
                             <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 16A8 8 0 118 0a8 8 0 010 16zM8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z"/><path d="M8 3.5a.75.75 0 01.75.75v4.25h3a.75.75 0 010 1.5H8a.75.75 0 01-.75-.75V4.25A.75.75 0 018 3.5z"/></svg>
                         }
                     </button>
+                    @if (ShowNow)
+                    {
+                        <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="SetNowAsync">@EffectiveNowText</button>
+                    }
                     <div style="flex:1"></div>
-                    <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="CloseAsync">@Localizer["Common_Cancel"]</button>
-                    <button type="button" class="sgc-btn sgc-sm" @onclick="ConfirmAsync">@Localizer["Common_OK"]</button>
+                    <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="CloseAsync">@EffectiveCancelText</button>
+                    <button type="button" class="sgc-btn sgc-sm" @onclick="ConfirmAsync">@EffectiveOkText</button>
                 </div>
             </div>
         }
@@ -195,6 +211,7 @@
     private ViewType _viewType = ViewType.List;
     private TimeSpan _pendingValue;
     private bool _isDragging;
+    private string? _inputText;
     
     private ElementReference _clockFaceRef;
     private IJSObjectReference? _module;
@@ -212,6 +229,8 @@
     [Parameter] public bool ShowSeconds { get; set; }
     [Parameter] public bool UseAmPm { get; set; }
     [Parameter] public int MinuteStep { get; set; } = 1;
+    [Parameter] public int HourStep { get; set; } = 1;
+    [Parameter] public int SecondStep { get; set; } = 1;
     
     [Parameter] public string? Label { get; set; }
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
@@ -223,12 +242,76 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public bool Block { get; set; } = true;
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
     [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a custom format string for the displayed time.
+    /// When empty, uses automatic formatting based on ShowSeconds and UseAmPm.
+    /// </summary>
+    [Parameter] public string Format { get; set; } = "";
+    
+    /// <summary>
+    /// Gets or sets the minimum selectable time.
+    /// </summary>
+    [Parameter] public TimeSpan? MinTime { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the maximum selectable time.
+    /// </summary>
+    [Parameter] public TimeSpan? MaxTime { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether the user can type a time directly into the input.
+    /// </summary>
+    [Parameter] public bool AllowInput { get; set; }
+    
+    /// <summary>
+    /// Gets or sets whether to show a "Now" button in the footer.
+    /// </summary>
+    [Parameter] public bool ShowNow { get; set; }
+    
+    /// <summary>
+    /// Fires when the popup opens.
+    /// </summary>
+    [Parameter] public EventCallback OnOpen { get; set; }
+    
+    /// <summary>
+    /// Fires when the popup closes.
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+    
+    /// <summary>
+    /// Gets or sets per-instance text for the OK button.
+    /// When null, uses the localizer.
+    /// </summary>
+    [Parameter] public string? OkText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets per-instance text for the Cancel button.
+    /// When null, uses the localizer.
+    /// </summary>
+    [Parameter] public string? CancelText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets per-instance text for the Clear button.
+    /// When null, uses the localizer.
+    /// </summary>
+    [Parameter] public string? ClearText { get; set; }
+    
+    /// <summary>
+    /// Gets or sets per-instance text for the Now button.
+    /// When null, uses the localizer.
+    /// </summary>
+    [Parameter] public string? NowText { get; set; }
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private string ClearLabel => Localizer["Common_Clear"];
+    private string ClearLabel => ClearText ?? Localizer["Common_Clear"];
+    private string EffectiveOkText => OkText ?? Localizer["Common_OK"];
+    private string EffectiveCancelText => CancelText ?? Localizer["Common_Cancel"];
+    private string EffectiveNowText => NowText ?? Localizer["Common_Now"];
 
     private bool IsAm => _pendingValue.Hours < 12;
 
@@ -246,6 +329,12 @@
     private string GetDisplayTime()
     {
         if (!Value.HasValue) return "";
+        
+        if (!string.IsNullOrEmpty(Format))
+        {
+            return Value.Value.ToString(Format, CultureInfo.CurrentCulture);
+        }
+        
         var h = Value.Value.Hours;
         var m = Value.Value.Minutes;
         var s = Value.Value.Seconds;
@@ -282,13 +371,50 @@
 
     private bool IsHourSelected(int h)
     {
+        var currentH = _pendingValue.Hours % 12;
+        if (currentH == 0) currentH = 12;
+        return currentH == h;
+    }
+
+    private bool IsHourOutOfRange(int h)
+    {
+        int actualH;
         if (UseAmPm)
         {
-            var currentH = _pendingValue.Hours % 12;
-            if (currentH == 0) currentH = 12;
-            return currentH == h;
+            var isPm = _pendingValue.Hours >= 12;
+            if (isPm)
+                actualH = h % 12 + 12;
+            else
+            {
+                actualH = h % 12;
+                if (actualH == 12) actualH = 0;
+            }
         }
-        return _pendingValue.Hours == h;
+        else
+        {
+            var isSecondHalf = _pendingValue.Hours >= 12;
+            if (isSecondHalf)
+            {
+                actualH = h + 12;
+                if (actualH == 24) actualH = 12;
+            }
+            else
+            {
+                actualH = h;
+                if (actualH == 12) actualH = 0;
+            }
+        }
+
+        if (MinTime.HasValue && actualH < MinTime.Value.Hours) return true;
+        if (MaxTime.HasValue && actualH > MaxTime.Value.Hours) return true;
+        return false;
+    }
+
+    private bool IsMinuteOutOfRange(int m)
+    {
+        if (MinTime.HasValue && _pendingValue.Hours == MinTime.Value.Hours && m < MinTime.Value.Minutes) return true;
+        if (MaxTime.HasValue && _pendingValue.Hours == MaxTime.Value.Hours && m > MaxTime.Value.Minutes) return true;
+        return false;
     }
 
     private void SetAmPm(bool am)
@@ -296,7 +422,7 @@
         var h = _pendingValue.Hours;
         if (am && h >= 12) h -= 12;
         else if (!am && h < 12) h += 12;
-        _pendingValue = new TimeSpan(h, _pendingValue.Minutes, _pendingValue.Seconds);
+        _pendingValue = ClampTime(new TimeSpan(h, _pendingValue.Minutes, _pendingValue.Seconds));
     }
 
     private void SetHour(int h)
@@ -307,20 +433,26 @@
             var isPm = _pendingValue.Hours >= 12;
             finalH = h % 12;
             if (isPm) finalH += 12;
-            else if (finalH == 12) finalH = 0; // 12 AM is 0
+            else if (finalH == 12) finalH = 0;
         }
-        _pendingValue = new TimeSpan(finalH, _pendingValue.Minutes, _pendingValue.Seconds);
-        // Не переключаем режим здесь, так как SetHour вызывается при каждом OnClockMove
+        _pendingValue = ClampTime(new TimeSpan(finalH, _pendingValue.Minutes, _pendingValue.Seconds));
     }
 
     private void SetMinute(int m)
     {
-        _pendingValue = new TimeSpan(_pendingValue.Hours, m, _pendingValue.Seconds);
+        _pendingValue = ClampTime(new TimeSpan(_pendingValue.Hours, m, _pendingValue.Seconds));
     }
 
     private void SetSecond(int s)
     {
-        _pendingValue = new TimeSpan(_pendingValue.Hours, _pendingValue.Minutes, s);
+        _pendingValue = ClampTime(new TimeSpan(_pendingValue.Hours, _pendingValue.Minutes, s));
+    }
+
+    private TimeSpan ClampTime(TimeSpan time)
+    {
+        if (MinTime.HasValue && time < MinTime.Value) time = MinTime.Value;
+        if (MaxTime.HasValue && time > MaxTime.Value) time = MaxTime.Value;
+        return time;
     }
 
     private double GetHandRotation()
@@ -362,6 +494,28 @@
         {
             var h = (int)Math.Round(angle / 30);
             if (h == 0) h = 12;
+            
+            if (HourStep > 1)
+            {
+                h = (int)Math.Round((double)h / HourStep) * HourStep;
+                if (h == 0) h = HourStep;
+                if (h > 12) h = 12;
+            }
+            
+            if (!UseAmPm)
+            {
+                var isSecondHalf = _pendingValue.Hours >= 12;
+                if (isSecondHalf)
+                {
+                    h += 12;
+                    if (h == 24) h = 12;
+                }
+                else
+                {
+                    if (h == 12) h = 0;
+                }
+            }
+            
             SetHour(h);
         }
         else if (_mode == PickerMode.Minutes)
@@ -369,7 +523,6 @@
             var m = (int)Math.Round(angle / 6);
             if (m == 60) m = 0;
             
-            // Apply MinuteStep
             if (MinuteStep > 1)
             {
                 m = (int)Math.Round((double)m / MinuteStep) * MinuteStep;
@@ -382,6 +535,13 @@
         {
             var s = (int)Math.Round(angle / 6);
             if (s == 60) s = 0;
+            
+            if (SecondStep > 1)
+            {
+                s = (int)Math.Round((double)s / SecondStep) * SecondStep;
+                if (s == 60) s = 0;
+            }
+            
             SetSecond(s);
         }
         StateHasChanged();
@@ -397,13 +557,18 @@
         {
             _pendingValue = Value ?? DateTime.Now.TimeOfDay;
             _mode = PickerMode.Hours;
+            _inputText = null;
+            await OnOpen.InvokeAsync();
             
-            // Initialize JS clock if in clock mode
             if (_viewType == ViewType.Clock)
             {
-                await Task.Delay(50); // Wait for popup to render
+                await Task.Delay(50);
                 await InitJsClockAsync();
             }
+        }
+        else
+        {
+            await OnClose.InvokeAsync();
         }
         await InvokeAsync(StateHasChanged);
     }
@@ -455,12 +620,13 @@
         _open = false;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
         _binder?.NotifyFieldChanged();
+        await OnClose.InvokeAsync();
     }
 
-    private Task CloseAsync()
+    private async Task CloseAsync()
     {
         _open = false;
-        return Task.CompletedTask;
+        await OnClose.InvokeAsync();
     }
 
     private async Task ClearAsync()
@@ -469,6 +635,45 @@
         Value = null;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
         _binder?.NotifyFieldChanged();
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task SetNowAsync()
+    {
+        _pendingValue = ClampTime(DateTime.Now.TimeOfDay);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleInputChangeAsync(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString();
+        _inputText = null;
+        if (string.IsNullOrWhiteSpace(text)) return;
+
+        if (TryParseTime(text, out var parsed))
+        {
+            _pendingValue = ClampTime(parsed);
+            Value = _pendingValue;
+            if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(Value);
+            _binder?.NotifyFieldChanged();
+        }
+    }
+
+    private static bool TryParseTime(string? text, out TimeSpan result)
+    {
+        result = TimeSpan.Zero;
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        if (TimeSpan.TryParse(text, CultureInfo.CurrentCulture, out var ts))
+        {
+            result = ts;
+            return true;
+        }
+        if (DateTime.TryParse(text, CultureInfo.CurrentCulture, DateTimeStyles.None, out var dt))
+        {
+            result = dt.TimeOfDay;
+            return true;
+        }
+        return false;
     }
 
     public async ValueTask DisposeAsync()
@@ -483,4 +688,3 @@
         _binder?.Dispose();
     }
 }
-

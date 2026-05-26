@@ -1,12 +1,16 @@
 @namespace SuperUI.Components
+@using System.Linq.Expressions
+@using Microsoft.AspNetCore.Components.Forms
+@implements IDisposable
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
 <div class="sg-coord-wrap @(HasError ? "sg-coord-has-error" : "") @CssClass"
      @attributes="AdditionalAttributes">
 
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sg-coord-label">@Label</label>
+        <label class="sg-coord-label @(Required ? "sgc-required" : "")">@Label</label>
     }
 
     <div class="sg-coord-row">
@@ -25,6 +29,9 @@
                    placeholder="@Localizer["Coord_LatPlaceholder"]"
                    value="@_latText"
                    disabled="@Disabled"
+                   readonly="@ReadOnly"
+                   required="@Required"
+                   aria-required="@(Required ? "true" : null)"
                    @oninput="OnLatInput"
                    @onfocus="@(() => _latFocused = true)"
                    @onblur="OnLatBlur"
@@ -50,6 +57,9 @@
                    placeholder="@Localizer["Coord_LonPlaceholder"]"
                    value="@_lonText"
                    disabled="@Disabled"
+                   readonly="@ReadOnly"
+                   required="@Required"
+                   aria-required="@(Required ? "true" : null)"
                    @oninput="OnLonInput"
                    @onfocus="@(() => _lonFocused = true)"
                    @onblur="OnLonBlur"
@@ -106,6 +116,10 @@
         {
             <div class="sg-coord-error-msg" role="alert">@ErrorMessage</div>
         }
+        else if (!string.IsNullOrEmpty(Hint))
+        {
+            <div class="sg-coord-hint">@Hint</div>
+        }
         else
         {
             <div></div>
@@ -128,6 +142,8 @@
     private bool   _copied;
     private double _step = 0.01;
 
+    private readonly string _id = "sg-coord-" + Guid.NewGuid().ToString("N")[..8];
+
     private static readonly double[] _steps = [10, 1, 0.1, 0.01, 0.001];
 
     private bool CanDecLat => Latitude.HasValue  && Latitude.Value  - _step >= -90;
@@ -136,6 +152,18 @@
     private bool CanIncLon => Longitude.HasValue && Longitude.Value + _step <=  180;
 
     private static string FormatStep(double s) => s >= 1 ? $"{(int)s}°" : s >= 0.1 ? ".1" : s >= 0.01 ? ".01" : ".001";
+
+    // ── EditContext integration ───────────────────────────────────────────────
+
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+    private SgEditContextBinder<double?>? _latBinder;
+    private SgEditContextBinder<double?>? _lonBinder;
+
+    /// <summary>Expression that identifies the bound Latitude field for EditContext validation.</summary>
+    [Parameter] public Expression<Func<double?>>? LatitudeExpression { get; set; }
+
+    /// <summary>Expression that identifies the bound Longitude field for EditContext validation.</summary>
+    [Parameter] public Expression<Func<double?>>? LongitudeExpression { get; set; }
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -153,15 +181,34 @@
     [Parameter] public string? ErrorMessage    { get; set; }
     [Parameter] public string? CssClass        { get; set; }
 
+    /// <summary>Marks the coordinate input as required, showing an indicator on the label.</summary>
+    [Parameter] public bool Required { get; set; }
+
+    /// <summary>Makes the coordinate input read-only. Input elements are disabled but remain visible.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Optional hint text displayed below the coordinate inputs.</summary>
+    [Parameter] public string? Hint { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private bool HasError => !string.IsNullOrEmpty(ErrorMessage);
+    private bool HasError => !string.IsNullOrEmpty(ErrorMessage)
+        || (_latBinder?.HasValidationErrors ?? false)
+        || (_lonBinder?.HasValidationErrors ?? false);
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+    protected override void OnInitialized()
+    {
+        _latBinder = new SgEditContextBinder<double?>(StateHasChanged);
+        _lonBinder = new SgEditContextBinder<double?>(StateHasChanged);
+    }
+
     protected override void OnParametersSet()
     {
+        _latBinder?.Update(CascadedEditContext, LatitudeExpression);
+        _lonBinder?.Update(CascadedEditContext, LongitudeExpression);
         if (Latitude.HasValue)
         {
             var s = Latitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture);
@@ -247,6 +294,8 @@
     private async Task CopyAsync()
     {
         if (!Latitude.HasValue || !Longitude.HasValue) return;
+        var text = $"{Latitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}, {Longitude.Value.ToString("F6", System.Globalization.CultureInfo.InvariantCulture)}";
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
         _copied = true; StateHasChanged();
         await Task.Delay(2000);
         _copied = false; StateHasChanged();
@@ -270,5 +319,11 @@
         var m = (int)((deg - d) * 60);
         var s = ((deg - d) * 60 - m) * 60;
         return $"{d}°{m}'{s:F1}\"{dir}";
+    }
+
+    public void Dispose()
+    {
+        _latBinder?.Dispose();
+        _lonBinder?.Dispose();
     }
 }

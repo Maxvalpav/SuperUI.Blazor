@@ -2,7 +2,10 @@
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-ribbon-split @SizeClass @(Disabled ? "sgc-ribbon-btn-disabled" : "") @CssClass">
+<div class="sgc-ribbon-split @SizeClass @(Disabled ? "sgc-ribbon-btn-disabled" : "") @CssClass"
+     @onkeydown="HandleKeyDown"
+     @onfocusout:stopPropagation="true"
+     @onclick:stopPropagation="true">
     @* Main action button *@
     <button type="button"
             class="sgc-ribbon-split-main"
@@ -69,9 +72,12 @@
     /// <summary>Additional CSS class.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private string SizeClass => Size == SgRibbonButtonSize.Small
-        ? "sgc-ribbon-btn-sm"
-        : "sgc-ribbon-btn-lg";
+    private string SizeClass => Size switch
+    {
+        SgRibbonButtonSize.Small => "sgc-ribbon-btn-sm",
+        SgRibbonButtonSize.Medium => "sgc-ribbon-btn-md",
+        _ => "sgc-ribbon-btn-lg"
+    };
 
     private async Task OnMainClickAsync(MouseEventArgs e)
     {
@@ -85,4 +91,15 @@
     {
         if (!Disabled) _open = !_open;
     }
+
+    private void HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _open)
+        {
+            _open = false;
+            StateHasChanged();
+        }
+    }
+
+
 }

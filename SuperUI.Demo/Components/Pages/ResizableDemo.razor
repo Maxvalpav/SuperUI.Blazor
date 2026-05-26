@@ -1,122 +1,412 @@
 ﻿@page "/resizable-demo"
 
-<PageTitle>Resizable - SUI</PageTitle>
+<PageTitle>Resizable — SuperUI</PageTitle>
 
-<SgCard Title="SgResizable - Изменяемая панель"
-        Subtitle="Контейнер, размеры которого пользователь может изменять мышью за рамку или угол.">
+<SgCard Title="SgResizable — Resizable panel"
+        Subtitle="Container whose dimensions the user can resize via handles. Supports aspect-ratio lock, grid snap, live feedback, double-click reset, and three handle styles."
+        CssClass="sgc-card-flush">
 
-    <div style="margin-top: 32px;">
-        <h2>Угол + правый и нижний край</h2>
-        <p>Текущие размеры: @($"{_w1:F0} × {_h1:F0}") px. Тяните за угол или края.</p>
+    @* ── Interactive Demo ─────────────────────────────────────────────────── *@
+    <div class="sgc-demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading2">Interactive Demo</SgTypography>
+            <span class="demo-live-badge">Interactive</span>
+        </div>
+        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
+            Drag any handle to resize. Try corner handles (free resize), edge handles (1D), double-click a handle to reset, or toggle advanced features in the controls panel.
+        </SgTypography>
 
-        <SgResizable Width="@_w1" Height="@_h1"
-                     MinWidth="160" MinHeight="100"
-                     MaxWidth="900" MaxHeight="500"
-                     Handles="se,e,s"
-                     SizeChanged="@OnSize1Changed">
-            <div style="padding: 16px;">
-                <div style="font-weight: 600; margin-bottom: 8px;">Изменяемый блок</div>
-                <div style="font-size: 12px; color: var(--sui-muted);">
-                    Тяните за правый-нижний угол для свободного изменения, либо за правый/нижний край.
+        <div class="demo-grid-adaptive">
+            <SgCard Title="Examples" CssClass="demo-interactive-card">
+                @* ── Default (corner + right + bottom) ── *@
+                <div style="margin-bottom:24px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        Corner + edges (Handles="se,e,s")
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <div class="demo-flex-row" style="margin-bottom:6px;font-size:11px;color:var(--sg-text-muted);font-family:monospace;">
+                            @($"{_w1:F0} × {_h1:F0} px")
+                        </div>
+                        <SgResizable Width="@_w1" Height="@_h1"
+                                     MinWidth="160" MinHeight="100"
+                                     MaxWidth="900" MaxHeight="500"
+                                     Handles="se,e,s"
+                                     SizeChanged="@OnSize1Changed"
+                                     @bind-DefaultSize="_default1">
+                            <div style="padding:16px;display:flex;flex-direction:column;gap:8px;height:100%;">
+                                <div style="font-weight:600;font-size:13px;">Resizable block</div>
+                                <div style="font-size:11px;color:var(--sg-text-muted);flex:1;">
+                                    Drag the bottom-right corner for free resize, or the right/bottom edge for 1D resize.
+                                </div>
+                                <div style="font-size:10px;color:var(--sg-text-muted);border-top:1px solid var(--sg-border);padding-top:6px;display:flex;justify-content:space-between;">
+                                    <span>Double-click handle to reset</span>
+                                    <span>@($"{_w1:F0} × {_h1:F0}")</span>
+                                </div>
+                            </div>
+                        </SgResizable>
+                    </div>
                 </div>
-            </div>
-        </SgResizable>
-    </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Все 8 направлений</h2>
-        <p>Все стороны и углы — резинабельны.</p>
+                @* ── All 8 directions ── *@
+                <div style="margin-bottom:24px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        All 8 handles (Handles="n,s,e,w,ne,nw,se,sw")
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <SgResizable Width="360" Height="200"
+                                     MinWidth="160" MinHeight="100"
+                                     Handles="n,s,e,w,ne,nw,se,sw"
+                                     SizeChanged="@(s => { _w8 = s.Width; _h8 = s.Height; })">
+                            <div style="padding:16px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--sg-text-muted);font-size:12px;gap:4px;">
+                                <span>Drag any side or corner</span>
+                                <span style="font-family:monospace;font-size:11px;">@($"{_w8:F0} × {_h8:F0} px")</span>
+                            </div>
+                        </SgResizable>
+                    </div>
+                </div>
 
-        <SgResizable Width="360" Height="220"
-                     MinWidth="160" MinHeight="100"
-                     Handles="n,s,e,w,ne,nw,se,sw">
-            <div style="padding: 16px; height: 100%; display:flex; align-items:center; justify-content:center; color: var(--sui-muted); font-size: 13px;">
-                Тяните за любую сторону или угол
-            </div>
-        </SgResizable>
-    </div>
+                @* ── Live feedback ── *@
+                <div style="margin-bottom:24px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        Live feedback + size tooltip
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <div class="demo-flex-row" style="margin-bottom:6px;gap:12px;align-items:center;">
+                            <span class="demo-value-display">
+                                <span class="demo-value-display-label">Live size</span>
+                                <span class="demo-value-display-value" style="color:var(--sg-color-primary);">@($"{_liveW:F0} × {_liveH:F0}") px</span>
+                            </span>
+                            <SgBadge Text="@(_liveFeedback ? "ON" : "OFF")" Variant="@(_liveFeedback ? SgBadgeVariant.Success : SgBadgeVariant.Muted)" />
+                        </div>
+                        <SgResizable Width="320" Height="180"
+                                     MinWidth="160" MinHeight="100"
+                                     MaxWidth="700" MaxHeight="400"
+                                     Handles="se,e,s"
+                                     ShowSizeTooltip="true"
+                                     SizeChanging="@OnSizeLiveChanging">
+                            <div style="padding:16px;display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:4px;color:var(--sg-text-muted);font-size:11px;">
+                                <span>Tooltip shows size while dragging</span>
+                                <span style="font-family:monospace;font-size:18px;font-weight:700;color:var(--sg-color-primary);">@($"{_liveW:F0} × {_liveH:F0}")</span>
+                            </div>
+                        </SgResizable>
+                    </div>
+                </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Live-обратная связь (SizeChanging)</h2>
-        <p>Размер обновляется в реальном времени во время перетаскивания: <strong>@($"{_liveW:F0} × {_liveH:F0}") px</strong></p>
+                @* ── Aspect ratio ── *@
+                <div style="margin-bottom:24px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        Aspect ratio lock (16:10)
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <SgResizable Width="320" Height="200"
+                                     MinWidth="160" MinHeight="100"
+                                     AspectRatio="1.6"
+                                     Handles="se,ne,sw,nw"
+                                     ShowSizeTooltip="true"
+                                     SizeChanged="@(s => { _ratioW = s.Width; _ratioH = s.Height; })">
+                            <div style="padding:16px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
+                                <div style="font-size:11px;color:var(--sg-text-muted);">16:10 aspect ratio</div>
+                                <div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--sg-color-primary);">@($"{_ratioW:F0} × {_ratioH:F0}")</div>
+                                <div style="font-size:10px;color:var(--sg-text-muted);">@($"{(_ratioW > 0 && _ratioH > 0 ? (_ratioW / _ratioH) : 0):F2}") ratio</div>
+                            </div>
+                        </SgResizable>
+                    </div>
+                </div>
 
-        <SgResizable Width="320" Height="180"
-                     MinWidth="160" MinHeight="100"
-                     MaxWidth="700" MaxHeight="400"
-                     Handles="se,e,s"
-                     SizeChanging="OnSizeLiveChanging"
-                     SizeChanged="@(s => { _liveW = s.Width; _liveH = s.Height; })">
-            <div style="padding: 16px; display:flex; align-items:center; justify-content:center; height:100%; color: var(--sui-muted); font-size: 12px;">
-                @($"{_liveW:F0} × {_liveH:F0} px")
-            </div>
-        </SgResizable>
-    </div>
+                @* ── Snap grid ── *@
+                <div style="margin-bottom:24px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        Grid snap (20px step)
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <SgResizable Width="300" Height="200"
+                                     MinWidth="100" MinHeight="80"
+                                     Handles="se,sw,ne,nw,e,s"
+                                     SnapStep="20"
+                                     ShowSizeTooltip="true"
+                                     SizeChanged="@(s => { _snapW = s.Width; _snapH = s.Height; })">
+                            <div style="padding:16px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;">
+                                <div style="font-size:11px;color:var(--sg-text-muted);">Snaps to 20px grid</div>
+                                <div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--sg-color-primary);">@($"{_snapW:F0} × {_snapH:F0}")</div>
+                            </div>
+                        </SgResizable>
+                    </div>
+                </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Disabled</h2>
-        <p>Изменение размера отключено — ручки скрыты.</p>
+                @* ── Disabled ── *@
+                <div style="margin-bottom:24px;">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        Disabled
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <SgResizable Width="320" Height="120" Disabled="true">
+                            <div style="padding:16px;display:flex;align-items:center;justify-content:center;height:100%;color:var(--sg-text-muted);font-size:12px;">
+                                Resize is disabled — handles hidden
+                            </div>
+                        </SgResizable>
+                    </div>
+                </div>
 
-        <SgResizable Width="320" Height="140" Disabled="true">
-            <div style="padding: 16px; display:flex; align-items:center; justify-content:center; height:100%; color: var(--sui-muted); font-size: 12px;">
-                Resize отключён
-            </div>
-        </SgResizable>
-    </div>
-
-    <div style="margin-top: 32px;">
-        <h2>Карточка с изменяемым размером</h2>
-        <SgResizable Width="420" Height="260" Handles="se,e,s">
-            <SgCard Title="Resizable card" Style="height:100%;border:none;border-radius:0;">
-                <div style="font-size: 12px; color: var(--sui-muted);">
-                    SgCard внутри SgResizable. Удобно для дашборд-плиток или превью.
+                @* ── Card inside resizable ── *@
+                <div>
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">
+                        Card in a resizable container
+                    </SgTypography>
+                    <div style="margin-top:8px;">
+                        <SgResizable Width="400" Height="240" Handles="se,e,s">
+                            <SgCard Title="Resizable card" Style="height:100%;border:none;border-radius:0;">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                    Drag the handles to resize this card. Great for dashboard tiles or preview panels.
+                                </SgTypography>
+                            </SgCard>
+                        </SgResizable>
+                    </div>
                 </div>
             </SgCard>
-        </SgResizable>
+
+            @* ── Controls panel ── *@
+            <SgCard Title="Controls" CssClass="demo-interactive-card">
+                <div class="demo-flex-col" style="gap:14px;">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Handle style</SgTypography>
+                        <div class="demo-flex-row" style="flex-wrap:wrap;gap:6px;margin-top:6px;">
+                            <SgButton Text="Default"
+                                      Size="SgSize.Sm"
+                                      Variant="@(_handleStyle == SgResizableHandleStyle.Default ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                                      OnClick="@(() => _handleStyle = SgResizableHandleStyle.Default)" />
+                            <SgButton Text="Minimal"
+                                      Size="SgSize.Sm"
+                                      Variant="@(_handleStyle == SgResizableHandleStyle.Minimal ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                                      OnClick="@(() => _handleStyle = SgResizableHandleStyle.Minimal)" />
+                            <SgButton Text="Prominent"
+                                      Size="SgSize.Sm"
+                                      Variant="@(_handleStyle == SgResizableHandleStyle.Prominent ? SgButtonVariant.Primary : SgButtonVariant.Ghost)"
+                                      OnClick="@(() => _handleStyle = SgResizableHandleStyle.Prominent)" />
+                        </div>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Show size tooltip</SgTypography>
+                        <SgSwitch @bind-Value="_showTooltip" />
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Grid snap</SgTypography>
+                        <div class="demo-flex-row" style="align-items:center;gap:10px;margin-top:6px;">
+                            <SgNumberInput TValue="double" @bind-Value="_snapValue" Min="0" Max="100" Step="5" Style="width:80px;" />
+                            <SgBadge Text="@(_snapValue > 0 ? $"{_snapValue}px" : "Off")" Variant="@(_snapValue > 0 ? SgBadgeVariant.Info : SgBadgeVariant.Muted)" />
+                        </div>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Aspect ratio</SgTypography>
+                        <div class="demo-flex-row" style="align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;">
+                            <SgSwitch @bind-Value="_useAspectRatio" />
+                            <SgBadge Text="@(_useAspectRatio ? _aspectRatioText : "Free")" Variant="@(_useAspectRatio ? SgBadgeVariant.Success : SgBadgeVariant.Muted)" />
+                            @if (_useAspectRatio)
+                            {
+                                <select @bind="_aspectRatioPreset" class="sgc-select" style="font-size:12px;padding:3px 6px;">
+                                    <option value="1">1:1 (square)</option>
+                                    <option value="1.333">4:3</option>
+                                    <option value="1.5">3:2</option>
+                                    <option value="1.6">16:10</option>
+                                    <option value="1.778">16:9</option>
+                                    <option value="2">2:1</option>
+                                    <option value="0.667">2:3 (portrait)</option>
+                                    <option value="0.562">9:16 (portrait)</option>
+                                </select>
+                            }
+                        </div>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)" CssClass="demo-label">Test resizable with options</SgTypography>
+                        <div style="margin-top:8px;">
+                            <SgResizable Width="280" Height="180"
+                                         MinWidth="120" MinHeight="80"
+                                         Handles="n,s,e,w,ne,nw,se,sw"
+                                         HandleStyle="@_handleStyle"
+                                         ShowSizeTooltip="@_showTooltip"
+                                         SnapStep="@(_snapValue > 0 ? _snapValue : null)"
+                                         AspectRatio="@(_useAspectRatio ? _aspectRatioPreset : null)"
+                                         SizeChanging="@OnTestChanging"
+                                         SizeChanged="@OnTestChanged">
+                                <div style="padding:16px;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
+                                    <div style="font-size:11px;color:var(--sg-text-muted);">Test panel</div>
+                                    <div style="font-family:monospace;font-size:13px;font-weight:600;color:var(--sg-color-primary);">
+                                        @($"{_testW:F0} × {_testH:F0}")
+                                    </div>
+                                    @if (_useAspectRatio)
+                                    {
+                                        <div style="font-size:10px;color:var(--sg-text-muted);">ratio: @($"{_aspectRatioPreset:F3}")</div>
+                                    }
+                                    @if (_testSnappedW > 0)
+                                    {
+                                        <div style="font-size:10px;color:var(--sg-text-muted);">snapped: @($"{_testSnappedW:F0} × {_testSnappedH:F0}")</div>
+                                    }
+                                </div>
+                            </SgResizable>
+                        </div>
+                    </div>
+                </div>
+            </SgCard>
+        </div>
+
+        @* ── Action log ── *@
+        @if (_log.Count > 0)
+        {
+            <div style="margin-top:12px;">
+                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Color="var(--sg-text-muted)">
+                    Action log
+                </SgTypography>
+                <div style="margin-top:6px;padding:8px 12px;background:var(--sg-surface-alt);border:1px solid var(--sg-border);border-radius:8px;">
+                    @foreach (var entry in _log)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:11px;font-family:'Cascadia Code','Consolas',monospace;color:var(--sg-text-muted);">
+                            <span style="width:5px;height:5px;border-radius:50%;background:var(--sg-color-primary);flex-shrink:0;"></span>
+                            <span>@entry</span>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
+        @* ── Code constructor ── *@
+        <div style="margin-top:24px;">
+            <SgTypography Variant="SgTypographyVariant.Heading3">Code constructor</SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Style="margin-bottom:8px;display:block;">
+                Basic resizable panel with handles, snap, and events.
+            </SgTypography>
+            <pre class="demo-code-block"><span class="demo-code-comment">&lt;!-- SgResizable with handles, live feedback, and snap --&gt;</span>
+<span class="demo-code-keyword">&lt;SgResizable</span> <span class="demo-code-attr">Width</span>=<span class="demo-code-string">"320"</span> <span class="demo-code-attr">Height</span>=<span class="demo-code-string">"200"</span>
+             <span class="demo-code-attr">MinWidth</span>=<span class="demo-code-string">"160"</span> <span class="demo-code-attr">MinHeight</span>=<span class="demo-code-string">"100"</span>
+             <span class="demo-code-attr">Handles</span>=<span class="demo-code-string">"se,e,s"</span>
+             <span class="demo-code-attr">SnapStep</span>=<span class="demo-code-string">"20"</span>
+             <span class="demo-code-attr">ShowSizeTooltip</span>=<span class="demo-code-string">"true"</span>
+             <span class="demo-code-attr">SizeChanged</span>=<span class="demo-code-string">"@@(s =&gt; OnResized(s))"</span><span class="demo-code-keyword">&gt;</span>
+    <span class="demo-code-keyword">&lt;div&gt;</span>
+        <span class="demo-code-comment">&lt;!-- your content here --&gt;</span>
+    <span class="demo-code-keyword">&lt;/div&gt;</span>
+<span class="demo-code-keyword">&lt;/SgResizable&gt;</span></pre>
+
+            <pre class="demo-code-block" style="margin-top:8px;"><span class="demo-code-comment">&lt;!-- With aspect ratio lock --&gt;</span>
+<span class="demo-code-keyword">&lt;SgResizable</span> <span class="demo-code-attr">Width</span>=<span class="demo-code-string">"400"</span> <span class="demo-code-attr">Height</span>=<span class="demo-code-string">"250"</span>
+             <span class="demo-code-attr">AspectRatio</span>=<span class="demo-code-string">"1.6"</span>
+             <span class="demo-code-attr">Handles</span>=<span class="demo-code-string">"se,ne,sw,nw"</span>
+             <span class="demo-code-attr">ShowSizeTooltip</span>=<span class="demo-code-string">"true"</span><span class="demo-code-keyword">&gt;</span>
+    <span class="demo-code-comment">&lt;!-- 16:10 fixed aspect content --&gt;</span>
+<span class="demo-code-keyword">&lt;/SgResizable&gt;</span></pre>
+        </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Свойства</h2>
-        <SgCard Title="SgResizable" Style="margin-top: 16px;">
+    @* ── Component Properties ─────────────────────────────────────────────── *@
+    <div class="sgc-demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading2">Component Properties</SgTypography>
+        </div>
+
+        <SgCard Title="SgResizable" Style="margin-top:12px;">
             <PropertyTable Items="_props" />
         </SgCard>
-    </div>
-
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
     </div>
 
 </SgCard>
 
 @code {
+    // ── Interactive state ──────────────────────────────────────────────────────
     private double _w1 = 320;
     private double _h1 = 180;
+    private double _w8 = 360;
+    private double _h8 = 200;
     private double _liveW = 320;
     private double _liveH = 180;
+    private double _ratioW = 320;
+    private double _ratioH = 200;
+    private double _snapW = 300;
+    private double _snapH = 200;
+    private double _testW = 280;
+    private double _testH = 180;
+    private double _testSnappedW = 0;
+    private double _testSnappedH = 0;
+    private bool _liveFeedback;
+    private bool _showTooltip = true;
+    private SgResizableHandleStyle _handleStyle;
+    private double _snapValue = 20;
+    private bool _useAspectRatio;
+    private double _aspectRatioPreset = 1.6;
+    private (double Width, double Height) _default1 = (320, 180);
+
+    private readonly List<string> _log = new();
+
+    private string _aspectRatioText => _aspectRatioPreset switch
+    {
+        1 => "1:1",
+        1.333 => "4:3",
+        1.5 => "3:2",
+        1.6 => "16:10",
+        1.778 => "16:9",
+        2 => "2:1",
+        0.667 => "2:3",
+        0.562 => "9:16",
+        _ => $"{_aspectRatioPreset:F3}"
+    };
+
+    private void Log(string msg)
+    {
+        _log.Insert(0, $"[{DateTime.Now:HH:mm:ss}] {msg}");
+        if (_log.Count > 10) _log.RemoveAt(_log.Count - 1);
+    }
 
     private void OnSize1Changed((double Width, double Height) s)
     {
         _w1 = s.Width;
         _h1 = s.Height;
+        _default1 = s;
+        Log($"Default panel: {s.Width:F0} × {s.Height:F0}");
     }
 
     private void OnSizeLiveChanging((double Width, double Height) s)
     {
         _liveW = s.Width;
         _liveH = s.Height;
+        _liveFeedback = true;
         StateHasChanged();
     }
 
+    private void OnTestChanging((double Width, double Height) s)
+    {
+        _testW = s.Width;
+        _testH = s.Height;
+        StateHasChanged();
+    }
+
+    private void OnTestChanged((double Width, double Height) s)
+    {
+        _testW = s.Width;
+        _testH = s.Height;
+        _testSnappedW = s.Width;
+        _testSnappedH = s.Height;
+        Log($"Test panel: {s.Width:F0} × {s.Height:F0} ({(s.Width > 0 && s.Height > 0 ? s.Width / s.Height : 0):F2} ratio)");
+    }
+
+    // ── Property table ─────────────────────────────────────────────────────
     private List<PropertyPanelItem> _props = new()
     {
-        new() { Label = "Width",                Value = "double (default 320)",               BadgeText = "Начальная ширина (px)",   BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Height",               Value = "double (default 200)",               BadgeText = "Начальная высота (px)",   BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MinWidth / MinHeight", Value = "double",                             BadgeText = "Минимум",                 BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MaxWidth / MaxHeight", Value = "double",                             BadgeText = "Максимум",                BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Handles",              Value = "string (csv: n,s,e,w,ne,nw,se,sw)", BadgeText = "Активные ручки",          BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Disabled",             Value = "bool",                               BadgeText = "Отключить resize",        BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Style",                Value = "string",                             BadgeText = "Inline стили",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SizeChanging",         Value = "EventCallback<(double,double)>",     BadgeText = "Live-событие",            BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "SizeChanged",          Value = "EventCallback<(double,double)>",     BadgeText = "Событие (mouseup)",       BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "ChildContent",         Value = "RenderFragment",                     BadgeText = "Содержимое",              BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Width",                Value = "double (default 320)",            BadgeText = "Initial width",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Height",               Value = "double (default 200)",            BadgeText = "Initial height",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "MinWidth / MinHeight", Value = "double",                          BadgeText = "Min size",            BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "MaxWidth / MaxHeight", Value = "double",                          BadgeText = "Max size",            BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Handles",              Value = "string (csv)",                    BadgeText = "Active handles",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Disabled",             Value = "bool",                            BadgeText = "Disable resize",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "AspectRatio",          Value = "double? (null = free)",            BadgeText = "Lock aspect ratio",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SnapStep",             Value = "double? (null = no snap)",         BadgeText = "Grid snap (px)",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowSizeTooltip",      Value = "bool",                            BadgeText = "Size tooltip",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "HandleStyle",          Value = "Default, Minimal, Prominent",     BadgeText = "Handle appearance",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "DefaultSize",          Value = "(double,double)?",                BadgeText = "Double-click reset",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Style",                Value = "string",                          BadgeText = "Inline styles",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "SizeChanging",         Value = "EventCallback<(double,double)>",  BadgeText = "Live event",          BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SizeChanged",          Value = "EventCallback<(double,double)>",  BadgeText = "Final event",         BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "HandleDoubleClick",    Value = "EventCallback<(double,double)>",  BadgeText = "Double-click event",  BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ChildContent",         Value = "RenderFragment",                  BadgeText = "Content",             BadgeVariant = SgBadgeVariant.Info    },
     };
 }

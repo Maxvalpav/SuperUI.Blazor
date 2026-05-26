@@ -1,6 +1,6 @@
 @namespace SuperUI.Components
 
-<div class="sgc-ribbon @(Collapsed ? "sgc-ribbon-collapsed" : "") @CssClass"
+<div class="sgc-ribbon @(Collapsed ? "sgc-ribbon-collapsed" : "") @(Animate ? "sgc-ribbon-animated" : "") @CssClass"
      role="toolbar"
      aria-label="@(AriaLabel ?? "Ribbon")">
 
@@ -13,7 +13,7 @@
 
     @* ── Tab bar ── *@
     <div class="sgc-ribbon-tabbar" role="tablist">
-        @foreach (var tab in _tabs)
+        @foreach (var (tab, idx) in _tabs.Select((t, i) => (t, i)))
         {
             var t = tab;
             <button type="button"
@@ -22,12 +22,16 @@
                     aria-selected="@(_activeTab == t ? "true" : "false")"
                     aria-controls="@($"ribbon-panel-{t.Id}")"
                     disabled="@t.Disabled"
-                    @onclick="() => ActivateTab(t)">
+                    @onclick="() => ActivateTab(t, idx)">
                 @if (!string.IsNullOrEmpty(t.Icon))
                 {
                     <span class="sgc-ribbon-tab-icon">@((MarkupString)t.Icon)</span>
                 }
-                @t.Title
+                <span class="sgc-ribbon-tab-text">@t.Title</span>
+                @if (!string.IsNullOrEmpty(t.Badge))
+                {
+                    <span class="sgc-ribbon-tab-badge @t.BadgeVariantClass">@t.Badge</span>
+                }
             </button>
         }
 
@@ -36,16 +40,12 @@
         {
             <button type="button"
                     class="sgc-ribbon-collapse-btn"
-                    title="@(Collapsed ? "Развернуть ленту" : "Свернуть ленту")"
+                    aria-label="@(Collapsed ? "Expand ribbon" : "Collapse ribbon")"
+                    title="@(Collapsed ? "Expand ribbon" : "Collapse ribbon")"
                     @onclick="ToggleCollapse">
-                @if (Collapsed)
-                {
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                }
-                else
-                {
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                }
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="sgc-ribbon-collapse-icon">
+                    <polyline points="@(Collapsed ? "6 9 12 15 18 9" : "18 15 12 9 6 15")"/>
+                </svg>
             </button>
         }
 
@@ -72,6 +72,7 @@
 @code {
     private readonly List<SgRibbonTab> _tabs = new();
     private SgRibbonTab? _activeTab;
+    private int _activeTabIndex = -1;
 
     // ── Parameters ────────────────────────────────────────────────────────────
 
@@ -93,6 +94,27 @@
     /// <summary>Callback when Collapsed state changes.</summary>
     [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
 
+    /// <summary>Gets or sets the active tab index. Negative value means no selection.</summary>
+    [Parameter] public int ActiveTabIndex
+    {
+        get => _activeTabIndex;
+        set
+        {
+            if (_activeTabIndex != value)
+            {
+                _activeTabIndex = value;
+                if (value >= 0 && value < _tabs.Count)
+                    _activeTab = _tabs[value];
+            }
+        }
+    }
+
+    /// <summary>Callback when ActiveTabIndex changes.</summary>
+    [Parameter] public EventCallback<int> ActiveTabIndexChanged { get; set; }
+
+    /// <summary>When true (default), collapse/expand is animated.</summary>
+    [Parameter] public bool Animate { get; set; } = true;
+
     /// <summary>Optional content rendered on the far-right of the tab bar.</summary>
     [Parameter] public RenderFragment? TabBarFarContent { get; set; }
 
@@ -104,29 +126,42 @@
         {
             _tabs.Add(tab);
             if (_activeTab is null && !tab.Disabled)
+            {
                 _activeTab = tab;
+                _activeTabIndex = _tabs.Count - 1;
+            }
             StateHasChanged();
         }
     }
 
     internal void UnregisterTab(SgRibbonTab tab)
     {
+        var idx = _tabs.IndexOf(tab);
         _tabs.Remove(tab);
         if (_activeTab == tab)
+        {
             _activeTab = _tabs.FirstOrDefault(t => !t.Disabled);
+            _activeTabIndex = _activeTab is not null ? _tabs.IndexOf(_activeTab) : -1;
+        }
+        else if (idx < _activeTabIndex)
+        {
+            _activeTabIndex--;
+        }
         StateHasChanged();
     }
 
-    private void ActivateTab(SgRibbonTab tab)
+    private void ActivateTab(SgRibbonTab tab, int index)
     {
         if (tab.Disabled) return;
         if (_activeTab == tab && AllowCollapse)
         {
-            // Click active tab → toggle collapse
             _ = ToggleCollapse();
             return;
         }
         _activeTab = tab;
+        _activeTabIndex = index;
+        if (ActiveTabIndexChanged.HasDelegate)
+            _ = ActiveTabIndexChanged.InvokeAsync(index);
         if (Collapsed)
             _ = SetCollapsed(false);
     }
@@ -147,7 +182,8 @@
     /// <summary>Programmatically activate a tab by its title.</summary>
     public void ActivateTabByTitle(string title)
     {
-        var tab = _tabs.FirstOrDefault(t => t.Title == title);
-        if (tab is not null) ActivateTab(tab);
+        var idx = _tabs.FindIndex(t => t.Title == title);
+        if (idx >= 0)
+            ActivateTab(_tabs[idx], idx);
     }
 }

@@ -3,26 +3,38 @@
 @typeparam TKey
 @using SuperUI.Enums
 @using SuperUI.Localization
+@using System.Linq.Expressions
 @inject ISuperUILocalizer Localizer
+@implements IDisposable
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
-         tabindex="0"
+    <div class="sgc-combo @(Block ? "sgc-block" : "") sgc-size-@Size.ToString().ToLowerInvariant() @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+         role="combobox"
+         aria-expanded="@(_open ? "true" : "false")"
+         aria-haspopup="listbox"
+         aria-labelledby="@_labelId"
+         aria-required="@(Required ? "true" : null)"
+         aria-disabled="@(Disabled ? "true" : null)"
+         aria-invalid="@(IsInvalid ? "true" : null)"
+         aria-describedby="@DescribedBy"
+         aria-multiselectable="true"
+         tabindex="@(Disabled ? "-1" : "0")"
          @onfocusout="HandleFocusOutAsync"
          @onclick:stopPropagation="true">
         <div class="sgc-combo-control" @onclick="ToggleAsync">
             @{ var selItems = GetSelectedItems().ToList(); }
-            @if (selItems.Count == 0 && !_open)
+            @{ var selCount = selItems.Count; var displayItems = selItems.Take(MaxDisplayedTags).ToList(); }
+            @if (selCount == 0 && !_open)
             {
                 <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
             }
             else
             {
-                foreach (var it in selItems)
+                foreach (var it in displayItems)
                 {
                     var itLocal = it;
                     <span class="sgc-combo-tag">
@@ -48,15 +60,24 @@
                         }
                     </span>
                 }
+                if (selCount > MaxDisplayedTags)
+                {
+                    <span class="sgc-combo-tag sgc-combo-tag-overflow">+@(selCount - MaxDisplayedTags)</span>
+                }
                 @if (_open)
                 {
                     <input class="sgc-combo-input"
                            value="@_search"
-                           placeholder="@(selItems.Count == 0 ? EffectivePlaceholder : "")"
+                           placeholder="@(selCount == 0 ? EffectivePlaceholder : "")"
                            @oninput="OnSearchInput"
                            @onkeydown="OnKeyDownAsync"
-                           @onclick:stopPropagation="true" />
+                           @onclick:stopPropagation="true"
+                           @ref="_searchInput" />
                 }
+            }
+            @if (AllowClear && HasSelectedValues && !Disabled)
+            {
+                <button class="sgc-combo-clear" type="button" aria-label="@Localizer["Clear"]" @onclick:stopPropagation="true" @onclick="ClearAllAsync">@((MarkupString)SgIcons.X)</button>
             }
             <span class="sgc-combo-caret">@((MarkupString)SgIcons.ChevronDown)</span>
         </div>
@@ -85,11 +106,16 @@
                 }
                 else
                 {
-                    @foreach (var it in filtered)
+                    var allFilteredSelected = filtered.All(it => IsSelected(KeySelector(it)));
+                    <div class="sgc-select-all" @onclick:stopPropagation="true" @onclick="ToggleSelectAllAsync">
+                        <input type="checkbox" checked="@allFilteredSelected" readonly tabindex="-1" style="pointer-events:none;" />
+                        <span>@(allFilteredSelected ? Localizer["DeselectAll"] : Localizer["SelectAll"])</span>
+                    </div>
+                    @for (int idx = 0; idx < filtered.Count; idx++)
                     {
-                        var itLocal = it;
+                        var itLocal = filtered[idx];
                         var isSel = IsSelected(KeySelector(itLocal));
-                        <div class="sgc-combo-option sgc-combo-option-ex @(isSel ? "sgc-selected" : "")"
+                        <div class="sgc-combo-option sgc-combo-option-ex @(isSel ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
                              @onclick:stopPropagation="true"
                              @onclick="() => ToggleItemAsync(KeySelector(itLocal))">
                             <div class="sgc-combo-opt-columns">
@@ -133,10 +159,16 @@
 </div>
 
 @code {
+    private readonly string _labelId = "sg-msex-label-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _hintId = "sg-msex-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-msex-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private string _search = string.Empty;
+    private int _activeIndex;
+    private SgEditContextBinder<IEnumerable<TKey>?>? _binder;
+    private CancellationTokenSource? _blurCts;
+    private CancellationTokenSource? _searchCts;
+    private ElementReference _searchInput;
 
     /// <summary>
     /// Gets or sets the collection of selected item keys.
@@ -234,13 +266,49 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    /// <summary>Size of the multi-select: Sm, Md (default), or Lg.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>When true, shows a clear-all button when values are selected.</summary>
+    [Parameter] public bool AllowClear { get; set; }
+
+    /// <summary>Maximum number of tags to display before showing a "+N more" overflow badge.</summary>
+    [Parameter] public int MaxDisplayedTags { get; set; } = 10;
+
+    /// <summary>Whether to automatically focus the search input on first render.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>Debounce delay in milliseconds for search input. Default 300.</summary>
+    [Parameter] public int SearchDebounceMs { get; set; } = 300;
+
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
+
+    /// <summary>
+    /// Gets or sets the expression that identifies the bound value for EditContext validation.
+    /// </summary>
+    [Parameter] public Expression<Func<IEnumerable<TKey>?>>? ValueExpression { get; set; }
+
     private string EffectivePlaceholder => Placeholder ?? Localizer["Common_Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["Common_NoMatches"] : EmptyText;
 
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText);
-    private string? DisplayedError => ErrorText;
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
+        ? ErrorText 
+        : _binder?.ValidationMessages.FirstOrDefault();
 
     private string LabelFrom(TItem item) => LabelSelector(item);
+    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+    private bool HasSelectedValues => Values?.Any() == true;
+
+    protected override void OnInitialized()
+    {
+        _binder = new SgEditContextBinder<IEnumerable<TKey>?>(StateHasChanged);
+    }
+
+    protected override void OnParametersSet()
+    {
+        _binder?.Update(CascadedEditContext, ValueExpression);
+    }
 
     private IEnumerable<TItem> GetSelectedItems()
     {
@@ -270,28 +338,78 @@
     private async Task ToggleAsync()
     {
         if (Disabled) return;
+        _blurCts?.Cancel();
         _open = !_open;
-        if (_open) _search = string.Empty;
+        if (_open)
+        {
+            _search = string.Empty;
+            _activeIndex = 0;
+        }
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        // Небольшая задержка, чтобы успел сработать клик по элементу внутри меню
-        await Task.Delay(200);
-        _open = false;
-        await InvokeAsync(StateHasChanged);
+        _blurCts?.Cancel();
+        _blurCts = new CancellationTokenSource();
+        var token = _blurCts.Token;
+        try
+        {
+            await Task.Delay(200, token);
+            _open = false;
+            _activeIndex = 0;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (TaskCanceledException) { }
     }
 
-    private Task OnSearchInput(ChangeEventArgs e)
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
         _search = e.Value?.ToString() ?? string.Empty;
-        return InvokeAsync(StateHasChanged);
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        var currentSearch = _search;
+        try
+        {
+            await Task.Delay(SearchDebounceMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                _search = currentSearch;
+                _activeIndex = 0;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
+        switch (e.Key)
+        {
+            case "Escape":
+                _open = false;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowDown":
+                if (!_open) { _open = true; await InvokeAsync(StateHasChanged); return; }
+                _activeIndex++;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowUp":
+                if (_activeIndex > 0) _activeIndex--;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "Enter":
+                if (_open)
+                {
+                    var items = GetFilteredItems().ToList();
+                    if (_activeIndex >= 0 && _activeIndex < items.Count)
+                        await ToggleItemAsync(KeySelector(items[_activeIndex]));
+                }
+                break;
+        }
     }
 
     private async Task ToggleItemAsync(TKey key)
@@ -301,6 +419,7 @@
         if (idx >= 0) list.RemoveAt(idx); else list.Add(key);
         Values = list;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }
 
@@ -310,7 +429,58 @@
         list.RemoveAll(k => EqualityComparer<TKey>.Default.Equals(k, key));
         Values = list;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus && _open)
+        {
+            await _searchInput.FocusAsync();
+        }
+    }
+
+    private async Task ClearAllAsync()
+    {
+        if (Disabled) return;
+        Values = Array.Empty<TKey>();
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(Array.Empty<TKey>());
+        _binder?.NotifyFieldChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleSelectAllAsync()
+    {
+        var filtered = GetFilteredItems().ToList();
+        var allSelected = filtered.All(it => IsSelected(KeySelector(it)));
+        var list = Values?.ToList() ?? new List<TKey>();
+        if (allSelected)
+        {
+            var removeKeys = filtered.Select(it => KeySelector(it)).ToHashSet();
+            list.RemoveAll(k => removeKeys.Contains(k));
+        }
+        else
+        {
+            foreach (var it in filtered)
+            {
+                var key = KeySelector(it);
+                if (!list.Contains(key)) list.Add(key);
+            }
+        }
+        Values = list;
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        _binder?.NotifyFieldChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        _blurCts?.Cancel();
+        _blurCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _binder?.Dispose();
     }
 }
 

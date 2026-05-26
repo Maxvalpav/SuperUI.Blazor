@@ -13,10 +13,10 @@
             }
         </div>
     }
-    <div class="sgc-slider-wrap">
+    <div class="sgc-slider-wrap @(ShowTooltip ? "sgc-slider-has-tooltip" : "")">
         <input id="@_sliderId"
                type="range"
-               class="sgc-slider @(IsInvalid ? "sgc-invalid" : "")"
+               class="sgc-slider @(IsInvalid ? "sgc-invalid" : "") @(Marks is { Count: > 0 } ? "sgc-slider-has-marks" : "")"
                role="slider"
                min="@Min"
                max="@Max"
@@ -35,9 +35,23 @@
                @oninput="OnInputAsync"
                @onkeydown="OnKeyDownAsync"
                @attributes="AdditionalAttributes" />
+        @if (ShowTooltip)
+        {
+            <span class="sgc-slider-tooltip" style="left: @FillPercent%">@ValueAsDouble@Suffix</span>
+        }
         @if (ShowValue && string.IsNullOrEmpty(Label))
         {
             <span class="sgc-slider-value">@ValueAsDouble@Suffix</span>
+        }
+        @if (Marks is { Count: > 0 })
+        {
+            <div class="sgc-slider-marks">
+                @foreach (var mark in Marks)
+                {
+                    var pct = Max > Min ? (mark - Min) / (Max - Min) * 100.0 : 0;
+                    <span class="sgc-slider-mark" style="left: @pct%"></span>
+                }
+            </div>
         }
     </div>
     @if (IsInvalid)
@@ -79,6 +93,12 @@
 
     /// <summary>Gets or sets whether to display the current value. Default is true.</summary>
     [Parameter] public bool ShowValue { get; set; } = true;
+
+    /// <summary>Whether to show a floating tooltip above the slider thumb displaying the current value.</summary>
+    [Parameter] public bool ShowTooltip { get; set; }
+
+    /// <summary>List of tick-mark values to render along the slider track. Each value must be within [Min, Max].</summary>
+    [Parameter] public List<double>? Marks { get; set; }
 
     /// <summary>Mark the slider as required.</summary>
     [Parameter] public bool Required { get; set; }

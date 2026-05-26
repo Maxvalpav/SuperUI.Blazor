@@ -12,7 +12,7 @@
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="sgc-combo @(Block ? "sgc-block" : "") sgc-size-@Size.ToString().ToLowerInvariant() @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
@@ -28,13 +28,15 @@
             @if (IsEnumMode)
             {
                 var selEnumItems = GetSelectedEnumItems().ToList();
-                @if (selEnumItems.Count == 0 && !_open)
+                var selEnumCount = selEnumItems.Count;
+                var displayEnumItems = selEnumItems.Take(MaxDisplayedTags).ToList();
+                if (selEnumCount == 0 && !_open)
                 {
                     <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
                 }
                 else
                 {
-                    foreach (var ei in selEnumItems)
+                    foreach (var ei in displayEnumItems)
                     {
                         var eiLocal = ei;
                         <span class="sgc-combo-tag" role="listitem" title="@eiLocal.Description">
@@ -49,6 +51,10 @@
                             }
                         </span>
                     }
+                    if (selEnumCount > MaxDisplayedTags)
+                    {
+                        <span class="sgc-combo-tag sgc-combo-tag-overflow">+@(selEnumCount - MaxDisplayedTags)</span>
+                    }
                     @if (_open)
                     {
                         <input class="sgc-combo-input"
@@ -58,20 +64,23 @@
                                aria-controls="@_listboxId"
                                @oninput="OnSearchInput"
                                @onkeydown="OnKeyDownAsync"
-                               @onclick:stopPropagation="true" />
+                               @onclick:stopPropagation="true"
+                               @ref="_searchInput" />
                     }
                 }
             }
             else
             {
                 var selItems = GetSelectedItems().ToList();
-                @if (selItems.Count == 0 && !_open)
+                var selCount = selItems.Count;
+                var displayItems = selItems.Take(MaxDisplayedTags).ToList();
+                if (selCount == 0 && !_open)
                 {
                     <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
                 }
                 else
                 {
-                    foreach (var v in selItems)
+                    foreach (var v in displayItems)
                     {
                         var vLocal = v;
                         <span class="sgc-combo-tag" role="listitem">
@@ -86,6 +95,10 @@
                             }
                         </span>
                     }
+                    if (selCount > MaxDisplayedTags)
+                    {
+                        <span class="sgc-combo-tag sgc-combo-tag-overflow">+@(selCount - MaxDisplayedTags)</span>
+                    }
                     @if (_open)
                     {
                         <input class="sgc-combo-input"
@@ -95,9 +108,14 @@
                                aria-controls="@_listboxId"
                                @oninput="OnSearchInput"
                                @onkeydown="OnKeyDownAsync"
-                               @onclick:stopPropagation="true" />
+                               @onclick:stopPropagation="true"
+                               @ref="_searchInput" />
                     }
                 }
+            }
+            @if (AllowClear && HasSelectedValues && !Disabled)
+            {
+                <button class="sgc-combo-clear" type="button" aria-label="@Localizer["Clear"]" @onclick:stopPropagation="true" @onclick="ClearAllAsync">@((MarkupString)SgIcons.X)</button>
             }
             <span class="sgc-combo-caret" aria-hidden="true">@((MarkupString)SgIcons.ChevronDown)</span>
         </div>
@@ -113,11 +131,16 @@
                     }
                     else
                     {
-                        @foreach (var ei in filteredEnum)
+                        var allFilteredSelected = filteredEnum.All(ei => IsEnumItemSelected(ei));
+                        <div class="sgc-select-all" @onclick:stopPropagation="true" @onclick="ToggleSelectAllEnumAsync">
+                            <input type="checkbox" checked="@allFilteredSelected" readonly tabindex="-1" style="pointer-events:none;" />
+                            <span>@(allFilteredSelected ? Localizer["DeselectAll"] : Localizer["SelectAll"])</span>
+                        </div>
+                        @for (int idx = 0; idx < filteredEnum.Count; idx++)
                         {
-                            var eiLocal = ei;
+                            var eiLocal = filteredEnum[idx];
                             var selected = IsEnumItemSelected(eiLocal);
-                            <div class="sgc-combo-option @(selected ? "sgc-selected" : "")"
+                            <div class="sgc-combo-option @(selected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
                                  role="option"
                                  aria-selected="@(selected ? "true" : "false")"
                                  title="@eiLocal.Description"
@@ -138,11 +161,16 @@
                     }
                     else
                     {
-                        @foreach (var it in filtered)
+                        var allFilteredSelected = filtered.All(it => IsSelected(KeySelector(it)));
+                        <div class="sgc-select-all" @onclick:stopPropagation="true" @onclick="ToggleSelectAllAsync">
+                            <input type="checkbox" checked="@allFilteredSelected" readonly tabindex="-1" style="pointer-events:none;" />
+                            <span>@(allFilteredSelected ? Localizer["DeselectAll"] : Localizer["SelectAll"])</span>
+                        </div>
+                        @for (int idx = 0; idx < filtered.Count; idx++)
                         {
-                            var itLocal = it;
+                            var itLocal = filtered[idx];
                             var selected = IsSelected(KeySelector(itLocal));
-                            <div class="sgc-combo-option @(selected ? "sgc-selected" : "")"
+                            <div class="sgc-combo-option @(selected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
                                  role="option"
                                  aria-selected="@(selected ? "true" : "false")"
                                  @onclick:stopPropagation="true"
@@ -173,8 +201,11 @@
     private readonly string _errorId = "sg-multi-err-" + Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private string _search = string.Empty;
+    private int _activeIndex;
     private SgEditContextBinder<IEnumerable<TKey>?>? _binder;
     private CancellationTokenSource? _blurCts;
+    private CancellationTokenSource? _searchCts;
+    private ElementReference _searchInput;
 
     // enum support
     private List<SgEnumItem>? _enumItems;
@@ -281,6 +312,21 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    /// <summary>Size of the multi-select: Sm, Md (default), or Lg.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>When true, shows a clear-all button when values are selected.</summary>
+    [Parameter] public bool AllowClear { get; set; }
+
+    /// <summary>Maximum number of tags to display before showing a "+N more" overflow badge.</summary>
+    [Parameter] public int MaxDisplayedTags { get; set; } = 10;
+
+    /// <summary>Whether to automatically focus the search input on first render.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>Debounce delay in milliseconds for search input. Default 300.</summary>
+    [Parameter] public int SearchDebounceMs { get; set; } = 300;
+
     private string EffectivePlaceholder => Placeholder ?? Localizer["Common_Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["Common_NoMatches"] : EmptyText;
 
@@ -290,6 +336,7 @@
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
     private string LabelFrom(TItem v) => LabelSelector is not null ? LabelSelector(v) : v?.ToString() ?? "";
+    private bool HasSelectedValues => Values?.Any() == true;
 
     // ── Enum support ──────────────────────────────────────────────────────────
 
@@ -412,7 +459,11 @@
         if (Disabled) return;
         _blurCts?.Cancel();
         _open = !_open;
-        if (_open) _search = string.Empty;
+        if (_open)
+        {
+            _search = string.Empty;
+            _activeIndex = 0;
+        }
         await InvokeAsync(StateHasChanged);
     }
 
@@ -425,20 +476,68 @@
         {
             await Task.Delay(200, token);
             _open = false;
+            _activeIndex = 0;
             await InvokeAsync(StateHasChanged);
         }
         catch (TaskCanceledException) { }
     }
 
-    private Task OnSearchInput(ChangeEventArgs e)
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
         _search = e.Value?.ToString() ?? string.Empty;
-        return InvokeAsync(StateHasChanged);
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        var currentSearch = _search;
+        try
+        {
+            await Task.Delay(SearchDebounceMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                _search = currentSearch;
+                _activeIndex = 0;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
+        switch (e.Key)
+        {
+            case "Escape":
+                _open = false;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowDown":
+                if (!_open) { _open = true; await InvokeAsync(StateHasChanged); return; }
+                _activeIndex++;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowUp":
+                if (_activeIndex > 0) _activeIndex--;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "Enter":
+                if (_open)
+                {
+                    if (IsEnumMode)
+                    {
+                        var enumItems = GetFilteredEnumItems().ToList();
+                        if (_activeIndex >= 0 && _activeIndex < enumItems.Count)
+                            await ToggleEnumItemAsync(enumItems[_activeIndex]);
+                    }
+                    else
+                    {
+                        var items = GetFilteredItems().ToList();
+                        if (_activeIndex >= 0 && _activeIndex < items.Count)
+                            await ToggleItemAsync(KeySelector(items[_activeIndex]));
+                    }
+                }
+                break;
+        }
     }
 
     // ── Toggle item ───────────────────────────────────────────────────────────
@@ -474,10 +573,78 @@
         await RemoveAsync(key);
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus && _open)
+        {
+            await _searchInput.FocusAsync();
+        }
+    }
+
+    private async Task ClearAllAsync()
+    {
+        if (Disabled) return;
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(Array.Empty<TKey>());
+        _binder?.NotifyFieldChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleSelectAllAsync()
+    {
+        var filtered = GetFilteredItems().ToList();
+        var allSelected = filtered.All(it => IsSelected(KeySelector(it)));
+        var list = Values?.ToList() ?? new List<TKey>();
+        if (allSelected)
+        {
+            var removeKeys = filtered.Select(it => KeySelector(it)).ToHashSet();
+            list.RemoveAll(k => removeKeys.Contains(k));
+        }
+        else
+        {
+            foreach (var it in filtered)
+            {
+                var key = KeySelector(it);
+                if (!list.Contains(key)) list.Add(key);
+            }
+        }
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        _binder?.NotifyFieldChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task ToggleSelectAllEnumAsync()
+    {
+        var filtered = GetFilteredEnumItems().ToList();
+        var allSelected = filtered.All(ei => IsEnumItemSelected(ei));
+        var list = Values?.ToList() ?? new List<TKey>();
+        if (allSelected)
+        {
+            foreach (var ei in filtered)
+            {
+                var key = EnumItemToKey(ei);
+                list.RemoveAll(k => EqualityComparer<TKey>.Default.Equals(k, key));
+            }
+        }
+        else
+        {
+            foreach (var ei in filtered)
+            {
+                var key = EnumItemToKey(ei);
+                if (!list.Any(k => EqualityComparer<TKey>.Default.Equals(k, key)))
+                    list.Add(key);
+            }
+        }
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(list);
+        _binder?.NotifyFieldChanged();
+        await InvokeAsync(StateHasChanged);
+    }
+
     public void Dispose()
     {
         _blurCts?.Cancel();
         _blurCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         _binder?.Dispose();
     }
 }

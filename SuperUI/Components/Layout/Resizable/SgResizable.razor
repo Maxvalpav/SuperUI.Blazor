@@ -25,16 +25,61 @@
     private static readonly string[] _allDirs = new[] { "n", "s", "e", "w", "ne", "nw", "se", "sw" };
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Initial width in px. Default 320.</summary>
     [Parameter] public double Width { get; set; } = 320;
+
+    /// <summary>Initial height in px. Default 200.</summary>
     [Parameter] public double Height { get; set; } = 200;
+
+    /// <summary>Minimum width in px. Default 80.</summary>
     [Parameter] public double MinWidth { get; set; } = 80;
+
+    /// <summary>Minimum height in px. Default 60.</summary>
     [Parameter] public double MinHeight { get; set; } = 60;
+
+    /// <summary>Maximum width in px. Default 4000.</summary>
     [Parameter] public double MaxWidth { get; set; } = 4000;
+
+    /// <summary>Maximum height in px. Default 4000.</summary>
     [Parameter] public double MaxHeight { get; set; } = 4000;
+
+    /// <summary>CSV of active resize handles: n,s,e,w,ne,nw,se,sw. Default "se,e,s".</summary>
     [Parameter] public string Handles { get; set; } = "se,e,s";
+
+    /// <summary>Disable resize. Default false.</summary>
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Fired live during drag with current (width, height).</summary>
     [Parameter] public EventCallback<(double Width, double Height)> SizeChanging { get; set; }
+
+    /// <summary>Fired on drag end with final (width, height).</summary>
     [Parameter] public EventCallback<(double Width, double Height)> SizeChanged { get; set; }
+
+    /// <summary>Optional aspect ratio (width/height) to maintain during resize. Default null (free).</summary>
+    [Parameter] public double? AspectRatio { get; set; }
+
+    /// <summary>Grid snap step in px. When set, sizes snap to multiples of this value. Default null (no snap).</summary>
+    [Parameter] public double? SnapStep { get; set; }
+
+    /// <summary>Show a tooltip overlay with current size during drag. Default false.</summary>
+    [Parameter] public bool ShowSizeTooltip { get; set; }
+
+    /// <summary>Handle visual prominence: Default, Minimal, or Prominent. Default Default.</summary>
+    [Parameter] public SgResizableHandleStyle HandleStyle { get; set; } = SgResizableHandleStyle.Default;
+
+    /// <summary>Target size to restore on double-click. Default (Width, Height) from initial params.</summary>
+    [Parameter] public (double Width, double Height)? DefaultSize { get; set; }
+
+    /// <summary>Fired on handle double-click. Receives current (width, height).</summary>
+    [Parameter] public EventCallback<(double Width, double Height)> HandleDoubleClick { get; set; }
+
+    private (double Width, double Height) _initialSize;
+
+    protected override void OnInitialized()
+    {
+        _initialSize = (Width, Height);
+    }
 
     private IEnumerable<string> EnabledHandles
     {
@@ -60,6 +105,13 @@
         }
     }
 
+    private string HandleSizeCss => HandleStyle switch
+    {
+        SgResizableHandleStyle.Minimal => "minimal",
+        SgResizableHandleStyle.Prominent => "prominent",
+        _ => "default"
+    };
+
     protected override async ValueTask OnInteractiveAsync()
     {
         await SafeInvokeVoidAsync("attach", RootRef, SelfRef,
@@ -70,7 +122,11 @@
                 maxWidth = MaxWidth,
                 maxHeight = MaxHeight,
                 disabled = Disabled,
-                liveFeedback = SizeChanging.HasDelegate
+                liveFeedback = SizeChanging.HasDelegate,
+                aspectRatio = AspectRatio,
+                snapStep = SnapStep,
+                showTooltip = ShowSizeTooltip,
+                handleSize = HandleSizeCss
             });
     }
 
@@ -90,7 +146,28 @@
         if (!changed) return;
         if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync((Width, Height));
         await InvokeAsync(StateHasChanged);
-        
+
+        if (IsInteractive)
+        {
+            try
+            {
+                await Task.Delay(10);
+                await SafeInvokeVoidAsync("reapplySize", RootRef);
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public async Task ResetSize()
+    {
+        var (dw, dh) = DefaultSize ?? _initialSize;
+        Width = dw;
+        Height = dh;
+        if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync((Width, Height));
+        if (HandleDoubleClick.HasDelegate) await HandleDoubleClick.InvokeAsync((Width, Height));
+        await InvokeAsync(StateHasChanged);
+
         if (IsInteractive)
         {
             try

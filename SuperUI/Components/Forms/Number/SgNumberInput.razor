@@ -3,26 +3,34 @@
 @inherits SgInputBase<TValue>
 @inject ISuperUILocalizer Localizer
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
 
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
 
-    <div class="sgc-num-wrap @(IsInvalid ? "sgc-num-invalid" : "") @(Disabled ? "sgc-num-disabled" : "")">
+    <div class="sgc-num-wrap sgc-size-@Size.ToString().ToLowerInvariant() @(IsInvalid ? "sgc-num-invalid" : "") @(Disabled ? "sgc-num-disabled" : "")">
 
-        <!-- Decrement -->
-        <button type="button"
-                class="sgc-num-btn sgc-num-dec"
-                disabled="@(Disabled || ReadOnly || IsAtMin)"
-                @onclick="DecrementAsync"
-                aria-label="@Localizer["NumberInput_Decrement"]"
-                tabindex="-1">
-            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
-                <rect x="2" y="7" width="12" height="2" rx="1"/>
-            </svg>
-        </button>
+        @if (ShowButtons)
+        {
+            <!-- Decrement -->
+            <button type="button"
+                    class="sgc-num-btn sgc-num-dec"
+                    disabled="@(Disabled || ReadOnly || IsAtMin)"
+                    @onclick="DecrementAsync"
+                    aria-label="@Localizer["NumberInput_Decrement"]"
+                    tabindex="-1">
+                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                    <rect x="2" y="7" width="12" height="2" rx="1"/>
+                </svg>
+            </button>
+        }
+
+        @if (!string.IsNullOrEmpty(Prefix))
+        {
+            <span class="sgc-num-prefix">@Prefix</span>
+        }
 
         <!-- Input -->
         <input id="@_id"
@@ -42,6 +50,7 @@
                @oninput="OnInputAsync"
                @onchange="OnChangeAsync"
                @onkeydown="OnKeyDownAsync"
+               @onwheel:preventDefault="DisableWheel"
                @attributes="AdditionalAttributes" />
 
         <!-- Unit suffix -->
@@ -50,18 +59,21 @@
             <span class="sgc-num-suffix">@Suffix</span>
         }
 
-        <!-- Increment -->
-        <button type="button"
-                class="sgc-num-btn sgc-num-inc"
-                disabled="@(Disabled || ReadOnly || IsAtMax)"
-                @onclick="IncrementAsync"
-                aria-label="@Localizer["NumberInput_Increment"]"
-                tabindex="-1">
-            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
-                <rect x="7" y="2" width="2" height="12" rx="1"/>
-                <rect x="2" y="7" width="12" height="2" rx="1"/>
-            </svg>
-        </button>
+        @if (ShowButtons)
+        {
+            <!-- Increment -->
+            <button type="button"
+                    class="sgc-num-btn sgc-num-inc"
+                    disabled="@(Disabled || ReadOnly || IsAtMax)"
+                    @onclick="IncrementAsync"
+                    aria-label="@Localizer["NumberInput_Increment"]"
+                    tabindex="-1">
+                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                    <rect x="7" y="2" width="2" height="12" rx="1"/>
+                    <rect x="2" y="7" width="12" height="2" rx="1"/>
+                </svg>
+            </button>
+        }
     </div>
 
     @if (IsInvalid)
@@ -120,6 +132,27 @@
     /// <summary>Expand to full width. Default <c>true</c>.</summary>
     [Parameter] public bool Block { get; set; } = true;
 
+    /// <summary>Size variant: Sm, Md (default), or Lg.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Whether to show +/- buttons. Default true.</summary>
+    [Parameter] public bool ShowButtons { get; set; } = true;
+
+    /// <summary>Label position relative to the field. Default Top.</summary>
+    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
+
+    /// <summary>Optional format string (e.g. "N2", "C2"). Ignored when <see cref="Decimals"/> is set.</summary>
+    [Parameter] public string? Format { get; set; }
+
+    /// <summary>Optional prefix text displayed before the input (e.g. "$").</summary>
+    [Parameter] public string? Prefix { get; set; }
+
+    /// <summary>When true, prevents value change on mouse wheel.</summary>
+    [Parameter] public bool DisableWheel { get; set; }
+
+    /// <summary>Culture used for parsing and formatting. Defaults to InvariantCulture.</summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
     /// <summary>Additional CSS class.</summary>
     [Parameter] public string? CssClass { get; set; }
 
@@ -143,15 +176,18 @@
         get
         {
             if (Value is null || EqualityComparer<TValue>.Default.Equals(Value, default)) return null;
+            var culture = Culture ?? System.Globalization.CultureInfo.InvariantCulture;
             if (Decimals.HasValue)
-                return Convert.ToDouble(Value).ToString($"F{Decimals.Value}", System.Globalization.CultureInfo.InvariantCulture);
-            return Convert.ToString(Value, System.Globalization.CultureInfo.InvariantCulture);
+                return Convert.ToDouble(Value, culture).ToString($"F{Decimals.Value}", culture);
+            if (!string.IsNullOrEmpty(Format))
+                return string.Format(culture, "{0:" + Format + "}", Value);
+            return Convert.ToString(Value, culture);
         }
     }
 
-    private string? StepStr => Step is null ? "1" : Convert.ToString(Step, System.Globalization.CultureInfo.InvariantCulture);
-    private string? MinStr  => Min  is null ? null : Convert.ToString(Min,  System.Globalization.CultureInfo.InvariantCulture);
-    private string? MaxStr  => Max  is null ? null : Convert.ToString(Max,  System.Globalization.CultureInfo.InvariantCulture);
+    private string? StepStr => Step is null ? "1" : Convert.ToString(Step, Culture ?? System.Globalization.CultureInfo.InvariantCulture);
+    private string? MinStr  => Min  is null ? null : Convert.ToString(Min,  Culture ?? System.Globalization.CultureInfo.InvariantCulture);
+    private string? MaxStr  => Max  is null ? null : Convert.ToString(Max,  Culture ?? System.Globalization.CultureInfo.InvariantCulture);
 
     private bool IsAtMin => Min is not null && Value is not null && ToDouble(Value) <= ToDouble(Min);
     private bool IsAtMax => Max is not null && Value is not null && ToDouble(Value) >= ToDouble(Max);
@@ -201,8 +237,8 @@
     private Task CommitAsync(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return SetValueAsync(default);
-        if (double.TryParse(raw, System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture, out var d))
+        var culture = Culture ?? System.Globalization.CultureInfo.InvariantCulture;
+        if (double.TryParse(raw, System.Globalization.NumberStyles.Float, culture, out var d))
         {
             if (Min is not null) d = Math.Max(d, ToDouble(Min));
             if (Max is not null) d = Math.Min(d, ToDouble(Max));
@@ -213,19 +249,21 @@
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private static double ToDouble(TValue? v)
+    private double ToDouble(TValue? v)
     {
         if (v is null) return 0;
-        try { return Convert.ToDouble(v, System.Globalization.CultureInfo.InvariantCulture); }
+        var culture = Culture ?? System.Globalization.CultureInfo.InvariantCulture;
+        try { return Convert.ToDouble(v, culture); }
         catch { return 0; }
     }
 
-    private static TValue? FromDouble(double d)
+    private TValue? FromDouble(double d)
     {
+        var culture = Culture ?? System.Globalization.CultureInfo.InvariantCulture;
         try
         {
             var t = Nullable.GetUnderlyingType(typeof(TValue)) ?? typeof(TValue);
-            return (TValue)Convert.ChangeType(d, t, System.Globalization.CultureInfo.InvariantCulture);
+            return (TValue)Convert.ChangeType(d, t, culture);
         }
         catch { return default; }
     }

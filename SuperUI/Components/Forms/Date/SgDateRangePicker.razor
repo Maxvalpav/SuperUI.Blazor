@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@using System.Linq.Expressions
 @using SuperUI.Localization
 @inject IJSRuntime JS
 
@@ -7,7 +8,7 @@
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-date @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(!string.IsNullOrEmpty(ErrorText) ? "sgc-invalid" : "")"
+    <div class="sgc-date @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(IsInvalid ? "sgc-invalid" : "") sgc-size-@Size.ToString().ToLowerInvariant()"
          data-sgdrp="@_uid"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
@@ -64,7 +65,7 @@
                 <div class="sgc-date-grid">
                     @for (var i = 0; i < 7; i++)
                     {
-                        var dow = ((int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek + i) % 7;
+                        var dow = ((int)EffectiveFirstDayOfWeek + i) % 7;
                         <div class="sgc-date-dow">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[dow]</div>
                     }
                     @foreach (var d in BuildGrid())
@@ -76,9 +77,10 @@
                         var isEnd = EndValue.HasValue && dl.Date == EndValue.Value.Date;
                         var inRange = IsInRange(dl);
                         var disabled = IsDisabled(dl);
+                        var exceedsRange = IsDateRangeExceeded(dl);
                         <button type="button"
-                                class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isStart ? "sgc-range-start" : "") @(isEnd ? "sgc-range-end" : "") @(inRange ? "sgc-in-range" : "") @(disabled ? "sgc-date-disabled" : "") @(isStart || isEnd ? "sgc-selected" : "")"
-                                disabled="@disabled"
+                                class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isStart ? "sgc-range-start" : "") @(isEnd ? "sgc-range-end" : "") @(inRange ? "sgc-in-range" : "") @(disabled ? "sgc-date-disabled" : "") @(exceedsRange ? "sgc-range-exceeded" : "") @(isStart || isEnd ? "sgc-selected" : "")"
+                                disabled="@(disabled || exceedsRange || ReadOnly)"
                                 @onclick="() => PickAsync(dl)">@dl.Day</button>
                     }
                 </div>
@@ -87,6 +89,10 @@
                     @if (HasRange)
                     {
                         <span>@DaysCountText</span>
+                    }
+                    @if (IsRangeInvalid)
+                    {
+                        <span class="sgc-range-warning">@Localizer["DateRangeInvalid"]</span>
                     }
                 </div>
 <div class="sgc-date-foot">
@@ -100,9 +106,13 @@
             </div>
         }
     </div>
-    @if (!string.IsNullOrEmpty(ErrorText))
+    @if (IsInvalid)
     {
-        <span class="sgc-error">@ErrorText</span>
+        <span class="sgc-error">@DisplayedError</span>
+    }
+    else if (IsRangeInvalid)
+    {
+        <span class="sgc-error">@Localizer["DateRangeInvalid"]</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
@@ -116,6 +126,11 @@
     private readonly string _uid     = Guid.NewGuid().ToString("N")[..8];
     private bool _open;
     private DateTime _view = DateTime.Today;
+
+    private SgEditContextBinder<DateTime?>? _startBinder;
+    private SgEditContextBinder<DateTime?>? _endBinder;
+
+    [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
     /// <summary>
     /// Gets or sets the start date of the selected range.
@@ -136,6 +151,16 @@
     /// Gets or sets the callback invoked when the end date changes.
     /// </summary>
     [Parameter] public EventCallback<DateTime?> EndValueChanged { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the expression identifying the start value for validation.
+    /// </summary>
+    [Parameter] public Expression<Func<DateTime?>>? StartValueExpression { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the expression identifying the end value for validation.
+    /// </summary>
+    [Parameter] public Expression<Func<DateTime?>>? EndValueExpression { get; set; }
     
     /// <summary>
     /// Gets or sets the date format string for displaying the selected range.
@@ -188,6 +213,11 @@
     [Parameter] public bool Disabled { get; set; }
     
     /// <summary>
+    /// Gets or sets whether the date range picker is read-only (popup visible but no selection).
+    /// </summary>
+    [Parameter] public bool ReadOnly { get; set; }
+    
+    /// <summary>
     /// Gets or sets whether the date range picker takes the full width of its container.
     /// Default is true.
     /// </summary>
@@ -202,6 +232,34 @@
     /// Gets or sets the maximum selectable date. Dates after this are disabled.
     /// </summary>
     [Parameter] public DateTime? Max { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the size of the component.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+    
+    /// <summary>
+    /// Gets or sets the maximum allowed range duration.
+    /// Dates beyond this range from the start date are disabled.
+    /// </summary>
+    [Parameter] public TimeSpan? MaxDateRange { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the minimum allowed range duration.
+    /// Ranges shorter than this show a warning.
+    /// </summary>
+    [Parameter] public TimeSpan? MinDateRange { get; set; }
+    
+    /// <summary>
+    /// Gets or sets a callback to determine if a specific date is disabled.
+    /// </summary>
+    [Parameter] public Func<DateTime, bool>? DisabledDate { get; set; }
+    
+    /// <summary>
+    /// Gets or sets the first day of the week.
+    /// When null, uses the current culture's default.
+    /// </summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
     
     /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
@@ -234,11 +292,45 @@
     private string EffectivePlaceholder => Placeholder ?? DefaultPlaceholder;
     private string EffectiveStartPlaceholder => StartPlaceholder ?? DefaultStartPlaceholder;
     private string EffectiveEndPlaceholder => EndPlaceholder ?? DefaultEndPlaceholder;
+    
+    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_startBinder?.HasValidationErrors ?? false) || (_endBinder?.HasValidationErrors ?? false);
+    private string? DisplayedError
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(ErrorText)) return ErrorText;
+            var startErrors = _startBinder?.ValidationMessages ?? Enumerable.Empty<string>();
+            var endErrors = _endBinder?.ValidationMessages ?? Enumerable.Empty<string>();
+            return startErrors.Concat(endErrors).FirstOrDefault();
+        }
+    }
+
+    private bool IsRangeInvalid
+    {
+        get
+        {
+            if (!HasRange) return false;
+            if (MaxDateRange.HasValue && (EndValue!.Value.Date - StartValue!.Value.Date) > MaxDateRange.Value) return true;
+            if (MinDateRange.HasValue && (EndValue!.Value.Date - StartValue!.Value.Date) < MinDateRange.Value) return true;
+            return false;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        _startBinder = new SgEditContextBinder<DateTime?>(StateHasChanged);
+        _endBinder = new SgEditContextBinder<DateTime?>(StateHasChanged);
+    }
 
     protected override void OnParametersSet()
     {
+        _startBinder?.Update(CascadedEditContext, StartValueExpression);
+        _endBinder?.Update(CascadedEditContext, EndValueExpression);
+        
         var seed = StartValue ?? EndValue;
-        if (seed.HasValue)
+        if (seed.HasValue && !_open)
         {
             _view = new DateTime(seed.Value.Year, seed.Value.Month, 1);
         }
@@ -246,10 +338,8 @@
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        // Задержка чтобы успел сработать клик по элементу внутри попапа
         await Task.Delay(250);
         if (!_open) return;
-        // Проверяем что фокус не внутри нашего компонента
         try
         {
             var isInside = await JS.InvokeAsync<bool>("eval",
@@ -284,7 +374,7 @@
     private IEnumerable<DateTime> BuildGrid()
     {
         var first = new DateTime(_view.Year, _view.Month, 1);
-        var fdow = (int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var fdow = (int)EffectiveFirstDayOfWeek;
         var startOffset = ((int)first.DayOfWeek - fdow + 7) % 7;
         var start = first.AddDays(-startOffset);
         for (var i = 0; i < 42; i++) yield return start.AddDays(i);
@@ -292,9 +382,17 @@
 
     private bool IsDisabled(DateTime d)
     {
+        if (DisabledDate is not null && DisabledDate(d.Date)) return true;
         if (Min.HasValue && d.Date < Min.Value.Date) return true;
         if (Max.HasValue && d.Date > Max.Value.Date) return true;
         return false;
+    }
+
+    private bool IsDateRangeExceeded(DateTime d)
+    {
+        if (!MaxDateRange.HasValue || !StartValue.HasValue || EndValue.HasValue) return false;
+        var diff = (d.Date - StartValue.Value.Date).Duration();
+        return diff > MaxDateRange.Value;
     }
 
     private bool IsInRange(DateTime d)
@@ -305,17 +403,16 @@
 
     private async Task PickAsync(DateTime d)
     {
-        if (IsDisabled(d)) return;
+        if (IsDisabled(d) || ReadOnly) return;
+        if (IsDateRangeExceeded(d)) return;
 
         if (!StartValue.HasValue || (StartValue.HasValue && EndValue.HasValue))
         {
-            // Начинаем новый диапазон — сбрасываем конец
             StartValue = d.Date;
             EndValue = null;
         }
         else
         {
-            // Завершаем диапазон
             if (d.Date < StartValue.Value.Date)
             {
                 EndValue = StartValue.Value.Date;
@@ -327,7 +424,6 @@
             }
         }
 
-        // Запоминаем до NotifyAsync — после него параметры могут быть перезаписаны Blazor-ом
         var shouldClose = StartValue.HasValue && EndValue.HasValue;
 
         await NotifyAsync();
@@ -368,7 +464,8 @@
     {
         if (StartValueChanged.HasDelegate) await StartValueChanged.InvokeAsync(StartValue);
         if (EndValueChanged.HasDelegate) await EndValueChanged.InvokeAsync(EndValue);
+        _startBinder?.NotifyFieldChanged();
+        _endBinder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }
 }
-

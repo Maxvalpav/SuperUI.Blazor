@@ -3,18 +3,24 @@
 @inherits SgInputBase<bool>
 
 <div class="sgc-check-field @(Block ? "sgc-block" : "") @CssClass">
-    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-check-invalid" : "")">
-        <span class="sgc-switch @SwitchSizeClass">
+    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(IsInvalid ? "sgc-check-invalid" : "")"
+           style="@SwitchColors">
+        <span class="sgc-switch @SwitchSizeClass @(Animation ? "sgc-switch-animated" : "") @(Loading ? "sgc-switch-loading" : "")">
             <input type="checkbox"
                    role="switch"
                    checked="@Value"
-                   disabled="@Disabled"
+                   disabled="@(Disabled || ReadOnly || Loading)"
                    aria-checked="@Value.ToString().ToLowerInvariant()"
                    aria-invalid="@(IsInvalid ? "true" : null)"
                    aria-describedby="@DescribedBy"
                    @onchange="OnChangeAsync"
-                   @attributes="AdditionalAttributes" />
+                   @attributes="AdditionalAttributes"
+                   @ref="_inputRef" />
             <span class="sgc-switch-slider"></span>
+            @if (Loading)
+            {
+                <span class="sgc-switch-spinner"></span>
+            }
         </span>
         @if (!string.IsNullOrEmpty(OnLabel) || !string.IsNullOrEmpty(OffLabel))
         {
@@ -44,6 +50,7 @@
     private readonly string _id = "sg-sw-" + Guid.NewGuid().ToString("N")[..8];
     private string _hintId => _id + "-hint";
     private string _errorId => _id + "-err";
+    private ElementReference _inputRef;
 
     /// <summary>Label text displayed next to the switch. Ignored if <see cref="ChildContent"/> or On/OffLabel are set.</summary>
     [Parameter] public string? Label { get; set; }
@@ -69,8 +76,14 @@
     /// <summary>Expand to full width of the container.</summary>
     [Parameter] public bool Block { get; set; }
 
-    /// <summary>Size of the switch: Sm, Md (default), Lg.</summary>
+    /// <summary>Size of the switch: Sm, Md (default), Lg, Xl.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Custom color for the switch track when ON. Accepts any CSS color value (e.g., "#34c759", "var(--sg-color-success)").</summary>
+    [Parameter] public string? OnColor { get; set; }
+
+    /// <summary>Custom color for the switch track when OFF. Accepts any CSS color value.</summary>
+    [Parameter] public string? OffColor { get; set; }
 
     /// <summary>Additional CSS class names applied to the outer field element.</summary>
     [Parameter] public string? CssClass { get; set; }
@@ -78,15 +91,70 @@
     /// <summary>Additional HTML attributes applied to the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>Custom CSS color that overrides OnColor. Takes precedence over <see cref="SwitchColor"/>.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Semantic color for the switch. Maps to a known theme CSS variable for OnColor.</summary>
+    [Parameter] public SgColor? SwitchColor { get; set; }
+
+    /// <summary>When true the switch appearance is preserved but user toggling is prevented.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>When true the thumb is replaced by a loading spinner and clicks are disabled.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Enables smooth animation on the thumb. Default is true.</summary>
+    [Parameter] public bool Animation { get; set; } = true;
+
     private bool IsInvalid => HasValidationErrors || !string.IsNullOrEmpty(ErrorText);
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string? SwitchColors
+    {
+        get
+        {
+            var on = ComputedOnColor;
+            var off = OffColor;
+            var parts = new List<string>();
+            if (on is not null) parts.Add($"--sgc-switch-on-color:{on}");
+            if (off is not null) parts.Add($"--sgc-switch-off-color:{off}");
+            return parts.Count > 0 ? string.Join(";", parts) : null;
+        }
+    }
+
+    private string? ComputedOnColor
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Color)) return Color;
+            if (SwitchColor.HasValue)
+            {
+                return SwitchColor.Value switch
+                {
+                    SgColor.Success => "var(--sg-color-success)",
+                    SgColor.Danger => "#e53935",
+                    SgColor.Warning => "#fb8c00",
+                    _ => OnColor
+                };
+            }
+            return OnColor;
+        }
+    }
 
     private string SwitchSizeClass => Size switch
     {
         SgSize.Sm => "sgc-switch-sm",
         SgSize.Lg => "sgc-switch-lg",
-        _         => ""
+        SgSize.Xl => "sgc-switch-xl",
+        _ => ""
     };
 
-    private Task OnChangeAsync(ChangeEventArgs e) => SetValueAsync(e.Value is true);
+    /// <summary>Programmatically focuses the switch input.</summary>
+    public ValueTask FocusAsync() => _inputRef.FocusAsync();
+
+    private Task OnChangeAsync(ChangeEventArgs e)
+    {
+        if (ReadOnly || Loading) return Task.CompletedTask;
+        return SetValueAsync(e.Value is true);
+    }
 }

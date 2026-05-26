@@ -8,16 +8,20 @@
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
-    <div class="sgc-num @(IsInvalid ? "sgc-invalid" : "") @(Disabled ? "sgc-disabled" : "")">
+    <div class="sgc-num sgc-size-@Size.ToString().ToLowerInvariant() @(IsInvalid ? "sgc-invalid" : "") @(Disabled ? "sgc-disabled" : "")">
         @if (ShowButtons)
         {
             <button type="button" class="sgc-num-btn sgc-num-dec" tabindex="-1"
                     aria-label="@Localizer["NumberInput_Decrement"]"
-                    disabled="@(Disabled || ReadOnly)" @onclick="StepDownAsync">
+                    disabled="@(Disabled || ReadOnly || IsAtMin)" @onclick="StepDownAsync">
                 <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
                     <rect x="2" y="7" width="12" height="2" rx="1"/>
                 </svg>
             </button>
+        }
+        @if (!string.IsNullOrEmpty(Prefix))
+        {
+            <span class="sgc-num-prefix">@Prefix</span>
         }
         <input id="@_id"
                type="text"
@@ -46,7 +50,7 @@
         {
             <button type="button" class="sgc-num-btn sgc-num-inc" tabindex="-1"
                     aria-label="@Localizer["NumberInput_Increment"]"
-                    disabled="@(Disabled || ReadOnly)" @onclick="StepUpAsync">
+                    disabled="@(Disabled || ReadOnly || IsAtMax)" @onclick="StepUpAsync">
                 <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
                     <rect x="7" y="2" width="2" height="12" rx="1"/>
                     <rect x="2" y="7" width="12" height="2" rx="1"/>
@@ -180,9 +184,55 @@
     [Parameter] public string? CssClass { get; set; }
 
     /// <summary>
+    /// Gets or sets the size variant. Default is Md.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the Enter key is pressed.
+    /// </summary>
+    [Parameter] public EventCallback OnEnterPressed { get; set; }
+
+    /// <summary>
+    /// Gets or sets the prefix text displayed before the input (e.g. "$").
+    /// </summary>
+    [Parameter] public string? Prefix { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of decimal places for display. When set, overrides <see cref="Format"/>.
+    /// </summary>
+    [Parameter] public int? Decimals { get; set; }
+
+    /// <summary>
     /// Gets or sets additional HTML attributes to apply to the input element.
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── Computed ──────────────────────────────────────────────────────────────
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
+        ? ErrorText
+        : _binder?.ValidationMessages.FirstOrDefault();
+    private string? DescribedBy => IsInvalid
+        ? _errorId
+        : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private bool IsAtMin => Min is not null && Value is not null && Convert.ToDecimal(Value) <= Convert.ToDecimal(Min);
+    private bool IsAtMax => Max is not null && Value is not null && Convert.ToDecimal(Value) >= Convert.ToDecimal(Max);
+
+    private string? CurrentText
+    {
+        get
+        {
+            if (Value is null) return string.Empty;
+            if (Decimals.HasValue)
+                return Convert.ToDecimal(Value.Value, CultureInfo.CurrentCulture).ToString($"F{Decimals.Value}", CultureInfo.CurrentCulture);
+            if (!string.IsNullOrEmpty(Format))
+                return string.Format(CultureInfo.CurrentCulture, "{0:" + Format + "}", Value.Value);
+            return Convert.ToString(Value.Value, CultureInfo.CurrentCulture);
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -194,31 +244,18 @@
         _binder?.Update(CascadedEditContext, ValueExpression);
     }
 
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
-        ? ErrorText
-        : _binder?.ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid
-        ? _errorId
-        : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-
-    private string? CurrentText
-    {
-        get
-        {
-            if (Value is null) return string.Empty;
-            if (!string.IsNullOrEmpty(Format))
-                return string.Format(CultureInfo.CurrentCulture, "{0:" + Format + "}", Value.Value);
-            return Convert.ToString(Value.Value, CultureInfo.CurrentCulture);
-        }
-    }
-
     private Task OnInputAsync(ChangeEventArgs e) => Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
     private Task OnChangeAsync(ChangeEventArgs e) => !Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (Disabled || ReadOnly) return;
+        if (e.Key == "Enter")
+        {
+            if (OnEnterPressed.HasDelegate)
+                await OnEnterPressed.InvokeAsync();
+            return;
+        }
         if (e.Key == "ArrowUp" || e.Key == "ArrowDown")
         {
             if (e.Key == "ArrowUp") await StepUpAsync();

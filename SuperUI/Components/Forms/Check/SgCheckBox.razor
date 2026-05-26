@@ -1,12 +1,14 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 @inherits SgInputBase<bool>
 @inject IJSRuntime JS
 
 <div class="sgc-check-field @(Block ? "sgc-block" : "") @CssClass">
-    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(Indeterminate ? "sgc-indeterminate" : "") @(IsInvalid ? "sgc-check-invalid" : "")">
+    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(Indeterminate ? "sgc-indeterminate" : "") @(IsInvalid ? "sgc-check-invalid" : "") @(Animation ? "sgc-check-animated" : "") @SizeClass"
+           style="@CheckStyle">
         <input type="checkbox"
                checked="@Value"
-               disabled="@Disabled"
+               disabled="@(Disabled || ReadOnly)"
                aria-checked="@AriaChecked"
                aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy"
@@ -65,9 +67,46 @@
     /// <summary>Additional HTML attributes applied to the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>Size of the checkbox. Default is Md.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Custom CSS color value for the checkbox accent. Overrides the default theme color.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Semantic color for the checkbox accent. Maps to a known theme CSS variable.</summary>
+    [Parameter] public SgColor? CheckColor { get; set; }
+
+    /// <summary>When true the checkbox appearance is preserved but user toggling is prevented.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Enables a subtle scale animation on check and active states. Default is true.</summary>
+    [Parameter] public bool Animation { get; set; } = true;
+
     private bool IsInvalid => HasValidationErrors || !string.IsNullOrEmpty(ErrorText);
     private string AriaChecked => Indeterminate ? "mixed" : Value.ToString().ToLowerInvariant();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-check-sm",
+        SgSize.Lg => "sgc-check-lg",
+        _ => null
+    };
+
+    private string? CheckStyle
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Color))
+                return $"--sgc-check-color:{Color}";
+            if (CheckColor.HasValue)
+                return $"--sgc-check-color:var(--sg-color-{CheckColor.Value.ToString().ToLowerInvariant()})";
+            return null;
+        }
+    }
+
+    /// <summary>Programmatically focuses the checkbox input.</summary>
+    public ValueTask FocusAsync() => _inputRef.FocusAsync();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -93,6 +132,7 @@
 
     private async Task OnChangeAsync(ChangeEventArgs e)
     {
+        if (ReadOnly) return;
         if (Indeterminate)
         {
             await SetIndeterminateAsync();

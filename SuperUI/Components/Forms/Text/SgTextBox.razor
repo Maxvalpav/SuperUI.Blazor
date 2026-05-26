@@ -3,7 +3,7 @@
 @using SuperUI.Enums
 @inherits SgInputBase<TValue>
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @SizeClass @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
@@ -26,6 +26,8 @@
                       readonly="@ReadOnly"
                       required="@Required"
                       maxlength="@MaxLength"
+                      inputmode="@InputMode"
+                      autofocus="@(AutoFocus ? "autofocus" : null)"
                       aria-required="@(Required ? "true" : null)"
                       aria-invalid="@(IsInvalid ? "true" : null)"
                       aria-describedby="@DescribedBy"
@@ -45,6 +47,8 @@
                    readonly="@ReadOnly"
                    required="@Required"
                    maxlength="@MaxLength"
+                   inputmode="@InputMode"
+                   autofocus="@(AutoFocus ? "autofocus" : null)"
                    aria-required="@(Required ? "true" : null)"
                    aria-invalid="@(IsInvalid ? "true" : null)"
                    aria-describedby="@DescribedBy"
@@ -118,25 +122,64 @@
     private string _errorId => _id + "-err";
     private bool _showPassword;
 
+    /// <summary>Label text displayed above the input.</summary>
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>Position of the label relative to the input. Default is <see cref="SgLabelPosition.Top"/>.</summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
+
+    /// <summary>Placeholder text displayed inside the input when empty.</summary>
     [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>Hint text displayed below the input.</summary>
     [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Override error text. Takes precedence over EditContext validation messages.</summary>
     [Parameter] public string? ErrorText { get; set; }
+
+    /// <summary>Input type attribute (e.g., "text", "email", "password", "number", "tel", "url"). Default is "text".</summary>
     [Parameter] public string Type { get; set; } = "text";
+
+    /// <summary>Whether to render a multi-line textarea instead of a single-line input.</summary>
     [Parameter] public bool Multiline { get; set; }
+
+    /// <summary>Number of visible rows when <see cref="Multiline"/> is true. Default is 3.</summary>
     [Parameter] public int Rows { get; set; } = 3;
+
+    /// <summary>Mark the input as required. Adds a visual indicator to the label and sets the <c>required</c> attribute.</summary>
     [Parameter] public bool Required { get; set; }
+
+    /// <summary>Whether the input is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Whether the input is read-only.</summary>
     [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Expand the input to full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
+
+    /// <summary>Additional CSS class names applied to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Whether to commit the value on every keystroke (<c>true</c>) or only on blur (<c>false</c>). Default is true.</summary>
     [Parameter] public bool Immediate { get; set; } = true;
+
+    /// <summary>Callback invoked when the Enter key is pressed while the input is focused.</summary>
     [Parameter] public EventCallback OnEnterPressed { get; set; }
+
+    /// <summary>Debounce delay in milliseconds. When set, value changes are committed after the specified delay without further input.</summary>
     [Parameter] public int Debounce { get; set; }
+
+    /// <summary>Maximum character length for the input value. Enforced via the <c>maxlength</c> attribute.</summary>
     [Parameter] public int? MaxLength { get; set; }
+
+    /// <summary>Whether to show a clear button when the input has a value. Default is true.</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
+
+    /// <summary>Alias for <see cref="AllowClear"/>. Kept for backwards compatibility.</summary>
     [Parameter] public bool ShowClearButton { get => AllowClear; set => AllowClear = value; }
+
+    /// <summary>Whether to show a character counter (current / max) below the input. Requires <see cref="MaxLength"/>.</summary>
     [Parameter] public bool ShowCounter { get; set; }
 
     /// <summary>Text prefix shown inside the input on the left side.</summary>
@@ -151,6 +194,16 @@
     /// <summary>Icon rendered on the right side inside the input. Takes precedence over <see cref="Suffix"/>. Not shown when Type="password".</summary>
     [Parameter] public RenderFragment? EndIcon { get; set; }
 
+    /// <summary>Size of the input: Sm, Md (default), or Lg.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Hint for the browser's virtual keyboard type. Values: "text", "search", "email", "tel", "url", "numeric", "decimal", "none".</summary>
+    [Parameter] public string? InputMode { get; set; }
+
+    /// <summary>Whether to automatically focus the input on first render.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>Additional HTML attributes applied to the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
@@ -168,6 +221,13 @@
 
     private bool HasPrefix => StartIcon is not null || !string.IsNullOrEmpty(Prefix);
     private bool HasSuffix => (EndIcon is not null || !string.IsNullOrEmpty(Suffix)) && !IsPassword;
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-field-sm",
+        SgSize.Lg => "sgc-field-lg",
+        _         => null
+    };
 
     private void TogglePasswordVisibility() => _showPassword = !_showPassword;
 

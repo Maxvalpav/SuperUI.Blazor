@@ -48,9 +48,23 @@
                 {
                     <div class="sgc-combo-empty" role="status">@Localizer["DataGrid_AutoCompleteMinChars"]</div>
                 }
+                else if (Loading)
+                {
+                    <div class="sgc-combo-empty" role="status">
+                        <span class="sgc-combo-spinner"></span>
+                        @Localizer["Loading"]
+                    </div>
+                }
                 else if (filtered.Count == 0)
                 {
-                    <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    @if (NoResultsTemplate is not null)
+                    {
+                        @NoResultsTemplate
+                    }
+                    else
+                    {
+                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                    }
                 }
                 else
                 {
@@ -89,6 +103,7 @@
     private int _activeIndex = -1;
     private SgEditContextBinder<TItem?>? _binder;
     private CancellationTokenSource? _blurCts;
+    private CancellationTokenSource? _searchCts;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
     
@@ -178,12 +193,20 @@
     /// <summary>
     /// Gets or sets additional CSS class names to apply to the field container.
     /// </summary>
+    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional CSS styles to apply to the field container.
-    /// </summary>
+    /// <summary>Gets or sets additional CSS styles to apply to the field container.</summary>
     [Parameter] public string? Style { get; set; }
+
+    /// <summary>Debounce delay in milliseconds for the search input. When set, filtering is delayed until the user stops typing.</summary>
+    [Parameter] public int DebounceMs { get; set; }
+
+    /// <summary>Whether to show a loading indicator inside the dropdown (e.g., during async search).</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Custom content shown when no items match the search. Overrides <see cref="EmptyText"/>.</summary>
+    [Parameter] public RenderFragment? NoResultsTemplate { get; set; }
 
     /// <summary>
     /// Gets or sets additional HTML attributes to apply to the combobox element.
@@ -276,7 +299,28 @@
             }
         }
 
-        await InvokeAsync(StateHasChanged);
+        if (DebounceMs > 0)
+        {
+            _searchCts?.Cancel();
+            _searchCts?.Dispose();
+            _searchCts = new CancellationTokenSource();
+            var token = _searchCts.Token;
+            var currentSearch = _search;
+            try
+            {
+                await Task.Delay(DebounceMs, token);
+                if (!token.IsCancellationRequested)
+                {
+                    _search = currentSearch;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (TaskCanceledException) { }
+        }
+        else
+        {
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
@@ -336,6 +380,8 @@
     {
         _blurCts?.Cancel();
         _blurCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         _binder?.Dispose();
     }
 }

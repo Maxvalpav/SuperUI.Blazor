@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 @typeparam TValue
 @inherits SgInputBase<TValue>
 
@@ -7,22 +8,20 @@
      aria-labelledby="@(string.IsNullOrEmpty(Label) ? null : _labelId)"
      aria-required="@(Required ? "true" : null)"
      aria-invalid="@(IsInvalid ? "true" : null)"
-     @attributes="AdditionalAttributes">
+     @attributes="AdditionalAttributes"
+     style="@RadioStyle">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="@RadioListClass" @onkeydown="OnKeyDownAsync">
-        @{
-            var optionList = Options as IList<RadioOption<TValue>> ?? Options.ToList();
-        }
-        @for (var i = 0; i < optionList.Count; i++)
+    <div class="@RadioListClass @(ReadOnly ? "sgc-readonly" : "")" @onkeydown="OnKeyDownAsync">
+        @for (var i = 0; i < _optionsList.Count; i++)
         {
             var idx = i;
-            var o = optionList[idx];
+            var o = _optionsList[idx];
             var checkedNow = EqualityComparer<TValue>.Default.Equals(Value, o.Value);
-            var optDisabled = Disabled || o.Disabled;
-            <label class="sgc-check @(ButtonGroup ? "sgc-radio-btn" : "") @(optDisabled ? "sgc-disabled" : "") @(checkedNow && ButtonGroup ? "sgc-radio-btn-active" : "")">
+            var optDisabled = Disabled || ReadOnly || o.Disabled;
+            <label class="sgc-check @SizeClass @(ButtonGroup ? "sgc-radio-btn" : "") @(optDisabled ? "sgc-disabled" : "") @(checkedNow && ButtonGroup ? "sgc-radio-btn-active" : "")">
                 <input type="radio"
                        name="@_name"
                        checked="@checkedNow"
@@ -36,7 +35,7 @@
     </div>
     @if (IsInvalid)
     {
-        <span id="@_errorId" class="sgc-error">@ValidationMessages.FirstOrDefault()</span>
+        <span id="@_errorId" class="sgc-error">@(!string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault())</span>
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
@@ -49,13 +48,15 @@
     private readonly string _labelId = "sgrg-lbl-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _hintId = "sgrg-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sgrg-err-" + Guid.NewGuid().ToString("N")[..8];
+    private List<RadioOption<TValue>> _optionsList = new();
+    private ElementReference _inputRef;
 
     private int _firstEnabledIndex
     {
         get
         {
             var i = 0;
-            foreach (var o in Options)
+            foreach (var o in _optionsList)
             {
                 if (!(Disabled || o.Disabled)) return i;
                 i++;
@@ -74,10 +75,41 @@
         }
     }
 
-    private bool IsInvalid => HasValidationErrors;
+    private bool IsInvalid => HasValidationErrors || !string.IsNullOrEmpty(ErrorText);
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-radio-sm",
+        SgSize.Lg => "sgc-radio-lg",
+        _ => null
+    };
+
+    private string? RadioStyle
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(Color))
+                return $"--sgc-radio-color:{Color}";
+            if (RadioColor.HasValue)
+                return $"--sgc-radio-color:var(--sg-color-{RadioColor.Value.ToString().ToLowerInvariant()})";
+            return null;
+        }
+    }
 
     /// <summary>Gets or sets the collection of radio button options to display.</summary>
     [Parameter] public IEnumerable<RadioOption<TValue>> Options { get; set; } = Array.Empty<RadioOption<TValue>>();
+
+    /// <summary>Raw data source for the radio group. When non-null, <see cref="OptionLabelSelector"/> is used to build display options.</summary>
+    [Parameter] public IEnumerable<TValue>? ItemsSource { get; set; }
+
+    /// <summary>Function that extracts the display label from a raw item when <see cref="ItemsSource"/> is set.</summary>
+    [Parameter] public Func<TValue, string>? OptionLabelSelector { get; set; }
+
+    /// <summary>Function that extracts the value from a raw item when <see cref="ItemsSource"/> is set.</summary>
+    [Parameter] public Func<TValue, TValue>? OptionValueSelector { get; set; }
+
+    /// <summary>Function that determines whether a raw item is disabled when <see cref="ItemsSource"/> is set.</summary>
+    [Parameter] public Func<TValue, bool>? OptionDisabledSelector { get; set; }
 
     /// <summary>Gets or sets the label text displayed above the radio group.</summary>
     [Parameter] public string? Label { get; set; }
@@ -85,14 +117,17 @@
     /// <summary>Hint text shown below the radio group.</summary>
     [Parameter] public string? Hint { get; set; }
 
+    /// <summary>Override error text displayed below the radio group. Takes precedence over EditContext validation messages.</summary>
+    [Parameter] public string? ErrorText { get; set; }
+
     /// <summary>Gets or sets the layout direction of the options. Default is Horizontal.</summary>
     [Parameter] public SgRadioOrientation Orientation { get; set; } = SgRadioOrientation.Horizontal;
 
     /// <summary>When true, renders options as a connected segmented button group instead of radio buttons.</summary>
     [Parameter] public bool ButtonGroup { get; set; }
 
-    /// <summary>Gets or sets whether the radio group should take full width of its container. Default is true.</summary>
-    [Parameter] public bool Block { get; set; } = true;
+    /// <summary>Gets or sets whether the radio group should take full width of its container. Default is false.</summary>
+    [Parameter] public bool Block { get; set; } = false;
 
     /// <summary>Gets or sets whether a selection is required.</summary>
     [Parameter] public bool Required { get; set; }
@@ -100,24 +135,60 @@
     /// <summary>Gets or sets whether all radio buttons are disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
+    /// <summary>When true the radio group appearance is preserved but selection changes are prevented.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
+    /// <summary>Size of radio buttons. Default is Md.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Custom CSS color value for radio accent. Overrides the default theme color.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Semantic color for radio accent. Maps to a known theme CSS variable.</summary>
+    [Parameter] public SgColor? RadioColor { get; set; }
+
+    /// <summary>Additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>Gets or sets additional HTML attributes applied to the field container.</summary>
+    /// <summary>Additional HTML attributes applied to the field container.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    private Task SelectAsync(TValue? value) => SetValueAsync(value);
+    /// <summary>Programmatically focuses the first radio input.</summary>
+    public ValueTask FocusAsync() => _inputRef.FocusAsync();
+
+    protected override void OnParametersSet()
+    {
+        if (ItemsSource is not null)
+        {
+            _optionsList = ItemsSource.Select(item =>
+            {
+                var val = OptionValueSelector is not null ? OptionValueSelector(item) : item;
+                var lbl = OptionLabelSelector is not null ? OptionLabelSelector(item) : (item is not null ? item.ToString() ?? string.Empty : string.Empty);
+                var dis = OptionDisabledSelector is not null && OptionDisabledSelector(item);
+                return new RadioOption<TValue> { Value = val, Label = lbl, Disabled = dis };
+            }).ToList();
+        }
+        else
+        {
+            _optionsList = Options.ToList();
+        }
+    }
+
+    private Task SelectAsync(TValue? value)
+    {
+        if (ReadOnly) return Task.CompletedTask;
+        return SetValueAsync(value);
+    }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (Disabled) return;
-        var list = Options as IList<RadioOption<TValue>> ?? Options.ToList();
-        if (list.Count == 0) return;
+        if (Disabled || ReadOnly) return;
+        if (_optionsList.Count == 0) return;
 
         var current = -1;
-        for (var i = 0; i < list.Count; i++)
+        for (var i = 0; i < _optionsList.Count; i++)
         {
-            if (EqualityComparer<TValue>.Default.Equals(Value, list[i].Value))
+            if (EqualityComparer<TValue>.Default.Equals(Value, _optionsList[i].Value))
             {
                 current = i;
                 break;
@@ -129,24 +200,24 @@
         {
             case "ArrowRight":
             case "ArrowDown":
-                next = NextEnabled(list, current, +1);
+                next = NextEnabled(_optionsList, current, +1);
                 break;
             case "ArrowLeft":
             case "ArrowUp":
-                next = NextEnabled(list, current, -1);
+                next = NextEnabled(_optionsList, current, -1);
                 break;
             case "Home":
-                next = NextEnabled(list, -1, +1);
+                next = NextEnabled(_optionsList, -1, +1);
                 break;
             case "End":
-                next = NextEnabled(list, list.Count, -1);
+                next = NextEnabled(_optionsList, _optionsList.Count, -1);
                 break;
             default:
                 return;
         }
 
         if (next >= 0 && next != current)
-            await SelectAsync(list[next].Value);
+            await SelectAsync(_optionsList[next].Value);
     }
 
     private static int NextEnabled(IList<RadioOption<TValue>> list, int from, int step)

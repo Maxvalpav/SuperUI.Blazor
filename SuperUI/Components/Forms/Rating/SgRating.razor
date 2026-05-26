@@ -6,65 +6,86 @@
      aria-valuemin="0"
      aria-valuemax="@Max"
      aria-valuenow="@Value"
+     style="@(Color is not null ? $"--sgc-rating-color:{Color}" : null)"
      @attributes="AttributesWithoutClassAndStyle">
+    @{
+        var displayValue = _hoverValue > 0 ? _hoverValue : Value;
+        var fullStars = (int)Math.Floor(displayValue);
+        var hasHalf = HalfStar && displayValue - fullStars >= 0.5;
+    }
     @for (int i = 1; i <= Max; i++)
     {
-        var value = i;
-        <span class="@GetStarClass(value)"
-              @onclick="() => SetValue(value)"
-              @onmouseenter="() => Hover(value)"
+        var starValue = i;
+        var isFull = starValue <= fullStars;
+        var isHalfStar = HalfStar && starValue == fullStars + 1 && hasHalf;
+        var cls = isFull || isHalfStar ? "sgc-rating-star sgc-active" : "sgc-rating-star";
+        if (isHalfStar) cls += " sgc-rating-half";
+        <span class="@cls"
+              @onclick="() => SetValue(HalfStar && starValue == fullStars + 1 && hasHalf ? starValue - 0.5 : (double)starValue)"
+              @onmouseenter="() => Hover(starValue)"
               @onmouseleave="() => Hover(0)"
-              aria-label="@(value + " stars")">
-            <SgIcon Icon="@SgIcons.Star" />
+              aria-label="@(starValue + " stars")">
+            @if (isHalfStar)
+            {
+                <span class="sgc-rating-half-bg">
+                    <SgIcon Icon="@SgIcons.Star" />
+                </span>
+                <span class="sgc-rating-half-fill">
+                    <SgIcon Icon="@SgIcons.StarFill" />
+                </span>
+            }
+            else
+            {
+                <SgIcon Icon="@(isFull ? SgIcons.StarFill : SgIcons.Star)" />
+            }
         </span>
     }
 </div>
 
 @code {
-    /// <summary>
-    /// Gets or sets the current rating value.
-    /// </summary>
-    [Parameter] public int Value { get; set; }
+    /// <summary>Gets or sets the current rating value. Supports integer values; half-star increments when <see cref="HalfStar"/> is enabled.</summary>
+    [Parameter] public double Value { get; set; }
 
-    /// <summary>
-    /// Callback invoked when the rating value changes.
-    /// </summary>
-    [Parameter] public EventCallback<int> ValueChanged { get; set; }
+    /// <summary>Callback invoked when the rating value changes.</summary>
+    [Parameter] public EventCallback<double> ValueChanged { get; set; }
 
-    /// <summary>
-    /// Gets or sets the maximum rating value. Default is 5.
-    /// </summary>
+    /// <summary>Gets or sets the maximum rating value. Default is 5.</summary>
     [Parameter] public int Max { get; set; } = 5;
 
-    /// <summary>
-    /// Gets or sets whether the rating is disabled.
-    /// </summary>
+    /// <summary>Gets or sets whether the rating is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the rating is read-only.
-    /// </summary>
+    /// <summary>Gets or sets whether the rating is read-only.</summary>
     [Parameter] public bool ReadOnly { get; set; }
 
-    private int _hoverValue;
+    /// <summary>Enables 0.5-star increments. The <see cref="Value"/> property accepts double when this is enabled.</summary>
+    [Parameter] public bool HalfStar { get; set; }
 
-    private void Hover(int value)
+    /// <summary>Custom color for active (filled) stars. Accepts any CSS color value.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    private double _hoverValue;
+
+    private void Hover(double value)
     {
         if (Disabled || ReadOnly) return;
         _hoverValue = value;
     }
 
-    private async Task SetValue(int value)
+    private async Task SetValue(double value)
     {
         if (Disabled || ReadOnly) return;
+        if (HalfStar)
+        {
+            value = Math.Round(value * 2, MidpointRounding.AwayFromZero) / 2;
+            value = Math.Clamp(value, 0, Max);
+        }
+        else
+        {
+            value = Math.Clamp(Math.Round(value), 0, Max);
+        }
         Value = value;
         if (ValueChanged.HasDelegate)
             await ValueChanged.InvokeAsync(Value);
-    }
-
-    private string GetStarClass(int index)
-    {
-        var displayValue = _hoverValue > 0 ? _hoverValue : Value;
-        return index <= displayValue ? "sgc-rating-star sgc-active" : "sgc-rating-star";
     }
 }
