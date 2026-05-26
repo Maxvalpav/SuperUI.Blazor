@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Globalization;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Rendering;
@@ -17,12 +16,10 @@ public partial class SgSplitter
     private readonly List<ElementReference> _paneRefs = new();
     private readonly List<ElementReference> _barRefs = new();
     private readonly Dictionary<SgSplitterPane, double> _paneSizes = new();
-    private static readonly ConcurrentDictionary<string, double[]> _persistedSizes = new();
     private bool _isDragging;
     private double _currentSize;
     private double _initialSize;
     private bool _needsAttach = true;
-    private bool _persistDirty;
     private bool _interactiveReady;
 
     [Parameter] public RenderFragment? First { get; set; }
@@ -42,7 +39,6 @@ public partial class SgSplitter
     [Parameter] public double? SnapToGrid { get; set; }
     [Parameter] public EventCallback OnResizeStart { get; set; }
     [Parameter] public EventCallback<double[]> OnResizeEnd { get; set; }
-    [Parameter] public string? PersistKey { get; set; }
     [Parameter] public string? HandleTooltip { get; set; }
 
     private bool IsVertical => Orientation == SgOrientation.Vertical || Vertical;
@@ -92,19 +88,25 @@ public partial class SgSplitter
         return _panes[index].Size ?? 200;
     }
 
+    private double _lastSize;
+
     protected override void OnInitialized()
     {
         base.OnInitialized();
         _currentSize = Size;
         _initialSize = Size;
+        _lastSize = Size;
         BuildRenderContent();
     }
 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        if (!_isDragging && Math.Abs(Size - _currentSize) > 0.5)
+        if (!_isDragging && Math.Abs(Size - _lastSize) > 0.5)
+        {
             _currentSize = Size;
+            _lastSize = Size;
+        }
         BuildRenderContent();
     }
 
@@ -292,15 +294,6 @@ public partial class SgSplitter
             initialSizes[i] = GetPaneSize(i);
         }
 
-        if (PersistKey != null && _persistedSizes.TryGetValue(PersistKey, out var saved))
-        {
-            for (var i = 0; i < saved.Length && i < _panes.Count; i++)
-            {
-                _paneSizes[_panes[i]] = saved[i];
-                initialSizes[i] = saved[i];
-            }
-        }
-
         var options = new
         {
             step = Step,
@@ -358,7 +351,6 @@ public partial class SgSplitter
     {
         if (Math.Abs(size - _currentSize) < 0.5) return;
         _currentSize = size;
-        _persistDirty = true;
         if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(size);
         await InvokeAsync(StateHasChanged);
     }
@@ -383,7 +375,6 @@ public partial class SgSplitter
 
         if (changed)
         {
-            _persistDirty = true;
             if (OnResizeEnd.HasDelegate)
                 await OnResizeEnd.InvokeAsync(sizes);
             await InvokeAsync(StateHasChanged);
@@ -417,14 +408,6 @@ public partial class SgSplitter
 
     protected override async ValueTask OnDisposingAsync()
     {
-        if (_persistDirty && PersistKey != null)
-        {
-            var sizes = IsMultiPane
-                ? _panes.Select(p => GetPaneSize(_panes.IndexOf(p))).ToArray()
-                : new[] { _currentSize };
-            _persistedSizes[PersistKey] = sizes;
-        }
-
         await DetachAsync();
     }
 }
