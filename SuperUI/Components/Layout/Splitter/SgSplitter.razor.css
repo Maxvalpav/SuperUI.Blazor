@@ -5,6 +5,13 @@
     overflow: hidden;
     position: relative;
     background: var(--sg-surface);
+    --sg-bar-size: 4px;
+    --sg-bar-offset: 3px;
+    --sg-bar-color: var(--sg-border);
+    --sg-bar-hover: var(--sg-color-primary);
+    --sg-bar-active: var(--sg-color-primary);
+    --sg-handle-color: var(--sg-border-strong);
+    --sg-handle-size: 16px;
 }
 
 .sgc-split.sgc-h {
@@ -15,87 +22,127 @@
     flex-direction: column;
 }
 
+/* ---- Panes ---- */
+
 .sgc-split-pane {
     position: relative;
     overflow: auto;
     background: inherit;
-    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
-                height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
-                flex-basis 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Disable transition while dragging to avoid lag */
+.sgc-split:not(.is-dragging) .sgc-split-pane {
+    transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+                height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .sgc-split.is-dragging .sgc-split-pane {
     transition: none;
+    pointer-events: none;
 }
 
-.sgc-split-flex {
+.sgc-split-pane.sgc-split-flex {
     flex: 1 1 0%;
+    min-width: 0;
+    min-height: 0;
 }
+
+.sgc-split-pane.is-collapsed {
+    overflow: hidden;
+}
+
+/* ---- Splitter Bar ---- */
 
 .sgc-split-bar {
     position: relative;
     flex: 0 0 auto;
-    background: var(--sg-border);
-    transition: background 0.2s, box-shadow 0.2s;
+    background: var(--sg-bar-color);
     z-index: 10;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: background 0.15s ease, box-shadow 0.15s ease;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-/* Horizontal bar */
+/* Hit area expansion for easier grabbing */
 .sgc-h > .sgc-split-bar {
-    width: var(--sgc-splitter-handle-size, 4px);
+    width: var(--sg-bar-size);
     cursor: col-resize;
-    margin: 0 -2px; /* Overlap slightly for better hit area */
-    padding: 0 2px;
+    margin: 0 calc(-1 * var(--sg-bar-offset));
+    padding: 0 var(--sg-bar-offset);
+    background-clip: content-box;
 }
 
-/* Vertical bar */
 .sgc-v > .sgc-split-bar {
-    height: var(--sgc-splitter-handle-size, 4px);
+    height: var(--sg-bar-size);
     cursor: row-resize;
-    margin: -2px 0;
-    padding: 2px 0;
+    margin: calc(-1 * var(--sg-bar-offset)) 0;
+    padding: var(--sg-bar-offset) 0;
+    background-clip: content-box;
 }
 
-.sgc-split-bar:hover, 
+.sgc-split-bar:hover,
+.sgc-split-bar:focus-visible,
 .sgc-split-bar.active {
-    background: var(--sg-color-primary);
-    box-shadow: 0 0 8px var(--sg-color-primary-subtle);
+    background: var(--sg-bar-hover);
+    box-shadow: 0 0 10px color-mix(in srgb, var(--sg-bar-hover) 30%, transparent);
+    z-index: 11;
 }
 
-/* The visual handle (dots or line) */
+.sgc-split-bar:focus-visible {
+    outline: 2px solid var(--sg-color-primary);
+    outline-offset: -1px;
+}
+
+.sgc-split-bar.active {
+    background: var(--sg-bar-active);
+}
+
+/* ---- Visual Handle ---- */
+
 .sgc-split-handle {
-    position: absolute;
-    background: var(--sg-border-strong);
-    border-radius: 2px;
-    opacity: 0.6;
-    transition: opacity 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     pointer-events: none;
+    opacity: 0.4;
+    transition: opacity 0.15s ease;
 }
 
-.sgc-split-bar:hover .sgc-split-handle {
-    opacity: 1;
-    background: white;
+.sgc-split-bar:hover .sgc-split-handle,
+.sgc-split-bar:focus-visible .sgc-split-handle,
+.sgc-split-bar.active .sgc-split-handle {
+    opacity: 0.9;
 }
 
-.sgc-h > .sgc-split-bar .sgc-split-handle {
+.sgc-split-handle-bar {
+    background: var(--sg-handle-color);
+    border-radius: 2px;
+    transition: background 0.15s;
+}
+
+.sgc-h > .sgc-split-bar .sgc-split-handle-bar {
     width: 2px;
-    height: 24px;
+    height: var(--sg-handle-size);
 }
 
-.sgc-v > .sgc-split-bar .sgc-split-handle {
-    width: 24px;
+.sgc-v > .sgc-split-bar .sgc-split-handle-bar {
+    width: var(--sg-handle-size);
     height: 2px;
 }
 
-/* Collapse buttons */
+.sgc-split-bar:hover .sgc-split-handle-bar,
+.sgc-split-bar.active .sgc-split-handle-bar {
+    background: #fff;
+}
+
+/* ---- Collapse Buttons ---- */
+
 .sgc-split-collapse-btn {
     position: absolute;
-    width: 16px;
-    height: 16px;
+    width: 18px;
+    height: 18px;
     background: var(--sg-surface);
     border: 1px solid var(--sg-border);
     border-radius: 4px;
@@ -103,58 +150,70 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    z-index: 11;
+    z-index: 12;
     opacity: 0;
-    transition: opacity 0.2s, transform 0.2s, background 0.2s;
+    transition: opacity 0.15s ease, transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.15s;
     color: var(--sg-text-muted);
     box-shadow: var(--sg-shadow-sm);
+    padding: 0;
+    line-height: 1;
 }
 
 .sgc-split-bar:hover .sgc-split-collapse-btn {
-    opacity: 1;
+    opacity: 0.8;
 }
 
 .sgc-split-collapse-btn:hover {
+    opacity: 1 !important;
     background: var(--sg-color-primary);
     color: white;
     border-color: var(--sg-color-primary);
+    transform: scale(1.15);
 }
 
-/* Horizontal Collapse positions */
+.sgc-split-collapse-btn:active {
+    transform: scale(0.95) !important;
+}
+
+/* Horizontal bar button positions */
 .sgc-h > .sgc-split-bar .sgc-split-collapse-btn {
     left: 50%;
     transform: translateX(-50%);
 }
 
-.sgc-h > .sgc-split-bar .sgc-btn-prev { top: 20px; }
-.sgc-h > .sgc-split-bar .sgc-btn-next { bottom: 20px; }
+.sgc-h > .sgc-split-bar .sgc-btn-prev { top: 18px; }
+.sgc-h > .sgc-split-bar .sgc-btn-next { bottom: 18px; }
 
-/* Vertical Collapse positions */
+.sgc-h > .sgc-split-bar .sgc-btn-prev:hover { transform: translateX(-50%) scale(1.15); }
+.sgc-h > .sgc-split-bar .sgc-btn-next:hover { transform: translateX(-50%) scale(1.15); }
+
+/* Vertical bar button positions */
 .sgc-v > .sgc-split-bar .sgc-split-collapse-btn {
     top: 50%;
     transform: translateY(-50%);
 }
 
-.sgc-v > .sgc-split-bar .sgc-btn-prev { left: 20px; }
-.sgc-v > .sgc-split-bar .sgc-btn-next { right: 20px; }
+.sgc-v > .sgc-split-bar .sgc-btn-prev { left: 18px; }
+.sgc-v > .sgc-split-bar .sgc-btn-next { right: 18px; }
 
-/* Icon rotations */
+.sgc-v > .sgc-split-bar .sgc-btn-prev:hover { transform: translateY(-50%) scale(1.15); }
+.sgc-v > .sgc-split-bar .sgc-btn-next:hover { transform: translateY(-50%) scale(1.15); }
+
+/* Icon rotations for different orientations */
 .sgc-h .sgc-btn-prev svg { transform: rotate(90deg); }
 .sgc-h .sgc-btn-next svg { transform: rotate(-90deg); }
 .sgc-v .sgc-btn-prev svg { transform: rotate(0deg); }
 .sgc-v .sgc-btn-next svg { transform: rotate(180deg); }
 
-/* Collapsed states */
-.sgc-split.is-collapsed-first .sgc-split-pane:first-child {
-    flex-basis: 0 !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden;
+/* ---- Collapsed state ---- */
+.sgc-split-bar.collapsed-adjacent .sgc-btn-prev svg {
+    transform: rotate(0deg);
 }
 
-.sgc-split.is-collapsed-second .sgc-split-pane:last-child {
-    flex-basis: 0 !important;
-    width: 0 !important;
-    height: 0 !important;
-    overflow: hidden;
+.sgc-h > .sgc-split-bar.collapsed-adjacent .sgc-btn-prev svg {
+    transform: rotate(-90deg);
+}
+
+.sgc-v > .sgc-split-bar.collapsed-adjacent .sgc-btn-prev svg {
+    transform: rotate(180deg);
 }

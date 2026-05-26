@@ -1,0 +1,46 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+@* Pane content is rendered by the parent SgSplitter *@
+
+@code {
+    [CascadingParameter] private SgSplitter? Parent { get; set; }
+
+    /// <summary>Content of the pane.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Initial size of this pane in pixels. When null, defaults to 200. The last pane always fills remaining space.</summary>
+    [Parameter] public double? Size { get; set; }
+
+    /// <summary>Callback when pane size changes via splitter drag.</summary>
+    [Parameter] public EventCallback<double> SizeChanged { get; set; }
+
+    /// <summary>Minimum size in pixels. Default 80.</summary>
+    [Parameter] public double Min { get; set; } = 80;
+
+    /// <summary>Maximum size in pixels. Default 1200.</summary>
+    [Parameter] public double Max { get; set; } = 1200;
+
+    /// <summary>Additional CSS classes for the pane element.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Inline styles for the pane element. Only applied to the last (flex) pane.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Parent?.RegisterPane(this);
+    }
+
+    internal void SetSize(double value)
+    {
+        Size = value;
+        if (SizeChanged.HasDelegate)
+            _ = SizeChanged.InvokeAsync(value);
+    }
+
+    public void Dispose()
+    {
+        Parent?.UnregisterPane(this);
+    }
+}
