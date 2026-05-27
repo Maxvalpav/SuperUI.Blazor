@@ -36,7 +36,10 @@ public enum SgLlmProvider
     None
 }
 
-/// <summary>Provider preset metadata used by the UI to pre-fill BaseUrl, hint URLs and labels.</summary>
+/// <summary>
+/// Provider preset metadata used by the UI to pre-fill BaseUrl, hint URLs, labels,
+/// and to drive the provider catalog (categories, tags, icon, capabilities, auth/api-style).
+/// </summary>
 public class SgLlmProviderPreset
 {
     public SgLlmProvider Provider { get; set; }
@@ -47,6 +50,129 @@ public class SgLlmProviderPreset
     public bool IsFree { get; set; }
     public bool RequiresKey { get; set; } = true;
     public string? Notes { get; set; }
+
+    // --- Catalog metadata (added in Stage 2 of the LLM polishing plan) ---
+
+    /// <summary>
+    /// Catalog category — one of: <c>frontier | open-routing | fast-inference | local | free | russian | specialty | azure</c>.
+    /// Used by the provider picker to group cards.
+    /// </summary>
+    public string Category { get; set; } = SgLlmProviderCategory.Specialty;
+
+    /// <summary>
+    /// Free-form tags used by the provider picker for quick filters
+    /// (e.g. <c>cloud</c>, <c>local</c>, <c>free</c>, <c>russian</c>, <c>vision</c>,
+    /// <c>tools</c>, <c>reasoning</c>, <c>embeddings</c>, <c>images</c>, <c>audio</c>,
+    /// <c>agentic</c>, <c>specialty</c>).
+    /// </summary>
+    public List<string> Tags { get; set; } = new();
+
+    /// <summary>
+    /// Short emoji or text badge shown on the provider card (📡, 🦙, 🤖, 🇷🇺).
+    /// Use this over <see cref="IconUrl"/> in WASM — no external CDN policy required.
+    /// </summary>
+    public string Icon { get; set; } = "📡";
+
+    /// <summary>
+    /// Optional SVG / image URL shipped from <c>wwwroot/icons/llm/</c>.
+    /// Reserved for the future — leave null to fall back to <see cref="Icon"/>.
+    /// </summary>
+    public string? IconUrl { get; set; }
+
+    // --- Modality / capability flags ---
+
+    /// <summary>True if the provider exposes text-embeddings endpoints.</summary>
+    public bool SupportsEmbeddings { get; set; }
+
+    /// <summary>True if the provider supports image generation / editing.</summary>
+    public bool SupportsImages { get; set; }
+
+    /// <summary>True if the provider supports speech-to-text transcription.</summary>
+    public bool SupportsAudioStt { get; set; }
+
+    /// <summary>True if the provider supports text-to-speech synthesis.</summary>
+    public bool SupportsAudioTts { get; set; }
+
+    /// <summary>True if at least one model offered by the provider is a reasoning model (o-series / thinking).</summary>
+    public bool SupportsReasoningModels { get; set; }
+
+    /// <summary>True if the provider supports OpenAI-style tool calls.</summary>
+    public bool SupportsTools { get; set; }
+
+    /// <summary>True if the provider offers vision-capable multimodal models.</summary>
+    public bool SupportsVision { get; set; }
+
+    /// <summary>Free-tier description shown in the picker (e.g. "10k tokens/day").</summary>
+    public string? FreeTierNotes { get; set; }
+
+    /// <summary>Region notes shown next to the picker (e.g. "EU only", "US/EU").</summary>
+    public string? RegionsNotes { get; set; }
+
+    /// <summary>
+    /// Authentication style: <c>none | bearer | x-api-key | oauth | azure-api-key</c>.
+    /// Drives the connection hint and header construction in <see cref="SgLlmService"/>.
+    /// </summary>
+    public string Auth { get; set; } = SgLlmAuthStyle.Bearer;
+
+    /// <summary>
+    /// API style identifying which protocol the endpoint speaks:
+    /// <c>openai-chat | openai-responses | anthropic-messages | google-gemini |
+    /// ollama-native | cohere-v2 | gigachat | cloudflare-workers-ai</c>.
+    /// </summary>
+    public string ApiStyle { get; set; } = SgLlmApiStyle.OpenAiChat;
+}
+
+/// <summary>Canonical category strings for <see cref="SgLlmProviderPreset.Category"/>.</summary>
+public static class SgLlmProviderCategory
+{
+    public const string Frontier = "frontier";
+    public const string OpenRouting = "open-routing";
+    public const string FastInference = "fast-inference";
+    public const string Local = "local";
+    public const string Free = "free";
+    public const string Russian = "russian";
+    public const string Specialty = "specialty";
+    public const string Azure = "azure";
+}
+
+/// <summary>Canonical tag strings for <see cref="SgLlmProviderPreset.Tags"/>.</summary>
+public static class SgLlmProviderTag
+{
+    public const string Cloud = "cloud";
+    public const string Local = "local";
+    public const string Free = "free";
+    public const string Russian = "russian";
+    public const string Vision = "vision";
+    public const string Tools = "tools";
+    public const string Reasoning = "reasoning";
+    public const string Embeddings = "embeddings";
+    public const string Images = "images";
+    public const string Audio = "audio";
+    public const string Agentic = "agentic";
+    public const string Specialty = "specialty";
+}
+
+/// <summary>Canonical auth styles for <see cref="SgLlmProviderPreset.Auth"/>.</summary>
+public static class SgLlmAuthStyle
+{
+    public const string None = "none";
+    public const string Bearer = "bearer";
+    public const string XApiKey = "x-api-key";
+    public const string OAuth = "oauth";
+    public const string AzureApiKey = "azure-api-key";
+}
+
+/// <summary>Canonical API protocol identifiers for <see cref="SgLlmProviderPreset.ApiStyle"/>.</summary>
+public static class SgLlmApiStyle
+{
+    public const string OpenAiChat = "openai-chat";
+    public const string OpenAiResponses = "openai-responses";
+    public const string AnthropicMessages = "anthropic-messages";
+    public const string GoogleGemini = "google-gemini";
+    public const string OllamaNative = "ollama-native";
+    public const string CohereV2 = "cohere-v2";
+    public const string GigaChat = "gigachat";
+    public const string CloudflareWorkersAi = "cloudflare-workers-ai";
 }
 
 public class SgLlmRouteConfig
