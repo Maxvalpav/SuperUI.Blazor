@@ -24,7 +24,7 @@
          aria-describedby="@DescribedBy"
          @onclick:stopPropagation="true"
          @attributes="AdditionalAttributes">
-        <div class="sgc-combo-control" @onfocusin="OnFocusInAsync" @onclick="OnComboClickAsync">
+        <div class="sgc-combo-control" @onfocusin="OnFocusInAsync">
             @if (Prefix != null)
             {
                 <span class="sgc-combo-prefix">@Prefix</span>
@@ -62,7 +62,7 @@
             {
                 <span class="sgc-ac-debounce" aria-hidden="true">...</span>
             }
-            <span class="sgc-combo-caret @(_open ? "sgc-caret-open" : "")" aria-hidden="true">
+            <span class="sgc-combo-caret @(_open ? "sgc-caret-open" : "")" @onclick="OnCaretClickAsync" @onclick:stopPropagation="true" aria-hidden="true">
                 @CaretIcon
             </span>
         </div>
@@ -425,6 +425,7 @@
         if (Block) sb.Add("sgc-block");
         if (Size == SgSize.Sm) sb.Add("sgc-field-sm");
         if (Size == SgSize.Lg) sb.Add("sgc-field-lg");
+        if (Size == SgSize.Xl) sb.Add("sgc-field-xl");
         if (!string.IsNullOrEmpty(CssClass)) sb.Add(CssClass);
         return string.Join(" ", sb);
     }
@@ -438,6 +439,7 @@
         if (IsInvalid) sb.Add("sgc-invalid");
         if (Size == SgSize.Sm) sb.Add("sgc-ac-sm");
         if (Size == SgSize.Lg) sb.Add("sgc-ac-lg");
+        if (Size == SgSize.Xl) sb.Add("sgc-ac-xl");
         if (Variant == SgCascaderVariant.Borderless) sb.Add("sgc-ac-borderless");
         if (Variant == SgCascaderVariant.Filled) sb.Add("sgc-ac-filled");
         return string.Join(" ", sb);
@@ -606,10 +608,14 @@
         }
     }
 
-    private async Task OnComboClickAsync()
+    private async Task OnCaretClickAsync()
     {
         if (Disabled) return;
-        if (!_open)
+        if (_open)
+        {
+            await CloseAsync();
+        }
+        else
         {
             _blurCts?.Cancel();
             _focusWithin = true;
