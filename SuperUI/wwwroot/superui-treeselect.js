@@ -1,6 +1,6 @@
 const handlers = new WeakMap();
 
-function positionMenu(root, menu, placement) {
+function positionMenu(root, menu, placement, matchWidth) {
     const r = root.getBoundingClientRect();
     let menuW = menu.offsetWidth || 220;
     let menuH = menu.offsetHeight || 240;
@@ -41,9 +41,14 @@ function positionMenu(root, menu, placement) {
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
     menu.style.minWidth = Math.max(r.width, 200) + 'px';
+    if (matchWidth) {
+        menu.style.width = Math.max(r.width, 200) + 'px';
+    } else {
+        menu.style.width = '';
+    }
 }
 
-export function attach(root, dotnetRef, placement) {
+export function attach(root, dotnetRef, placement, matchWidth) {
     detach(root);
 
     let isDisposed = false;
@@ -67,7 +72,7 @@ export function attach(root, dotnetRef, placement) {
         if (isDisposed) return;
         const menu = root.querySelector('.sgc-treeselect-menu');
         if (!menu) return;
-        positionMenu(root, menu, placement || 'BottomStart');
+        positionMenu(root, menu, placement || 'BottomStart', !!matchWidth);
     };
 
     const onResize = () => reposition();
@@ -80,6 +85,7 @@ export function attach(root, dotnetRef, placement) {
 
     root._sgTreeSelectReposition = reposition;
     root._sgTreeSelectPlacement = placement;
+    root._sgTreeSelectMatchWidth = !!matchWidth;
 
     handlers.set(root, {
         onPointerDown,
@@ -110,5 +116,15 @@ export function repositionMenu(root) {
     const menu = root.querySelector('.sgc-treeselect-menu');
     if (!menu) return;
     const placement = root._sgTreeSelectPlacement || 'BottomStart';
-    positionMenu(root, menu, placement);
+    const matchWidth = root._sgTreeSelectMatchWidth;
+    positionMenu(root, menu, placement, matchWidth);
+}
+
+export function scrollToSelected(root) {
+    const menu = root.querySelector('.sgc-treeselect-menu');
+    if (!menu) return;
+    const selected = menu.querySelector('.sgc-treeselect-row.sgc-selected');
+    if (selected) {
+        selected.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
 }

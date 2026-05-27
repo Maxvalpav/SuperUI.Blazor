@@ -18,6 +18,7 @@
      @onfocusout="HandleFocusOutAsync">
     <div class="sgc-treeselect-control" @onclick="ToggleAsync">
         @{ var selectedKeys = GetSelectedKeys(); }
+        @if (Prefix != null) { @Prefix }
         @if (Multiple)
         {
             @if (selectedKeys.Count == 0)
@@ -26,7 +27,9 @@
             }
             else
             {
-                foreach (var k in selectedKeys)
+                var displayKeys = GetDisplayKeys(selectedKeys);
+                var overflowCount = selectedKeys.Count - displayKeys.Count;
+                foreach (var k in displayKeys)
                 {
                     var kLocal = k;
                     var label = FindText(Nodes, kLocal) ?? kLocal;
@@ -44,13 +47,25 @@
                         }
                     </span>
                 }
+                @if (overflowCount > 0)
+                {
+                    <span class="sgc-treeselect-tag sgc-treeselect-tag-overflow">@MaxTagText.Replace("{count}", overflowCount.ToString())</span>
+                }
             }
         }
         else
         {
             @if (!string.IsNullOrEmpty(Value))
             {
-                <span class="sgc-treeselect-value">@DisplayText</span>
+                if (RenderSelected != null)
+                {
+                    var n = FindNode(Nodes, Value!);
+                    if (n != null) { @RenderSelected(n) } else { <span class="sgc-treeselect-value">@DisplayText</span> }
+                }
+                else
+                {
+                    <span class="sgc-treeselect-value">@DisplayText</span>
+                }
             }
             else
             {
@@ -76,6 +91,7 @@
         <span class="sgc-treeselect-caret @(_open ? "sgc-caret-open" : "")" aria-hidden="true">
             @CaretIcon
         </span>
+        @if (Suffix != null) { @Suffix }
     </div>
     @if (_open)
     {
@@ -84,7 +100,10 @@
             @if (ShowSearch)
             {
                 <div class="sgc-treeselect-search-wrap">
-                    <span class="sgc-treeselect-search-icon">@SearchIcon</span>
+                    @if (ShowSearchIcon)
+                    {
+                        <span class="sgc-treeselect-search-icon">@SearchIcon</span>
+                    }
                     <input type="text"
                            class="sgc-treeselect-search"
                            placeholder="@SearchPlaceholder"
@@ -138,6 +157,9 @@
     private string? _focusedKey;
     private readonly HashSet<string> _expanded = new();
     private bool _expandInitialized;
+    private readonly Dictionary<string, List<TreeNode>> _lazyLoadedChildren = new();
+    private readonly HashSet<string> _loadingNodes = new();
+    private List<TreeNode> _remoteSearchResults = new();
 
     [Parameter, EditorRequired] public List<TreeNode> Nodes { get; set; } = new();
     [Parameter] public string? Value { get; set; }
@@ -178,6 +200,50 @@
     [Parameter] public RenderFragment? CheckIconOverride { get; set; }
     [Parameter] public RenderFragment? UncheckIconOverride { get; set; }
     [Parameter] public RenderFragment? IndeterminateIconOverride { get; set; }
+
+    // ── New Premium Features ──
+
+    /// <summary>Async callback to load children on expand. When set, node.Children is pre-loaded if non-empty, otherwise lazy.</summary>
+    [Parameter] public Func<TreeNode, Task<List<TreeNode>>>? OnLoadChildren { get; set; }
+
+    /// <summary>Async callback for remote search. When set, client-side filtering is replaced by this callback.</summary>
+    [Parameter] public Func<string, Task<List<TreeNode>>>? OnSearch { get; set; }
+
+    /// <summary>Max tags shown in multi-select trigger before "+N more". 0 = no limit.</summary>
+    [Parameter] public int MaxTagCount { get; set; }
+
+    /// <summary>Custom text for the "+N more" overflow tag. "{count}" is replaced.</summary>
+    [Parameter] public string MaxTagText { get; set; } = "+{count} more";
+
+    /// <summary>When true and Cascade=true, parent/child check states are independent (no auto-cascade).</summary>
+    [Parameter] public bool CheckStrictly { get; set; }
+
+    /// <summary>Controls which selected values appear as tags in multi-select trigger.</summary>
+    [Parameter] public SgTreeSelectShowStrategy ShowCheckedStrategy { get; set; } = SgTreeSelectShowStrategy.All;
+
+    /// <summary>Custom filter function for client-side search. Receives node and query, returns true if it matches.</summary>
+    [Parameter] public Func<TreeNode, string, bool>? FilterOption { get; set; }
+
+    /// <summary>Optional comparer to sort children at every level.</summary>
+    [Parameter] public Comparison<TreeNode>? SortComparer { get; set; }
+
+    /// <summary>Content rendered before the selected value / tags in the trigger.</summary>
+    [Parameter] public RenderFragment? Prefix { get; set; }
+
+    /// <summary>Content rendered after the caret in the trigger.</summary>
+    [Parameter] public RenderFragment? Suffix { get; set; }
+
+    /// <summary>Custom template for the selected value display in single-select mode.</summary>
+    [Parameter] public RenderFragment<TreeNode>? RenderSelected { get; set; }
+
+    /// <summary>When false, hides the search icon inside the search input.</summary>
+    [Parameter] public bool ShowSearchIcon { get; set; } = true;
+
+    /// <summary>When true, the dropdown menu width matches the trigger width.</summary>
+    [Parameter] public bool MatchWidth { get; set; }
+
+    /// <summary>When true, scrolls to the selected node when the dropdown opens.</summary>
+    [Parameter] public bool ScrollToSelected { get; set; }
 
     private string CurrentMaxHeight => MaxHeight ?? "300px";
 
@@ -302,7 +368,7 @@
                     "./_content/SuperUI/superui-treeselect.js");
                 _dotNetRef = DotNetObjectReference.Create(this);
                 var placementStr = GetPlacementString();
-                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr);
+                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr, MatchWidth);
             }
             catch
             {
@@ -315,6 +381,8 @@
             try
             {
                 await _jsModule!.InvokeVoidAsync("repositionMenu", _rootRef);
+                if (ScrollToSelected)
+                    await _jsModule!.InvokeVoidAsync("scrollToSelected", _rootRef);
             }
             catch { }
         }
@@ -352,10 +420,41 @@
         }
     }
 
-    private void ToggleExpand(string key)
+    private async Task ToggleExpandAsync(string key)
     {
-        if (!_expanded.Add(key)) _expanded.Remove(key);
+        if (!_expanded.Add(key))
+        {
+            _expanded.Remove(key);
+            return;
+        }
+
+        // Lazy load children
+        var node = FindNode(Nodes, key);
+        if (node == null) return;
+        if (OnLoadChildren != null && node.Children.Count == 0 && !_lazyLoadedChildren.ContainsKey(key))
+        {
+            _loadingNodes.Add(key);
+            StateHasChanged();
+            try
+            {
+                var children = await OnLoadChildren(node);
+                // Apply sort if set
+                if (SortComparer != null) children.Sort(SortComparer);
+                _lazyLoadedChildren[key] = children;
+            }
+            finally
+            {
+                _loadingNodes.Remove(key);
+            }
+        }
     }
+
+    private bool HasChildren(TreeNode node) =>
+        (node.Children.Count > 0 || (_lazyLoadedChildren.ContainsKey(node.Key) && _lazyLoadedChildren[node.Key].Count > 0)) && !node.IsLeaf;
+
+    private List<TreeNode> GetChildren(TreeNode node) =>
+        node.Children.Count > 0 ? node.Children
+            : (_lazyLoadedChildren.TryGetValue(node.Key, out var c) ? c : new List<TreeNode>());
 
     // ── Selection ──
 
@@ -363,6 +462,31 @@
     {
         if (Multiple) return Values?.ToList() ?? new List<string>();
         return string.IsNullOrEmpty(Value) ? new List<string>() : new List<string> { Value! };
+    }
+
+    private List<string> GetDisplayKeys(List<string> keys)
+    {
+        if (MaxTagCount <= 0) return keys;
+        if (keys.Count <= MaxTagCount) return keys;
+
+        if (ShowCheckedStrategy == SgTreeSelectShowStrategy.ShowLeaf)
+        {
+            var leafKeys = keys.Where(k => IsLeafKey(k)).ToList();
+            return leafKeys.Take(MaxTagCount).ToList();
+        }
+        if (ShowCheckedStrategy == SgTreeSelectShowStrategy.ShowParent)
+        {
+            var parentKeys = keys.Where(k => !IsLeafKey(k)).ToList();
+            return parentKeys.Take(MaxTagCount).ToList();
+        }
+
+        return keys.Take(MaxTagCount).ToList();
+    }
+
+    private bool IsLeafKey(string key)
+    {
+        var n = FindNode(Nodes, key);
+        return n == null || (n.Children.Count == 0 && !HasChildren(n)) || n.IsLeaf;
     }
 
     private bool IsSelected(string key)
@@ -401,8 +525,18 @@
     {
         var query = _search?.Trim() ?? "";
         var hasQuery = !string.IsNullOrEmpty(query);
+
+        // Remote search
+        if (OnSearch != null && hasQuery)
+        {
+            foreach (var n in _remoteSearchResults)
+                yield return new VisibleRow(n, 0, true);
+            yield break;
+        }
+
         var matched = hasQuery ? CollectMatched(Nodes, query) : null;
-        return Walk(Nodes, 0, hasQuery, matched);
+        foreach (var r in Walk(Nodes, 0, hasQuery, matched))
+            yield return r;
     }
 
     private HashSet<string> CollectMatched(List<TreeNode> nodes, string query)
@@ -410,29 +544,49 @@
         var result = new HashSet<string>();
         bool Visit(TreeNode n)
         {
-            var self = NodeText(n).Contains(query, StringComparison.OrdinalIgnoreCase);
+            var self = FilterOption != null
+                ? FilterOption(n, query)
+                : NodeText(n).Contains(query, StringComparison.OrdinalIgnoreCase);
             var anyChild = false;
             foreach (var c in n.Children)
                 if (Visit(c)) anyChild = true;
             if (self || anyChild) { result.Add(n.Key); return true; }
             return false;
         }
+        // Also search lazy-loaded children
+        foreach (var (key, children) in _lazyLoadedChildren)
+            foreach (var c in children)
+                Visit(c);
         foreach (var n in nodes) Visit(n);
         return result;
     }
 
     private IEnumerable<VisibleRow> Walk(List<TreeNode> nodes, int level, bool hasQuery, HashSet<string>? matched)
     {
+        // Apply sort if configured
+        if (SortComparer != null && nodes.Count > 1)
+        {
+            var sorted = nodes.ToList();
+            sorted.Sort(SortComparer);
+            nodes = sorted;
+        }
+
         foreach (var n in nodes)
         {
             if (hasQuery && (matched == null || !matched.Contains(n.Key))) continue;
-            var selfMatches = !hasQuery || NodeText(n).Contains(_search!, StringComparison.OrdinalIgnoreCase);
+            var selfMatches = !hasQuery || (FilterOption != null
+                ? FilterOption(n, _search!)
+                : NodeText(n).Contains(_search!, StringComparison.OrdinalIgnoreCase));
             yield return new VisibleRow(n, level, selfMatches);
             var open = hasQuery || _expanded.Contains(n.Key);
-            if (open && n.Children.Count > 0)
+            if (open && HasChildren(n))
             {
-                foreach (var r in Walk(n.Children, level + 1, hasQuery, matched))
-                    yield return r;
+                var children = GetChildren(n);
+                if (children.Count > 0)
+                {
+                    foreach (var r in Walk(children, level + 1, hasQuery, matched))
+                        yield return r;
+                }
             }
         }
     }
@@ -445,7 +599,7 @@
     {
         if (!Multiple) return IsSelected(node.Key) ? CheckState.Checked : CheckState.Unchecked;
         var values = Values?.ToHashSet() ?? new HashSet<string>();
-        if (!Cascade)
+        if (!Cascade || CheckStrictly)
             return values.Contains(node.Key) ? CheckState.Checked : CheckState.Unchecked;
         if (node.Children.Count == 0)
             return values.Contains(node.Key) ? CheckState.Checked : CheckState.Unchecked;
@@ -527,9 +681,9 @@
         }
         else
         {
-            if (LeafOnly && node.Children.Count > 0 && !node.IsLeaf)
+            if (LeafOnly && HasChildren(node) && !node.IsLeaf)
             {
-                ToggleExpand(node.Key);
+                await ToggleExpandAsync(node.Key);
                 return;
             }
             await SelectSingleAsync(node.Key);
@@ -554,7 +708,7 @@
         var state = GetCheckState(node);
         var willCheck = state != CheckState.Checked;
 
-        if (Cascade)
+        if (Cascade && !CheckStrictly)
         {
             var keys = new List<string>();
             if (LeafOnly) CollectLeafKeys(node, keys); else CollectAllKeys(node, keys);
@@ -633,17 +787,31 @@
 
     // ── Search ──
 
-    private Task OnSearchInput(ChangeEventArgs e)
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
         _search = e.Value?.ToString() ?? "";
+
+        if (OnSearch != null && !string.IsNullOrEmpty(_search))
+        {
+            try
+            {
+                _remoteSearchResults = await OnSearch(_search);
+            }
+            catch
+            {
+                _remoteSearchResults = new();
+            }
+        }
+
         var first = GetVisibleNodes().FirstOrDefault();
         _focusedKey = first.Node?.Key;
-        return InvokeAsync(StateHasChanged);
+        StateHasChanged();
     }
 
     private void ClearSearch()
     {
         _search = "";
+        _remoteSearchResults = new();
         _focusedKey = GetVisibleNodes().FirstOrDefault().Node?.Key;
         StateHasChanged();
     }
@@ -808,10 +976,10 @@
         if (hasChildren)
         {
             __builder.AddAttribute(12, "onclick",
-                EventCallback.Factory.Create<MouseEventArgs>(this, _ =>
+                EventCallback.Factory.Create<MouseEventArgs>(this, async _ =>
                 {
-                    ToggleExpand(node.Key);
-                    return InvokeAsync(StateHasChanged);
+                    await ToggleExpandAsync(node.Key);
+                    StateHasChanged();
                 }));
             __builder.AddEventStopPropagationAttribute(13, "onclick", true);
             if (isExpanded)
@@ -824,12 +992,23 @@
         // Checkbox (multi-select)
         if (Multiple)
         {
+            __builder.OpenElement(20, "span");
             if (checkState == CheckState.Checked)
-                __builder.AddContent(20, CheckedIcon);
+            {
+                __builder.AddAttribute(21, "class", "sgc-treeselect-checkbox-icon sgc-checked");
+                __builder.AddContent(22, CheckedIcon);
+            }
             else if (checkState == CheckState.Indeterminate)
-                __builder.AddContent(20, IndeterminateIcon);
+            {
+                __builder.AddAttribute(21, "class", "sgc-treeselect-checkbox-icon sgc-indeterminate");
+                __builder.AddContent(22, IndeterminateIcon);
+            }
             else
-                __builder.AddContent(20, UncheckedIcon);
+            {
+                __builder.AddAttribute(21, "class", "sgc-treeselect-checkbox-icon sgc-unchecked");
+                __builder.AddContent(22, UncheckedIcon);
+            }
+            __builder.CloseElement();
         }
 
         // Custom template
