@@ -58,18 +58,26 @@
             {
                 <span class="sgc-ac-loading-spinner">@LoadingIcon</span>
             }
+            @if (_showDebounceIndicator && !Loading)
+            {
+                <span class="sgc-ac-debounce" aria-hidden="true">...</span>
+            }
             <span class="sgc-combo-caret @(_open ? "sgc-caret-open" : "")" aria-hidden="true">
                 @CaretIcon
             </span>
         </div>
         @if (_open)
         {
-            <div id="@_listboxId" class="sgc-combo-menu" role="listbox" style="@MenuStyle" @onmousedown:stopPropagation="true">
+            var filtered = GetFilteredItems();
+            var menuAnim = Animated ? "sgc-combo-menu-enter sgc-combo-menu-enter-active" : "";
+            var menuShadow = MenuElevation != SgShadow.None ? GetMenuShadowClass(MenuElevation) : "";
+
+            <div id="@_listboxId" class="sgc-combo-menu @menuAnim @menuShadow" role="listbox" style="@GetMenuStyle(filtered.Count)" @onmousedown:stopPropagation="true">
                 @if (DropdownHeader != null)
                 {
                     <div class="sgc-combo-menu-header">@DropdownHeader</div>
                 }
-                @if (GetFilteredItems() is var filtered && filtered.Count == 0)
+                @if (filtered.Count == 0 && !_showCreateOption)
                 {
                     @if (_search.Length < MinCharacters)
                     {
@@ -106,52 +114,81 @@
                             var idx = 0;
                             foreach (var item in filtered)
                             {
-                                var currentItem = item;
-                                var itemGroup = GroupSelector?.Invoke(currentItem);
+                                var itemGroup = GroupSelector?.Invoke(item);
                                 if (itemGroup != currentGroup)
                                 {
                                     currentGroup = itemGroup;
                                     if (itemGroup != null)
                                     {
-                                        <div class="sgc-combo-group-header" role="group" aria-label="@itemGroup">
+                                        var isCollapsed = CollapsibleGroups && _collapsedGroups.Contains(itemGroup);
+                                        <div class="sgc-combo-group-header @(CollapsibleGroups ? "sgc-combo-group-collapsible" : "")"
+                                             role="group" aria-label="@itemGroup"
+                                             @onmousedown:stopPropagation="true"
+                                             @onclick:stopPropagation="true"
+                                             @onclick="() => ToggleGroup(itemGroup)">
+                                            @if (CollapsibleGroups)
+                                            {
+                                                <span class="sgc-combo-group-chevron @(isCollapsed ? "" : "sgc-open")">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" width="12" height="12"><path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z" clip-rule="evenodd"/></svg>
+                                                </span>
+                                            }
                                             <span class="sgc-combo-group-label">@itemGroup</span>
                                         </div>
                                     }
                                 }
+                                if (itemGroup != null && CollapsibleGroups && _collapsedGroups.Contains(itemGroup))
+                                {
+                                    idx++;
+                                    continue;
+                                }
 
                                 var isActive = idx == _activeIndex;
-                                var isSelected = IsSelected(currentItem);
+                                var isSelected = IsSelected(item);
+                                var showCheck = ShouldShowCheck(item, itemGroup);
                                 var optClasses = "sgc-combo-option";
                                 if (isActive) optClasses += " sgc-active";
                                 if (isSelected) optClasses += " sgc-selected";
+                                var desc = OptionDescription?.Invoke(item);
 
                                 <div class="@optClasses"
                                      role="option"
                                      aria-selected="@(isSelected ? "true" : "false")"
-                                     @onclick="() => PickAsync(currentItem)">
+                                     @onclick="() => PickAsync(item)">
                                     @if (ItemTemplate != null)
                                     {
-                                        @ItemTemplate(currentItem)
+                                        @ItemTemplate(item)
                                     }
                                     else
                                     {
-                                        @if (isSelected)
+                                        @if (showCheck)
                                         {
                                             <span class="sgc-combo-option-check">@CheckedIcon</span>
                                         }
                                         <span class="sgc-combo-option-label">
                                             @if (HighlightMatch && !string.IsNullOrEmpty(_search))
                                             {
-                                                @((MarkupString)HighlightText(LabelFrom(currentItem), _search))
+                                                @((MarkupString)HighlightText(LabelFrom(item), _search))
                                             }
                                             else
                                             {
-                                                @LabelFrom(currentItem)
+                                                @LabelFrom(item)
                                             }
                                         </span>
+                                        @if (desc != null)
+                                        {
+                                            <span class="sgc-combo-option-desc">@desc</span>
+                                        }
                                     }
                                 </div>
                                 idx++;
+                            }
+                            @if (_showCreateOption)
+                            {
+                                var isActive = idx == _activeIndex;
+                                <div class="sgc-combo-option sgc-combo-create @(isActive ? "sgc-active" : "")" role="option" @onclick="() => HandleCreateAsync()">
+                                    <span class="sgc-combo-option-check" style="opacity:1;">+</span>
+                                    <span class="sgc-combo-option-label">@CreateOptionText</span>
+                                </div>
                             }
                         }
                     </div>
@@ -186,6 +223,9 @@
     private CancellationTokenSource? _blurCts;
     private CancellationTokenSource? _searchCts;
     private bool _focusWithin;
+    private bool _showCreateOption;
+    private bool _showDebounceIndicator;
+    private readonly HashSet<string> _collapsedGroups = new();
 
     private readonly string _labelId = "sg-ac-label-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _listboxId = "sg-ac-listbox-" + Guid.NewGuid().ToString("N")[..8];
@@ -196,156 +236,137 @@
 
     /// <summary>Expression that identifies the bound value for EditContext validation.</summary>
     [Parameter] public Expression<Func<TItem?>>? ValueExpression { get; set; }
-
     /// <summary>The currently selected item.</summary>
     [Parameter] public TItem? Value { get; set; }
-
     /// <summary>Callback invoked when the selected item changes.</summary>
     [Parameter] public EventCallback<TItem?> ValueChanged { get; set; }
-
     /// <summary>Collection of items to search and select from.</summary>
     [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
-
     /// <summary>Function to extract display text from each item. Defaults to ToString().</summary>
     [Parameter] public Func<TItem, string>? LabelSelector { get; set; }
-
     /// <summary>Placeholder text shown when no item is selected.</summary>
     [Parameter] public string? Placeholder { get; set; }
-
     /// <summary>Text displayed when no items match the search.</summary>
     [Parameter] public string? EmptyText { get; set; }
-
     /// <summary>Label text displayed above the autocomplete.</summary>
     [Parameter] public string? Label { get; set; }
-
     /// <summary>Hint text displayed below the autocomplete.</summary>
     [Parameter] public string? Hint { get; set; }
-
     /// <summary>Error text to display. Takes precedence over validation messages from EditContext.</summary>
     [Parameter] public string? ErrorText { get; set; }
-
     /// <summary>Whether a clear button is shown when an item is selected. Default true.</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
-
     /// <summary>Whether a selection is required.</summary>
     [Parameter] public bool Required { get; set; }
-
     /// <summary>Whether the autocomplete is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-
     /// <summary>Whether to take full width. Default true.</summary>
     [Parameter] public bool Block { get; set; } = true;
-
     /// <summary>Minimum characters required before showing suggestions. Default 0.</summary>
     [Parameter] public int MinCharacters { get; set; }
-
     /// <summary>Maximum number of suggestions to display. Default 50. 0 = unlimited.</summary>
     [Parameter] public int MaxResults { get; set; } = 50;
-
     /// <summary>Additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
-
     /// <summary>Additional CSS styles to apply to the field container.</summary>
     [Parameter] public string? Style { get; set; }
-
     /// <summary>Debounce delay in ms for the search input. When set, filtering is delayed until the user stops typing.</summary>
     [Parameter] public int DebounceMs { get; set; }
-
     /// <summary>Whether to show a loading indicator inside the dropdown.</summary>
     [Parameter] public bool Loading { get; set; }
-
     /// <summary>Custom content shown when no items match the search. Overrides EmptyText.</summary>
     [Parameter] public RenderFragment? NoResultsTemplate { get; set; }
-
     /// <summary>Additional HTML attributes to apply to the combobox element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // ── New Premium Features ──
-
+    // ── Premium Features ──
     /// <summary>Visual variant: Outlined (default), Borderless, or Filled.</summary>
     [Parameter] public SgCascaderVariant Variant { get; set; } = SgCascaderVariant.Outlined;
-
     /// <summary>Size: Sm, Md (default), or Lg.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
-
     /// <summary>Dropdown placement relative to the trigger.</summary>
     [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
-
     /// <summary>Maximum height of the dropdown menu (e.g. "400px").</summary>
     [Parameter] public string? MaxHeight { get; set; }
-
     /// <summary>Custom template for rendering each option in the dropdown.</summary>
     [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
-
     /// <summary>Custom template for rendering the selected value when not using input.</summary>
     [Parameter] public RenderFragment<TItem>? SelectedTemplate { get; set; }
-
     /// <summary>Content rendered before the input inside the trigger.</summary>
     [Parameter] public RenderFragment? Prefix { get; set; }
-
     /// <summary>Content rendered after the input inside the trigger.</summary>
     [Parameter] public RenderFragment? Suffix { get; set; }
-
-    /// <summary>Async callback for remote search. Replaces client-side filtering when set. Returns items matching the query.</summary>
+    /// <summary>Async callback for remote search. Replaces client-side filtering when set.</summary>
     [Parameter] public Func<string, Task<List<TItem>>>? OnSearch { get; set; }
-
     /// <summary>Callback invoked when selection changes, receiving the selected item.</summary>
     [Parameter] public EventCallback<TItem?> OnChange { get; set; }
-
     /// <summary>Callback invoked when the dropdown open state changes.</summary>
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
-
     /// <summary>Custom empty state content. Overrides NoResultsTemplate and EmptyText.</summary>
     [Parameter] public RenderFragment? EmptyContent { get; set; }
-
-    /// <summary>Function to extract group key from each item. Items with same key are shown under a group header.</summary>
+    /// <summary>Function to extract group key from each item.</summary>
     [Parameter] public Func<TItem, string?>? GroupSelector { get; set; }
-
     /// <summary>Whether to highlight matching text portions in option labels. Default true.</summary>
     [Parameter] public bool HighlightMatch { get; set; } = true;
-
     /// <summary>Whether to show the search icon at the start of the input.</summary>
     [Parameter] public bool ShowSearchIcon { get; set; } = true;
-
     /// <summary>Custom content rendered at the top of the dropdown menu.</summary>
     [Parameter] public RenderFragment? DropdownHeader { get; set; }
-
     /// <summary>Custom content rendered at the bottom of the dropdown menu.</summary>
     [Parameter] public RenderFragment? DropdownFooter { get; set; }
-
     /// <summary>When true, uses JS fixed positioning for the dropdown menu (solves overflow/clipping issues).</summary>
     [Parameter] public bool Fixed { get; set; }
-
     /// <summary>When true, scrolls to the active/selected item when the dropdown opens.</summary>
     [Parameter] public bool ScrollToSelected { get; set; }
-
     /// <summary>When true, the dropdown menu width matches the trigger width.</summary>
     [Parameter] public bool MatchWidth { get; set; }
-
     /// <summary>Custom render fragment for the search icon.</summary>
     [Parameter] public RenderFragment? SearchIconOverride { get; set; }
-
     /// <summary>Custom render fragment for the caret icon.</summary>
     [Parameter] public RenderFragment? CaretIconOverride { get; set; }
-
     /// <summary>Custom render fragment for the clear icon.</summary>
     [Parameter] public RenderFragment? ClearIconOverride { get; set; }
-
     /// <summary>Custom render fragment for the loading icon.</summary>
     [Parameter] public RenderFragment? LoadingIconOverride { get; set; }
 
-    // ── Computed ──
+    // ── New v2 Features ──
+    /// <summary>Custom filter delegate. When set, replaces default Contains-based filtering.</summary>
+    [Parameter] public Func<TItem, string, bool>? FilterOption { get; set; }
+    /// <summary>Custom comparer for sorting filtered results before grouping.</summary>
+    [Parameter] public Comparison<TItem>? SortComparer { get; set; }
+    /// <summary>When true, shows all items when the input receives focus and search text is empty.</summary>
+    [Parameter] public bool ShowAllOnFocus { get; set; }
+    /// <summary>When true, automatically focuses the input on first render.</summary>
+    [Parameter] public bool AutoFocus { get; set; }
+    /// <summary>When true, shows a "Create" option when the search text doesn't match any item.</summary>
+    [Parameter] public bool AllowCreate { get; set; }
+    /// <summary>Async callback invoked when creating a new item via AllowCreate. Receives the search text.</summary>
+    [Parameter] public Func<string, Task<TItem>>? OnCreate { get; set; }
+    /// <summary>Custom equality comparer for comparing selected values. Uses default when null.</summary>
+    [Parameter] public IEqualityComparer<TItem>? ValueComparer { get; set; }
+    /// <summary>Whether to animate the dropdown open/close. Default true.</summary>
+    [Parameter] public bool Animated { get; set; } = true;
+    /// <summary>Strategy for showing checked indicators on selected items.</summary>
+    [Parameter] public SgCheckedStrategy ShowCheckedStrategy { get; set; }
+    /// <summary>When true, allows collapsing/expanding option groups by clicking their headers.</summary>
+    [Parameter] public bool CollapsibleGroups { get; set; }
+    /// <summary>Shadow/elevation level for the dropdown menu. Default Md.</summary>
+    [Parameter] public SgShadow MenuElevation { get; set; } = SgShadow.Md;
+    /// <summary>Optional function that returns a secondary description line for each option.</summary>
+    [Parameter] public Func<TItem, string?>? OptionDescription { get; set; }
 
+    // ── Computed ──
     private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
     private string ClearLabel => Localizer["Clear"];
-    private string MenuStyle
+    private string CreateOptionText => string.Format(Localizer["CreateItem"] ?? "Create \"{0}\"", _search);
+    private string? GetMenuStyle(int itemCount)
     {
-        get
-        {
-            var h = MaxHeight ?? "320px";
-            return $"max-height:{h}";
-        }
+        if (!string.IsNullOrEmpty(MaxHeight))
+            return $"max-height:{MaxHeight}";
+        if (itemCount <= 5) return null;
+        if (itemCount <= 10) return "max-height:280px";
+        return "max-height:320px";
     }
 
     private bool HasValue => Value is not null;
@@ -362,35 +383,30 @@
     private RenderFragment CheckedIcon => _defaultCheckedIcon;
 
     // ── Default Icons ──
-
     private RenderFragment _defaultSearchIcon => __builder =>
     {
         __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
             <path fill-rule=""evenodd"" d=""M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"" clip-rule=""evenodd""/>
         </svg>");
     };
-
     private RenderFragment _defaultCaret => __builder =>
     {
         __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""16"" height=""16"">
             <path fill-rule=""evenodd"" d=""M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"" clip-rule=""evenodd""/>
         </svg>");
     };
-
     private RenderFragment _defaultClear => __builder =>
     {
         __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
             <path d=""M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z""/>
         </svg>");
     };
-
     private RenderFragment _defaultLoading => __builder =>
     {
         __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"" class=""sgc-ac-spinner"">
             <path d=""M15.655 4.344a8 8 0 1 0-.028 11.345.75.75 0 1 1 1.06 1.06 9.5 9.5 0 1 1 .03-13.487.75.75 0 0 1-1.062 1.082Z""/>
         </svg>");
     };
-
     private RenderFragment _defaultCheckedIcon => __builder =>
     {
         __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
@@ -399,7 +415,6 @@
     };
 
     // ── CSS Classes ──
-
     private string GetRootClasses()
     {
         var sb = new List<string> { "sgc-field" };
@@ -424,6 +439,13 @@
         return string.Join(" ", sb);
     }
 
+    private static string GetMenuShadowClass(SgShadow s) => s switch
+    {
+        SgShadow.Xs => "sgc-shadow-xs", SgShadow.Sm => "sgc-shadow-sm",
+        SgShadow.Md => "sgc-shadow-md", SgShadow.Lg => "sgc-shadow-lg",
+        SgShadow.Xl => "sgc-shadow-xl", _ => ""
+    };
+
     private string GetPlacementString() => Placement switch
     {
         SgPlacement.BottomStart => "BottomStart",
@@ -434,7 +456,6 @@
     };
 
     // ── Lifecycle ──
-
     protected override void OnInitialized()
     {
         _binder = new SgEditContextBinder<TItem?>(StateHasChanged);
@@ -458,15 +479,15 @@
             {
                 _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
                     "./_content/SuperUI/superui-autocomplete.js");
-                var placementStr = GetPlacementString();
-                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr, MatchWidth);
+                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, GetPlacementString(), MatchWidth);
             }
-            catch
+            catch { }
+
+            if (AutoFocus)
             {
-                // JS module not available (e.g., during testing)
+                try { await _inputRef.FocusAsync(); } catch { }
             }
         }
-
         if (_open)
         {
             try
@@ -480,9 +501,19 @@
     }
 
     // ── Helpers ──
-
     private string LabelFrom(TItem item) => LabelSelector is not null ? LabelSelector(item) : item?.ToString() ?? string.Empty;
-    private bool IsSelected(TItem item) => EqualityComparer<TItem>.Default.Equals(item, Value);
+    private bool IsSelected(TItem item) => (ValueComparer ?? EqualityComparer<TItem>.Default).Equals(item, Value);
+    private bool ShouldShowCheck(TItem item, string? itemGroup) => IsSelected(item) && ShowCheckedStrategy switch
+    {
+        SgCheckedStrategy.ShowLeaf => itemGroup != null,
+        SgCheckedStrategy.ShowParent => itemGroup == null,
+        _ => true
+    };
+
+    private void ToggleGroup(string group)
+    {
+        if (!_collapsedGroups.Remove(group)) _collapsedGroups.Add(group);
+    }
 
     private static string HighlightText(string text, string query)
     {
@@ -496,49 +527,74 @@
     }
 
     // ── Filtering ──
-
     private List<TItem> GetFilteredItems()
     {
-        if (_search.Length < MinCharacters)
+        var searchLen = _search.Length;
+        if (searchLen < MinCharacters)
+        {
+            if (ShowAllOnFocus && searchLen == 0)
+            {
+                _showCreateOption = false;
+                return Items.Take(MaxResults > 0 ? MaxResults : int.MaxValue).ToList();
+            }
+            _showCreateOption = false;
             return new List<TItem>();
+        }
 
         IEnumerable<TItem> source;
-
         if (OnSearch != null)
         {
             source = _remoteResults ?? new List<TItem>();
+        }
+        else if (FilterOption != null)
+        {
+            source = Items.Where(item => FilterOption(item, _search));
         }
         else
         {
             source = Items.Where(item => LabelFrom(item).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
         }
 
+        if (SortComparer != null)
+        {
+            var sorted = source.ToList();
+            sorted.Sort(SortComparer);
+            source = sorted;
+        }
+
         if (MaxResults > 0)
             source = source.Take(MaxResults);
 
-        // Apply grouping if needed
         if (GroupSelector != null)
         {
             var grouped = source
                 .Select(item => new { Item = item, Group = GroupSelector(item) ?? "" })
-                .OrderBy(x => x.Group)
-                .ThenBy(x => LabelFrom(x.Item))
-                .Select(x => x.Item);
-            return grouped.ToList();
+                .OrderBy(x => x.Group).ThenBy(x => LabelFrom(x.Item))
+                .Select(x => x.Item).ToList();
+            if (CollapsibleGroups)
+                grouped = grouped.Where(item => !_collapsedGroups.Contains(GroupSelector(item) ?? "")).ToList();
+            _showCreateOption = AllowCreate && searchLen >= MinCharacters
+                && !grouped.Any(item => string.Equals(LabelFrom(item), _search, StringComparison.CurrentCultureIgnoreCase));
+            return grouped;
         }
 
-        return source.ToList();
+        var result = source.ToList();
+        _showCreateOption = AllowCreate && searchLen >= MinCharacters
+            && !result.Any(item => string.Equals(LabelFrom(item), _search, StringComparison.CurrentCultureIgnoreCase));
+        return result;
     }
 
     private List<TItem>? _remoteResults;
 
     // ── Events ──
-
     private async Task OnFocusInAsync()
     {
-        // On focus, clear the blur cancellation so we don't close
         _blurCts?.Cancel();
         _focusWithin = true;
+        if (ShowAllOnFocus && !_open && string.IsNullOrEmpty(_search))
+        {
+            await OpenAsync();
+        }
     }
 
     private async Task HandleBlurAsync(FocusEventArgs e)
@@ -571,10 +627,9 @@
         _open = false;
         _focusWithin = false;
         _activeIndex = -1;
+        _showDebounceIndicator = false;
         if (Value is not null)
-        {
             _search = LabelFrom(Value);
-        }
         if (OpenChanged.HasDelegate)
             await OpenChanged.InvokeAsync(false);
         await InvokeAsync(StateHasChanged);
@@ -588,15 +643,13 @@
         if (!_open) _open = true;
         _activeIndex = 0;
 
-        // Remote search
         if (OnSearch != null && _search.Length >= MinCharacters)
         {
             Loading = true;
             StateHasChanged();
             try
             {
-                var results = await OnSearch(_search);
-                _remoteResults = results;
+                _remoteResults = await OnSearch(_search);
             }
             catch
             {
@@ -608,23 +661,28 @@
             }
         }
 
-        // Debounce
         if (DebounceMs > 0 && OnSearch == null)
         {
             _searchCts?.Cancel();
             _searchCts?.Dispose();
             _searchCts = new CancellationTokenSource();
             var token = _searchCts.Token;
+            _showDebounceIndicator = DebounceMs > 300;
+            if (_showDebounceIndicator) StateHasChanged();
             try
             {
                 await Task.Delay(DebounceMs, token);
                 if (!token.IsCancellationRequested)
+                {
+                    _showDebounceIndicator = false;
                     StateHasChanged();
+                }
             }
             catch (TaskCanceledException) { }
         }
         else
         {
+            _showDebounceIndicator = false;
             StateHasChanged();
         }
     }
@@ -632,32 +690,39 @@
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         var filtered = GetFilteredItems();
+        var itemCount = filtered.Count;
+        var totalOpts = itemCount + (_showCreateOption ? 1 : 0);
         if (e.Key == "ArrowDown")
         {
             _open = true;
-            _activeIndex = filtered.Count == 0 ? -1 : Math.Min(filtered.Count - 1, _activeIndex + 1);
+            _activeIndex = totalOpts == 0 ? -1 : Math.Min(totalOpts - 1, _activeIndex + 1);
         }
         else if (e.Key == "ArrowUp")
         {
-            _activeIndex = filtered.Count == 0 ? -1 : Math.Max(0, _activeIndex - 1);
+            _activeIndex = totalOpts == 0 ? -1 : Math.Max(0, _activeIndex - 1);
         }
         else if (e.Key == "Enter" || e.Key == "Tab")
         {
-            if (_open && _activeIndex >= 0 && _activeIndex < filtered.Count)
+            if (_open && _activeIndex >= 0)
             {
-                await PickAsync(filtered[_activeIndex]);
-                return;
+                if (_showCreateOption && _activeIndex == itemCount)
+                {
+                    await HandleCreateAsync();
+                    return;
+                }
+                if (_activeIndex < itemCount)
+                {
+                    await PickAsync(filtered[_activeIndex]);
+                    return;
+                }
             }
             if (_open && e.Key == "Enter")
-            {
                 await CloseAsync();
-            }
         }
         else if (e.Key == "Escape")
         {
             if (_open) await CloseAsync();
         }
-
         StateHasChanged();
     }
 
@@ -670,6 +735,19 @@
         if (OnChange.HasDelegate) await OnChange.InvokeAsync(item);
         _binder?.NotifyFieldChanged();
         await CloseAsync();
+    }
+
+    private async Task HandleCreateAsync()
+    {
+        if (OnCreate != null)
+        {
+            var newItem = await OnCreate(_search);
+            await PickAsync(newItem);
+        }
+        else if (typeof(TItem) == typeof(string))
+        {
+            await PickAsync((TItem)(object)_search);
+        }
     }
 
     private async Task ClearAsync()
@@ -687,7 +765,6 @@
     }
 
     // ── JSInvokable ──
-
     [JSInvokable]
     public async Task CloseFromJsAsync()
     {
@@ -701,7 +778,6 @@
     }
 
     // ── Dispose ──
-
     public async ValueTask DisposeAsync()
     {
         if (_disposed) return;
