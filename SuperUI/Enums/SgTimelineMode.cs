@@ -1,4 +1,4 @@
 namespace SuperUI.Enums;
 
-/// <summary>Режим отображения таймлайна.</summary>
-public enum SgTimelineMode { Left, Right, Alternate, AlternateReverse }
+/// <summary>Timeline layout mode.</summary>
+public enum SgTimelineMode { Left, Right, Alternate, AlternateReverse, Horizontal }

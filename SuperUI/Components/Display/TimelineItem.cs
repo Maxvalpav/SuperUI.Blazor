@@ -63,4 +63,18 @@ public sealed class TimelineItem
         null => Status,
         _ => Status
     };
+
+    // ── New fields ──────────────────────────────────────────────────────────
+
+    /// <summary>Key for grouping items under a shared header. Items with the same key are grouped.</summary>
+    public string? GroupKey { get; set; }
+
+    /// <summary>Optional header text rendered above the group. When null, <see cref="GroupKey"/> is shown.</summary>
+    public string? GroupHeader { get; set; }
+
+    /// <summary>Whether this item can be collapsed to hide extra content.</summary>
+    public bool Collapsible { get; set; }
+
+    /// <summary>Whether the extra content is collapsed by default.</summary>
+    public bool Collapsed { get; set; }
 }

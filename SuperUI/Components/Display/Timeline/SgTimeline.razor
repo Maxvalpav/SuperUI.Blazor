@@ -1,33 +1,14 @@
 @namespace SuperUI.Components
 @using Microsoft.AspNetCore.Components.Web
+@using SuperUI.Enums
 
 <div @ref="_containerRef"
-     class="sgc-timeline sgc-timeline-@ModeClass @(Reverse ? "sgc-timeline-reverse" : "") @(Animation ? "sgc-timeline-animated" : "") @DotSizeClass @LineStyleClass @CssClass"
+     class="sgc-timeline sgc-timeline-@ModeClass @(Reverse ? "sgc-timeline-reverse" : "") @(Animation ? "sgc-timeline-animated" : "") @DotSizeClass @LineStyleClass @DensityClass @DotShapeClass @(GradientTail ? "sgc-tl-gradient-tail" : "") @CssClass"
      style="@Style"
      role="list"
      aria-label="@(AriaLabel ?? "Timeline")">
 
-    @if (_items.Count == 0)
-    {
-        <div class="sgc-timeline-empty">@EmptyText</div>
-    }
-    else if (Virtualize)
-    {
-        <SgVirtualList TItem="TimelineItem" Items="_items" Height="@Height" ItemHeight="72">
-            <ChildContent>
-                @RenderItem(context, false)
-            </ChildContent>
-        </SgVirtualList>
-    }
-    else
-    {
-        @for (var i = 0; i < _items.Count; i++)
-        {
-            var item = _items[i];
-            var isLast = i == _items.Count - 1;
-            @RenderItem(item, isLast)
-        }
-    }
+    @_renderContent
 
     @if (Pending is not null)
     {
@@ -46,72 +27,17 @@
         SgTimelineMode.Right => "right",
         SgTimelineMode.Alternate => "alternate",
         SgTimelineMode.AlternateReverse => "alternate",
+        SgTimelineMode.Horizontal => "horizontal",
         _ => "left"
     };
 
-    private RenderFragment RenderItem(TimelineItem item, bool isLast) => __builder =>
-    {
-        var effectiveStatus = item.EffectiveStatus;
-        var itemClickable = IsItemClickable(item);
-        var itemDisabled = IsItemDisabled(item);
-        <div class="sgc-timeline-item @(isLast ? "sgc-timeline-item-last" : "") @(itemClickable ? "sgc-tl-clickable" : "") @(itemDisabled ? "sgc-tl-disabled" : "")"
-             role="listitem"
-             aria-label="@item.Title"
-             @onclick="() => HandleItemClickAsync(item)"
-             @onkeydown="e => HandleItemKeyDownAsync(e, item)"
-             tabindex="@(itemClickable ? "0" : null)"
-             title="@(item.Title ?? "")">
-
-            @if (Mode == SgTimelineMode.Alternate || Mode == SgTimelineMode.AlternateReverse)
-            {
-                <div class="sgc-timeline-item-time sgc-timeline-item-time-left">
-                    @if (!string.IsNullOrEmpty(item.Time)) { <span>@item.Time</span> }
-                </div>
-            }
-
-            <div class="sgc-timeline-item-axis" aria-hidden="true">
-                <div class="sgc-timeline-item-dot sgc-timeline-item-dot-@effectiveStatus"
-                     style="@GetDotStyle(item)">
-                    @if (item.DotContent is not null)
-                    {
-                        @item.DotContent
-                    }
-                    else if (item.Icon is not null)
-                    {
-                        <span class="sgc-timeline-item-icon">@item.Icon</span>
-                    }
-                </div>
-                @if (ShowLine && !isLast)
-                {
-                    <div class="sgc-timeline-item-tail"></div>
-                }
-            </div>
-
-            <div class="sgc-timeline-item-content">
-                @if (Mode != SgTimelineMode.Alternate && Mode != SgTimelineMode.AlternateReverse && !string.IsNullOrEmpty(item.Time))
-                {
-                    <div class="sgc-timeline-item-time">@item.Time</div>
-                }
-                @if (!string.IsNullOrEmpty(item.Title))
-                {
-                    <div class="sgc-timeline-item-title">@item.Title</div>
-                }
-                @if (!string.IsNullOrEmpty(item.Description))
-                {
-                    <div class="sgc-timeline-item-description">@item.Description</div>
-                }
-                @if (item.ExtraContent is not null)
-                {
-                    <div class="sgc-timeline-item-extra">@item.ExtraContent</div>
-                }
-            </div>
-        </div>;
-    };
+    private RenderFragment? _renderContent;
 
     private RenderFragment RenderPending(TimelineItem pending) => __builder =>
     {
+        var isGrouped = _groups.Count > 0;
         <div class="sgc-timeline-item sgc-timeline-item-pending" role="listitem" aria-label="@(pending.Title ?? PendingLabel ?? "Pending")">
-            @if (Mode == SgTimelineMode.Alternate || Mode == SgTimelineMode.AlternateReverse)
+            @if (!isGrouped && (Mode == SgTimelineMode.Alternate || Mode == SgTimelineMode.AlternateReverse))
             {
                 <div class="sgc-timeline-item-time sgc-timeline-item-time-left">
                     @if (!string.IsNullOrEmpty(pending.Time)) { <span>@pending.Time</span> }
@@ -125,7 +51,7 @@
                 </div>
             </div>
             <div class="sgc-timeline-item-content">
-                @if (Mode != SgTimelineMode.Alternate && Mode != SgTimelineMode.AlternateReverse && !string.IsNullOrEmpty(pending.Time))
+                @if (!isGrouped && Mode != SgTimelineMode.Alternate && Mode != SgTimelineMode.AlternateReverse && !string.IsNullOrEmpty(pending.Time))
                 {
                     <div class="sgc-timeline-item-time">@pending.Time</div>
                 }
@@ -146,5 +72,20 @@
         if (!IsItemClickable(item)) return;
         if (e.Key is "Enter" or " ")
             await HandleItemClickAsync(item);
+    }
+
+    private void ToggleCollapse(TimelineItem item)
+    {
+        if (!item.Collapsible) return;
+        item.Collapsed = !item.Collapsed;
+        StateHasChanged();
+    }
+
+    private string? GetTailStyle(TimelineItem item)
+    {
+        if (!GradientTail) return null;
+        var color = item.Color ?? Color;
+        if (string.IsNullOrEmpty(color)) return null;
+        return $"--sgc-tl-tail-color:{color};";
     }
 }
