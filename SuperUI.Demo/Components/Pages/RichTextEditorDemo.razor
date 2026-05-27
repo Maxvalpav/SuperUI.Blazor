@@ -1,177 +1,822 @@
 ﻿@page "/rich-text-editor-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>RichTextEditor - SUI</PageTitle>
+<PageTitle>SgRichTextEditor — Rich Text Editor — SuperUI</PageTitle>
 
-<SgCard Title="SgRichTextEditor"
-        Subtitle="WYSIWYG-редактор: цвета, изображения, drag&amp;drop, полноэкранный режим, горячие клавиши.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="display: grid; grid-template-columns: 1fr; gap: 24px; margin-top: 16px;">
-
-        <SgCard Title="Полнофункциональный редактор">
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-                <div style="font-size: 12px; color: var(--sui-text-muted);">
-                    Все возможности: цвет текста и фона, размер шрифта, цитата, код,
-                    выравнивание, drag&amp;drop изображений, полноэкранный режим.
-                </div>
-
-                <SgRichTextEditor @ref="_editor"
-                                  @bind-value="_content1"
-                                  Placeholder="Начните печатать или перетащите сюда изображение..."
-                                  ShowToolbar="true"
-                                  ShowStatusBar="true"
-                                  AllowFullscreen="true"
-                                  MinHeight="240px" />
-
-                <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-                    <SgButton Text="Получить HTML" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
-                              OnClick="@(() => _previewHtml = _content1)" />
-                    <SgButton Text="Вставить пример" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
-                              OnClick="@LoadSampleAsync" />
-                    <SgButton Text="Полный экран" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
-                              OnClick="@(() => _editor!.ToggleFullscreenAsync())" />
-                    <SgButton Text="Очистить" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
-                              OnClick="@(() => { _content1 = string.Empty; _previewHtml = string.Empty; })" />
-                </div>
-
-                @if (!string.IsNullOrEmpty(_previewHtml))
-                {
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                        <div>
-                            <div style="font-size: 11px; color: var(--sui-text-muted); margin-bottom: 4px;">Превью:</div>
-                            <div style="padding: 12px; background: var(--sui-bg-secondary); border: 1px solid var(--sui-border); border-radius: var(--sui-radius);">
-                                @((MarkupString)_previewHtml)
-                            </div>
-                        </div>
-                        <div>
-                            <div style="font-size: 11px; color: var(--sui-text-muted); margin-bottom: 4px;">HTML:</div>
-                            <pre style="background: var(--sui-bg-secondary); padding: 12px; border-radius: var(--sui-radius); font-size: 11px; overflow-x: auto; max-height: 200px; margin: 0;">@_previewHtml</pre>
-                        </div>
-                    </div>
-                }
-            </div>
-        </SgCard>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-            <SgCard Title="Без статус-бара">
-                <SgRichTextEditor @bind-value="_content2"
-                                  Placeholder="Только тулбар..."
-                                  ShowToolbar="true"
-                                  ShowStatusBar="false"
-                                  AllowFullscreen="false" />
-            </SgCard>
-
-            <SgCard Title="Только для чтения">
-                <SgRichTextEditor Value="@_readonlyContent"
-                                  ReadOnly="true"
-                                  ShowToolbar="false"
-                                  ShowStatusBar="true" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Full-Featured Editor with New Features                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgRichTextEditor — Full-Featured
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Try the new features: select text for floating toolbar, type <kbd>/</kbd> for commands, <kbd>#</kbd> <kbd>##</kbd> <kbd>&gt;</kbd> <kbd>-</kbd> for markdown shortcuts, use the emoji picker, find &amp; replace, and more.
+            </SgTypography>
         </div>
 
-        <SgCard Title="С предзаполненным содержимым">
-            <SgRichTextEditor @bind-value="_content3"
-                              ShowToolbar="true"
-                              ShowStatusBar="true"
-                              MinHeight="180px" />
-        </SgCard>
+        <div class="demo-two-col">
+            <SgCard Title="Full Toolbar" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                        Floating toolbar, markdown shortcuts, slash menu, emoji picker, find &amp; replace, focus mode, collapsible toolbar — all enabled.
+                    </SgTypography>
+                    <SgRichTextEditor @ref="_editor"
+                                      @bind-value="_content1"
+                                      Placeholder="Try / for commands, # for heading, select text for floating toolbar..."
+                                      ShowToolbar="true"
+                                      ShowStatusBar="true"
+                                      AllowFullscreen="true"
+                                      ShowSourceButton="true"
+                                      ShowTableButton="true"
+                                      ShowBlockSelect="true"
+                                      EnableFloatingToolbar="true"
+                                      EnableMarkdownShortcuts="true"
+                                      EnableSlashMenu="true"
+                                      ShowEmojiPicker="true"
+                                      EnableFindReplace="true"
+                                      EnableCollapsibleToolbar="true"
+                                      EnableFocusMode="true"
+                                      ShowLineNumbers="false"
+                                      Resizable="true"
+                                      MinHeight="280px" />
+                    <SgSpace>
+                        <SgButton Text="Get HTML" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                  OnClick="@(() => _previewHtml = _content1)" />
+                        <SgButton Text="Get Text" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                  OnClick="@GetTextAsync" />
+                        <SgButton Text="Export MD" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                  OnClick="@ExportMarkdownAsync" />
+                        <SgButton Text="Copy MD" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                  OnClick="@CopyAsMarkdownAsync" />
+                        <SgButton Text="Load Sample" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                  OnClick="@LoadSampleAsync" />
+                        <SgButton Text="Clear" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
+                                  OnClick="@(() => { _content1 = string.Empty; _previewHtml = string.Empty; _plainText = string.Empty; _exportedMd = string.Empty; })" />
+                    </SgSpace>
 
-        <SgCard Title="Минимальный (без тулбара)">
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-                <div style="font-size: 12px; color: var(--sui-text-muted);">
-                    Чистое поле — горячие клавиши работают: Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+K
-                </div>
-                <SgRichTextEditor @bind-value="_content4"
-                                  Placeholder="Используйте горячие клавиши..."
-                                  ShowToolbar="false"
-                                  ShowStatusBar="true" />
-            </div>
+                    @if (!string.IsNullOrEmpty(_previewHtml) || !string.IsNullOrEmpty(_plainText) || !string.IsNullOrEmpty(_exportedMd))
+                    {
+                        <SgRow Space="SgSize.Md">
+                            @if (!string.IsNullOrEmpty(_previewHtml))
+                            {
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Preview</SgTypography>
+                                        <div class="demo-preview-box">
+                                            @((MarkupString)_previewHtml)
+                                        </div>
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">HTML Source</SgTypography>
+                                        <pre class="demo-code-preview">@_previewHtml</pre>
+                                    </SgStack>
+                                </SgCol>
+                            }
+                            @if (!string.IsNullOrEmpty(_plainText))
+                            {
+                                <SgCol Span="12">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Plain Text</SgTypography>
+                                        <pre class="demo-text-preview">@_plainText</pre>
+                                    </SgStack>
+                                </SgCol>
+                            }
+                            @if (!string.IsNullOrEmpty(_exportedMd))
+                            {
+                                <SgCol Span="12">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Semibold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Exported Markdown</SgTypography>
+                                        <pre class="demo-code-preview">@_exportedMd</pre>
+                                    </SgStack>
+                                </SgCol>
+                            }
+                        </SgRow>
+                    }
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="SgRichTextEditor Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_editorProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Variations — New Features Showcase                            -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Feature Variations
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Each card highlights a different feature combination.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Xs="12" Sm="6" Lg="4">
+                <SgCard Title="Line Numbers" Subtitle="ShowLineNumbers=true" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgRichTextEditor @bind-value="_contentLn"
+                                      ShowLineNumbers="true"
+                                      MinHeight="180px"
+                                      Placeholder="Line numbers visible..." />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Sm="6" Lg="4">
+                <SgCard Title="Resizable" Subtitle="Resizable=true" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgRichTextEditor @bind-value="_contentResize"
+                                      Resizable="true"
+                                      ResizeMinHeight="120px"
+                                      ResizeMaxHeight="500px"
+                                      MinHeight="120px"
+                                      Placeholder="Drag the bottom handle to resize..." />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Sm="6" Lg="4">
+                <SgCard Title="Collapsible Toolbar" Subtitle="EnableCollapsibleToolbar=true" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgRichTextEditor @bind-value="_contentCollapse"
+                                      EnableCollapsibleToolbar="true"
+                                      ShowCollapseButton="true"
+                                      ShowBlockSelect="false"
+                                      MinHeight="140px"
+                                      Placeholder="Click collapse button to hide toolbar..." />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Sm="6" Lg="4">
+                <SgCard Title="Focus Mode" Subtitle="EnableFocusMode=true" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgRichTextEditor @bind-value="_contentFocus"
+                                      EnableFocusMode="true"
+                                      ShowFocusModeButton="true"
+                                      ShowBlockSelect="false"
+                                      ShowSourceButton="false"
+                                      MinHeight="140px"
+                                      Placeholder="Click focus icon for distraction-free editing..." />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Sm="6" Lg="4">
+                <SgCard Title="Ripple Effect" Subtitle="EnableRipple=true" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgRichTextEditor @bind-value="_contentRipple"
+                                      EnableRipple="true"
+                                      ShowBlockSelect="false"
+                                      ShowSourceButton="false"
+                                      ShowTableButton="false"
+                                      MinHeight="140px"
+                                      Placeholder="Click toolbar buttons to see ripple..." />
+                </SgCard>
+            </SgCol>
+            <SgCol Xs="12" Sm="6" Lg="4">
+                <SgCard Title="Auto-Save" Subtitle="AutoSaveMs=2000" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Auto-saves every 2 seconds. Last saved: @_lastAutoSave
+                        </SgTypography>
+                        <SgRichTextEditor @bind-value="_contentAutoSave"
+                                          AutoSaveMs="2000"
+                                          OnAutoSave="OnAutoSaveAsync"
+                                          ShowBlockSelect="false"
+                                          ShowSourceButton="false"
+                                          ShowTableButton="false"
+                                          MinHeight="120px"
+                                          Placeholder="Type something — auto-save fires every 2s..." />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Public API & Methods                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Public API
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                All public methods available via <code>@@ref</code>. Includes new: <code>ExportMarkdownAsync</code>, <code>CopyAsMarkdownAsync</code>.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Programmatic Control" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;">Get / Set Content</SgTypography>
+                            <SgSpace>
+                                <SgButton Text="Set HTML" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                          OnClick="@( async () => { if (_editor != null) await _editor.SetHtmlAsync("<h3>Set from API</h3><p>Hello!</p>"); })" />
+                                <SgButton Text="Insert HTML" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                          OnClick="@( async () => { if (_editor != null) await _editor.InsertHtmlAsync("<b>inserted</b>"); })" />
+                                <SgButton Text="Export MD" Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                                          OnClick="@ExportMarkdownAsync" />
+                            </SgSpace>
+                        </div>
+                        <div>
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;">Focus & View</SgTypography>
+                            <SgSpace>
+                                <SgButton Text="Focus" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
+                                          OnClick="@( async () => { if (_editor != null) await _editor.FocusAsync(); })" />
+                                <SgButton Text="Toggle Fullscreen" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
+                                          OnClick="@( async () => { if (_editor != null) await _editor.ToggleFullscreenAsync(); })" />
+                            </SgSpace>
+                        </div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Code Snippet" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <pre class="demo-code-snippet"><code>@@ref="editor"
+
+// Get content
+var html = await editor.GetHtmlAsync();
+var text = await editor.GetTextAsync();
+var md   = await editor.ExportMarkdownAsync();
+
+// Set content
+await editor.SetHtmlAsync("&lt;p&gt;HTML&lt;/p&gt;");
+await editor.InsertHtmlAsync("&lt;b&gt;bold&lt;/b&gt;");
+
+// Control
+await editor.FocusAsync();
+await editor.ToggleFullscreenAsync();
+
+// New features
+await editor.CopyAsMarkdownAsync();
+
+// Properties
+bool isFS = editor.IsFullscreen;
+bool isCodeView = editor.IsCodeView;</code></pre>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Live Constructor                                               -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgRichTextEditor Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click <kbd>Copy</kbd> to copy the code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Show Toolbar</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorShowToolbar" ValueChanged="v => { _ctorShowToolbar = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Show Status Bar</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorShowStatus" ValueChanged="v => { _ctorShowStatus = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Floating Toolbar</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorFloatToolbar" ValueChanged="v => { _ctorFloatToolbar = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Markdown Shortcuts</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorMdShortcuts" ValueChanged="v => { _ctorMdShortcuts = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Slash Menu</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorSlashMenu" ValueChanged="v => { _ctorSlashMenu = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Find &amp; Replace</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorFindReplace" ValueChanged="v => { _ctorFindReplace = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Line Numbers</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorLineNums" ValueChanged="v => { _ctorLineNums = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Resizable</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorResizable" ValueChanged="v => { _ctorResizable = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Read Only</SgTypography>
+                            <SgSegmented TValue="bool" Value="_ctorReadOnly" ValueChanged="v => { _ctorReadOnly = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Min Height</SgTypography>
+                            <SgSegmented TValue="string" Value="_ctorMinHeight" ValueChanged="v => { _ctorMinHeight = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_heightOptions" />
+                        </SgStack>
+
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Floating Toolbar</SgTypography>
+                                    <SgBadge Variant="@(_ctorFloatToolbar ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorFloatToolbar ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Markdown Shortcuts</SgTypography>
+                                    <SgBadge Variant="@(_ctorMdShortcuts ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorMdShortcuts ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Slash Menu</SgTypography>
+                                    <SgBadge Variant="@(_ctorSlashMenu ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorSlashMenu ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Find &amp; Replace</SgTypography>
+                                    <SgBadge Variant="@(_ctorFindReplace ? SgBadgeVariant.Info : SgBadgeVariant.Default)" Text="@(_ctorFindReplace ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Line Numbers</SgTypography>
+                                    <SgBadge Variant="@(_ctorLineNums ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorLineNums ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Resizable</SgTypography>
+                                    <SgBadge Variant="@(_ctorResizable ? SgBadgeVariant.Info : SgBadgeVariant.Default)" Text="@(_ctorResizable ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview" id="constructor-preview">
+                                <SgRichTextEditor @bind-value="_ctorContent"
+                                                  ShowToolbar="_ctorShowToolbar"
+                                                  ShowStatusBar="_ctorShowStatus"
+                                                  EnableFloatingToolbar="_ctorFloatToolbar"
+                                                  EnableMarkdownShortcuts="_ctorMdShortcuts"
+                                                  EnableSlashMenu="_ctorSlashMenu"
+                                                  EnableFindReplace="_ctorFindReplace"
+                                                  ShowLineNumbers="_ctorLineNums"
+                                                  Resizable="_ctorResizable"
+                                                  ReadOnly="_ctorReadOnly"
+                                                  MinHeight="_ctorMinHeight"
+                                                  ShowEmojiPicker="true"
+                                                  ShowEmojiButton="true"
+                                                  ShowFindReplaceButton="true"
+                                                  ShowCollapseButton="false"
+                                                  AllowFullscreen="false"
+                                                  ShowSourceButton="false"
+                                                  ShowTableButton="false"
+                                                  ShowBlockSelect="false"
+                                                  Placeholder="Interactive constructor result..." />
+                            </div>
+                        </SgStack>
+
+                        <!-- Code -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">📋</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">Copy</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
         </SgCard>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h3>Горячие клавиши</h3>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin-top: 16px;">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Keyboard Shortcuts & Commands                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Keyboard Shortcuts &amp; Commands
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Standard shortcuts plus new Markdown-style input shortcuts. Type <kbd>/</kbd> for the command palette.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Md">
             @foreach (var hk in _hotkeys)
             {
-                <div style="display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: var(--sui-bg-secondary); border: 1px solid var(--sui-border); border-radius: var(--sui-radius);">
-                    <kbd style="background: var(--sui-bg-primary); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--sui-border); font-size: 11px; font-family: monospace; min-width: 56px; text-align: center;">@hk.Key</kbd>
-                    <span style="font-size: 12px; color: var(--sui-text-secondary);">@hk.Description</span>
-                </div>
+                <SgCol Xs="6" Md="4" Lg="3">
+                    <div class="demo-hotkey-card">
+                        <kbd class="demo-hotkey-kbd">@hk.Key</kbd>
+                        <span class="demo-hotkey-label">@hk.Description</span>
+                    </div>
+                </SgCol>
             }
-        </div>
+        </SgRow>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h3>API</h3>
-    </div>
-
+</ChildContent>
 </SgCard>
 
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 100px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+        max-height: 320px;
+        overflow-y: auto;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active { transform: scale(0.95); }
+
+    .demo-hotkey-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-md);
+        transition: all 0.2s ease;
+    }
+    .demo-hotkey-card:hover {
+        border-color: var(--sg-primary);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+    .demo-hotkey-kbd {
+        background: var(--sg-bg);
+        padding: 3px 8px;
+        border-radius: 4px;
+        border: 1px solid var(--sg-border);
+        font-size: 11px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        min-width: 60px;
+        text-align: center;
+        color: var(--sg-fg);
+        font-weight: 600;
+    }
+    .demo-hotkey-label {
+        font-size: 12px;
+        color: var(--sg-text-secondary);
+    }
+
+    .demo-code-snippet {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 11px;
+        line-height: 1.8;
+        overflow-x: auto;
+        margin: 0;
+        tab-size: 2;
+    }
+    .demo-code-snippet code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        white-space: pre;
+    }
+
+    .demo-preview-box {
+        padding: 12px;
+        background: var(--sui-bg-secondary);
+        border: 1px solid var(--sui-border);
+        border-radius: var(--sui-radius);
+        max-height: 240px;
+        overflow-y: auto;
+        font-size: 13px;
+    }
+    .demo-code-preview {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 12px;
+        border-radius: var(--sui-radius);
+        font-size: 11px;
+        overflow: auto;
+        max-height: 240px;
+        margin: 0;
+        tab-size: 2;
+    }
+    .demo-text-preview {
+        background: var(--sui-bg-secondary);
+        padding: 12px;
+        border-radius: var(--sui-radius);
+        font-size: 11px;
+        margin: 0;
+        max-height: 120px;
+        overflow: auto;
+        white-space: pre-wrap;
+    }
+</style>
+
 @code {
+    // ── Main card header ──────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 4l6 6L9 21H3v-6z"/><path d="M13 5l6 6"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Rich Text Editor</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgRichTextEditor — WYSIWYG with floating toolbar, markdown shortcuts, slash menu, emoji picker, find &amp; replace, AI assistant, focus mode, resizable, line numbers, and more.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── State ─────────────────────────────────────────────────────────
     private SgRichTextEditor? _editor;
 
     private string _content1 = "";
-    private string _content2 = "";
-    private string _content3 = """
-        <h2>Добро пожаловать в SgRichTextEditor</h2>
-        <p>Попробуйте <b>выделить</b> этот <i>текст</i> и применить <span style="background: #fff59d;">подсветку</span>.</p>
-        <ul>
-            <li>Цветные шрифты</li>
-            <li>Перетаскивание изображений</li>
-            <li>Полноэкранный режим</li>
-        </ul>
-   
-        """;
-    private string _content4 = "";
-    private string _readonlyContent = """
-        <h3>Документ для просмотра</h3>
-        <p>Этот контент <b>нельзя редактировать</b>.</p>
-        <p>Используется в режиме только для чтения.</p>
-        """;
+    private string _contentLn = "";
+    private string _contentResize = "";
+    private string _contentCollapse = "";
+    private string _contentFocus = "";
+    private string _contentRipple = "";
+    private string _contentAutoSave = "";
     private string _previewHtml = "";
+    private string _plainText = "";
+    private string _exportedMd = "";
+    private string _lastAutoSave = "";
 
     private async Task LoadSampleAsync()
     {
         if (_editor != null)
         {
             await _editor.SetHtmlAsync("""
-                <h1>Заголовок</h1>
-                <p>Это пример с <b>жирным</b>, <i>курсивом</i>, <u>подчёркнутым</u>
-                и <s>зачёркнутым</s> текстом.</p>
-                <p style="text-align: center;">Текст по центру.</p>
-                <ol><li>Один</li><li>Два</li><li>Три</li></ol>
-                <pre><code>const sui = "polished";</code></pre>
+                <h1>Welcome</h1>
+                <p>This sample demonstrates <b>bold</b>, <i>italic</i>, <u>underlined</u>
+                and <s>strikethrough</s> text.</p>
+                <p style="text-align:center;">Centered paragraph</p>
+                <ul>
+                    <li>Bullet list item</li>
+                    <li>Another item</li>
+                </ul>
+                <ol>
+                    <li>Numbered item</li>
+                    <li>Second item</li>
+                </ol>
+                <blockquote>Blockquote citation style</blockquote>
+                <pre><code>const msg = "Hello World";</code></pre>
                 """);
         }
     }
 
+    private async Task GetTextAsync()
+    {
+        if (_editor != null)
+        {
+            _plainText = await _editor.GetTextAsync();
+        }
+    }
+
+    private async Task ExportMarkdownAsync()
+    {
+        if (_editor != null)
+        {
+            _exportedMd = await _editor.ExportMarkdownAsync();
+        }
+    }
+
+    private async Task CopyAsMarkdownAsync()
+    {
+        if (_editor != null)
+        {
+            await _editor.CopyAsMarkdownAsync();
+        }
+    }
+
+    private async Task OnAutoSaveAsync(string html)
+    {
+        _lastAutoSave = DateTime.Now.ToString("HH:mm:ss");
+        StateHasChanged();
+        await Task.CompletedTask;
+    }
+
+    // ── Hotkeys ───────────────────────────────────────────────────────
     private record Hotkey(string Key, string Description);
 
     private readonly Hotkey[] _hotkeys =
     {
-        new("Ctrl+B", "Жирный"),
-        new("Ctrl+I", "Курсив"),
-        new("Ctrl+U", "Подчёркнутый"),
-        new("Ctrl+Z", "Отменить"),
-        new("Ctrl+Y", "Повторить"),
-        new("Ctrl+K", "Вставить ссылку"),
-        new("Esc", "Закрыть попап / выйти из FS"),
+        new("Ctrl+B", "Bold"),
+        new("Ctrl+I", "Italic"),
+        new("Ctrl+U", "Underline"),
+        new("Ctrl+Z", "Undo"),
+        new("Ctrl+Y", "Redo"),
+        new("Ctrl+K", "Insert Link"),
+        new("Esc", "Close popup / Exit fullscreen"),
+        new("# + Space", "Heading 1"),
+        new("## + Space", "Heading 2"),
+        new("> + Space", "Blockquote"),
+        new("- + Space", "Bullet list"),
+        new("1. + Space", "Numbered list"),
+        new("--- + Enter", "Horizontal rule"),
+        new("/", "Command palette (slash menu)"),
     };
 
-    private string _apiSnippet = """
-        @ref="editor"
+    // ── Constructor state ─────────────────────────────────────────────
+    private bool _ctorShowToolbar = true;
+    private bool _ctorShowStatus = true;
+    private bool _ctorFloatToolbar = true;
+    private bool _ctorMdShortcuts = true;
+    private bool _ctorSlashMenu = true;
+    private bool _ctorFindReplace = true;
+    private bool _ctorLineNums;
+    private bool _ctorResizable;
+    private bool _ctorReadOnly;
+    private string _ctorMinHeight = "200px";
+    private string _ctorContent = "";
 
-        // Получить HTML / текст
-        var html = await editor.GetHtmlAsync();
-        var text = await editor.GetTextAsync();
+    private string[] _generatedCodeLines = Array.Empty<string>();
 
-        // Установить / вставить
-        await editor.SetHtmlAsync("<p>Новый</p>");
-        await editor.InsertHtmlAsync("<b>Жирный</b>");
+    private readonly List<SgSegmentedOption<bool>> _boolOnOff = new()
+    {
+        new() { Value = true,  Label = "On" },
+        new() { Value = false, Label = "Off" },
+    };
 
-        // Управление
-        await editor.FocusAsync();
-        await editor.ToggleFullscreenAsync();
-        """;
+    private readonly List<SgSegmentedOption<string>> _heightOptions = new()
+    {
+        new() { Value = "120px", Label = "120px" },
+        new() { Value = "200px", Label = "200px" },
+        new() { Value = "300px", Label = "300px" },
+        new() { Value = "400px", Label = "400px" },
+    };
+
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgRichTextEditor");
+        if (!_ctorFloatToolbar)
+            lines.Add("    EnableFloatingToolbar=\"false\"");
+        if (!_ctorMdShortcuts)
+            lines.Add("    EnableMarkdownShortcuts=\"false\"");
+        if (!_ctorSlashMenu)
+            lines.Add("    EnableSlashMenu=\"false\"");
+        if (!_ctorFindReplace)
+            lines.Add("    EnableFindReplace=\"false\"");
+        if (_ctorLineNums)
+            lines.Add("    ShowLineNumbers=\"true\"");
+        if (_ctorResizable)
+            lines.Add("    Resizable=\"true\"");
+        if (_ctorReadOnly)
+            lines.Add("    ReadOnly=\"true\"");
+        if (!_ctorShowToolbar)
+            lines.Add("    ShowToolbar=\"false\"");
+        if (!_ctorShowStatus)
+            lines.Add("    ShowStatusBar=\"false\"");
+        if (_ctorMinHeight != "200px")
+            lines.Add($"    MinHeight=\"{_ctorMinHeight}\"");
+        lines.Add("    Placeholder=\"...\" />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+        }
+        catch { }
+    }
+
+    // ── Property table ────────────────────────────────────────────────
+    private List<PropertyPanelItem> _editorProperties = new()
+    {
+        new() { Label = "Value",             Value = "string",              BadgeText = "HTML",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ValueChanged",      Value = "EventCallback",       BadgeText = "Two-way", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Placeholder",       Value = "string?",             BadgeText = "Hint",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ReadOnly",          Value = "bool",                BadgeText = "Lock",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "MaxLength",         Value = "int (0=unlimited)",   BadgeText = "Limit",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "SpellCheck",        Value = "bool",                BadgeText = "Spell",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Height / MinHeight / MaxHeight", Value = "string? (CSS)", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EnableFloatingToolbar",  Value = "bool",           BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EnableMarkdownShortcuts", Value = "bool",          BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EnableSlashMenu",   Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowEmojiPicker",   Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EnableFindReplace", Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "AutoSaveMs",        Value = "int",                 BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EnableFocusMode",   Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EnableCollapsibleToolbar", Value = "bool",         BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Resizable",         Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowLineNumbers",   Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "EnableRipple",      Value = "bool",                BadgeText = "New",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "AiSystemPrompt / AiEndpoint / AiModel", Value = "string", BadgeText = "AI", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowToolbar",       Value = "bool",                BadgeText = "Toolbar",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowStatusBar",     Value = "bool",                BadgeText = "Status",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowWordCount / ShowCharCount / ShowFormatIndicator", Value = "bool", BadgeText = "Stats", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AllowFullscreen",   Value = "bool",                BadgeText = "FS",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowSourceButton / ShowTableButton / ShowBlockSelect", Value = "bool", BadgeText = "Toggles", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowEmojiButton / ShowFindReplaceButton / ShowAiButton", Value = "bool", BadgeText = "Toggle", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowFocusModeButton / ShowCollapseButton", Value = "bool", BadgeText = "Toggle", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CssClass",          Value = "string?",             BadgeText = "Class",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ToolbarCustomContent", Value = "RenderFragment?",  BadgeText = "Custom",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnFocus / OnBlur",  Value = "EventCallback",       BadgeText = "Events",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnKeyDown / OnAutoSave", Value = "EventCallback",  BadgeText = "Events",   BadgeVariant = SgBadgeVariant.Default },
+    };
 }

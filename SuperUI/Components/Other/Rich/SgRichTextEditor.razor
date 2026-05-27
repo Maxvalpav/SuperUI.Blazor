@@ -1,47 +1,53 @@
 @namespace SuperUI.Components
+@using SuperUI.Services.Llm
 @inject ISuperUILocalizer Localizer
+@inject SgToastService Toasts
 @implements IAsyncDisposable
 
-<div class="sgc-richtext @CssClass @(ReadOnly ? "sgc-readonly" : "") @(_isFullscreen ? "sgc-richtext-fullscreen" : "") @_stateClass"
+<div class="sgc-richtext @CssClass @(ReadOnly ? "sgc-readonly" : "") @(_isFullscreen ? "sgc-richtext-fullscreen" : "") @(_showCodeView ? "sgc-richtext-codeview" : "") @_stateClass @(_focusMode ? "sgc-richtext-focus" : "") @(_toolbarCollapsed ? "sgc-richtext-collapsed" : "")"
      style="@RootStyle"
      @ref="_elementRef">
 
     @if (!ReadOnly && ShowToolbar)
     {
-        <div class="sgc-richtext-toolbar" role="toolbar" aria-label="@Localizer["TextFormatting"]">
+        <div class="sgc-richtext-toolbar @(_toolbarCollapsed ? "sgc-richtext-toolbar-collapsed" : "")" role="toolbar" aria-label="@Localizer["TextFormatting"]">
             @if (ToolbarCustomContent != null)
             {
                 @ToolbarCustomContent
             }
             else
             {
-                <div class="sgc-richtext-group">
-                    <select class="sgc-richtext-select"
-                            value="@_currentBlock"
-                            @onchange="OnBlockChangeAsync"
-                            title="@Localizer["HeadingStyle"]">
-                        <option value="P">@Localizer["Normal"]</option>
-                        <option value="H1">@Localizer["Heading"] 1</option>
-                        <option value="H2">@Localizer["Heading"] 2</option>
-                        <option value="H3">@Localizer["Heading"] 3</option>
-                        <option value="BLOCKQUOTE">@Localizer["Quote"]</option>
-                        <option value="PRE">@Localizer["CodeBlock"]</option>
-                    </select>
-                    <select class="sgc-richtext-select"
-                            value="@_currentFontSize"
-                            @onchange="OnFontSizeChangeAsync"
-                            title="@Localizer["FontSize"]"
-                            style="min-width: 78px;">
-                        <option value="">@Localizer["Default"]</option>
-                        <option value="1">XS</option>
-                        <option value="2">S</option>
-                        <option value="3">M</option>
-                        <option value="4">L</option>
-                        <option value="5">XL</option>
-                        <option value="6">XXL</option>
-                        <option value="7">3XL</option>
-                    </select>
-                </div>
+                @if (ShowBlockSelect)
+                {
+                    <div class="sgc-richtext-group">
+                        <select class="sgc-richtext-select"
+                                value="@_currentBlock"
+                                @onchange="OnBlockChangeAsync"
+                                title="@Localizer["HeadingStyle"]">
+                            <option value="P">@Localizer["Normal"]</option>
+                            <option value="H1">@Localizer["Heading"] 1</option>
+                            <option value="H2">@Localizer["Heading"] 2</option>
+                            <option value="H3">@Localizer["Heading"] 3</option>
+                            <option value="H4">@Localizer["Heading"] 4</option>
+                            <option value="BLOCKQUOTE">@Localizer["Quote"]</option>
+                            <option value="PRE">@Localizer["CodeBlock"]</option>
+                        </select>
+                        <select class="sgc-richtext-select"
+                                value="@_currentFontSize"
+                                @onchange="OnFontSizeChangeAsync"
+                                title="@Localizer["FontSize"]"
+                                style="min-width: 78px;">
+                            <option value="">@Localizer["Default"]</option>
+                            <option value="1">XS</option>
+                            <option value="2">S</option>
+                            <option value="3">M</option>
+                            <option value="4">L</option>
+                            <option value="5">XL</option>
+                            <option value="6">XXL</option>
+                            <option value="7">3XL</option>
+                        </select>
+                    </div>
+                }
 
                 <div class="sgc-richtext-group">
                     @ToolbarButton("bold", () => ExecuteCommandAsync("bold"), Localizer["Bold"], "Ctrl+B",
@@ -103,6 +109,11 @@
                         @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>)
                     @ToolbarButton(null, ToggleImagePopover, Localizer["InsertImage"], null,
                         @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>)
+                    @if (ShowTableButton)
+                    {
+                        @ToolbarButton(null, ToggleTablePopover, Localizer["InsertTable"], null,
+                            @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h18v18H3z"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>)
+                    }
                     @ToolbarButton(null, () => InsertHtmlInternalAsync("<code>\u200b</code>"), Localizer["CodeInline"], null,
                         @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>)
                     @ToolbarButton(null, () => ExecuteCommandAsync("insertHorizontalRule"), Localizer["HorizontalRule"], null,
@@ -118,7 +129,93 @@
                         @<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>)
                 </div>
 
+                @if (ShowEmojiButton && ShowEmojiPicker)
+                {
+                    <div class="sgc-richtext-group">
+                        <button type="button"
+                                class="sgc-richtext-btn @(_emojiPickerVisible ? "sgc-active" : "")"
+                                title="@Localizer["Emoji"]"
+                                @onclick="ToggleEmojiPickerAsync">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                        </button>
+                    </div>
+                }
+
+                @if (ShowFindReplaceButton && EnableFindReplace)
+                {
+                    <div class="sgc-richtext-group">
+                        <button type="button"
+                                class="sgc-richtext-btn @(_findReplaceVisible ? "sgc-active" : "")"
+                                title="@Localizer["FindReplace"]"
+                                @onclick="ToggleFindReplace">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M8 11h6"/><path d="M11 8v6"/></svg>
+                        </button>
+                    </div>
+                }
+
+                @if (ShowAiButton && EnableAiTools)
+                {
+                    <div class="sgc-richtext-group">
+                        <button type="button"
+                                class="sgc-richtext-btn @(_aiBusy ? "sgc-active" : "")"
+                                title="@Localizer["AiAssistant"]"
+                                @onclick="ToggleAiPanel">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v4"/><path d="M18 5l-2.5 2.5"/><path d="M5 12h4"/><path d="M6.5 6.5L9 9"/><path d="M19 12h-4"/><path d="M15 15l2.5 2.5"/><path d="M12 19v4"/><path d="M9 15l-2.5 2.5"/><circle cx="12" cy="12" r="8" fill="currentColor" opacity="0.15"/></svg>
+                        </button>
+                    </div>
+                }
+
+                @if (ShowFocusModeButton && EnableFocusMode)
+                {
+                    <div class="sgc-richtext-group">
+                        <button type="button"
+                                class="sgc-richtext-btn @(_focusMode ? "sgc-active" : "")"
+                                title="@(_focusMode ? Localizer["ExitFocusMode"] : Localizer["FocusMode"])"
+                                @onclick="ToggleFocusMode">
+                            @if (_focusMode)
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8V3h5"/><path d="M21 8V3h-5"/><path d="M3 16v5h5"/><path d="M21 16v5h-5"/></svg>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            }
+                        </button>
+                    </div>
+                }
+
+                @if (ShowCollapseButton && EnableCollapsibleToolbar)
+                {
+                    <div class="sgc-richtext-group">
+                        <button type="button"
+                                class="sgc-richtext-btn"
+                                title="@(_toolbarCollapsed ? Localizer["ExpandToolbar"] : Localizer["CollapseToolbar"])"
+                                @onclick="ToggleToolbarCollapsed">
+                            @if (_toolbarCollapsed)
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 11 12 6 7 11"/><polyline points="17 17 12 12 7 17"/></svg>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+                            }
+                        </button>
+                    </div>
+                }
+
                 <div class="sgc-richtext-spacer"></div>
+
+                @if (ShowSourceButton)
+                {
+                    <div class="sgc-richtext-group">
+                        <button type="button"
+                                class="sgc-richtext-btn @(_showCodeView ? "sgc-active" : "")"
+                                title="@Localizer["Source"]"
+                                @onclick="ToggleCodeView">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        </button>
+                    </div>
+                }
 
                 @if (AllowFullscreen)
                 {
@@ -191,6 +288,46 @@
                 </div>
             }
 
+            @if (_showTablePopover)
+            {
+                <div class="sgc-richtext-popover sgc-richtext-popover-table" @onclick:stopPropagation>
+                    <div class="sgc-richtext-popover-title">@Localizer["InsertTable"]</div>
+                    <div class="sgc-richtext-popover-row">
+                        <div class="sgc-richtext-table-picker">
+                            <div class="sgc-richtext-table-picker-header">
+                                <span>@Localizer["Rows"]:</span>
+                                <input type="number" class="sgc-richtext-popover-input" style="width:60px;"
+                                       @bind="_tableRows" min="1" max="20" />
+                                <span>@Localizer["Columns"]:</span>
+                                <input type="number" class="sgc-richtext-popover-input" style="width:60px;"
+                                       @bind="_tableCols" min="1" max="20" />
+                            </div>
+                            <div class="sgc-richtext-table-picker-grid">
+                                @for (int r = 0; r < Math.Min(_tableHover, 10); r++)
+                                {
+                                    for (int c = 0; c < Math.Min(_tableHover, 10); c++)
+                                    {
+                                        var isSelected = r < _tableRows && c < _tableCols;
+                                        <div class="sgc-richtext-table-cell @(isSelected ? "selected" : "")"
+                                             @onmouseover="() => { _tableHover = Math.Max(r + 1, c + 1); }"
+                                             @onclick="() => InsertTableAsync()"
+                                             style="grid-row:@(r+1);grid-column:@(c+1);">
+                                        </div>
+                                    }
+                                }
+                            </div>
+                            <div class="sgc-richtext-table-picker-label">
+                                @_tableRows x @_tableCols
+                            </div>
+                        </div>
+                    </div>
+                    <div class="sgc-richtext-popover-actions">
+                        <button type="button" class="sgc-richtext-popover-btn" @onclick="ClosePopovers">@Localizer["Cancel"]</button>
+                        <button type="button" class="sgc-richtext-popover-btn sgc-primary" @onclick="InsertTableAsync">@Localizer["Apply"]</button>
+                    </div>
+                </div>
+            }
+
             @if (_showTextColorPopover || _showHighlightPopover)
             {
                 <div class="sgc-richtext-popover" @onclick:stopPropagation>
@@ -220,35 +357,119 @@
         </div>
     }
 
-    <div class="sgc-richtext-editor"
-         contenteditable="@(!ReadOnly)"
-         spellcheck="@SpellCheck.ToString().ToLower()"
-         @ref="_editorRef"
-         @oninput="OnInputAsync"
-         @onkeydown="OnKeyDownAsync"
-         @onmouseup="OnSelectionChangedAsync"
-         @onkeyup="OnSelectionChangedAsync"
-         @onfocus="OnFocusAsync"
-         @onblur="OnBlurAsync"
-         style="@EditorStyle"
-         role="textbox"
-         aria-multiline="true"
-         aria-label="@AriaLabel"
-         aria-readonly="@ReadOnly.ToString().ToLower()">
-    </div>
+    @if (_findReplaceVisible)
+    {
+        <div class="sgc-richtext-findbar" @onclick:stopPropagation>
+            <input type="text" class="sgc-richtext-findbar-input"
+                   placeholder="@Localizer["Find"]"
+                   @oninput="OnFindInputAsync"
+                   @onkeydown="OnFindKeyDownAsync"
+                   id="@_findInputId" />
+            <input type="text" class="sgc-richtext-findbar-input"
+                   placeholder="@Localizer["Replace"]"
+                   @oninput="OnReplaceInputAsync"
+                   id="@_replaceInputId"
+                   style="width:100px;" />
+            <div class="sgc-richtext-findbar-actions">
+                <button type="button" class="sgc-richtext-btn sgc-richtext-btn-sm" title="@Localizer["FindPrev"]" @onclick="FindPrevAsync">&#x25B2;</button>
+                <button type="button" class="sgc-richtext-btn sgc-richtext-btn-sm" title="@Localizer["FindNext"]" @onclick="FindNextAsync">&#x25BC;</button>
+                <button type="button" class="sgc-richtext-btn sgc-richtext-btn-sm" title="@Localizer["Replace"]" @onclick="ReplaceAsync">@Localizer["Replace"]</button>
+                <button type="button" class="sgc-richtext-btn sgc-richtext-btn-sm" title="@Localizer["ReplaceAll"]" @onclick="ReplaceAllAsync">@Localizer["ReplaceAll"]</button>
+                <button type="button" class="sgc-richtext-btn sgc-richtext-btn-sm" title="@Localizer["Close"]" @onclick="ToggleFindReplace">&times;</button>
+            </div>
+        </div>
+    }
+
+    @if (_emojiPickerVisible)
+    {
+        <div class="sgc-richtext-emoji-picker" @ref="_emojiPickerRef" @onclick:stopPropagation>
+            <div class="sgc-richtext-emoji-search">
+                <input type="text" class="sgc-richtext-popover-input"
+                       placeholder="@Localizer["SearchEmoji"]"
+                       @bind="_emojiSearch" @bind:event="oninput"
+                       @ref="_emojiSearchRef" />
+            </div>
+            <div class="sgc-richtext-emoji-categories">
+                @foreach (var cat in new[] { "people","nature","food","activity","symbols" })
+                {
+                    <button type="button"
+                            class="sgc-richtext-emoji-cat @(_emojiCategory == cat ? "sgc-active" : "")"
+                            @onclick="() => { _emojiCategory = cat; StateHasChanged(); }">
+                        @cat
+                    </button>
+                }
+            </div>
+            <div class="sgc-richtext-emoji-grid">
+                @foreach (var emoji in FilteredEmojis)
+                {
+                    <button type="button" class="sgc-richtext-emoji-item" @onclick="() => SelectEmojiAsync(emoji)">
+                        @emoji
+                    </button>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_showCodeView)
+    {
+        <textarea class="sgc-richtext-source"
+                  @ref="_sourceRef"
+                  value="@_codeViewContent"
+                  @oninput="OnCodeViewInputAsync"
+                  spellcheck="false"
+                  aria-label="@Localizer["SourceCode"]"
+                  style="@EditorStyle"></textarea>
+    }
+    else
+    {
+        <div class="sgc-richtext-editor-area">
+            @if (ShowLineNumbers)
+            {
+                <div class="sgc-richtext-linenumbers" @ref="_lineNumbersRef"></div>
+            }
+            <div class="sgc-richtext-editor @(ShowLineNumbers ? "sgc-richtext-editor-with-lines" : "")"
+                 contenteditable="@(!ReadOnly)"
+                 spellcheck="@SpellCheck.ToString().ToLower()"
+                 @ref="_editorRef"
+                 @oninput="OnInputAsync"
+                 @onkeydown="OnKeyDownAsync"
+                 @onmouseup="OnSelectionChangedAsync"
+                 @onkeyup="OnSelectionChangedAsync"
+                 @onfocus="OnFocusAsync"
+                 @onblur="OnBlurAsync"
+                 style="@EditorStyle"
+                 role="textbox"
+                 aria-multiline="true"
+                 aria-label="@AriaLabel"
+                 aria-readonly="@ReadOnly.ToString().ToLower()">
+            </div>
+        </div>
+    }
 
     @if (ShowStatusBar)
     {
         <div class="sgc-richtext-status">
-            <span class="sgc-richtext-status-item"><strong>@_wordCount</strong> @Localizer["Words"]</span>
-            <span class="sgc-richtext-status-item"><strong>@_charCount</strong> @Localizer["Characters"]</span>
+            @if (ShowWordCount)
+            {
+                <span class="sgc-richtext-status-item"><strong>@_wordCount</strong> @Localizer["Words"]</span>
+            }
+            @if (ShowCharCount)
+            {
+                <span class="sgc-richtext-status-item"><strong>@_charCount</strong> @Localizer["Characters"]</span>
+            }
             @if (_selectedCount > 0)
             {
                 <span class="sgc-richtext-status-item">— <strong>@_selectedCount</strong> @Localizer["Selected"]</span>
             }
-            @if (!string.IsNullOrEmpty(_currentFormat))
+            @if (ShowFormatIndicator && !string.IsNullOrEmpty(_currentFormat))
             {
                 <span class="sgc-richtext-format">@_currentFormat</span>
+            }
+            @if (!string.IsNullOrEmpty(MaxLengthHint) && MaxLength > 0)
+            {
+                <span class="sgc-richtext-status-item" style="margin-left:auto;@(_charCount > MaxLength ? "color:var(--sg-color-danger);font-weight:600;" : "")">
+                    @_charCount / @MaxLength
+                </span>
             }
         </div>
     }
@@ -257,6 +478,8 @@
 @code {
     private ElementReference _elementRef;
     private ElementReference _editorRef;
+    private ElementReference _sourceRef;
+    private ElementReference _lineNumbersRef;
     private IJSObjectReference? _jsModule;
     private string _stateClass = "";
     private HashSet<string> _activeFormats = new();
@@ -270,10 +493,13 @@
     private bool _isUpdating;
     private bool _isFullscreen;
     private bool _isDisposed;
+    private bool _showCodeView;
+    private string _codeViewContent = "";
 
     // Popover state
     private bool _showLinkPopover;
     private bool _showImagePopover;
+    private bool _showTablePopover;
     private bool _showTextColorPopover;
     private bool _showHighlightPopover;
     private string _linkUrl = "";
@@ -282,7 +508,37 @@
     private string _imageAlt = "";
     private string? _textColor;
     private string? _highlightColor;
+    private int _tableRows = 3;
+    private int _tableCols = 4;
+    private int _tableHover = 4;
     private readonly string _uploadInputId = $"sgrt-upload-{Guid.NewGuid():N}";
+
+    // Emoji picker state
+    private bool _emojiPickerVisible;
+    private string _emojiSearch = "";
+    private string _emojiCategory = "people";
+    private ElementReference _emojiSearchRef;
+    private ElementReference _emojiPickerRef;
+
+    // Find & Replace state
+    private bool _findReplaceVisible;
+    private string _currentFindTerm = "";
+    private string _currentReplaceTerm = "";
+    private readonly string _findInputId = $"sgrt-find-{Guid.NewGuid():N}";
+    private readonly string _replaceInputId = $"sgrt-replace-{Guid.NewGuid():N}";
+
+    // Focus / collapse state
+    private bool _focusMode;
+    private bool _toolbarCollapsed;
+
+    // Auto-save timer
+    private CancellationTokenSource? _autoSaveCts;
+    private Task? _autoSaveTask;
+
+    // AI state
+    private bool _aiBusy;
+    private string? _aiResult;
+    private string _aiPrompt = "";
 
     private static readonly string[] _palette =
     {
@@ -315,6 +571,15 @@
     /// <summary>Whether to show the status bar.</summary>
     [Parameter] public bool ShowStatusBar { get; set; } = true;
 
+    /// <summary>Whether to show word count in status bar.</summary>
+    [Parameter] public bool ShowWordCount { get; set; } = true;
+
+    /// <summary>Whether to show character count in status bar.</summary>
+    [Parameter] public bool ShowCharCount { get; set; } = true;
+
+    /// <summary>Whether to show format indicator in status bar.</summary>
+    [Parameter] public bool ShowFormatIndicator { get; set; } = true;
+
     /// <summary>Whether the editor is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
@@ -323,6 +588,21 @@
 
     /// <summary>Whether the fullscreen button is shown.</summary>
     [Parameter] public bool AllowFullscreen { get; set; } = true;
+
+    /// <summary>Whether to show the source code toggle button.</summary>
+    [Parameter] public bool ShowSourceButton { get; set; } = true;
+
+    /// <summary>Whether to show the block style and font size selectors.</summary>
+    [Parameter] public bool ShowBlockSelect { get; set; } = true;
+
+    /// <summary>Whether to show the table insert button.</summary>
+    [Parameter] public bool ShowTableButton { get; set; } = true;
+
+    /// <summary>Maximum length of content (0 = unlimited).</summary>
+    [Parameter] public int MaxLength { get; set; }
+
+    /// <summary>Hint text shown after max length value in status bar.</summary>
+    [Parameter] public string? MaxLengthHint { get; set; }
 
     /// <summary>Height of the editor area (e.g., "200px", "100%").</summary>
     [Parameter] public string? Height { get; set; }
@@ -339,7 +619,7 @@
     /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>Custom toolbar content.</summary>
+    /// <summary>Custom toolbar content (replaces default toolbar when set).</summary>
     [Parameter] public RenderFragment? ToolbarCustomContent { get; set; }
 
     /// <summary>Callback invoked when the editor receives focus.</summary>
@@ -351,7 +631,64 @@
     /// <summary>Callback invoked on key down (after built-in shortcut handling).</summary>
     [Parameter] public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
 
+    // ===============================
+    // New feature button visibility toggles
+    // ===============================
+    /// <summary>Shows the Emoji button in the toolbar.</summary>
+    [Parameter] public bool ShowEmojiButton { get; set; } = true;
+    /// <summary>Shows the Find &amp; Replace button in the toolbar.</summary>
+    [Parameter] public bool ShowFindReplaceButton { get; set; } = true;
+    /// <summary>Shows the AI assistant button in the toolbar.</summary>
+    [Parameter] public bool ShowAiButton { get; set; } = true;
+    /// <summary>Shows the Focus mode toggle button in the toolbar.</summary>
+    [Parameter] public bool ShowFocusModeButton { get; set; } = true;
+    /// <summary>Shows the Collapse toolbar button.</summary>
+    [Parameter] public bool ShowCollapseButton { get; set; } = true;
+
+    // ===============================
+    // New feature parameters
+    // ===============================
+    /// <summary>Enables the floating formatting toolbar that appears on text selection.</summary>
+    [Parameter] public bool EnableFloatingToolbar { get; set; } = true;
+    /// <summary>Enables Markdown shortcuts (# H1, ## H2, &gt; quote, - list, 1. list, --- hr).</summary>
+    [Parameter] public bool EnableMarkdownShortcuts { get; set; } = true;
+    /// <summary>Enables the slash (/) command menu for quick insertion.</summary>
+    [Parameter] public bool EnableSlashMenu { get; set; } = true;
+    /// <summary>Enables the Emoji picker popover.</summary>
+    [Parameter] public bool ShowEmojiPicker { get; set; } = true;
+    /// <summary>Enables Find &amp; Replace bar.</summary>
+    [Parameter] public bool EnableFindReplace { get; set; } = true;
+    /// <summary>Enables the AI assistant toolbar.</summary>
+    [Parameter] public bool EnableAiTools { get; set; } = false;
+    /// <summary>Enables auto-save. Set milliseconds &gt; 0 to activate.</summary>
+    [Parameter] public int AutoSaveMs { get; set; } = 0;
+    /// <summary>Fires when auto-save triggers with current HTML content.</summary>
+    [Parameter] public EventCallback<string> OnAutoSave { get; set; }
+    /// <summary>Enables Focus mode (distraction-free editing).</summary>
+    [Parameter] public bool EnableFocusMode { get; set; } = false;
+    /// <summary>Enables collapsible toolbar.</summary>
+    [Parameter] public bool EnableCollapsibleToolbar { get; set; } = false;
+    /// <summary>Whether the editor area is resizable via drag handle.</summary>
+    [Parameter] public bool Resizable { get; set; } = false;
+    /// <summary>Minimum editor height when resizable (CSS value).</summary>
+    [Parameter] public string ResizeMinHeight { get; set; } = "200px";
+    /// <summary>Maximum editor height when resizable (CSS value).</summary>
+    [Parameter] public string ResizeMaxHeight { get; set; } = "800px";
+    /// <summary>Shows line numbers in the editor.</summary>
+    [Parameter] public bool ShowLineNumbers { get; set; } = false;
+    /// <summary>Enables ripple animation on toolbar buttons.</summary>
+    [Parameter] public bool EnableRipple { get; set; } = false;
+    /// <summary>AI system prompt for content generation.</summary>
+    [Parameter] public string AiSystemPrompt { get; set; } = "You are a helpful writing assistant. Respond in the same language as the user's input.";
+    /// <summary>API endpoint override for AI (empty = use injected ILlmService).</summary>
+    [Parameter] public string AiEndpoint { get; set; } = "";
+    /// <summary>Model name for AI requests.</summary>
+    [Parameter] public string AiModel { get; set; } = "";
+    /// <summary>AI prompt presets accessible from the toolbar.</summary>
+    [Parameter] public List<AiPromptPreset> AiPromptPresets { get; set; } = new();
+
     [Inject] private IJSRuntime JS { get; set; } = default!;
+    [Inject] private ILlmService? LlmService { get; set; }
 
     private string RootStyle => string.Empty;
 
@@ -370,7 +707,19 @@
         {
             _dotNetRef = DotNetObjectReference.Create(this);
             _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-components.js");
-            await _jsModule.InvokeVoidAsync("initRichTextEditor", _editorRef, _dotNetRef, Placeholder);
+            var options = new
+            {
+                enableFloatingToolbar = EnableFloatingToolbar,
+                enableMarkdownShortcuts = EnableMarkdownShortcuts,
+                enableSlashMenu = EnableSlashMenu,
+                enableFindReplace = EnableFindReplace,
+                resizable = Resizable,
+                showLineNumbers = ShowLineNumbers,
+                enableRipple = EnableRipple,
+                resizeMinHeight = ResizeMinHeight,
+                resizeMaxHeight = ResizeMaxHeight
+            };
+            await _jsModule.InvokeVoidAsync("initRichTextEditor", _editorRef, _dotNetRef, Placeholder, options);
 
             if (!string.IsNullOrEmpty(Value))
             {
@@ -396,13 +745,14 @@
         if (_isUpdating) return;
         await UpdateContentAsync();
         await UpdateActiveFormatsAsync();
+        if (AutoSaveMs > 0) StartAutoSave();
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
         if (e.Key == "Escape")
         {
-            if (_showLinkPopover || _showImagePopover || _showTextColorPopover || _showHighlightPopover)
+            if (_showLinkPopover || _showImagePopover || _showTablePopover || _showTextColorPopover || _showHighlightPopover)
             {
                 ClosePopovers();
                 return;
@@ -489,6 +839,7 @@
     {
         _showLinkPopover = false;
         _showImagePopover = false;
+        _showTablePopover = false;
         _showTextColorPopover = false;
         _showHighlightPopover = false;
         StateHasChanged();
@@ -517,6 +868,19 @@
         _imageUrl = "";
         _imageAlt = "";
         _showImagePopover = true;
+        StateHasChanged();
+    }
+
+    private async Task ToggleTablePopover()
+    {
+        if (_showTablePopover) { ClosePopovers(); return; }
+        ClosePopovers();
+        if (_jsModule != null)
+            await _jsModule.InvokeVoidAsync("saveSelection", _editorRef);
+        _tableRows = 3;
+        _tableCols = 4;
+        _tableHover = 4;
+        _showTablePopover = true;
         StateHasChanged();
     }
 
@@ -579,8 +943,18 @@
         await _jsModule.InvokeVoidAsync("restoreSelection", _editorRef);
         var url = System.Net.WebUtility.HtmlEncode(_imageUrl.Trim());
         var alt = System.Net.WebUtility.HtmlEncode(_imageAlt ?? "");
-        var html = $"<img src=\"{url}\" alt=\"{alt}\" />";
+        var html = $"<img src=\"{url}\" alt=\"{alt}\" style=\"max-width:100%;\" />";
         await _jsModule.InvokeVoidAsync("insertHtmlAt", _editorRef, html);
+        await UpdateContentAsync();
+        ClosePopovers();
+    }
+
+    private async Task InsertTableAsync()
+    {
+        if (_jsModule == null) return;
+
+        await _jsModule.InvokeVoidAsync("restoreSelection", _editorRef);
+        await _jsModule.InvokeVoidAsync("insertTableOn", _editorRef, _tableRows, _tableCols);
         await UpdateContentAsync();
         ClosePopovers();
     }
@@ -598,7 +972,7 @@
 
         await _jsModule.InvokeVoidAsync("restoreSelection", _editorRef);
         var alt = System.Net.WebUtility.HtmlEncode(string.IsNullOrEmpty(_imageAlt) ? file.Name : _imageAlt);
-        var html = $"<img src=\"{dataUrl}\" alt=\"{alt}\" />";
+        var html = $"<img src=\"{dataUrl}\" alt=\"{alt}\" style=\"max-width:100%;\" />";
         await _jsModule.InvokeVoidAsync("insertHtmlAt", _editorRef, html);
         await UpdateContentAsync();
         ClosePopovers();
@@ -655,6 +1029,312 @@
         return Task.CompletedTask;
     }
 
+    private void ToggleCodeView()
+    {
+        if (!_showCodeView)
+        {
+            _codeViewContent = Value;
+        }
+        _showCodeView = !_showCodeView;
+        StateHasChanged();
+    }
+
+    // ===== Emoji Picker =====
+
+    private async Task ToggleEmojiPickerAsync()
+    {
+        if (_jsModule == null) return;
+        _emojiPickerVisible = !_emojiPickerVisible;
+        if (_emojiPickerVisible)
+        {
+            await _jsModule.InvokeVoidAsync("saveSelection", _editorRef);
+            _emojiCategory = "people";
+            _emojiSearch = "";
+        }
+        StateHasChanged();
+    }
+
+    private async Task SelectEmojiAsync(string emoji)
+    {
+        if (_jsModule == null) return;
+        await _jsModule.InvokeVoidAsync("restoreSelection", _editorRef);
+        await InsertHtmlInternalAsync(emoji);
+        _emojiPickerVisible = false;
+        StateHasChanged();
+    }
+
+    private static readonly Dictionary<string, List<string>> EmojiData = new()
+    {
+        ["people"] = new() { "😀","😁","😂","🤣","😃","😄","😅","😆","😉","😊","😋","😎","😍","😘","🥰","😗","😙","😚","🙂","🤗","🤩","🤔","🤨","😐","😑","😶","🙄","😏","😣","😥","😮","🤐","😯","😪","😫","😴","😌","😛","😜","😝","🤤","😒","😓","😔","😕","🙃","🤑","😲","☹️","🙁","😖","😞","😟","😤","😢","😭","😦","😧","😨","😩","🤯","😬","😰","😱","🥵","🥶","😳","🤪","😵","😡","😠","🤬","👍","👎","👌","✌️","🤞","🤟","🤘","🤙","👋","🤚","🖐","✋","🫱","🫲","🫳","🫴","👆","👇","👈","👉","🖕","✊","👊","🤛","🤜","👏","🙌","👐","🤝","💪","🦵","🦶","👂","🦻","👃","🧠","🫀","🫁","👀","👁","👅","👄","💋" },
+        ["nature"] = new() { "🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🐤","🦆","🦅","🦉","🦇","🐺","🐗","🐴","🦄","🐝","🐛","🦋","🐌","🐞","🐜","🦟","🦗","🦖","🦕","🐙","🦑","🦐","🦞","🦀","🐡","🐠","🐟","🐬","🐳","🐋","🦈","🐊","🐅","🐆","🦓","🦍","🦧","🐘","🦛","🦏","🐪","🐫","🦒","🦘","🐃","🐂","🐄","🐎","🐖","🐏","🐑","🦙","🐐","🦌","🐕","🐩","🦮","🐕‍🦺","🐈","🐓","🦃","🦤","🦚","🦜","🦢","🦩","🕊","🐇","🦝","🦨","🦡","🦫","🦦","🦥","🐁","🐀","🐿","🦔","🐾","🐉","🐲","🌵","🎄","🌲","🌳","🌴","🌱","🌿","☘️","🍀","🎍","🍃","🍂","🍁","🍄","🌾","💐","🌷","🌹","🥀","🌺","🌸","🌼","🌻","🌞","🌝","🌛","🌜","🌚","🌕","🌖","🌗","🌘","🌑","🌒","🌓","🌔","🌙","🌎","🌍","🌏","🪐","💫","⭐️","🌟","✨","⚡️","☄️","💥","🔥","🌪","🌈","☀️","🌤","⛅️","🌥","☁️","🌦","🌧","⛈","🌩","🌨","❄️","☃️","⛄️","🌬","💨","💧","💦","🌊" },
+        ["food"] = new() { "🍏","🍎","🍐","🍊","🍋","🍌","🍉","🍇","🍓","🫐","🍈","🍒","🍑","🥭","🍍","🥥","🥝","🍅","🍆","🥑","🥦","🥬","🥒","🌶","🫑","🌽","🥕","🫒","🧄","🧅","🥔","🍠","🥐","🍞","🥖","🥨","🧀","🥚","🍳","🥞","🧇","🥓","🥩","🍗","🍖","🌭","🍔","🍟","🍕","🫓","🥪","🥙","🧆","🌮","🌯","🫔","🥗","🥘","🫕","🥫","🍝","🍜","🍲","🍛","🍣","🍱","🥟","🦪","🍤","🍙","🍚","🍘","🍥","🥠","🥮","🍢","🍡","🍧","🍨","🍦","🥧","🧁","🍰","🎂","🍮","🍭","🍬","🍫","🍿","🍩","🍪","🌰","🥜","🍯","🥛","🍼","☕️","🍵","🧃","🥤","🧋","🍶","🍺","🍻","🥂","🍷","🫗","🥃","🍸","🍹","🧉","🍾","🧊","🥄","🍴","🥣","🍽","🥡" },
+        ["activity"] = new() { "⚽️","🏀","🏈","⚾️","🥎","🎾","🏐","🏉","🥏","🎱","🪀","🏓","🏸","🏒","🏑","🥍","🏏","🪃","🥅","⛳️","🪁","🏹","🎣","🤿","🥊","🥋","🎽","🛹","🛼","🛷","⛸","🥌","🎿","⛷","🏂","🏋️","🤼","🤸","🤺","⛹️","🤾","🏌️","🏇","🧘","🏄","🏊","🤽","🚣","🧗","🚵","🚴","🏆","🥇","🥈","🥉","🏅","🎖","🏵","🎗","🎫","🎟","🎪","🤹","🎭","🎨","🎬","🎤","🎧","🎼","🎹","🥁","🪘","🎷","🎺","🪗","🎸","🪕","🎻","🎲","♟","🎯","🎳","🎮","🕹","🎰","🎲","🧩","🪩","🎴","🃏","🎀","🎁","🎊","🎉","🎎","🏮","🎐","🧧","✉️","📩","📨","📧","💌","📥","📤","📦","🏷","📪","📫","📬","📭","📮","📯","📜","📃","📄","📑","🧾","🏷" },
+        ["symbols"] = new() { "❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣️","💕","💞","💓","💗","💖","💘","💝","💟","☮️","✝️","☪️","🕉","☸️","✡️","🔯","🕎","☯️","☦️","🛐","⛎","♈️","♉️","♊️","♋️","♌️","♍️","♎️","♏️","♐️","♑️","♒️","♓️","🆔","⚛️","🉑","☢️","☣️","📴","📳","🈶","🈚️","🈸","🈺","🈷️","✴️","🆚","💮","🉐","㊙️","㊗️","🈴","🈵","🈹","🈲","🅰️","🅱️","🆎","🆑","🅾️","🆘","❌","⭕️","🛑","⛔️","📛","🚫","💯","💢","♨️","🚷","🚯","🚳","🚱","🔞","📵","🚭","❗️","❕","❓","❔","‼️","⁉️","🔅","🔆","〽️","⚠️","🚸","🔱","⚜️","🔰","♻️","✅","🈯️","💹","❇️","✳️","❎","🌐","💠","Ⓜ️","🌀","💤","🏧","🚾","♿️","🅿️","🈳","🈂️","🛂","🛃","🛄","🛅","🆗","💱","💲","🔚","🔙","🔛","🔝","🔜","☑️","🔘","⚪️","🟤","🔴","🟠","🟡","🟢","🔵","🟣","⚫️","🟥","🟧","🟨","🟩","🟦","🟪","⬛️","⬜️","◼️","◻️","◾️","▪️","▫️","🔶","🔷","🔸","🔹","🔺","🔻","💠","🔲","🔳","💳","💴","💵","💶","💷","💰","💸","🧾","💎","♠️","♥️","♦️","♣️","🃏","🀄️","🎴","🔇","🔈","🔉","🔊","📢","📣","📯","🔔","🔕","🎵","🎶","💭","🗯","💬","🗨","🕐","🕑","🕒","🕓","🕔","🕕","🕖","🕗","🕘","🕙","🕚","🕛","🕜","🕝","🕞","🕟","🕠","🕡","🕢","🕣","🕤","🕥","🕦","🕧" }
+    };
+
+    private IEnumerable<string> FilteredEmojis =>
+        EmojiData.TryGetValue(_emojiCategory, out var list)
+            ? string.IsNullOrEmpty(_emojiSearch)
+                ? list.Take(50)
+                : list.Where(e => e.Contains(_emojiSearch) || e.Contains(_emojiSearch, StringComparison.OrdinalIgnoreCase)).Take(50)
+            : Enumerable.Empty<string>();
+
+    // ===== Find & Replace =====
+
+    private void ToggleFindReplace()
+    {
+        _findReplaceVisible = !_findReplaceVisible;
+        StateHasChanged();
+    }
+
+    private async Task OnFindInputAsync(ChangeEventArgs e)
+    {
+        _currentFindTerm = e.Value?.ToString() ?? "";
+        if (_jsModule != null)
+            await _jsModule.InvokeVoidAsync("findInEditor", _editorRef, _currentFindTerm);
+    }
+
+    private async Task OnReplaceInputAsync(ChangeEventArgs e)
+    {
+        _currentReplaceTerm = e.Value?.ToString() ?? "";
+    }
+
+    private async Task OnFindKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            if (_jsModule != null)
+                await _jsModule.InvokeVoidAsync("findInEditor", _editorRef, _currentFindTerm);
+        }
+    }
+
+    private async Task FindPrevAsync()
+    {
+        if (_jsModule != null)
+            await _jsModule.InvokeVoidAsync("findPrev", _editorRef);
+    }
+
+    private async Task FindNextAsync()
+    {
+        if (_jsModule != null)
+            await _jsModule.InvokeVoidAsync("findNext", _editorRef);
+    }
+
+    private async Task ReplaceAsync()
+    {
+        if (_jsModule != null)
+            await _jsModule.InvokeVoidAsync("replaceInEditor", _editorRef, _currentFindTerm, _currentReplaceTerm);
+    }
+
+    private async Task ReplaceAllAsync()
+    {
+        if (_jsModule != null)
+            await _jsModule.InvokeVoidAsync("replaceAllInEditor", _editorRef, _currentFindTerm, _currentReplaceTerm);
+        await UpdateContentAsync();
+    }
+
+    // ===== Focus Mode =====
+
+    private Task ToggleFocusMode()
+    {
+        _focusMode = !_focusMode;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ===== Collapsible Toolbar =====
+
+    private Task ToggleToolbarCollapsed()
+    {
+        _toolbarCollapsed = !_toolbarCollapsed;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    // ===== Auto-Save =====
+
+    private void StartAutoSave()
+    {
+        if (AutoSaveMs <= 0) return;
+        _autoSaveCts?.Cancel();
+        _autoSaveCts = new CancellationTokenSource();
+        var ct = _autoSaveCts.Token;
+        _autoSaveTask = AutoSaveLoopAsync(ct);
+    }
+
+    private async Task AutoSaveLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(AutoSaveMs, ct);
+                if (!ct.IsCancellationRequested && OnAutoSave.HasDelegate)
+                {
+                    var html = await GetHtmlAsync();
+                    await OnAutoSave.InvokeAsync(html);
+                }
+            }
+            catch (TaskCanceledException) { break; }
+        }
+    }
+
+    // ===== AI Assistant =====
+
+    private async Task ToggleAiPanel()
+    {
+        if (_aiBusy) return;
+        if (LlmService == null && string.IsNullOrEmpty(AiEndpoint))
+        {
+            _aiResult = "AI service is not configured. Inject ILlmService or set AiEndpoint.";
+            StateHasChanged();
+            return;
+        }
+        _aiResult = null;
+        _aiPrompt = "";
+        StateHasChanged();
+    }
+
+    private async Task SendAiPromptAsync()
+    {
+        if (_aiBusy || string.IsNullOrWhiteSpace(_aiPrompt) || _jsModule == null) return;
+        _aiBusy = true;
+        _aiResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var html = await GetHtmlAsync();
+            var context = string.IsNullOrWhiteSpace(html) ? "(empty document)" : html;
+
+            if (LlmService != null)
+            {
+                var request = new SgLlmChatRequest
+                {
+                    Messages = new()
+                    {
+                        new() { Role = "system", Content = AiSystemPrompt },
+                        new() { Role = "user", Content = $"Document context: {context}\n\nUser request: {_aiPrompt}" }
+                    }
+                };
+                var result = await LlmService.CompleteAsync(request);
+                _aiResult = result?.Content;
+
+                if (!string.IsNullOrEmpty(_aiResult))
+                {
+                    var clean = System.Net.WebUtility.HtmlEncode(_aiResult);
+                    await _jsModule.InvokeVoidAsync("saveSelection", _editorRef);
+                    await _jsModule.InvokeVoidAsync("insertHtmlAt", _editorRef, clean);
+                    await UpdateContentAsync();
+                }
+            }
+            else if (!string.IsNullOrEmpty(AiEndpoint))
+            {
+                using var client = new HttpClient();
+                var payload = new
+                {
+                    model = string.IsNullOrEmpty(AiModel) ? "gpt-4o-mini" : AiModel,
+                    messages = new[]
+                    {
+                        new { role = "system", content = AiSystemPrompt },
+                        new { role = "user", content = $"Document context: {context}\n\nUser request: {_aiPrompt}" }
+                    }
+                };
+                var json = System.Text.Json.JsonSerializer.Serialize(payload);
+                var content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(AiEndpoint, content);
+                response.EnsureSuccessStatusCode();
+                var responseJson = await response.Content.ReadAsStringAsync();
+                _aiResult = "AI response received. Check console for details.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _aiResult = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            _aiBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task RunAiPresetAsync(AiPromptPreset preset)
+    {
+        if (_jsModule == null) return;
+        _aiPrompt = preset.Prompt;
+        var html = await GetHtmlAsync();
+        var context = string.IsNullOrWhiteSpace(html) ? "(empty document)" : html;
+
+        if (LlmService != null && _jsModule != null)
+        {
+            _aiBusy = true;
+            StateHasChanged();
+            try
+            {
+                var request = new SgLlmChatRequest
+                {
+                    Messages = new()
+                    {
+                        new() { Role = "system", Content = AiSystemPrompt },
+                        new() { Role = "user", Content = $"Document context: {context}\n\n{preset.Prompt}" }
+                    }
+                };
+                var result = await LlmService.CompleteAsync(request);
+                var text = result?.Content;
+                if (!string.IsNullOrEmpty(text))
+                {
+                    var clean = System.Net.WebUtility.HtmlEncode(text);
+                    await _jsModule.InvokeVoidAsync("saveSelection", _editorRef);
+                    await _jsModule.InvokeVoidAsync("insertHtmlAt", _editorRef, clean);
+                    await UpdateContentAsync();
+                }
+            }
+            catch (Exception ex)
+            {
+                _aiResult = $"Error: {ex.Message}";
+            }
+            finally
+            {
+                _aiBusy = false;
+                StateHasChanged();
+            }
+        }
+    }
+
+    // ===== Export Markdown =====
+
+    /// <summary>Exports the editor content as Markdown.</summary>
+    public async Task<string> ExportMarkdownAsync()
+    {
+        if (_jsModule == null) return "";
+        return await _jsModule.InvokeAsync<string>("exportAsMarkdown", _editorRef) ?? "";
+    }
+
+    /// <summary>Copies the editor content as Markdown to the clipboard.</summary>
+    public async Task CopyAsMarkdownAsync()
+    {
+        if (_jsModule == null) return;
+        await _jsModule.InvokeVoidAsync("copyAsMarkdown", _editorRef);
+    }
+
+    private async Task OnCodeViewInputAsync(ChangeEventArgs e)
+    {
+        _codeViewContent = e.Value?.ToString() ?? "";
+        if (_isUpdating) return;
+        _isUpdating = true;
+        try
+        {
+            Value = _codeViewContent;
+            await ValueChanged.InvokeAsync(Value);
+            await HtmlChanged.InvokeAsync(Value);
+        }
+        finally
+        {
+            _isUpdating = false;
+        }
+    }
+
     // ----- JS callbacks -----
 
     [JSInvokable]
@@ -665,7 +1345,7 @@
 
     private async Task UpdateActiveFormatsAsync()
     {
-        if (_jsModule == null) return;
+        if (_jsModule == null || _showCodeView) return;
 
         var formats = await _jsModule.InvokeAsync<string[]>("queryActiveFormats");
         _activeFormats = new HashSet<string>(formats);
@@ -673,7 +1353,7 @@
         var blockFormat = await _jsModule.InvokeAsync<string>("queryCommandValue", "formatBlock");
         _currentBlock = blockFormat?.ToUpperInvariant() switch
         {
-            "H1" or "H2" or "H3" or "BLOCKQUOTE" or "PRE" => blockFormat.ToUpperInvariant(),
+            "H1" or "H2" or "H3" or "H4" or "BLOCKQUOTE" or "PRE" => blockFormat.ToUpperInvariant(),
             _ => "P"
         };
 
@@ -694,7 +1374,7 @@
 
     private async Task UpdateContentAsync()
     {
-        if (_jsModule == null || _isUpdating) return;
+        if (_jsModule == null || _isUpdating || _showCodeView) return;
 
         _isUpdating = true;
         try
@@ -743,6 +1423,7 @@
     /// <summary>Gets the HTML content from the editor.</summary>
     public async Task<string> GetHtmlAsync()
     {
+        if (_showCodeView) return _codeViewContent;
         if (_jsModule == null) return Value;
         return await _jsModule.InvokeAsync<string>("getHtmlContent", _editorRef);
     }
@@ -750,6 +1431,7 @@
     /// <summary>Gets the plain text content from the editor.</summary>
     public async Task<string> GetTextAsync()
     {
+        if (_showCodeView) return _codeViewContent;
         if (_jsModule == null) return "";
         return await _jsModule.InvokeAsync<string>("getTextContent", _editorRef);
     }
@@ -758,7 +1440,11 @@
     public async Task SetHtmlAsync(string html)
     {
         Value = html;
-        if (_jsModule != null)
+        if (_showCodeView)
+        {
+            _codeViewContent = html;
+        }
+        else if (_jsModule != null)
         {
             await _jsModule.InvokeVoidAsync("setHtmlContent", _editorRef, html);
             await UpdateStatsAsync();
@@ -768,46 +1454,80 @@
     /// <summary>Inserts HTML at the current cursor position.</summary>
     public async Task InsertHtmlAsync(string html)
     {
-        if (_jsModule != null)
+        if (_showCodeView)
+        {
+            _codeViewContent += html;
+            Value = _codeViewContent;
+            await ValueChanged.InvokeAsync(Value);
+        }
+        else if (_jsModule != null)
         {
             await _jsModule.InvokeVoidAsync("insertHtmlAt", _editorRef, html);
             await UpdateContentAsync();
         }
     }
 
+    /// <summary>Gets whether the editor is in fullscreen mode.</summary>
+    public bool IsFullscreen => _isFullscreen;
+
+    /// <summary>Gets whether the editor is in code view mode.</summary>
+    public bool IsCodeView => _showCodeView;
+
     /// <summary>Focuses the editor.</summary>
     public async Task FocusAsync()
     {
-        if (_jsModule != null)
+        if (_showCodeView)
+        {
+            await _sourceRef.FocusAsync();
+        }
+        else if (_jsModule != null)
+        {
             await _jsModule.InvokeVoidAsync("focus", _editorRef);
+        }
     }
 
     /// <summary>Toggles fullscreen mode.</summary>
     public Task ToggleFullscreenAsync() => ToggleFullscreen();
+
+    /// <summary>Toggles code view mode.</summary>
+    public void ToggleCodeViewAsync() => ToggleCodeView();
 
     public async ValueTask DisposeAsync()
     {
         if (_isDisposed) return;
         _isDisposed = true;
 
-        // 1. Уведомить JS о dispose
         if (_jsModule is not null)
         {
             try { await _jsModule.InvokeVoidAsync("disposeRichTextEditor", _editorRef); }
             catch { }
         }
 
-        // 2. Очистить DotNetObjectReference
         var dotNetRef = _dotNetRef;
         _dotNetRef = null;
         dotNetRef?.Dispose();
 
-        // 3. Очистить JS модуль
         if (_jsModule is not null)
         {
             try { await _jsModule.DisposeAsync(); }
             catch { }
             _jsModule = null;
         }
+
+        _autoSaveCts?.Cancel();
+        _autoSaveCts?.Dispose();
+    }
+
+    /// <summary>Represents an AI prompt preset shown in the editor toolbar.</summary>
+    public class AiPromptPreset
+    {
+        /// <summary>Display label for the preset button.</summary>
+        public string Label { get; set; } = "";
+        /// <summary>The prompt text sent to the AI.</summary>
+        public string Prompt { get; set; } = "";
+        /// <summary>Optional icon CSS class or emoji.</summary>
+        public string? Icon { get; set; }
     }
 }
+
+
