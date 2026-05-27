@@ -2,14 +2,15 @@
 @inherits SgInputBase<string>
 @using System.Globalization
 @using System.Text
+@using System.Text.RegularExpressions
 @implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass @StatusFieldClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
-    <div class="sgc-input-wrap sgc-size-@Size.ToString().ToLowerInvariant() @AnimClass @(IsInvalid ? "sgc-invalid-wrap" : "") @(Disabled ? "sgc-disabled" : "") @(PrefixContent != null ? "sgc-has-prefix" : "") @(SuffixContent != null ? "sgc-has-suffix" : "") @(ShowClearButton && !string.IsNullOrEmpty(Value) ? "sgc-has-clear" : "") @StatusWrapClass"
+    <div class="sgc-input-wrap sgc-size-@Size.ToString().ToLowerInvariant() @AnimClass @(Disabled ? "sgc-disabled" : "") @(PrefixContent != null ? "sgc-has-prefix" : "") @(SuffixContent != null ? "sgc-has-suffix" : "") @(ShowClearButton && !string.IsNullOrEmpty(Value) ? "sgc-has-clear" : "") @(AllowCopy && !string.IsNullOrEmpty(Value) ? "sgc-has-copy" : "")"
          @onmouseenter="OnWrapMouseEnter"
          @onmouseleave="OnWrapMouseLeave"
          @onwheel:preventDefault="DisableWheel">
@@ -22,9 +23,9 @@
             <span class="sgc-input-affix sgc-input-affix-prefix">@PrefixContent</span>
         }
         <input id="@_id"
-               type="text"
+               type="@(SecretMode && !_revealed ? "password" : "text")"
                inputmode="@InputMode"
-               class="sgc-input @(IsInvalid ? "sgc-invalid" : "") @(_isNumeric ? "sgc-text-right" : "") @(IsComplete ? "sgc-mask-complete" : "")"
+               class="sgc-input sgc-input-masked @(IsInvalid ? "sgc-invalid" : "") @(_isNumeric ? "sgc-text-right" : "") @(IsComplete ? "sgc-mask-complete" : "") @StatusInputClass"
                placeholder="@EffectivePlaceholder"
                disabled="@Disabled"
                readonly="@ReadOnly"
@@ -40,6 +41,7 @@
                @onfocus="OnFocusAsync"
                @onblur="OnBlurAsync"
                @onkeydown="OnKeyDownAsync"
+               @onpaste="OnPasteAsync"
                @attributes="AdditionalAttributes" />
         @if (SuffixContent != null)
         {
@@ -49,10 +51,33 @@
         {
             <span class="sgc-input-icon sgc-input-icon-trailing">@((MarkupString)TrailingIcon)</span>
         }
-        @if (AllowCopy && !string.IsNullOrEmpty(Value) && !Disabled && !ReadOnly)
+        @if (SecretMode && RevealToggle && !string.IsNullOrEmpty(Value) && !Disabled)
+        {
+            <button type="button" class="sgc-input-action sgc-input-reveal"
+                    aria-label="@(_revealed ? "Hide" : "Show")"
+                    title="@(_revealed ? "Hide value" : "Show value")"
+                    @onclick="OnRevealToggleAsync" tabindex="-1">
+                @if (_revealed)
+                {
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                        <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                    </svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                }
+            </button>
+        }
+        @if (AllowCopy && !string.IsNullOrEmpty(Value) && !Disabled)
         {
             <button type="button" class="sgc-input-action @(_copied ? "sgc-copied" : "")"
-                    aria-label="@Localizer["NumberInput_Copy"]" title="@Localizer["NumberInput_Copy"]"
+                    aria-label="@(Localizer?["NumberInput_Copy"] ?? "Copy")" title="@(Localizer?["NumberInput_Copy"] ?? "Copy")"
                     @onclick="CopyValueAsync" tabindex="-1">
                 @if (_copied)
                 {
@@ -71,7 +96,7 @@
         }
         @if (ShowClearButton && !string.IsNullOrEmpty(Value) && !Disabled && !ReadOnly)
         {
-            <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="@Localizer["Clear"]" tabindex="-1">
+            <button type="button" class="sgc-input-clear" @onclick="ClearAsync" aria-label="@(Localizer?["Clear"] ?? "Clear")" tabindex="-1">
                 <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
                     <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
                 </svg>
@@ -107,6 +132,9 @@
     private bool _copied;
     private string _animClass = "";
     private bool _popoverVisible;
+    private int _cursorPos;
+    private bool _revealed;
+    private string? _detectedCardBrand;
 
     /// <summary>Label text displayed above the input.</summary>
     [Parameter] public string? Label { get; set; }
@@ -161,8 +189,11 @@
     /// <summary>Whether to show a clear button. Alias for <see cref="AllowClear"/>.</summary>
     [Parameter] public bool ShowClearButton { get => AllowClear; set => AllowClear = value; }
 
-    /// <summary>Show a copy button to copy the formatted value to clipboard. Default false.</summary>
+    /// <summary>Show a copy button to copy the raw value to clipboard. Default false.</summary>
     [Parameter] public bool AllowCopy { get; set; }
+
+    /// <summary>When true, copy copies the formatted display value; when false, copies the raw significant chars. Default false.</summary>
+    [Parameter] public bool CopyFormatted { get; set; }
 
     /// <summary>Culture used for numeric / date formatting. Default is current culture.</summary>
     [Parameter] public CultureInfo? Culture { get; set; }
@@ -206,7 +237,7 @@
     /// <summary>SVG markup for an icon displayed after the input value (trailing side).</summary>
     [Parameter] public string? TrailingIcon { get; set; }
 
-    /// <summary>Semantic color status for the input border and accent. Default <c>null</c>.</summary>
+    /// <summary>Semantic color status for the input border. Default <c>null</c>.</summary>
     [Parameter] public SgColor? Status { get; set; }
 
     /// <summary>Size variant. Default is Md.</summary>
@@ -227,33 +258,53 @@
     /// <summary>Show validation error in a floating popover tooltip instead of static text. Default false.</summary>
     [Parameter] public bool ValidationPopover { get; set; }
 
+    /// <summary>When true, the raw value is hidden and replaced with <see cref="MaskChar"/> characters (like a password field). Default false.</summary>
+    [Parameter] public bool SecretMode { get; set; }
+
+    /// <summary>Character used in <see cref="SecretMode"/> to mask the value. Default is '•'.</summary>
+    [Parameter] public char MaskChar { get; set; } = '•';
+
+    /// <summary>When true and <see cref="SecretMode"/> is enabled, the value is revealed on focus. Default true.</summary>
+    [Parameter] public bool RevealOnFocus { get; set; } = true;
+
+    /// <summary>When true and <see cref="SecretMode"/> is enabled, shows a reveal/hide toggle button. Default true.</summary>
+    [Parameter] public bool RevealToggle { get; set; } = true;
+
     /// <summary>Additional HTML attributes for the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
 
-    /// <summary>True once the raw value satisfies the mask (length matches significant slots, or numeric value is in range).</summary>
+    /// <summary>True once the raw value satisfies the mask (length matches significant slots, or numeric value is in range, and specific validations pass).</summary>
     public bool IsComplete => CheckComplete(Value);
 
     private bool IsInvalid =>
         !string.IsNullOrEmpty(ErrorText)
         || HasValidationErrors
         || (_touched && Required && string.IsNullOrEmpty(Value))
-        || (_touched && !string.IsNullOrEmpty(Value) && !IsComplete && !_isNumeric);
+        || (_touched && !string.IsNullOrEmpty(Value) && !IsComplete);
 
-    private string? DisplayedError =>
-        !string.IsNullOrEmpty(ErrorText) ? ErrorText
-        : ValidationMessages.FirstOrDefault()
-            ?? (_touched && Required && string.IsNullOrEmpty(Value) ? Localizer["Required"] : null)
-            ?? (_touched && !string.IsNullOrEmpty(Value) && !IsComplete && !_isNumeric ? Localizer["Incomplete"] : null);
+    private string? DisplayedError
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(ErrorText)) return ErrorText;
+            var msgs = ValidationMessages.ToList();
+            if (msgs.Count > 0) return msgs[0];
+            if (!_touched) return null;
+            if (Required && string.IsNullOrEmpty(Value)) return Localizer["Required"];
+            if (string.IsNullOrEmpty(Value)) return null;
+            if (!IsComplete) return GetValidationError();
+            return null;
+        }
+    }
 
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
 
     private bool _isNumeric => MaskType is SgMaskType.Currency or SgMaskType.Percent;
 
-    private string? StatusFieldClass => Status.HasValue ? "sgc-field-status-" + Status.Value.ToString().ToLowerInvariant() : null;
-    private string? StatusWrapClass => Status.HasValue ? "sgc-input-status-" + Status.Value.ToString().ToLowerInvariant() : null;
+    private string? StatusInputClass => Status.HasValue ? "sgc-input-status-" + Status.Value.ToString().ToLowerInvariant() : null;
     private string? AnimClass => string.IsNullOrEmpty(_animClass) ? null : _animClass;
 
     private string InputMode => MaskType switch
@@ -287,6 +338,15 @@
     {
         if (string.IsNullOrEmpty(Value))
             return ShowMaskWhileTyping && !_isNumeric ? MaskTemplate(GetMaskPattern(), MaskPlaceholder) : string.Empty;
+
+        // Secret mode: mask the value unless revealed or focused with RevealOnFocus
+        if (SecretMode && !_revealed && !(_focused && RevealOnFocus))
+        {
+            var mask = GetMaskPattern();
+            if (_isNumeric || string.IsNullOrEmpty(mask))
+                return new string(MaskChar, Math.Min(Value.Length, 32));
+            return ApplyMaskWithPlaceholder(new string(MaskChar, CountSignificantChars(mask)), mask, MaskChar);
+        }
 
         return MaskType switch
         {
@@ -338,15 +398,43 @@
         _ => GetMaskPattern().Length > 0 ? GetMaskPattern().Length : null
     };
 
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender) return;
+        if (_restoreCursor > -1)
+        {
+            try
+            {
+                _ = JS.InvokeVoidAsync("eval",
+                    $"requestAnimationFrame(() => {{ const el = document.getElementById('{_id}'); if(el) el.setSelectionRange({_restoreCursor}, {_restoreCursor}); }})");
+            }
+            catch { }
+            _restoreCursor = -1;
+        }
+    }
+
+    private int _restoreCursor = -1;
+
     private async Task OnInputAsync(ChangeEventArgs e)
     {
-        await ProcessInputAsync(e.Value?.ToString() ?? "");
+        var raw = e.Value?.ToString() ?? "";
+        _cursorPos = await GetCursorPosAsync();
+        await ProcessInputAsync(raw);
     }
 
     private async Task OnChangeAsync(ChangeEventArgs e)
     {
         if (!Immediate)
-            await ProcessInputAsync(e.Value?.ToString() ?? "");
+        {
+            var raw = e.Value?.ToString() ?? "";
+            await ProcessInputAsync(raw);
+        }
+    }
+
+    private async Task<int> GetCursorPosAsync()
+    {
+        try { return await JS.InvokeAsync<int>("eval", $"document.getElementById('{_id}')?.selectionStart ?? -1"); }
+        catch { return -1; }
     }
 
     private async Task OnFocusAsync()
@@ -354,9 +442,7 @@
         _focused = true;
         if (SelectOnFocus)
         {
-            await Task.Delay(1);
-            try { await JS.InvokeVoidAsync("eval", $"setTimeout(() => document.getElementById('{_id}')?.select(), 0)"); }
-            catch { }
+            try { await _inputRef.FocusAsync(); } catch { }
         }
     }
 
@@ -368,27 +454,68 @@
             await ApplyNumericConstraintsAsync();
     }
 
+    private async Task OnPasteAsync(ClipboardEventArgs e)
+    {
+        if (Disabled || ReadOnly || _isNumeric) return;
+        await Task.Delay(10);
+        try
+        {
+            var pasted = await JS.InvokeAsync<string>("eval",
+                $"(async () => {{ const t = await navigator.clipboard.readText(); return t; }})()");
+            if (string.IsNullOrEmpty(pasted)) return;
+            var cleaned = new string(pasted.Where(c => !char.IsWhiteSpace(c) && c != '-').ToArray());
+            if (cleaned.Length > 0 && cleaned.All(c => char.IsDigit(c) || char.IsLetter(c)))
+            {
+                await ProcessInputAsync(cleaned);
+            }
+        }
+        catch { }
+    }
+
     private async Task ProcessInputAsync(string rawInput)
     {
         try
         {
+            var mask = GetMaskPattern();
+
+            // Convert display cursor position to significant-char index
+            int sigIndex = -1;
+            if (_cursorPos >= 0)
+            {
+                sigIndex = SigCharsBeforePosition(rawInput, _cursorPos, mask, MaskPlaceholder);
+            }
+
             string nextRaw = MaskType switch
             {
                 SgMaskType.Currency => ParseNumericInput(rawInput, true),
                 SgMaskType.Percent  => ParseNumericInput(rawInput, false),
-                _                   => StripToSignificantChars(rawInput, GetMaskPattern())
+                _                   => StripToSignificantChars(rawInput, mask)
             };
 
             if (!_isNumeric)
             {
-                int maxLen = CountSignificantChars(GetMaskPattern());
+                int maxLen = CountSignificantChars(mask);
                 if (maxLen > 0 && nextRaw.Length > maxLen)
                     nextRaw = nextRaw[..maxLen];
             }
 
             await SetValueAsync(string.IsNullOrEmpty(nextRaw) ? null : nextRaw);
 
-            if (CheckComplete(Value) && _lastCompleteRaw != Value)
+            // Restore cursor: convert significant-char index back to display position
+            if (sigIndex >= 0 && Value != null)
+            {
+                var newDisplay = GetDisplayValue();
+                _restoreCursor = PosFromSigChars(newDisplay, sigIndex, mask);
+            }
+            else
+            {
+                _restoreCursor = -1;
+            }
+
+            bool isComplete = CheckComplete(Value);
+            bool changed = _lastCompleteRaw != Value;
+
+            if (isComplete && changed)
             {
                 _lastCompleteRaw = Value;
                 if (AnimateChanges)
@@ -400,9 +527,9 @@
                 if (OnComplete.HasDelegate)
                     await OnComplete.InvokeAsync(Value!);
             }
-            else if (!CheckComplete(Value))
+            else if (!isComplete)
             {
-                if (AnimateChanges && !string.IsNullOrEmpty(Value))
+                if (AnimateChanges && changed && !string.IsNullOrEmpty(Value))
                 {
                     _animClass = "sgc-input-flash-err";
                     StateHasChanged();
@@ -415,6 +542,59 @@
         {
             Console.Error.WriteLine($"[SgMaskedInput] {ex}");
         }
+    }
+
+    private static int SigCharsBeforePosition(string display, int pos, string mask, char placeholder)
+    {
+        if (pos <= 0) return 0;
+        int count = 0;
+        for (int i = 0; i < pos && i < display.Length; i++)
+        {
+            char c = display[i];
+            if (c == placeholder) continue;
+            if (string.IsNullOrEmpty(mask))
+            {
+                if (char.IsLetterOrDigit(c)) count++;
+            }
+            else if (i < mask.Length)
+            {
+                if (IsToken(mask[i]) && TokenMatches(mask[i], c)) count++;
+                else if (IsToken(mask[i]) && char.IsLetterOrDigit(c)) count++; // edited-in char
+            }
+            else if (char.IsLetterOrDigit(c))
+            {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int PosFromSigChars(string display, int sigIndex, string mask)
+    {
+        if (sigIndex <= 0) return 0;
+        int count = 0;
+        for (int i = 0; i < display.Length; i++)
+        {
+            if (string.IsNullOrEmpty(mask))
+            {
+                if (char.IsLetterOrDigit(display[i]))
+                {
+                    if (++count > sigIndex) return i;
+                }
+            }
+            else if (i < mask.Length)
+            {
+                if (IsToken(mask[i]))
+                {
+                    if (++count > sigIndex) return i;
+                }
+            }
+            else if (char.IsLetterOrDigit(display[i]))
+            {
+                if (++count > sigIndex) return i;
+            }
+        }
+        return display.Length;
     }
 
     private async Task ClearAnimAsync()
@@ -446,7 +626,7 @@
 
     private async Task CopyValueAsync()
     {
-        var text = GetDisplayValue();
+        var text = CopyFormatted ? GetDisplayValue() : Value;
         if (string.IsNullOrEmpty(text)) return;
         try
         {
@@ -458,8 +638,170 @@
         catch { }
     }
 
+    private async Task OnRevealToggleAsync()
+    {
+        _revealed = !_revealed;
+        StateHasChanged();
+        try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    /// <summary>Focuses the input element.</summary>
+    public async Task FocusAsync()
+    {
+        try { await _inputRef.FocusAsync(); } catch { }
+    }
+
+    /// <summary>Selects all text in the input element.</summary>
+    public async Task SelectAsync()
+    {
+        try { await JS.InvokeVoidAsync("eval", $"document.getElementById('{_id}')?.select()"); } catch { }
+    }
+
+    /// <summary>Detects the credit card brand from the current value. Returns null if not detected or not applicable.</summary>
+    public string? GetCardType()
+    {
+        if (MaskType != SgMaskType.CreditCard || string.IsNullOrEmpty(Value)) return null;
+        var digits = new string(Value.Where(char.IsDigit).ToArray());
+        if (digits.Length < 1) return null;
+        return digits[0] switch
+        {
+            '4' => "Visa",
+            '5' when digits.Length > 1 && "12345".Contains(digits[1]) => "Mastercard",
+            '3' when digits.Length > 1 => digits[1] switch
+            {
+                '4' or '7' => "Amex",
+                '0' or '6' or '8' => "Diners",
+                _ => null
+            },
+            '6' => "Discover",
+            '2' when digits.Length > 1 => "Mir",
+            _ => null
+        };
+    }
+
     /// <summary>Returns the value formatted with the active mask, or null if empty.</summary>
     public string? GetFormattedValue() => string.IsNullOrEmpty(Value) ? null : GetDisplayValue();
+
+    /// <summary>Validates the current value against mask-specific rules (Luhn, expiry, etc.).</summary>
+    public string? GetValidationError()
+    {
+        if (string.IsNullOrEmpty(Value)) return null;
+        return MaskType switch
+        {
+            SgMaskType.CreditCard => ValidateCardNumber(Value),
+            SgMaskType.CardExpiry => ValidateExpiry(Value),
+            SgMaskType.Cvv => ValidateCvv(Value),
+            SgMaskType.Phone => ValidatePhone(Value),
+            SgMaskType.Snils => ValidateSnils(Value),
+            _ => null
+        };
+    }
+
+    private static string? ValidateCardNumber(string raw)
+    {
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length < 13 || digits.Length > 19)
+            return "Card number must be 13–19 digits";
+        if (!LuhnCheck(digits))
+            return "Invalid card number (Luhn check failed)";
+        return null;
+    }
+
+    private static bool LuhnCheck(string digits)
+    {
+        int sum = 0;
+        bool alternate = false;
+        for (int i = digits.Length - 1; i >= 0; i--)
+        {
+            int n = digits[i] - '0';
+            if (alternate)
+            {
+                n *= 2;
+                if (n > 9) n -= 9;
+            }
+            sum += n;
+            alternate = !alternate;
+        }
+        return sum % 10 == 0;
+    }
+
+    private static string? ValidateExpiry(string raw)
+    {
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length < 4) return "Enter MM/YY";
+        if (!int.TryParse(digits[..2], out var mm) || mm < 1 || mm > 12)
+            return "Month must be 01–12";
+        if (!int.TryParse(digits[2..], out var yy)) return "Invalid year";
+        var now = DateTime.Now;
+        int century = now.Year / 100 * 100;
+        int expYear = century + yy;
+        if (expYear < now.Year) expYear += 100;
+        if (expYear < now.Year || (expYear == now.Year && mm < now.Month))
+            return "Card is expired";
+        return null;
+    }
+
+    private static string? ValidateCvv(string raw)
+    {
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length < 3) return "CVV must be 3 digits";
+        if (digits.Length > 4) return "CVV must be 3–4 digits";
+        return null;
+    }
+
+    private static string? ValidatePhone(string raw)
+    {
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length < 10) return "Phone must be 10 digits after +7";
+        if (digits.Length > 11) return "Phone number too long";
+        return null;
+    }
+
+    private static string? ValidateSnils(string raw)
+    {
+        var digits = new string(raw.Where(char.IsDigit).ToArray());
+        if (digits.Length < 11) return "SNILS must be 11 digits";
+        if (digits.Length > 11 && !raw.Contains('-')) return "Invalid SNILS format";
+        if (digits.Length == 11)
+        {
+            var expected = SnilsChecksum(digits[..9]);
+            var actual = digits[^2..];
+            if (expected != actual)
+                return "Invalid SNILS checksum";
+        }
+        return null;
+    }
+
+    private static string SnilsChecksum(string nineDigits)
+    {
+        if (nineDigits.Length != 9) return "00";
+        int sum = 0;
+        for (int i = 0; i < 9; i++)
+            sum += (nineDigits[i] - '0') * (9 - i);
+        if (sum < 100) return sum.ToString("D2");
+        if (sum == 100 || sum == 101) return "00";
+        int rem = sum % 101;
+        return (rem < 100 ? rem : 0).ToString("D2");
+    }
+
+    private bool CheckComplete(string? raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return false;
+        if (_isNumeric)
+        {
+            var culture = Culture ?? CultureInfo.CurrentCulture;
+            if (!decimal.TryParse(raw, NumberStyles.Any, culture, out var d)) return false;
+            if (MinValue.HasValue && d < MinValue.Value) return false;
+            if (MaxValue.HasValue && d > MaxValue.Value) return false;
+            return true;
+        }
+        var mask = GetMaskPattern();
+        if (string.IsNullOrEmpty(mask)) return raw.Length > 0;
+        bool lengthOk = raw.Length >= CountSignificantChars(mask);
+        if (!lengthOk) return false;
+        var validationError = GetValidationError();
+        return validationError == null;
+    }
 
     // ---------- Mask engine ----------
 
@@ -492,7 +834,7 @@
             if (IsToken(m))
             {
                 if (TokenMatches(m, raw[ri])) { sb.Append(TransformChar(m, raw[ri])); ri++; }
-                else { ri++; }
+                else ri++;
             }
             else
             {
@@ -534,13 +876,20 @@
     private string StripToSignificantChars(string input, string mask)
     {
         if (string.IsNullOrEmpty(mask))
-            return new string(input.Where(char.IsLetterOrDigit).ToArray());
+            return new string(input.Where(c => !char.IsWhiteSpace(c) && c != MaskPlaceholder && char.IsLetterOrDigit(c)).ToArray());
 
         var sb = new StringBuilder();
         int mi = 0;
+
         foreach (char c in input)
         {
             if (c == MaskPlaceholder) continue;
+            if (mi >= mask.Length) break;
+
+            // Advance mask past literals that aren't in the input
+            while (mi < mask.Length && !IsToken(mask[mi]) && mask[mi] != c && char.IsLetterOrDigit(c))
+                mi++;
+
             if (mi >= mask.Length) break;
 
             char m = mask[mi];
@@ -551,6 +900,12 @@
                     sb.Append(TransformChar(m, c));
                     mi++;
                 }
+                // Non-matching letter/digit — try to accept and advance
+                else if (char.IsLetterOrDigit(c))
+                {
+                    sb.Append(c);
+                    mi++;
+                }
             }
             else if (c == m)
             {
@@ -558,6 +913,8 @@
             }
             else if (char.IsLetterOrDigit(c))
             {
+                // Significant char at literal position — skip literal, try next token
+                mi++;
                 while (mi < mask.Length && !IsToken(mask[mi])) mi++;
                 if (mi < mask.Length && TokenMatches(mask[mi], c))
                 {
@@ -585,22 +942,6 @@
         return n;
     }
 
-    private bool CheckComplete(string? raw)
-    {
-        if (string.IsNullOrEmpty(raw)) return false;
-        if (_isNumeric)
-        {
-            var culture = Culture ?? CultureInfo.CurrentCulture;
-            if (!decimal.TryParse(raw, NumberStyles.Any, culture, out var d)) return false;
-            if (MinValue.HasValue && d < MinValue.Value) return false;
-            if (MaxValue.HasValue && d > MaxValue.Value) return false;
-            return true;
-        }
-        var mask = GetMaskPattern();
-        if (string.IsNullOrEmpty(mask)) return raw.Length > 0;
-        return raw.Length >= CountSignificantChars(mask);
-    }
-
     // ---------- Numeric formatting ----------
 
     private string ParseNumericInput(string input, bool _)
@@ -625,13 +966,18 @@
                 sb.Append(c);
             }
         }
-        return sb.ToString();
+        // Limit decimal places
+        var str = sb.ToString();
+        if (hasDecimal)
+        {
+            var parts = str.Split(decSep);
+            if (parts.Length == 2 && parts[1].Length > DecimalPlaces)
+                str = parts[0] + decSep + parts[1][..DecimalPlaces];
+        }
+        return str;
     }
 
-    private string FormatNumericEditing(string raw)
-    {
-        return raw;
-    }
+    private string FormatNumericEditing(string raw) => raw;
 
     private string FormatCurrency(string raw)
     {
