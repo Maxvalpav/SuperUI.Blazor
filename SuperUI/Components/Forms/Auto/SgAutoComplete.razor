@@ -24,7 +24,7 @@
          aria-describedby="@DescribedBy"
          @onclick:stopPropagation="true"
          @attributes="AdditionalAttributes">
-        <div class="sgc-combo-control" @onfocusin="OnFocusInAsync">
+        <div class="sgc-combo-control" @onfocusin="OnFocusInAsync" @onclick="OnComboClickAsync">
             @if (Prefix != null)
             {
                 <span class="sgc-combo-prefix">@Prefix</span>
@@ -352,6 +352,8 @@
     [Parameter] public SgCheckedStrategy ShowCheckedStrategy { get; set; }
     /// <summary>When true, allows collapsing/expanding option groups by clicking their headers.</summary>
     [Parameter] public bool CollapsibleGroups { get; set; }
+    /// <summary>Number of items to show when the dropdown opens without search text. 0 = show all (filtered by MaxResults).</summary>
+    [Parameter] public int DefaultItemsCount { get; set; }
     /// <summary>Shadow/elevation level for the dropdown menu. Default Md.</summary>
     [Parameter] public SgShadow MenuElevation { get; set; } = SgShadow.Md;
     /// <summary>Optional function that returns a secondary description line for each option.</summary>
@@ -534,10 +536,15 @@
         var searchLen = _search.Length;
         if (searchLen < MinCharacters)
         {
-            if (ShowAllOnFocus && searchLen == 0)
+            if (searchLen == 0 && _open)
             {
                 _showCreateOption = false;
-                return Items.Take(MaxResults > 0 ? MaxResults : int.MaxValue).ToList();
+                var items = Items;
+                if (DefaultItemsCount > 0)
+                    items = items.Take(DefaultItemsCount);
+                if (MaxResults > 0)
+                    items = items.Take(MaxResults);
+                return items.ToList();
             }
             _showCreateOption = false;
             return new List<TItem>();
@@ -596,6 +603,21 @@
         if (ShowAllOnFocus && !_open && string.IsNullOrEmpty(_search))
         {
             await OpenAsync();
+        }
+    }
+
+    private async Task OnComboClickAsync()
+    {
+        if (Disabled) return;
+        if (!_open)
+        {
+            _blurCts?.Cancel();
+            _focusWithin = true;
+            _activeIndex = 0;
+            _open = true;
+            if (OpenChanged.HasDelegate)
+                await OpenChanged.InvokeAsync(true);
+            StateHasChanged();
         }
     }
 
