@@ -1,0 +1,157 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-split-btn @CssClass"
+     style="@Style"
+     @onclick:stopPropagation="true"
+     @onfocusout="HandleFocusOut">
+    <button type="button"
+            class="sgc-split-btn-main @VariantClass @SizeClass @(Glow ? "sgc-glow" : "")"
+            disabled="@Disabled"
+            title="@Title"
+            @onclick="OnMainClickAsync">
+        @if (Icon is not null)
+        {
+            <span class="sgc-btn-icon">@Icon</span>
+        }
+        @if (!string.IsNullOrEmpty(Text))
+        {
+            <span>@Text</span>
+        }
+    </button>
+    <button type="button"
+            class="sgc-split-btn-arrow @VariantClass @SizeClass @(Open ? "sgc-split-btn-arrow-open" : "")"
+            disabled="@Disabled"
+            aria-label="Toggle dropdown"
+            @onclick="ToggleAsync">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+    </button>
+
+    @if (Open && Items?.Any() == true)
+    {
+        <div class="sgc-split-btn-menu">
+            @foreach (var item in Items)
+            {
+                var i = item;
+                if (i.IsSeparator)
+                {
+                    <div class="sgc-split-btn-separator"></div>
+                }
+                else
+                {
+                    <button type="button"
+                            class="sgc-split-btn-item @(i.Danger ? "sgc-split-btn-item-danger" : "") @(i.Disabled ? "sgc-split-btn-item-disabled" : "")"
+                            disabled="@i.Disabled"
+                            @onclick="() => OnItemClickAsync(i)">
+                        @if (!string.IsNullOrEmpty(i.Icon))
+                        {
+                            <span class="sgc-split-btn-item-icon">@((MarkupString)i.Icon)</span>
+                        }
+                        <span>@i.Text</span>
+                        @if (!string.IsNullOrEmpty(i.Shortcut))
+                        {
+                            <span class="sgc-split-btn-item-shortcut">@i.Shortcut</span>
+                        }
+                    </button>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private bool _disposed;
+
+    /// <summary>Button text.</summary>
+    [Parameter] public string? Text { get; set; }
+
+    /// <summary>Icon before text.</summary>
+    [Parameter] public RenderFragment? Icon { get; set; }
+
+    /// <summary>Tooltip text.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Visual variant.</summary>
+    [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Default;
+
+    /// <summary>Size.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>When true, the split button is disabled.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Neon glow effect.</summary>
+    [Parameter] public bool Glow { get; set; }
+
+    /// <summary>Dropdown menu items.</summary>
+    [Parameter] public List<SplitButtonItem>? Items { get; set; }
+
+    /// <summary>Callback when the main button is clicked.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Callback when a dropdown item is clicked.</summary>
+    [Parameter] public EventCallback<SplitButtonItem> OnItemClick { get; set; }
+
+    /// <summary>Whether the dropdown is open.</summary>
+    [Parameter] public bool Open { get => _open; set { _open = value; StateHasChanged(); } }
+
+    /// <summary>Additional CSS class.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline style.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    private string VariantClass => Variant switch
+    {
+        SgButtonVariant.Primary => "sgc-btn-primary",
+        SgButtonVariant.Danger => "sgc-btn-danger",
+        SgButtonVariant.Success => "sgc-btn-success",
+        SgButtonVariant.Ghost => "sgc-btn-ghost",
+        SgButtonVariant.Outlined => "sgc-outlined",
+        SgButtonVariant.Dashed => "sgc-dashed",
+        _ => ""
+    };
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-sm",
+        SgSize.Lg => "sgc-lg",
+        _ => ""
+    };
+
+    private async Task OnMainClickAsync(MouseEventArgs e)
+    {
+        if (Disabled) return;
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(e);
+    }
+
+    private async Task ToggleAsync()
+    {
+        Open = !Open;
+    }
+
+    private async Task OnItemClickAsync(SplitButtonItem item)
+    {
+        if (item.Disabled) return;
+        Open = false;
+        if (OnItemClick.HasDelegate)
+            await OnItemClick.InvokeAsync(item);
+        if (item.OnClick.HasDelegate)
+            await item.OnClick.InvokeAsync();
+    }
+
+    private void HandleFocusOut()
+    {
+        _open = false;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+}

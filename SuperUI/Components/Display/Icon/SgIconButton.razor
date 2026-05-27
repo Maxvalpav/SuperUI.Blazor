@@ -1,36 +1,37 @@
 @namespace SuperUI.Components
 @implements IDisposable
 
-<button type="@Type.ToString().ToLowerInvariant()"
-        class="sgc-icon-btn @VariantClass @SizeClass @(Round ? "sgc-icon-btn-round" : "") @(Pressed ? "sgc-icon-btn-pressed" : "") @(Active ? "sgc-icon-btn-active" : "") @CssClass"
-        style="@Style"
-        disabled="@(Disabled || Loading || _isDebouncing)"
-        title="@Title"
-        aria-label="@(AriaLabel ?? Title)"
-        aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
-        @onclick="OnClickAsync"
-        @attributes="AdditionalAttributes">
-    @if (Loading)
-    {
-        <span class="sgc-spinner" style="width:14px;height:14px;border-width:2px;"></span>
-    }
-    else if (!string.IsNullOrEmpty(Icon))
-    {
-        @((MarkupString)Icon)
-    }
-    else if (ChildContent is not null)
-    {
-        @ChildContent
-    }
-    @if (BadgeCount > 0)
-    {
-        <span class="sgc-icon-btn-badge">@(BadgeCount > 99 ? "99+" : BadgeCount.ToString())</span>
-    }
-    else if (BadgeDot)
-    {
-        <span class="sgc-icon-btn-dot"></span>
-    }
-</button>
+@if (!string.IsNullOrEmpty(Href))
+{
+    <a href="@Href"
+       target="@Target"
+       rel="@Rel"
+       class="sgc-icon-btn @VariantClass @SizeClass @(Round ? "sgc-icon-btn-round" : "") @(Pressed ? "sgc-icon-btn-pressed" : "") @(Active ? "sgc-icon-btn-active" : "") @(Glow ? "sgc-icon-btn-glow" : "") @(Pulse ? "sgc-icon-btn-pulse" : "") @(Glass ? "sgc-icon-btn-glass" : "") @CssClass"
+       style="@Style"
+       title="@Title"
+       aria-label="@(AriaLabel ?? Title)"
+       aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+       @onclick="OnClickAsync"
+       @attributes="AdditionalAttributes">
+        <span class="sgc-ripple"></span>
+        @RenderContent
+    </a>
+}
+else
+{
+    <button type="@Type.ToString().ToLowerInvariant()"
+            class="sgc-icon-btn @VariantClass @SizeClass @(Round ? "sgc-icon-btn-round" : "") @(Pressed ? "sgc-icon-btn-pressed" : "") @(Active ? "sgc-icon-btn-active" : "") @(Glow ? "sgc-icon-btn-glow" : "") @(Pulse ? "sgc-icon-btn-pulse" : "") @(Glass ? "sgc-icon-btn-glass" : "") @CssClass"
+            style="@Style"
+            disabled="@(Disabled || Loading || _isDebouncing)"
+            title="@Title"
+            aria-label="@(AriaLabel ?? Title)"
+            aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+            @onclick="OnClickAsync"
+            @attributes="AdditionalAttributes">
+        <span class="sgc-ripple"></span>
+        @RenderContent
+    </button>
+}
 
 @code {
     private bool _disposed;
@@ -55,7 +56,7 @@
     /// <summary>Button size. Default is <see cref="SgSize.Md"/>.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
-    /// <summary>When true, renders as a circle. When false, renders as a rounded square. Default true.</summary>
+    /// <summary>When true, renders as a circle. Default true.</summary>
     [Parameter] public bool Round { get; set; } = true;
 
     /// <summary>When true, the button acts as a toggle.</summary>
@@ -67,7 +68,7 @@
     /// <summary>Callback when Pressed changes.</summary>
     [Parameter] public EventCallback<bool> PressedChanged { get; set; }
 
-    /// <summary>When true, shows an active/selected highlight (e.g. for toolbar state).</summary>
+    /// <summary>When true, shows an active/selected highlight.</summary>
     [Parameter] public bool Active { get; set; }
 
     /// <summary>When true, the button is disabled.</summary>
@@ -79,7 +80,7 @@
     /// <summary>Badge count shown in the top-right corner. 0 = hidden.</summary>
     [Parameter] public int BadgeCount { get; set; }
 
-    /// <summary>When true, shows a small dot indicator (e.g. for notifications).</summary>
+    /// <summary>When true, shows a small dot indicator.</summary>
     [Parameter] public bool BadgeDot { get; set; }
 
     /// <summary>HTML button type.</summary>
@@ -96,6 +97,24 @@
 
     /// <summary>Click callback.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>URL for link mode.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>Link target (e.g. "_blank").</summary>
+    [Parameter] public string? Target { get; set; }
+
+    /// <summary>Link rel attribute.</summary>
+    [Parameter] public string? Rel { get; set; }
+
+    /// <summary>Neon glow effect on hover.</summary>
+    [Parameter] public bool Glow { get; set; }
+
+    /// <summary>Pulsing animation to draw attention.</summary>
+    [Parameter] public bool Pulse { get; set; }
+
+    /// <summary>Glass-morphism effect.</summary>
+    [Parameter] public bool Glass { get; set; }
 
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
@@ -116,6 +135,30 @@
         SgSize.Lg => "sgc-icon-btn-lg",
         SgSize.Xl => "sgc-icon-btn-xl",
         _         => ""
+    };
+
+    private RenderFragment RenderContent => __builder =>
+    {
+        if (Loading)
+        {
+            <span class="sgc-spinner" style="width:14px;height:14px;border-width:2px;"></span>
+        }
+        else if (!string.IsNullOrEmpty(Icon))
+        {
+            @((MarkupString)Icon)
+        }
+        else if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        if (BadgeCount > 0)
+        {
+            <span class="sgc-icon-btn-badge">@(BadgeCount > 99 ? "99+" : BadgeCount.ToString())</span>
+        }
+        else if (BadgeDot)
+        {
+            <span class="sgc-icon-btn-dot"></span>
+        }
     };
 
     private async Task OnClickAsync(MouseEventArgs e)

@@ -1,0 +1,101 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-speed-dial @DirectionClass @(Open ? "sgc-speed-dial-open" : "")"
+     @onmouseenter="@(() => { if (HoverOpen) Open = true; StateHasChanged(); })"
+     @onmouseleave="@(() => { if (HoverOpen) Open = false; StateHasChanged(); })">
+    <div class="sgc-speed-dial-actions">
+        @if (Open)
+        {
+            @foreach (var action in Actions)
+            {
+                var a = action;
+                <div class="sgc-speed-dial-action" @onclick="() => OnActionClickAsync(a)">
+                    @if (!string.IsNullOrEmpty(a.Tooltip))
+                    {
+                        <span class="sgc-speed-dial-label">@a.Tooltip</span>
+                    }
+                    <button type="button"
+                            class="sgc-speed-dial-btn @SizeClass"
+                            title="@a.Tooltip"
+                            aria-label="@a.Tooltip">
+                        @((MarkupString)a.Icon)
+                    </button>
+                </div>
+            }
+        }
+    </div>
+    <SgFab Icon="@(Open ? CloseIcon ?? Icon : Icon)"
+           Title="@Title"
+           Variant="@Variant"
+           Size="@Size"
+           OnClick="@(() => ToggleAsync())"
+           Active="@Open"
+           CssClass="sgc-speed-dial-main" />
+</div>
+
+@code {
+    private bool _open;
+
+    /// <summary>Main FAB icon.</summary>
+    [Parameter] public string Icon { get; set; } = SgIcons.Plus;
+
+    /// <summary>Icon shown when speed dial is open (default: X).</summary>
+    [Parameter] public string? CloseIcon { get; set; } = SgIcons.X;
+
+    /// <summary>Tooltip for the main FAB.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>FAB variant. Default Primary.</summary>
+    [Parameter] public SgButtonVariant Variant { get; set; } = SgButtonVariant.Primary;
+
+    /// <summary>FAB size.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Direction the actions expand. Default "up".</summary>
+    [Parameter] public SpeedDialDirection Direction { get; set; } = SpeedDialDirection.Up;
+
+    /// <summary>Whether actions are visible.</summary>
+    [Parameter] public bool Open { get => _open; set { _open = value; StateHasChanged(); } }
+
+    /// <summary>Whether to open on hover (mouse enter/leave).</summary>
+    [Parameter] public bool HoverOpen { get; set; }
+
+    /// <summary>Action items.</summary>
+    [Parameter] public List<SpeedDialAction> Actions { get; set; } = new();
+
+    /// <summary>Callback when an action is clicked.</summary>
+    [Parameter] public EventCallback<SpeedDialAction> OnActionClick { get; set; }
+
+    private string DirectionClass => Direction switch
+    {
+        SpeedDialDirection.Up => "sgc-speed-dial-up",
+        SpeedDialDirection.Down => "sgc-speed-dial-down",
+        SpeedDialDirection.Left => "sgc-speed-dial-left",
+        SpeedDialDirection.Right => "sgc-speed-dial-right",
+        _ => "sgc-speed-dial-up"
+    };
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-speed-dial-sm",
+        SgSize.Lg => "sgc-speed-dial-lg",
+        _ => ""
+    };
+
+    private async Task ToggleAsync()
+    {
+        Open = !Open;
+    }
+
+    private async Task OnActionClickAsync(SpeedDialAction action)
+    {
+        if (OnActionClick.HasDelegate)
+            await OnActionClick.InvokeAsync(action);
+        if (action.OnClick.HasDelegate)
+            await action.OnClick.InvokeAsync();
+        Open = false;
+    }
+
+    public void Dispose() { }
+}

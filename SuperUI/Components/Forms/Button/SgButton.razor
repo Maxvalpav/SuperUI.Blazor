@@ -2,41 +2,64 @@
 @inherits SgComponentBase
 @implements IAsyncDisposable
 
-<button type="@Type.ToString().ToLowerInvariant()"
-        class="@(Css("sgc-btn").AddClass(VariantClass).AddClass(SizeClass)
-                   .AddClass("sgc-block", Block)
-                   .AddClass("sgc-pressed", IsToggle && Pressed)
-                   .AddClass("sgc-debouncing", _isDebouncing)
-                   .Build())"
-        disabled="@(Disabled || Loading || _isDebouncing)"
-        title="@Title"
-        @onclick="OnClickAsync"
-        aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
-        aria-disabled="@(Disabled ? "true" : null)"
-        aria-busy="@(Loading ? "true" : "false")"
-        aria-label="@(string.IsNullOrEmpty(Text) ? Title : Text)"
-        @attributes="AttributesWithoutClassAndStyle">
-    @if (Loading)
-    {
-        <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
-    }
-    else if (Icon is not null)
-    {
-        <span class="sgc-btn-icon">@Icon</span>
-    }
-    @if (ChildContent is not null)
-    {
-        @ChildContent
-    }
-    else if (!string.IsNullOrEmpty(Text))
-    {
-        <span>@Text</span>
-    }
-</button>
+@if (!string.IsNullOrEmpty(Href))
+{
+    <a href="@Href"
+       target="@Target"
+       rel="@Rel"
+       class="@(Css("sgc-btn").AddClass(VariantClass).AddClass(SizeClass)
+                  .AddClass("sgc-block", Block)
+                  .AddClass("sgc-pressed", IsToggle && Pressed)
+                  .AddClass("sgc-active", Active)
+                  .AddClass("sgc-glow", Glow)
+                  .AddClass("sgc-pulse", Pulse)
+                  .AddClass("sgc-debouncing", _isDebouncing)
+                  .AddClass("sgc-glass", Glass)
+                  .Build())"
+       title="@Title"
+       @onclick="OnClickAsync"
+       aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+       aria-disabled="@(Disabled ? "true" : null)"
+       aria-busy="@(Loading ? "true" : "false")"
+       aria-label="@(string.IsNullOrEmpty(Text) ? Title : Text)"
+       @attributes="AttributesWithoutClassAndStyle">
+        <span class="sgc-ripple"></span>
+        @RenderContent
+    </a>
+}
+else
+{
+    <button type="@Type.ToString().ToLowerInvariant()"
+            class="@(Css("sgc-btn").AddClass(VariantClass).AddClass(SizeClass)
+                       .AddClass("sgc-block", Block)
+                       .AddClass("sgc-pressed", IsToggle && Pressed)
+                       .AddClass("sgc-active", Active)
+                       .AddClass("sgc-glow", Glow)
+                       .AddClass("sgc-pulse", Pulse)
+                       .AddClass("sgc-debouncing", _isDebouncing)
+                       .AddClass("sgc-glass", Glass)
+                       .Build())"
+            disabled="@(Disabled || Loading || _isDebouncing || _countdownActive || _dangerConfirmActive)"
+            title="@(_dangerConfirmActive ? _confirmText : Title)"
+            @onclick="OnClickAsync"
+            aria-pressed="@(IsToggle ? (Pressed ? "true" : "false") : null)"
+            aria-disabled="@(Disabled ? "true" : null)"
+            aria-busy="@(Loading ? "true" : "false")"
+            aria-label="@(string.IsNullOrEmpty(Text) ? Title : Text)"
+            @attributes="AttributesWithoutClassAndStyle">
+        <span class="sgc-ripple"></span>
+        @RenderContent
+    </button>
+}
 
 @code {
     private bool _isDebouncing;
     private readonly SgDebouncer _debouncer = new();
+    private bool _dangerConfirmActive;
+    private bool _countdownActive;
+    private int _countdownValue;
+    private CancellationTokenSource? _countdownCts;
+    private string? _confirmText;
 
     [CascadingParameter] public SgButtonGroup? ButtonGroup { get; set; }
 
@@ -44,48 +67,48 @@
     /// Gets or sets the button text content.
     /// </summary>
     [Parameter] public string? Text { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the custom content to render inside the button.
     /// Takes precedence over <see cref="Text"/>.
     /// </summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the icon to display before the button text.
     /// </summary>
     [Parameter] public RenderFragment? Icon { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the HTML button type. Default is <see cref="SgButtonType.Button"/>.
     /// </summary>
     [Parameter] public SgButtonType Type { get; set; } = SgButtonType.Button;
-    
+
     /// <summary>
     /// Gets or sets the button visual variant. Default is <see cref="SgButtonVariant.Default"/>.
     /// </summary>
     [Parameter] public SgButtonVariant? Variant { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the button size. Default is <see cref="SgSize.Md"/>.
     /// </summary>
     [Parameter] public SgSize? Size { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the button is disabled.
     /// </summary>
     [Parameter] public bool Disabled { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the button is in loading state (shows spinner).
     /// </summary>
     [Parameter] public bool Loading { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the button should take full width of its container.
     /// </summary>
     [Parameter] public bool Block { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the tooltip text shown on hover.
     /// </summary>
@@ -110,12 +133,70 @@
     /// Gets or sets the debounce interval in milliseconds. Default is 300ms. Set to 0 to disable.
     /// </summary>
     [Parameter] public int DebounceInterval { get; set; } = 300;
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when the button is clicked.
     /// </summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
-    
+
+    /// <summary>
+    /// Gets or sets the URL for link mode. When set, renders as an anchor tag instead of a button.
+    /// </summary>
+    [Parameter] public string? Href { get; set; }
+
+    /// <summary>
+    /// Gets or sets the link target attribute (e.g., "_blank"). Only used when <see cref="Href"/> is set.
+    /// </summary>
+    [Parameter] public string? Target { get; set; }
+
+    /// <summary>
+    /// Gets or sets the link rel attribute. Only used when <see cref="Href"/> is set.
+    /// </summary>
+    [Parameter] public string? Rel { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the button is in an active/selected visual state.
+    /// </summary>
+    [Parameter] public bool Active { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show a glowing neon effect (works best with primary/success/danger variants).
+    /// </summary>
+    [Parameter] public bool Glow { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show a pulsing animation to draw attention.
+    /// </summary>
+    [Parameter] public bool Pulse { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to render with a glass-morphism effect.
+    /// </summary>
+    [Parameter] public bool Glass { get; set; }
+
+    /// <summary>
+    /// Gets or sets the icon shown on the right side of the button text.
+    /// </summary>
+    [Parameter] public RenderFragment? IconRight { get; set; }
+
+    /// <summary>
+    /// Gets or sets the position of the loading spinner. "left" (default), "right", or "center".
+    /// When "center", icon and text are hidden during loading.
+    /// </summary>
+    [Parameter] public string LoadingPosition { get; set; } = "center";
+
+    /// <summary>
+    /// Gets or sets the confirmation text for two-step danger confirmation.
+    /// When set, the first click shows this text, second click fires <see cref="OnClick"/>.
+    /// </summary>
+    [Parameter] public string? ConfirmText { get; set; }
+
+    /// <summary>
+    /// Gets or sets the countdown duration in seconds when the button is clicked.
+    /// The button is disabled during the countdown.
+    /// </summary>
+    [Parameter] public int Countdown { get; set; }
+
     private SgButtonVariant ActualVariant => Variant ?? ButtonGroup?.Variant ?? SgButtonVariant.Default;
     private SgSize ActualSize => Size ?? ButtonGroup?.Size ?? SgSize.Md;
 
@@ -136,9 +217,57 @@
         _         => ""
     };
 
+    private bool ShowSpinnerLeft => Loading && LoadingPosition == "left";
+    private bool ShowSpinnerRight => Loading && LoadingPosition == "right";
+    private bool ShowSpinnerCenter => Loading && LoadingPosition == "center";
+
+    private RenderFragment RenderContent => __builder =>
+    {
+        if (ShowSpinnerCenter)
+        {
+            <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
+            return;
+        }
+
+        if (ShowSpinnerLeft)
+        {
+            <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
+        }
+        else if (!ShowSpinnerRight && Icon is not null)
+        {
+            <span class="sgc-btn-icon">@Icon</span>
+        }
+
+        if (_dangerConfirmActive)
+        {
+            <span>@ConfirmText</span>
+        }
+        else if (_countdownActive)
+        {
+            <span>@_countdownValue</span>
+        }
+        else if (ChildContent is not null)
+        {
+            @ChildContent
+        }
+        else if (!string.IsNullOrEmpty(Text))
+        {
+            <span>@Text</span>
+        }
+
+        if (ShowSpinnerRight)
+        {
+            <span class="sgc-spinner" style="width:12px;height:12px;border-width:2px;"></span>
+        }
+        else if (IconRight is not null && !_dangerConfirmActive && !_countdownActive)
+        {
+            <span class="sgc-btn-icon-right">@IconRight</span>
+        }
+    };
+
     private async Task OnClickAsync(MouseEventArgs e)
     {
-        if (Disabled || Loading || _isDebouncing) return;
+        if (Disabled || Loading || _isDebouncing || _countdownActive) return;
 
         if (DebounceInterval > 0)
         {
@@ -146,19 +275,44 @@
             StateHasChanged();
         }
 
+        // Danger confirm flow
+        if (!string.IsNullOrEmpty(ConfirmText) && !_dangerConfirmActive)
+        {
+            _dangerConfirmActive = true;
+            StateHasChanged();
+            await Task.Delay(3000);
+            _dangerConfirmActive = false;
+            StateHasChanged();
+            if (DebounceInterval > 0)
+            {
+                await _debouncer.RunAsync(
+                    _ => { _isDebouncing = false; return InvokeAsync(StateHasChanged); },
+                    TimeSpan.FromMilliseconds(DebounceInterval));
+            }
+            return;
+        }
+        _dangerConfirmActive = false;
+
+        // Countdown
+        if (Countdown > 0)
+        {
+            _countdownActive = true;
+            _countdownValue = Countdown;
+            _countdownCts?.Cancel();
+            _countdownCts = new CancellationTokenSource();
+            StateHasChanged();
+            _ = CountdownLoopAsync(_countdownCts.Token);
+        }
+
         if (IsToggle)
         {
             Pressed = !Pressed;
             if (PressedChanged.HasDelegate)
-            {
                 await PressedChanged.InvokeAsync(Pressed);
-            }
         }
 
         if (OnClick.HasDelegate)
-        {
             await OnClick.InvokeAsync(e);
-        }
 
         if (DebounceInterval > 0)
         {
@@ -168,8 +322,23 @@
         }
     }
 
+    private async Task CountdownLoopAsync(CancellationToken ct)
+    {
+        while (_countdownValue > 0 && !ct.IsCancellationRequested)
+        {
+            await Task.Delay(1000, ct);
+            if (ct.IsCancellationRequested) return;
+            _countdownValue--;
+            await InvokeAsync(StateHasChanged);
+        }
+        _countdownActive = false;
+        await InvokeAsync(StateHasChanged);
+    }
+
     public override async ValueTask DisposeAsync()
     {
+        _countdownCts?.Cancel();
+        _countdownCts?.Dispose();
         await _debouncer.DisposeAsync();
     }
 }
