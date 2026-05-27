@@ -1,63 +1,125 @@
 @namespace SuperUI.Components
 @typeparam TValue
 @using Microsoft.AspNetCore.Components.Web
+@using SuperUI.Enums
 
 <div class="@ContainerClass"
      role="tablist"
      aria-label="@AriaLabel"
      @onkeydown="HandleKeyDown"
      @attributes="@AdditionalAttributes">
-    @{
-        var optionList = Options as IList<SgSegmentedOption<TValue>> ?? Options.ToList();
-    }
-    @for (var i = 0; i < optionList.Count; i++)
+    @if (Loading)
     {
-        var idx = i;
-        var o = optionList[idx];
-        var isActive = EqualityComparer<TValue>.Default.Equals(Value, o.Value);
-        var isDisabled = Disabled || o.Disabled;
-        <button type="button"
-                class="sgc-segmented-item @(isActive ? "sgc-active" : "") @(isDisabled ? "sgc-disabled" : "") @o.Class"
-                role="tab"
-                aria-selected="@(isActive ? "true" : "false")"
-                disabled="@isDisabled"
-                tabindex="@(isActive || (!optionList.Any(x => EqualityComparer<TValue>.Default.Equals(Value, x.Value)) && idx == 0) ? 0 : -1)"
-                title="@o.Tooltip"
-                @onclick="() => SelectAsync(o.Value)">
-            @if (o.Icon is not null)
+        <div class="sgc-segmented-skeleton">
+            @for (var s = 0; s < _skeletonCount; s++)
             {
-                <span class="sgc-segmented-icon">@o.Icon</span>
+                <span class="sgc-segmented-skeleton-item" style="width:@(_skeletonWidths[s % _skeletonWidths.Length])"></span>
             }
-            <span class="sgc-segmented-label">@o.Label</span>
-            @if (o.BadgeText is not null)
-            {
-                <span class="sgc-segmented-badge sgc-badge-@o.BadgeVariant.ToLowerInvariant()">@o.BadgeText</span>
-            }
-        </button>
+        </div>
+    }
+    else
+    {
+        @if (Prefix is not null)
+        {
+            <span class="sgc-segmented-prefix">@Prefix</span>
+        }
+
+        <span class="sgc-segmented-slider" id="@_sliderId"></span>
+
+        @{
+            var optionList = Options as IList<SgSegmentedOption<TValue>> ?? Options.ToList();
+        }
+        @for (var i = 0; i < optionList.Count; i++)
+        {
+            var idx = i;
+            var o = optionList[idx];
+            var isActive = AllowMultiple
+                ? _selectedSet.Contains(o.Value)
+                : EqualityComparer<TValue>.Default.Equals(Value, o.Value);
+            var isDisabled = Disabled || o.Disabled;
+
+            <button type="button"
+                    @ref="_itemRefs[i]"
+                    class="sgc-segmented-item @(isActive ? "sgc-active" : "") @(isDisabled ? "sgc-disabled" : "") @o.Class"
+                    role="tab"
+                    aria-selected="@(isActive ? "true" : "false")"
+                    disabled="@isDisabled"
+                    tabindex="@(isActive || (!optionList.Any(IsSelected) && idx == 0) ? 0 : -1)"
+                    title="@o.Tooltip"
+                    @onclick="() => SelectAsync(o.Value)">
+                @if (ItemTemplate is not null)
+                {
+                    @ItemTemplate(o)
+                }
+                else
+                {
+                    @if (o.Icon is not null)
+                    {
+                        <span class="sgc-segmented-icon">@o.Icon</span>
+                    }
+                    <span class="sgc-segmented-label">@o.Label</span>
+                    @if (o.BadgeText is not null)
+                    {
+                        <span class="sgc-segmented-badge sgc-badge-@o.BadgeVariant.ToLowerInvariant()">@o.BadgeText</span>
+                    }
+                }
+            </button>
+        }
+
+        @if (Suffix is not null)
+        {
+            <span class="sgc-segmented-suffix">@Suffix</span>
+        }
     }
 </div>
 
 @code {
+    // ── Core Parameters ────────────────────────────────────────────────
     /// <summary>Gets or sets the collection of segmented options to display.</summary>
     [Parameter] public IEnumerable<SgSegmentedOption<TValue>> Options { get; set; } = Array.Empty<SgSegmentedOption<TValue>>();
 
-    /// <summary>Gets or sets the currently selected value.</summary>
+    /// <summary>
+    /// Gets or sets the currently selected value (single-select mode).
+    /// Use with <c>@bind-Value</c> for two-way binding.
+    /// </summary>
     [Parameter] public TValue? Value { get; set; }
 
-    /// <summary>Callback invoked when the selected value changes.</summary>
+    /// <summary>Callback invoked when the selected value changes in single-select mode.</summary>
     [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
 
-    /// <summary>Gets or sets whether the control should take full width of its container.</summary>
-    [Parameter] public bool Block { get; set; }
+    // ── Multi-Select ────────────────────────────────────────────────────
+    /// <summary>
+    /// When true, multiple options can be selected simultaneously.
+    /// Use <see cref="SelectedValues"/> / <see cref="SelectedValuesChanged"/> for binding.
+    /// Default: false.
+    /// </summary>
+    [Parameter] public bool AllowMultiple { get; set; }
+
+    /// <summary>Gets or sets the selected values in multi-select mode.</summary>
+    [Parameter] public IEnumerable<TValue>? SelectedValues { get; set; }
+
+    /// <summary>Callback invoked when selected values change in multi-select mode.</summary>
+    [Parameter] public EventCallback<IEnumerable<TValue>?> SelectedValuesChanged { get; set; }
+
+    // ── Interaction ─────────────────────────────────────────────────────
+    /// <summary>When true, clicking an already-selected option deselects it.</summary>
+    [Parameter] public bool AllowDeselect { get; set; }
 
     /// <summary>Gets or sets whether all segments are disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>Gets or sets the size of the segmented control. Default is "md".</summary>
-    [Parameter] public string Size { get; set; } = "md";
+    // ── Layout ──────────────────────────────────────────────────────────
+    /// <summary>Gets or sets whether the control should take full width of its container.</summary>
+    [Parameter] public bool Block { get; set; }
 
-    /// <summary>Gets or sets the visual variant. Options: "default", "primary". Default is "default".</summary>
-    [Parameter] public string Variant { get; set; } = "default";
+    /// <summary>
+    /// Flex justify-content value: "start", "center", "space-between", "space-around", "space-evenly", "end".
+    /// Default is null (browser default = start).
+    /// </summary>
+    [Parameter] public string? Justify { get; set; }
+
+    /// <summary>When true, stacks segments vertically instead of horizontally.</summary>
+    [Parameter] public bool Vertical { get; set; }
 
     /// <summary>
     /// When true, segments have fully rounded pill shape.
@@ -66,10 +128,48 @@
     [Parameter] public bool Pill { get; set; }
 
     /// <summary>
-    /// When true, stacks segments vertically instead of horizontally.
+    /// Animated slider that moves between active segments.
+    /// Only works in single-select mode.
     /// </summary>
-    [Parameter] public bool Vertical { get; set; }
+    [Parameter] public bool Animated { get; set; }
 
+    // ── Sizing ──────────────────────────────────────────────────────────
+    /// <summary>
+    /// Size as string: "xs", "sm", "md", "lg". Default is "md".
+    /// Alternative to <see cref="SizeEnum"/>.
+    /// </summary>
+    [Parameter] public string Size { get; set; } = "md";
+
+    /// <summary>
+    /// Size as <see cref="SgSize"/> enum. Overrides <see cref="Size"/> when set.
+    /// </summary>
+    [Parameter] public SgSize? SizeEnum { get; set; }
+
+    // ── Styling ─────────────────────────────────────────────────────────
+    /// <summary>
+    /// Visual variant. Options: "default", "primary", "glass", "gradient".
+    /// Default is "default".
+    /// </summary>
+    [Parameter] public string Variant { get; set; } = "default";
+
+    /// <summary>Optional box-shadow CSS value for the active segment.</summary>
+    [Parameter] public string? Shadow { get; set; }
+
+    // ── Content ─────────────────────────────────────────────────────────
+    /// <summary>Content rendered before the option list.</summary>
+    [Parameter] public RenderFragment? Prefix { get; set; }
+
+    /// <summary>Content rendered after the option list.</summary>
+    [Parameter] public RenderFragment? Suffix { get; set; }
+
+    /// <summary>Optional custom template for rendering each option item.</summary>
+    [Parameter] public RenderFragment<SgSegmentedOption<TValue>>? ItemTemplate { get; set; }
+
+    // ── States ──────────────────────────────────────────────────────────
+    /// <summary>When true, renders a skeleton placeholder instead of options.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    // ── Accessibility ───────────────────────────────────────────────────
     /// <summary>Gets or sets the accessible label for the control.</summary>
     [Parameter] public string? AriaLabel { get; set; }
 
@@ -79,6 +179,14 @@
     /// <summary>Gets or sets additional HTML attributes.</summary>
     [Parameter] public Dictionary<string, object?>? AdditionalAttributes { get; set; }
 
+    // ── Internal state ──────────────────────────────────────────────────
+    private HashSet<TValue> _selectedSet = new();
+    private ElementReference[] _itemRefs = Array.Empty<ElementReference>();
+    private static readonly string[] _skeletonWidths = { "48px", "64px", "56px", "72px" };
+    private string _sliderId = $"sgc-seg-slider-{Guid.NewGuid():N}";
+    private int _skeletonCount = 4;
+
+    // ── Computed classes ────────────────────────────────────────────────
     private string ContainerClass
     {
         get
@@ -87,6 +195,21 @@
             if (Block) classes.Add("sgc-block");
             if (Pill) classes.Add("sgc-segmented-pill");
             if (Vertical) classes.Add("sgc-segmented-vertical");
+            if (Animated && !AllowMultiple) classes.Add("sgc-segmented-animated");
+            if (Loading) classes.Add("sgc-segmented-loading");
+            if (!string.IsNullOrEmpty(Justify))
+            {
+                var jc = Justify switch
+                {
+                    "center" => "sgc-justify-center",
+                    "space-between" => "sgc-justify-between",
+                    "space-around" => "sgc-justify-around",
+                    "space-evenly" => "sgc-justify-evenly",
+                    "end" => "sgc-justify-end",
+                    _ => ""
+                };
+                if (!string.IsNullOrEmpty(jc)) classes.Add(jc);
+            }
             classes.Add(SizeClass);
             classes.Add(VariantClass);
             if (!string.IsNullOrEmpty(CssClass)) classes.Add(CssClass);
@@ -94,31 +217,100 @@
         }
     }
 
-    private string SizeClass => Size switch
+    private string SizeClass
     {
-        "sm" => "sgc-segmented-sm",
-        "lg" => "sgc-segmented-lg",
-        _ => ""
-    };
+        get
+        {
+            var s = SizeEnum is not null
+                ? SizeEnum switch
+                {
+                    SgSize.Sm => "sm",
+                    SgSize.Lg => "lg",
+                    SgSize.Xl => "lg",
+                    _ => "md"
+                }
+                : Size;
+            return s switch
+            {
+                "xs" => "sgc-segmented-xs",
+                "sm" => "sgc-segmented-sm",
+                "lg" => "sgc-segmented-lg",
+                _ => ""
+            };
+        }
+    }
 
     private string VariantClass => Variant switch
     {
         "primary" => "sgc-segmented-primary",
+        "glass" => "sgc-segmented-glass",
+        "gradient" => "sgc-segmented-gradient",
         _ => ""
     };
+
+    // ── Lifecycle ───────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        if (AllowMultiple && SelectedValues is not null)
+        {
+            _selectedSet = new HashSet<TValue>(SelectedValues);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (AllowMultiple && SelectedValues is not null)
+        {
+            _selectedSet = new HashSet<TValue>(SelectedValues);
+        }
+
+        var list = Options as IList<SgSegmentedOption<TValue>> ?? Options.ToList();
+        _itemRefs = new ElementReference[list.Count];
+        _skeletonCount = Math.Max(2, Math.Min(list.Count, 6));
+    }
+
+    // ── Selection ───────────────────────────────────────────────────────
+    private bool IsSelected(SgSegmentedOption<TValue> o)
+        => AllowMultiple
+            ? _selectedSet.Contains(o.Value)
+            : EqualityComparer<TValue>.Default.Equals(Value, o.Value);
 
     private async Task SelectAsync(TValue? value)
     {
         if (Disabled) return;
-        if (EqualityComparer<TValue>.Default.Equals(value, Value)) return;
 
-        Value = value;
-        if (ValueChanged.HasDelegate)
+        if (AllowMultiple)
         {
-            await ValueChanged.InvokeAsync(value);
+            if (_selectedSet.Contains(value))
+            {
+                if (!AllowDeselect) return;
+                _selectedSet.Remove(value);
+            }
+            else
+            {
+                _selectedSet.Add(value);
+            }
+            var result = _selectedSet.ToList();
+            SelectedValues = result;
+            if (SelectedValuesChanged.HasDelegate)
+                await SelectedValuesChanged.InvokeAsync(result);
+            StateHasChanged();
+        }
+        else
+        {
+            if (EqualityComparer<TValue>.Default.Equals(value, Value))
+            {
+                if (!AllowDeselect) return;
+                value = default;
+            }
+
+            Value = value;
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(value);
         }
     }
 
+    // ── Keyboard ────────────────────────────────────────────────────────
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
         if (Disabled) return;
@@ -127,7 +319,7 @@
         if (optionList.Count == 0) return;
 
         var currentIndex = optionList.IndexOf(
-            optionList.FirstOrDefault(o => EqualityComparer<TValue>.Default.Equals(Value, o.Value))!);
+            optionList.FirstOrDefault(o => IsSelected(o))!);
         if (currentIndex < 0) currentIndex = 0;
 
         var newIndex = currentIndex;
