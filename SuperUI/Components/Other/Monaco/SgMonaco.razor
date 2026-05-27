@@ -3,34 +3,37 @@
 @inherits SgJsComponentBase
 
 <div class="@Css("sg-monaco-container").Build()"
-     style="@Styles()
-        .AddStyle("height", Height)
-        .AddStyle("width", Width)
-        .AddStyle("min-height", MinHeight)
-        .AddStyle("max-height", MaxHeight)
-        .AddStyle("position", "relative")
-        .AddStyle("overflow", "hidden")
-        .Build()"
+     style="@(Styles()
+         .AddStyle("height", Height)
+         .AddStyle("width", Width)
+         .AddStyle("min-height", MinHeight)
+         .AddStyle("max-height", MaxHeight)
+         .AddStyle("position", "relative")
+         .AddStyle("overflow", "hidden")
+         .AddStyle("border:1px solid var(--sg-border-color, #d1d5db)")
+         .AddStyle("border-radius:6px")
+         .AddStyle("background:var(--sg-bg-primary, #fff)")
+         .Build())"
      @ref="RootRef">
 
     @if (_error is not null)
     {
         <div class="sg-monaco-error" role="alert">
             <span>@_error</span>
-            <button type="button" class="sg-monaco-retry-btn" @onclick="RetryAsync">Повторить</button>
+            <button type="button" class="sg-monaco-retry-btn" @onclick="RetryAsync">Retry</button>
         </div>
     }
     else
     {
         <div @ref="_containerRef"
              class="sg-monaco-canvas"
-             style="@(_ready ? null : "visibility:hidden;") width:100%;height:100%;"></div>
+             style="@(_ready ? null : "visibility:hidden;") position:absolute;inset:0;width:100%;height:100%;"></div>
 
         @if (!_ready)
         {
             <div class="sg-monaco-loading" aria-live="polite">
                 <div class="sg-monaco-spinner" aria-hidden="true"></div>
-                <span>Загрузка редактора…</span>
+                <span>Loading editor…</span>
             </div>
         }
 
@@ -40,308 +43,3 @@
         }
     }
 </div>
-
-@code {
-    private ElementReference _containerRef;
-    private bool _ready;
-    private string? _error;
-    private string? _lastExternalValue;
-    private bool _suppressNextChange;
-    private bool _isDiffEditor;
-    private IReadOnlyList<SgMonacoMarker>? _prevMarkers;
-    private Timer? _autoSaveTimer;
-
-    protected override string ModulePath => "./_content/SuperUI/sg-monaco.js";
-    protected override string IdPrefix   => "sg-monaco";
-
-    // ── Parameters ────────────────────────────────────────────────────────────
-
-    /// <summary>Current editor value (two-way binding).</summary>
-    [Parameter] public string? Value { get; set; }
-
-    /// <summary>Fires when the editor content changes.</summary>
-    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
-
-    /// <summary>Monaco editor options.</summary>
-    [Parameter] public SgMonacoOptions? Options { get; set; }
-
-    /// <summary>CDN source overrides.</summary>
-    [Parameter] public SgMonacoSources? Sources { get; set; }
-
-    /// <summary>Container height. Default "300px".</summary>
-    [Parameter] public string Height { get; set; } = "300px";
-
-    /// <summary>Container width. Default "100%".</summary>
-    [Parameter] public string Width { get; set; } = "100%";
-
-    // ── Feature: OnSave (Ctrl+S) ──────────────────────────────────────────────
-
-    /// <summary>Fires when the user presses Ctrl+S (or Cmd+S on Mac).</summary>
-    [Parameter] public EventCallback<string?> OnSave { get; set; }
-
-    // ── Feature: FormatAction ──────────────────────────────────────────────────
-
-    /// <summary>
-    /// When true, registers Shift+Alt+F keyboard shortcut and enables the public
-    /// <see cref="FormatAsync"/> method. Default false.
-    /// </summary>
-    [Parameter] public bool FormatEnabled { get; set; } = false;
-
-    // ── Feature: ErrorMarkers / WarningMarkers ─────────────────────────────────
-
-    /// <summary>
-    /// List of diagnostic markers (errors, warnings, info, hints) displayed
-    /// as squiggly underlines and gutter icons. Set to null or empty to clear.
-    /// </summary>
-    [Parameter] public IReadOnlyList<SgMonacoMarker>? Markers { get; set; }
-
-    // ── Feature: ReadOnly badge ────────────────────────────────────────────────
-
-    /// <summary>When true and the editor is in read-only mode (see <see cref="SgMonacoOptions.ReadOnly"/>),
-    /// shows a "Read Only" badge in the top-right corner. Default true.</summary>
-    [Parameter] public bool ReadOnlyBadge { get; set; } = true;
-
-    // ── Feature: AutoSave ──────────────────────────────────────────────────────
-
-    /// <summary>
-    /// When true, automatically invokes <see cref="OnAutoSave"/> after a
-    /// debounce period (<see cref="AutoSaveDelay"/>) following the last edit.
-    /// Default false.
-    /// </summary>
-    [Parameter] public bool AutoSave { get; set; } = false;
-
-    /// <summary>Debounce delay in milliseconds for auto-save. Default 2000.</summary>
-    [Parameter] public int AutoSaveDelay { get; set; } = 2000;
-
-    /// <summary>Fires when auto-save triggers after a debounced pause.</summary>
-    [Parameter] public EventCallback<string?> OnAutoSave { get; set; }
-
-    // ── Feature: MinHeight / MaxHeight ─────────────────────────────────────────
-
-    /// <summary>Minimum editor container height (CSS value, e.g. "200px").</summary>
-    [Parameter] public string? MinHeight { get; set; }
-
-    /// <summary>Maximum editor container height (CSS value, e.g. "800px").</summary>
-    [Parameter] public string? MaxHeight { get; set; }
-
-    // ── Feature: DiffEditor ────────────────────────────────────────────────────
-
-    /// <summary>
-    /// When set, the editor renders as a diff editor comparing this original
-    /// value against the <see cref="Value"/> (modified side).
-    /// Set to null to use the standard editor.
-    /// </summary>
-    [Parameter] public string? DiffValue { get; set; }
-
-    // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (!_ready || !IsInteractive) return;
-
-        // If Value changed externally (not from editor itself), push it in
-        if (!string.Equals(Value, _lastExternalValue, StringComparison.Ordinal))
-        {
-            _lastExternalValue = Value;
-            _suppressNextChange = true;
-            await SafeInvokeVoidAsync("setValue", ResolvedId, Value ?? "");
-        }
-
-        // Sync markers when the collection reference changes
-        if (!ReferenceEquals(Markers, _prevMarkers))
-        {
-            _prevMarkers = Markers;
-            await SyncMarkersAsync();
-        }
-    }
-
-    protected override async ValueTask OnInteractiveAsync()
-    {
-        try
-        {
-            await InitAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = $"Не удалось загрузить Monaco Editor: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private async Task InitAsync()
-    {
-        try
-        {
-            var opts = BuildOpts();
-            var sources = Sources ?? new SgMonacoSources();
-            _lastExternalValue = Value;
-
-            if (!string.IsNullOrEmpty(DiffValue))
-            {
-                _isDiffEditor = true;
-                await SafeInvokeVoidAsync("createDiffEditor",
-                    SelfRef, _containerRef, ResolvedId,
-                    DiffValue, Value ?? "", opts, sources);
-            }
-            else
-            {
-                _isDiffEditor = false;
-                await SafeInvokeVoidAsync("initEditor",
-                    SelfRef, _containerRef, ResolvedId,
-                    opts, Value ?? "", sources);
-            }
-
-            _ready = true;
-            _prevMarkers = Markers;
-            await InvokeAsync(StateHasChanged);
-
-            // Post-init: save handler
-            if (OnSave.HasDelegate)
-                await SafeInvokeVoidAsync("setupMonacoSaveHandler", ResolvedId);
-
-            // Post-init: format keybinding
-            if (FormatEnabled)
-                await SafeInvokeVoidAsync("setupMonacoFormatKeybinding", ResolvedId);
-
-            // Post-init: markers
-            await SyncMarkersAsync();
-        }
-        catch (Exception ex)
-        {
-            _error = $"Ошибка инициализации редактора: {ex.Message}";
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-
-    private object BuildOpts()
-    {
-        var o = Options ?? new SgMonacoOptions();
-        return new
-        {
-            language      = o.Language,
-            theme         = o.Theme,
-            fontSize      = o.FontSize,
-            readOnly      = o.ReadOnly,
-            minimap       = o.Minimap,
-            lineNumbers   = o.LineNumbers,
-            wordWrap      = o.WordWrap,
-            autoFormat    = o.AutoFormat,
-            fontFamily    = o.FontFamily,
-            fontLigatures = o.FontLigatures,
-            tabSize       = o.TabSize,
-            minHeight     = o.MinHeight,
-            maxHeight     = o.MaxHeight,
-        };
-    }
-
-    private async Task SyncMarkersAsync()
-    {
-        if (!_ready)
-            return;
-
-        if (Markers is null || Markers.Count == 0)
-        {
-            await SafeInvokeVoidAsync("setMonacoMarkers", ResolvedId, "");
-            return;
-        }
-
-        var json = System.Text.Json.JsonSerializer.Serialize(
-            Markers.Select(m => new
-            {
-                line     = m.Line,
-                column   = m.Column,
-                message  = m.Message,
-                severity = (int)m.Severity
-            }),
-            new System.Text.Json.JsonSerializerOptions
-            {
-                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
-            });
-
-        await SafeInvokeVoidAsync("setMonacoMarkers", ResolvedId, json);
-    }
-
-    // ── Public methods ────────────────────────────────────────────────────────
-
-    /// <summary>Formats the document using Monaco's format action.</summary>
-    public async Task FormatAsync() =>
-        await SafeInvokeVoidAsync("format", ResolvedId);
-
-    /// <summary>Sets the editor language.</summary>
-    public async Task SetLanguageAsync(string language) =>
-        await SafeInvokeVoidAsync("setLanguage", ResolvedId, language);
-
-    /// <summary>Sets the editor theme.</summary>
-    public async Task SetThemeAsync(string theme) =>
-        await SafeInvokeVoidAsync("setTheme", ResolvedId, theme);
-
-    /// <summary>Gets the current editor value.</summary>
-    public async Task<string> GetValueAsync()
-    {
-        if (!IsInteractive) return Value ?? "";
-        try { return await SafeInvokeAsync<string>("getValue", ResolvedId); }
-        catch { return Value ?? ""; }
-    }
-
-    /// <summary>Sets the editor read-only state.</summary>
-    public async Task SetReadOnlyAsync(bool readOnly) =>
-        await SafeInvokeVoidAsync("setReadOnly", ResolvedId, readOnly);
-
-    /// <summary>Retries loading after an error.</summary>
-    public async Task RetryAsync()
-    {
-        _error = null; _ready = false;
-        await InvokeAsync(StateHasChanged);
-        await InitAsync();
-    }
-
-    // ── JS callbacks ──────────────────────────────────────────────────────────
-
-    [JSInvokable]
-    public async Task OnValueChangedAsync(string value)
-    {
-        if (_suppressNextChange)
-        {
-            _suppressNextChange = false;
-            return;
-        }
-        _lastExternalValue = value;
-        if (ValueChanged.HasDelegate)
-            await ValueChanged.InvokeAsync(value);
-
-        // Debounce auto-save
-        if (AutoSave)
-        {
-            _autoSaveTimer?.Dispose();
-            var captured = value;
-            _autoSaveTimer = new Timer(async _ =>
-            {
-                try
-                {
-                    await InvokeAsync(async () =>
-                    {
-                        if (!IsDisposed && OnAutoSave.HasDelegate)
-                            await OnAutoSave.InvokeAsync(captured);
-                    });
-                }
-                catch { /* component disposed */ }
-            }, null, AutoSaveDelay, Timeout.Infinite);
-        }
-    }
-
-    [JSInvokable]
-    public async Task OnSaveAsync(string value)
-    {
-        if (OnSave.HasDelegate)
-            await OnSave.InvokeAsync(value);
-    }
-
-    // ── Dispose ───────────────────────────────────────────────────────────────
-
-    protected override async ValueTask OnDisposingAsync()
-    {
-        _autoSaveTimer?.Dispose();
-        _autoSaveTimer = null;
-        await SafeInvokeVoidAsync("disposeEditor", ResolvedId);
-    }
-}
