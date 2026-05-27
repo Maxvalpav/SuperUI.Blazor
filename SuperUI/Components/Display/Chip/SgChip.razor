@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
 @if (!string.IsNullOrEmpty(Href) && !Disabled)
 {
@@ -11,11 +12,12 @@
        aria-label="@(AriaLabel ?? Text)"
        aria-busy="@(Loading ? "true" : null)"
        draggable="@(Draggable ? "true" : null)"
-       title="@(Disabled && !string.IsNullOrEmpty(DisabledTooltip) ? DisabledTooltip : null)"
-       @ondragstart="HandleDragStartAsync"
-       @ondragend="HandleDragEndAsync"
-       @onclick="HandleClickAsync"
-       @attributes="AdditionalAttributes">
+        title="@ComputeTitle()"
+        @ondragstart="HandleDragStartAsync"
+        @ondragend="HandleDragEndAsync"
+        @onclick="HandleClickAsync"
+        @attributes="AdditionalAttributes">
+        @if (Ripple) { <span class="sgc-chip-ripple"></span> }
         @ChipBody
     </a>
 }
@@ -30,12 +32,13 @@ else
           aria-label="@(AriaLabel ?? Text)"
           aria-busy="@(Loading ? "true" : null)"
           draggable="@(Draggable ? "true" : null)"
-          title="@(Disabled && !string.IsNullOrEmpty(DisabledTooltip) ? DisabledTooltip : null)"
-          @ondragstart="HandleDragStartAsync"
-          @ondragend="HandleDragEndAsync"
-          @onclick="HandleClickAsync"
-          @onkeydown="HandleKeyDownAsync"
-          @attributes="AdditionalAttributes">
+           title="@ComputeTitle()"
+           @ondragstart="HandleDragStartAsync"
+           @ondragend="HandleDragEndAsync"
+           @onclick="HandleClickAsync"
+           @onkeydown="HandleKeyDownAsync"
+           @attributes="AdditionalAttributes">
+        @if (Ripple) { <span class="sgc-chip-ripple"></span> }
         @ChipBody
     </span>
 }
@@ -47,12 +50,9 @@ else
         {
             <span class="sgc-chip-drag-handle" aria-hidden="true">
                 <svg viewBox="0 0 12 12" fill="currentColor">
-                    <circle cx="3" cy="2" r="1.2"/>
-                    <circle cx="9" cy="2" r="1.2"/>
-                    <circle cx="3" cy="6" r="1.2"/>
-                    <circle cx="9" cy="6" r="1.2"/>
-                    <circle cx="3" cy="10" r="1.2"/>
-                    <circle cx="9" cy="10" r="1.2"/>
+                    <circle cx="3" cy="2" r="1.2"/><circle cx="9" cy="2" r="1.2"/>
+                    <circle cx="3" cy="6" r="1.2"/><circle cx="9" cy="6" r="1.2"/>
+                    <circle cx="3" cy="10" r="1.2"/><circle cx="9" cy="10" r="1.2"/>
                 </svg>
             </span>
         }
@@ -61,7 +61,11 @@ else
         {
             <span class="sgc-chip-spinner" aria-hidden="true"></span>
         }
-        else if (Selected && ShowCheck)
+        else if (Skeleton)
+        {
+            <span class="sgc-chip-skeleton" aria-hidden="true"></span>
+        }
+        else if ((ChipGroup is not null ? GroupSelected : Selected) && ShowCheck)
         {
             <span class="sgc-chip-check" aria-hidden="true">
                 <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -72,6 +76,10 @@ else
         else if (Avatar is not null)
         {
             <span class="sgc-chip-avatar" aria-hidden="true">@Avatar</span>
+        }
+        else if (!string.IsNullOrEmpty(AvatarSrc))
+        {
+            <span class="sgc-chip-avatar" aria-hidden="true"><img src="@AvatarSrc" alt="" class="sgc-chip-avatar-img" /></span>
         }
         else if (Dot)
         {
@@ -90,22 +98,34 @@ else
             <span class="sgc-chip-leading" aria-hidden="true">@((MarkupString)LeadingIcon)</span>
         }
 
-        <span class="sgc-chip-text">@ChildContent@Text</span>
-
-        @if (Count.HasValue && !Loading)
+        @if (Status is not null && Status.Value != SgChipStatus.None)
         {
-            <span class="sgc-chip-count" aria-label="@Count">@(Count.Value > MaxCount ? $"{MaxCount}+" : Count.Value.ToString())</span>
-        }
-        else if (TrailingContent is not null && !Loading)
-        {
-            <span class="sgc-chip-trailing" aria-hidden="true">@TrailingContent</span>
-        }
-        else if (!string.IsNullOrEmpty(TrailingIcon) && !Loading)
-        {
-            <span class="sgc-chip-trailing" aria-hidden="true">@((MarkupString)TrailingIcon)</span>
+            <span class="@StatusClass" aria-hidden="true"></span>
         }
 
-        @if ((Closable || Removable) && !Loading && !Disabled && !_isRemoving)
+        if (!Skeleton)
+        {
+            var textStyle = !string.IsNullOrEmpty(MaxWidth) ? $"max-width:{MaxWidth};" : (Truncate ? "max-width:120px;" : "");
+            <span class="sgc-chip-text@(Truncate || !string.IsNullOrEmpty(MaxWidth) ? " sgc-chip-truncate" : "")" style="@textStyle">@ChildContent@Text</span>
+        }
+
+        @if (!Loading && !Skeleton)
+        {
+            if (Count.HasValue)
+            {
+                <span class="sgc-chip-count" aria-label="@Count">@(Count.Value > MaxCount ? $"{MaxCount}+" : Count.Value.ToString())</span>
+            }
+            else if (TrailingContent is not null)
+            {
+                <span class="sgc-chip-trailing" aria-hidden="true">@TrailingContent</span>
+            }
+            else if (!string.IsNullOrEmpty(TrailingIcon))
+            {
+                <span class="sgc-chip-trailing" aria-hidden="true">@((MarkupString)TrailingIcon)</span>
+            }
+        }
+
+        @if ((Closable || Removable) && !Loading && !Disabled && !_isRemoving && !Skeleton)
         {
             <button type="button"
                     class="sgc-chip-x"
@@ -122,140 +142,75 @@ else
     };
 
     // ── Group cascading ────────────────────────────────────────────────────────
-
-    /// <summary>Chip group context received from parent <see cref="SgChipGroup"/>.</summary>
     [CascadingParameter] public SgChipGroup? ChipGroup { get; set; }
+    [CascadingParameter(Name = "SgChipGroupSearch")] public string? GroupSearch { get; set; }
 
     // ── State fields ───────────────────────────────────────────────────────────
-
     private bool _isRemoving;
     private bool _isDragging;
 
     // ── Parameters ─────────────────────────────────────────────────────────────
-
-    /// <summary>Accessibility label for screen readers.</summary>
     [Parameter] public string? AriaLabel { get; set; }
-
-    /// <summary>Chip text content.</summary>
     [Parameter] public string? Text { get; set; }
-
-    /// <summary>Custom content inside the chip. Takes precedence over <see cref="Text"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>Icon rendered before the text (RenderFragment). Takes precedence over <see cref="LeadingIcon"/>.</summary>
     [Parameter] public RenderFragment? Icon { get; set; }
-
-    /// <summary>Avatar rendered before the text (replaces <see cref="Icon"/>).</summary>
     [Parameter] public RenderFragment? Avatar { get; set; }
-
-    /// <summary>Leading content. Takes precedence over <see cref="Icon"/>.</summary>
     [Parameter] public RenderFragment? LeadingContent { get; set; }
-
-    /// <summary>Trailing content rendered after the text.</summary>
     [Parameter] public RenderFragment? TrailingContent { get; set; }
-
-    /// <summary>SVG markup string for a leading icon. Simpler alternative to <see cref="Icon"/>. Ignored if <see cref="Icon"/> is set.</summary>
     [Parameter] public string? LeadingIcon { get; set; }
-
-    /// <summary>SVG markup string for a trailing icon. Ignored if <see cref="TrailingContent"/> is set.</summary>
     [Parameter] public string? TrailingIcon { get; set; }
-
-    /// <summary>Renders a small status dot before the text.</summary>
     [Parameter] public bool Dot { get; set; }
-
-    /// <summary>Numeric count badge rendered after the text.</summary>
     [Parameter] public int? Count { get; set; }
-
-    /// <summary>Maximum count before showing "Max+". Default 99.</summary>
     [Parameter] public int MaxCount { get; set; } = 99;
-
-    /// <summary>Outlined visual style.</summary>
     [Parameter] public bool Outlined { get; set; }
-
-    /// <summary>Visual variant. Default <see cref="SgChipVariant.Default"/>. Overridden by parent <see cref="SgChipGroup"/>.</summary>
+    [Parameter] public bool Pill { get; set; } = true;
     [Parameter] public SgChipVariant? Variant { get; set; }
-
-    /// <summary>Chip size. Default <see cref="SgSize.Md"/>. Overridden by parent <see cref="SgChipGroup"/>.</summary>
     [Parameter] public SgSize? Size { get; set; }
-
-    /// <summary>Renders a close button (immediate removal).</summary>
     [Parameter] public bool Closable { get; set; }
-
-    /// <summary>Renders a close button with a fade-out animation before invoking <see cref="OnClose"/>.</summary>
     [Parameter] public bool Removable { get; set; }
-
-    /// <summary>Shows a drag handle (⠿ grid) on the left side of the chip.</summary>
     [Parameter] public bool DragHandle { get; set; }
-
-    /// <summary>Makes the chip draggable (adds draggable="true" and drag events).</summary>
     [Parameter] public bool Draggable { get; set; }
-
-    /// <summary>When true and no explicit <see cref="Color"/> is set, generates a deterministic HSL color from the <see cref="Text"/> hash.</summary>
     [Parameter] public bool ColorFromText { get; set; }
-
-    /// <summary>Tooltip text shown via native title attribute when the chip is <see cref="Disabled"/>.</summary>
     [Parameter] public string? DisabledTooltip { get; set; }
-
-    /// <summary>Makes the chip activatable (button-like).</summary>
     [Parameter] public bool Clickable { get; set; }
-
-    /// <summary>
-    /// Two-way bindable selected state. When set, the chip behaves as a toggle (filter chip).
-    /// Setting this implicitly enables interaction.
-    /// </summary>
     [Parameter] public bool Selected { get; set; }
-
-    /// <summary>Selected state changed callback (for two-way binding).</summary>
     [Parameter] public EventCallback<bool> SelectedChanged { get; set; }
-
-    /// <summary>Marks the chip as a toggle even without an initial selected state (renders selectable affordances).</summary>
     [Parameter] public bool Selectable { get; set; }
-
-    /// <summary>When the chip is selected, shows a check icon in the leading slot. Default true for toggles.</summary>
     [Parameter] public bool ShowCheck { get; set; } = true;
-
-    /// <summary>Disables interactions and lowers opacity.</summary>
     [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>Shows a spinner and disables interactions.</summary>
     [Parameter] public bool Loading { get; set; }
-
-    /// <summary>Renders the chip as an anchor with the given href.</summary>
+    [Parameter] public bool Skeleton { get; set; }
+    [Parameter] public bool Pulse { get; set; }
+    [Parameter] public bool Glow { get; set; }
+    [Parameter] public bool Gradient { get; set; }
+    [Parameter] public bool Shadow { get; set; }
     [Parameter] public string? Href { get; set; }
-
-    /// <summary>Anchor target attribute (used with <see cref="Href"/>).</summary>
     [Parameter] public string? Target { get; set; }
-
-    /// <summary>Anchor rel attribute (used with <see cref="Href"/>).</summary>
     [Parameter] public string? Rel { get; set; }
-
-    /// <summary>Custom background color.</summary>
     [Parameter] public string? Color { get; set; }
-
-    /// <summary>Custom text color.</summary>
     [Parameter] public string? TextColor { get; set; }
-
-    /// <summary>Callback invoked when the close button is clicked.</summary>
     [Parameter] public EventCallback OnClose { get; set; }
-
-    /// <summary>Callback invoked when the chip is clicked.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
-
-    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
-
-    /// <summary>Additional HTML attributes for the root element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    // ── New Feature Parameters ─────────────────────────────────────────
+    [Parameter] public string? AvatarSrc { get; set; }
+    [Parameter] public string? MaxWidth { get; set; }
+    [Parameter] public bool Truncate { get; set; }
+    [Parameter] public string? Tooltip { get; set; }
+    [Parameter] public SgEntranceAnimation? Entrance { get; set; }
+    [Parameter] public bool Ripple { get; set; }
+    [Parameter] public bool Glass { get; set; }
+    [Parameter] public SgChipStatus? Status { get; set; }
+    [Parameter] public bool Copyable { get; set; }
+    [Parameter] public bool Neon { get; set; }
+    [Parameter] public string? Value { get; set; }
+
     // ── Internals ────────────────────────────────────────────────────────────
-
     private SgSize EffectiveSize => Size ?? ChipGroup?.Size ?? SgSize.Md;
-
     private SgChipVariant EffectiveVariant => Variant ?? ChipGroup?.Variant ?? SgChipVariant.Default;
-
     private bool Interactive => (Clickable || Selectable || SelectedChanged.HasDelegate) && !Disabled;
 
     private string Role => !string.IsNullOrEmpty(Href) ? "" :
@@ -263,11 +218,43 @@ else
         Clickable ? "button" : "";
 
     private string? AriaPressed => (Selectable || SelectedChanged.HasDelegate)
-        ? (Selected ? "true" : "false")
-        : null;
+        ? (Selected ? "true" : "false") : null;
 
     private string? ComputedColor => !string.IsNullOrEmpty(Color) ? Color :
         (ColorFromText && !string.IsNullOrEmpty(Text) ? HashToHsl(Text) : null);
+
+    private bool GroupSelected => ChipGroup?.IsSelected(Value) ?? Selected;
+    private bool GroupFilteredOut => !string.IsNullOrEmpty(GroupSearch)
+        && !string.IsNullOrEmpty(Text)
+        && !Text.Contains(GroupSearch, StringComparison.OrdinalIgnoreCase);
+
+    private string? ComputeTitle()
+    {
+        if (Disabled && !string.IsNullOrEmpty(DisabledTooltip)) return DisabledTooltip;
+        if (!string.IsNullOrEmpty(Tooltip)) return Tooltip;
+        if (Truncate || !string.IsNullOrEmpty(MaxWidth)) return Text;
+        return null;
+    }
+
+    private string? StatusClass => Status switch
+    {
+        SgChipStatus.Online => "sgc-chip-status sgc-chip-status-online",
+        SgChipStatus.Offline => "sgc-chip-status sgc-chip-status-offline",
+        SgChipStatus.Busy => "sgc-chip-status sgc-chip-status-busy",
+        SgChipStatus.Away => "sgc-chip-status sgc-chip-status-away",
+        _ => null
+    };
+
+    private string? EntranceClass => Entrance switch
+    {
+        SgEntranceAnimation.Fade => "sgc-entrance-fade",
+        SgEntranceAnimation.SlideUp => "sgc-entrance-slide-up",
+        SgEntranceAnimation.SlideDown => "sgc-entrance-slide-down",
+        SgEntranceAnimation.SlideLeft => "sgc-entrance-slide-left",
+        SgEntranceAnimation.SlideRight => "sgc-entrance-slide-right",
+        SgEntranceAnimation.Scale => "sgc-entrance-scale",
+        _ => null
+    };
 
     private string SizeClass => EffectiveSize switch
     {
@@ -294,15 +281,26 @@ else
             var sb = new System.Text.StringBuilder("sgc-chip ");
             if (!string.IsNullOrEmpty(VariantClass)) sb.Append(VariantClass).Append(' ');
             if (!string.IsNullOrEmpty(SizeClass))    sb.Append(SizeClass).Append(' ');
-            if (Outlined)               sb.Append("sgc-outlined ");
-            if (Closable || Removable)  sb.Append("sgc-closable ");
-            if (Loading)                sb.Append("sgc-chip-loading ");
-            if (Interactive)            sb.Append("sgc-chip-clickable ");
-            if (Selected)               sb.Append("sgc-chip-selected ");
-            if (Disabled)               sb.Append("sgc-chip-disabled ");
-            if (Draggable)              sb.Append("sgc-chip-draggable ");
-            if (_isDragging)            sb.Append("sgc-chip-dragging ");
-            if (_isRemoving)            sb.Append("sgc-chip-removing ");
+            if (Outlined)        sb.Append("sgc-outlined ");
+            if (!Pill)           sb.Append("sgc-chip-square ");
+            if (Closable || Removable) sb.Append("sgc-closable ");
+            if (Loading)         sb.Append("sgc-chip-loading ");
+            if (Skeleton)        sb.Append("sgc-chip-loading sgc-chip-skeleton-mode ");
+            if (Interactive)     sb.Append("sgc-chip-clickable ");
+            if (GroupSelected)   sb.Append("sgc-chip-selected ");
+            if (GroupFilteredOut) sb.Append("sgc-chip-filtered-out ");
+            if (Disabled)        sb.Append("sgc-chip-disabled ");
+            if (Draggable)       sb.Append("sgc-chip-draggable ");
+            if (_isDragging)     sb.Append("sgc-chip-dragging ");
+            if (_isRemoving)     sb.Append("sgc-chip-removing ");
+            if (Pulse)           sb.Append("sgc-chip-pulse ");
+            if (Glow)            sb.Append("sgc-chip-glow ");
+            if (Neon)            sb.Append("sgc-chip-neon ");
+            if (Glass)           sb.Append("sgc-chip-glass ");
+            if (Gradient && string.IsNullOrEmpty(ComputedColor)) sb.Append("sgc-chip-gradient ");
+            if (Shadow)          sb.Append("sgc-chip-shadow ");
+            if (Copyable)        sb.Append("sgc-chip-copyable ");
+            if (!string.IsNullOrEmpty(EntranceClass)) sb.Append(EntranceClass).Append(' ');
             if (!string.IsNullOrEmpty(CssClass)) sb.Append(CssClass);
             return sb.ToString().TrimEnd();
         }
@@ -312,19 +310,41 @@ else
     {
         var sb = new System.Text.StringBuilder();
         var bgColor = ComputedColor;
-        if (!string.IsNullOrEmpty(bgColor))    sb.Append("background:").Append(bgColor).Append(';');
-        if (!string.IsNullOrEmpty(TextColor))  sb.Append("color:").Append(TextColor).Append(';');
-        if (!string.IsNullOrEmpty(Style))      sb.Append(Style);
+        if (!string.IsNullOrEmpty(bgColor))
+        {
+            if (Gradient)
+            {
+                sb.Append("background:linear-gradient(135deg,").Append(bgColor)
+                  .Append(",color-mix(in srgb,").Append(bgColor).Append(",white 35%));");
+                sb.Append("border-color:").Append(bgColor).Append(';');
+            }
+            else
+            {
+                sb.Append("background:").Append(bgColor).Append(';');
+                sb.Append("border-color:").Append(bgColor).Append(';');
+            }
+        }
+        if (!string.IsNullOrEmpty(TextColor)) sb.Append("color:").Append(TextColor).Append(';');
+        if (Glow && !string.IsNullOrEmpty(bgColor))
+            sb.Append("--sgc-chip-glow-color:").Append(bgColor).Append(';');
+        if (Neon && !string.IsNullOrEmpty(bgColor))
+        {
+            sb.Append("--sgc-chip-neon-color:").Append(bgColor).Append(';');
+            sb.Append("box-shadow:0 0 6px ").Append(bgColor).Append(",0 0 20px ").Append(bgColor).Append(';');
+        }
+        if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
         return sb.ToString();
     }
 
     private static string HashToHsl(string text)
     {
-        int hash = 0;
+        int hash = 397;
         foreach (char c in text)
-            hash += c;
+            hash = (hash * 31 + c) & 0x7FFFFFFF;
         int hue = hash % 360;
-        return $"hsl({hue}, 60%, 70%)";
+        int sat = 55 + (hash / 7) % 20;
+        int lig = 60 + (hash / 13) % 15;
+        return $"hsl({hue}, {sat}%, {lig}%)";
     }
 
     private async Task HandleRemoveAsync()
@@ -356,10 +376,24 @@ else
     private async Task HandleClickAsync(MouseEventArgs e)
     {
         if (Disabled || Loading || _isRemoving) return;
+        if (Copyable && !string.IsNullOrEmpty(Text))
+        {
+            try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", Text); }
+            catch { /* clipboard unavailable */ }
+        }
         if (Selectable || SelectedChanged.HasDelegate)
         {
-            Selected = !Selected;
+            if (ChipGroup is not null && ChipGroup.Selectable && !ChipGroup.AllowMultiple)
+            {
+                Selected = true;
+            }
+            else
+            {
+                Selected = !Selected;
+            }
             if (SelectedChanged.HasDelegate) await SelectedChanged.InvokeAsync(Selected);
+            if (ChipGroup is not null && !string.IsNullOrEmpty(Value))
+                ChipGroup.NotifyValueChanged(Value, Selected);
         }
         if (OnClick.HasDelegate) await OnClick.InvokeAsync(e);
     }
@@ -370,5 +404,4 @@ else
         if (e.Key is "Enter" or " ") await HandleClickAsync(new MouseEventArgs());
         else if ((e.Key is "Delete" or "Backspace") && (Closable || Removable)) await HandleRemoveAsync();
     }
-
 }

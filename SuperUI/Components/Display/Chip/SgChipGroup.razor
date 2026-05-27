@@ -7,56 +7,133 @@
      aria-label="@(AriaLabel ?? Label)"
      @attributes="AdditionalAttributes">
 
-    @if (!string.IsNullOrEmpty(Label))
+    @if (!string.IsNullOrEmpty(Label) || ShowSearch)
     {
-        <span class="sgc-chip-group-label">@Label</span>
+        <div class="sgc-chip-group-header">
+            @if (!string.IsNullOrEmpty(Label))
+            {
+                <span class="sgc-chip-group-label @(Collapsible ? "sgc-chip-group-label-clickable" : "")"
+                      @onclick="ToggleCollapsedAsync"
+                      role="@(Collapsible ? "button" : null)"
+                      tabindex="@(Collapsible ? "0" : null)"
+                      aria-expanded="@(Collapsible ? (!Collapsed).ToString().ToLowerInvariant() : null)"
+                      @onkeydown="HandleLabelKeyDown">
+                    @if (Collapsible)
+                    {
+                        <span class="sgc-chip-group-chevron @(Collapsed ? "sgc-collapsed" : "")">
+                            <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                                <path d="M4 2l4 4-4 4"/>
+                            </svg>
+                        </span>
+                    }
+                    @Label
+                </span>
+            }
+            @if (ShowSearch)
+            {
+                <input type="text" class="sgc-chip-group-search"
+                       placeholder="Filter..."
+                       value="@_searchText"
+                       @oninput="OnSearchAsync"
+                       aria-label="Filter chips" />
+            }
+        </div>
     }
 
-    <div class="sgc-chip-group-items" style="display:flex; flex-wrap:@(Wrap ? "wrap" : "nowrap"); gap:@SpaceCss;">
-        <CascadingValue Value="this" IsFixed="true">
-            @ChildContent
-        </CascadingValue>
-    </div>
+    @if (!Collapsed)
+    {
+        <div class="@ItemsClasses">
+            <CascadingValue Value="this" IsFixed="true">
+                <CascadingValue Name="SgChipGroupSearch" Value="@_searchText">
+                    @ChildContent
+                </CascadingValue>
+            </CascadingValue>
+        </div>
+    }
+
+    @if (HasOverflow)
+    {
+        <span class="sgc-chip sgc-chip-overflow sgc-chip-sm"
+              title="@OverflowTooltip"
+              aria-label="@OverflowTooltip"
+              @onclick="HandleOverflowClickAsync"
+              tabindex="0"
+              role="button"
+              @onkeydown="HandleOverflowKeyDown">
+            +@OverflowCount
+        </span>
+    }
 </div>
 
 @code {
-    /// <summary>Chip items (typically <see cref="SgChip"/> components).</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>Gap between chips. Default <see cref="SgSize.Sm"/>.</summary>
     [Parameter] public SgSize Space { get; set; } = SgSize.Sm;
-
-    /// <summary>Whether chips wrap to the next line. Default true.</summary>
     [Parameter] public bool Wrap { get; set; } = true;
-
-    /// <summary>When true, chips in this group behave as a selection group (radio by default).</summary>
     [Parameter] public bool Selectable { get; set; }
-
-    /// <summary>When true together with <see cref="Selectable"/>, allows multiple chips to be selected (checkbox behavior).</summary>
     [Parameter] public bool AllowMultiple { get; set; }
-
-    /// <summary>Size applied to all child chips. Individual chip values take precedence.</summary>
     [Parameter] public SgSize? Size { get; set; }
-
-    /// <summary>Visual variant applied to all child chips. Individual chip values take precedence.</summary>
     [Parameter] public SgChipVariant? Variant { get; set; }
-
-    /// <summary>Optional label displayed above the chip group.</summary>
     [Parameter] public string? Label { get; set; }
-
-    /// <summary>Accessibility label for the group.</summary>
     [Parameter] public string? AriaLabel { get; set; }
-
-    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Inline CSS styles.</summary>
     [Parameter] public string? Style { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    /// <summary>Additional HTML attributes for the root element.</summary>
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    // ── Overflow ──────────────────────────────────────────────────────────
+    [Parameter] public int? Max { get; set; }
+    [Parameter] public int? TotalCount { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnOverflowClick { get; set; }
+    [Parameter] public string? OverflowLabel { get; set; }
 
+    // ── Selection binding ─────────────────────────────────────────────────
+    [Parameter] public List<string>? SelectedValues { get; set; }
+    [Parameter] public EventCallback<List<string>> SelectedValuesChanged { get; set; }
+
+    // ── Orientation ───────────────────────────────────────────────────────
+    [Parameter] public bool Vertical { get; set; }
+
+    // ── Collapsible ───────────────────────────────────────────────────────
+    [Parameter] public bool Collapsible { get; set; }
+    [Parameter] public bool Collapsed { get; set; }
+    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
+
+    // ── Search / Filter ───────────────────────────────────────────────────
+    [Parameter] public bool ShowSearch { get; set; }
+
+    // ── Internal state ────────────────────────────────────────────────────
+    private string _searchText = "";
+    private HashSet<string> _selectedValueSet = new();
+
+    protected override void OnInitialized()
+    {
+        if (SelectedValues is not null)
+            _selectedValueSet = new HashSet<string>(SelectedValues);
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (SelectedValues is not null)
+            _selectedValueSet = new HashSet<string>(SelectedValues);
+    }
+
+    internal void NotifyValueChanged(string? value, bool selected)
+    {
+        if (string.IsNullOrEmpty(value)) return;
+        if (selected) _selectedValueSet.Add(value);
+        else _selectedValueSet.Remove(value);
+        if (SelectedValuesChanged.HasDelegate)
+            SelectedValuesChanged.InvokeAsync(_selectedValueSet.ToList());
+    }
+
+    internal bool IsSelected(string? value) =>
+        !string.IsNullOrEmpty(value) && _selectedValueSet.Contains(value);
+
+    // ── Overflow ──────────────────────────────────────────────────────────
+    private bool HasOverflow => Max.HasValue && TotalCount.HasValue && TotalCount.Value > Max.Value;
+    private int OverflowCount => HasOverflow ? TotalCount!.Value - Max!.Value : 0;
+    private string OverflowTooltip => OverflowLabel ?? $"+{OverflowCount} more";
+
+    // ── CSS ───────────────────────────────────────────────────────────────
     private string SpaceCss => Space switch
     {
         SgSize.Sm => "4px",
@@ -66,13 +143,25 @@
         _         => "4px"
     };
 
+    private string ItemsClasses
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder("sgc-chip-group-items");
+            sb.Append(" sgc-gap-").Append(SpaceCss);
+            if (!Wrap) sb.Append(" sgc-nowrap");
+            if (Vertical) sb.Append(" sgc-chip-group-vertical");
+            return sb.ToString();
+        }
+    }
+
     private string RootClasses
     {
         get
         {
             var sb = new System.Text.StringBuilder("sgc-chip-group ");
-            if (!Wrap) sb.Append("sgc-nowrap ");
             if (Selectable) sb.Append("sgc-chip-group-selectable ");
+            if (Collapsible) sb.Append("sgc-chip-group-collapsible ");
             if (!string.IsNullOrEmpty(CssClass)) sb.Append(CssClass);
             return sb.ToString().TrimEnd();
         }
@@ -83,5 +172,36 @@
         var sb = new System.Text.StringBuilder();
         if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
         return sb.ToString();
+    }
+
+    // ── Event handlers ────────────────────────────────────────────────────
+    private async Task ToggleCollapsedAsync()
+    {
+        if (!Collapsible) return;
+        Collapsed = !Collapsed;
+        if (CollapsedChanged.HasDelegate)
+            await CollapsedChanged.InvokeAsync(Collapsed);
+    }
+
+    private async Task HandleLabelKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ") await ToggleCollapsedAsync();
+    }
+
+    private async Task OnSearchAsync(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString() ?? "";
+        StateHasChanged();
+    }
+
+    private async Task HandleOverflowClickAsync(MouseEventArgs e)
+    {
+        if (OnOverflowClick.HasDelegate) await OnOverflowClick.InvokeAsync(e);
+    }
+
+    private async Task HandleOverflowKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
+            await HandleOverflowClickAsync(new MouseEventArgs());
     }
 }
