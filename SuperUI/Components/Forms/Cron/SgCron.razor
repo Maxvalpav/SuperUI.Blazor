@@ -139,29 +139,35 @@
             }
         </div>
 
-        <div class="sgc-cron-preview">
-            <div class="sgc-cron-fields">
-                <div class="sgc-cron-field-group">
-                    <span class="sgc-cron-field-label">@Localizer["Cron_Minutes"].ToString().Substring(0, 3)</span>
-                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[0]</code>
+        @if (ShowPreview)
+        {
+            <div class="sgc-cron-preview">
+            @if (ShowExpressionTokens)
+            {
+                var exprParts = _currentExpression?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? Array.Empty<string>();
+                <div class="sgc-cron-fields">
+                    <div class="sgc-cron-field-group">
+                        <span class="sgc-cron-field-label">@L("Cron_Minutes")</span>
+                        <code class="sgc-cron-token">@(exprParts.Length > 0 ? exprParts[0] : "*")</code>
+                    </div>
+                    <div class="sgc-cron-field-group">
+                        <span class="sgc-cron-field-label">@L("Cron_Hours")</span>
+                        <code class="sgc-cron-token">@(exprParts.Length > 1 ? exprParts[1] : "*")</code>
+                    </div>
+                    <div class="sgc-cron-field-group">
+                        <span class="sgc-cron-field-label">@L("Cron_Day")</span>
+                        <code class="sgc-cron-token">@(exprParts.Length > 2 ? exprParts[2] : "*")</code>
+                    </div>
+                    <div class="sgc-cron-field-group">
+                        <span class="sgc-cron-field-label">@L("Cron_Month")</span>
+                        <code class="sgc-cron-token">@(exprParts.Length > 3 ? exprParts[3] : "*")</code>
+                    </div>
+                    <div class="sgc-cron-field-group">
+                        <span class="sgc-cron-field-label">@L("Cron_Week")</span>
+                        <code class="sgc-cron-token">@(exprParts.Length > 4 ? exprParts[4] : "*")</code>
+                    </div>
                 </div>
-                <div class="sgc-cron-field-group">
-                    <span class="sgc-cron-field-label">@Localizer["Cron_Hours"].ToString().Substring(0, 3)</span>
-                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[1]</code>
-                </div>
-                <div class="sgc-cron-field-group">
-                    <span class="sgc-cron-field-label">@Localizer["Cron_Day"].ToString().Substring(0, 3)</span>
-                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[2]</code>
-                </div>
-                <div class="sgc-cron-field-group">
-                    <span class="sgc-cron-field-label">@Localizer["Cron_Month"].ToString().Substring(0, 3)</span>
-                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[3]</code>
-                </div>
-                <div class="sgc-cron-field-group">
-                    <span class="sgc-cron-field-label">@Localizer["Cron_Week"].ToString().Substring(0, 3)</span>
-                    <code class="sgc-cron-token">@_currentExpression.Split(' ')[4]</code>
-                </div>
-            </div>
+            }
 
             <div class="sgc-cron-summary">
                 <div class="sgc-cron-summary-row">
@@ -184,7 +190,10 @@
                         }
                     </button>
                 </div>
-                <div class="sgc-cron-human">@_humanReadable</div>
+                @if (ShowHumanReadable)
+                {
+                    <div class="sgc-cron-human">@_humanReadable</div>
+                }
             </div>
 
             @* ── TimeZone & Complexity toolbar ─────────────────────────────── *@
@@ -337,7 +346,8 @@
                     }
                 </div>
             }
-        </div>
+            </div>
+        }
     </div>
 
     @if (IsInvalid)
@@ -555,6 +565,26 @@
     /// </summary>
     [Parameter] public EventCallback<bool> OnValidationChanged { get; set; }
 
+    /// <summary>
+    /// When true, shows the full expression preview (tokens + human readable + copy). Default true.
+    /// </summary>
+    [Parameter] public bool ShowPreview { get; set; } = true;
+
+    /// <summary>
+    /// When true, shows the individual field tokens in the preview. Default true.
+    /// </summary>
+    [Parameter] public bool ShowExpressionTokens { get; set; } = true;
+
+    /// <summary>
+    /// When true, shows the human-readable description below the expression. Default true.
+    /// </summary>
+    [Parameter] public bool ShowHumanReadable { get; set; } = true;
+
+    /// <summary>
+    /// When true, uses English for the human-readable preview. Default false.
+    /// </summary>
+    [Parameter] public bool UseEnglish { get; set; }
+
     // ═══════════════════════════════════════════════════════════════════════
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText)
@@ -642,6 +672,8 @@
 
     private string T(string key, string fallback) => Localizer[key] ?? fallback;
 
+    private string L(string key) => Localizer[key] is { Length: > 3 } s ? s[..3] : Localizer[key];
+
     private async Task SetTabAsync(CronTab tab)
     {
         if (Disabled) return;
@@ -722,6 +754,7 @@
         {
             if (int.TryParse(e.Value?.ToString(), out var v)) setTo(Math.Clamp(v, min, max));
         }));
+        builder.CloseElement();
         builder.CloseElement();
     };
 
@@ -1016,7 +1049,7 @@
         if (set.Count == 0) mode = CronMode.Any;
     }
 
-    private static string HumanReadable(string expr) => SgCronHumanizer.Describe(expr);
+    private string HumanReadable(string expr) => SgCronHumanizer.Describe(expr, UseEnglish);
 
     // ═══════════════════════════════════════════════════════════════════════
     //  FIELD VALIDATION

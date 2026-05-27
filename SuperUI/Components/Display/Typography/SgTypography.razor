@@ -9,43 +9,43 @@
 @switch (tag)
 {
     case "h1":
-        <h1 class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</h1>
+        <h1 class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</h1>
         break;
     case "h2":
-        <h2 class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</h2>
+        <h2 class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</h2>
         break;
     case "h3":
-        <h3 class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</h3>
+        <h3 class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</h3>
         break;
     case "h4":
-        <h4 class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</h4>
+        <h4 class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</h4>
         break;
     case "h5":
-        <h5 class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</h5>
+        <h5 class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</h5>
         break;
     case "h6":
-        <h6 class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</h6>
+        <h6 class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</h6>
         break;
     case "code":
-        <code class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</code>
+        <code class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</code>
         break;
     case "pre":
-        <pre class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</pre>
+        <pre class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</pre>
         break;
     case "blockquote":
-        <blockquote class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</blockquote>
+        <blockquote class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</blockquote>
         break;
     case "label":
-        <label class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</label>
+        <label class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</label>
         break;
     case "div":
-        <div class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</div>
+        <div class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</div>
         break;
     case "span":
-        <span class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</span>
+        <span class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</span>
         break;
     default:
-        <p class="@cls" style="@ComputedStyle" @attributes="AdditionalAttributes">@ChildContent</p>
+        <p class="@cls" style="@ComputedStyle" @onclick="HandleClick" @attributes="AdditionalAttributes">@ChildContent</p>
         break;
 }
 
@@ -119,6 +119,33 @@
     /// <summary>Additional HTML attributes.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>Prevents text from wrapping.</summary>
+    [Parameter] public bool NoWrap { get; set; }
+
+    /// <summary>Allows long words to break and wrap to the next line.</summary>
+    [Parameter] public bool WordBreak { get; set; }
+
+    /// <summary>Makes the text selectable (user-select: all) with a copy cursor.</summary>
+    [Parameter] public bool Copyable { get; set; }
+
+    /// <summary>CSS text-shadow value. Example: "0 2px 4px rgba(0,0,0,0.3)".</summary>
+    [Parameter] public string? TextShadow { get; set; }
+
+    /// <summary>Text opacity (0.0–1.0). Null means no override.</summary>
+    [Parameter] public double? Opacity { get; set; }
+
+    /// <summary>Fires when the element is clicked.</summary>
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Enables fluid/responsive typography using CSS clamp(). Sizes scale with viewport.</summary>
+    [Parameter] public bool Fluid { get; set; }
+
+    /// <summary>Enables CSS hyphens: auto for better word breaking across lines.</summary>
+    [Parameter] public bool Hyphens { get; set; }
+
+    /// <summary>CSS text-indent value. Example: "2em" or "20px".</summary>
+    [Parameter] public string? TextIndent { get; set; }
+
     // ── Internals ────────────────────────────────────────────────────────────
 
     private string TagName => Variant?.ToString() switch
@@ -184,6 +211,11 @@
             if (Strike) sb.Append(" sgc-typo-strike");
             if (Underline) sb.Append(" sgc-typo-underline");
             if (Gradient is not null) sb.Append(" sgc-typo-gradient");
+            if (NoWrap) sb.Append(" sgc-typo-nowrap");
+            if (WordBreak) sb.Append(" sgc-typo-word-break");
+            if (Copyable) sb.Append(" sgc-typo-copyable");
+            if (Fluid) sb.Append(" sgc-typo-fluid");
+            if (Hyphens) sb.Append(" sgc-typo-hyphens");
 
             if (!string.IsNullOrEmpty(CssClass))
                 sb.Append(' ').Append(CssClass);
@@ -205,6 +237,12 @@
                 sb.Append("background-image:linear-gradient(to right,").Append(Gradient).Append(");");
                 sb.Append("-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;color:transparent;");
             }
+            if (!string.IsNullOrEmpty(TextShadow))
+                sb.Append("text-shadow:").Append(TextShadow).Append(';');
+            if (Opacity.HasValue)
+                sb.Append("opacity:").Append(Opacity.Value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)).Append(';');
+            if (!string.IsNullOrEmpty(TextIndent))
+                sb.Append("text-indent:").Append(TextIndent).Append(';');
             if (!string.IsNullOrEmpty(Style))
                 sb.Append(Style);
             return sb.ToString();
@@ -238,4 +276,10 @@
         SgTypographyFont.Mono => "mono",
         _ => "sans"
     };
+
+    private async Task HandleClick(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(e);
+    }
 }

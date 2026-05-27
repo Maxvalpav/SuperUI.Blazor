@@ -1,79 +1,56 @@
 @namespace SuperUI.Components
-@using Microsoft.JSInterop
-@using SuperUI.Base.ComponentBases
 @inherits SgJsComponentBase
 
-<div class="@Css("sgc-signature-pad").Build()" style="@Styles().AddStyle("width", Width).AddStyle("height", Height).Build()">
-    <canvas @ref="_canvasRef" width="@_canvasWidth" height="@_canvasHeight"></canvas>
-    <div class="sgc-signature-pad-actions">
-        <SgButton Title="Copy to Clipboard" Size="SgSize.Sm" OnClick="CopyToClipboardAsync" Variant="SgButtonVariant.Ghost">
-            <Icon><SgIcon Icon="@SgIcons.Copy" Size="14px" /></Icon>
-        </SgButton>
-        <SgButton Title="Download as PNG" Size="SgSize.Sm" OnClick="DownloadAsync" Variant="SgButtonVariant.Ghost">
-            <Icon><SgIcon Icon="@SgIcons.Download" Size="14px" /></Icon>
-        </SgButton>
-        <SgButton Text="Clear" Size="SgSize.Sm" OnClick="ClearAsync" Variant="SgButtonVariant.Ghost" />
+<div class="@GetRootClasses()"
+     style="@Styles().AddStyle("width", Width).AddStyle("height", Height).Build()"
+     @onfocusin="@(() => { if (!string.IsNullOrEmpty(Label)) _focused = true; })"
+     @onfocusout="@(() => { if (!string.IsNullOrEmpty(Label)) _focused = false; })">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+    }
+    <div class="sgc-signature-canvas-wrap">
+        <canvas @ref="_canvasRef"
+               class="sgc-signature-canvas"
+               aria-label="Signature Pad" />
+        @if (!string.IsNullOrEmpty(Placeholder) && !_hasContent && !ReadOnly)
+        {
+            <div class="sgc-signature-placeholder">@Placeholder</div>
+        }
     </div>
+    @if (ShowAnyAction)
+    {
+        <div class="sgc-signature-actions sgc-signature-actions-bottom-right">
+            @if (ShowUndo)
+            {
+                <SgButton Title="Undo" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="OnUndoClick">
+                    <Icon><SgIcon Icon="@SgHeroicons.Outline.ArrowUturnLeft" Size="14px" /></Icon>
+                </SgButton>
+            }
+            @if (ShowRedo)
+            {
+                <SgButton Title="Redo" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="OnRedoClick">
+                    <Icon><SgIcon Icon="@SgHeroicons.Outline.ArrowUturnRight" Size="14px" /></Icon>
+                </SgButton>
+            }
+            @if (ShowCopy)
+            {
+                <SgButton Title="Copy to Clipboard" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="OnCopyClick">
+                    <Icon><SgIcon Icon="@SgHeroicons.Outline.Clipboard" Size="14px" /></Icon>
+                </SgButton>
+            }
+            @if (ShowDownload)
+            {
+                <SgButton Title="Download as PNG" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="OnDownloadClick">
+                    <Icon><SgIcon Icon="@SgHeroicons.Outline.ArrowDownTray" Size="14px" /></Icon>
+                </SgButton>
+            }
+            @if (ShowClear)
+            {
+                <SgButton Title="Clear" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="OnClearClick">
+                    <Icon><SgIcon Icon="@SgHeroicons.Outline.Trash" Size="14px" /></Icon>
+                </SgButton>
+            }
+        </div>
+    }
 </div>
-
-<style>
-    .sgc-signature-pad {
-        border: 1px solid var(--sg-border, #d9d9d9);
-        border-radius: 4px;
-        background: #fff;
-        position: relative;
-    }
-    .sgc-signature-pad canvas {
-        display: block;
-        width: 100%;
-        height: 100%;
-        cursor: crosshair;
-    }
-    .sgc-signature-pad-actions {
-        position: absolute;
-        bottom: 8px;
-        right: 8px;
-    }
-</style>
-
-@code {
-    private ElementReference _canvasRef;
-    private int _canvasWidth = 400;
-    private int _canvasHeight = 200;
-
-    [Parameter] public string Width { get; set; } = "400px";
-    [Parameter] public string Height { get; set; } = "200px";
-    [Parameter] public string PenColor { get; set; } = "#000";
-
-    protected override string ModulePath => "./_content/SuperUI/superui-signature-pad.js";
-
-    protected override async ValueTask OnInteractiveAsync()
-    {
-        await SafeInvokeVoidAsync("init", _canvasRef, SelfRef, PenColor);
-    }
-
-    protected override async ValueTask OnDisposingAsync()
-    {
-        await SafeInvokeVoidAsync("dispose", _canvasRef);
-    }
-
-    public async Task ClearAsync()
-    {
-        await SafeInvokeVoidAsync("clear", _canvasRef);
-    }
-
-    public async Task<string> GetImageAsync()
-    {
-        return await SafeInvokeAsync<string>("getDataUrl", _canvasRef) ?? "";
-    }
-
-    public async Task DownloadAsync()
-    {
-        await SafeInvokeVoidAsync("download", _canvasRef, "signature.png");
-    }
-
-    public async Task<bool> CopyToClipboardAsync()
-    {
-        return await SafeInvokeAsync<bool>("copyToClipboard", _canvasRef);
-    }
-}

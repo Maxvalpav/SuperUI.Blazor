@@ -1,62 +1,1012 @@
 @page "/signature-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Signature Pad - SUI</PageTitle>
+<PageTitle>Signature Pad — SuperUI</PageTitle>
 
-<SgCard Title="SgSignaturePad - Панель подписи"
-        Subtitle="Компонент для рисования и захвата рукописной подписи.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Базовое использование</h2>
-        <p>Панель для подписи с кнопками копирования в буфер и сохранения в файл.</p>
-        
-        <div style="margin-top: 16px; display: flex; gap: 24px; align-items: flex-start;">
-            <SgSignaturePad @ref="_pad1" Width="500px" Height="250px" PenColor="#1890ff" />
-            
-            <SgCard Title="Предварительный просмотр" Style="width: 300px;">
-                <div style="border: 1px solid #eee; height: 150px; display: flex; align-items: center; justify-content: center; background: #fafafa;">
-                    @if (!string.IsNullOrEmpty(_previewData))
-                    {
-                        <img src="@_previewData" style="max-width: 100%; max-height: 100%;" />
-                    }
-                    else
-                    {
-                        <span style="color: #999;">Нажмите "Обновить превью"</span>
-                    }
-                </div>
-                <div style="margin-top: 12px;">
-                    <SgButton Text="Обновить превью" OnClick="UpdatePreview" Size="SgSize.Sm" FullWidth="true" />
-                </div>
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 1. Basic Usage                                                     -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Basic Usage
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Draw with mouse or touch. Undo, redo, copy, download, or clear.
+                    Pressure-sensitive stylus supported. Auto-resize to container.
+                </SgTypography>
+            </div>
+
+            <div class="demo-two-col">
+                <SgCard Title="Signature Pad" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgSignaturePad @ref="_pad1"
+                                    Width="100%" Height="280px"
+                                    PenColor="#1e293b" PenWidth="2"
+                                    Placeholder="Sign here..." />
+                </SgCard>
+
+                <SgCard Title="Preview &amp; Export" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                          Transform="SgTypographyTransform.Uppercase"
+                                          Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Preview
+                            </SgTypography>
+                            <div class="demo-preview-box">
+                                @if (!string.IsNullOrEmpty(_previewData))
+                                {
+                                    <img src="@_previewData" class="demo-preview-img" />
+                                }
+                                else
+                                {
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                        Draw something, then click Refresh
+                                    </SgTypography>
+                                }
+                            </div>
+                        </SgStack>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgButton Text="Refresh Preview" Size="SgSize.Sm" Block="true" OnClick="UpdatePreview" />
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgButton Text="Download PNG" Variant="SgButtonVariant.Primary" Size="SgSize.Sm" Block="true" OnClick="DownloadAsync" />
+                            </SgCol>
+                        </SgRow>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="display:flex;align-items:center;gap:4px;">
+                                    Trimmed:
+                                    <SgBadge Text="@(_hasTrimmed ? "✓" : "—")" Variant="@(_hasTrimmed ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Standalone="true" Size="SgSize.Sm" />
+                                </SgTypography>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgButton Text="Get Trimmed" Size="SgSize.Sm" Block="true" Variant="SgButtonVariant.Outlined" OnClick="GetTrimmedPreview" />
+                            </SgCol>
+                        </SgRow>
+                    </SgStack>
+                </SgCard>
+            </div>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 2. Variants: Labels, Guide Line, Initials, Frameless              -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Variants &amp; Modes
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Floating label, guide line, initials-only, and frameless modes.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6" Lg="3">
+                    <SgCard Title="Floating Label" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <SgSignaturePad Width="100%" Height="140px"
+                                        Label="Signature"
+                                        PenColor="#3b82f6" PenWidth="2" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6" Lg="3">
+                    <SgCard Title="Guide Line" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <SgSignaturePad Width="100%" Height="140px"
+                                        PenColor="#1e293b" PenWidth="2"
+                                        ShowGuideLine="true"
+                                        GuideLineText="Sign here"
+                                        GuideLineColor="#94a3b8" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6" Lg="3">
+                    <SgCard Title="Initials Only" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <SgSignaturePad Width="100%" Height="100px"
+                                        PenColor="#059669" PenWidth="2"
+                                        InitialsOnly="true"
+                                        Placeholder="Initials" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6" Lg="3">
+                    <SgCard Title="Frameless" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <SgSignaturePad Width="100%" Height="120px"
+                                        PenColor="#7c3aed" PenWidth="2.5"
+                                        BackgroundColor="transparent"
+                                        Variant="SgSignatureVariant.Frameless"
+                                        ShowGuideLine="true" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 3. Confirm Signature                                               -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Confirm Signature
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Draw the same signature twice. The system compares them visually.
+                </SgTypography>
+            </div>
+
+            <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgRow Space="SgSize.Lg">
+                    <SgCol Xs="12" Md="5">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                          Transform="SgTypographyTransform.Uppercase"
+                                          Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Signature
+                            </SgTypography>
+                            <SgSignaturePad @ref="_confirmPad1"
+                                            Width="100%" Height="160px"
+                                            PenColor="#1e293b" PenWidth="2" />
+                        </SgStack>
+                    </SgCol>
+                    <SgCol Xs="12" Md="5">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                          Transform="SgTypographyTransform.Uppercase"
+                                          Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Confirm Signature
+                            </SgTypography>
+                            <SgSignaturePad @ref="_confirmPad2"
+                                            Width="100%" Height="160px"
+                                            PenColor="#1e293b" PenWidth="2" />
+                        </SgStack>
+                    </SgCol>
+                    <SgCol Xs="12" Md="2" Style="display:flex;align-items:center;justify-content:center;">
+                        @if (_confirmResult == null)
+                        {
+                            <SgButton Text="Compare" Variant="SgButtonVariant.Primary" OnClick="CompareSignatures" Block="true" />
+                        }
+                        else if (_confirmResult == true)
+                        {
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgIcon Icon="@SgHeroicons.Outline.CheckCircle" Size="32px" Style="color:var(--sg-color-success);" />
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-color-success)">Match</SgTypography>
+                                <SgButton Text="Reset" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="ResetConfirm" />
+                            </SgStack>
+                        }
+                        else
+                        {
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgIcon Icon="@SgHeroicons.Outline.XCircle" Size="32px" Style="color:var(--sg-color-danger);" />
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Color="var(--sg-color-danger)">No Match</SgTypography>
+                                <SgButton Text="Try Again" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="ResetConfirm" />
+                            </SgStack>
+                        }
+                    </SgCol>
+                </SgRow>
             </SgCard>
         </div>
-    </div>
 
-    <div style="margin-top: 48px;">
-        <h2>В составе формы</h2>
-        <div style="max-width: 500px; padding: 24px; border: 1px solid var(--sui-border-color); border-radius: 8px;">
-            <div style="margin-bottom: 16px;">
-                <label style="display: block; margin-bottom: 8px;">Ваше имя</label>
-                <SgTextBox TValue="string" Placeholder="Введите имя" />
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 4. Export Comparison                                               -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Export Comparison
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Compare PNG vs JPEG at various quality levels. See the file size difference.
+                </SgTypography>
             </div>
-            <div style="margin-bottom: 24px;">
-                <label style="display: block; margin-bottom: 8px;">Ваша подпись</label>
-                <SgSignaturePad Width="100%" Height="150px" />
-            </div>
-            <SgButton Text="Подписать документ" Variant="SgButtonVariant.Primary" FullWidth="true" />
+
+            <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgSignaturePad @ref="_exportPad" Width="100%" Height="180px"
+                                    PenColor="#1e293b" PenWidth="2"
+                                    Placeholder="Draw something to compare export formats" />
+
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.End">
+                        <SgCol Xs="12" Sm="4">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Format
+                                </SgTypography>
+                                <SgSegmented TValue="string"
+                                             Value="@_exportFormat"
+                                             ValueChanged="v => { _exportFormat = v; _exportSize = null; }"
+                                             Block="true" Size="sm"
+                                             Options="_formatSegOptions" />
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Xs="12" Sm="4">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Quality: @($"{(int)(_exportQuality * 100)}%")
+                                </SgTypography>
+                                <input type="range" min="10" max="100" value="@((int)(_exportQuality * 100))"
+                                       style="width:100%;accent-color:var(--sg-color-primary);"
+                                       @onchange="OnQualityChanged" />
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Xs="12" Sm="4">
+                            <SgButton Text="Export &amp; Measure" Variant="SgButtonVariant.Primary" Block="true" OnClick="MeasureExport" />
+                        </SgCol>
+                    </SgRow>
+
+                    @if (_exportSize.HasValue)
+                    {
+                        <div style="padding:12px;background:var(--sg-bg-muted);border-radius:var(--sg-radius-md);">
+                            <SgRow Space="SgSize.Md" Align="SgAlignItems.Center">
+                                <SgCol Span="6">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                        Format: <strong>@_exportFormat</strong>
+                                    </SgTypography>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                        Size: <strong>@_exportSize KB</strong>
+                                    </SgTypography>
+                                </SgCol>
+                            </SgRow>
+                        </div>
+                    }
+                </SgStack>
+            </SgCard>
         </div>
-    </div>
 
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 5. Form Validation                                                 -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Form Validation
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Signature pad integrated with validation — <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Value</SgTypography> binding, required state, stroke limits.
+                </SgTypography>
+            </div>
+
+            <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgRow Space="SgSize.Md">
+                        <SgCol Xs="12" Md="6">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Full Name
+                                </SgTypography>
+                                <SgTextBox TValue="string" @bind-Value="_formName" Placeholder="John Doe" Block="true" />
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Xs="12" Md="6">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Email
+                                </SgTypography>
+                                <SgTextBox TValue="string" @bind-Value="_formEmail" Placeholder="john@example.com" Block="true" />
+                            </SgStack>
+                        </SgCol>
+                    </SgRow>
+
+                    <SgSignaturePad @ref="_formPad"
+                                    Width="100%" Height="160px"
+                                    PenColor="#0f172a" PenWidth="2"
+                                    Label="Your Signature"
+                                    Required="true"
+                                    MinStrokes="1"
+                                    ShowGuideLine="true"
+                                    GuideLineText="Sign above" />
+
+                    <SgRow Space="SgSize.Sm">
+                        <SgCol Span="6">
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                                Strokes: <SgBadge Text="@_formStrokeCount.ToString()" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                            </SgTypography>
+                        </SgCol>
+                        <SgCol Span="6" Style="text-align:right;">
+                            @if (_formValid)
+                            {
+                                <SgBadge Text="✓ Valid" Variant="SgBadgeVariant.Success" Standalone="true" Size="SgSize.Sm" />
+                            }
+                            else if (_formTouched)
+                            {
+                                <SgBadge Text="Requires signature" Variant="SgBadgeVariant.Warn" Standalone="true" Size="SgSize.Sm" />
+                            }
+                        </SgCol>
+                    </SgRow>
+
+                    <SgButton Text="Submit"
+                              Variant="SgButtonVariant.Primary"
+                              Block="true"
+                              OnClick="SubmitForm"
+                              Disabled="@(!_formValid && _formTouched)" />
+                </SgStack>
+            </SgCard>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 6. Signature Gallery                                               -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Signature Gallery
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Save signatures to a local gallery. Click to preview any saved signature.
+                </SgTypography>
+            </div>
+
+            <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgRow Space="SgSize.Md">
+                    <SgCol Xs="12" Md="6">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                          Transform="SgTypographyTransform.Uppercase"
+                                          Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Draw
+                            </SgTypography>
+                            <SgSignaturePad @ref="_galleryPad"
+                                            Width="100%" Height="180px"
+                                            PenColor="#1e293b" PenWidth="2"
+                                            Placeholder="Draw and save to gallery" />
+                            <SgButton Text="Save to Gallery" Variant="SgButtonVariant.Primary" Block="true" OnClick="SaveToGallery" />
+                        </SgStack>
+                    </SgCol>
+                    <SgCol Xs="12" Md="6">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                          Transform="SgTypographyTransform.Uppercase"
+                                          Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Saved Signatures (@_gallery.Count)
+                            </SgTypography>
+                            @if (_gallery.Count == 0)
+                            {
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Style="padding:20px 0;text-align:center;">
+                                    No saved signatures yet.
+                                </SgTypography>
+                            }
+                            else
+                            {
+                                <div class="demo-gallery">
+                                    @foreach (var (item, idx) in _gallery.Select((s, i) => (s, i)))
+                                    {
+                                        <div class="demo-gallery-item @(idx == _selectedGalleryIdx ? "demo-gallery-item-selected" : "")"
+                                             @onclick="() => SelectGalleryItem(idx)">
+                                            <img src="@item.DataUrl" alt="Signature @(idx + 1)" />
+                                            <div class="demo-gallery-item-label">@item.Label</div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </SgStack>
+                    </SgCol>
+                </SgRow>
+                @if (_selectedGalleryIdx >= 0)
+                {
+                    <div style="margin-top:12px;padding:12px;background:var(--sg-bg-muted);border-radius:var(--sg-radius-md);">
+                        <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center">
+                            <SgCol Fill="true">
+                                <SgTypography Size="SgTypographySize.Sm">
+                                    Selected: <strong>@_gallery[_selectedGalleryIdx].Label</strong>
+                                </SgTypography>
+                            </SgCol>
+                            <SgCol Auto="true">
+                                <SgButton Text="Load into Pad" Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" OnClick="LoadGalleryToPad" />
+                            </SgCol>
+                            <SgCol Auto="true">
+                                <SgButton Text="Delete" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" OnClick="DeleteGalleryItem" />
+                            </SgCol>
+                        </SgRow>
+                    </div>
+                }
+            </SgCard>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 7. Live Constructor                                                -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    Live Constructor
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Tweak every parameter in real time and copy the generated code.
+                </SgTypography>
+            </div>
+
+            <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+                <SgRow Space="SgSize.Md">
+                    <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                        <SgStack Vertical Space="SgSize.Lg">
+                            <!-- Pen Color -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Pen Color
+                                </SgTypography>
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Span="8">
+                                        <SgTextBox TValue="string" Value="@_penColor"
+                                                   Placeholder="#1e293b" Size="SgSize.Sm" Block="true"
+                                                   ValueChanged="v => { _penColor = v; UpdateConstructorCode(); }" />
+                                    </SgCol>
+                                    <SgCol Span="4">
+                                        <input type="color" value="@_penColor"
+                                               style="width:100%;height:32px;border:1px solid var(--sg-border);border-radius:var(--sg-radius-md);padding:2px;cursor:pointer;background:none;"
+                                               @onchange="OnPenColorPickerChanged" />
+                                    </SgCol>
+                                </SgRow>
+                            </SgStack>
+                            <!-- Pen Width -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Pen Width <SgBadge Text="@($"{_penWidth}px")" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                </SgTypography>
+                                <input type="range" min="0.5" max="10" step="0.5"
+                                       value="@_penWidth"
+                                       style="width:100%;accent-color:var(--sg-color-primary);"
+                                       @onchange="OnPenWidthChanged" />
+                            </SgStack>
+                            <!-- Background Color -->
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Background
+                                </SgTypography>
+                                <SgRow Space="SgSize.Sm">
+                                    <SgCol Span="8">
+                                        <SgTextBox TValue="string" Value="@_bgColor"
+                                                   Placeholder="#ffffff" Size="SgSize.Sm" Block="true"
+                                                   ValueChanged="v => { _bgColor = v; UpdateConstructorCode(); }" />
+                                    </SgCol>
+                                    <SgCol Span="4">
+                                        <input type="color" value="@_bgColor"
+                                               style="width:100%;height:32px;border:1px solid var(--sg-border);border-radius:var(--sg-radius-md);padding:2px;cursor:pointer;background:none;"
+                                               @onchange="OnBgColorPickerChanged" />
+                                    </SgCol>
+                                </SgRow>
+                            </SgStack>
+                            <!-- Toggles -->
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                      Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Show Actions
+                                        </SgTypography>
+                                        <SgSegmented TValue="bool" Value="_showActions"
+                                                     ValueChanged="v => { _showActions = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                      Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Read Only
+                                        </SgTypography>
+                                        <SgSegmented TValue="bool" Value="_readOnly"
+                                                     ValueChanged="v => { _readOnly = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                      Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Guide Line
+                                        </SgTypography>
+                                        <SgSegmented TValue="bool" Value="_showGuide"
+                                                     ValueChanged="v => { _showGuide = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                      Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Initials
+                                        </SgTypography>
+                                        <SgSegmented TValue="bool" Value="_initials"
+                                                     ValueChanged="v => { _initials = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                            <SgRow Space="SgSize.Sm">
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                      Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Frameless
+                                        </SgTypography>
+                                        <SgSegmented TValue="bool" Value="_frameless"
+                                                     ValueChanged="v => { _frameless = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm" Options="_boolOptions" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Span="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                      Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                            Export Format
+                                        </SgTypography>
+                                        <SgSegmented TValue="string" Value="_imageFormat"
+                                                     ValueChanged="v => { _imageFormat = v; UpdateConstructorCode(); }"
+                                                     Block="true" Size="sm" Options="_formatSegOptions" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                            <!-- Summary -->
+                            <div class="ctrl-summary">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    @foreach (var item in _constructorSummary)
+                                    {
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">@item.Label</SgTypography>
+                                            <SgBadge Variant="@item.Badge" Text="@item.Value" Standalone="true" Size="SgSize.Sm" />
+                                        </SgStack>
+                                    }
+                                </SgStack>
+                            </div>
+                        </SgStack>
+                    </SgCol>
+                    <SgCol Xs="12" Md="7" Style="padding:24px;">
+                        <SgStack Vertical Space="SgSize.Lg">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                              Transform="SgTypographyTransform.Uppercase"
+                                              Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                    Result
+                                </SgTypography>
+                                <div class="constructor-preview" style="min-height:200px;">
+                                    <SgSignaturePad @ref="_constructorPad"
+                                                    Width="100%" Height="260px"
+                                                    PenColor="@_penColor" PenWidth="@_penWidth"
+                                                    BackgroundColor="@_bgColor"
+                                                    ShowActions="@_showActions" ReadOnly="@_readOnly"
+                                                    ShowGuideLine="@_showGuide"
+                                                    InitialsOnly="@_initials"
+                                                    Variant="@(_frameless ? SgSignatureVariant.Frameless : SgSignatureVariant.Default)"
+                                                    ImageFormat="@_imageFormat" />
+                                </div>
+                            </SgStack>
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <div style="display:flex;align-items:center;justify-content:space-between;">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold"
+                                                  Transform="SgTypographyTransform.Uppercase"
+                                                  Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                        Generated Code
+                                    </SgTypography>
+                                    <button type="button" class="demo-copy-btn" @onclick="CopyCodeToClipboard">
+                                        <span id="copy-icon">@_copyIcon</span>
+                                        <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                    </button>
+                                </div>
+                                <div class="code-block">
+                                    @foreach (var line in _generatedCodeLines)
+                                    {
+                                        <code>@line</code>
+                                    }
+                                </div>
+                            </SgStack>
+                        </SgStack>
+                    </SgCol>
+                </SgRow>
+            </SgCard>
+        </div>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- 8. API Reference                                                   -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                    API Reference
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    All parameters, events, and public methods.
+                </SgTypography>
+            </div>
+
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Lg="6">
+                    <SgCard Title="Parameters &amp; Events" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <PropertyTable Items="@_apiParams" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Lg="6">
+                    <SgCard Title="Public Methods" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                        <PropertyTable Items="@_apiMethods" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+    </ChildContent>
 </SgCard>
 
 @code {
     private SgSignaturePad? _pad1;
-    private string? _previewData;
+    private SgSignaturePad? _confirmPad1;
+    private SgSignaturePad? _confirmPad2;
+    private SgSignaturePad? _exportPad;
+    private SgSignaturePad? _formPad;
+    private SgSignaturePad? _galleryPad;
+    private SgSignaturePad? _constructorPad;
 
+    private string? _previewData;
+    private bool _hasTrimmed;
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private string _penColor = "#3b82f6";
+    private double _penWidth = 2;
+    private string _bgColor = "#ffffff";
+    private bool _showActions = true;
+    private bool _readOnly;
+    private bool _showGuide;
+    private bool _initials;
+    private bool _frameless;
+    private string _imageFormat = "image/png";
+
+    private string[] _generatedCodeLines = [];
+    private string _copyLabel = "Copy";
+    private string _copyIcon = "📋";
+
+    // ── Confirm signature ─────────────────────────────────────────────────
+    private bool? _confirmResult;
+
+    // ── Export comparison ─────────────────────────────────────────────────
+    private string _exportFormat = "image/png";
+    private double _exportQuality = 0.92;
+    private double? _exportSize;
+
+    // ── Form validation ───────────────────────────────────────────────────
+    private string _formName = "";
+    private string _formEmail = "";
+    private int _formStrokeCount;
+    private bool _formValid;
+    private bool _formTouched;
+
+    // ── Gallery ───────────────────────────────────────────────────────────
+    private List<(string DataUrl, string Label)> _gallery = [];
+    private int _selectedGalleryIdx = -1;
+    private int _galleryCounter;
+
+    // ── Main header ───────────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <div style="display:flex;align-items:center;gap:12px;">
+            <div style="display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--sg-radius-lg);background:var(--sg-color-primary);color:#fff;">
+                <SgIcon Icon="@SgHeroicons.Outline.Pencil" Size="18px" />
+            </div>
+            <div>
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold" Style="margin:0;">
+                    SgSignaturePad
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Hand-drawn signature capture with undo/redo, auto-trim, pressure sensitivity, Value binding, and gallery.
+                </SgTypography>
+            </div>
+        </div>
+    };
+
+    // ── Preview ───────────────────────────────────────────────────────────
     private async Task UpdatePreview()
     {
-        if (_pad1 != null)
+        if (_pad1 is not null) _previewData = await _pad1.GetImageAsync();
+    }
+
+    private async Task DownloadAsync()
+    {
+        if (_pad1 is not null) await _pad1.DownloadAsync();
+    }
+
+    private async Task GetTrimmedPreview()
+    {
+        if (_pad1 is not null)
         {
-            _previewData = await _pad1.GetImageAsync();
+            _previewData = await _pad1.GetTrimmedImageAsync();
+            _hasTrimmed = true;
         }
     }
+
+    // ── Confirm signature ─────────────────────────────────────────────────
+    private async Task CompareSignatures()
+    {
+        if (_confirmPad1 is null || _confirmPad2 is null) return;
+        var d1 = await _confirmPad1.GetImageAsync();
+        var d2 = await _confirmPad2.GetImageAsync();
+        _confirmResult = !string.IsNullOrEmpty(d1) && !string.IsNullOrEmpty(d2) && d1 == d2;
+    }
+
+    private async Task ResetConfirm()
+    {
+        _confirmResult = null;
+        if (_confirmPad1 is not null) await _confirmPad1.ClearAsync();
+        if (_confirmPad2 is not null) await _confirmPad2.ClearAsync();
+    }
+
+    // ── Export comparison ─────────────────────────────────────────────────
+    private void OnQualityChanged(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var val))
+        {
+            _exportQuality = val / 100.0;
+            _exportSize = null;
+        }
+    }
+
+    private async Task MeasureExport()
+    {
+        if (_exportPad is null) return;
+        var dataUrl = await _exportPad.GetImageAsync(_exportFormat, _exportQuality);
+        if (!string.IsNullOrEmpty(dataUrl))
+        {
+            var raw = Convert.FromBase64String(dataUrl.Split(',')[1]);
+            _exportSize = Math.Round(raw.Length / 1024.0, 1);
+        }
+    }
+
+    // ── Form validation ───────────────────────────────────────────────────
+    private async Task SubmitForm()
+    {
+        if (_formPad is null) return;
+        _formStrokeCount = await _formPad.GetStrokeCountAsync();
+        _formTouched = true;
+        _formValid = _formStrokeCount >= 1;
+    }
+
+    // ── Gallery ───────────────────────────────────────────────────────────
+    private async Task SaveToGallery()
+    {
+        if (_galleryPad is null) return;
+        var data = await _galleryPad.GetImageAsync();
+        if (!string.IsNullOrEmpty(data) && data.Length > 1000)
+        {
+            _galleryCounter++;
+            _gallery.Add((data, $"Signature #{_galleryCounter}"));
+            await _galleryPad.ClearAsync();
+            _selectedGalleryIdx = -1;
+        }
+    }
+
+    private void SelectGalleryItem(int idx)
+    {
+        _selectedGalleryIdx = _selectedGalleryIdx == idx ? -1 : idx;
+    }
+
+    private async Task LoadGalleryToPad()
+    {
+        if (_selectedGalleryIdx < 0 || _selectedGalleryIdx >= _gallery.Count) return;
+        if (_galleryPad is null) return;
+        await _galleryPad.LoadImageAsync(_gallery[_selectedGalleryIdx].DataUrl);
+    }
+
+    private void DeleteGalleryItem()
+    {
+        if (_selectedGalleryIdx >= 0 && _selectedGalleryIdx < _gallery.Count)
+        {
+            _gallery.RemoveAt(_selectedGalleryIdx);
+            _selectedGalleryIdx = -1;
+        }
+    }
+
+    // ── Constructor events ────────────────────────────────────────────────
+    private void OnPenColorPickerChanged(ChangeEventArgs e)
+    {
+        _penColor = e.Value?.ToString() ?? "#3b82f6";
+        UpdateConstructorCode();
+    }
+
+    private void OnBgColorPickerChanged(ChangeEventArgs e)
+    {
+        _bgColor = e.Value?.ToString() ?? "#ffffff";
+        UpdateConstructorCode();
+    }
+
+    private void OnPenWidthChanged(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), out var val))
+        {
+            _penWidth = val;
+            UpdateConstructorCode();
+        }
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>
+        {
+            "<SgSignaturePad",
+            $"    Width=\"100%\"",
+            $"    Height=\"260px\"",
+            $"    PenColor=\"{_penColor}\"",
+            $"    PenWidth=\"{_penWidth}\"",
+            $"    BackgroundColor=\"{_bgColor}\"",
+            $"    ShowActions=\"{_showActions.ToString().ToLowerInvariant()}\"",
+            $"    ReadOnly=\"{_readOnly.ToString().ToLowerInvariant()}\"",
+            $"    ShowGuideLine=\"{_showGuide.ToString().ToLowerInvariant()}\"",
+            $"    InitialsOnly=\"{_initials.ToString().ToLowerInvariant()}\"",
+            _frameless ? "    Variant=\"SgSignatureVariant.Frameless\"" : "",
+            $"    ImageFormat=\"{_imageFormat}\" />"
+        };
+        _generatedCodeLines = [.. lines.Where(l => !string.IsNullOrEmpty(l))];
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+        _copyLabel = "Copied!";
+        _copyIcon = "✅";
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copyLabel = "Copy";
+        _copyIcon = "📋";
+        StateHasChanged();
+    }
+
+    // ── Constructor summary items ─────────────────────────────────────────
+    private List<(string Label, string Value, SgBadgeVariant Badge)> _constructorSummary
+    {
+        get
+        {
+            var items = new List<(string, string, SgBadgeVariant)>
+            {
+                ("Pen", _penColor, SgBadgeVariant.Info),
+                ("Width", $"{_penWidth}px", SgBadgeVariant.Success),
+                ("Background", _bgColor, SgBadgeVariant.Default),
+                ("Actions", _showActions ? "Visible" : "Hidden", _showActions ? SgBadgeVariant.Success : SgBadgeVariant.Default),
+                ("ReadOnly", _readOnly ? "Yes" : "No", _readOnly ? SgBadgeVariant.Warn : SgBadgeVariant.Default),
+                ("Guide Line", _showGuide ? "On" : "Off", _showGuide ? SgBadgeVariant.Success : SgBadgeVariant.Default),
+                ("Mode", _initials ? "Initials" : _frameless ? "Frameless" : "Standard", SgBadgeVariant.Default),
+                ("Format", _imageFormat, SgBadgeVariant.Info),
+            };
+            return items;
+        }
+    }
+
+    // ── Segmented options ─────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<bool>> _boolOptions =
+    [
+        new() { Value = true, Label = "On" },
+        new() { Value = false, Label = "Off" }
+    ];
+
+    private readonly List<SgSegmentedOption<string>> _formatSegOptions =
+    [
+        new() { Value = "image/png", Label = "PNG" },
+        new() { Value = "image/jpeg", Label = "JPEG" }
+    ];
+
+    // ── Property tables ───────────────────────────────────────────────────
+    private readonly List<PropertyPanelItem> _apiParams =
+    [
+        new() { Label = "Width", Value = "string (CSS)", BadgeText = "100%", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Height", Value = "string (CSS)", BadgeText = "280px", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "PenColor", Value = "string (hex)", BadgeText = "#1e293b", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "PenWidth", Value = "double", BadgeText = "2", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "BackgroundColor", Value = "string (hex)", BadgeText = "#ffffff", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Value", Value = "string? (data URL)", BadgeText = "Bindable", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ReadOnly", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowActions", Value = "bool", BadgeText = "true", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowUndo/Redo/Clear/Copy/Dnld", Value = "bool (5x)", BadgeText = "Per-button", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Variant", Value = "SgSignatureVariant", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "InitialsOnly", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowGuideLine", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "GuideLineColor", Value = "string (hex)", BadgeText = "#d1d5db", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "GuideLineText", Value = "string?", BadgeText = "—", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "GuideLineStyle", Value = "Dashed|Dotted|Solid", BadgeText = "Dashed", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Label", Value = "string?", BadgeText = "Floating", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Required", Value = "bool", BadgeText = "false", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "MinStrokes", Value = "int", BadgeText = "0", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxStrokes", Value = "int", BadgeText = "0 (unlimited)", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Placeholder", Value = "string?", BadgeText = "—", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ImageFormat", Value = "string (MIME)", BadgeText = "image/png", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ImageQuality", Value = "double (0-1)", BadgeText = "0.92", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnDrawStart", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnDrawEnd", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnChange", Value = "EventCallback<bool>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+    ];
+
+    private readonly List<PropertyPanelItem> _apiMethods =
+    [
+        new() { Label = "ClearAsync()", Value = "Clears the canvas", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "GetImageAsync()", Value = "Returns data URL", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "GetTrimmedImageAsync()", Value = "Returns auto-cropped data URL", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "IsEmptyAsync()", Value = "Checks if canvas has content", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "GetStrokeCountAsync()", Value = "Returns stroke count", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "UndoAsync()", Value = "Undo last stroke", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "RedoAsync()", Value = "Redo last undone stroke", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "DownloadAsync()", Value = "Download as file", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CopyToClipboardAsync()", Value = "Copy image to clipboard", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LoadImageAsync()", Value = "Load signature from data URL", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ReplayAsync()", Value = "Animate signature replay", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SetPenColorAsync()", Value = "Change pen color dynamically", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SetPenWidthAsync()", Value = "Change pen width dynamically", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SetReadOnlyAsync()", Value = "Toggle read-only mode", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SetBackgroundColorAsync()", Value = "Change background color", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ExportTrimmedAsync()", Value = "Alias for GetTrimmedImageAsync", BadgeText = "Method", BadgeVariant = SgBadgeVariant.Default },
+    ];
 }
+
+<style>
+    .demo-preview-box {
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sg-radius-md);
+        height: 140px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--sg-bg-muted);
+        overflow: hidden;
+    }
+    .demo-preview-img {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
+    }
+    .demo-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 8px;
+        max-height: 260px;
+        overflow-y: auto;
+    }
+    .demo-gallery-item {
+        border: 2px solid var(--sg-border);
+        border-radius: var(--sg-radius-md);
+        padding: 6px;
+        cursor: pointer;
+        transition: all 0.12s ease;
+        background: var(--sg-surface);
+        text-align: center;
+    }
+    .demo-gallery-item:hover {
+        border-color: var(--sg-color-primary);
+    }
+    .demo-gallery-item-selected {
+        border-color: var(--sg-color-primary);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-primary) 30%, transparent);
+    }
+    .demo-gallery-item img {
+        width: 100%;
+        height: 50px;
+        object-fit: contain;
+        display: block;
+    }
+    .demo-gallery-item-label {
+        font-size: 10px;
+        color: var(--sg-fg-muted);
+        margin-top: 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
+    input[type="color"]::-webkit-color-swatch { border-radius: 3px; border: none; }
+</style>
