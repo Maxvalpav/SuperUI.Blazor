@@ -6,13 +6,13 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @SizeClass @CssClass @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "")" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
     
-    <div class="sgc-combo sgc-combo-time sgc-size-@Size.ToString().ToLowerInvariant() @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="sgc-combo sgc-combo-time @_sizeCss @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "") @(ShowClearOnHover ? "sgc-clear-hover" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="dialog"
@@ -24,8 +24,9 @@
          aria-controls="@_popupId"
          tabindex="@(Disabled ? "-1" : "0")"
          @onfocusout="HandleFocusOutAsync"
-         @onclick:stopPropagation="true">
-        <div class="sgc-combo-control" @onclick="ToggleAsync">
+         @onclick:stopPropagation="true"
+         @attributes="AdditionalAttributes">
+        <div class="sgc-combo-control" @onclick="ToggleAsync" @ref="_controlRef">
             @if (AllowInput)
             {
                 <input class="sgc-combo-input sgc-time-input"
@@ -86,7 +87,21 @@
                 </div>
 
                 <div class="sgc-time-content">
-                    @if (_viewType == ViewType.Clock)
+                    @if (Items is not null && Items.Any())
+                    {
+                        <div class="sgc-time-items">
+                            @foreach (var item in Items)
+                            {
+                                var it = item;
+                                var isItemSelected = it == _pendingValue;
+                                <div class="sgc-time-list-item @(isItemSelected ? "sgc-selected" : "")"
+                                     @onclick="() => SelectItemAsync(it)">
+                                    @GetItemDisplayText(it)
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (_viewType == ViewType.Clock)
                     {
                         <div class="sgc-clock-face" @ref="_clockFaceRef">
                             <div class="sgc-clock-inner-ring"></div>
@@ -142,7 +157,7 @@
                                     var min = m;
                                     var isOutOfRange = IsMinuteOutOfRange(min);
                                     <div class="sgc-time-list-item @(_pendingValue.Minutes == min ? "sgc-selected" : "") @(isOutOfRange ? "sgc-disabled" : "")" 
-                                         @onclick="() => { if (!isOutOfRange) { SetMinute(min); if(ShowSeconds) _mode = PickerMode.Seconds; } }">
+                                         @onclick="() => { if (!isOutOfRange) _ = SetMinuteAsync(min); }">
                                         @min.ToString("D2")
                                     </div>
                                 }
@@ -154,7 +169,7 @@
                                     {
                                         var sec = s;
                                         <div class="sgc-time-list-item @(_pendingValue.Seconds == sec ? "sgc-selected" : "")" 
-                                             @onclick="() => SetSecond(sec)">
+                                             @onclick="() => _ = SetSecondAsync(sec)">
                                             @sec.ToString("D2")
                                         </div>
                                     }
@@ -165,23 +180,29 @@
                 </div>
 
                 <div class="sgc-time-footer">
-                    <button type="button" class="sgc-time-toggle-btn" @onclick="ToggleViewTypeAsync">
-                        @if (_viewType == ViewType.Clock)
-                        {
-                            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 15H2.75A1.75 1.75 0 011 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H2.75zM4 5.5a1 1 0 112 0 1 1 0 01-2 0zM7.75 5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5zM4 8.5a1 1 0 112 0 1 1 0 01-2 0zM7.75 8a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5zm-3.75 3a1 1 0 112 0 1 1 0 01-2 0zm3.75-.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg>
-                        }
-                        else
-                        {
-                            <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 16A8 8 0 118 0a8 8 0 010 16zM8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z"/><path d="M8 3.5a.75.75 0 01.75.75v4.25h3a.75.75 0 010 1.5H8a.75.75 0 01-.75-.75V4.25A.75.75 0 018 3.5z"/></svg>
-                        }
-                    </button>
+                    @if (Items is null || !Items.Any())
+                    {
+                        <button type="button" class="sgc-time-toggle-btn" @onclick="ToggleViewTypeAsync">
+                            @if (_viewType == ViewType.Clock)
+                            {
+                                <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M1 2.75C1 1.784 1.784 1 2.75 1h10.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0113.25 15H2.75A1.75 1.75 0 011 13.25V2.75zm1.75-.25a.25.25 0 00-.25.25v10.5c0 .138.112.25.25.25h10.5a.25.25 0 00.25-.25V2.75a.25.25 0 00-.25-.25H2.75zM4 5.5a1 1 0 112 0 1 1 0 01-2 0zM7.75 5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5zM4 8.5a1 1 0 112 0 1 1 0 01-2 0zM7.75 8a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5zm-3.75 3a1 1 0 112 0 1 1 0 01-2 0zm3.75-.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-4.5z"/></svg>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 16 16" width="18" height="18" fill="currentColor"><path d="M8 16A8 8 0 118 0a8 8 0 010 16zM8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13z"/><path d="M8 3.5a.75.75 0 01.75.75v4.25h3a.75.75 0 010 1.5H8a.75.75 0 01-.75-.75V4.25A.75.75 0 018 3.5z"/></svg>
+                            }
+                        </button>
+                    }
                     @if (ShowNow)
                     {
                         <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="SetNowAsync">@EffectiveNowText</button>
                     }
                     <div style="flex:1"></div>
                     <button type="button" class="sgc-btn sgc-sm sgc-ghost" @onclick="CloseAsync">@EffectiveCancelText</button>
-                    <button type="button" class="sgc-btn sgc-sm" @onclick="ConfirmAsync">@EffectiveOkText</button>
+                    @if (!CloseOnSelect)
+                    {
+                        <button type="button" class="sgc-btn sgc-sm" @onclick="ConfirmAsync">@EffectiveOkText</button>
+                    }
                 </div>
             </div>
         }
@@ -214,6 +235,7 @@
     private string? _inputText;
     
     private ElementReference _clockFaceRef;
+    private ElementReference _controlRef;
     private IJSObjectReference? _module;
     private IJSObjectReference? _clockInstance;
     private DotNetObjectReference<SgTimePicker>? _selfRef;
@@ -244,6 +266,24 @@
     [Parameter] public bool Block { get; set; } = true;
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
     [Parameter] public string? CssClass { get; set; }
+    
+    /// <summary>Gets or sets additional inline CSS styles.</summary>
+    [Parameter] public string? Style { get; set; }
+    
+    /// <summary>Gets or sets additional HTML attributes.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+    
+    /// <summary>When true, applies compact sizing.</summary>
+    [Parameter] public bool Compact { get; set; }
+    
+    /// <summary>When true, the label floats above the trigger.</summary>
+    [Parameter] public bool FloatingLabel { get; set; }
+    
+    /// <summary>When true, the clear button is visible only on hover/focus.</summary>
+    [Parameter] public bool ShowClearOnHover { get; set; }
+    
+    /// <summary>When true, renders the dropdown with fixed positioning via JS interop. Default false.</summary>
+    [Parameter] public bool UsePortal { get; set; }
     
     /// <summary>
     /// Gets or sets a custom format string for the displayed time.
@@ -281,6 +321,18 @@
     /// </summary>
     [Parameter] public EventCallback OnClose { get; set; }
     
+    /// <summary>When true, skips the OK/Cancel step and closes immediately after picking minutes (or seconds). Default false.</summary>
+    [Parameter] public bool CloseOnSelect { get; set; }
+    
+    /// <summary>Optional list of predefined time slots shown as a simple pick list instead of the clock/list view.</summary>
+    [Parameter] public IEnumerable<TimeSpan>? Items { get; set; }
+    
+    /// <summary>When true, snaps the time to the nearest MinuteStep on open. Default false.</summary>
+    [Parameter] public bool SnapToStep { get; set; }
+    
+    /// <summary>When true, sets the time to the current time on open if no value is set. Default false.</summary>
+    [Parameter] public bool DefaultToNow { get; set; }
+    
     /// <summary>
     /// Gets or sets per-instance text for the OK button.
     /// When null, uses the localizer.
@@ -312,8 +364,53 @@
     private string EffectiveOkText => OkText ?? Localizer["Common_OK"];
     private string EffectiveCancelText => CancelText ?? Localizer["Common_Cancel"];
     private string EffectiveNowText => NowText ?? Localizer["Common_Now"];
+    
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-field-sm",
+        SgSize.Lg => "sgc-field-lg",
+        SgSize.Xl => "sgc-field-xl",
+        _ => null
+    };
+    private string _sizeCss => Size switch
+    {
+        SgSize.Sm => "sgc-size-sm",
+        SgSize.Lg => "sgc-size-lg",
+        SgSize.Xl => "sgc-size-xl",
+        _ => "sgc-size-md"
+    };
 
     private bool IsAm => _pendingValue.Hours < 12;
+
+    private string GetItemDisplayText(TimeSpan t)
+    {
+        if (!string.IsNullOrEmpty(Format))
+            return t.ToString(Format, CultureInfo.CurrentCulture);
+        if (UseAmPm)
+        {
+            var h = t.Hours % 12;
+            if (h == 0) h = 12;
+            var ampm = t.Hours >= 12 ? "PM" : "AM";
+            var s = ShowSeconds ? $":{t.Seconds:D2}" : "";
+            return $"{h:D2}:{t.Minutes:D2}{s} {ampm}";
+        }
+        var time = $"{t.Hours:D2}:{t.Minutes:D2}";
+        if (ShowSeconds) time += $":{t.Seconds:D2}";
+        return time;
+    }
+
+    private async Task SelectItemAsync(TimeSpan time)
+    {
+        _pendingValue = ClampTime(time);
+        await ConfirmAsync();
+    }
+
+    private TimeSpan SnapToNearestStep(TimeSpan time)
+    {
+        var totalMin = (int)time.TotalMinutes;
+        var snapped = (int)(Math.Round((double)totalMin / MinuteStep) * MinuteStep);
+        return new TimeSpan(snapped / 60, snapped % 60, time.Seconds);
+    }
 
     protected override void OnInitialized()
     {
@@ -443,9 +540,27 @@
         _pendingValue = ClampTime(new TimeSpan(_pendingValue.Hours, m, _pendingValue.Seconds));
     }
 
+    private async Task SetMinuteAsync(int m)
+    {
+        _pendingValue = ClampTime(new TimeSpan(_pendingValue.Hours, m, _pendingValue.Seconds));
+        if (CloseOnSelect && !ShowSeconds)
+            await ConfirmAsync();
+        else if (ShowSeconds)
+            _mode = PickerMode.Seconds;
+        await InvokeAsync(StateHasChanged);
+    }
+
     private void SetSecond(int s)
     {
         _pendingValue = ClampTime(new TimeSpan(_pendingValue.Hours, _pendingValue.Minutes, s));
+    }
+
+    private async Task SetSecondAsync(int s)
+    {
+        _pendingValue = ClampTime(new TimeSpan(_pendingValue.Hours, _pendingValue.Minutes, s));
+        if (CloseOnSelect)
+            await ConfirmAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private TimeSpan ClampTime(TimeSpan time)
@@ -555,12 +670,13 @@
         _open = !_open;
         if (_open)
         {
-            _pendingValue = Value ?? DateTime.Now.TimeOfDay;
+            _pendingValue = Value ?? (DefaultToNow ? DateTime.Now.TimeOfDay : TimeSpan.Zero);
+            if (SnapToStep) _pendingValue = SnapToNearestStep(_pendingValue);
             _mode = PickerMode.Hours;
             _inputText = null;
             await OnOpen.InvokeAsync();
             
-            if (_viewType == ViewType.Clock)
+            if (_viewType == ViewType.Clock && (Items is null || !Items.Any()))
             {
                 await Task.Delay(50);
                 await InitJsClockAsync();
@@ -674,6 +790,28 @@
             return true;
         }
         return false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_open && UsePortal)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"(function(){{var m=document.getElementById('{_popupId}'),t=document.querySelector('[aria-labelledby={_labelId}]')?.querySelector('.sgc-combo-control');if(!m||!t)return;var r=t.getBoundingClientRect();m.style.position='fixed';m.style.top=(r.bottom+2)+'px';m.style.left=r.left+'px';m.style.width=Math.max(r.width,200)+'px';}})()");
+            }
+            catch { }
+        }
+        else if (!_open && UsePortal)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"(function(){{var m=document.getElementById('{_popupId}');if(m){{m.style.position='';m.style.top='';m.style.left='';m.style.width='';}}}})()");
+            }
+            catch { }
+        }
     }
 
     public async ValueTask DisposeAsync()

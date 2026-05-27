@@ -2,156 +2,139 @@
 @using SuperUI.Localization
 @using SuperUI.Enums
 @using System.Linq.Expressions
-@using System.Xml.Serialization
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Rendering
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 @implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
-    @if (!string.IsNullOrEmpty(Label))
-    {
-        <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
-    }
-    <div class="sgc-date sgc-@Size.ToString().ToLowerInvariant() @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
-         role="combobox"
-         aria-expanded="@(_open ? "true" : "false")"
-         aria-haspopup="dialog"
-         aria-labelledby="@_labelId"
-         aria-required="@(Required ? "true" : null)"
-         aria-disabled="@(Disabled ? "true" : null)"
-         aria-invalid="@(IsInvalid ? "true" : null)"
-         aria-describedby="@DescribedBy"
-         aria-controls="@_popupId"
-         tabindex="@(Disabled ? "-1" : "0")"
-         @onfocusout="HandleFocusOutAsync"
-         @onclick:stopPropagation="true">
-        <div class="sgc-date-control" @onclick="ToggleAsync">
-            @if (Value.HasValue)
+@if (Inline)
+{
+    <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @SizeClass @CssClass @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "") @(ReadOnly ? "sgc-readonly" : "")" style="@Style" @attributes="AdditionalAttributes">
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <label class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        }
+        <div class="sgc-date sgc-inline @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(Compact ? "sgc-compact" : "")">
+            @CalendarHeader()
+            @if (_pickerMode == PickerView.Month)
             {
-                <span class="sgc-date-value">@Value.Value.ToString(Format, System.Globalization.CultureInfo.CurrentCulture)</span>
+                @MonthGrid()
+            }
+            else if (_pickerMode == PickerView.Year)
+            {
+                @YearGrid()
             }
             else
             {
-                <span class="sgc-date-placeholder">@(Placeholder ?? Localizer["SelectDate"])</span>
+                @DaysGrid()
             }
-            @if (AllowClear && Value.HasValue && !Disabled)
+            @if (ShowFooter)
             {
-                <button class="sgc-combo-clear" type="button"
-                        aria-label="@ClearLabel"
-                        title="@ClearLabel"
-                        @onclick:stopPropagation="true"
-                        @onclick="ClearAsync">
-                    <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
-                        <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
-                    </svg>
-                </button>
+                @CalendarFooter()
             }
-            <span class="sgc-date-caret" aria-hidden="true">
-                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
-                    <path d="M11 1a1 1 0 0 0-1 1v1H6V2a1 1 0 0 0-2 0v1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-1V2a1 1 0 0 0-1-1zM3 6h10v7H3V6z"/>
-                </svg>
-            </span>
         </div>
-        @if (_open)
+        @if (IsInvalid)
         {
-            <div id="@_popupId" class="sgc-date-popup" role="dialog" aria-modal="false" aria-label="@Localizer["SelectDate"]" @onmousedown:stopPropagation @onmousedown:preventDefault>
-                <div class="sgc-date-head">
-                    <div class="sgc-date-nav-group">
-                        <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(-1)" @onclick:stopPropagation title="@Localizer["PreviousYear"]">
-                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M7.22 14.78a.75.75 0 001.06-1.06L3.81 9.25h11.44a.75.75 0 000-1.5H3.81l4.47-4.47a.75.75 0 10-1.06-1.06L1.47 7.97a.75.75 0 000 1.06l5.75 5.75z"/></svg>
-                        </button>
-                        <button class="sgc-date-nav" type="button" @onclick="() => Shift(-1)" @onclick:stopPropagation title="@Localizer["PreviousMonth"]">
-                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M9.78 14.78a.75.75 0 01-1.06 0L2.97 9.03a.75.75 0 010-1.06L8.72 2.22a.75.75 0 011.06 1.06L4.56 8l5.22 5.22a.75.75 0 010 1.06z"/></svg>
-                        </button>
-                    </div>
-
-                    <div class="sgc-date-selectors">
-                        <button class="sgc-date-title-btn" type="button" @onclick="ToggleMonthView" @onclick:stopPropagation>@_view.ToString("MMMM", System.Globalization.CultureInfo.CurrentCulture)</button>
-                        <button class="sgc-date-title-btn" type="button" @onclick="ToggleYearView" @onclick:stopPropagation>@_view.Year</button>
-                    </div>
-
-                    <div class="sgc-date-nav-group">
-                        <button class="sgc-date-nav" type="button" @onclick="() => Shift(1)" @onclick:stopPropagation title="@Localizer["NextMonth"]">
-                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M6.22 2.22a.75.75 0 011.06 0l5.75 5.75a.75.75 0 010 1.06l-5.75 5.75a.75.75 0 11-1.06-1.06L11.44 8 6.22 2.78a.75.75 0 010-1.06z"/></svg>
-                        </button>
-                        <button class="sgc-date-nav" type="button" @onclick="() => ShiftYear(1)" @onclick:stopPropagation title="@Localizer["NextYear"]">
-                            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor"><path d="M8.78 1.22a.75.75 0 00-1.06 1.06L12.19 6.75H.75a.75.75 0 000 1.5h11.44l-4.47 4.47a.75.75 0 101.06 1.06l5.75-5.75a.75.75 0 000-1.06L8.78 1.22z"/></svg>
-                        </button>
-                    </div>
-                </div>
-                
-                @if (_pickerMode == PickerView.Month)
+            <span class="sgc-error">@DisplayedError</span>
+        }
+        else if (!string.IsNullOrEmpty(Hint))
+        {
+            <span class="sgc-hint">@Hint</span>
+        }
+    </div>
+}
+else
+{
+    <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @SizeClass @CssClass @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "") @(ReadOnly ? "sgc-readonly" : "")" style="@Style">
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
+        }
+        <div class="sgc-date @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(IsInvalid ? "sgc-invalid" : "") @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "") @(ShowClearOnHover ? "sgc-clear-hover" : "")"
+             role="combobox"
+             aria-expanded="@(_open ? "true" : "false")"
+             aria-haspopup="dialog"
+             aria-labelledby="@_labelId"
+             aria-required="@(Required ? "true" : null)"
+             aria-disabled="@(Disabled || ReadOnly ? "true" : null)"
+             aria-invalid="@(IsInvalid ? "true" : null)"
+             aria-describedby="@DescribedBy"
+             aria-controls="@_popupId"
+             tabindex="@(Disabled || ReadOnly ? "-1" : "0")"
+             @onfocusout="HandleFocusOutAsync"
+             @onclick:stopPropagation="true"
+             @attributes="AdditionalAttributes">
+            <div class="sgc-date-control" @onclick="ToggleAsync" @ref="_controlRef">
+                @if (AllowInput)
                 {
-                    <div class="sgc-date-grid sgc-month-grid">
-                        @for (int m = 1; m <= 12; m++)
-                        {
-                            var month = m;
-                            var isSel = Value.HasValue && Value.Value.Year == _view.Year && Value.Value.Month == month;
-                            <div class="sgc-date-cell sgc-month-cell @(isSel ? "sgc-selected" : "")" 
-                                 @onclick="() => SelectMonth(month)">
-                                @System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.GetAbbreviatedMonthName(month)
-                            </div>
-                        }
-                    </div>
+                    <input class="sgc-date-input"
+                           value="@(_inputText ?? GetDisplayText())"
+                           @onchange="HandleInputChangeAsync"
+                           @onclick:stopPropagation="true"
+                           @onfocus:stopPropagation="true"
+                           placeholder="@(Placeholder ?? Localizer["SelectDate"])"
+                           readonly="@(Disabled || ReadOnly)" />
                 }
-                else if (_pickerMode == PickerView.Year)
+                else if (Value.HasValue)
                 {
-                    <div class="sgc-date-grid sgc-year-grid">
-                        @for (int y = _view.Year - YearRange; y <= _view.Year + YearRange; y++)
-                        {
-                            var year = y;
-                            var isSel = Value.HasValue && Value.Value.Year == year;
-                            <div class="sgc-date-cell sgc-year-cell @(isSel ? "sgc-selected" : "")" 
-                                 @onclick="() => SelectYear(year)">
-                                @year
-                            </div>
-                        }
-                    </div>
+                    <span class="sgc-date-value">@GetDisplayText()</span>
                 }
                 else
                 {
-                    <div class="sgc-date-grid">
-                        @for (var i = 0; i < 7; i++)
-                        {
-                            var dow = ((int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek + i) % 7;
-                            <div class="sgc-date-dow">@System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[dow]</div>
-                        }
-                        @foreach (var d in BuildGrid())
-                        {
-                            var dl = d;
-                            var inMonth = dl.Month == _view.Month;
-                            var isToday = dl.Date == DateTime.Today;
-                            var isSel = Value.HasValue && dl.Date == Value.Value.Date;
-                            var isDisabled = IsDateDisabled(dl);
-                            <div class="sgc-date-cell @(inMonth ? "" : "sgc-out") @(isToday ? "sgc-today" : "") @(isSel ? "sgc-selected" : "") @(isDisabled ? "sgc-date-disabled" : "")"
-                                 role="button"
-                                 aria-disabled="@(isDisabled ? "true" : null)"
-                                 aria-selected="@(isSel ? "true" : null)"
-                                 @onclick="() => { if (!isDisabled) _ = PickAsync(dl); }">@dl.Day</div>
-                        }
-                    </div>
+                    <span class="sgc-date-placeholder">@(Placeholder ?? Localizer["SelectDate"])</span>
                 }
-                @if (ShowFooter)
+                @if (AllowClear && Value.HasValue && !Disabled)
                 {
-                    <div class="sgc-date-foot">
-                        <button class="sgc-btn sgc-sm" type="button" @onclick="TodayAsync">@Localizer["Common_Today"]</button>
-                        @if (AllowClear)
-                        {
-                            <button class="sgc-btn sgc-sm sgc-ghost" type="button" @onclick="ClearAsync">@Localizer["Common_Clear"]</button>
-                        }
-                    </div>
+                    <button class="sgc-combo-clear" type="button"
+                            aria-label="@ClearLabel"
+                            title="@ClearLabel"
+                            @onclick:stopPropagation="true"
+                            @onclick="ClearAsync">
+                        <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
+                            <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+                        </svg>
+                    </button>
                 }
+                <span class="sgc-date-caret" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor">
+                        <path d="M11 1a1 1 0 0 0-1 1v1H6V2a1 1 0 0 0-2 0v1H3a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2h-1V2a1 1 0 0 0-1-1zM3 6h10v7H3V6z"/>
+                    </svg>
+                </span>
             </div>
+            @if (_open)
+            {
+                <div id="@_popupId" class="sgc-date-popup" role="dialog" aria-modal="false" aria-label="@Localizer["SelectDate"]" @onmousedown:stopPropagation @onmousedown:preventDefault>
+                    @CalendarHeader()
+                    @if (_pickerMode == PickerView.Month)
+                    {
+                        @MonthGrid()
+                    }
+                    else if (_pickerMode == PickerView.Year)
+                    {
+                        @YearGrid()
+                    }
+                    else
+                    {
+                        @DaysGrid()
+                    }
+                    @if (ShowFooter)
+                    {
+                        @CalendarFooter()
+                    }
+                </div>
+            }
+        </div>
+        @if (IsInvalid)
+        {
+            <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        }
+        else if (!string.IsNullOrEmpty(Hint))
+        {
+            <span id="@_hintId" class="sgc-hint">@Hint</span>
         }
     </div>
-    @if (IsInvalid)
-    {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
-    }
-    else if (!string.IsNullOrEmpty(Hint))
-    {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
-    }
-</div>
+}
 
 @code {
     private enum PickerView { Days, Month, Year }
@@ -165,6 +148,8 @@
     private DateTime _view = DateTime.Today;
     private SgEditContextBinder<DateTime?>? _binder;
     private CancellationTokenSource? _blurCts;
+    private ElementReference _controlRef;
+    private string? _inputText;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
@@ -190,7 +175,7 @@
     [Parameter] public string? Style { get; set; }
 
     /// <summary>Gets or sets any additional HTML attributes to be applied to the root element.</summary>
-    [Parameter] public IDictionary<string, object>? AdditionalAttributes { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     /// <summary>Gets or sets the placeholder text shown when no date is selected.</summary>
     [Parameter] public string? Placeholder { get; set; }
@@ -216,6 +201,9 @@
     /// <summary>Gets or sets whether the date picker is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
+    /// <summary>Gets or sets whether the date picker is read-only.</summary>
+    [Parameter] public bool ReadOnly { get; set; }
+
     /// <summary>Gets or sets whether the date picker should take full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
 
@@ -234,16 +222,92 @@
     /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private string ClearLabel => Localizer["Common_Clear"];
+    /// <summary>Gets or sets the first day of the week. When null, uses the current culture's default.</summary>
+    [Parameter] public DayOfWeek? FirstDayOfWeek { get; set; }
+
+    /// <summary>Callback to determine if a specific date should be disabled. Return true to disable.</summary>
+    [Parameter] public Func<DateTime, bool>? DisabledDate { get; set; }
+
+    /// <summary>Fires when the popup opens.</summary>
+    [Parameter] public EventCallback OnOpen { get; set; }
+
+    /// <summary>Fires when the popup closes.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>When true, renders the dropdown with fixed positioning via JS interop. Default false.</summary>
+    [Parameter] public bool UsePortal { get; set; }
+
+    /// <summary>When true, applies compact sizing.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>When true, the label floats above the trigger.</summary>
+    [Parameter] public bool FloatingLabel { get; set; }
+
+    /// <summary>When true, the clear button is visible only on hover/focus.</summary>
+    [Parameter] public bool ShowClearOnHover { get; set; }
+
+    /// <summary>When true, allows typing a date directly into the input. Default false.</summary>
+    [Parameter] public bool AllowInput { get; set; }
+
+    /// <summary>When true, the calendar is always visible without a popup trigger. Default false.</summary>
+    [Parameter] public bool Inline { get; set; }
+
+    /// <summary>When true, closes the popup after selecting a date. Default true.</summary>
+    [Parameter] public bool AutoClose { get; set; } = true;
+
+    /// <summary>When true, shows quick preset buttons (Today, This Week, This Month) in the footer. Default false.</summary>
+    [Parameter] public bool ShowPresets { get; set; }
+
+    /// <summary>When true, shows week numbers in the calendar grid. Default false.</summary>
+    [Parameter] public bool ShowWeekNumbers { get; set; }
+
+    /// <summary>Custom text for the Today button. When null, uses the localizer.</summary>
+    [Parameter] public string? TodayText { get; set; }
+
+    /// <summary>Custom text for the Clear button. When null, uses the localizer.</summary>
+    [Parameter] public string? ClearText { get; set; }
+
+    /// <summary>When set, overrides the current culture for month/day names and first day of week.</summary>
+    [Parameter] public string? Locale { get; set; }
+
+    /// <summary>Dictionary of dates to highlight with custom CSS classes. The key is the date, value is the CSS class.</summary>
+    [Parameter] public Dictionary<DateTime, string>? HighlightedDates { get; set; }
+
+    /// <summary>Fires when the value changes, passing the new date string.</summary>
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+
+    private string ClearLabel => ClearText ?? Localizer["Common_Clear"];
+    private string EffectiveTodayText => TodayText ?? Localizer["Common_Today"];
+    private string EffectiveClearText => ClearText ?? Localizer["Common_Clear"];
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
         ? ErrorText
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+    private DayOfWeek EffectiveFirstDayOfWeek => FirstDayOfWeek ?? EffectiveCulture.DateTimeFormat.FirstDayOfWeek;
+    private CultureInfo EffectiveCulture => Locale is not null ? CultureInfo.GetCultureInfo(Locale) : CultureInfo.CurrentCulture;
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-field-sm",
+        SgSize.Lg => "sgc-field-lg",
+        SgSize.Xl => "sgc-field-xl",
+        _ => null
+    };
 
     private bool IsDateDisabled(DateTime d) =>
+        (DisabledDate is not null && DisabledDate(d.Date)) ||
         (Min.HasValue && d.Date < Min.Value.Date) ||
         (Max.HasValue && d.Date > Max.Value.Date);
+
+    private string? GetHighlightClass(DateTime d) =>
+        HighlightedDates is not null && HighlightedDates.TryGetValue(d.Date, out var cls) ? cls : null;
+
+    private string GetDisplayText()
+    {
+        if (!Value.HasValue) return "";
+        return Value.Value.ToString(Format, EffectiveCulture);
+    }
 
     private void ToggleMonthView() => _pickerMode = _pickerMode == PickerView.Month ? PickerView.Days : PickerView.Month;
     private void ToggleYearView() => _pickerMode = _pickerMode == PickerView.Year ? PickerView.Days : PickerView.Year;
@@ -279,22 +343,28 @@
         try
         {
             await Task.Delay(200, token);
-            if (_open) { _open = false; await InvokeAsync(StateHasChanged); }
+            if (_open) { _open = false; await OnClose.InvokeAsync(); await InvokeAsync(StateHasChanged); }
         }
         catch (TaskCanceledException) { }
     }
 
-    private Task ToggleAsync()
+    private async Task ToggleAsync()
     {
-        if (Disabled) return Task.CompletedTask;
+        if (Disabled || ReadOnly) return;
         _blurCts?.Cancel();
         _open = !_open;
         if (_open)
         {
              _pickerMode = PickerView.Days;
+             _inputText = null;
              if (Value.HasValue) _view = new DateTime(Value.Value.Year, Value.Value.Month, 1);
+             await OnOpen.InvokeAsync();
         }
-        return InvokeAsync(StateHasChanged);
+        else
+        {
+            await OnClose.InvokeAsync();
+        }
+        await InvokeAsync(StateHasChanged);
     }
 
     private void Shift(int months) => _view = _view.AddMonths(months);
@@ -303,30 +373,290 @@
     private IEnumerable<DateTime> BuildGrid()
     {
         var first = new DateTime(_view.Year, _view.Month, 1);
-        var fdow = (int)System.Globalization.CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek;
+        var fdow = (int)EffectiveFirstDayOfWeek;
         var startOffset = ((int)first.DayOfWeek - fdow + 7) % 7;
         var start = first.AddDays(-startOffset);
         for (var i = 0; i < 42; i++) yield return start.AddDays(i);
     }
 
+    private string GetWeekNumber(DateTime date) =>
+        EffectiveCulture.Calendar.GetWeekOfYear(date, CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday).ToString();
+
     private async Task PickAsync(DateTime d)
     {
-        if (IsDateDisabled(d)) return;
-        _open = false;
+        if (IsDateDisabled(d) || ReadOnly) return;
+        if (AutoClose) _open = false;
+        _inputText = null;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(d.Date);
         if (OnValueChange.HasDelegate) await OnValueChange.InvokeAsync();
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync(d.ToString(Format, EffectiveCulture));
         _binder?.NotifyFieldChanged();
+        if (AutoClose) await OnClose.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task HandleInputChangeAsync(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString();
+        _inputText = null;
+        if (string.IsNullOrWhiteSpace(text)) return;
+        if (DateTime.TryParse(text, EffectiveCulture, DateTimeStyles.None, out var parsed))
+        {
+            if (IsDateDisabled(parsed)) return;
+            if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(parsed.Date);
+            if (OnValueChange.HasDelegate) await OnValueChange.InvokeAsync();
+            if (OnChange.HasDelegate) await OnChange.InvokeAsync(parsed.ToString(Format, EffectiveCulture));
+            _binder?.NotifyFieldChanged();
+            if (_open && AutoClose)
+            {
+                _open = false;
+                await OnClose.InvokeAsync();
+            }
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private Task TodayAsync() => PickAsync(DateTime.Today);
 
+    private async Task SelectPresetAsync(string preset)
+    {
+        var today = DateTime.Today;
+        DateTime start;
+        switch (preset)
+        {
+            case "today":
+                await PickAsync(today);
+                return;
+            case "thisweek":
+                start = today.AddDays(-(int)EffectiveFirstDayOfWeek - ((int)today.DayOfWeek - (int)EffectiveFirstDayOfWeek + 7) % 7);
+                await PickAsync(start);
+                return;
+            case "thismonth":
+                await PickAsync(new DateTime(today.Year, today.Month, 1));
+                return;
+        }
+    }
+
     private async Task ClearAsync()
     {
         _open = false;
+        _inputText = null;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
         if (OnValueChange.HasDelegate) await OnValueChange.InvokeAsync();
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync("");
         _binder?.NotifyFieldChanged();
+        await OnClose.InvokeAsync();
         await InvokeAsync(StateHasChanged);
+    }
+
+    private RenderFragment CalendarHeader() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-date-head");
+
+        builder.OpenElement(2, "div");
+        builder.AddAttribute(3, "class", "sgc-date-nav-group");
+        BuildNavButton(builder, 4, () => ShiftYear(-1), Localizer["PreviousYear"], "M7.22 14.78a.75.75 0 001.06-1.06L3.81 9.25h11.44a.75.75 0 000-1.5H3.81l4.47-4.47a.75.75 0 10-1.06-1.06L1.47 7.97a.75.75 0 000 1.06l5.75 5.75z");
+        BuildNavButton(builder, 5, () => Shift(-1), Localizer["PreviousMonth"], "M9.78 14.78a.75.75 0 01-1.06 0L2.97 9.03a.75.75 0 010-1.06L8.72 2.22a.75.75 0 011.06 1.06L4.56 8l5.22 5.22a.75.75 0 010 1.06z");
+        builder.CloseElement();
+
+        builder.OpenElement(6, "div");
+        builder.AddAttribute(7, "class", "sgc-date-selectors");
+        builder.OpenElement(8, "button");
+        builder.AddAttribute(9, "class", "sgc-date-title-btn");
+        builder.AddAttribute(10, "type", "button");
+        builder.AddAttribute(11, "onclick", EventCallback.Factory.Create(this, ToggleMonthView));
+        builder.AddAttribute(12, "onclick:stopPropagation", true);
+        builder.AddContent(13, _view.ToString("MMMM", EffectiveCulture));
+        builder.CloseElement();
+        builder.OpenElement(14, "button");
+        builder.AddAttribute(15, "class", "sgc-date-title-btn");
+        builder.AddAttribute(16, "type", "button");
+        builder.AddAttribute(17, "onclick", EventCallback.Factory.Create(this, ToggleYearView));
+        builder.AddAttribute(18, "onclick:stopPropagation", true);
+        builder.AddContent(19, _view.Year);
+        builder.CloseElement();
+        builder.CloseElement();
+
+        builder.OpenElement(20, "div");
+        builder.AddAttribute(21, "class", "sgc-date-nav-group");
+        BuildNavButton(builder, 22, () => Shift(1), Localizer["NextMonth"], "M6.22 2.22a.75.75 0 011.06 0l5.75 5.75a.75.75 0 010 1.06l-5.75 5.75a.75.75 0 11-1.06-1.06L11.44 8 6.22 2.78a.75.75 0 010-1.06z");
+        BuildNavButton(builder, 23, () => ShiftYear(1), Localizer["NextYear"], "M8.78 1.22a.75.75 0 00-1.06 1.06L12.19 6.75H.75a.75.75 0 000 1.5h11.44l-4.47 4.47a.75.75 0 101.06 1.06l5.75-5.75a.75.75 0 000-1.06L8.78 1.22z");
+        builder.CloseElement();
+
+        builder.CloseElement();
+    };
+
+    private void BuildNavButton(RenderTreeBuilder builder, int seq, Action onClick, string title, string svgPath)
+    {
+        builder.OpenElement(seq, "button");
+        builder.AddAttribute(seq + 1, "class", "sgc-date-nav");
+        builder.AddAttribute(seq + 2, "type", "button");
+        builder.AddAttribute(seq + 3, "onclick", EventCallback.Factory.Create(this, onClick));
+        builder.AddAttribute(seq + 4, "onclick:stopPropagation", true);
+        builder.AddAttribute(seq + 5, "title", title);
+        builder.AddMarkupContent(seq + 6, $"<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\"><path d=\"{svgPath}\"/></svg>");
+        builder.CloseElement();
+    }
+
+    private RenderFragment MonthGrid() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-date-grid sgc-month-grid");
+        for (int m = 1; m <= 12; m++)
+        {
+            var month = m;
+            var isSel = Value.HasValue && Value.Value.Year == _view.Year && Value.Value.Month == month;
+            builder.OpenElement(2, "div");
+            var cls = "sgc-date-cell sgc-month-cell" + (isSel ? " sgc-selected" : "");
+            builder.AddAttribute(3, "class", cls);
+            builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, () => SelectMonth(month)));
+            builder.AddContent(5, EffectiveCulture.DateTimeFormat.GetAbbreviatedMonthName(month));
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private RenderFragment YearGrid() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-date-grid sgc-year-grid");
+        for (int y = _view.Year - YearRange; y <= _view.Year + YearRange; y++)
+        {
+            var year = y;
+            var isSel = Value.HasValue && Value.Value.Year == year;
+            builder.OpenElement(2, "div");
+            var cls = "sgc-date-cell sgc-year-cell" + (isSel ? " sgc-selected" : "");
+            builder.AddAttribute(3, "class", cls);
+            builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, () => SelectYear(year)));
+            builder.AddContent(5, year);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private RenderFragment DaysGrid() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-date-grid" + (ShowWeekNumbers ? " sgc-date-grid-wn" : ""));
+
+        if (ShowWeekNumbers)
+        {
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "sgc-date-wn-header");
+            builder.CloseElement();
+        }
+        for (var i = 0; i < 7; i++)
+        {
+            var dow = ((int)EffectiveFirstDayOfWeek + i) % 7;
+            builder.OpenElement(4, "div");
+            builder.AddAttribute(5, "class", "sgc-date-dow");
+            builder.AddContent(6, EffectiveCulture.DateTimeFormat.AbbreviatedDayNames[dow]);
+            builder.CloseElement();
+        }
+        foreach (var d in BuildGrid())
+        {
+            var dl = d;
+            var inMonth = dl.Month == _view.Month;
+            var isToday = dl.Date == DateTime.Today;
+            var isSel = Value.HasValue && dl.Date == Value.Value.Date;
+            var isDisabled = IsDateDisabled(dl);
+            var hlClass = GetHighlightClass(dl);
+
+            if (ShowWeekNumbers && dl.DayOfWeek == EffectiveFirstDayOfWeek)
+            {
+                builder.OpenElement(7, "div");
+                builder.AddAttribute(8, "class", "sgc-date-wn");
+                builder.AddContent(9, GetWeekNumber(dl));
+                builder.CloseElement();
+            }
+            builder.OpenElement(10, "div");
+            var cellCls = "sgc-date-cell"
+                + (inMonth ? "" : " sgc-out")
+                + (isToday ? " sgc-today" : "")
+                + (isSel ? " sgc-selected" : "")
+                + (isDisabled ? " sgc-date-disabled" : "")
+                + (hlClass is not null ? " " + hlClass : "");
+            builder.AddAttribute(11, "class", cellCls);
+            builder.AddAttribute(12, "role", "button");
+            if (isDisabled) builder.AddAttribute(13, "aria-disabled", "true");
+            if (isSel) builder.AddAttribute(14, "aria-selected", "true");
+            builder.AddAttribute(15, "onclick", EventCallback.Factory.Create(this, () => { if (!isDisabled) _ = PickAsync(dl); }));
+            builder.AddContent(16, dl.Day);
+            builder.CloseElement();
+        }
+        builder.CloseElement();
+    };
+
+    private RenderFragment CalendarFooter() => builder =>
+    {
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "sgc-date-foot");
+
+        if (ShowPresets)
+        {
+            builder.OpenElement(2, "div");
+            builder.AddAttribute(3, "class", "sgc-date-presets");
+            BuildPresetButton(builder, 4, "today", EffectiveTodayText);
+            BuildPresetButton(builder, 5, "thisweek", Localizer["Common_ThisWeek"]);
+            BuildPresetButton(builder, 6, "thismonth", Localizer["Common_ThisMonth"]);
+            builder.CloseElement();
+        }
+
+        builder.OpenElement(7, "div");
+        builder.AddAttribute(8, "class", "sgc-date-foot-actions");
+
+        builder.OpenElement(9, "button");
+        builder.AddAttribute(10, "class", "sgc-btn sgc-sm");
+        builder.AddAttribute(11, "type", "button");
+        builder.AddAttribute(12, "onclick", EventCallback.Factory.Create(this, TodayAsync));
+        builder.AddContent(13, EffectiveTodayText);
+        builder.CloseElement();
+
+        if (AllowClear)
+        {
+            builder.OpenElement(14, "button");
+            builder.AddAttribute(15, "class", "sgc-btn sgc-sm sgc-ghost");
+            builder.AddAttribute(16, "type", "button");
+            builder.AddAttribute(17, "onclick", EventCallback.Factory.Create(this, ClearAsync));
+            builder.AddContent(18, EffectiveClearText);
+            builder.CloseElement();
+        }
+
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private void BuildPresetButton(RenderTreeBuilder builder, int seq, string preset, string text)
+    {
+        builder.OpenElement(seq, "button");
+        builder.AddAttribute(seq + 1, "class", "sgc-btn sgc-xs sgc-ghost");
+        builder.AddAttribute(seq + 2, "type", "button");
+        builder.AddAttribute(seq + 3, "onclick", EventCallback.Factory.Create(this, () => _ = SelectPresetAsync(preset)));
+        builder.AddContent(seq + 4, text);
+        builder.CloseElement();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Inline && _open && UsePortal)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"(function(){{var m=document.getElementById('{_popupId}'),t=document.querySelector('[aria-labelledby={_labelId}]')?.querySelector('.sgc-date-control');if(!m||!t)return;var r=t.getBoundingClientRect();m.style.position='fixed';m.style.top=(r.bottom+2)+'px';m.style.left=r.left+'px';m.style.width=Math.max(r.width,260)+'px';}})()");
+            }
+            catch { }
+        }
+        else if (!Inline && !_open && UsePortal)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"(function(){{var m=document.getElementById('{_popupId}');if(m){{m.style.position='';m.style.top='';m.style.left='';m.style.width='';}}}})()");
+            }
+            catch { }
+        }
     }
 
     public void Dispose()

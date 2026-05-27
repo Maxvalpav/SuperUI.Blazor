@@ -1,34 +1,34 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 @inherits SgInputBase<string>
 @inject ISuperUILocalizer Localizer
 @inject IJSRuntime JS
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @SizeClass @CssClass @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "")" style="@Style" @attributes="AdditionalAttributes">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-color-picker sgc-size-@Size.ToString().ToLowerInvariant() @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")">
+    <div class="sgc-color-picker @_sizeCss @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "") @(ShowClearOnHover ? "sgc-clear-hover" : "")">
         <input id="@_colorInputId"
                type="color"
                class="sgc-color-input"
-               value="@Value"
+               value="@GetHexValue()"
                @onchange="OnColorChange"
                disabled="@Disabled"
                aria-labelledby="@(!string.IsNullOrEmpty(Label) ? _labelId : null)"
                aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["ColorPicker_Color"] : null)"
                aria-invalid="@(IsInvalid ? "true" : null)"
-               aria-describedby="@DescribedBy"
-               @attributes="AdditionalAttributes" />
+               aria-describedby="@DescribedBy" />
         @if (ShowHexInput)
         {
             <input type="text"
                    class="sgc-color-hex"
-                   value="@Value"
+                   value="@GetDisplayValue()"
                    @onchange="OnTextChange"
                    disabled="@Disabled"
-                   placeholder="#000000"
-                   maxlength="7"
+                   placeholder="@(Placeholder ?? "#000000")"
+                   maxlength="20"
                    spellcheck="false"
                    aria-labelledby="@(!string.IsNullOrEmpty(Label) ? _labelId : null)"
                    aria-label="@(string.IsNullOrEmpty(Label) ? Localizer["ColorPicker_HexCode"] : null)"
@@ -56,20 +56,65 @@
                 }
             </button>
         }
+        @if (AllowClear && !string.IsNullOrEmpty(Value) && !Disabled)
+        {
+            <button type="button" class="sgc-color-clear" @onclick="ClearAsync" title="@Localizer["Common_Clear"]">
+                <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
+            </button>
+        }
+        @if (ShowEyeDropper && !Disabled)
+        {
+            <button type="button" class="sgc-color-eyedropper" @onclick="PickColorAsync" title="@Localizer["ColorPicker_EyeDropper"]">
+                <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M14.78.22a.75.75 0 0 1 0 1.06l-1.5 1.5a.75.75 0 0 1-1.06-1.06l1.5-1.5a.75.75 0 0 1 1.06 0zM11.5 3.5l-1.5-1.5-7.25 7.25a2.5 2.5 0 0 0-.65 1.14l-.4 1.8a.25.25 0 0 0 .3.3l1.8-.4a2.5 2.5 0 0 0 1.14-.65L11.5 3.5z"/></svg>
+            </button>
+        }
+        @if (ShowAlpha && !Disabled)
+        {
+            <div class="sgc-color-alpha">
+                <input type="range" min="0" max="100" value="@_alpha"
+                       @onchange="OnAlphaChange"
+                       class="sgc-color-alpha-slider"
+                       aria-label="@Localizer["ColorPicker_Alpha"]" />
+                <span class="sgc-color-alpha-value">@_alpha%</span>
+            </div>
+        }
     </div>
-    @if (Swatches is not null && Swatches.Any() && !Disabled)
+    @if (ShowSwatches && Swatches is not null && Swatches.Any() && !Disabled)
     {
-        <div class="sgc-color-swatches" role="group" aria-label="Color swatches">
+        <div class="sgc-color-swatches" role="group" aria-label="@(SwatchesTitle ?? Localizer["ColorPicker_Swatches"])">
+            @if (!string.IsNullOrEmpty(SwatchesTitle))
+            {
+                <span class="sgc-color-swatches-title">@SwatchesTitle</span>
+            }
             @foreach (var swatch in Swatches)
             {
                 var sw = swatch;
+                var isSelected = sw.Equals(Value, StringComparison.OrdinalIgnoreCase) || valueWithoutAlpha(sw).Equals(valueWithoutAlpha(Value), StringComparison.OrdinalIgnoreCase);
                 <button type="button"
-                        class="sgc-color-swatch @(sw.Equals(Value, StringComparison.OrdinalIgnoreCase) ? "sgc-selected" : "")"
+                        class="sgc-color-swatch @(isSelected ? "sgc-selected" : "")"
                         style="background: @sw"
                         title="@sw"
                         aria-label="@sw"
-                        aria-pressed="@(sw.Equals(Value, StringComparison.OrdinalIgnoreCase) ? "true" : "false")"
+                        aria-pressed="@(isSelected ? "true" : "false")"
                         @onclick="() => SelectSwatchAsync(sw)">
+                </button>
+            }
+        </div>
+    }
+    @if (ShowRecentColors && _recentColors.Count > 0 && !Disabled)
+    {
+        <div class="sgc-color-recents" role="group" aria-label="@Localizer["ColorPicker_Recent"]">
+            <span class="sgc-color-recents-title">@Localizer["ColorPicker_Recent"]</span>
+            @foreach (var recent in _recentColors)
+            {
+                var rc = recent;
+                var isSelected = rc.Equals(Value, StringComparison.OrdinalIgnoreCase);
+                <button type="button"
+                        class="sgc-color-swatch sgc-color-recent @(isSelected ? "sgc-selected" : "")"
+                        style="background: @rc"
+                        title="@rc"
+                        aria-label="@rc"
+                        @onclick="() => SelectSwatchAsync(rc)">
                 </button>
             }
         </div>
@@ -92,6 +137,9 @@
     private bool _copied;
     private CancellationTokenSource? _copiedCts;
     private IJSObjectReference? _module;
+    private int _alpha = 100;
+    private List<string> _recentColors = new();
+    private const int MaxRecentColors = 8;
 
     /// <summary>Gets or sets the label text displayed above the color picker.</summary>
     [Parameter] public string? Label { get; set; }
@@ -126,28 +174,212 @@
     /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
+    /// <summary>Gets or sets additional inline CSS styles.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Placeholder text for the hex input.</summary>
+    [Parameter] public string? Placeholder { get; set; }
+
+    /// <summary>When true, applies compact sizing.</summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>When true, the label floats above the trigger.</summary>
+    [Parameter] public bool FloatingLabel { get; set; }
+
+    /// <summary>When true, the clear button is visible only on hover/focus.</summary>
+    [Parameter] public bool ShowClearOnHover { get; set; }
+
     /// <summary>Gets or sets additional HTML attributes to apply to the color input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    /// <summary>When true, shows a clear button to reset the color value. Default false.</summary>
+    [Parameter] public bool AllowClear { get; set; }
+
+    /// <summary>When true, shows an opacity slider. Default false.</summary>
+    [Parameter] public bool ShowAlpha { get; set; }
+
+    /// <summary>Gets or sets the output color format. Default is Hex.</summary>
+    [Parameter] public SgColorFormat ColorFormat { get; set; } = SgColorFormat.Hex;
+
+    /// <summary>When true, shows recently selected colors. Default false.</summary>
+    [Parameter] public bool ShowRecentColors { get; set; }
+
+    /// <summary>Title text displayed above the swatches palette.</summary>
+    [Parameter] public string? SwatchesTitle { get; set; }
+
+    /// <summary>When true, shows the preset swatches palette. Default true.</summary>
+    [Parameter] public bool ShowSwatches { get; set; } = true;
+
+    /// <summary>Fires when the value changes, passing the formatted color string.</summary>
+    [Parameter] public EventCallback<string> OnChange { get; set; }
+
+    /// <summary>When true, shows an eye-dropper button to pick colors from the screen. Default false.</summary>
+    [Parameter] public bool ShowEyeDropper { get; set; }
+
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-field-sm",
+        SgSize.Lg => "sgc-field-lg",
+        SgSize.Xl => "sgc-field-xl",
+        _ => null
+    };
+    private string _sizeCss => Size switch
+    {
+        SgSize.Sm => "sgc-size-sm",
+        SgSize.Lg => "sgc-size-lg",
+        SgSize.Xl => "sgc-size-xl",
+        _ => "sgc-size-md"
+    };
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
 
+    private string GetHexValue()
+    {
+        if (string.IsNullOrEmpty(Value)) return "#000000";
+        var hex = Value.StartsWith('#') ? Value : "#" + Value;
+        if (System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[A-Fa-f0-9]{6}$")) return hex;
+        if (System.Text.RegularExpressions.Regex.IsMatch(hex, "^#[A-Fa-f0-9]{3}$"))
+            return "#" + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+        var rgb = ParseColor(Value);
+        if (rgb is null) return "#000000";
+        return $"#{rgb.Value.r:X2}{rgb.Value.g:X2}{rgb.Value.b:X2}";
+    }
+
+    private string GetDisplayValue()
+    {
+        if (string.IsNullOrEmpty(Value)) return "";
+        if (ColorFormat == SgColorFormat.Hex || ShowAlpha)
+        {
+            var hex = GetHexValue();
+            if (_alpha < 100 && ShowAlpha)
+                return hex + ((byte)(_alpha * 255 / 100)).ToString("X2");
+            return hex;
+        }
+        var parsed = ParseColor(Value);
+        if (parsed is null) return Value;
+        var (r, g, b) = parsed.Value;
+        if (ColorFormat == SgColorFormat.Rgb)
+            return $"rgb({r},{g},{b})";
+        if (ColorFormat == SgColorFormat.Rgba || ShowAlpha)
+            return $"rgba({r},{g},{b},{_alpha / 100.0:F2})";
+        if (ColorFormat == SgColorFormat.Hsl)
+        {
+            var (h, s, l) = RgbToHsl(r, g, b);
+            return $"hsl({h:F0},{s:F0}%,{l:F0}%)";
+        }
+        return Value;
+    }
+
+    private (int r, int g, int b)? ParseColor(string? color)
+    {
+        if (string.IsNullOrEmpty(color)) return null;
+        var hex = color.TrimStart('#');
+        if (hex.Length == 3)
+            hex = "" + hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+        if (hex.Length >= 6 && int.TryParse(hex[..6], System.Globalization.NumberStyles.HexNumber, null, out var num))
+            return ((num >> 16) & 255, (num >> 8) & 255, num & 255);
+        return null;
+    }
+
+    private static (double h, double s, double l) RgbToHsl(int r, int g, int b)
+    {
+        double rd = r / 255.0, gd = g / 255.0, bd = b / 255.0;
+        var max = Math.Max(rd, Math.Max(gd, bd));
+        var min = Math.Min(rd, Math.Min(gd, bd));
+        var diff = max - min;
+        var l = (max + min) / 2.0;
+        if (diff < 0.0001) return (0, 0, l * 100);
+        var s = diff / (1 - Math.Abs(2 * l - 1));
+        double h;
+        if (Math.Abs(max - rd) < 0.0001)
+            h = ((gd - bd) / diff + (gd < bd ? 6 : 0)) * 60;
+        else if (Math.Abs(max - gd) < 0.0001)
+            h = ((bd - rd) / diff + 2) * 60;
+        else
+            h = ((rd - gd) / diff + 4) * 60;
+        return (h, s * 100, l * 100);
+    }
+
+    private static string valueWithoutAlpha(string? val)
+    {
+        if (string.IsNullOrEmpty(val)) return "";
+        val = val.TrimStart('#');
+        if (val.Length > 6) val = val[..6];
+        return val;
+    }
+
+    private async Task SetColorValueAsync(string? newValue, bool addToRecent = true)
+    {
+        await SetValueAsync(newValue);
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync(newValue ?? "");
+        if (addToRecent && !string.IsNullOrEmpty(newValue))
+        {
+            _recentColors.RemoveAll(c => c.Equals(newValue, StringComparison.OrdinalIgnoreCase));
+            _recentColors.Insert(0, newValue);
+            if (_recentColors.Count > MaxRecentColors)
+                _recentColors.RemoveAt(_recentColors.Count - 1);
+        }
+    }
+
     private async Task OnColorChange(ChangeEventArgs e)
     {
-        await SetValueAsync(e.Value?.ToString());
+        await SetColorValueAsync(e.Value?.ToString());
     }
 
     private async Task OnTextChange(ChangeEventArgs e)
     {
         var val = e.Value?.ToString()?.Trim();
-        if (string.IsNullOrEmpty(val)) { await SetValueAsync(null); return; }
+        if (string.IsNullOrEmpty(val)) { await SetColorValueAsync(null); return; }
         if (!val.StartsWith('#')) val = "#" + val;
-        if (System.Text.RegularExpressions.Regex.IsMatch(val, "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$"))
-            await SetValueAsync(val);
+        if (System.Text.RegularExpressions.Regex.IsMatch(val, "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3}|[A-Fa-f0-9]{8})$"))
+        {
+            if (val.Length == 9 && ShowAlpha)
+            {
+                _alpha = (int)(Convert.ToByte(val[7..9], 16) * 100 / 255);
+                val = val[..7];
+            }
+            await SetColorValueAsync(val);
+        }
+        else
+        {
+            var parsed = ParseColor(val);
+            if (parsed is not null)
+            {
+                var (r, g, b) = parsed.Value;
+                await SetColorValueAsync($"#{r:X2}{g:X2}{b:X2}");
+            }
+        }
     }
 
-    private Task SelectSwatchAsync(string color) => SetValueAsync(color);
+    private async Task OnAlphaChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var a))
+        {
+            _alpha = Math.Clamp(a, 0, 100);
+            if (OnChange.HasDelegate) await OnChange.InvokeAsync(GetDisplayValue());
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task SelectSwatchAsync(string color) => SetColorValueAsync(color);
+
+    private async Task ClearAsync()
+    {
+        await SetColorValueAsync(null);
+    }
+
+    private async Task PickColorAsync()
+    {
+        try
+        {
+            var result = await JS.InvokeAsync<string>("eval",
+                @"(async function(){if(window.EyeDropper){try{const e=new EyeDropper();const r=await e.open();return r.sRGBHex;}catch{return null;}}return null;})()");
+            if (!string.IsNullOrEmpty(result))
+                await SetColorValueAsync(result);
+        }
+        catch { }
+    }
 
     private async Task CopyHexAsync()
     {
@@ -155,7 +387,7 @@
         try
         {
             _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
-            await _module.InvokeVoidAsync("copyToClipboard", Value);
+            await _module.InvokeVoidAsync("copyToClipboard", GetDisplayValue());
             _copied = true;
             _copiedCts?.Cancel();
             _copiedCts = new CancellationTokenSource();
@@ -172,6 +404,19 @@
             });
         }
         catch { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrEmpty(Value))
+        {
+            var parsed = ParseColor(Value);
+            if (parsed is not null)
+            {
+                _recentColors.RemoveAll(c => c.Equals(Value, StringComparison.OrdinalIgnoreCase));
+                _recentColors.Insert(0, Value);
+            }
+        }
     }
 
     public override void Dispose()
