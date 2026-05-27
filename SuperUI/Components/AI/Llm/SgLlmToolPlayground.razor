@@ -19,16 +19,22 @@
     <div class="sgc-tools-list">
         @foreach (var (t, idx) in _tools.Select((v, i) => (v, i)))
         {
+            var localIdx = idx;
+            var schemaErr = ValidateToolSchema(t.ParametersJsonSchema);
             <SgCard>
                 <div class="sgc-tools-row">
                     <SgTextBox @bind-Value="t.Name" Placeholder="имя_функции" Label="Имя" />
                     <SgTextBox @bind-Value="t.Description" Placeholder="что делает" Label="Описание" />
                     <SgIconButton Icon="@SgIcons.Trash" Variant="SgButtonVariant.Ghost"
-                                  OnClick="@(() => _tools.RemoveAt(idx))" />
+                                  OnClick="@(() => _tools.RemoveAt(localIdx))" />
                 </div>
                 <SgTextArea @bind-Value="t.ParametersJsonSchema" Rows="4"
                             Placeholder='{"type":"object","properties":{"x":{"type":"number"}},"required":["x"]}'
                             Label="JSON Schema параметров" />
+                @if (!string.IsNullOrEmpty(schemaErr))
+                {
+                    <div class="sgc-tools-schema-err">⚠ @schemaErr</div>
+                }
             </SgCard>
         }
     </div>
@@ -48,8 +54,13 @@
 
     <div class="sgc-tools-actions">
         <SgTextBox @bind-Value="_model" Placeholder="gpt-4o-mini" Label="Модель" />
-        <SgButton Text="Отправить" OnClick="RunAsync" Loading="_busy" Variant="SgButtonVariant.Primary" />
+        <SgButton Text="Отправить" OnClick="RunAsync" Loading="_busy" Variant="SgButtonVariant.Primary"
+                  Disabled="@HasInvalidToolSchemas" />
     </div>
+    @if (HasInvalidToolSchemas)
+    {
+        <SgAlert Variant="SgAlertVariant.Warn">У одного или нескольких инструментов невалидная JSON Schema — исправьте перед отправкой.</SgAlert>
+    }
 
     @if (!string.IsNullOrEmpty(_error))
     {
@@ -80,6 +91,11 @@
     .sgc-tools-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
     .sgc-tools-step { display: flex; gap: 8px; align-items: start; margin: 6px 0; }
     .sgc-tools-step pre { margin: 0; white-space: pre-wrap; word-break: break-word; flex: 1; font-family: inherit; }
+    .sgc-tools-schema-err {
+        margin-top: 4px;
+        background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
+        border-radius: 6px; padding: 4px 8px; font-size: 11.5px; font-family: monospace;
+    }
 </style>
 
 @code {
@@ -97,6 +113,25 @@
     private readonly List<TranscriptStep> _transcript = new();
 
     private record TranscriptStep(string Role, string Text);
+
+    private bool HasInvalidToolSchemas =>
+        _tools.Any(t => !string.IsNullOrEmpty(ValidateToolSchema(t.ParametersJsonSchema)));
+
+    private static string ValidateToolSchema(string? schema)
+    {
+        if (string.IsNullOrWhiteSpace(schema)) return "";
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(schema);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+                return "Schema должен быть объектом ({...}).";
+            return "";
+        }
+        catch (Exception ex)
+        {
+            return $"Невалидный JSON: {ex.Message}";
+        }
+    }
 
     private void AddTool() => _tools.Add(new SgLlmTool { Name = "my_func", ParametersJsonSchema = "{\"type\":\"object\",\"properties\":{}}" });
 

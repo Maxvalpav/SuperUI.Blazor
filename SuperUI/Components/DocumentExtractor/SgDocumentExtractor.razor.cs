@@ -61,9 +61,42 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
 
     protected override void OnInitialized()
     {
-        _llmConfig = ToLlmConfig(EndpointStore.Current);
+        // Prefer the globally cached config from the LLM service so the extractor
+        // starts in sync with SgSettings/other consumers; fall back to the legacy
+        // endpoint store if nothing has been initialised yet.
+        var global = GeneralLlmService.CurrentConfig;
+        _llmConfig = global is not null ? CloneConfig(global) : ToLlmConfig(EndpointStore.Current);
         _selectedExtractorId = InitialExtractorId ?? Extractors.FirstOrDefault(e => e.Id == "llm")?.Id ?? Extractors.FirstOrDefault()?.Id;
+
+        // Keep the local copy in sync with future global changes (SgSettings,
+        // other AI components saving a new provider/model).
+        GeneralLlmService.OnConfigChanged += OnGlobalConfigChanged;
     }
+
+    private void OnGlobalConfigChanged(SgLlmConfig config)
+    {
+        // Skip if the change came from us (fingerprint-equal payload).
+        if (SameFingerprint(_llmConfig, config)) return;
+        _llmConfig = CloneConfig(config);
+        UpdateEndpointStore();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private static bool SameFingerprint(SgLlmConfig a, SgLlmConfig b)
+        => a.Provider == b.Provider
+        && string.Equals(a.ModelId, b.ModelId, StringComparison.Ordinal)
+        && string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.Ordinal)
+        && string.Equals(a.ApiKey, b.ApiKey, StringComparison.Ordinal);
+
+    private static SgLlmConfig CloneConfig(SgLlmConfig c) => new()
+    {
+        Provider = c.Provider,
+        ModelId = c.ModelId,
+        ApiKey = c.ApiKey,
+        BaseUrl = c.BaseUrl,
+        SystemPrompt = c.SystemPrompt,
+        ExtraHeaders = c.ExtraHeaders
+    };
 
     private IJSObjectReference? _module;
 
@@ -84,6 +117,7 @@ public partial class SgDocumentExtractor : ComponentBase, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        GeneralLlmService.OnConfigChanged -= OnGlobalConfigChanged;
         if (_module != null)
         {
             try { await _module.DisposeAsync(); } catch { /* Ignore */ }

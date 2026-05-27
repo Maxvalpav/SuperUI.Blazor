@@ -5,6 +5,9 @@
 @inject IJSRuntime JS
 
 <div class="sgc-llm-image-studio @CssClass" style="@Style">
+    <SgLlmHeader Title="Генерация изображений" Subtitle="Text-to-image и редактирование с маской"
+                 TaskPurpose="@SgLlmTaskPurpose.Images" />
+
     <div class="sgc-image-toolbar">
         <SgTextArea @bind-Value="_prompt" Placeholder="Опишите изображение..." Rows="3" />
 
@@ -158,8 +161,39 @@
         !string.IsNullOrEmpty(img.Url) ? img.Url
         : $"data:{img.MimeType ?? "image/png"};base64,{img.B64Json}";
 
-    private void Download(SgLlmGeneratedImage img)
+    private IJSObjectReference? _blobModule;
+
+    private async Task<IJSObjectReference> EnsureBlobModuleAsync()
     {
-        // Hook a JS download here if needed; left as a placeholder
+        _blobModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-blob.js");
+        return _blobModule;
+    }
+
+    private async Task Download(SgLlmGeneratedImage img)
+    {
+        try
+        {
+            var blob = await EnsureBlobModuleAsync();
+            var mime = string.IsNullOrEmpty(img.MimeType) ? "image/png" : img.MimeType;
+            var ext = mime.Contains("jpeg") || mime.Contains("jpg") ? "jpg"
+                     : mime.Contains("webp") ? "webp"
+                     : mime.Contains("gif") ? "gif"
+                     : "png";
+            var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            var fileName = $"image-{stamp}.{ext}";
+
+            if (!string.IsNullOrEmpty(img.B64Json))
+            {
+                await blob.InvokeVoidAsync("downloadBase64", img.B64Json, mime, fileName);
+            }
+            else if (!string.IsNullOrEmpty(img.Url))
+            {
+                await blob.InvokeVoidAsync("downloadUrl", img.Url, fileName);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось скачать изображение: {ex.Message}";
+        }
     }
 }

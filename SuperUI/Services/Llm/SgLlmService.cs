@@ -1,5 +1,7 @@
 using Microsoft.JSInterop;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -17,6 +19,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
 {
     private readonly IJSRuntime _js;
     private readonly HttpClient _http;
+    private readonly ILogger<SgLlmService> _logger;
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgLlmService>? _selfRef;
     private string? _instanceId;
@@ -298,10 +301,15 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         }
     }
 
-    public SgLlmService(IJSRuntime js, HttpClient http)
+    /// <summary>
+    /// Constructs the LLM service. The <paramref name="logger"/> parameter is optional —
+    /// callers that haven't registered logging will get a silent <see cref="NullLogger{T}"/>.
+    /// </summary>
+    public SgLlmService(IJSRuntime js, HttpClient http, ILogger<SgLlmService>? logger = null)
     {
         _js = js;
         _http = http;
+        _logger = logger ?? NullLogger<SgLlmService>.Instance;
     }
 
     public async Task InitializeAsync(SgLlmConfig config)
@@ -736,7 +744,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SgLlmService] OpenAI Models Error: {ex.Message}");
+            _logger.LogWarning(ex, "OpenAI /models request failed; returning built-in fallback list.");
             return BuiltinOpenAiModels();
         }
     }
@@ -837,7 +845,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[SgLlmService] Ollama API Error: {ex.Message}");
+            _logger.LogWarning(ex, "Ollama /api/tags request failed at {Url}.", url);
             return new();
         }
     }

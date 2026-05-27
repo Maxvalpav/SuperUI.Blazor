@@ -64,6 +64,11 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
     };
 
     private IJSObjectReference? _llmModule;
+    private IJSObjectReference? _blobModule;
+
+    private async Task<IJSObjectReference> EnsureBlobModuleAsync()
+        => _blobModule ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/SuperUI/sg-blob.js");
     private readonly Dictionary<string, string> _htmlCache = new();
     private int _renderCounter;
     private const int RenderEvery = 6;
@@ -262,17 +267,11 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
     {
         try
         {
-            await JS.InvokeVoidAsync("eval", @"
-                const el = document.querySelector('.sg-chat-messages');
-                if (el) {
-                    el.scrollTo({
-                        top: el.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                }
-            ");
+            var blob = await EnsureBlobModuleAsync();
+            await blob.InvokeVoidAsync("scrollSelectorToBottom", ".sg-chat-messages", "smooth");
         }
-        catch { }
+        catch (JSDisconnectedException) { /* circuit gone — page navigated away */ }
+        catch (ObjectDisposedException) { /* component is disposing */ }
     }
 
     private string GetHtml(SgLlmMessage msg)
@@ -353,8 +352,15 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
             content = sb.ToString();
         }
 
-        var bytes = Encoding.UTF8.GetBytes(content);
-        await JS.InvokeVoidAsync("eval", "const blob = new Blob([new Uint8Array([" + string.Join(",", bytes) + "])], {type: '" + mime + "'}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'puter_chat_" + ts + "." + ext + "'; a.click(); URL.revokeObjectURL(url);");
+        try
+        {
+            var blob = await EnsureBlobModuleAsync();
+            await blob.InvokeVoidAsync("downloadText", content, $"puter_chat_{ts}.{ext}", mime);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось экспортировать чат: {ex.Message}";
+        }
     }
 
     private void ClearHistory()
@@ -379,10 +385,18 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
         if (_llmModule is not null)
         {
             try { await _llmModule.DisposeAsync(); }
-            catch (Microsoft.JSInterop.JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
             _llmModule = null;
+        }
+        if (_blobModule is not null)
+        {
+            try { await _blobModule.DisposeAsync(); }
+            catch (Microsoft.JSInterop.JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
+            _blobModule = null;
         }
         GC.SuppressFinalize(this);
     }

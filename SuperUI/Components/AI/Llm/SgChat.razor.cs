@@ -327,6 +327,11 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
     // ── Markdown rendering ────────────────────────────────────────────────────
 
     private IJSObjectReference? _llmModule;
+    private IJSObjectReference? _blobModule;
+
+    private async Task<IJSObjectReference> EnsureBlobModuleAsync()
+        => _blobModule ??= await JS.InvokeAsync<IJSObjectReference>(
+            "import", "./_content/SuperUI/sg-blob.js");
     private readonly Dictionary<string, string> _htmlCache = new();
 
     private string GetHtml(SgLlmMessage msg)
@@ -395,9 +400,15 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
             content = sb.ToString();
         }
 
-        var bytes = Encoding.UTF8.GetBytes(content);
-        var b64 = Convert.ToBase64String(bytes);
-        await JS.InvokeVoidAsync("eval", $"(()=>{{const a=document.createElement('a');a.href='data:{mime};base64,{b64}';a.download='chat-{ts}.{ext}';document.body.appendChild(a);a.click();document.body.removeChild(a);}})()");
+        try
+        {
+            var blob = await EnsureBlobModuleAsync();
+            await blob.InvokeVoidAsync("downloadText", content, $"chat-{ts}.{ext}", mime);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось экспортировать чат: {ex.Message}";
+        }
     }
 
     private bool _disposed;
@@ -414,10 +425,18 @@ public partial class SgChat : ComponentBase, IAsyncDisposable
         if (_llmModule is not null)
         {
             try { await _llmModule.DisposeAsync(); }
-            catch (JSDisconnectedException) { }
-            catch (TaskCanceledException) { }
-            catch (ObjectDisposedException) { }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
             _llmModule = null;
+        }
+        if (_blobModule is not null)
+        {
+            try { await _blobModule.DisposeAsync(); }
+            catch (JSDisconnectedException) { /* circuit gone */ }
+            catch (TaskCanceledException) { /* shutdown in flight */ }
+            catch (ObjectDisposedException) { /* already disposed */ }
+            _blobModule = null;
         }
         GC.SuppressFinalize(this);
     }

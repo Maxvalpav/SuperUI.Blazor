@@ -17,12 +17,29 @@
     <SgTextArea @bind-Value="_userMessage" Rows="3" Label="User"
                 Placeholder="Извлеки имя, возраст и e-mail из: Иван 28 ivan@example.com" />
 
-    <SgTextArea @bind-Value="_schema" Rows="10" Label="JSON Schema (response_format.json_schema)" />
+    <div class="sgc-struct-presets">
+        <span class="sgc-struct-presets-label">Пресеты:</span>
+        @foreach (var preset in _presets)
+        {
+            <SgButton Text="@preset.Key" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                      OnClick="@(() => ApplyPreset(preset.Key))" />
+        }
+    </div>
+
+    <SgTextArea Value="@_schema" ValueChanged="OnSchemaChanged" Rows="10"
+                Label="JSON Schema (response_format.json_schema)" />
+    @if (!string.IsNullOrEmpty(_schemaError))
+    {
+        <div class="sgc-struct-schema-err">⚠ @_schemaError</div>
+    }
 
     <div class="sgc-struct-actions">
         <SgTextBox @bind-Value="_model" Placeholder="gpt-4o-mini" Label="Модель" />
+        <SgButton Text="Форматировать" OnClick="FormatSchema" Variant="SgButtonVariant.Outlined"
+                  Disabled="@string.IsNullOrWhiteSpace(_schema)" />
         <SgButton Text="Сгенерировать" OnClick="RunAsync" Loading="_busy"
-                  Variant="SgButtonVariant.Primary" Disabled="@string.IsNullOrWhiteSpace(_schema)" />
+                  Variant="SgButtonVariant.Primary"
+                  Disabled="@(string.IsNullOrWhiteSpace(_schema) || !string.IsNullOrEmpty(_schemaError))" />
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -41,8 +58,14 @@
 
 <style>
     .sgc-llm-struct { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
-    .sgc-struct-actions { display: flex; gap: 8px; align-items: end; }
+    .sgc-struct-actions { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
     .sgc-struct-pre { white-space: pre-wrap; word-break: break-word; margin: 0; font-family: monospace; font-size: 0.85rem; }
+    .sgc-struct-presets { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+    .sgc-struct-presets-label { color: var(--sg-fg-muted, #64748b); font-weight: 650; margin-right: 4px; }
+    .sgc-struct-schema-err {
+        background: #fef2f2; color: #991b1b; border: 1px solid #fecaca;
+        border-radius: 6px; padding: 6px 10px; font-size: 12px; font-family: monospace;
+    }
 </style>
 
 @code {
@@ -67,6 +90,116 @@
     private string _error = "";
     private string _raw = "";
     private string _pretty = "";
+    private string _schemaError = "";
+
+    private static readonly Dictionary<string, string> _presets = new()
+    {
+        ["person"] = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""name"": {""type"": ""string""},
+    ""age"":  {""type"": ""integer"", ""minimum"": 0},
+    ""email"":{""type"": ""string"", ""format"": ""email""}
+  },
+  ""required"": [""name"", ""age"", ""email""],
+  ""additionalProperties"": false
+}",
+        ["address"] = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""country"": {""type"": ""string""},
+    ""city"":    {""type"": ""string""},
+    ""street"":  {""type"": ""string""},
+    ""zip"":     {""type"": ""string""}
+  },
+  ""required"": [""country"", ""city"", ""street""],
+  ""additionalProperties"": false
+}",
+        ["invoice"] = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""number"":   {""type"": ""string""},
+    ""date"":     {""type"": ""string"", ""format"": ""date""},
+    ""total"":    {""type"": ""number""},
+    ""currency"": {""type"": ""string""},
+    ""lines"": {
+      ""type"": ""array"",
+      ""items"": {
+        ""type"": ""object"",
+        ""properties"": {
+          ""description"": {""type"": ""string""},
+          ""qty"":        {""type"": ""number""},
+          ""price"":      {""type"": ""number""}
+        },
+        ""required"": [""description"", ""qty"", ""price""]
+      }
+    }
+  },
+  ""required"": [""number"", ""total"", ""currency""]
+}",
+        ["event"] = @"{
+  ""type"": ""object"",
+  ""properties"": {
+    ""title"":    {""type"": ""string""},
+    ""startsAt"": {""type"": ""string"", ""format"": ""date-time""},
+    ""endsAt"":   {""type"": ""string"", ""format"": ""date-time""},
+    ""location"": {""type"": ""string""}
+  },
+  ""required"": [""title"", ""startsAt""]
+}"
+    };
+
+    protected override void OnInitialized() => ValidateSchema();
+
+    private void OnSchemaChanged(string value)
+    {
+        _schema = value;
+        ValidateSchema();
+    }
+
+    private void ApplyPreset(string key)
+    {
+        if (_presets.TryGetValue(key, out var schema))
+        {
+            _schema = schema;
+            ValidateSchema();
+        }
+    }
+
+    private void FormatSchema()
+    {
+        if (string.IsNullOrWhiteSpace(_schema)) return;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(_schema);
+            _schema = System.Text.Json.JsonSerializer.Serialize(doc,
+                new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            _schemaError = "";
+        }
+        catch (Exception ex)
+        {
+            _schemaError = $"Невалидный JSON: {ex.Message}";
+        }
+    }
+
+    private void ValidateSchema()
+    {
+        if (string.IsNullOrWhiteSpace(_schema)) { _schemaError = ""; return; }
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(_schema);
+            if (doc.RootElement.ValueKind != System.Text.Json.JsonValueKind.Object)
+            {
+                _schemaError = "JSON Schema должен быть объектом ({...}).";
+                return;
+            }
+            _schemaError = "";
+        }
+        catch (Exception ex)
+        {
+            _schemaError = $"Невалидный JSON: {ex.Message}";
+        }
+    }
 
     private async Task RunAsync()
     {

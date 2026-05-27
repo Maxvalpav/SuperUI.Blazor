@@ -95,6 +95,14 @@
         finally { _busy = false; }
     }
 
+    private IJSObjectReference? _blobModule;
+
+    private async Task<IJSObjectReference> EnsureBlobModuleAsync()
+    {
+        _blobModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/sg-blob.js");
+        return _blobModule;
+    }
+
     private async Task DownloadAsync()
     {
         if (_audio == null || _audio.Length == 0) return;
@@ -105,9 +113,13 @@
         };
         try
         {
-            await JS.InvokeVoidAsync("eval",
-                $"(()=>{{const a=document.createElement('a');a.href='{_audioUrl}';a.download='tts.{ext}';a.click();}})()");
+            var blob = await EnsureBlobModuleAsync();
+            await blob.InvokeVoidAsync("downloadBase64",
+                Convert.ToBase64String(_audio), _mime, $"tts.{ext}");
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _error = $"Не удалось скачать файл: {ex.Message}";
+        }
     }
 }

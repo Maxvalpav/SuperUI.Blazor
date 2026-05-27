@@ -311,6 +311,48 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private static string ProviderShortHint(SgLlmProvider p) => SgLlmProviderRegistry.ShortHint(p);
     private static string ProviderConnectionHint(SgLlmProvider p) => SgLlmProviderRegistry.ConnectionHint(p);
 
+    private static bool IsLocalProvider(SgLlmProvider p) =>
+        SgLlmProviderRegistry.GetPreset(p)?.Category == SgLlmProviderCategory.Local
+        && p != SgLlmProvider.WebLlm; // WebLlm runs in-browser, no port to test.
+
+    private static string LocalCorsHint(SgLlmProvider p) => p switch
+    {
+        SgLlmProvider.Ollama => "Ollama: переменная окружения OLLAMA_ORIGINS должна включать ваш origin (например, http://localhost:5000).",
+        SgLlmProvider.LmStudio => "LM Studio: включите «Cross-Origin Resource Sharing (CORS)» в Local Server → Settings.",
+        SgLlmProvider.Vllm => "vLLM: запускайте с --allow-cors, иначе браузер заблокирует запросы.",
+        SgLlmProvider.LlamaCpp => "llama.cpp server: используйте флаг --api-cors-allow * (или укажите ваш origin).",
+        SgLlmProvider.KoboldCpp => "KoboldCpp: запускайте с --openai-compatibility, иначе чат-роуты не работают.",
+        SgLlmProvider.Jan => "Jan: API сервер должен быть включён в настройках (Settings → Advanced → API).",
+        _ => "Если запросы блокируются CORS, проверьте настройки CORS вашего локального сервера."
+    };
+
+    private bool _testingLocalPort;
+    private bool _localPortOk;
+    private string? _localPortStatus;
+
+    private async Task TestLocalPortAsync()
+    {
+        _testingLocalPort = true;
+        _localPortStatus = null;
+        try
+        {
+            var result = await LlmService.TestConnectionAsync(Config);
+            _localPortOk = result.Ok;
+            _localPortStatus = result.Ok
+                ? $"OK · HTTP {result.Status}"
+                : $"Не доступен · {(result.Status > 0 ? "HTTP " + result.Status + " · " : "")}{result.Message}";
+        }
+        catch (Exception ex)
+        {
+            _localPortOk = false;
+            _localPortStatus = $"Ошибка: {ex.Message}";
+        }
+        finally
+        {
+            _testingLocalPort = false;
+        }
+    }
+
     private static string Fingerprint(SgLlmConfig config)
     {
         var copy = config.Clone();

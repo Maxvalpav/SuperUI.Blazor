@@ -30,10 +30,16 @@
         <SgAlert Variant="SgAlertVariant.Danger">@_error</SgAlert>
     }
 
+    @if (_vectors.Count == 0 && !_busy && string.IsNullOrEmpty(_error))
+    {
+        <SgLlmEmptyState Icon="🧬" Title="Введите хотя бы один текст"
+                         Message="Каждая непустая строка превратится в вектор. Поддерживается пакетная генерация." />
+    }
+
     @if (_vectors.Count > 0)
     {
         <SgCard>
-            <div><b>Векторов:</b> @_vectors.Count, <b>размерность:</b> @(_vectors[0].Length)</div>
+            <div><b>Векторов:</b> @_vectors.Count, <b>размерность:</b> @(_vectors[0].Length), <b>норма #1:</b> @VectorNorm(_vectors[0]).ToString("F4")</div>
 
             @if (_vectors.Count > 1)
             {
@@ -121,6 +127,13 @@
         }
         catch (Exception ex) { _error = ex.Message; }
         finally { _busy = false; }
+    }
+
+    private static double VectorNorm(float[] v)
+    {
+        double s = 0;
+        for (var i = 0; i < v.Length; i++) s += v[i] * v[i];
+        return Math.Sqrt(s);
     }
 
     private static double Cosine(float[] a, float[] b)
