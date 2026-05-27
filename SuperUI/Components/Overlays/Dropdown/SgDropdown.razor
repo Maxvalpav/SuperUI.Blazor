@@ -4,7 +4,7 @@
 @inherits SgJsComponentBase
 
 <CascadingValue Value="this" IsFixed="true">
-    <div class="sgc-dropdown @CssClass"
+    <div class="sgc-dropdown @CssClass @(Compact ? "sgc-dropdown-compact-wrap" : "")"
          @ref="RootRef"
          @onmouseleave="HandleMouseLeaveAsync"
          @onkeydown="HandleKeyDownAsync"
@@ -35,10 +35,15 @@
         @if (_open)
         {
             <div class="@MenuClasses"
+                 @ref="_menuRef"
                  role="menu"
                  style="@MenuInlineStyle"
                  @onclick:stopPropagation="true"
                  @onmouseenter="HandleMenuMouseEnterAsync">
+                @if (ShowArrow)
+                {
+                    <div class="sgc-dropdown-arrow" aria-hidden="true"></div>
+                }
                 @if (ShowSearch)
                 {
                     <div class="sgc-dropdown-search">
@@ -47,16 +52,21 @@
                         </svg>
                         <input type="text"
                                class="sgc-dropdown-search-input"
-                               placeholder="@(SearchPlaceholder ?? "Поиск...")"
+                               placeholder="@(SearchPlaceholder ?? "Search...")"
                                value="@_searchText"
+                               @ref="_searchRef"
                                @oninput="HandleSearchInput" />
+                        @if (ShowSearchClear && _searchText.Length > 0)
+                        {
+                            <button type="button" class="sgc-dropdown-search-clear" @onclick="ClearSearch" aria-label="Clear search">✕</button>
+                        }
                     </div>
                 }
                 @if (Loading)
                 {
                     <div class="sgc-dropdown-loading">
                         <span class="sgc-spinner" aria-hidden="true"></span>
-                        <span>Загрузка...</span>
+                        <span>Loading...</span>
                     </div>
                 }
                 else
@@ -66,7 +76,14 @@
                         <div class="sgc-dropdown-header">@HeaderContent</div>
                     }
                     <div class="sgc-dropdown-list">
-                        @ChildContent
+                        @if (Searchable && _searchText.Length > 0 && !_items.Any(i => !i.Divider && !ParentIsItemFiltered(i)))
+                        {
+                            <div class="sgc-dropdown-empty">@ResolvedEmptyText</div>
+                        }
+                        else
+                        {
+                            @ChildContent
+                        }
                     </div>
                     @if (FooterContent is not null)
                     {

@@ -11,9 +11,12 @@ else if (!string.IsNullOrEmpty(Href))
        class="sgc-dropdown-item @ItemClasses @CssClass"
        role="menuitem"
        tabindex="-1"
+       title="@Title"
+       style="@HiddenStyle"
        @ref="_btn"
        @onclick="OnClickAsync">
         @ItemIcon
+        @ItemCheckbox
         <span class="sgc-dropdown-item-text">
             <span class="sgc-dropdown-item-label">@Text</span>
             @if (!string.IsNullOrEmpty(Subtext))
@@ -21,6 +24,8 @@ else if (!string.IsNullOrEmpty(Href))
                 <span class="sgc-dropdown-item-subtext">@Subtext</span>
             }
         </span>
+        @ItemBadge
+        @ItemIconEnd
         @ItemShortcut
     </a>
 }
@@ -29,11 +34,14 @@ else
     <button type="button"
             class="sgc-dropdown-item @ItemClasses @CssClass"
             role="menuitem"
-            disabled="@Disabled"
+            disabled="@(Disabled || _asyncLoading)"
             tabindex="-1"
+            title="@Title"
+            style="@HiddenStyle"
             @ref="_btn"
             @onclick="OnClickAsync">
         @ItemIcon
+        @ItemCheckbox
         <span class="sgc-dropdown-item-text">
             @if (ChildContent is not null)
             {
@@ -48,12 +56,19 @@ else
                 <span class="sgc-dropdown-item-subtext">@Subtext</span>
             }
         </span>
+        @ItemBadge
+        @ItemIconEnd
         @ItemShortcut
+        @if (_asyncLoading)
+        {
+            <span class="sgc-dropdown-item-spinner" aria-hidden="true"></span>
+        }
     </button>
 }
 
 @code {
     private ElementReference _btn;
+    private bool _asyncLoading;
 
     [CascadingParameter] private SgDropdown? Parent { get; set; }
 
@@ -69,6 +84,9 @@ else
     /// <summary>Optional color override for the item icon.</summary>
     [Parameter] public string? IconColor { get; set; }
 
+    /// <summary>Optional right-side icon (raw markup/SVG).</summary>
+    [Parameter] public string? IconEnd { get; set; }
+
     /// <summary>Optional right-aligned shortcut hint (e.g. "⌘K").</summary>
     [Parameter] public string? Shortcut { get; set; }
 
@@ -78,11 +96,29 @@ else
     /// <summary>When true, shows a leading checkmark and "selected" styling.</summary>
     [Parameter] public bool Selected { get; set; }
 
+    /// <summary>When true, renders a checkbox input instead of the default icon/checkmark.</summary>
+    [Parameter] public bool Checkbox { get; set; }
+
+    /// <summary>When true, the checkbox is checked (used with <see cref="Checkbox"/>).</summary>
+    [Parameter] public bool Checked { get; set; }
+
+    /// <summary>Callback when checkbox state changes.</summary>
+    [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+
     /// <summary>Disables the item.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>Applies destructive styling.</summary>
+    /// <summary>Applies destructive styling. Use <see cref="Color"/> for more options.</summary>
     [Parameter] public bool Danger { get; set; }
+
+    /// <summary>Semantic color override. Overrides <see cref="Danger"/> when set.</summary>
+    [Parameter] public SgColor? Color { get; set; }
+
+    /// <summary>Badge text displayed to the right of the item label.</summary>
+    [Parameter] public string? BadgeText { get; set; }
+
+    /// <summary>Badge variant for <see cref="BadgeText"/>.</summary>
+    [Parameter] public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
 
     /// <summary>Additional class on the item element.</summary>
     [Parameter] public string? CssClass { get; set; }
@@ -93,8 +129,17 @@ else
     /// <summary>Click handler. The dropdown closes after this fires (when CloseOnSelect is true).</summary>
     [Parameter] public EventCallback OnClick { get; set; }
 
+    /// <summary>Async click handler. Shows a spinner while the task runs.</summary>
+    [Parameter] public Func<Task>? OnAsyncClick { get; set; }
+
     /// <summary>When set, renders as an anchor tag instead of a button.</summary>
     [Parameter] public string? Href { get; set; }
+
+    /// <summary>Tooltip text shown on hover.</summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>Compact (dense) mode with reduced padding.</summary>
+    [Parameter] public bool Dense { get; set; }
 
     private string ItemClasses
     {
@@ -102,15 +147,20 @@ else
         {
             var c = "";
             if (Disabled) c += "sgc-disabled ";
-            if (Danger) c += "sgc-danger ";
+            if (Dense) c += "sgc-dense ";
+            if (Danger && Color is null) c += "sgc-danger ";
+            if (Color is not null) c += $"sgc-color-{Color.ToString()!.ToLowerInvariant()} ";
             if (Selected) c += "sgc-selected ";
+            if (Checkbox) c += "sgc-has-checkbox ";
+            if (_asyncLoading) c += "sgc-async-loading ";
             return c.TrimEnd();
         }
     }
 
     private RenderFragment ItemIcon => __builder =>
     {
-        if (Selected)
+        if (Checkbox) return;
+        if (Selected && !Checkbox)
         {
             <span class="sgc-dropdown-item-check" aria-hidden="true">✓</span>
         }
@@ -118,6 +168,33 @@ else
         {
             <span class="sgc-dropdown-item-icon" style="@(IconColor is not null ? $"color:{IconColor}" : "")">
                 @((MarkupString)Icon)
+            </span>
+        }
+    };
+
+    private RenderFragment ItemCheckbox => __builder =>
+    {
+        if (!Checkbox) return;
+        <span class="sgc-dropdown-item-checkbox">
+            <input type="checkbox"
+                   checked="@Checked"
+                   @onchange="HandleCheckboxChange"
+                   aria-label="@Text" />
+        </span>
+    };
+
+    private RenderFragment ItemBadge => __builder =>
+    {
+        if (string.IsNullOrEmpty(BadgeText)) return;
+        <SgBadge Text="@BadgeText" Variant="@BadgeVariant" Size="SgSize.Sm" />
+    };
+
+    private RenderFragment ItemIconEnd => __builder =>
+    {
+        if (!string.IsNullOrEmpty(IconEnd))
+        {
+            <span class="sgc-dropdown-item-icon-end">
+                @((MarkupString)IconEnd)
             </span>
         }
     };
@@ -132,24 +209,45 @@ else
 
     internal bool IsHiddenBySearch => Parent?.IsItemFiltered(this) ?? false;
 
+    private string HiddenStyle => IsHiddenBySearch ? "display:none" : "";
+
+    internal void Refresh() => StateHasChanged();
+
     protected override void OnInitialized()
     {
         if (!Divider) Parent?.RegisterItem(this);
     }
 
-    internal ValueTask FocusAsync() => Divider || Disabled ? ValueTask.CompletedTask : _btn.FocusAsync();
+    internal ValueTask FocusAsync() => Divider || Disabled || _asyncLoading ? ValueTask.CompletedTask : _btn.FocusAsync();
 
     internal async Task ActivateAsync()
     {
-        if (Divider || Disabled) return;
+        if (Divider || Disabled || _asyncLoading) return;
         await OnClickAsync();
+    }
+
+    private async Task HandleCheckboxChange(ChangeEventArgs e)
+    {
+        Checked = (bool)(e.Value ?? false);
+        if (CheckedChanged.HasDelegate)
+            await CheckedChanged.InvokeAsync(Checked);
     }
 
     private async Task OnClickAsync()
     {
-        if (Disabled) return;
+        if (Disabled || _asyncLoading) return;
+
+        if (OnAsyncClick is not null)
+        {
+            _asyncLoading = true;
+            StateHasChanged();
+            try { await OnAsyncClick(); }
+            finally { _asyncLoading = false; StateHasChanged(); }
+        }
+
         if (OnClick.HasDelegate)
             await OnClick.InvokeAsync();
+
         if (Parent is not null)
             await Parent.NotifyItemSelectedAsync();
     }
