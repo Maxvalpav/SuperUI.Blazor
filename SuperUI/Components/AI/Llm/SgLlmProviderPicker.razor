@@ -3,91 +3,74 @@
 @inject ILlmService LlmService
 
 @*
-   SgLlmProviderPicker — карточки провайдеров (включая бесплатные) с быстрой
-   подстановкой BaseUrl/ApiKey и ссылками на регистрацию ключа.
+   SgLlmProviderPicker — каталог провайдеров с поиском, категориями-чипсами,
+   быстрыми фильтрами и сеткой карточек. Стиль карточки вынесен
+   в SgLlmProviderCard.
 *@
 
-<div class="sgc-llm-providers @CssClass" style="@Style">
-    <div class="sgc-llm-providers-filter">
-        <SgTextBox @bind-Value="_filter" Placeholder="Поиск..." />
-        <SgSwitch @bind-Value="_freeOnly" Label="Только бесплатные" />
+<div class="sgc-llm-picker @CssClass" style="@Style">
+    <div class="sgc-llm-picker-toolbar">
+        <SgTextBox @bind-Value="_filter" Placeholder="Поиск: openai, free, russian, vision..." />
+        <div class="sgc-llm-picker-quick">
+            <SgSwitch @bind-Value="_freeOnly" Label="Free" />
+            <SgSwitch @bind-Value="_localOnly" Label="Local" />
+            <SgSwitch @bind-Value="_visionOnly" Label="Vision" />
+            <SgSwitch @bind-Value="_embedOnly" Label="Embed" />
+            <SgSwitch @bind-Value="_audioOnly" Label="Audio" />
+        </div>
     </div>
 
-    <div class="sgc-llm-providers-grid">
-        @foreach (var p in Filtered())
+    <div class="sgc-llm-picker-categories">
+        @foreach (var cat in _allCategories)
         {
-            <div class="sgc-llm-provider-card @(IsSelected(p) ? "selected" : "")"
-                 @onclick="@(() => SelectAsync(p))">
-                <div class="sgc-llm-provider-head">
-                    <strong>@p.Label</strong>
-                    @if (p.IsFree)
-                    {
-                        <SgBadge Variant="SgBadgeVariant.Success">FREE</SgBadge>
-                    }
-                    @if (!p.RequiresKey)
-                    {
-                        <SgBadge Variant="SgBadgeVariant.Info">no-key</SgBadge>
-                    }
-                </div>
-                @if (!string.IsNullOrEmpty(p.Notes))
-                {
-                    <div class="sgc-llm-provider-notes">@p.Notes</div>
-                }
-                <div class="sgc-llm-provider-url" title="@p.BaseUrl">@p.BaseUrl</div>
-                <div class="sgc-llm-provider-links" @onclick:stopPropagation="true">
-                    @if (!string.IsNullOrEmpty(p.ApiKeyUrl))
-                    {
-                        <a href="@p.ApiKeyUrl" target="_blank" rel="noopener">🔑 ключ</a>
-                    }
-                    @if (!string.IsNullOrEmpty(p.DocsUrl))
-                    {
-                        <a href="@p.DocsUrl" target="_blank" rel="noopener">📄 docs</a>
-                    }
-                </div>
-            </div>
+            var label = CategoryLabel(cat);
+            var count = CountForCategory(cat);
+            var active = _selectedCategory == cat;
+            <button type="button"
+                    class="sgc-llm-picker-cat @(active ? "active" : "")"
+                    @onclick="@(() => ToggleCategory(cat))">
+                <span>@label</span>
+                <em>@count</em>
+            </button>
+        }
+        @if (HasAnyFilter)
+        {
+            <button type="button" class="sgc-llm-picker-cat clear" @onclick="ClearFilters" title="Очистить все фильтры">
+                ✕ сброс
+            </button>
         }
     </div>
-</div>
 
-<style>
-    .sgc-llm-providers { display: flex; flex-direction: column; gap: 10px; }
-    .sgc-llm-providers-filter { display: flex; gap: 12px; align-items: center; }
-    .sgc-llm-providers-filter > :first-child { flex: 1; }
-    .sgc-llm-providers-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-        gap: 8px;
-        max-height: 65vh;
-        overflow-y: auto;
-        padding-right: 4px;
+    @{
+        var visible = Filtered().ToList();
     }
-    .sgc-llm-provider-card {
-        border: 1px solid var(--sg-border);
-        border-radius: 8px;
-        padding: 10px 12px;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        transition: border-color .15s, background .15s, transform .15s;
-        background: var(--sg-bg);
+
+    @if (visible.Count == 0)
+    {
+        <div class="sgc-llm-picker-empty">
+            <div class="sgc-llm-picker-empty-icon">🔎</div>
+            <div class="sgc-llm-picker-empty-title">По фильтрам ничего не найдено</div>
+            <div class="sgc-llm-picker-empty-hint">Очистите фильтры или измените поиск.</div>
+            <button type="button" class="sgc-llm-picker-empty-btn" @onclick="ClearFilters">Сбросить фильтры</button>
+        </div>
     }
-    .sgc-llm-provider-card:hover { border-color: var(--sg-color-primary); transform: translateY(-1px); }
-    .sgc-llm-provider-card.selected { border-color: var(--sg-color-primary); background: var(--sg-color-primary-subtle); }
-    .sgc-llm-provider-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
-    .sgc-llm-provider-notes { font-size: 11px; color: var(--sg-fg-muted); line-height: 1.35; }
-    .sgc-llm-provider-url {
-        font-family: var(--sg-font-mono, monospace);
-        font-size: 10.5px;
-        color: var(--sg-fg-subtle);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+    else
+    {
+        <div class="sgc-llm-picker-summary">
+            Показано <strong>@visible.Count</strong> из @SgLlmProviderRegistry.Presets.Count
+        </div>
+        <div class="sgc-llm-picker-grid">
+            @foreach (var p in visible)
+            {
+                <SgLlmProviderCard
+                    Preset="p"
+                    Active="@IsSelected(p)"
+                    Current="@IsCurrent(p)"
+                    OnClick="SelectAsync" />
+            }
+        </div>
     }
-    .sgc-llm-provider-links { display: flex; gap: 10px; font-size: 11px; margin-top: 2px; }
-    .sgc-llm-provider-links a { color: var(--sg-color-primary); text-decoration: none; }
-    .sgc-llm-provider-links a:hover { text-decoration: underline; }
-</style>
+</div>
 
 @code {
     [Parameter] public string CssClass { get; set; } = "";
@@ -96,20 +79,107 @@
     [Parameter] public EventCallback<SgLlmConfig> ConfigChanged { get; set; }
     [Parameter] public EventCallback<SgLlmProviderPreset> OnSelected { get; set; }
 
-    private string _filter = "";
+    private string _filter = string.Empty;
     private bool _freeOnly;
+    private bool _localOnly;
+    private bool _visionOnly;
+    private bool _embedOnly;
+    private bool _audioOnly;
+    private string? _selectedCategory;
+
+    private static readonly string[] _allCategories = new[]
+    {
+        SgLlmProviderCategory.Frontier,
+        SgLlmProviderCategory.OpenRouting,
+        SgLlmProviderCategory.FastInference,
+        SgLlmProviderCategory.Local,
+        SgLlmProviderCategory.Free,
+        SgLlmProviderCategory.Russian,
+        SgLlmProviderCategory.Specialty,
+        SgLlmProviderCategory.Azure
+    };
+
+    private bool HasAnyFilter =>
+        !string.IsNullOrWhiteSpace(_filter)
+        || _freeOnly || _localOnly || _visionOnly || _embedOnly || _audioOnly
+        || _selectedCategory != null;
+
+    private static string CategoryLabel(string cat) => cat switch
+    {
+        SgLlmProviderCategory.Frontier => "🚀 Frontier",
+        SgLlmProviderCategory.OpenRouting => "🛣 Open routing",
+        SgLlmProviderCategory.FastInference => "⚡ Fast inference",
+        SgLlmProviderCategory.Local => "🦙 Local",
+        SgLlmProviderCategory.Free => "🆓 Free",
+        SgLlmProviderCategory.Russian => "🇷🇺 Russian",
+        SgLlmProviderCategory.Specialty => "🧪 Specialty",
+        SgLlmProviderCategory.Azure => "☁ Azure",
+        _ => cat
+    };
+
+    private int CountForCategory(string cat) =>
+        SgLlmProviderRegistry.Presets.Count(p => p.Category == cat);
+
+    private void ToggleCategory(string cat)
+    {
+        _selectedCategory = _selectedCategory == cat ? null : cat;
+    }
+
+    private void ClearFilters()
+    {
+        _filter = string.Empty;
+        _freeOnly = _localOnly = _visionOnly = _embedOnly = _audioOnly = false;
+        _selectedCategory = null;
+    }
+
     private IEnumerable<SgLlmProviderPreset> Filtered()
     {
-        var all = SgLlmProviderRegistry.Presets;
-        return all.Where(p =>
-            (!_freeOnly || p.IsFree) &&
-            (string.IsNullOrWhiteSpace(_filter) ||
-             p.Label.Contains(_filter, StringComparison.OrdinalIgnoreCase) ||
-             (p.Notes?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false)));
+        var query = SgLlmProviderRegistry.Presets.AsEnumerable();
+
+        if (_selectedCategory != null)
+            query = query.Where(p => p.Category == _selectedCategory);
+
+        if (_freeOnly)
+            query = query.Where(p => p.IsFree || p.Tags.Contains(SgLlmProviderTag.Free));
+
+        if (_localOnly)
+            query = query.Where(p => p.Category == SgLlmProviderCategory.Local || p.Tags.Contains(SgLlmProviderTag.Local));
+
+        if (_visionOnly)
+            query = query.Where(p => p.SupportsVision || p.Tags.Contains(SgLlmProviderTag.Vision));
+
+        if (_embedOnly)
+            query = query.Where(p => p.SupportsEmbeddings || p.Tags.Contains(SgLlmProviderTag.Embeddings));
+
+        if (_audioOnly)
+            query = query.Where(p =>
+                p.SupportsAudioStt || p.SupportsAudioTts || p.Tags.Contains(SgLlmProviderTag.Audio));
+
+        if (!string.IsNullOrWhiteSpace(_filter))
+        {
+            var f = _filter.Trim();
+            // Russian-language aliases: "русский" → russian tag.
+            var ruRussian = f.Contains("русск", StringComparison.OrdinalIgnoreCase)
+                || f.Contains("россий", StringComparison.OrdinalIgnoreCase);
+
+            query = query.Where(p =>
+                p.Label.Contains(f, StringComparison.OrdinalIgnoreCase)
+                || (p.Notes?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (p.FreeTierNotes?.Contains(f, StringComparison.OrdinalIgnoreCase) ?? false)
+                || p.Provider.ToString().Contains(f, StringComparison.OrdinalIgnoreCase)
+                || p.Tags.Any(t => t.Contains(f, StringComparison.OrdinalIgnoreCase))
+                || p.Category.Contains(f, StringComparison.OrdinalIgnoreCase)
+                || (ruRussian && p.Tags.Contains(SgLlmProviderTag.Russian)));
+        }
+
+        return query;
     }
 
     private bool IsSelected(SgLlmProviderPreset p) =>
         Config != null && Config.Provider == p.Provider;
+
+    private bool IsCurrent(SgLlmProviderPreset p) =>
+        LlmService.CurrentConfig != null && LlmService.CurrentConfig.Provider == p.Provider;
 
     private async Task SelectAsync(SgLlmProviderPreset p)
     {
@@ -118,9 +188,112 @@
             Config.Provider = p.Provider;
             Config.ModelId = null;
             if (!string.IsNullOrEmpty(p.BaseUrl)) Config.BaseUrl = p.BaseUrl;
-            if (!p.RequiresKey) Config.ApiKey = "";
+            if (!p.RequiresKey) Config.ApiKey = string.Empty;
             if (ConfigChanged.HasDelegate) await ConfigChanged.InvokeAsync(Config);
         }
         if (OnSelected.HasDelegate) await OnSelected.InvokeAsync(p);
     }
 }
+
+<style>
+    .sgc-llm-picker { display: flex; flex-direction: column; gap: 10px; }
+
+    .sgc-llm-picker-toolbar {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    .sgc-llm-picker-toolbar > :first-child { flex: 1 1 260px; min-width: 220px; }
+    .sgc-llm-picker-quick { display: inline-flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    .sgc-llm-picker-categories {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .sgc-llm-picker-cat {
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 5px 10px;
+        border-radius: 999px;
+        border: 1px solid var(--sg-border, #e5e7eb);
+        background: var(--sg-bg, #fff);
+        color: var(--sg-fg, #111827);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        transition: border-color .15s, background .15s, color .15s;
+    }
+    .sgc-llm-picker-cat:hover {
+        border-color: var(--sg-color-primary, #2563eb);
+        color: var(--sg-color-primary, #2563eb);
+    }
+    .sgc-llm-picker-cat.active {
+        background: var(--sg-color-primary, #2563eb);
+        border-color: var(--sg-color-primary, #2563eb);
+        color: #fff;
+    }
+    .sgc-llm-picker-cat em {
+        font-style: normal;
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, .08);
+        color: inherit;
+    }
+    .sgc-llm-picker-cat.active em { background: rgba(255, 255, 255, .2); }
+    .sgc-llm-picker-cat.clear {
+        border-color: #fde68a;
+        background: #fffbeb;
+        color: #92400e;
+    }
+
+    .sgc-llm-picker-summary {
+        font-size: 11px;
+        color: var(--sg-fg-muted, #64748b);
+        padding: 2px 0;
+    }
+    .sgc-llm-picker-summary strong { color: var(--sg-fg, #111827); }
+
+    .sgc-llm-picker-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 10px;
+        max-height: 60vh;
+        overflow-y: auto;
+        padding-right: 4px;
+    }
+
+    .sgc-llm-picker-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 30px 20px;
+        text-align: center;
+        color: var(--sg-fg-muted, #64748b);
+        border: 1px dashed var(--sg-border, #e5e7eb);
+        border-radius: 10px;
+    }
+    .sgc-llm-picker-empty-icon { font-size: 32px; }
+    .sgc-llm-picker-empty-title { font-size: 14px; font-weight: 650; color: var(--sg-fg, #111827); }
+    .sgc-llm-picker-empty-hint { font-size: 12px; }
+    .sgc-llm-picker-empty-btn {
+        margin-top: 6px;
+        padding: 6px 12px;
+        font-size: 12px;
+        border-radius: 6px;
+        border: 1px solid var(--sg-border, #e5e7eb);
+        background: var(--sg-bg, #fff);
+        color: var(--sg-fg, #111827);
+        cursor: pointer;
+    }
+
+    @@media (max-width: 560px) {
+        .sgc-llm-picker-grid { grid-template-columns: 1fr; max-height: 55vh; }
+        .sgc-llm-picker-toolbar { flex-direction: column; align-items: stretch; }
+    }
+</style>
