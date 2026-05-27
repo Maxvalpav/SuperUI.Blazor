@@ -340,12 +340,69 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         {
             List<SgLlmModelInfo>? models = Config.Provider switch
             {
-                SgLlmProvider.OpenRouter => await LlmService.GetOpenRouterModelsAsync(),
+                // --- Frontier ---
                 SgLlmProvider.OpenAiCompatible => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
                 SgLlmProvider.Anthropic => await LlmService.GetAnthropicModelsAsync(Config.ApiKey),
-                SgLlmProvider.LmStudio => await LlmService.GetLmStudioModelsAsync(Config.BaseUrl),
+                SgLlmProvider.Google => await LlmService.GetGoogleModelsAsync(Config.ApiKey),
+                SgLlmProvider.XAi => await LlmService.GetXAiModelsAsync(Config.ApiKey),
+
+                // --- Open routing ---
+                SgLlmProvider.OpenRouter => await LlmService.GetOpenRouterModelsAsync(),
+                SgLlmProvider.TogetherAi => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Fireworks => await LlmService.GetFireworksModelsAsync(Config.ApiKey),
                 SgLlmProvider.HuggingFace => await LlmService.GetHuggingFaceModelsAsync(Config.ApiKey),
+                SgLlmProvider.Replicate => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.AiMlApi => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Novita => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+
+                // --- Fast inference ---
+                SgLlmProvider.Groq => await LlmService.GetGroqModelsAsync(Config.ApiKey),
+                SgLlmProvider.Cerebras => await LlmService.GetCerebrasModelsAsync(Config.ApiKey),
+                SgLlmProvider.SambaNova => await LlmService.GetSambaNovaModelsAsync(Config.ApiKey),
+                SgLlmProvider.DeepSeek => await LlmService.GetDeepSeekModelsAsync(Config.ApiKey),
+                SgLlmProvider.Lepton => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.DeepInfra => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+
+                // --- Local (all OpenAI-compatible) ---
+                SgLlmProvider.LmStudio => await LlmService.GetLmStudioModelsAsync(Config.BaseUrl),
+                SgLlmProvider.Vllm => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.LlamaCpp => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Jan => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Gpt4All => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.KoboldCpp => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.OobaboogaTgWebUi => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.TabbyApi => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Llamafile => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.WebLlm => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+
+                // --- Free ---
+                SgLlmProvider.CloudflareWorkersAi => await LlmService.GetCloudflareWorkersAiModelsAsync(null, Config.ApiKey),
+                SgLlmProvider.GitHubModels => await LlmService.GetGitHubModelsAsync(Config.ApiKey),
+                SgLlmProvider.Pollinations => await LlmService.GetPollinationsModelsAsync(),
+                SgLlmProvider.GlhfChat => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Targon => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+                SgLlmProvider.Chutes => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+
+                // --- Russian ---
                 SgLlmProvider.GigaGpt => await LlmService.GetGigaGptModelsAsync(Config.BaseUrl, Config.ApiKey, Config.GigaAuthMode, Config.GigaScope, Config.GigaOAuthUrl),
+                SgLlmProvider.YandexGpt => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+
+                // --- Specialty ---
+                SgLlmProvider.Cohere => await LlmService.GetCohereModelsAsync(Config.ApiKey),
+                SgLlmProvider.Mistral => await LlmService.GetMistralModelsAsync(Config.ApiKey),
+                SgLlmProvider.Perplexity => await LlmService.GetPerplexityModelsAsync(Config.ApiKey),
+                SgLlmProvider.VoyageAi => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.JinaAi => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.Nomic => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.AssemblyAi => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.Deepgram => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.ElevenLabs => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+                SgLlmProvider.OpenAiCompatibleCustom => await LlmService.GetOpenAiModelsAsync(Config.BaseUrl, Config.ApiKey),
+
+                // --- Azure ---
+                SgLlmProvider.AzureOpenAi => SgLlmProviderRegistry.FallbackModels(Config.Provider),
+
+                // Ollama is handled below via the native /api/tags endpoint
                 SgLlmProvider.Ollama => null,
                 _ => null
             };

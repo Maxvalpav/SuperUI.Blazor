@@ -32,8 +32,33 @@ public enum SgLlmProvider
     Pollinations,        // pollinations.ai — no key needed, free
     GlhfChat,            // glhf.chat — free OSS models, OpenAI-compatible
     Targon,              // targon.ai — free routing
-    OpenAiCompatibleCustom, // explicit alias for arbitrary base URL
-    None
+    OpenAiCompatibleCustom, // explicit alias for arbitrary base URL — ordinal 26
+    // IMPORTANT: None is pinned to ordinal 27 to preserve LocalStorage configs already
+    // persisted with that integer. Never re-number it. All new providers go BELOW it
+    // and get ordinals 28+ — they are still strictly append-only.
+    None = 27,
+    // --- Stage 3.1: appended (append-only — never insert in the middle) ---
+    Replicate = 28,           // replicate.com — OpenAI-compatible models endpoint
+    Novita = 29,              // novita.ai — OpenAI-compatible LLM router
+    AiMlApi = 30,             // aimlapi.com — OpenAI-compatible router
+    Lepton = 31,              // lepton.ai — OpenAI-compatible
+    DeepInfra = 32,           // deepinfra.com — OpenAI-compatible
+    Vllm = 33,                // vLLM local server — OpenAI-compatible
+    LlamaCpp = 34,            // llama.cpp server — OpenAI-compatible
+    Jan = 35,                 // Jan.ai local — OpenAI-compatible
+    Gpt4All = 36,             // GPT4All local — OpenAI-compatible
+    KoboldCpp = 37,           // KoboldCpp local — needs --openai-compatibility flag
+    OobaboogaTgWebUi = 38,    // text-generation-webui OpenAI extension
+    TabbyApi = 39,            // TabbyAPI local exl2 server — OpenAI-compatible
+    Llamafile = 40,           // llamafile single-binary OpenAI-compatible
+    YandexGpt = 41,           // Yandex GPT (Yandex.Cloud Foundation Models)
+    Chutes = 42,              // chutes.ai — free OpenAI-compatible models
+    VoyageAi = 43,            // voyageai.com — embeddings + reranker specialist
+    JinaAi = 44,              // jina.ai — embeddings + reranker
+    Nomic = 45,               // nomic.ai — embeddings (Atlas / nomic-embed)
+    AssemblyAi = 46,          // assemblyai.com — speech-to-text specialist
+    Deepgram = 47,            // deepgram.com — speech-to-text specialist
+    ElevenLabs = 48           // elevenlabs.io — text-to-speech specialist
 }
 
 /// <summary>
