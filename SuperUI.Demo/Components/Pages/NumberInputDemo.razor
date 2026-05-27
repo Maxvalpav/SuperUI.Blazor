@@ -1,227 +1,636 @@
 @page "/number-input-demo"
 @using SuperUI.Components
 @using SuperUI.Demo.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Числовой ввод - SUI</PageTitle>
+<PageTitle>SgNumberInput & SgNumberEdit — Number Input — SuperUI</PageTitle>
 
-<SgCard Title="Компоненты числового ввода"
-        Subtitle="Компоненты для ввода чисел, координат и работы с числовыми значениями."
-        CssClass="sgc-card-flush">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    @* ── SgNumberEdit ─────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgNumberEdit                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
         <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgNumberEdit</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgNumberEdit — Value-Type Number Editor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Constrained to <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">struct, IComparable&lt;TValue&gt;</SgTypography> value types. Uses <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">inputmode="decimal"</SgTypography> with custom parsing for precise formatting. Supports step, min/max, suffix, prefix, and EditContext integration.
+            </SgTypography>
         </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Компонент для ввода чисел с поддержкой шага, минимума и максимума.</SgTypography>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <SgNumberEdit TValue="int" @bind-Value="@_intValue" Label="Целое число" Placeholder="0" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Значение</span>
-                        <span class="demo-value-display-value">@(_intValue?.ToString() ?? "—")</span>
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <div class="demo-value-row">
+                                <SgNumberEdit TValue="int" @bind-Value="@_editInt" Label="Integer" Placeholder="0" />
+                                <span class="demo-value-chip">@(_editInt?.ToString() ?? "—")</span>
+                            </div>
+                            <div class="demo-value-row">
+                                <SgNumberEdit TValue="double" @bind-Value="@_editDouble" Label="Double (step 0.01)" Placeholder="0.00" Step="0.01" />
+                                <span class="demo-value-chip">@(_editDouble?.ToString("F2") ?? "—")</span>
+                            </div>
+                            <div class="demo-value-row">
+                                <SgNumberEdit TValue="int" @bind-Value="@_editClamped" Label="Clamped 0–100" Min="0" Max="100" />
+                                <span class="demo-value-chip">@(_editClamped?.ToString() ?? "—")</span>
+                            </div>
+                        </SgStack>
                     </div>
-                    <SgNumberEdit TValue="double" @bind-Value="@_doubleValue" Label="Дробное число" Placeholder="0.00" Step="0.01" />
-                    <SgNumberEdit TValue="int" @bind-Value="@_clampedValue" Label="С ограничениями (0–100)" Min="0" Max="100" />
-                    <SgNumberEdit TValue="int" @bind-Value="@_suffixValue" Label="С суффиксом" Suffix="кг" ShowButtons="true" />
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Новые параметры</SgTypography>
-                    <SgNumberEdit TValue="int" @bind-Value="@_editPrefix" Label="С префиксом" Prefix="$" Step="10" />
-                    <SgNumberEdit TValue="double" @bind-Value="@_editDecimals" Label="С дробной частью" Decimals="2" Step="0.01" />
-                    <SgNumberEdit TValue="int" @bind-Value="@_editSize" Label="Размер Large" Size="SgSize.Lg" Step="5" />
-                    <SgNumberEdit TValue="int" @bind-Value="@_editEnter" Label="Enter callback" Size="SgSize.Sm" OnEnterPressed="OnEditEnter" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Enter нажат</span>
-                        <span class="demo-value-display-value">@_editEnterCount</span>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Affixes &amp; Formatting
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgNumberEdit TValue="int" @bind-Value="@_editSuffix" Label="With suffix" Suffix="kg" />
+                            <SgNumberEdit TValue="int" @bind-Value="@_editPrefix" Label="With prefix" Prefix="$" Step="10" />
+                            <SgNumberEdit TValue="double" @bind-Value="@_editDecimals" Label="Decimals=2" Decimals="2" Step="0.01" />
+                            <SgNumberEdit TValue="double" @bind-Value="@_editFormat" Label="Format N2" Format="N2" Step="0.01" />
+                        </SgStack>
                     </div>
-                </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            States &amp; New Features
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgNumberEdit TValue="int" Value="42" Label="Disabled" Disabled="true" />
+                            <SgNumberEdit TValue="int" Value="42" Label="Read-only" ReadOnly="true" />
+                            <SgNumberEdit TValue="int" @bind-Value="@_editClear" Label="With clear button" ShowClearButton="true" ShowButtons="true" />
+                            <SgNumberEdit TValue="double" @bind-Value="@_editCopy" Label="With copy button" AllowCopy="true" Decimals="2" Step="0.01" />
+                            <SgNumberEdit TValue="int" @bind-Value="@_editEnter" Label="Enter callback" Size="SgSize.Sm" OnEnterPressed="OnEditEnter" />
+                            <div class="demo-value-row">
+                                <span class="demo-value-chip">Enter pressed: <strong>@_editEnterCount</strong></span>
+                            </div>
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Sizes
+                        </SgTypography>
+                        <div class="demo-size-row">
+                            <SgNumberEdit TValue="int" Value="10" Label="Sm" Size="SgSize.Sm" />
+                            <SgNumberEdit TValue="int" Value="20" Label="Md" Size="SgSize.Md" />
+                            <SgNumberEdit TValue="int" Value="30" Label="Lg" Size="SgSize.Lg" />
+                        </div>
+                    </div>
+                </SgStack>
             </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_numberEditProperties" />
+            <SgCard Title="SgNumberEdit Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_editProperties" />
             </SgCard>
         </div>
     </div>
 
-    @* ── SgNumberInput ────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. SgNumberInput                                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
         <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgNumberInput</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
-        </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Универсальный компонент числового ввода с встроенными кнопками инкремента/декремента, поддержкой шага, ограничений и суффикса единиц измерения.</SgTypography>
-
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <SgNumberInput TValue="int?" @bind-Value="@_numInt"
-                                   Label="Целое число"
-                                   Placeholder="0"
-                                   Step="1" />
-                    <SgNumberInput TValue="double?" @bind-Value="@_numDouble"
-                                   Label="Дробное число (шаг 0.1)"
-                                   Placeholder="0.00"
-                                   Step="0.1"
-                                   Decimals="2" />
-                    <SgNumberInput TValue="int?" @bind-Value="@_numClamped"
-                                   Label="С ограничениями (0–100)"
-                                   Min="0" Max="100"
-                                   Step="5" />
-                    <SgNumberInput TValue="double?" @bind-Value="@_numSuffix"
-                                   Label="С суффиксом единиц"
-                                   Suffix="кг"
-                                   Step="0.5"
-                                   Decimals="1" />
-                    <SgNumberInput TValue="int?" @bind-Value="@_numDisabled"
-                                   Label="Отключённый"
-                                   Disabled="true" />
-                    <SgNumberInput TValue="int?" @bind-Value="@_numError"
-                                   Label="С ошибкой валидации"
-                                   ErrorText="Значение вне допустимого диапазона" />
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Размеры <SgTypography As="SgTypographyElement.Code">Size</SgTypography></SgTypography>
-                    <div class="demo-flex-row" style="flex-wrap:wrap;gap:8px;align-items:start;">
-                        <SgNumberInput TValue="int?" Label="Small" Size="SgSize.Sm" Step="1" />
-                        <SgNumberInput TValue="int?" Label="Medium" Size="SgSize.Md" Step="1" />
-                        <SgNumberInput TValue="int?" Label="Large" Size="SgSize.Lg" Step="1" />
-                    </div>
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Новые параметры</SgTypography>
-                    <SgNumberInput TValue="double?" @bind-Value="@_numFormat"
-                                   Label="С форматом (N2)"
-                                   Format="N2" Step="0.01" />
-                    <SgNumberInput TValue="int?" @bind-Value="@_numPrefix"
-                                   Label="С префиксом"
-                                   Prefix="$" Step="10" />
-                    <SgNumberInput TValue="int?" @bind-Value="@_numNoButtons"
-                                   Label="Без кнопок"
-                                   ShowButtons="false" />
-                    <SgNumberInput TValue="int?" @bind-Value="@_numWheelOff"
-                                   Label="Колёсико отключено"
-                                   DisableWheel="true" Step="1" />
-                    <div class="demo-flex-row" style="flex-wrap:wrap;gap:8px;align-items:start;">
-                        <div style="flex:1;min-width:160px;">
-                            <SgNumberInput TValue="int?" Label="Label Left" LabelPosition="SgLabelPosition.Left" Step="1" />
-                        </div>
-                        <div style="flex:1;min-width:160px;">
-                            <SgNumberInput TValue="int?" Label="Label Right" LabelPosition="SgLabelPosition.Right" Step="1" />
-                        </div>
-                    </div>
-                </div>
-            </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_numberInputProperties" />
-            </SgCard>
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgNumberInput — Universal Numeric Input
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Generic numeric input with inline +/- buttons, long-press repeat, optional clear/copy actions, and full validation via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgInputBase&lt;TValue&gt;</SgTypography>. Supports any nullable numeric type, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">type="number"</SgTypography> with native browser behavior.
+            </SgTypography>
         </div>
 
-        <div class="demo-flex-row" style="margin-top:16px;">
-            <SgAlert Variant="SgAlertVariant.Info" Title="Отличие от SgNumberEdit">
-                <ChildContent>
-                    <b>SgNumberInput</b> — самостоятельный компонент с кнопками +/− встроенными в поле ввода.
-                    Поддерживает любой числовой тип (<code>int?</code>, <code>double?</code>, <code>decimal?</code> и т.д.) через generic параметр <code>TValue</code>.
-                    Кнопки автоматически блокируются при достижении Min/Max.
-                </ChildContent>
-            </SgAlert>
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic Binding
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <div class="demo-value-row">
+                                <SgNumberInput TValue="int?" @bind-Value="@_numInt"
+                                               Label="Integer" Placeholder="0" Step="1" />
+                                <span class="demo-value-chip">@(_numInt?.ToString() ?? "—")</span>
+                            </div>
+                            <div class="demo-value-row">
+                                <SgNumberInput TValue="double?" @bind-Value="@_numDouble"
+                                               Label="Double (step 0.1)" Placeholder="0.00" Step="0.1" Decimals="2" />
+                                <span class="demo-value-chip">@(_numDouble?.ToString("F2") ?? "—")</span>
+                            </div>
+                            <div class="demo-value-row">
+                                <SgNumberInput TValue="int?" @bind-Value="@_numClamped"
+                                               Label="Clamped 0–100 (step 5)" Min="0" Max="100" Step="5" />
+                                <span class="demo-value-chip">@(_numClamped?.ToString() ?? "—")</span>
+                            </div>
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Affixes &amp; Formatting
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgNumberInput TValue="double?" @bind-Value="@_numSuffix" Label="Suffix" Suffix="kg" Step="0.5" Decimals="1" />
+                            <SgNumberInput TValue="int?" @bind-Value="@_numPrefix" Label="Prefix" Prefix="$" Step="10" />
+                            <SgNumberInput TValue="double?" @bind-Value="@_numFormat" Label="Format N2" Format="N2" Step="0.01" />
+                            <SgNumberInput TValue="int?" Value="7" Label="No buttons" ShowButtons="false" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            States &amp; New Features
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgNumberInput TValue="int?" Value="42" Label="Disabled" Disabled="true" />
+                            <SgNumberInput TValue="int?" Value="42" Label="Read-only" ReadOnly="true" />
+                            <SgNumberInput TValue="int?" @bind-Value="@_numError" Label="With error" ErrorText="Invalid value" />
+                            <SgNumberInput TValue="int?" @bind-Value="@_numClear" Label="Clear button" ShowClearButton="true" />
+                            <SgNumberInput TValue="double?" @bind-Value="@_numCopy" Label="Copy button + clear" ShowClearButton="true" AllowCopy="true" Decimals="2" Step="0.01" />
+                            <SgNumberInput TValue="int?" @bind-Value="@_numWheelOff" Label="Wheel disabled" DisableWheel="true" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Sizes
+                        </SgTypography>
+                        <div class="demo-size-row">
+                            <SgNumberInput TValue="int?" Value="10" Label="Sm" Size="SgSize.Sm" />
+                            <SgNumberInput TValue="int?" Value="20" Label="Md" Size="SgSize.Md" />
+                            <SgNumberInput TValue="int?" Value="30" Label="Lg" Size="SgSize.Lg" />
+                        </div>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Label Positions
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgNumberInput TValue="int?" Value="10" Label="Top (default)" LabelPosition="SgLabelPosition.Top" />
+                            <SgNumberInput TValue="int?" Value="20" Label="Left" LabelPosition="SgLabelPosition.Left" />
+                            <SgNumberInput TValue="int?" Value="30" Label="Right" LabelPosition="SgLabelPosition.Right" />
+                        </SgStack>
+                    </div>
+                </SgStack>
+            </SgCard>
+            <SgCard Title="SgNumberInput Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_inputProperties" />
+            </SgCard>
+        </div>
+
+        <!-- Live values -->
+        <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-right:4px;">Live Values:</SgTypography>
+            @foreach (var val in _liveValues)
+            {
+                <span class="demo-live-chip">@val.Label: <strong>@val.Value</strong></span>
+            }
         </div>
     </div>
 
-    @* ── SgCoordinateInput ───────────────────────────────────────── *@
-    <div class="sgc-demo-section">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. SgCoordinateInput                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
         <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgCoordinateInput</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgCoordinateInput — Geographic Coordinates
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Specialized dual-field input for latitude/longitude with adjustable step precision, DMS format display, copy-to-clipboard, and clear actions. Bounds-checked to ±90°/±180°.
+            </SgTypography>
         </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Специализированный компонент для ввода географических координат (широта/долгота) с кнопками +/−, выбором шага и форматом DMS.</SgTypography>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <SgCoordinateInput Label="Координаты (Москва)"
-                                       @bind-Latitude="_coordLat"
-                                       @bind-Longitude="_coordLon"
-                                       OnCoordinateChanged="OnCoordChanged" />
-                    @if (_coordLat.HasValue && _coordLon.HasValue)
-                    {
-                        <div class="demo-value-display">
-                            <span class="demo-value-display-label">📍 Координаты</span>
-                            <span class="demo-value-display-value"><SgTypography Font="SgTypographyFont.Mono" Size="SgTypographySize.Sm">@_coordLat.Value.ToString("F6"), @_coordLon.Value.ToString("F6")</SgTypography></span>
-                        </div>
-                    }
-                    <SgDivider />
-                    <SgCoordinateInput Label="С DMS форматом"
-                                       @bind-Latitude="_coordLat2"
-                                       @bind-Longitude="_coordLon2"
-                                       ShowDms="true" />
-                    <SgCoordinateInput Label="Отключённый"
-                                       Latitude="55.7558"
-                                       Longitude="37.6173"
-                                       Disabled="true" />
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Новые параметры</SgTypography>
-                    <SgCoordinateInput Label="Обязательное поле"
-                                       @bind-Latitude="_coordReqLat"
-                                       @bind-Longitude="_coordReqLon"
-                                       Required="true" />
-                    <SgCoordinateInput Label="Только чтение"
-                                       Latitude="48.8566"
-                                       Longitude="2.3522"
-                                       ReadOnly="true" />
-                    <SgCoordinateInput Label="С подсказкой"
-                                       @bind-Latitude="_coordHintLat"
-                                       @bind-Longitude="_coordHintLon"
-                                       Hint="Введите координаты в десятичном формате" />
-                </div>
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic
+                        </SgTypography>
+                        <SgCoordinateInput @bind-Latitude="@_coordLat"
+                                           @bind-Longitude="@_coordLon"
+                                           OnCoordinateChanged="OnCoordChanged"
+                                           Label="Moscow coordinates" />
+                        @if (_coordLat.HasValue && _coordLon.HasValue)
+                        {
+                            <div class="demo-value-row">
+                                <span class="demo-value-chip"><SgTypography Font="SgTypographyFont.Mono" Size="SgTypographySize.Sm">@_coordLat.Value.ToString("F6"), @_coordLon.Value.ToString("F6")</SgTypography></span>
+                            </div>
+                        }
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            DMS Format
+                        </SgTypography>
+                        <SgCoordinateInput Label="Paris (DMS)" ShowDms="true"
+                                           @bind-Latitude="@_coordDmsLat"
+                                           @bind-Longitude="@_coordDmsLon" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            States
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgCoordinateInput Label="Disabled" Latitude="55.7558" Longitude="37.6173" Disabled="true" />
+                            <SgCoordinateInput Label="Required" @bind-Latitude="@_coordReqLat" @bind-Longitude="@_coordReqLon" Required="true" />
+                            <SgCoordinateInput Label="Read-only" Latitude="48.8566" Longitude="2.3522" ReadOnly="true" />
+                            <SgCoordinateInput Label="With hint" @bind-Latitude="@_coordHintLat" @bind-Longitude="@_coordHintLon" Hint="Decimal format (e.g. 55.7558)" />
+                        </SgStack>
+                    </div>
+                </SgStack>
             </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_coordInputProperties" />
+            <SgCard Title="SgCoordinateInput Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_coordProperties" />
             </SgCard>
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Live SgNumberInput Constructor                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgNumberInput Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Long-press the +/- buttons to auto-repeat. Click "Copy" to grab the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Value -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Value: @(_ctorValue?.ToString() ?? "—")
+                            </SgTypography>
+                            <SgNumberInput TValue="int?" @bind-Value="@_ctorValue"
+                                           Label="Adjust value"
+                                           ShowClearButton="true" />
+                        </SgStack>
+
+                        <!-- Min / Max -->
+                        <SgRow Space="SgSize.Md">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Min</SgTypography>
+                                    <SgNumberInput TValue="int?" @bind-Value="@_ctorMin" Label="Minimum" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Max</SgTypography>
+                                    <SgNumberInput TValue="int?" @bind-Value="@_ctorMax" Label="Maximum" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Step -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Step</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="@_ctorStep"
+                                         ValueChanged="v => { _ctorStep = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_stepSegOptions" />
+                        </SgStack>
+
+                        <!-- Size -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                            <SgSegmented TValue="SgSize"
+                                         Value="@_ctorSize"
+                                         ValueChanged="v => { _ctorSize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_sizeSegOptions" />
+                        </SgStack>
+
+                        <!-- Suffix -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Suffix</SgTypography>
+                            <SgSegmented TValue="string"
+                                         Value="@_ctorSuffix"
+                                         ValueChanged="v => { _ctorSuffix = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_suffixSegOptions" />
+                        </SgStack>
+
+                        <!-- Toggles -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                @* show buttons *@
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowButtons</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="@_ctorShowButtons"
+                                                 ValueChanged="v => { _ctorShowButtons = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                @* clear button *@
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ClearBtn</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="@_ctorClearBtn"
+                                                 ValueChanged="v => { _ctorClearBtn = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Value</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@Fmt(_ctorValue)" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Min</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@Fmt(_ctorMin)" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Max</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@Fmt(_ctorMax)" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Step</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="@_ctorStep.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorSize.ToString()" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgNumberInput TValue="int?"
+                                               Value="@_ctorValue"
+                                               ValueChanged="v => { _ctorValue = v; UpdateConstructorCode(); StateHasChanged(); }"
+                                               Min="@_ctorMin"
+                                               Max="@_ctorMax"
+                                               Step="@_ctorStep"
+                                               Size="@_ctorSize"
+                                               Suffix="@_ctorSuffix"
+                                               ShowButtons="@_ctorShowButtons"
+                                               ShowClearButton="@_ctorClearBtn"
+                                               Label="Constructor preview" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
 <style>
-    .sgc-card-flush > .sgc-card-body {
-        padding: 0 24px 24px;
+    /* ── Section layout (matches RowDemo & SliderDemo) ─────────────────────── */
+    .demo-section {
+        margin-top: 48px;
     }
-    @@media (max-width: 640px) {
-        .sgc-card-flush > .sgc-card-body {
-            padding: 0 12px 12px;
-        }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Value display chips ──────────────────────────────────────────────── */
+    .demo-value-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .demo-value-row > :first-child {
+        flex: 1;
+    }
+    .demo-value-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        font-size: 11px;
+        color: var(--sg-text-muted);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        flex-shrink: 0;
+    }
+    .demo-value-chip strong {
+        color: var(--sg-color-primary);
+    }
+
+    /* ── Size row ──────────────────────────────────────────────────────────── */
+    .demo-size-row {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+    .demo-size-row > * {
+        flex: 1;
+        min-width: 140px;
+    }
+
+    /* ── Live chip ──────────────────────────────────────────────────────────── */
+    .demo-live-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        font-size: 11px;
+        color: var(--sg-text-muted);
+        font-variant-numeric: tabular-nums;
+        transition: all 0.2s ease;
+    }
+    .demo-live-chip:hover {
+        border-color: var(--sg-color-primary-border);
+        background: var(--sg-surface);
+    }
+    .demo-live-chip strong {
+        color: var(--sg-color-primary);
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 20px 16px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
     }
 </style>
 
 @code {
-    // NumberEdit
-    private int? _intValue;
-    private double? _doubleValue;
-    private int? _clampedValue = 50;
-    private int? _suffixValue;
-    private int? _editPrefix;
-    private double? _editDecimals = 3.14;
-    private int? _editSize = 75;
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Number Input</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgNumberEdit — value-type constrained number editor with EditContext validation. SgNumberInput — universal generic numeric input with +/- buttons, long-press repeat, clear/copy actions. SgCoordinateInput — geographic coordinate input with DMS display.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── SgNumberEdit state ─────────────────────────────────────────────
+    private int? _editInt = 42;
+    private double? _editDouble = 3.14;
+    private int? _editClamped = 50;
+    private int? _editSuffix = 12;
+    private int? _editPrefix = 500;
+    private double? _editDecimals = 3.14159;
+    private double? _editFormat = 1234.56;
+    private int? _editClear = 99;
+    private double? _editCopy = 123.45;
     private int? _editEnter;
     private int _editEnterCount;
 
-    // NumberInput
+    // ── SgNumberInput state ────────────────────────────────────────────
     private int? _numInt = 42;
     private double? _numDouble = 3.14;
     private int? _numClamped = 50;
     private double? _numSuffix = 12.5;
-    private int? _numDisabled = 100;
-    private int? _numError;
-    private double? _numFormat = 1234.56;
     private int? _numPrefix = 500;
-    private int? _numNoButtons = 7;
+    private double? _numFormat = 1234.56;
+    private int? _numError;
+    private int? _numClear = 77;
+    private double? _numCopy = 456.78;
     private int? _numWheelOff = 10;
 
-    // CoordinateInput
+    // ── Live values display ─────────────────────────────────────────────
+    private List<(string Label, string Value)> _liveValues =>
+    [
+        ("Integer", _numInt?.ToString() ?? "—"),
+        ("Double", _numDouble?.ToString("F2") ?? "—"),
+        ("Clamped", _numClamped?.ToString() ?? "—"),
+        ("Suffix", _numSuffix?.ToString("F1") ?? "—"),
+        ("Prefix", _numPrefix?.ToString() ?? "—"),
+    ];
+
+    // ── SgCoordinateInput state ────────────────────────────────────────
     private double? _coordLat = 55.7558;
     private double? _coordLon = 37.6173;
-    private double? _coordLat2;
-    private double? _coordLon2;
+    private double? _coordDmsLat = 48.8566;
+    private double? _coordDmsLon = 2.3522;
     private double? _coordReqLat;
     private double? _coordReqLon;
     private double? _coordHintLat;
@@ -238,64 +647,174 @@
         _editEnterCount++;
     }
 
-    private List<PropertyPanelItem> _numberEditProperties = new()
+    // ── Constructor state ───────────────────────────────────────────────
+    private int? _ctorValue = 50;
+    private int? _ctorMin;
+    private int? _ctorMax;
+    private int _ctorStep = 1;
+    private SgSize _ctorSize = SgSize.Md;
+    private string _ctorSuffix = "";
+    private bool _ctorShowButtons = true;
+    private bool _ctorClearBtn;
+
+    // ── Code generation ─────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private readonly List<SgSegmentedOption<int>> _stepSegOptions = new()
     {
-        new() { Label = "Value", Value = "TValue?", BadgeText = "Значение", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Min", Value = "TValue?", BadgeText = "Минимум", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Max", Value = "TValue?", BadgeText = "Максимум", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Step", Value = "TValue", BadgeText = "Шаг", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Format", Value = "string?", BadgeText = "Формат", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Decimals", Value = "int?", BadgeText = "Знаки", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Suffix", Value = "string", BadgeText = "Суффикс", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Prefix", Value = "string?", BadgeText = "Префикс", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowButtons", Value = "bool", BadgeText = "Кнопки", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Размер", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "OnEnterPressed", Value = "EventCallback", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Required", Value = "bool", BadgeText = "Обязательное", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = SgBadgeVariant.Warn }
+        new() { Value = 1, Label = "1" },
+        new() { Value = 5, Label = "5" },
+        new() { Value = 10, Label = "10" },
+        new() { Value = 25, Label = "25" },
     };
 
-    private List<PropertyPanelItem> _numberInputProperties = new()
+    private readonly List<SgSegmentedOption<SgSize>> _sizeSegOptions = new()
     {
-        new() { Label = "TValue",       Value = "int?, double?, decimal?…", BadgeText = "Generic",   BadgeVariant = SgBadgeVariant.Info  },
-        new() { Label = "Value",        Value = "TValue?",                  BadgeText = "Bind",      BadgeVariant = SgBadgeVariant.Info  },
-        new() { Label = "Step",         Value = "TValue?",                  BadgeText = "Шаг",       BadgeVariant = SgBadgeVariant.Warn  },
-        new() { Label = "Min",          Value = "TValue?",                  BadgeText = "Минимум",   BadgeVariant = SgBadgeVariant.Warn  },
-        new() { Label = "Max",          Value = "TValue?",                  BadgeText = "Максимум",  BadgeVariant = SgBadgeVariant.Warn  },
-        new() { Label = "Suffix",       Value = "string?",                  BadgeText = "Суффикс",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Prefix",       Value = "string?",                  BadgeText = "Префикс",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Decimals",     Value = "int?",                     BadgeText = "Знаки",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Format",       Value = "string?",                  BadgeText = "Формат",    BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Label",        Value = "string?",                  BadgeText = "Метка",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LabelPosition",Value = "Top | Left | Right",       BadgeText = "Позиция",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Placeholder",  Value = "string?",                  BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ShowButtons",  Value = "bool (true)",              BadgeText = "Кнопки",    BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "DisableWheel", Value = "bool",                     BadgeText = "Колёсико",  BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Disabled",     Value = "bool",                     BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ReadOnly",     Value = "bool",                     BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ErrorText",    Value = "string?",                  BadgeText = "Ошибка",    BadgeVariant = SgBadgeVariant.Danger },
-        new() { Label = "Hint",         Value = "string?",                  BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Immediate",    Value = "bool (true)",              BadgeText = "Режим",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Size",         Value = "Sm | Md | Lg",             BadgeText = "Размер",    BadgeVariant = SgBadgeVariant.Info     },
-        new() { Label = "Culture",      Value = "CultureInfo?",             BadgeText = "Культура",  BadgeVariant = SgBadgeVariant.Info     },
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
     };
 
-    private List<PropertyPanelItem> _coordInputProperties = new()
+    private readonly List<SgSegmentedOption<string>> _suffixSegOptions = new()
     {
-        new() { Label = "Latitude",             Value = "double?",  BadgeText = "Широта",    BadgeVariant = SgBadgeVariant.Info  },
-        new() { Label = "Longitude",            Value = "double?",  BadgeText = "Долгота",   BadgeVariant = SgBadgeVariant.Info  },
-        new() { Label = "LatitudeChanged",      Value = "EventCallback&lt;double?&gt;", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "LongitudeChanged",     Value = "EventCallback&lt;double?&gt;", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "OnCoordinateChanged",  Value = "EventCallback&lt;(Lat, Lon)&gt;", BadgeText = "Событие", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Label",                Value = "string?",  BadgeText = "Метка",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ShowDms",              Value = "bool",     BadgeText = "DMS формат",BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ShowCopyButton",       Value = "bool (true)", BadgeText = "Копия",  BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ShowClearButton",      Value = "bool (true)", BadgeText = "Очистка", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Required",             Value = "bool",     BadgeText = "Обязательное", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ReadOnly",             Value = "bool",     BadgeText = "Чтение",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Hint",                 Value = "string?",  BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Disabled",             Value = "bool",     BadgeText = "Состояние", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ErrorMessage",         Value = "string?",  BadgeText = "Ошибка",    BadgeVariant = SgBadgeVariant.Danger },
+        new() { Value = "", Label = "None" },
+        new() { Value = "kg", Label = "kg" },
+        new() { Value = "%", Label = "%" },
+        new() { Value = "px", Label = "px" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true, Label = "On" },
+    };
+
+    private static string Fmt(int? v) => v?.ToString() ?? "—";
+
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgNumberInput TValue=\"int?\"");
+        lines.Add($"             @bind-Value=\"@_myValue\"");
+        if (_ctorMin.HasValue)
+            lines.Add($"             Min=\"{_ctorMin}\"");
+        if (_ctorMax.HasValue)
+            lines.Add($"             Max=\"{_ctorMax}\"");
+        if (_ctorStep != 1)
+            lines.Add($"             Step=\"{_ctorStep}\"");
+        if (_ctorSize != SgSize.Md)
+            lines.Add($"             Size=\"SgSize.{_ctorSize}\"");
+        if (!string.IsNullOrEmpty(_ctorSuffix))
+            lines.Add($"             Suffix=\"{_ctorSuffix}\"");
+        if (!_ctorShowButtons)
+            lines.Add($"             ShowButtons=\"false\"");
+        if (_ctorClearBtn)
+            lines.Add($"             ShowClearButton=\"true\"");
+        lines.Add($"             Label=\"My label\" />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ─────────────────────────────────────────────────
+    private List<PropertyPanelItem> _editProperties = new()
+    {
+        new() { Label = "TValue",         Value = "struct, IComparable", BadgeText = "Constraint",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Value",          Value = "TValue?",             BadgeText = "Bind",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Min / Max",      Value = "TValue?",             BadgeText = "Clamp",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Step",           Value = "TValue",              BadgeText = "Increment",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Format",         Value = "string?",             BadgeText = "Format str",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Decimals",       Value = "int?",                BadgeText = "Precision",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Suffix / Prefix",Value = "string?",             BadgeText = "Affix",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Label",          Value = "string?",             BadgeText = "Field label", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LabelPosition",  Value = "Top | Left | Right",  BadgeText = "Pos",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowButtons",    Value = "bool (true)",         BadgeText = "+/−",         BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowClearButton",Value = "bool",                BadgeText = "Clear ✕",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "AllowCopy",      Value = "bool",                BadgeText = "Copy",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "DisableWheel",   Value = "bool",                BadgeText = "Wheel",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Culture",        Value = "CultureInfo?",        BadgeText = "Locale",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SelectOnFocus",  Value = "bool (true)",         BadgeText = "Auto-select", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Size",           Value = "Sm | Md | Lg",        BadgeText = "Size",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Immediate",      Value = "bool",                BadgeText = "Live",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnEnterPressed", Value = "EventCallback",       BadgeText = "Event",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Required",       Value = "bool",                BadgeText = "Required",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Disabled",       Value = "bool",                BadgeText = "Disabled",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ReadOnly",       Value = "bool",                BadgeText = "Read-only",   BadgeVariant = SgBadgeVariant.Warn    },
+    };
+
+    private List<PropertyPanelItem> _inputProperties = new()
+    {
+        new() { Label = "TValue",         Value = "int?, double?, …",    BadgeText = "Generic",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Value",          Value = "TValue?",             BadgeText = "Bind",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Min / Max",      Value = "TValue?",             BadgeText = "Clamp",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Step",           Value = "TValue?",             BadgeText = "Increment",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Format",         Value = "string?",             BadgeText = "Format str",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Decimals",       Value = "int?",                BadgeText = "Precision",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Suffix / Prefix",Value = "string?",             BadgeText = "Affix",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Label",          Value = "string?",             BadgeText = "Field label", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LabelPosition",  Value = "Top | Left | Right",  BadgeText = "Pos",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowButtons",    Value = "bool (true)",         BadgeText = "+/−",         BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowClearButton",Value = "bool",                BadgeText = "Clear ✕",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "AllowCopy",      Value = "bool",                BadgeText = "Copy",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "DisableWheel",   Value = "bool",                BadgeText = "Wheel",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Culture",        Value = "CultureInfo?",        BadgeText = "Locale",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SelectOnFocus",  Value = "bool (true)",         BadgeText = "Auto-select", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Size",           Value = "Sm | Md | Lg",        BadgeText = "Size",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Immediate",      Value = "bool (true)",         BadgeText = "Live",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnEnterPressed", Value = "EventCallback",       BadgeText = "Event",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Required",       Value = "bool",                BadgeText = "Required",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Disabled",       Value = "bool",                BadgeText = "Disabled",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ReadOnly",       Value = "bool",                BadgeText = "Read-only",   BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Block",          Value = "bool (true)",         BadgeText = "Full width",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Long-press",     Value = "built-in",            BadgeText = "Hold +/−",    BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _coordProperties = new()
+    {
+        new() { Label = "Latitude",            Value = "double?",              BadgeText = "Lat",       BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "Longitude",           Value = "double?",              BadgeText = "Lon",       BadgeVariant = SgBadgeVariant.Info  },
+        new() { Label = "LatitudeChanged",     Value = "EventCallback&lt;dbl&gt;", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "LongitudeChanged",    Value = "EventCallback&lt;dbl&gt;", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "OnCoordinateChanged", Value = "EventCallback&lt;(dbl,dbl)&gt;", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Label",               Value = "string?",              BadgeText = "Label",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowDms",             Value = "bool",                 BadgeText = "DMS",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowCopyButton",      Value = "bool (true)",          BadgeText = "Copy",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowClearButton",     Value = "bool (true)",          BadgeText = "Clear",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Required",            Value = "bool",                 BadgeText = "Required",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ReadOnly",            Value = "bool",                 BadgeText = "Read-only", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Hint",                Value = "string?",              BadgeText = "Hint",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",            Value = "bool",                 BadgeText = "Disabled",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ErrorMessage",        Value = "string?",              BadgeText = "Error",     BadgeVariant = SgBadgeVariant.Danger },
     };
 }

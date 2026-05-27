@@ -2,6 +2,7 @@
 @typeparam TValue where TValue : struct, IComparable<TValue>
 @implements IDisposable
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
 <div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
     @if (!string.IsNullOrEmpty(Label))
@@ -13,7 +14,13 @@
         {
             <button type="button" class="sgc-num-btn sgc-num-dec" tabindex="-1"
                     aria-label="@Localizer["NumberInput_Decrement"]"
-                    disabled="@(Disabled || ReadOnly || IsAtMin)" @onclick="StepDownAsync">
+                    disabled="@(Disabled || ReadOnly || IsAtMin)"
+                    @onmousedown="StartDecAsync"
+                    @onmouseup="StopRepeat"
+                    @onmouseleave="StopRepeat"
+                    @ontouchstart="StartDecAsync"
+                    @ontouchend="StopRepeat"
+                    @ontouchcancel="StopRepeat">
                 <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
                     <rect x="2" y="7" width="12" height="2" rx="1"/>
                 </svg>
@@ -38,19 +45,60 @@
                aria-valuemin="@(Min.HasValue ? Convert.ToDouble(Min.Value) : null)"
                aria-valuemax="@(Max.HasValue ? Convert.ToDouble(Max.Value) : null)"
                aria-valuenow="@(Value.HasValue ? Convert.ToDouble(Value.Value) : null)"
+               @ref="_inputRef"
+               @onfocus="OnFocusAsync"
                @oninput="OnInputAsync"
                @onchange="OnChangeAsync"
                @onkeydown="OnKeyDownAsync"
+               @onwheel:preventDefault="DisableWheel"
                @attributes="AdditionalAttributes" />
         @if (!string.IsNullOrEmpty(Suffix))
         {
             <span class="sgc-num-suffix">@Suffix</span>
         }
+        @if (ShowClearButton && Value.HasValue && !Disabled && !ReadOnly)
+        {
+            <button type="button" class="sgc-num-clear" tabindex="-1"
+                    aria-label="@Localizer["NumberInput_Clear"]"
+                    title="@Localizer["NumberInput_Clear"]"
+                    @onclick="ClearAsync">
+                <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                    <path d="M4.28 3.22a.75.75 0 0 0-1.06 1.06L6.94 8l-3.72 3.72a.75.75 0 1 0 1.06 1.06L8 9.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L9.06 8l3.72-3.72a.75.75 0 0 0-1.06-1.06L8 6.94 4.28 3.22z"/>
+                </svg>
+            </button>
+        }
+        @if (AllowCopy && Value.HasValue)
+        {
+            <button type="button" class="sgc-num-action-copy @(_copied ? "sgc-copied" : "")" tabindex="-1"
+                    aria-label="@Localizer["NumberInput_Copy"]"
+                    title="@Localizer["NumberInput_Copy"]"
+                    @onclick="CopyValueAsync">
+                @if (_copied)
+                {
+                    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                        <path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/>
+                    </svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
+                        <path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/>
+                        <path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/>
+                    </svg>
+                }
+            </button>
+        }
         @if (ShowButtons)
         {
             <button type="button" class="sgc-num-btn sgc-num-inc" tabindex="-1"
                     aria-label="@Localizer["NumberInput_Increment"]"
-                    disabled="@(Disabled || ReadOnly || IsAtMax)" @onclick="StepUpAsync">
+                    disabled="@(Disabled || ReadOnly || IsAtMax)"
+                    @onmousedown="StartIncAsync"
+                    @onmouseup="StopRepeat"
+                    @onmouseleave="StopRepeat"
+                    @ontouchstart="StartIncAsync"
+                    @ontouchend="StopRepeat"
+                    @ontouchcancel="StopRepeat">
                 <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" fill="currentColor">
                     <rect x="7" y="2" width="2" height="12" rx="1"/>
                     <rect x="2" y="7" width="12" height="2" rx="1"/>
@@ -72,39 +120,30 @@
     private readonly string _id = "sg-" + Guid.NewGuid().ToString("N")[..8];
     private string _hintId => _id + "-hint";
     private string _errorId => _id + "-err";
+    private ElementReference _inputRef;
+    private bool _copied;
 
     private SgEditContextBinder<TValue?>? _binder;
+    private CancellationTokenSource? _repeatCts;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
 
-    /// <summary>
-    /// Gets or sets the current numeric value.
-    /// </summary>
+    /// <summary>Gets or sets the current numeric value.</summary>
     [Parameter] public TValue? Value { get; set; }
 
-    /// <summary>
-    /// Gets or sets the callback invoked when the value changes.
-    /// </summary>
+    /// <summary>Gets or sets the callback invoked when the value changes.</summary>
     [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
 
-    /// <summary>
-    /// Gets or sets the expression that identifies the bound value for EditContext validation.
-    /// </summary>
+    /// <summary>Gets or sets the expression that identifies the bound value for EditContext validation.</summary>
     [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; }
 
-    /// <summary>
-    /// Gets or sets the minimum allowed value.
-    /// </summary>
+    /// <summary>Gets or sets the minimum allowed value.</summary>
     [Parameter] public TValue? Min { get; set; }
 
-    /// <summary>
-    /// Gets or sets the maximum allowed value.
-    /// </summary>
+    /// <summary>Gets or sets the maximum allowed value.</summary>
     [Parameter] public TValue? Max { get; set; }
 
-    /// <summary>
-    /// Gets or sets the increment/decrement step value. Default is 1.
-    /// </summary>
+    /// <summary>Gets or sets the increment/decrement step value. Default is 1.</summary>
     [Parameter] public TValue Step { get; set; } = OneOf();
 
     private static TValue OneOf()
@@ -113,99 +152,75 @@
         catch { return default; }
     }
 
-    /// <summary>
-    /// Gets or sets the number format string (e.g., "N2", "C2").
-    /// </summary>
+    /// <summary>Gets or sets the number format string (e.g., "N2", "C2").</summary>
     [Parameter] public string? Format { get; set; }
 
-    /// <summary>
-    /// Gets or sets the suffix text displayed after the input (e.g., "kg", "%").
-    /// </summary>
+    /// <summary>Gets or sets the suffix text displayed after the input (e.g., "kg", "%").</summary>
     [Parameter] public string? Suffix { get; set; }
 
-    /// <summary>
-    /// Gets or sets the placeholder text shown when the input is empty.
-    /// </summary>
+    /// <summary>Gets or sets the placeholder text shown when the input is empty.</summary>
     [Parameter] public string? Placeholder { get; set; }
 
-    /// <summary>
-    /// Gets or sets the label text displayed above the input.
-    /// </summary>
+    /// <summary>Gets or sets the label text displayed above the input.</summary>
     [Parameter] public string? Label { get; set; }
 
-    /// <summary>
-    /// Gets or sets the position of the label. Default is Top.
-    /// </summary>
+    /// <summary>Gets or sets the position of the label. Default is Top.</summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
 
-    /// <summary>
-    /// Gets or sets the hint text displayed below the input.
-    /// </summary>
+    /// <summary>Gets or sets the hint text displayed below the input.</summary>
     [Parameter] public string? Hint { get; set; }
 
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
+    /// <summary>Gets or sets the error text to display. Takes precedence over validation messages from EditContext.</summary>
     [Parameter] public string? ErrorText { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether to show increment/decrement buttons. Default is true.
-    /// </summary>
+    /// <summary>Gets or sets whether to show increment/decrement buttons. Default is true.</summary>
     [Parameter] public bool ShowButtons { get; set; } = true;
 
-    /// <summary>
-    /// Gets or sets whether the input is required.
-    /// </summary>
+    /// <summary>Gets or sets whether the input is required.</summary>
     [Parameter] public bool Required { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the input is disabled.
-    /// </summary>
+    /// <summary>Gets or sets whether the input is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the input is read-only.
-    /// </summary>
+    /// <summary>Gets or sets whether the input is read-only.</summary>
     [Parameter] public bool ReadOnly { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the input should take full width of its container. Default is true.
-    /// </summary>
+    /// <summary>Gets or sets whether the input should take full width of its container. Default is true.</summary>
     [Parameter] public bool Block { get; set; } = true;
 
-    /// <summary>
-    /// Gets or sets whether value updates on input (true) or on change (false).
-    /// </summary>
+    /// <summary>Gets or sets whether value updates on input (true) or on change (false).</summary>
     [Parameter] public bool Immediate { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
+    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Gets or sets the size variant. Default is Md.
-    /// </summary>
+    /// <summary>Gets or sets the size variant. Default is Md.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
 
-    /// <summary>
-    /// Gets or sets the callback invoked when the Enter key is pressed.
-    /// </summary>
+    /// <summary>Gets or sets the callback invoked when the Enter key is pressed.</summary>
     [Parameter] public EventCallback OnEnterPressed { get; set; }
 
-    /// <summary>
-    /// Gets or sets the prefix text displayed before the input (e.g. "$").
-    /// </summary>
+    /// <summary>Gets or sets the prefix text displayed before the input (e.g. "$").</summary>
     [Parameter] public string? Prefix { get; set; }
 
-    /// <summary>
-    /// Gets or sets the number of decimal places for display. When set, overrides <see cref="Format"/>.
-    /// </summary>
+    /// <summary>Gets or sets the number of decimal places for display. When set, overrides <see cref="Format"/>.</summary>
     [Parameter] public int? Decimals { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the input element.
-    /// </summary>
+    /// <summary>When true, prevents value change on mouse wheel.</summary>
+    [Parameter] public bool DisableWheel { get; set; }
+
+    /// <summary>Culture used for parsing and formatting. Defaults to CurrentCulture.</summary>
+    [Parameter] public System.Globalization.CultureInfo? Culture { get; set; }
+
+    /// <summary>Show a clear (X) button when a value is present. Default false.</summary>
+    [Parameter] public bool ShowClearButton { get; set; }
+
+    /// <summary>Show a copy button to copy the value to clipboard. Default false.</summary>
+    [Parameter] public bool AllowCopy { get; set; }
+
+    /// <summary>Select all text on focus. Default true.</summary>
+    [Parameter] public bool SelectOnFocus { get; set; } = true;
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     // ── Computed ──────────────────────────────────────────────────────────────
@@ -221,16 +236,19 @@
     private bool IsAtMin => Min is not null && Value is not null && Convert.ToDecimal(Value) <= Convert.ToDecimal(Min);
     private bool IsAtMax => Max is not null && Value is not null && Convert.ToDecimal(Value) >= Convert.ToDecimal(Max);
 
+    private System.Globalization.CultureInfo ResolvedCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
+
     private string? CurrentText
     {
         get
         {
             if (Value is null) return string.Empty;
+            var c = ResolvedCulture;
             if (Decimals.HasValue)
-                return Convert.ToDecimal(Value.Value, CultureInfo.CurrentCulture).ToString($"F{Decimals.Value}", CultureInfo.CurrentCulture);
+                return Convert.ToDecimal(Value.Value, c).ToString($"F{Decimals.Value}", c);
             if (!string.IsNullOrEmpty(Format))
-                return string.Format(CultureInfo.CurrentCulture, "{0:" + Format + "}", Value.Value);
-            return Convert.ToString(Value.Value, CultureInfo.CurrentCulture);
+                return string.Format(c, "{0:" + Format + "}", Value.Value);
+            return Convert.ToString(Value.Value, c);
         }
     }
 
@@ -242,6 +260,16 @@
     protected override void OnParametersSet()
     {
         _binder?.Update(CascadedEditContext, ValueExpression);
+    }
+
+    private async Task OnFocusAsync(FocusEventArgs e)
+    {
+        if (SelectOnFocus)
+        {
+            await Task.Delay(1);
+            try { await JS.InvokeVoidAsync("eval", $"setTimeout(() => document.getElementById('{_id}')?.select(), 0)"); }
+            catch { }
+        }
     }
 
     private Task OnInputAsync(ChangeEventArgs e) => Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
@@ -261,6 +289,44 @@
             if (e.Key == "ArrowUp") await StepUpAsync();
             else await StepDownAsync();
         }
+    }
+
+    // ── Repeat (long-press) ──
+
+    private async Task StartIncAsync()
+    {
+        await StepUpAsync();
+        _repeatCts?.Cancel();
+        _repeatCts = new CancellationTokenSource();
+        _ = RepeatAsync(StepUpAsync, _repeatCts.Token);
+    }
+
+    private async Task StartDecAsync()
+    {
+        await StepDownAsync();
+        _repeatCts?.Cancel();
+        _repeatCts = new CancellationTokenSource();
+        _ = RepeatAsync(StepDownAsync, _repeatCts.Token);
+    }
+
+    private void StopRepeat()
+    {
+        _repeatCts?.Cancel();
+        _repeatCts = null;
+    }
+
+    private async Task RepeatAsync(Func<Task> action, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(300, ct);
+            while (!ct.IsCancellationRequested)
+            {
+                await action();
+                await Task.Delay(80, ct);
+            }
+        }
+        catch (TaskCanceledException) { }
     }
 
     private Task StepUpAsync() => StepAsync(true);
@@ -285,7 +351,7 @@
         var t = typeof(TValue);
         try
         {
-            var parsed = (TValue)Convert.ChangeType(raw, t, CultureInfo.CurrentCulture);
+            var parsed = (TValue)Convert.ChangeType(raw, t, ResolvedCulture);
             await SetAsync(Clamp(parsed));
         }
         catch
@@ -299,6 +365,27 @@
         if (EqualityComparer<TValue?>.Default.Equals(next, Value)) return;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(next);
         _binder?.NotifyFieldChanged();
+    }
+
+    private async Task ClearAsync()
+    {
+        await SetAsync(null);
+    }
+
+    private async Task CopyValueAsync()
+    {
+        if (!Value.HasValue) return;
+        var text = CurrentText ?? Convert.ToString(Value.Value, ResolvedCulture) ?? "";
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+            StateHasChanged();
+        }
+        catch { }
     }
 
     private TValue Clamp(TValue v)
