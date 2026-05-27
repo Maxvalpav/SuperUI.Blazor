@@ -1,5 +1,7 @@
 @namespace SuperUI.Components
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
+@implements IDisposable
 
 @{
     var pct = EffectivePct;
@@ -12,8 +14,9 @@
      role="progressbar"
      aria-valuemin="0"
      aria-valuemax="@Max"
-     aria-valuenow="@(Indeterminate ? null : Value)"
+     aria-valuenow="@(Indeterminate ? null : EffectiveValue)"
      aria-label="@AriaLabel"
+     aria-live="polite"
      data-tooltip="@(ShowTooltip ? $"{pct:0}%" : null)"
      @attributes="AdditionalAttributes">
 
@@ -75,7 +78,7 @@
                     stroke="@CircularStroke"
                     stroke-linecap="round"
                     filter="@(Glow ? $"url(#sg-glow-{_uniqueId})" : "")"
-                    transform="rotate(-90 50 50)"
+                    transform="rotate(@(CounterClockwise ? "90" : "-90") 50 50)"
                     style="@CircularBarInlineStyle" />
         </svg>
 
@@ -233,24 +236,27 @@
                 <span class="sg-progress-title">@Title</span>
                 @if (ShowLabel && !Indeterminate)
                 {
-                    @if (FormatLabel != null)
-                    {
-                        <span class="sg-progress-percentage">@FormatLabel(pct)</span>
-                    }
-                    else
-                    {
-                        <span class="sg-progress-percentage">@(FormatLabel?.Invoke(pct) ?? $"{pct:0}%")</span>
-                    }
+                    <span class="sg-progress-percentage">@GetLabelText(pct)</span>
                 }
             </div>
         }
 
         @* Progress Track *@
-        <div class="sg-progress-track @(Vertical ? "sg-vertical" : "")">
+        <div class="sg-progress-track @(Vertical ? "sg-vertical" : "") @(Clickable ? "sg-clickable" : "")"
+             @ref="_trackRef"
+             @onclick="@(Clickable ? (Func<MouseEventArgs, Task>)(async e => await HandleTrackClick(e)) : null)"
+             @attributes="@(Clickable ? new Dictionary<string, object> { { "role", "slider" }, { "tabindex", "0" }, { "aria-label", "Click to set progress" } } : null)">
             @if (Indeterminate)
             {
                 @* Indeterminate Animation *@
-                <div class="sg-progress-bar sg-indeterminate @AnimationClass" style="@BarColorStyle"></div>
+                <div class="sg-progress-bar sg-indeterminate sg-indet-@IndeterminateStyle.ToString().ToLower() @AnimationClass" style="@BarColorStyle">
+                    @if (IndeterminateStyle == SgIndeterminateStyle.Dots)
+                    {
+                        <span class="sg-indet-dot"></span>
+                        <span class="sg-indet-dot"></span>
+                        <span class="sg-indet-dot"></span>
+                    }
+                </div>
             }
             else
             {
@@ -291,6 +297,26 @@
                         {
                             <div class="sg-progress-glow"></div>
                         }
+                        @if (Marker && !Indeterminate)
+                        {
+                            <div class="sg-progress-marker"></div>
+                        }
+                        @if (Error && ErrorIcon != null)
+                        {
+                            <div class="sg-progress-bar-icon sg-bar-icon-error">@ErrorIcon</div>
+                        }
+                        else if (isComplete && CompleteIcon != null)
+                        {
+                            <div class="sg-progress-bar-icon sg-bar-icon-complete">@CompleteIcon</div>
+                        }
+                        @if (ShowThumb && !Indeterminate && !Segmented)
+                        {
+                            <div class="sg-progress-thumb" title="Drag to adjust"></div>
+                        }
+                        @if (Avatar != null && !Indeterminate)
+                        {
+                            <div class="sg-progress-avatar">@Avatar</div>
+                        }
                     </div>
                 }
             }
@@ -299,20 +325,19 @@
         @* Label Right / Bottom *@
         @if (ShowLabel && !Indeterminate && LabelPosition == SgLabelPosition.Right)
         {
-            @if (FormatLabel != null)
-            {
-                <span class="sg-progress-label-right">@FormatLabel(pct)</span>
-            }
-            else
-            {
-                <span class="sg-progress-label-right">@($"{pct:0}%")</span>
-            }
+            <span class="sg-progress-label-right">@GetLabelText(pct)</span>
         }
 
         @* Description *@
         @if (!string.IsNullOrEmpty(Description))
         {
             <div class="sg-progress-description">@Description</div>
+        }
+
+        @* SubLabel (Detail Text) *@
+        @if (!string.IsNullOrEmpty(SubLabel))
+        {
+            <div class="sg-progress-sublabel">@SubLabel</div>
         }
 
         @* Confetti overlay for linear *@
@@ -333,6 +358,8 @@
 @code {
     private string _uniqueId = Guid.NewGuid().ToString("N")[..8];
     private double _previousValue = -1;
+    private double _autoValue;
+    private Timer? _autoTimer;
     private List<ConfettiPiece>? _confettiPieces;
 
     private static readonly string[] _confettiPalette = { "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6b9d", "#c44dff", "#ff8c42", "#00d2d3", "#ff4757", "#2ed573" };
@@ -499,11 +526,113 @@
     /// </summary>
     [Parameter] public bool Confetti { get; set; }
 
+    /// <summary>
+    /// Automatically advances progress when true. Increments <see cref="Value"/> by <see cref="AutoSpeed"/>
+    /// every 100ms until it reaches <see cref="Max"/>. Starts on first render.
+    /// </summary>
+    [Parameter] public bool AutoStart { get; set; }
+
+    /// <summary>
+    /// Increment amount per tick (100ms) when <see cref="AutoStart"/> is true. Default 0.5.
+    /// Higher values = faster progression.
+    /// </summary>
+    [Parameter] public double AutoSpeed { get; set; } = 0.5;
+
+    /// <summary>
+    /// Additional text displayed below the progress bar (linear only). Useful for showing
+    /// details like "3.2 MB / 15 MB" or "Step 4 of 7".
+    /// </summary>
+    [Parameter] public string? SubLabel { get; set; }
+
+    /// <summary>
+    /// Custom icon/content shown at the end of the bar when progress reaches 100%.
+    /// Rendered at the leading edge of the bar.
+    /// </summary>
+    [Parameter] public RenderFragment? CompleteIcon { get; set; }
+
+    /// <summary>
+    /// Custom icon/content shown at the end of the bar when <see cref="Error"/> is true.
+    /// Rendered at the leading edge of the bar.
+    /// </summary>
+    [Parameter] public RenderFragment? ErrorIcon { get; set; }
+
+    /// <summary>
+    /// Puts the progress bar into an error state, showing error styling and the error icon.
+    /// </summary>
+    [Parameter] public bool Error { get; set; }
+
+    /// <summary>
+    /// When true, circular progress animates counter-clockwise instead of clockwise.
+    /// </summary>
+    [Parameter] public bool CounterClockwise { get; set; }
+
+    /// <summary>
+    /// Controls border-radius on the linear progress bar. Set to "0" for square caps,
+    /// a pixel value like "4px" for custom rounding, or "999px" (default) for pill shape.
+    /// </summary>
+    [Parameter] public string? BarRadius { get; set; }
+
+    /// <summary>Indeterminate animation style when <see cref="Indeterminate"/> is true.</summary>
+    [Parameter] public SgIndeterminateStyle IndeterminateStyle { get; set; } = SgIndeterminateStyle.Shimmer;
+
+    /// <summary>Applies a glassmorphism effect (blur + transparency) to the progress track.</summary>
+    [Parameter] public bool Glassmorphism { get; set; }
+
+    /// <summary>Applies a vibrant neon glow effect to the progress bar.</summary>
+    [Parameter] public bool Neon { get; set; }
+
+    /// <summary>In multi-bar mode, bars overlap with transparency instead of stacking.</summary>
+    [Parameter] public bool Overlap { get; set; }
+
+    /// <summary>
+    /// Custom content rendered at the end of the linear progress bar (right edge).
+    /// Perfect for avatars, icons, or status badges.
+    /// </summary>
+    [Parameter] public RenderFragment? Avatar { get; set; }
+
+    /// <summary>
+    /// Shows a draggable thumb handle on the progress bar for interactive seeking.
+    /// Requires <see cref="Clickable"/> to be true for the click-to-seek behavior.
+    /// </summary>
+    [Parameter] public bool ShowThumb { get; set; }
+
+    /// <summary>
+    /// Shows a visual marker (diamond/circle) at the leading edge of the progress bar.
+    /// Adds a polished, modern look to the progress indicator.
+    /// </summary>
+    [Parameter] public bool Marker { get; set; }
+
+    /// <summary>
+    /// Shows just the numeric value without the percentage sign (e.g., "75" instead of "75%").
+    /// Only applies when <see cref="ShowLabel"/> is true.
+    /// </summary>
+    [Parameter] public bool ShowValue { get; set; }
+
+    /// <summary>
+    /// Custom text label displayed instead of the automatic percentage/value label.
+    /// When set, overrides both <see cref="ShowLabel"/> and <see cref="ShowValue"/> for the label text.
+    /// Only applies to linear progress (not circular).
+    /// </summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>
+    /// Allows clicking on the progress track. Fires <see cref="OnValueClick"/>.
+    /// The clicked percentage is calculated via JS interop (getBoundingClientRect).
+    /// </summary>
+    [Parameter] public bool Clickable { get; set; }
+
+    /// <summary>
+    /// Fired when the progress track is clicked and <see cref="Clickable"/> is true.
+    /// Provides the clicked percentage value (0-100).
+    /// </summary>
+    [Parameter] public EventCallback<double> OnValueClick { get; set; }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //                           COMPUTED PROPERTIES
     // ═══════════════════════════════════════════════════════════════════════════
 
-    private double EffectivePct => Max <= 0 ? 0 : Math.Clamp(Value / Max * 100, 0, 100);
+    private double EffectiveValue => AutoStart ? _autoValue : Value;
+    private double EffectivePct => Max <= 0 ? 0 : Math.Clamp(EffectiveValue / Max * 100, 0, 100);
     private double BufferPct => BufferValue.HasValue && Max > 0
         ? Math.Clamp(BufferValue.Value / Max * 100, 0, 100)
         : 0;
@@ -598,6 +727,12 @@
             if (Values != null) classes.Add("sg-progress-multibar-mode");
             if (ShowTooltip) classes.Add("sg-has-tooltip");
             if (_confettiPieces != null) classes.Add("sg-confetti-active");
+            if (Marker && !Circular) classes.Add("sg-has-marker");
+            if (Clickable) classes.Add("sg-clickable-progress");
+            if (Error) classes.Add("sg-error");
+            if (Glassmorphism) classes.Add("sg-glass");
+            if (Neon) classes.Add("sg-neon");
+            if (Overlap && Values != null) classes.Add("sg-overlap");
 
             classes.Add($"sg-size-{Size.ToString().ToLower()}");
             classes.Add($"sg-variant-{VariantName}");
@@ -696,6 +831,11 @@
             styles.Add($"width: {percentage}%");
         }
 
+        if (!string.IsNullOrEmpty(BarRadius) && !isBuffer)
+        {
+            styles.Add($"border-radius: {BarRadius}");
+        }
+
         if (isBuffer)
         {
             styles.Add("opacity: 0.3");
@@ -768,5 +908,79 @@
         }
 
         _previousValue = EffectivePct;
+
+        // AutoProgress timer management
+        if (AutoStart && _autoTimer is null && !Indeterminate)
+        {
+            _autoValue = Value;
+            _autoTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    if (EffectiveValue >= Max)
+                    {
+                        _autoTimer?.Dispose();
+                        _autoTimer = null;
+                        return;
+                    }
+                    _autoValue = Math.Min(Max, _autoValue + AutoSpeed);
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
+            }, null, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100));
+        }
+        else if (!AutoStart && _autoTimer is not null)
+        {
+            _autoTimer.Dispose();
+            _autoTimer = null;
+        }
     }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        _autoTimer?.Dispose();
+        _autoTimer = null;
+    }
+
+    private string GetLabelText(double pct)
+    {
+        if (!string.IsNullOrEmpty(Label)) return Label;
+        if (FormatLabel != null) return FormatLabel(pct);
+        if (ShowValue) return $"{pct:0}";
+        return $"{pct:0}%";
+    }
+
+    private IJSObjectReference? _jsModule;
+
+    private async Task EnsureJsModule()
+    {
+        if (_jsModule is null)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui-components.js");
+        }
+    }
+
+    private ElementReference _trackRef;
+
+    private async Task HandleTrackClick(MouseEventArgs e)
+    {
+        if (!Clickable || !OnValueClick.HasDelegate) return;
+        try
+        {
+            await EnsureJsModule();
+            var rect = await _jsModule!.InvokeAsync<DomRect>("getBoundingRect", _trackRef);
+            if (rect is null || rect.Width <= 0) return;
+            var relX = e.ClientX - rect.Left;
+            var pct = Math.Clamp(relX / rect.Width * 100, 0, 100);
+            await OnValueClick.InvokeAsync(pct);
+        }
+        catch
+        {
+            // JS interop failed — ignore
+        }
+    }
+
+    private record DomRect(double Left, double Top, double Width, double Height);
 }

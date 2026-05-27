@@ -5,50 +5,59 @@
 @using static System.FormattableString
 @inject IJSRuntime JS
 
-<div @ref="_containerRef" class="sgc-qrcode @CssClass" style="@GetContainerStyle()">
+<div @ref="_containerRef"
+     class="sgc-qrcode @ContainerClass @GetAnimationClass()"
+     style="@GetContainerStyle()"
+     @onclick="HandleClick"
+     role="@(OnClick.HasDelegate ? "button" : null)"
+     tabindex="@(OnClick.HasDelegate ? "0" : null)"
+     @onkeydown="HandleKeyDown"
+     title="@Title">
     @if (_hasError)
     {
-        <div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--sg-color-danger, #ef4444);font-size:13px;text-align:center;padding:16px;">
+        <div class="sgc-qrcode-error">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             @ErrorText
         </div>
     }
     else if (!string.IsNullOrEmpty(_svg))
     {
-        <div style="position:relative; width:100%; height:100%;">
+        <div class="sgc-qrcode-svg-wrapper" style="@GetSvgWrapperStyle()">
             @((MarkupString)_svg)
 
             @if (LogoContent is not null)
             {
-                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                            background:@LogoBackground; padding:@(LogoPadding)px;
-                            border-radius:50%; display:flex; align-items:center; justify-content:center;
-                            width:@(LogoSize)px; height:@(LogoSize)px; pointer-events:none;">
+                <div class="sgc-qrcode-logo" style="@GetLogoStyle()">
                     @LogoContent
                 </div>
             }
             else if (!string.IsNullOrEmpty(Logo))
             {
-                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
-                            background:@LogoBackground; padding:@(LogoPadding)px;
-                            border-radius:50%; display:flex; align-items:center; justify-content:center;
-                            width:@(LogoSize)px; height:@(LogoSize)px; pointer-events:none;">
+                <div class="sgc-qrcode-logo" style="@GetLogoStyle()">
                     @((MarkupString)Logo)
                 </div>
+            }
+
+            @if (ShowCopyButton && !string.IsNullOrEmpty(Value))
+            {
+                <button type="button" class="sgc-qrcode-copy-btn" @onclick="CopyValueAsync" @onclick:stopPropagation title="Copy value" aria-label="Copy QR code value">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                </button>
             }
         </div>
     }
 
-    @if (Downloadable && !_hasError)
+    @if (Downloadable && !_hasError && !string.IsNullOrEmpty(_svg))
     {
-        <button type="button" @onclick="DownloadAsync" class="sgc-qrcode-download"
-                style="margin-top:8px; display:block; cursor:pointer;">
+        <button type="button" @onclick="DownloadAsync" class="sgc-qrcode-download" aria-label="@DownloadButtonText">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             @DownloadButtonText
         </button>
     }
 
     @if (ShowLabel && !string.IsNullOrEmpty(LabelText))
     {
-        <div class="sgc-qrcode-label" style="text-align:center; font-size:@LabelFontSize; margin-top:4px;">
+        <div class="sgc-qrcode-label" style="font-size:@LabelFontSize;">
             @LabelText
         </div>
     }
@@ -61,6 +70,7 @@
     private string _cacheKey = "";
     private bool _hasError;
     private ElementReference _containerRef;
+    private IJSObjectReference? _module;
 
     // ── Parameters ──────────────────────────────────────────────────────────
 
@@ -95,9 +105,19 @@
     [Parameter] public string BackgroundColor { get; set; } = "#ffffff";
 
     /// <summary>
-    /// Gets or sets additional CSS class names.
+    /// Gets or sets additional CSS class names for the outer container.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets additional CSS class name for the root element (alias for CssClass).
+    /// </summary>
+    [Parameter] public string? ContainerClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets the title/tooltip for the QR code element.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
 
     // ── Logo overlay ────────────────────────────────────────────────────────
 
@@ -216,6 +236,16 @@
     /// </summary>
     [Parameter] public EventCallback OnGenerated { get; set; }
 
+    /// <summary>
+    /// Fired when the QR code element is clicked.
+    /// </summary>
+    [Parameter] public EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>
+    /// Fired when the QR code value is copied to clipboard.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnCopied { get; set; }
+
     // ── Error handling ───────────────────────────────────────────────────────
 
     /// <summary>
@@ -241,6 +271,30 @@
     /// </summary>
     [Parameter] public string LabelFontSize { get; set; } = "12px";
 
+    // ── Interaction ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets whether to show a copy button overlay when hovering the QR code. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowCopyButton { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether the QR code should animate in with a fade effect. Default is false.
+    /// </summary>
+    [Parameter] public bool Animated { get; set; }
+
+    // ── Public read-only properties for consumers ────────────────────────────
+
+    /// <summary>
+    /// Gets the generated SVG string. Empty string if not yet generated or on error.
+    /// </summary>
+    public string SvgContent => _svg;
+
+    /// <summary>
+    /// Gets whether the last generation resulted in an error.
+    /// </summary>
+    public bool HasError => _hasError;
+
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
     /// <inheritdoc />
@@ -262,8 +316,49 @@
     public async Task DownloadAsync()
     {
         if (string.IsNullOrEmpty(_svg)) return;
-        var size = Responsive ? MaxSize : Size;
-        await JS.InvokeVoidAsync("superuiQrCode.downloadSvgAsPng", _containerRef, DownloadFileName, size);
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
+            var size = Responsive ? MaxSize : Size;
+            await _module.InvokeVoidAsync("downloadSvgAsPng", _containerRef, DownloadFileName, size);
+        }
+        catch
+        {
+            // JS interop may fail in some contexts
+        }
+    }
+
+    /// <summary>
+    /// Copies the QR code value to clipboard.
+    /// </summary>
+    public async Task CopyValueAsync()
+    {
+        if (string.IsNullOrEmpty(Value)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Value);
+            await OnCopied.InvokeAsync(Value);
+        }
+        catch
+        {
+            // Clipboard API may fail in some contexts
+        }
+    }
+
+    // ── Event handlers ─────────────────────────────────────────────────────
+
+    private async Task HandleClick(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(e);
+    }
+
+    private async Task HandleKeyDown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs e)
+    {
+        if (OnClick.HasDelegate && (e.Key == "Enter" || e.Key == " "))
+        {
+            await OnClick.InvokeAsync(null);
+        }
     }
 
     // ── SVG generation ──────────────────────────────────────────────────────
@@ -363,7 +458,7 @@
         int logoModuleSize = 0;
         int logoModuleStart = 0;
         int logoModuleEnd = 0;
-        if (!string.IsNullOrEmpty(Logo))
+        if (!string.IsNullOrEmpty(Logo) || LogoContent is not null)
         {
             logoModuleSize = Math.Max(5, size / 4);
             if (logoModuleSize % 2 == 0) logoModuleSize++;
@@ -379,7 +474,7 @@
             {
                 if (!qr.GetModule(x, y)) continue;
                 if (IsInEyePattern(x, y, size)) continue;
-                if (!string.IsNullOrEmpty(Logo) && x >= logoModuleStart && x < logoModuleEnd && y >= logoModuleStart && y < logoModuleEnd)
+                if (logoModuleSize > 0 && x >= logoModuleStart && x < logoModuleEnd && y >= logoModuleStart && y < logoModuleEnd)
                     continue;
 
                 int sx = Border + x;
@@ -395,7 +490,7 @@
         RenderEye(sb, Border + 0, Border + size - 7, eyeFill, BackgroundColor);
 
         // Logo area background clearance
-        if (!string.IsNullOrEmpty(Logo))
+        if (logoModuleSize > 0)
         {
             int ls = Border + logoModuleStart;
             int lm = logoModuleSize;
@@ -498,10 +593,42 @@
 
     private string GetContainerStyle()
     {
+        var styles = new List<string>();
         if (Responsive)
         {
-            return Invariant($"width:100%; max-width:{MaxSize}px; aspect-ratio:1;");
+            styles.Add("width:100%");
+            styles.Add($"max-width:{MaxSize}px");
+            styles.Add("aspect-ratio:1");
         }
-        return Invariant($"width:{Size}px; height:{Size}px;");
+        else
+        {
+            styles.Add($"width:{Size}px");
+            styles.Add($"height:{Size}px");
+        }
+        return string.Join("; ", styles) + ";";
+    }
+
+    private string GetSvgWrapperStyle()
+    {
+        var styles = new List<string>
+        {
+            "position:relative",
+            "width:100%",
+            "height:100%",
+            "display:flex",
+            "align-items:center",
+            "justify-content:center"
+        };
+        return string.Join("; ", styles) + ";";
+    }
+
+    private string GetLogoStyle()
+    {
+        return $"position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:{LogoBackground}; padding:{LogoPadding}px; border-radius:50%; display:flex; align-items:center; justify-content:center; width:{LogoSize}px; height:{LogoSize}px; pointer-events:none;";
+    }
+
+    private string GetAnimationClass()
+    {
+        return Animated ? "sgc-qrcode-animated" : "";
     }
 }
