@@ -1,6 +1,7 @@
 // superui-portal.js - Simple teleport to body end with safe cleanup
 
 const originalParents = new WeakMap();
+const portalDropdowns = new Map();
 
 export function teleport(element) {
     if (!element) return;
@@ -41,4 +42,48 @@ export function remove(element) {
     }
     
     originalParents.delete(element);
+}
+
+export function teleportDropdown(menuElement, triggerElement) {
+    if (!menuElement || !triggerElement) return;
+    teleport(menuElement);
+    positionDropdown(menuElement, triggerElement);
+    portalDropdowns.set(menuElement, triggerElement);
+}
+
+export function positionDropdown(menuElement, triggerElement) {
+    if (!menuElement || !triggerElement) return;
+    var rect = triggerElement.getBoundingClientRect();
+    var menuWidth = Math.max(rect.width, 160);
+    menuElement.style.position = 'fixed';
+    menuElement.style.top = (rect.bottom + 2) + 'px';
+    menuElement.style.left = rect.left + 'px';
+    menuElement.style.width = menuWidth + 'px';
+    menuElement.style.minWidth = menuWidth + 'px';
+    menuElement.style.maxWidth = Math.min(800, window.innerWidth - rect.left - 8) + 'px';
+}
+
+export function repositionDropdowns() {
+    portalDropdowns.forEach(function(trigger, menu) {
+        if (document.contains(menu) && document.contains(trigger)) {
+            positionDropdown(menu, trigger);
+        }
+    });
+}
+
+// Reposition on scroll and resize
+window.addEventListener('scroll', repositionDropdowns, true);
+window.addEventListener('resize', repositionDropdowns);
+
+// Global API for non-module consumers
+window.__superuiDropdown = {
+    teleport: teleportDropdown,
+    position: positionDropdown,
+    remove: removeDropdown
+};
+
+export function removeDropdown(menuElement) {
+    if (!menuElement) return;
+    remove(menuElement);
+    portalDropdowns.delete(menuElement);
 }

@@ -1,376 +1,879 @@
 @page "/select-demo"
 @using SuperUI.Components
 @using SuperUI.Demo.Models
+@inject IJSRuntime JS
 
 <PageTitle>Select — SUI</PageTitle>
 
-<SgCard Title="Компоненты выбора"
-        Subtitle="SgSelect, SgMultiSelect, SgComboBoxEx, SgMultiSelectEx и поддержка Enum."
-        CssClass="sgc-card-flush">
+<SgCard>
+<ChildContent>
+    <SgStack Vertical Space="SgSize.Lg">
 
-    @* ── SgSelect ─────────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
-        <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgSelect</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
+        @* ── Header ──────────────────────────────────────────────────────── *@
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px;">
+            <div style="display:flex;align-items:center;justify-content:center;width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--sg-color-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading3" Weight="SgTypographyWeight.Bold">Select Components</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgSelect, SgMultiSelect, SgComboBox — modern dropdowns with search, keyboard nav, enum support, and multi-column extended variants.
+                </SgTypography>
+            </SgStack>
         </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Компонент для выбора одного значения из списка с поддержкой очистки.</SgTypography>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <SgSelect TValue="string" @bind-Value="@_selectValue"  Items="@_selectItems" Label="Выберите опцию"    Placeholder="Выберите..." AllowClear="true" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Выбрано</span>
-                        <span class="demo-value-display-value">@(_selectValue ?? "—")</span>
+        @* ── 1. SgSelect ─────────────────────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgSelect</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Single-value selector with search, custom dropdown, clearable, and full validation support.</SgTypography>
+            </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="8">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgCard Title="Basic Usage" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgStack Vertical Space="SgSize.Md">
+                                <SgSelect TValue="string" @bind-Value="@_selectVal1" Items="@_fruits" Label="Favorite Fruit" Placeholder="Choose a fruit..." />
+                                <div style="display:flex;align-items:center;gap:8px;">
+                                    <SgBadge Text="Selected:" Variant="SgBadgeVariant.Muted" Standalone="true" />
+                                    <SgBadge Text="@(_selectVal1 ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" />
+                                </div>
+                            </SgStack>
+                        </SgCard>
+                        <SgCard Title="Sizes" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                    Three sizes via <SgTypography As="SgTypographyElement.Code">Size</SgTypography>:
+                                    <SgTypography As="SgTypographyElement.Code">SgSize.Sm</SgTypography>,
+                                    <SgTypography As="SgTypographyElement.Code">SgSize.Md</SgTypography>,
+                                    <SgTypography As="SgTypographyElement.Code">SgSize.Lg</SgTypography>
+                                </SgTypography>
+                                <SgSpace Size="8px" />
+                                <SgSelect TValue="string" Size="SgSize.Sm" Items="@_fruits" Label="Small" Placeholder="sm" />
+                                <SgSelect TValue="string" Size="SgSize.Md" Items="@_fruits" Label="Medium" Placeholder="md" />
+                                <SgSelect TValue="string" Size="SgSize.Lg" Items="@_fruits" Label="Large" Placeholder="lg" />
+                            </SgStack>
+                        </SgCard>
+                        <SgCard Title="States" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgRow Space="SgSize.Md">
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">Required</SgTypography>
+                                        <SgSelect TValue="string" @bind-Value="@_selectReq" Items="@_fruits" Label="Required Field" Placeholder="Select..." Required="true" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                        <SgSelect TValue="string" Items="@_fruits" Label="Disabled" Disabled="true" Value="@("Cherry")" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">AllowClear = false</SgTypography>
+                                        <SgSelect TValue="string" @bind-Value="@_selectNoClear" Items="@_fruits" Label="No Clear" Placeholder="Sticky value..." AllowClear="false" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">With Hint</SgTypography>
+                                        <SgSelect TValue="string" Items="@_fruits" Label="With Hint" Placeholder="Pick one..." Hint="You can change this later" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                        </SgCard>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="SgSelect Properties" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <PropertyTable Items="@_selectProps" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ── 2. SgMultiSelect ────────────────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgMultiSelect</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Multi-value selector with tags, search, select all / deselect all, and keyboard navigation.</SgTypography>
+            </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="8">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgCard Title="Basic Multi-Select" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgStack Vertical Space="SgSize.Md">
+                                <SgMultiSelect TItem="string" TKey="string"
+                                               @bind-Values="@_multiVals"
+                                               Items="@_fruits"
+                                               KeySelector="s => s"
+                                               Label="Pick your fruits"
+                                               Placeholder="Select fruits..." />
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <SgBadge Text="Selected:" Variant="SgBadgeVariant.Muted" Standalone="true" />
+                                    @if (_multiVals.Any())
+                                    {
+                                        @foreach (var v in _multiVals)
+                                        {
+                                            <SgBadge Text="@v" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <SgBadge Text="-" Variant="SgBadgeVariant.Default" Standalone="true" />
+                                    }
+                                </div>
+                            </SgStack>
+                        </SgCard>
+                        <SgCard Title="Features" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgRow Space="SgSize.Md">
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">AllowClear</SgTypography>
+                                        <SgMultiSelect TItem="string" TKey="string"
+                                                       @bind-Values="@_multiClear"
+                                                       Items="@_fruits"
+                                                       KeySelector="s => s"
+                                                       Label="Clearable"
+                                                       Placeholder="Select..."
+                                                       AllowClear="true" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                        <SgMultiSelect TItem="string" TKey="string"
+                                                       Items="@_fruits"
+                                                       KeySelector="s => s"
+                                                       Label="Disabled"
+                                                       Disabled="true"
+                                                       Values="@(new[] { "Apple", "Banana" })" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">MaxDisplayedTags = 3</SgTypography>
+                                        <SgMultiSelect TItem="string" TKey="string"
+                                                       @bind-Values="@_multiOverflow"
+                                                       Items="@_manyItems"
+                                                       KeySelector="s => s"
+                                                       Label="Many options"
+                                                       Placeholder="Select..."
+                                                       MaxDisplayedTags="3" />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">AutoFocus</SgTypography>
+                                        <SgMultiSelect TItem="string" TKey="string"
+                                                       @bind-Values="@_multiAF"
+                                                       Items="@_fruits"
+                                                       KeySelector="s => s"
+                                                       Label="Auto Focus"
+                                                       Placeholder="Open to auto-focus search..."
+                                                       AutoFocus="true" />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                        </SgCard>
+                        <SgCard Title="Sizes" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                                    Three sizes via <SgTypography As="SgTypographyElement.Code">Size</SgTypography>
+                                </SgTypography>
+                                <SgSpace Size="8px" />
+                                <SgMultiSelect TItem="string" TKey="string" Items="@_fruits" KeySelector="s => s" Label="Small" Size="SgSize.Sm" Placeholder="sm" />
+                                <SgMultiSelect TItem="string" TKey="string" Items="@_fruits" KeySelector="s => s" Label="Medium" Size="SgSize.Md" Placeholder="md" />
+                                <SgMultiSelect TItem="string" TKey="string" Items="@_fruits" KeySelector="s => s" Label="Large" Size="SgSize.Lg" Placeholder="lg" />
+                            </SgStack>
+                        </SgCard>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="SgMultiSelect Properties" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <PropertyTable Items="@_multiProps" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ── 3. SgComboBox ───────────────────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgComboBox</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Single-value select with an optional editable text input for filtering/searching.</SgTypography>
+            </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="8">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgCard Title="ComboBox Examples" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                            <SgRow Space="SgSize.Md">
+                                <SgCol Xs="12" Sm="6">
+                                    <SgComboBox TValue="string" @bind-Value="@_comboVal1" Items="@_fruits" Label="Standard" Placeholder="Pick one..." AllowClear="true" />
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgComboBox TValue="string" @bind-Value="@_comboVal2" Items="@_fruits" Label="Editable (search)" Placeholder="Type to filter..." Editable="true" />
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgComboBox TValue="string" Items="@_fruits" Label="Disabled" Disabled="true" Value="@("Apple")" />
+                                </SgCol>
+                                <SgCol Xs="12" Sm="6">
+                                    <SgComboBox TValue="string" Items="@_fruits" Label="With Hint" Placeholder="Pick..." Hint="Select your preference" />
+                                </SgCol>
+                            </SgRow>
+                            <SgSpace Size="SgSize.Sm" />
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">Selected values</SgTypography>
+                                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <SgBadge Text="Standard:" Variant="SgBadgeVariant.Muted" Standalone="true" Size="SgSize.Sm" />
+                                    <SgBadge Text="@(_comboVal1 ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                    <SgBadge Text="Editable:" Variant="SgBadgeVariant.Muted" Standalone="true" Size="SgSize.Sm" />
+                                    <SgBadge Text="@(_comboVal2 ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                </div>
+                            </SgStack>
+                        </SgCard>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="SgComboBox Properties" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <PropertyTable Items="@_comboProps" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ── 4. Extended (Ex) Components ─────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Extended Components (Ex)</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Multi-column dropdowns with headers, descriptions, and rich data for structured content.</SgTypography>
+            </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgMultiSelectEx" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgMultiSelectEx TItem="Employee" TKey="int"
+                                         Items="@_employees"
+                                         @bind-Values="@_selectedEmpIds"
+                                         KeySelector="e => e.Id"
+                                         LabelSelector="e => e.FirstName"
+                                         ColumnsSelector="@(e => (IEnumerable<string>)new[] { e.FirstName, e.LastName, e.Department.ToString() })"
+                                         ColumnNames="@(new[] { "Name", "Surname", "Department" })"
+                                         Label="Select Employees"
+                                         Placeholder="Type to search employees..." />
+                        <SgSpace Size="SgSize.Sm" />
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Bold" Color="var(--sg-text-muted)">Selected: @_selectedEmpIds.Count()</SgTypography>
+                            @if (_selectedEmpIds.Any())
+                            {
+                                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                    @foreach (var id in _selectedEmpIds)
+                                    {
+                                        var emp = _employees.FirstOrDefault(e => e.Id == id);
+                                        if (emp is not null)
+                                        {
+                                            <SgBadge Text="@($"{emp.FirstName} {emp.LastName}")" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                        }
+                                    }
+                                </div>
+                            }
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgComboBoxEx" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        @{
+                            var selEmp = _selectedEmpId.HasValue ? _employees.FirstOrDefault(e => e.Id == _selectedEmpId.Value) : null;
+                        }
+                        <SgComboBoxEx TItem="Employee" TKey="int?"
+                                      Items="@_employees"
+                                      @bind-Value="@_selectedEmpId"
+                                      KeySelector="e => (int?)e.Id"
+                                      LabelSelector="e => e.FirstName"
+                                      ColumnsSelector="@(e => (IEnumerable<string>)new[] { e.FirstName, e.LastName, e.Department.ToString() })"
+                                      ColumnNames="@(new[] { "Name", "Surname", "Department" })"
+                                      Label="Pick an Employee"
+                                      Placeholder="Type to search..."
+                                      AllowClear="true" />
+                        <SgSpace Size="SgSize.Sm" />
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                            Selected: @(selEmp is not null ? $"{selEmp.FirstName} {selEmp.LastName}" : "-")
+                        </SgTypography>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+            <SgSpace Size="SgSize.Md" />
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgMultiSelectEx Properties" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <PropertyTable Items="@_multiExProps" />
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgCard Title="SgComboBoxEx Properties" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <PropertyTable Items="@_comboExProps" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ── 5. Enum Support ─────────────────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Enum Support</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Pass <SgTypography As="SgTypographyElement.Code">EnumType</SgTypography> to auto-populate from any enum.
+                    Uses <SgTypography As="SgTypographyElement.Code">[Display]</SgTypography> / <SgTypography As="SgTypographyElement.Code">[Description]</SgTypography> attributes.
+                    <SgTypography As="SgTypographyElement.Code">EnumKeyMode</SgTypography> controls key format.
+                </SgTypography>
+            </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="SgSelect with Enum" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgSelect TValue="string"
+                                      @bind-Value="@_enumSelName"
+                                      EnumType="typeof(OrderStatus)"
+                                      Label="Status (key = Name)"
+                                      Placeholder="Select status..." />
+                            <SgBadge Text="@(_enumSelName ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" />
+
+                            <SgSelect TValue="string"
+                                      @bind-Value="@_enumSelInt"
+                                      EnumType="typeof(OrderStatus)"
+                                      EnumKeyMode="SgEnumKeyMode.IntValue"
+                                      Label="Status (key = IntValue)"
+                                      Placeholder="Select status..." />
+                            <SgBadge Text="@(_enumSelInt ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" />
+
+                            <SgSelect TValue="OrderStatus"
+                                      @bind-Value="@_enumSelTyped"
+                                      EnumType="typeof(OrderStatus)"
+                                      Label="Bound to OrderStatus enum"
+                                      Placeholder="Select status..." />
+                            <SgBadge Text="@_enumSelTyped.ToString()" Variant="SgBadgeVariant.Info" Standalone="true" />
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="SgComboBox with Enum" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgComboBox TValue="string"
+                                        @bind-Value="@_enumComboName"
+                                        EnumType="typeof(Priority)"
+                                        Label="Priority (key = Name)"
+                                        Placeholder="Select priority..."
+                                        Editable="true" />
+                            <SgBadge Text="@(_enumComboName ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" />
+
+                            <SgComboBox TValue="string"
+                                        @bind-Value="@_enumComboInt"
+                                        EnumType="typeof(Priority)"
+                                        EnumKeyMode="SgEnumKeyMode.IntValue"
+                                        Label="Priority (key = IntValue)"
+                                        Placeholder="Select priority..." />
+                            <SgBadge Text="@(_enumComboInt ?? "-")" Variant="SgBadgeVariant.Info" Standalone="true" />
+
+                            <SgComboBox TValue="Priority"
+                                        @bind-Value="@_enumComboTyped"
+                                        EnumType="typeof(Priority)"
+                                        Label="Bound to Priority enum"
+                                        Placeholder="Select priority..."
+                                        AllowClear="true" />
+                            <SgBadge Text="@_enumComboTyped.ToString()" Variant="SgBadgeVariant.Info" Standalone="true" />
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Md="4">
+                    <SgCard Title="SgMultiSelect with Enum" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgMultiSelect TItem="string" TKey="string"
+                                           @bind-Values="@_enumMultiName"
+                                           EnumType="typeof(Permission)"
+                                           Label="Permissions (key = Name)"
+                                           Placeholder="Select permissions..." />
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                @if (_enumMultiName.Any())
+                                {
+                                    @foreach (var p in _enumMultiName)
+                                    {
+                                        <SgBadge Text="@p" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                    }
+                                }
+                                else
+                                {
+                                    <SgBadge Text="-" Variant="SgBadgeVariant.Default" Standalone="true" />
+                                }
+                            </div>
+                            <SgSpace Size="SgSize.Sm" />
+                            <SgMultiSelect TItem="string" TKey="string"
+                                           @bind-Values="@_enumMultiInt"
+                                           EnumType="typeof(Permission)"
+                                           EnumKeyMode="SgEnumKeyMode.IntValue"
+                                           Label="Permissions (key = IntValue)"
+                                           Placeholder="Select permissions..." />
+                            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                @if (_enumMultiInt.Any())
+                                {
+                                    @foreach (var p in _enumMultiInt)
+                                    {
+                                        <SgBadge Text="@p" Variant="SgBadgeVariant.Info" Standalone="true" Size="SgSize.Sm" />
+                                    }
+                                }
+                                else
+                                {
+                                    <SgBadge Text="-" Variant="SgBadgeVariant.Default" Standalone="true" />
+                                }
+                            </div>
+                        </SgStack>
+                    </SgCard>
+                    <SgSpace Size="SgSize.Md" />
+                    <SgCard Title="Enum Parameters" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <PropertyTable Items="@_enumProps" />
+                    </SgCard>
+                </SgCol>
+            </SgRow>
+        </div>
+
+        @* ── 6. Live Constructor ─────────────────────────────────────────── *@
+        <div class="demo-section">
+            <SgCard>
+            <ChildContent>
+                <SgStack Vertical Space="SgSize.Md">
+                    <div class="demo-section-header">
+                        <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Live Constructor</SgTypography>
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Tweak parameters and see the generated markup in real time.</SgTypography>
                     </div>
-                    <SgSelect TValue="string" @bind-Value="@_selectValue2" Items="@_selectItems" Label="Обязательное поле" Placeholder="Выберите..." Required="true" />
-                    <SgSelect TValue="string" @bind-Value="@_selectValue3" Items="@_selectItems" Label="Отключённый"       Disabled="true" />
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Размеры <SgTypography As="SgTypographyElement.Code">Size</SgTypography></SgTypography>
-                    <div class="demo-flex-row" style="flex-wrap:wrap;gap:8px;align-items:start;">
-                        <SgSelect TValue="string" Label="Small" Size="SgSize.Sm" Items="@_selectItems" Placeholder="sm" />
-                        <SgSelect TValue="string" Label="Medium" Size="SgSize.Md" Items="@_selectItems" Placeholder="md" />
-                        <SgSelect TValue="string" Label="Large" Size="SgSize.Lg" Items="@_selectItems" Placeholder="lg" />
-                    </div>
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)"><SgTypography As="SgTypographyElement.Code">AutoFocus</SgTypography> — фокус при загрузке</SgTypography>
-                    <SgSelect TValue="string" @bind-Value="@_selectFocusValue" Items="@_selectItems" Label="Автофокус" AutoFocus="true" Placeholder="Автофокус..." AllowClear="true" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Выбрано (AutoFocus)</span>
-                        <span class="demo-value-display-value">@(_selectFocusValue ?? "—")</span>
-                    </div>
-                </div>
-            </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_selectProperties" />
+
+                    <SgRow Space="SgSize.Md">
+                        @* Controls *@
+                        <SgCol Xs="12" Md="5" Style="padding:16px;">
+                            <SgStack Vertical Space="SgSize.Md">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Controls</SgTypography>
+
+                                <div class="ctrl-summary">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                            <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorSize.ToString()" Standalone="true" />
+                                        </SgStack>
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">AllowClear</SgTypography>
+                                            <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorAllowClear.ToString()" Standalone="true" />
+                                        </SgStack>
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">ShowSearch</SgTypography>
+                                            <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorSearch.ToString()" Standalone="true" />
+                                        </SgStack>
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                            <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorDisabled.ToString()" Standalone="true" />
+                                        </SgStack>
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Required</SgTypography>
+                                            <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorRequired.ToString()" Standalone="true" />
+                                        </SgStack>
+                                    </SgStack>
+                                </div>
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                                <SgSegmented TValue="SgSize" Value="@_ctorSize" ValueChanged="v => { _ctorSize = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="@_sizeSegOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">AllowClear</SgTypography>
+                                <SgSegmented TValue="bool" Value="@_ctorAllowClear" ValueChanged="v => { _ctorAllowClear = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="@_boolSegOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowSearch</SgTypography>
+                                <SgSegmented TValue="bool" Value="@_ctorSearch" ValueChanged="v => { _ctorSearch = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="@_boolSegOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                <SgSegmented TValue="bool" Value="@_ctorDisabled" ValueChanged="v => { _ctorDisabled = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="@_boolSegOpts" />
+
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Required</SgTypography>
+                                <SgSegmented TValue="bool" Value="@_ctorRequired" ValueChanged="v => { _ctorRequired = v; UpdateCtorCode(); }" Block="true" Size="sm" Options="@_boolSegOpts" />
+                            </SgStack>
+                        </SgCol>
+
+                        @* Preview + Code *@
+                        <SgCol Xs="12" Md="7" Style="padding:24px;">
+                            <SgStack Vertical Space="SgSize.Lg">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Preview</SgTypography>
+                                    </div>
+                                    <div class="constructor-preview">
+                                        <SgSelect TValue="string"
+                                                  Size="@_ctorSize"
+                                                  AllowClear="@_ctorAllowClear"
+                                                  ShowSearch="@_ctorSearch"
+                                                  Disabled="@_ctorDisabled"
+                                                  Required="@_ctorRequired"
+                                                  Items="@_fruits"
+                                                  Label="Live Select"
+                                                  Placeholder="Configure me..." />
+                                    </div>
+                                </SgStack>
+
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <div style="display:flex;align-items:center;justify-content:space-between;">
+                                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                        <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCtorCode">
+                                            <span id="ctor-copy-icon">@_copyIcon</span>
+                                            <span id="ctor-copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                        </button>
+                                    </div>
+                                    <div class="code-block" id="ctor-code-block">
+                                        @foreach (var line in _ctorCodeLines)
+                                        {
+                                            <code>@line</code>
+                                        }
+                                    </div>
+                                </SgStack>
+                            </SgStack>
+                        </SgCol>
+                    </SgRow>
+                </SgStack>
+            </ChildContent>
             </SgCard>
         </div>
-    </div>
 
-    @* ── SgMultiSelect ────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
-        <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgMultiSelect</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
+        @* ── 7. Code Examples ────────────────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Code Examples</SgTypography>
+            </div>
+            <SgStack Vertical Space="SgSize.Md">
+                <DemoCodeBlock Code="@_basicSelectCode" Title="SgSelect basic usage" />
+                <DemoCodeBlock Code="@_multiSelectCode" Title="SgMultiSelect with tags" />
+                <DemoCodeBlock Code="@_comboBoxCode" Title="SgComboBox with search" />
+                <DemoCodeBlock Code="@_exCode" Title="SgMultiSelectEx with multi-column" />
+                <DemoCodeBlock Code="@_enumCode" Title="Enum support example" />
+            </SgStack>
         </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Компонент для выбора нескольких значений из списка.</SgTypography>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="@_multiValues"
-                                   Items="@_selectItems"
-                                   KeySelector="s => s"
-                                   Label="Выберите несколько"
-                                   Placeholder="Выберите..." />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Выбрано</span>
-                        <span class="demo-value-display-value">@(_multiValues.Any() ? string.Join(", ", _multiValues) : "—")</span>
-                    </div>
-
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="@_multiValuesClear"
-                                   Items="@_selectItems"
-                                   KeySelector="s => s"
-                                   Label="С очисткой (AllowClear)"
-                                   Placeholder="Выберите..."
-                                   AllowClear="true" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Выбрано (AllowClear)</span>
-                        <span class="demo-value-display-value">@(_multiValuesClear.Any() ? string.Join(", ", _multiValuesClear) : "—")</span>
-                    </div>
-
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="@_multiValues2"
-                                   Items="@_selectItems"
-                                   KeySelector="s => s"
-                                   Label="Отключённый"
-                                   Disabled="true" />
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Размеры <SgTypography As="SgTypographyElement.Code">Size</SgTypography></SgTypography>
-                    <div class="demo-flex-row" style="flex-wrap:wrap;gap:8px;align-items:start;">
-                        <SgMultiSelect TItem="string" TKey="string" Items="@_selectItems" KeySelector="s => s" Label="Small" Size="SgSize.Sm" Placeholder="sm" />
-                        <SgMultiSelect TItem="string" TKey="string" Items="@_selectItems" KeySelector="s => s" Label="Medium" Size="SgSize.Md" Placeholder="md" />
-                        <SgMultiSelect TItem="string" TKey="string" Items="@_selectItems" KeySelector="s => s" Label="Large" Size="SgSize.Lg" Placeholder="lg" />
-                    </div>
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)"><SgTypography As="SgTypographyElement.Code">MaxDisplayedTags</SgTypography> — "+N more" при превышении</SgTypography>
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="@_multiOverflow"
-                                   Items="@_manyItems"
-                                   KeySelector="s => s"
-                                   Label="Много значений"
-                                   Placeholder="Выберите..."
-                                   MaxDisplayedTags="3" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Выбрано</span>
-                        <span class="demo-value-display-value">@(_multiOverflow.Any() ? string.Join(", ", _multiOverflow) : "—")</span>
-                    </div>
-                    <SgDivider />
-                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)"><SgTypography As="SgTypographyElement.Code">AutoFocus</SgTypography> + Select All</SgTypography>
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="@_multiAutoFocus"
-                                   Items="@_selectItems"
-                                   KeySelector="s => s"
-                                   Label="Автофокус + Select All"
-                                   Placeholder="Откройте и нажмите Select All..."
-                                   AutoFocus="true"
-                                   AllowClear="true" />
-                    <div class="demo-value-display">
-                        <span class="demo-value-display-label">Выбрано (AutoFocus)</span>
-                        <span class="demo-value-display-value">@(_multiAutoFocus.Any() ? string.Join(", ", _multiAutoFocus) : "—")</span>
-                    </div>
-                </div>
-            </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_multiSelectProperties" />
-            </SgCard>
+        @* ── Enum Reference ──────────────────────────────────────────────── *@
+        <div class="demo-section">
+            <div class="demo-section-header">
+                <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Bold">Enum Reference</SgTypography>
+            </div>
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Sm="6" Md="4">
+                    <SgCard Title="OrderStatus" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            @foreach (var s in Enum.GetValues<OrderStatus>())
+                            {
+                                <SgTypography Size="SgTypographySize.Sm">@s</SgTypography>
+                            }
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Sm="6" Md="4">
+                    <SgCard Title="Priority" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            @foreach (var p in Enum.GetValues<Priority>())
+                            {
+                                <SgTypography Size="SgTypographySize.Sm">@p</SgTypography>
+                            }
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+                <SgCol Xs="12" Sm="6" Md="4">
+                    <SgCard Title="DepartmentType" Size="SgSize.Sm" Shadow="SgShadow.Sm">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            @foreach (var d in Enum.GetValues<DepartmentType>())
+                            {
+                                <SgTypography Size="SgTypographySize.Sm">@d</SgTypography>
+                            }
+                        </SgStack>
+                    </SgCard>
+                </SgCol>
+            </SgRow>
         </div>
-    </div>
 
-    @* ── Extended components ──────────────────────────────────────── *@
-    <div class="sgc-demo-section">
-        <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">Расширенные компоненты выбора (Ex)</SgTypography>
-        </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Компоненты с поддержкой множества колонок, поиска и гибкого расположения меток.</SgTypography>
-
-        <div class="demo-flex-col">
-            <SgCard Title="SgMultiSelectEx & SgComboBoxEx">
-                <div class="demo-flex-col">
-                    <SgMultiSelectEx TItem="Employee" TKey="int"
-                                     Items="@_employees"
-                                     @bind-Values="@_selectedEmployeeIds"
-                                     KeySelector="e => e.Id"
-                                     LabelSelector="e => e.FirstName"
-                                     ColumnsSelector="@(e => (IEnumerable<string>)new[] { e.FirstName, e.LastName, e.Department.ToString() })"
-                                     ColumnNames="@(new[] { "Имя", "Фамилия", "Отдел" })"
-                                     Label="Множественный выбор"
-                                     Placeholder="Выберите сотрудников..." />
-
-                    <SgComboBoxEx TItem="Employee" TKey="int?"
-                                   Items="@_employees"
-                                   @bind-Value="@_selectedEmployeeId"
-                                   KeySelector="e => (int?)e.Id"
-                                   LabelSelector="e => e.FirstName"
-                                   ColumnsSelector="@(e => (IEnumerable<string>)new[] { e.FirstName, e.LastName, e.Department.ToString() })"
-                                   ColumnNames="@(new[] { "Имя", "Фамилия", "Отдел" })"
-                                   Label="Одиночный выбор (Ex)"
-                                   Placeholder="Выберите одного сотрудника..."
-                                   AllowClear="true" />
-                </div>
-            </SgCard>
-
-            <SgCard Title="Расположение меток (LabelPosition)">
-                <div class="demo-grid-two-col">
-                    <div class="demo-flex-col">
-                        <SgTextBox TValue="string" Label="Метка сверху" LabelPosition="SgLabelPosition.Top" Placeholder="Введите текст..." />
-                        <SgTextBox TValue="string" Label="Метка слева" LabelPosition="SgLabelPosition.Left" Placeholder="Введите текст..." />
-                    </div>
-                    <div class="demo-flex-col">
-                        <SgTextBox TValue="string" Label="Метка справа" LabelPosition="SgLabelPosition.Right" Placeholder="Введите текст..." />
-                        <SgSelect TValue="string" Label="Селект слева" LabelPosition="SgLabelPosition.Left" Items="@_selectItems" Placeholder="Выберите..." />
-                    </div>
-                </div>
-            </SgCard>
-        </div>
-    </div>
-
-    @* ── Enum support ─────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
-        <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">Enum-поддержка</SgTypography>
-        </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">
-            Параметр <SgTypography As="SgTypographyElement.Code">EnumType</SgTypography> автоматически заполняет список из любого enum.
-            Атрибуты <SgTypography As="SgTypographyElement.Code">[Display]</SgTypography> и <SgTypography As="SgTypographyElement.Code">[Description]</SgTypography> используются как метки.
-            <SgTypography As="SgTypographyElement.Code">EnumKeyMode</SgTypography> определяет, что хранится как ключ — имя члена или целочисленное значение.
-        </SgTypography>
-
-        <div class="demo-grid-two-col">
-            <SgCard Title="SgSelect — из enum">
-                <div class="demo-flex-col">
-                    <SgSelect TValue="string"
-                              @bind-Value="_enumSelectName"
-                              EnumType="typeof(OrderStatus)"
-                              Label="Статус заказа (ключ = Name)"
-                              Placeholder="Выберите статус..."
-                              AllowClear="true" />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Выбрано: @(_enumSelectName ?? "—")</SgTypography>
-
-                    <SgSelect TValue="string"
-                              @bind-Value="_enumSelectInt"
-                              EnumType="typeof(OrderStatus)"
-                              EnumKeyMode="SgEnumKeyMode.IntValue"
-                              Label="Статус заказа (ключ = IntValue)"
-                              Placeholder="Выберите статус..."
-                              AllowClear="true" />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Выбрано: @(_enumSelectInt ?? "—")</SgTypography>
-
-                    <SgSelect TValue="OrderStatus"
-                              @bind-Value="_enumSelectTyped"
-                              EnumType="typeof(OrderStatus)"
-                              Label="Привязка к типу enum (OrderStatus)"
-                              Placeholder="Выберите статус..."
-                              AllowClear="true" />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Выбрано: @_enumSelectTyped</SgTypography>
-                </div>
-            </SgCard>
-
-            <SgCard Title="SgComboBox — из enum (с поиском)">
-                <div class="demo-flex-col">
-                    <SgComboBox TValue="string"
-                                @bind-Value="_enumComboName"
-                                EnumType="typeof(Priority)"
-                                Label="Приоритет (ключ = Name)"
-                                Placeholder="Выберите приоритет..."
-                                Editable="true" />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Выбрано: @(_enumComboName ?? "—")</SgTypography>
-
-                    <SgComboBox TValue="string"
-                                @bind-Value="_enumComboInt"
-                                EnumType="typeof(Priority)"
-                                EnumKeyMode="SgEnumKeyMode.IntValue"
-                                Label="Приоритет (ключ = IntValue)"
-                                Placeholder="Выберите приоритет..."
-                                Editable="true" />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Выбрано: @(_enumComboInt ?? "—")</SgTypography>
-
-                    <SgComboBox TValue="Priority"
-                                @bind-Value="_enumComboTyped"
-                                EnumType="typeof(Priority)"
-                                Label="Привязка к типу enum (Priority)"
-                                Placeholder="Выберите приоритет..."
-                                AllowClear="true" />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Выбрано: @_enumComboTyped</SgTypography>
-                </div>
-            </SgCard>
-
-            <SgCard Title="SgMultiSelect — из enum">
-                <div class="demo-flex-col">
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="_enumMultiName"
-                                   EnumType="typeof(Permission)"
-                                   Label="Права доступа (ключ = Name)"
-                                   Placeholder="Выберите права..." />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                        Выбрано: @(string.Join(", ", _enumMultiName.Any() ? _enumMultiName : new[] { "—" }))
-                    </SgTypography>
-
-                    <SgMultiSelect TItem="string" TKey="string"
-                                   @bind-Values="_enumMultiInt"
-                                   EnumType="typeof(Permission)"
-                                   EnumKeyMode="SgEnumKeyMode.IntValue"
-                                   Label="Права доступа (ключ = IntValue)"
-                                   Placeholder="Выберите права..." />
-                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
-                        Выбрано: @(string.Join(", ", _enumMultiInt.Any() ? _enumMultiInt : new[] { "—" }))
-                    </SgTypography>
-                </div>
-            </SgCard>
-
-            <SgCard Title="Параметры EnumType">
-                <PropertyTable Items="_enumProperties" />
-            </SgCard>
-        </div>
-    </div>
-
+    </SgStack>
+</ChildContent>
 </SgCard>
 
 <style>
-    .sgc-card-flush > .sgc-card-body {
-        padding: 0 24px 24px;
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 72px;
+        transition: all 0.3s ease;
     }
-    @@media (max-width: 640px) {
-        .sgc-card-flush > .sgc-card-body {
-            padding: 0 12px 12px;
-        }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
     }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-color-primary);
+        border-color: var(--sg-color-primary);
+        background: color-mix(in srgb, var(--sg-color-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active { transform: scale(0.95); }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+    @@media (max-width: 640px) { .demo-section { margin-top: 32px; } }
 </style>
 
 @code {
-    // Select
-    private string? _selectValue;
-    private string? _selectValue2;
-    private string? _selectValue3;
-    private string? _selectFocusValue;
-    private List<string> _selectItems = new() { "Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4" };
+    // ── Data ───────────────────────────────────────────────────────────────
+    private List<string> _fruits = new() { "Apple", "Banana", "Cherry", "Grape", "Kiwi", "Lemon", "Mango", "Orange", "Peach", "Pear", "Plum", "Strawberry" };
+    private List<string> _manyItems = new() { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5", "Item 6", "Item 7", "Item 8", "Item 9", "Item 10" };
 
-    // MultiSelect
-    private IEnumerable<string> _multiValues = new List<string>();
-    private IEnumerable<string> _multiValuesClear = new List<string> { "Вариант 1", "Вариант 2" };
-    private IEnumerable<string> _multiValues2 = new List<string> { "Вариант 1", "Вариант 3" };
-    private IEnumerable<string> _multiOverflow = new List<string> { "Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4" };
-    private IEnumerable<string> _multiAutoFocus = new List<string>();
-    private List<string> _manyItems = new() { "Вариант 1", "Вариант 2", "Вариант 3", "Вариант 4", "Вариант 5", "Вариант 6", "Вариант 7" };
+    private string? _selectVal1;
+    private string? _selectReq;
+    private string? _selectNoClear;
 
-    // MultiSelectEx
+    private IEnumerable<string> _multiVals = new List<string>();
+    private IEnumerable<string> _multiClear = new List<string> { "Apple", "Banana" };
+    private IEnumerable<string> _multiOverflow = new List<string> { "Item 1", "Item 2", "Item 3", "Item 4", "Item 5" };
+    private IEnumerable<string> _multiAF = new List<string>();
+
+    private string? _comboVal1;
+    private string? _comboVal2;
+
     private List<Employee> _employees = new();
-    private IEnumerable<int> _selectedEmployeeIds = new List<int>();
-    private int? _selectedEmployeeId;
+    private IEnumerable<int> _selectedEmpIds = new List<int>();
+    private int? _selectedEmpId;
+
+    private string? _enumSelName;
+    private string? _enumSelInt;
+    private OrderStatus _enumSelTyped;
+    private string? _enumComboName;
+    private string? _enumComboInt;
+    private Priority _enumComboTyped;
+    private IEnumerable<string> _enumMultiName = new List<string>();
+    private IEnumerable<string> _enumMultiInt = new List<string>();
+
+    // ── Constructor state ──────────────────────────────────────────────────
+    private SgSize _ctorSize = SgSize.Md;
+    private bool _ctorAllowClear = true;
+    private bool _ctorSearch = true;
+    private bool _ctorDisabled;
+    private bool _ctorRequired;
+    private string[] _ctorCodeLines = Array.Empty<string>();
+    private string _copyIcon = "\U0001f4cb";
+    private string _copyLabel = "Copy";
+
+    private readonly List<SgSegmentedOption<SgSize>> _sizeSegOpts = new()
+    {
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
+    };
+    private readonly List<SgSegmentedOption<bool>> _boolSegOpts = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
 
     protected override void OnInitialized()
     {
         _employees = new List<Employee>
         {
-            new() { Id = 1, FirstName = "Иван", LastName = "Иванов", Department = DepartmentType.Engineering },
-            new() { Id = 2, FirstName = "Петр", LastName = "Петров", Department = DepartmentType.HR },
-            new() { Id = 3, FirstName = "Сергей", LastName = "Сидоров", Department = DepartmentType.Marketing },
-            new() { Id = 4, FirstName = "Алексей", LastName = "Алексеев", Department = DepartmentType.Engineering },
-            new() { Id = 5, FirstName = "Дмитрий", LastName = "Дмитриев", Department = DepartmentType.Product }
+            new() { Id = 1, FirstName = "Ivan",   LastName = "Ivanov",    Department = DepartmentType.Engineering },
+            new() { Id = 2, FirstName = "Petr",   LastName = "Petrov",    Department = DepartmentType.HR },
+            new() { Id = 3, FirstName = "Sergey", LastName = "Sidorov",   Department = DepartmentType.Marketing },
+            new() { Id = 4, FirstName = "Alexey", LastName = "Alexeev",   Department = DepartmentType.Engineering },
+            new() { Id = 5, FirstName = "Dmitry", LastName = "Dmitriev",  Department = DepartmentType.Product },
+            new() { Id = 6, FirstName = "Elena",  LastName = "Egorova",   Department = DepartmentType.Design },
         };
+        UpdateCtorCode();
     }
 
-    // Enum-bound values
-    private string? _enumSelectName;
-    private string? _enumSelectInt;
-    private OrderStatus _enumSelectTyped;
-
-    private string? _enumComboName;
-    private string? _enumComboInt;
-    private Priority _enumComboTyped;
-
-    private IEnumerable<string> _enumMultiName = new List<string>();
-    private IEnumerable<string> _enumMultiInt  = new List<string>();
-
-    private List<PropertyPanelItem> _selectProperties = new()
+    private void UpdateCtorCode()
     {
-        new() { Label = "Value", Value = "TValue", BadgeText = "Значение", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Items", Value = "IEnumerable&lt;TValue&gt;", BadgeText = "Элементы", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Placeholder", Value = "string", BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "LabelSelector", Value = "Func&lt;TValue, string&gt;", BadgeText = "Метка элемента", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AllowClear", Value = "bool", BadgeText = "Очистить", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Required", Value = "bool", BadgeText = "Обязательное", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Размер", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AutoFocus", Value = "bool", BadgeText = "Автофокус", BadgeVariant = SgBadgeVariant.Warn }
+        var lines = new List<string>();
+        lines.Add("<SgSelect TValue=\"string\"");
+        lines.Add($"         Size=\"SgSize.{_ctorSize}\"");
+        lines.Add($"         AllowClear=\"{_ctorAllowClear.ToString().ToLowerInvariant()}\"");
+        if (!_ctorSearch)
+            lines.Add($"         ShowSearch=\"{_ctorSearch.ToString().ToLowerInvariant()}\"");
+        if (_ctorDisabled)
+            lines.Add($"         Disabled=\"true\"");
+        if (_ctorRequired)
+            lines.Add($"         Required=\"true\"");
+        lines.Add("         Items=\"@_fruits\"");
+        lines.Add("         Label=\"Live Select\"");
+        lines.Add("         Placeholder=\"Configure me...\" />");
+        _ctorCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCtorCode()
+    {
+        var code = string.Join("\n", _ctorCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "\u2713";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "\U0001f4cb";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "\u2717";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "\U0001f4cb";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ────────────────────────────────────────────────────
+    private List<PropertyPanelItem> _selectProps = new()
+    {
+        new() { Label = "Value / ValueChanged", Value = "TValue?", BadgeText = "Selected", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Items", Value = "IEnumerable&lt;TValue&gt;", BadgeText = "Source", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "EnumType", Value = "Type?", BadgeText = "Enum", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "EnumKeyMode", Value = "Name | IntValue", BadgeText = "Enum Key", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Label / Placeholder", Value = "string?", BadgeText = "Display", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "LabelSelector / ValueSelector", Value = "Func", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AllowClear / Required / Disabled", Value = "bool", BadgeText = "State", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowSearch", Value = "bool = true", BadgeText = "Search", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AutoFocus", Value = "bool", BadgeText = "Focus", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Hint / ErrorText", Value = "string?", BadgeText = "Feedback", BadgeVariant = SgBadgeVariant.Default },
     };
 
-    private List<PropertyPanelItem> _multiSelectProperties = new()
+    private List<PropertyPanelItem> _multiProps = new()
     {
-        new() { Label = "Values", Value = "IEnumerable&lt;TValue&gt;", BadgeText = "Значения", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Items", Value = "IEnumerable&lt;TValue&gt;", BadgeText = "Элементы", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Placeholder", Value = "string", BadgeText = "Подсказка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "LabelSelector", Value = "Func&lt;TValue, string&gt;", BadgeText = "Метка элемента", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Размер", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "AllowClear", Value = "bool", BadgeText = "Очистить", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "MaxDisplayedTags", Value = "int", BadgeText = "Макс. тегов", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "AutoFocus", Value = "bool", BadgeText = "Автофокус", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "SearchDebounceMs", Value = "int (300)", BadgeText = "Задержка поиска", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Required", Value = "bool", BadgeText = "Обязательное", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = SgBadgeVariant.Warn }
+        new() { Label = "Values / ValuesChanged", Value = "IEnumerable&lt;TKey&gt;?", BadgeText = "Selected", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Items", Value = "IEnumerable&lt;TItem&gt;", BadgeText = "Source", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "KeySelector", Value = "Func&lt;TItem, TKey&gt;", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "LabelSelector", Value = "Func&lt;TItem, string&gt;?", BadgeText = "Display", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "EnumType / EnumKeyMode", Value = "Type?", BadgeText = "Enum", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Placeholder / EmptyText", Value = "string?", BadgeText = "Text", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AllowClear / Required / Disabled", Value = "bool", BadgeText = "State", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxDisplayedTags", Value = "int = 10", BadgeText = "Tags", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AutoFocus", Value = "bool", BadgeText = "Focus", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "SearchDebounceMs", Value = "int = 300", BadgeText = "Debounce", BadgeVariant = SgBadgeVariant.Default },
     };
 
-    private List<PropertyPanelItem> _enumProperties = new()
+    private List<PropertyPanelItem> _comboProps = new()
     {
-        new() { Label = "EnumType",    Value = "Type?",          BadgeText = "Тип enum",          BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "EnumKeyMode", Value = "Name | IntValue", BadgeText = "Ключ",              BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "[Display]",   Value = "Name, Description, GroupName, Order", BadgeText = "Атрибут", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "[Description]", Value = "string",       BadgeText = "Атрибут",           BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "TValue",      Value = "string | int | TEnum", BadgeText = "Тип значения", BadgeVariant = SgBadgeVariant.Info   },
+        new() { Label = "Value / ValueChanged", Value = "TValue?", BadgeText = "Selected", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Items", Value = "IEnumerable&lt;TValue&gt;", BadgeText = "Source", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "EnumType / EnumKeyMode", Value = "Type?", BadgeText = "Enum", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Editable", Value = "bool", BadgeText = "Search", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowClear / Required / Disabled", Value = "bool", BadgeText = "State", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Placeholder / EmptyText", Value = "string?", BadgeText = "Text", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Label / LabelPosition", Value = "string?", BadgeText = "Label", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Hint / ErrorText", Value = "string?", BadgeText = "Feedback", BadgeVariant = SgBadgeVariant.Default },
     };
+
+    private List<PropertyPanelItem> _multiExProps = new()
+    {
+        new() { Label = "Values / ValuesChanged", Value = "IEnumerable&lt;TKey&gt;?", BadgeText = "Selected", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Items", Value = "IEnumerable&lt;TItem&gt;", BadgeText = "Source", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "KeySelector", Value = "Func&lt;TItem, TKey&gt;", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "LabelSelector", Value = "Func&lt;TItem, string&gt;?", BadgeText = "Display", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ColumnsSelector", Value = "Func&lt;TItem, IEnumerable&lt;string&gt;&gt;?", BadgeText = "Columns", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ColumnNames", Value = "string[]?", BadgeText = "Headers", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "DescriptionSelector", Value = "Func&lt;TItem, string&gt;?", BadgeText = "Subtext", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AllowClear / Disabled", Value = "bool", BadgeText = "State", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxDisplayedTags", Value = "int = 10", BadgeText = "Tags", BadgeVariant = SgBadgeVariant.Warn },
+    };
+
+    private List<PropertyPanelItem> _comboExProps = new()
+    {
+        new() { Label = "Value / ValueChanged", Value = "TKey?", BadgeText = "Selected", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Items", Value = "IEnumerable&lt;TItem&gt;", BadgeText = "Source", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "KeySelector", Value = "Func&lt;TItem, TKey&gt;", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "LabelSelector", Value = "Func&lt;TItem, string&gt;?", BadgeText = "Display", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ColumnsSelector / ColumnNames", Value = "?", BadgeText = "Multi-col", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "DescriptionSelector", Value = "Func&lt;TItem, string&gt;?", BadgeText = "Subtext", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Editable / AllowClear", Value = "bool", BadgeText = "Features", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private List<PropertyPanelItem> _enumProps = new()
+    {
+        new() { Label = "EnumType", Value = "Type?", BadgeText = "Enum", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "EnumKeyMode", Value = "Name | IntValue", BadgeText = "Key", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "[Display]", Value = "Name, Description, GroupName, Order", BadgeText = "Attr", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "[Description]", Value = "string", BadgeText = "Attr", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "TValue / TKey", Value = "string | int | TEnum", BadgeText = "Type", BadgeVariant = SgBadgeVariant.Info },
+    };
+
+    private string _basicSelectCode => @"<SgSelect TValue=""string""
+          @bind-Value=""_fruit""
+          Items=""@_fruits""
+          Label=""Favorite Fruit""
+          Placeholder=""Choose a fruit..."" />";
+
+    private string _multiSelectCode => @"<SgMultiSelect TItem=""string"" TKey=""string""
+               @bind-Values=""_selected""
+               Items=""@_fruits""
+               KeySelector=""s => s""
+               Label=""Pick your fruits""
+               Placeholder=""Select fruits..."" />";
+
+    private string _comboBoxCode => @"<SgComboBox TValue=""string""
+          @bind-Value=""_item""
+          Items=""@_fruits""
+          Label=""Searchable""
+          Placeholder=""Type to filter...""
+          Editable=""true"" />";
+
+    private string _exCode => @"<SgMultiSelectEx TItem=""Employee"" TKey=""int""
+                 Items=""@_employees""
+                 @bind-Values=""_selected""
+                 KeySelector=""e => e.Id""
+                 LabelSelector=""e => e.FirstName""
+                 ColumnsSelector=""@(e => new[] { e.FirstName, e.LastName })""
+                 ColumnNames=""@(new[] { ""Name"", ""Surname"" })"" />";
+
+    private string _enumCode => @"<SgSelect TValue=""string""
+          @bind-Value=""_status""
+          EnumType=""typeof(OrderStatus)""
+          Label=""Status""
+          Placeholder=""Select status..."" />";
 }

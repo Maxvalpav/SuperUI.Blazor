@@ -4,13 +4,14 @@
 @using System.Linq.Expressions
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass" style="@Style">
+<div class="sgc-field @(Block ? "sgc-block" : "") @SizeClass @CssClass @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "")" style="@Style">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="sgc-combo @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(Dropup ? "sgc-dropup" : "") @(Compact ? "sgc-compact" : "") @(FloatingLabel ? "sgc-floating-label" : "") @(ShowClearOnHover ? "sgc-clear-hover" : "")"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
@@ -21,10 +22,10 @@
          aria-describedby="@DescribedBy"
          tabindex="@(Disabled ? "-1" : "0")"
          @onfocusout="HandleFocusOutAsync"
-         @onkeydown="@((!Editable || !_open) ? EventCallback.Factory.Create<KeyboardEventArgs>(this, OnKeyDownAsync) : default)"
+         @onkeydown="OnKeyDownAsync"
          @onclick:stopPropagation="true"
          @attributes="AdditionalAttributes">
-        <div class="sgc-combo-control" @onclick="ToggleAsync">
+        <div class="sgc-combo-control" @onclick="ToggleAsync" @ref="_comboRef">
             @if (Editable && _open)
             {
                 <input class="sgc-combo-input"
@@ -34,15 +35,32 @@
                        aria-controls="@_listboxId"
                        @oninput="OnSearchInput"
                        @onkeydown="OnKeyDownAsync"
-                       @onclick:stopPropagation="true" />
+                       @onfocus="HandleInputFocus"
+                       @onclick:stopPropagation="true"
+                       @ref="_searchInput" />
             }
             else if (Value is not null)
             {
-                <span class="sgc-combo-value">@LabelFrom(Value!)</span>
+                if (!string.IsNullOrEmpty(PrefixText))
+                {
+                    <span class="sgc-combo-prefix">@PrefixText</span>
+                }
+                @if (SelectedTemplate is not null)
+                {
+                    <span class="sgc-combo-value sgc-combo-value-custom">@SelectedTemplate(Value!)</span>
+                }
+                else
+                {
+                    <span class="sgc-combo-value">@LabelFrom(Value!)</span>
+                }
+                if (!string.IsNullOrEmpty(SuffixText))
+                {
+                    <span class="sgc-combo-suffix">@SuffixText</span>
+                }
             }
             else
             {
-                <span class="sgc-combo-placeholder">@Placeholder</span>
+                <span class="sgc-combo-placeholder">@EffectivePlaceholder</span>
             }
             @if (AllowClear && Value is not null && !Disabled)
             {
@@ -51,36 +69,63 @@
                         @onclick="ClearAsync" 
                         type="button" 
                         aria-label="@ClearLabel"
-                        title="@ClearLabel">×</button>
+                        title="@ClearLabel">
+                    @((MarkupString)SgIcons.X)
+                </button>
             }
             <span class="sgc-combo-caret" aria-hidden="true">@((MarkupString)SgIcons.ChevronDown)</span>
         </div>
-        @if (_open)
+         @if (_open)
         {
-            <div id="@_listboxId" class="sgc-combo-menu" role="listbox">
-                @if (IsEnumMode)
+            var maxH = DropdownMaxHeight;
+            var menuStyle = maxH is not null ? $"max-height:{maxH}" : null;
+            <div id="@_listboxId" class="sgc-combo-menu" role="listbox"
+                 style="@menuStyle"
+                 @ref="_menuRef" @onscroll="OnMenuScrollAsync">
+                @if (DropdownHeader is not null)
+                {
+                    <div class="sgc-combo-menu-header">@DropdownHeader</div>
+                }
+                @if (_loading)
+                {
+                    <div class="sgc-combo-loading" role="status">
+                        <span class="sgc-spinner-sm"></span>
+                        @Localizer["Common_Loading"]
+                    </div>
+                }
+                else if (IsEnumMode)
                 {
                     var filteredEnum = GetFilteredEnumItems().ToList();
                     @if (filteredEnum.Count == 0)
                     {
-                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                        @EmptyOrNoResults()
                     }
                     else
                     {
+                        <div class="sgc-combo-options">
                         @for (var i = 0; i < filteredEnum.Count; i++)
                         {
                             var idx = i;
                             var ei = filteredEnum[idx];
                             var isSelected = IsEnumItemSelected(ei);
-                            <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
-                                 role="option"
-                                 aria-selected="@(isSelected ? "true" : "false")"
-                                 title="@ei.Description"
-                                 @onclick:stopPropagation="true"
-                                 @onclick="() => PickEnumAsync(ei)">
-                                @ei.Label
+                             <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
+                                  role="option"
+                                  aria-selected="@(isSelected ? "true" : "false")"
+                                  title="@ei.Description"
+                                  @onclick:stopPropagation="true"
+                                  @onclick="() => PickEnumAsync(ei)">
+                                @if (ItemTemplate is not null)
+                                {
+                                    @ItemTemplate((TValue)(object)ei.GetKey(EnumKeyMode))
+                                }
+                                else
+                                {
+                                    <span class="sgc-combo-option-check">@if (isSelected) { @((MarkupString)SgIcons.Check) }</span>
+                                    <span class="sgc-combo-option-label">@HighlightSearch(ei.Label)</span>
+                                }
                             </div>
                         }
+                        </div>
                     }
                 }
                 else
@@ -88,24 +133,82 @@
                     var filtered = GetFilteredItems().ToList();
                     @if (filtered.Count == 0)
                     {
-                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                        @EmptyOrNoResults()
                     }
                     else
                     {
-                        @for (var i = 0; i < filtered.Count; i++)
+                        var useVs = VirtualScroll && filtered.Count > 100;
+                        <div class="sgc-combo-options">
+                        @if (useVs)
                         {
-                            var idx = i;
-                            var it = filtered[idx];
-                            var isSelected = IsSelected(it);
-                            <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
-                                 role="option"
-                                 aria-selected="@(isSelected ? "true" : "false")"
-                                 @onclick:stopPropagation="true"
-                                 @onclick="() => PickAsync(it)">
-                                @LabelFrom(it)
-                            </div>
+                            var itemH = ItemEstimateHeight;
+                            var totalH = filtered.Count * itemH;
+                            var scrollT = _scrollTop;
+                            var viewEst = 320 / itemH + 10;
+                            var startIdx = Math.Max(0, (int)(scrollT / itemH) - 5);
+                            var endIdx = Math.Min(filtered.Count, startIdx + viewEst);
+                            if (startIdx > 0)
+                            {
+                                <div style="height:@(startIdx * itemH)px" aria-hidden="true"></div>
+                            }
+                            @for (var i = startIdx; i < endIdx; i++)
+                            {
+                                var it = filtered[i];
+                                var isSelected = IsSelected(it);
+                                var gIdx = i;
+                                <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(gIdx == _activeIndex ? "sgc-active" : "")"
+                                     role="option"
+                                     aria-selected="@(isSelected ? "true" : "false")"
+                                     title="@(OptionTooltipSelector?.Invoke(it) ?? null)"
+                                     @onclick:stopPropagation="true"
+                                     @onclick="() => PickAsync(it)">
+                                    @if (ItemTemplate is not null)
+                                    {
+                                        @ItemTemplate(it)
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-combo-option-check">@if (isSelected) { @((MarkupString)SgIcons.Check) }</span>
+                                        <span class="sgc-combo-option-label">@HighlightSearch(LabelFrom(it))</span>
+                                    }
+                                </div>
+                            }
+                            if (endIdx < filtered.Count)
+                            {
+                                <div style="height:@((filtered.Count - endIdx) * itemH)px" aria-hidden="true"></div>
+                            }
                         }
+                        else
+                        {
+                            @for (var i = 0; i < filtered.Count; i++)
+                            {
+                                var idx = i;
+                                var it = filtered[idx];
+                                var isSelected = IsSelected(it);
+                                <div class="sgc-combo-option @(isSelected ? "sgc-selected" : "") @(idx == _activeIndex ? "sgc-active" : "")"
+                                     role="option"
+                                     aria-selected="@(isSelected ? "true" : "false")"
+                                     title="@(OptionTooltipSelector?.Invoke(it) ?? null)"
+                                     @onclick:stopPropagation="true"
+                                     @onclick="() => PickAsync(it)">
+                                    @if (ItemTemplate is not null)
+                                    {
+                                        @ItemTemplate(it)
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-combo-option-check">@if (isSelected) { @((MarkupString)SgIcons.Check) }</span>
+                                        <span class="sgc-combo-option-label">@HighlightSearch(LabelFrom(it))</span>
+                                    }
+                                </div>
+                            }
+                        }
+                        </div>
                     }
+                }
+                @if (DropdownFooter is not null)
+                {
+                    <div class="sgc-combo-menu-footer">@DropdownFooter</div>
                 }
             </div>
         }
@@ -128,30 +231,37 @@
     private bool _open;
     private string _search = string.Empty;
     private int _activeIndex = -1;
+    private bool _focusInput;
+    private bool _loading;
+    private double _scrollTop;
+    private List<TValue>? _asyncItems;
     private SgEditContextBinder<TValue?>? _binder;
     private CancellationTokenSource? _blurCts;
+    private CancellationTokenSource? _searchCts;
+    private ElementReference _searchInput;
+    private ElementReference _comboRef;
+    private ElementReference _menuRef;
 
-    // enum support
     private List<SgEnumItem>? _enumItems;
     private Type? _lastEnumType;
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the expression that identifies the bound value for EditContext validation.
     /// </summary>
     [Parameter] public Expression<Func<TValue?>>? ValueExpression { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the currently selected value.
     /// </summary>
     [Parameter] public TValue? Value { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the callback invoked when the selected value changes.
     /// </summary>
     [Parameter] public EventCallback<TValue?> ValueChanged { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the collection of items to display in the dropdown.
     /// Ignored when <see cref="EnumType"/> is set.
@@ -170,63 +280,63 @@
     /// Only relevant when <see cref="EnumType"/> is set.
     /// </summary>
     [Parameter] public SgEnumKeyMode EnumKeyMode { get; set; } = SgEnumKeyMode.Name;
-    
+
     /// <summary>
     /// Gets or sets the function to extract display text from each item.
     /// If not specified, uses ToString() on the item (or the enum label when EnumType is set).
     /// </summary>
     [Parameter] public Func<TValue, string>? LabelSelector { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the placeholder text shown when no item is selected.
     /// </summary>
     [Parameter] public string? Placeholder { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the text displayed when no items match the search filter.
     /// </summary>
     [Parameter] public string? EmptyText { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the label text displayed above the combobox.
     /// </summary>
     [Parameter] public string? Label { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the hint text displayed below the combobox.
     /// </summary>
     [Parameter] public string? Hint { get; set; }
-    
+
     /// <summary>
     /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
     /// </summary>
     [Parameter] public string? ErrorText { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether a clear button is shown when an item is selected. Default is true.
     /// </summary>
     [Parameter] public bool AllowClear { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets whether the input is editable for filtering items. Default is true.
     /// </summary>
     [Parameter] public bool Editable { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets whether the combobox is required.
     /// </summary>
     [Parameter] public bool Required { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the combobox is disabled.
     /// </summary>
     [Parameter] public bool Disabled { get; set; }
-    
+
     /// <summary>
     /// Gets or sets whether the combobox should take full width of its container. Default is true.
     /// </summary>
     [Parameter] public bool Block { get; set; } = true;
-    
+
     /// <summary>
     /// Gets or sets additional CSS class names to apply to the field container.
     /// </summary>
@@ -236,6 +346,125 @@
     /// Gets or sets additional CSS styles to apply to the field container.
     /// </summary>
     [Parameter] public string? Style { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to automatically focus the combobox on first render.
+    /// </summary>
+    [Parameter] public bool AutoFocus { get; set; }
+
+    /// <summary>
+    /// Gets or sets the debounce delay in milliseconds for the search input. Default is 200.
+    /// </summary>
+    [Parameter] public int SearchDebounceMs { get; set; } = 200;
+
+    /// <summary>
+    /// Gets or sets the maximum height of the dropdown menu in CSS units (e.g. "300px", "50vh").
+    /// Default is null which uses the CSS default (320px).
+    /// </summary>
+    [Parameter] public string? DropdownMaxHeight { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom header rendered inside the dropdown before the options list.
+    /// </summary>
+    [Parameter] public RenderFragment? DropdownHeader { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom footer rendered inside the dropdown after the options list.
+    /// </summary>
+    [Parameter] public RenderFragment? DropdownFooter { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom template for the empty state (when no items match search).
+    /// If not set, the default localized "No matches" text is shown.
+    /// </summary>
+    [Parameter] public RenderFragment? NoResultsTemplate { get; set; }
+
+    /// <summary>
+    /// Gets or sets a custom template for rendering each option item.
+    /// The context is the item value. When set, replaces the default check + label rendering.
+    /// </summary>
+    [Parameter] public RenderFragment<TValue>? ItemTemplate { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether user can type custom values not present in Items.
+    /// Only works when TValue is string. Default is false.
+    /// </summary>
+    [Parameter] public bool CustomItemCreation { get; set; }
+
+    /// <summary>
+    /// When true, the dropdown opens upward instead of downward.
+    /// Useful when the combobox is near the bottom of the viewport.
+    /// </summary>
+    [Parameter] public bool Dropup { get; set; }
+
+    /// <summary>
+    /// When true, enables virtual scrolling for lists with many items (&gt;100).
+    /// Only the visible options are rendered, reducing DOM size.
+    /// </summary>
+    [Parameter] public bool VirtualScroll { get; set; }
+
+    /// <summary>
+    /// Estimated height in pixels of each option item. Used by virtual scrolling
+    /// to calculate the scrollable range. Default is 28.
+    /// </summary>
+    [Parameter] public int ItemEstimateHeight { get; set; } = 28;
+
+    /// <summary>
+    /// Callback invoked when the search text changes in async search mode.
+    /// The callback receives the search string and a cancellation token,
+    /// and should return the matching items. When set, client-side filtering
+    /// via <see cref="Items"/> is bypassed.
+    /// </summary>
+    [Parameter] public Func<string, CancellationToken, Task<IEnumerable<TValue>>>? OnSearch { get; set; }
+
+    /// <summary>
+    /// When true, renders the dropdown menu with fixed positioning to avoid
+    /// overflow / z-index clipping. Requires JS interop. Default is false.
+    /// </summary>
+    [Parameter] public bool UsePortal { get; set; }
+
+    /// <summary>
+    /// Custom template for rendering the selected value in the trigger area.
+    /// The context is the selected item value.
+    /// </summary>
+    [Parameter] public RenderFragment<TValue>? SelectedTemplate { get; set; }
+
+    /// <summary>Text displayed before the selected value inside the trigger.</summary>
+    [Parameter] public string? PrefixText { get; set; }
+
+    /// <summary>Text displayed after the selected value inside the trigger.</summary>
+    [Parameter] public string? SuffixText { get; set; }
+
+    /// <summary>
+    /// When true, the clear button is visible only on hover / focus.
+    /// </summary>
+    [Parameter] public bool ShowClearOnHover { get; set; }
+
+    /// <summary>
+    /// When true, applies compact sizing (smaller padding, font). Use with Size.Sm for best results.
+    /// </summary>
+    [Parameter] public bool Compact { get; set; }
+
+    /// <summary>
+    /// When true, the label floats above the trigger when a value is selected or the dropdown is open.
+    /// </summary>
+    [Parameter] public bool FloatingLabel { get; set; }
+
+    /// <summary>
+    /// When true, scrolls the dropdown to the currently selected item on open.
+    /// </summary>
+    [Parameter] public bool ScrollToSelected { get; set; }
+
+    /// <summary>
+    /// Size of the combobox: Sm, Md (default), Lg, or Xl.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Function that returns a tooltip string for each option item.
+    /// Return null for no tooltip.
+    /// </summary>
+    [Parameter] public Func<TValue, string?>? OptionTooltipSelector { get; set; }
 
     /// <summary>
     /// Gets or sets additional HTML attributes to apply to the combobox element.
@@ -252,9 +481,33 @@
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
 
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-field-sm",
+        SgSize.Lg => "sgc-field-lg",
+        SgSize.Xl => "sgc-field-xl",
+        _         => null
+    };
+
     // ── Enum support ──────────────────────────────────────────────────────────
 
     private bool IsEnumMode => _enumItems is not null;
+
+    private RenderFragment EmptyOrNoResults() => __builder =>
+    {
+        if (NoResultsTemplate is not null)
+        {
+            __builder.AddContent(0, NoResultsTemplate);
+        }
+        else
+        {
+            __builder.OpenElement(0, "div");
+            __builder.AddAttribute(1, "class", "sgc-combo-empty");
+            __builder.AddAttribute(2, "role", "status");
+            __builder.AddContent(3, EffectiveEmptyText);
+            __builder.CloseElement();
+        }
+    };
 
     protected override void OnInitialized()
     {
@@ -291,14 +544,14 @@
         return v?.ToString() ?? "";
     }
 
-    // Label from SgEnumItem directly (used in dropdown list)
     private string EnumItemLabel(SgEnumItem ei) => ei.Label;
 
     // ── Filtered items ────────────────────────────────────────────────────────
 
     private IEnumerable<TValue> GetFilteredItems()
     {
-        if (IsEnumMode) return Array.Empty<TValue>(); // handled separately
+        if (IsEnumMode) return Array.Empty<TValue>();
+        if (OnSearch is not null) return _asyncItems ?? Enumerable.Empty<TValue>();
         if (string.IsNullOrEmpty(_search)) return Items;
         return Items.Where(i =>
             LabelFrom(i).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
@@ -329,8 +582,13 @@
         if (Disabled) return;
         _blurCts?.Cancel();
         _open = !_open;
-        if (_open) { _search = string.Empty; _activeIndex = -1; }
+        if (_open) { _search = string.Empty; _activeIndex = -1; _scrollTop = 0; _focusInput = Editable; }
         await InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleInputFocus()
+    {
+        _blurCts?.Cancel();
     }
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
@@ -341,13 +599,11 @@
         try
         {
             await Task.Delay(200, token);
-            if (_open)
-            {
-                _open = false;
-                _search = string.Empty;
-                _activeIndex = -1;
-                await InvokeAsync(StateHasChanged);
-            }
+            _open = false;
+            _asyncItems = null;
+            _search = string.Empty;
+            _activeIndex = -1;
+            await InvokeAsync(StateHasChanged);
         }
         catch (TaskCanceledException) { }
     }
@@ -355,85 +611,166 @@
     private async Task CloseAsync()
     {
         _open = false;
+        _asyncItems = null;
         _search = string.Empty;
         _activeIndex = -1;
         await InvokeAsync(StateHasChanged);
     }
 
-    private Task OnSearchInput(ChangeEventArgs e)
+    // ── Search input ──────────────────────────────────────────────────────────
+
+    private async Task OnSearchInput(ChangeEventArgs e)
     {
+        _blurCts?.Cancel();
         _search = e.Value?.ToString() ?? string.Empty;
-        _activeIndex = 0;
-        
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = new CancellationTokenSource();
+        var token = _searchCts.Token;
+        var currentSearch = _search;
+        try
+        {
+            await Task.Delay(SearchDebounceMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                _search = currentSearch;
+
+                if (OnSearch is not null && !IsEnumMode)
+                {
+                    _loading = true;
+                    _asyncItems = null;
+                    await InvokeAsync(StateHasChanged);
+                    try
+                    {
+                        var results = await OnSearch(_search, token);
+                        if (!token.IsCancellationRequested)
+                        {
+                            _asyncItems = results.ToList();
+                        }
+                    }
+                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"[SgComboBox] OnSearch failed: {ex.Message}");
+                    }
+                    finally
+                    {
+                        if (!token.IsCancellationRequested)
+                        {
+                            _loading = false;
+                        }
+                    }
+                }
+
+                _activeIndex = -1;
+                _scrollTop = 0;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (TaskCanceledException) { }
+
+        // When Editable and TValue is string, update Value on every keystroke
         if (Editable && typeof(TValue) == typeof(string))
         {
             Value = (TValue)(object)_search;
             if (ValueChanged.HasDelegate)
             {
-                 _ = ValueChanged.InvokeAsync(Value);
+                 await ValueChanged.InvokeAsync(Value);
             }
         }
-
-        return InvokeAsync(StateHasChanged);
     }
+
+    // ── Scroll (virtual) ──────────────────────────────────────────────────────
+
+    private async Task OnMenuScrollAsync()
+    {
+        if (!VirtualScroll) return;
+        try
+        {
+            var st = await JS.InvokeAsync<double>("eval", $"document.getElementById('{_listboxId}')?.scrollTop ?? 0");
+            _scrollTop = st;
+        }
+        catch { }
+    }
+
+    private void OnMenuScroll(EventArgs e)
+    {
+        _ = OnMenuScrollAsync();
+    }
+
+    // ── Keyboard ──────────────────────────────────────────────────────────────
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        var count = IsEnumMode
-            ? GetFilteredEnumItems().Count()
-            : GetFilteredItems().Count();
-
-        if (e.Key == "ArrowDown")
+        switch (e.Key)
         {
-            _activeIndex = Math.Min(count - 1, _activeIndex + 1);
-            await InvokeAsync(StateHasChanged);
-        }
-        else if (e.Key == "ArrowUp")
-        {
-            _activeIndex = Math.Max(0, _activeIndex - 1);
-            await InvokeAsync(StateHasChanged);
-        }
-        else if (e.Key == "Enter")
-        {
-            if (_activeIndex >= 0)
-            {
-                if (IsEnumMode)
+            case "Escape":
+                _open = false;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowDown":
+                if (!_open) { _open = true; _search = string.Empty; await InvokeAsync(StateHasChanged); return; }
+                var countDown = IsEnumMode
+                    ? GetFilteredEnumItems().Count()
+                    : GetFilteredItems().Count();
+                _activeIndex = Math.Min(countDown - 1, _activeIndex + 1);
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "ArrowUp":
+                if (_activeIndex > 0) _activeIndex--;
+                await InvokeAsync(StateHasChanged);
+                break;
+            case "Enter":
+                if (_open)
                 {
-                    var items = GetFilteredEnumItems().ToList();
-                    if (_activeIndex < items.Count)
-                        await PickEnumAsync(items[_activeIndex]);
+                    if (_activeIndex >= 0)
+                    {
+                        if (IsEnumMode)
+                        {
+                            var enumItems = GetFilteredEnumItems().ToList();
+                            if (_activeIndex < enumItems.Count)
+                                await PickEnumAsync(enumItems[_activeIndex]);
+                        }
+                        else
+                        {
+                            var items = GetFilteredItems().ToList();
+                            if (_activeIndex < items.Count)
+                                await PickAsync(items[_activeIndex]);
+                        }
+                    }
+                    else if (CustomItemCreation && typeof(TValue) == typeof(string) && !string.IsNullOrEmpty(_search))
+                    {
+                        await PickAsync((TValue)(object)_search);
+                    }
                 }
-                else
-                {
-                    var items = GetFilteredItems().ToList();
-                    if (_activeIndex < items.Count)
-                        await PickAsync(items[_activeIndex]);
-                }
-            }
-        }
-        else if (e.Key == "Escape")
-        {
-            await CloseAsync();
+                break;
+            case "Tab":
+                _open = false;
+                await InvokeAsync(StateHasChanged);
+                break;
         }
     }
 
-    // ── Pick ──────────────────────────────────────────────────────────────────
+    // ── Selection ─────────────────────────────────────────────────────────────
 
     private async Task PickAsync(TValue v)
     {
+        _open = false;
+        _asyncItems = null;
         Value = v;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(v);
         _binder?.NotifyFieldChanged();
-        await CloseAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task PickEnumAsync(SgEnumItem ei)
     {
+        _open = false;
         var v = ParseEnumValue(ei);
         Value = v;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(v);
         _binder?.NotifyFieldChanged();
-        await CloseAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private TValue? ParseEnumValue(SgEnumItem ei)
@@ -463,11 +800,81 @@
         await InvokeAsync(StateHasChanged);
     }
 
+    private RenderFragment HighlightSearch(string text) => __builder =>
+    {
+        if (string.IsNullOrEmpty(_search) || text is null)
+        {
+            __builder.AddContent(0, text);
+            return;
+        }
+        var idx = text.IndexOf(_search, StringComparison.CurrentCultureIgnoreCase);
+        if (idx < 0)
+        {
+            __builder.AddContent(0, text);
+            return;
+        }
+        __builder.AddContent(0, text[..idx]);
+        __builder.AddMarkupContent(1, $"<mark>{text.Substring(idx, _search.Length)}</mark>");
+        __builder.AddContent(2, text[(idx + _search.Length)..]);
+    };
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AutoFocus)
+        {
+            await _searchInput.FocusAsync();
+        }
+        if (_focusInput)
+        {
+            _focusInput = false;
+            await _searchInput.FocusAsync();
+        }
+        if (_open)
+        {
+            if (ScrollToSelected)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("eval",
+                        $"(function(){{var m=document.getElementById('{_listboxId}');if(!m)return;var s=m.querySelector('.sgc-selected');if(s){{var oh=s.offsetTop-m.offsetTop;m.scrollTop=oh-60;}}}})()");
+                }
+                catch { }
+            }
+            if (VirtualScroll && _scrollTop > 0)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("eval", $"document.getElementById('{_listboxId}')?.scrollTo(0, {_scrollTop})");
+                }
+                catch { }
+            }
+            if (UsePortal)
+            {
+                try
+                {
+                    await JS.InvokeVoidAsync("eval",
+                        $"(function(){{var m=document.getElementById('{_listboxId}'),t=document.querySelector('[aria-labelledby={_labelId}]')?.querySelector('.sgc-combo-control');if(!m||!t)return;var r=t.getBoundingClientRect();m.style.position='fixed';m.style.top=(r.bottom+2)+'px';m.style.left=r.left+'px';m.style.width=Math.max(r.width,160)+'px';m.style.minWidth=m.style.width;m.style.maxWidth=Math.min(800,innerWidth-r.left-8)+'px';}})()");
+                }
+                catch { }
+            }
+        }
+        else if (UsePortal)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("eval",
+                    $"(function(){{var m=document.getElementById('{_listboxId}');if(m){{m.style.position='';m.style.top='';m.style.left='';m.style.width='';m.style.minWidth='';m.style.maxWidth='';}}}})()");
+            }
+            catch { }
+        }
+    }
+
     public void Dispose()
     {
         _blurCts?.Cancel();
         _blurCts?.Dispose();
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
         _binder?.Dispose();
     }
 }
-
