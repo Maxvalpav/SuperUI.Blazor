@@ -11,7 +11,9 @@
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
 
-    <div class="sgc-num-wrap sgc-size-@Size.ToString().ToLowerInvariant() @(IsInvalid ? "sgc-num-invalid" : "") @(Disabled ? "sgc-num-disabled" : "")">
+    <div class="sgc-num-wrap sgc-size-@Size.ToString().ToLowerInvariant() @(IsInvalid ? "sgc-num-invalid" : "") @(Disabled ? "sgc-num-disabled" : "") @StatusClass @AnimClass"
+         @onmouseenter="() => _popoverVisible = true"
+         @onmouseleave="() => _popoverVisible = false">
 
         @if (ShowButtons)
         {
@@ -30,6 +32,11 @@
                     <rect x="2" y="7" width="12" height="2" rx="1"/>
                 </svg>
             </button>
+        }
+
+        @if (!string.IsNullOrEmpty(LeadingIcon))
+        {
+            <span class="sgc-num-icon sgc-num-icon-leading">@((MarkupString)LeadingIcon)</span>
         }
 
         @if (!string.IsNullOrEmpty(Prefix))
@@ -53,11 +60,17 @@
                value="@DisplayValue"
                @ref="_inputRef"
                @onfocus="OnFocusAsync"
+               @onblur="OnBlurAsync"
                @oninput="OnInputAsync"
                @onchange="OnChangeAsync"
                @onkeydown="OnKeyDownAsync"
                @onwheel:preventDefault="DisableWheel"
                @attributes="AdditionalAttributes" />
+
+        @if (!string.IsNullOrEmpty(TrailingIcon))
+        {
+            <span class="sgc-num-icon sgc-num-icon-trailing">@((MarkupString)TrailingIcon)</span>
+        }
 
         @if (!string.IsNullOrEmpty(Suffix))
         {
@@ -119,11 +132,25 @@
                 </svg>
             </button>
         }
+
+        @if (ShowRangeIndicator && Min is not null && Max is not null)
+        {
+            <div class="sgc-num-range-track">
+                <div class="sgc-num-range-fill" style="width:@RangePercent%;"></div>
+            </div>
+        }
     </div>
 
     @if (IsInvalid)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        @if (ValidationPopover)
+        {
+            <div class="sgc-num-popover @(_popoverVisible ? "sgc-num-popover-visible" : "")" role="tooltip">@DisplayedError</div>
+        }
+        else
+        {
+            <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        }
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
@@ -138,6 +165,9 @@
     private ElementReference _inputRef;
     private bool _copied;
     private CancellationTokenSource? _repeatCts;
+    private double _prevDouble;
+    private string _animClass = "";
+    private bool _popoverVisible;
 
     /// <summary>Field label.</summary>
     [Parameter] public string? Label { get; set; }
@@ -217,6 +247,36 @@
     /// <summary>Select all text on focus. Default true.</summary>
     [Parameter] public bool SelectOnFocus { get; set; } = true;
 
+    /// <summary>SVG markup for an icon displayed before the value (leading side).</summary>
+    [Parameter] public string? LeadingIcon { get; set; }
+
+    /// <summary>SVG markup for an icon displayed after the value (trailing side).</summary>
+    [Parameter] public string? TrailingIcon { get; set; }
+
+    /// <summary>Semantic color status for the input border and accent. Default <c>null</c> (no status).</summary>
+    [Parameter] public SgColor? Status { get; set; }
+
+    /// <summary>Fast-step multiplier when holding Shift. Default 10.</summary>
+    [Parameter] public double FastStepMultiplier { get; set; } = 10;
+
+    /// <summary>Fine-step divisor when holding Ctrl. Default 10.</summary>
+    [Parameter] public double FineStepDivisor { get; set; } = 10;
+
+    /// <summary>Show a thin range-progress bar at the bottom when Min/Max are set. Default false.</summary>
+    [Parameter] public bool ShowRangeIndicator { get; set; }
+
+    /// <summary>Briefly flash the input fill on value change (+ green, - red). Default false.</summary>
+    [Parameter] public bool AnimateChanges { get; set; }
+
+    /// <summary>On blur, snap value to Min/Max/Step boundary. Default false.</summary>
+    [Parameter] public bool AutoFixOnBlur { get; set; }
+
+    /// <summary>Show validation error in a floating popover tooltip near the input. Default false.</summary>
+    [Parameter] public bool ValidationPopover { get; set; }
+
+    /// <summary>Use group (thousand) separators in display. Default false.</summary>
+    [Parameter] public bool UseGroupSeparator { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -226,6 +286,10 @@
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
 
+    private string? StatusClass => Status.HasValue ? "sgc-num-status-" + Status.Value.ToString().ToLowerInvariant() : null;
+
+    private string? AnimClass => string.IsNullOrEmpty(_animClass) ? null : _animClass;
+
     private string? DisplayValue
     {
         get
@@ -233,9 +297,14 @@
             if (Value is null || EqualityComparer<TValue>.Default.Equals(Value, default!)) return null;
             var culture = Culture ?? System.Globalization.CultureInfo.InvariantCulture;
             if (Decimals.HasValue)
-                return Convert.ToDouble(Value, culture).ToString($"F{Decimals.Value}", culture);
+            {
+                var fmt = UseGroupSeparator ? "N" + Decimals.Value : "F" + Decimals.Value;
+                return Convert.ToDouble(Value, culture).ToString(fmt, culture);
+            }
             if (!string.IsNullOrEmpty(Format))
                 return string.Format(culture, "{0:" + Format + "}", Value);
+            if (UseGroupSeparator)
+                return Convert.ToDouble(Value, culture).ToString("N0", culture);
             return Convert.ToString(Value, culture);
         }
     }
@@ -249,6 +318,19 @@
 
     private TValue? StepValue => Step ?? FromDouble(1);
 
+    private double RangePercent
+    {
+        get
+        {
+            if (Value is null || Min is null || Max is null) return 0;
+            var d = ToDouble(Value);
+            var mn = ToDouble(Min);
+            var mx = ToDouble(Max);
+            if (mx <= mn) return 0;
+            return Math.Clamp((d - mn) / (mx - mn) * 100, 0, 100);
+        }
+    }
+
     // ── Handlers ──
 
     private async Task OnFocusAsync(FocusEventArgs e)
@@ -257,7 +339,21 @@
         {
             await Task.Delay(1);
             try { await JS.InvokeVoidAsync("eval", $"setTimeout(() => document.getElementById('{_id}')?.select(), 0)"); }
-            catch { /* ignore */ }
+            catch { }
+        }
+    }
+
+    private async Task OnBlurAsync(FocusEventArgs e)
+    {
+        if (AutoFixOnBlur && Value is not null)
+        {
+            var d = ToDouble(Value);
+            var step = ToDouble(StepValue);
+            if (step > 0)
+                d = Math.Round(d / step) * step;
+            if (Min is not null) d = Math.Max(d, ToDouble(Min));
+            if (Max is not null) d = Math.Min(d, ToDouble(Max));
+            await SetValueAsync(FromDouble(d));
         }
     }
 
@@ -275,71 +371,88 @@
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "ArrowUp")   { await IncrementAsync(); return; }
-        if (e.Key == "ArrowDown") { await DecrementAsync(); return; }
+        if (e.Key == "ArrowUp")   { await IncStep(e.ShiftKey, e.CtrlKey); return; }
+        if (e.Key == "ArrowDown") { await DecStep(e.ShiftKey, e.CtrlKey); return; }
         if (e.Key == "Enter" && OnEnterPressed.HasDelegate)
             await OnEnterPressed.InvokeAsync();
     }
 
     // ── Repeat (long-press) ──
 
-    private async Task StartIncAsync()
+    private async Task StartIncAsync() { await IncStep(false, false); _ = StartRepeatAsync(IncrementAsync); }
+    private async Task StartDecAsync() { await DecStep(false, false); _ = StartRepeatAsync(DecrementAsync); }
+    private void StopRepeat() { _repeatCts?.Cancel(); _repeatCts = null; }
+
+    private async Task StartRepeatAsync(Func<Task> action)
     {
-        await IncrementAsync();
         _repeatCts?.Cancel();
         _repeatCts = new CancellationTokenSource();
-        _ = RepeatAsync(IncrementAsync, _repeatCts.Token);
-    }
-
-    private async Task StartDecAsync()
-    {
-        await DecrementAsync();
-        _repeatCts?.Cancel();
-        _repeatCts = new CancellationTokenSource();
-        _ = RepeatAsync(DecrementAsync, _repeatCts.Token);
-    }
-
-    private void StopRepeat()
-    {
-        _repeatCts?.Cancel();
-        _repeatCts = null;
-    }
-
-    private async Task RepeatAsync(Func<Task> action, CancellationToken ct)
-    {
+        var ct = _repeatCts.Token;
         try
         {
             await Task.Delay(300, ct);
-            while (!ct.IsCancellationRequested)
-            {
-                await action();
-                await Task.Delay(80, ct);
-            }
+            while (!ct.IsCancellationRequested) { await action(); await Task.Delay(80, ct); }
         }
         catch (TaskCanceledException) { }
     }
 
-    private async Task IncrementAsync()
+    private async Task IncrementAsync() => await IncStep(false, false);
+    private async Task DecrementAsync() => await DecStep(false, false);
+
+    private async Task IncStep(bool shift, bool ctrl)
     {
-        var cur  = ToDouble(Value);
-        var step = ToDouble(StepValue);
+        var cur = ToDouble(Value);
+        var step = ResolveStep(shift, ctrl);
         var next = cur + step;
         if (Max is not null) next = Math.Min(next, ToDouble(Max));
-        await SetValueAsync(FromDouble(next));
+        await SetValueWithAnimAsync(FromDouble(next), cur);
     }
 
-    private async Task DecrementAsync()
+    private async Task DecStep(bool shift, bool ctrl)
     {
-        var cur  = ToDouble(Value);
-        var step = ToDouble(StepValue);
+        var cur = ToDouble(Value);
+        var step = ResolveStep(shift, ctrl);
         var next = cur - step;
         if (Min is not null) next = Math.Max(next, ToDouble(Min));
-        await SetValueAsync(FromDouble(next));
+        await SetValueWithAnimAsync(FromDouble(next), cur);
+    }
+
+    private double ResolveStep(bool shift, bool ctrl)
+    {
+        var s = ToDouble(StepValue);
+        if (shift && FastStepMultiplier > 0) s *= FastStepMultiplier;
+        if (ctrl && FineStepDivisor > 0) s /= FineStepDivisor;
+        return s;
+    }
+
+    private async Task SetValueWithAnimAsync(TValue? next, double prev)
+    {
+        await SetValueAsync(next);
+        if (AnimateChanges)
+        {
+            var d = ToDouble(next);
+            _animClass = d > prev ? "sgc-num-flash-up" : d < prev ? "sgc-num-flash-down" : "";
+            if (!string.IsNullOrEmpty(_animClass))
+            {
+                StateHasChanged();
+                await Task.Delay(400);
+                _animClass = "";
+                StateHasChanged();
+            }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Value is not null)
+            _prevDouble = ToDouble(Value);
+        await base.OnAfterRenderAsync(firstRender);
     }
 
     private async Task ClearAsync()
     {
-        await SetValueAsync(default);
+        var prev = ToDouble(Value);
+        await SetValueWithAnimAsync(default, prev);
     }
 
     private async Task CopyValueAsync()
@@ -349,11 +462,9 @@
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            _copied = true;
-            StateHasChanged();
+            _copied = true; StateHasChanged();
             await Task.Delay(2000);
-            _copied = false;
-            StateHasChanged();
+            _copied = false; StateHasChanged();
         }
         catch { }
     }

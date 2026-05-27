@@ -9,7 +9,9 @@
     {
         <label class="sgc-label @(Required ? "sgc-required" : "")" for="@_id">@Label</label>
     }
-    <div class="sgc-num sgc-size-@Size.ToString().ToLowerInvariant() @(IsInvalid ? "sgc-invalid" : "") @(Disabled ? "sgc-disabled" : "")">
+    <div class="sgc-num sgc-size-@Size.ToString().ToLowerInvariant() @(IsInvalid ? "sgc-invalid" : "") @(Disabled ? "sgc-disabled" : "") @StatusClass @AnimClass"
+         @onmouseenter="() => _popoverVisible = true"
+         @onmouseleave="() => _popoverVisible = false">
         @if (ShowButtons)
         {
             <button type="button" class="sgc-num-btn sgc-num-dec" tabindex="-1"
@@ -25,6 +27,10 @@
                     <rect x="2" y="7" width="12" height="2" rx="1"/>
                 </svg>
             </button>
+        }
+        @if (!string.IsNullOrEmpty(LeadingIcon))
+        {
+            <span class="sgc-num-icon sgc-num-icon-leading">@((MarkupString)LeadingIcon)</span>
         }
         @if (!string.IsNullOrEmpty(Prefix))
         {
@@ -47,11 +53,16 @@
                aria-valuenow="@(Value.HasValue ? Convert.ToDouble(Value.Value) : null)"
                @ref="_inputRef"
                @onfocus="OnFocusAsync"
+               @onblur="OnBlurAsync"
                @oninput="OnInputAsync"
                @onchange="OnChangeAsync"
                @onkeydown="OnKeyDownAsync"
                @onwheel:preventDefault="DisableWheel"
                @attributes="AdditionalAttributes" />
+        @if (!string.IsNullOrEmpty(TrailingIcon))
+        {
+            <span class="sgc-num-icon sgc-num-icon-trailing">@((MarkupString)TrailingIcon)</span>
+        }
         @if (!string.IsNullOrEmpty(Suffix))
         {
             <span class="sgc-num-suffix">@Suffix</span>
@@ -105,10 +116,23 @@
                 </svg>
             </button>
         }
+        @if (ShowRangeIndicator && Min.HasValue && Max.HasValue)
+        {
+            <div class="sgc-num-range-track">
+                <div class="sgc-num-range-fill" style="width:@RangePercent%;"></div>
+            </div>
+        }
     </div>
     @if (IsInvalid)
     {
-        <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        @if (ValidationPopover)
+        {
+            <div class="sgc-num-popover @(_popoverVisible ? "sgc-num-popover-visible" : "")" role="tooltip">@DisplayedError</div>
+        }
+        else
+        {
+            <span id="@_errorId" class="sgc-error">@DisplayedError</span>
+        }
     }
     else if (!string.IsNullOrEmpty(Hint))
     {
@@ -122,6 +146,8 @@
     private string _errorId => _id + "-err";
     private ElementReference _inputRef;
     private bool _copied;
+    private string _animClass = "";
+    private bool _popoverVisible;
 
     private SgEditContextBinder<TValue?>? _binder;
     private CancellationTokenSource? _repeatCts;
@@ -221,9 +247,39 @@
     /// <summary>Select all text on focus. Default true.</summary>
     [Parameter] public bool SelectOnFocus { get; set; } = true;
 
+    /// <summary>SVG markup for an icon displayed before the value (leading side).</summary>
+    [Parameter] public string? LeadingIcon { get; set; }
+
+    /// <summary>SVG markup for an icon displayed after the value (trailing side).</summary>
+    [Parameter] public string? TrailingIcon { get; set; }
+
+    /// <summary>Semantic color status for the input border and accent. Default <c>null</c> (no status).</summary>
+    [Parameter] public SgColor? Status { get; set; }
+
+    /// <summary>Fast-step multiplier when holding Shift. Default 10.</summary>
+    [Parameter] public double FastStepMultiplier { get; set; } = 10;
+
+    /// <summary>Fine-step divisor when holding Ctrl. Default 10.</summary>
+    [Parameter] public double FineStepDivisor { get; set; } = 10;
+
+    /// <summary>Show a thin range-progress bar at the bottom when Min/Max are set. Default false.</summary>
+    [Parameter] public bool ShowRangeIndicator { get; set; }
+
+    /// <summary>Briefly flash the input fill on value change (+ green, - red). Default false.</summary>
+    [Parameter] public bool AnimateChanges { get; set; }
+
+    /// <summary>On blur, snap value to Min/Max/Step boundary. Default false.</summary>
+    [Parameter] public bool AutoFixOnBlur { get; set; }
+
+    /// <summary>Show validation error in a floating popover tooltip instead of static text. Default false.</summary>
+    [Parameter] public bool ValidationPopover { get; set; }
+
+    /// <summary>Use group (thousand) separators in display. Default false.</summary>
+    [Parameter] public bool UseGroupSeparator { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
-    // ── Computed ──────────────────────────────────────────────────────────────
+    // ── Computed ──
 
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
@@ -238,6 +294,9 @@
 
     private System.Globalization.CultureInfo ResolvedCulture => Culture ?? System.Globalization.CultureInfo.CurrentCulture;
 
+    private string? StatusClass => Status.HasValue ? "sgc-num-status-" + Status.Value.ToString().ToLowerInvariant() : null;
+    private string? AnimClass => string.IsNullOrEmpty(_animClass) ? null : _animClass;
+
     private string? CurrentText
     {
         get
@@ -245,10 +304,28 @@
             if (Value is null) return string.Empty;
             var c = ResolvedCulture;
             if (Decimals.HasValue)
-                return Convert.ToDecimal(Value.Value, c).ToString($"F{Decimals.Value}", c);
+            {
+                var fmt = UseGroupSeparator ? "N" + Decimals.Value : "F" + Decimals.Value;
+                return Convert.ToDecimal(Value.Value, c).ToString(fmt, c);
+            }
             if (!string.IsNullOrEmpty(Format))
                 return string.Format(c, "{0:" + Format + "}", Value.Value);
+            if (UseGroupSeparator)
+                return Convert.ToDecimal(Value.Value, c).ToString("N0", c);
             return Convert.ToString(Value.Value, c);
+        }
+    }
+
+    private double RangePercent
+    {
+        get
+        {
+            if (!Value.HasValue || !Min.HasValue || !Max.HasValue) return 0;
+            var v = Convert.ToDouble(Value.Value);
+            var mn = Convert.ToDouble(Min.Value);
+            var mx = Convert.ToDouble(Max.Value);
+            if (mx <= mn) return 0;
+            return Math.Clamp((v - mn) / (mx - mn) * 100, 0, 100);
         }
     }
 
@@ -272,6 +349,21 @@
         }
     }
 
+    private async Task OnBlurAsync(FocusEventArgs e)
+    {
+        if (AutoFixOnBlur && Value.HasValue)
+        {
+            var step = Convert.ToDouble(Step);
+            var d = Convert.ToDouble(Value.Value);
+            if (step > 0)
+                d = Math.Round(d / step) * step;
+            if (Min.HasValue) d = Math.Max(d, Convert.ToDouble(Min.Value));
+            if (Max.HasValue) d = Math.Min(d, Convert.ToDouble(Max.Value));
+            var t = typeof(TValue);
+            await SetAsync((TValue)Convert.ChangeType(d, t, CultureInfo.InvariantCulture));
+        }
+    }
+
     private Task OnInputAsync(ChangeEventArgs e) => Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
     private Task OnChangeAsync(ChangeEventArgs e) => !Immediate ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
 
@@ -284,60 +376,64 @@
                 await OnEnterPressed.InvokeAsync();
             return;
         }
-        if (e.Key == "ArrowUp" || e.Key == "ArrowDown")
-        {
-            if (e.Key == "ArrowUp") await StepUpAsync();
-            else await StepDownAsync();
-        }
+        if (e.Key == "ArrowUp") { await StepUpAsync(e.ShiftKey, e.CtrlKey); return; }
+        if (e.Key == "ArrowDown") { await StepDownAsync(e.ShiftKey, e.CtrlKey); return; }
     }
 
     // ── Repeat (long-press) ──
 
-    private async Task StartIncAsync()
+    private async Task StartIncAsync() { await StepUpAsync(false, false); _ = StartRepeatAsync(() => StepUpAsync(false, false)); }
+    private async Task StartDecAsync() { await StepDownAsync(false, false); _ = StartRepeatAsync(() => StepDownAsync(false, false)); }
+    private void StopRepeat() { _repeatCts?.Cancel(); _repeatCts = null; }
+
+    private async Task StartRepeatAsync(Func<Task> action)
     {
-        await StepUpAsync();
         _repeatCts?.Cancel();
         _repeatCts = new CancellationTokenSource();
-        _ = RepeatAsync(StepUpAsync, _repeatCts.Token);
-    }
-
-    private async Task StartDecAsync()
-    {
-        await StepDownAsync();
-        _repeatCts?.Cancel();
-        _repeatCts = new CancellationTokenSource();
-        _ = RepeatAsync(StepDownAsync, _repeatCts.Token);
-    }
-
-    private void StopRepeat()
-    {
-        _repeatCts?.Cancel();
-        _repeatCts = null;
-    }
-
-    private async Task RepeatAsync(Func<Task> action, CancellationToken ct)
-    {
+        var ct = _repeatCts.Token;
         try
         {
             await Task.Delay(300, ct);
-            while (!ct.IsCancellationRequested)
-            {
-                await action();
-                await Task.Delay(80, ct);
-            }
+            while (!ct.IsCancellationRequested) { await action(); await Task.Delay(80, ct); }
         }
         catch (TaskCanceledException) { }
     }
 
-    private Task StepUpAsync() => StepAsync(true);
-    private Task StepDownAsync() => StepAsync(false);
+    private Task StepUpAsync() => StepUpAsync(false, false);
+    private Task StepDownAsync() => StepDownAsync(false, false);
 
-    private async Task StepAsync(bool up)
+    private async Task StepUpAsync(bool shift, bool ctrl)
     {
         if (Disabled || ReadOnly) return;
         var current = Value ?? default;
-        var next = ApplyStep(current, up);
+        var next = ApplyStep(current, true, shift, ctrl);
         next = Clamp(next);
+        await SetWithAnimAsync(next);
+    }
+
+    private async Task StepDownAsync(bool shift, bool ctrl)
+    {
+        if (Disabled || ReadOnly) return;
+        var current = Value ?? default;
+        var next = ApplyStep(current, false, shift, ctrl);
+        next = Clamp(next);
+        await SetWithAnimAsync(next);
+    }
+
+    private async Task SetWithAnimAsync(TValue? next)
+    {
+        if (AnimateChanges)
+        {
+            var prev = Value.HasValue ? Convert.ToDouble(Value.Value) : 0;
+            var nxt = next.HasValue ? Convert.ToDouble(next.Value) : 0;
+            _animClass = nxt > prev ? "sgc-num-flash-up" : nxt < prev ? "sgc-num-flash-down" : "";
+            if (!string.IsNullOrEmpty(_animClass))
+            {
+                StateHasChanged();
+                await Task.Delay(400);
+                _animClass = "";
+            }
+        }
         await SetAsync(next);
     }
 
@@ -354,10 +450,7 @@
             var parsed = (TValue)Convert.ChangeType(raw, t, ResolvedCulture);
             await SetAsync(Clamp(parsed));
         }
-        catch
-        {
-            // ignore invalid input
-        }
+        catch { }
     }
 
     private async Task SetAsync(TValue? next)
@@ -369,7 +462,7 @@
 
     private async Task ClearAsync()
     {
-        await SetAsync(null);
+        await SetWithAnimAsync(null);
     }
 
     private async Task CopyValueAsync()
@@ -379,11 +472,9 @@
         try
         {
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
-            _copied = true;
-            StateHasChanged();
+            _copied = true; StateHasChanged();
             await Task.Delay(2000);
-            _copied = false;
-            StateHasChanged();
+            _copied = false; StateHasChanged();
         }
         catch { }
     }
@@ -395,11 +486,13 @@
         return v;
     }
 
-    private TValue ApplyStep(TValue current, bool up)
+    private TValue ApplyStep(TValue current, bool up, bool shift, bool ctrl)
     {
         var ci = CultureInfo.InvariantCulture;
         var c = Convert.ToDecimal(current, ci);
         var s = Convert.ToDecimal(Step, ci);
+        if (shift && FastStepMultiplier > 0) s *= (decimal)FastStepMultiplier;
+        if (ctrl && FineStepDivisor > 0) s /= (decimal)FineStepDivisor;
         var r = up ? c + s : c - s;
         return (TValue)Convert.ChangeType(r, typeof(TValue), ci);
     }
