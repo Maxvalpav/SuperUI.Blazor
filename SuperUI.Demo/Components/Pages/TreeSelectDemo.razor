@@ -1,108 +1,581 @@
 @page "/treeselect-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>TreeSelect - SUI</PageTitle>
+<PageTitle>TreeSelect — SgTreeSelect — SuperUI</PageTitle>
 
-<SgCard Title="SgTreeSelect - Tree Dropdown"
-        Subtitle="Select from a hierarchical tree inside a dropdown. Supports search and filtering.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Basic Usage</h2>
-        <p>Select a single node from a tree structure.</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
-                    <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Department picker</div>
-                        <SgTreeSelect Nodes="_nodes" @bind-Value="_selected" Placeholder="Select a department" />
-                        <div style="margin-top: 8px; font-size: 12px;">
-                            Selected: <strong>@_selected</strong>
-                        </div>
-                    </div>
-                </div>
-            </SgCard>
-
-            <SgCard Title="Properties">
-                <PropertyTable Items="_basicProperties" />
-            </SgCard>
+    <!-- 1. Basic Usage -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgTreeSelect — Basic Usage
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Single and multi-select from a hierarchical tree. <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Multiple</SgTypography> enables checkbox mode, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Cascade</SgTypography> propagates to children.
+            </SgTypography>
         </div>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="Single Select" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTreeSelect Nodes="_departments" @bind-Value="_selSingle" Placeholder="Pick a department…" />
+                        <div class="demo-selected"><SgTag Size="SgSize.Sm" Variant="SgTagVariant.Primary">@(_selSingle ?? "none")</SgTag></div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Multi-Select" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTreeSelect Nodes="_departments" Multiple="true" @bind-Values="_selMulti" Placeholder="Choose skills…" Cascade="true" />
+                        <div class="demo-selected">
+                            @if (_selMulti.Any())
+                            {
+                                @foreach (var v in _selMulti) { <SgTag Size="SgSize.Sm">@v</SgTag> }
+                            }
+                            else { <SgTag Size="SgSize.Sm" Variant="SgTagVariant.Subtle">none</SgTag> }
+                        </div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Disabled & Clearable" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTreeSelect Nodes="_departments" Placeholder="Disabled" Disabled="true" />
+                        <SgTreeSelect Nodes="_departments" Placeholder="Clearable" Clearable="true" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="12"><SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm"><PropertyTable Items="_basicProperties" /></SgCard></SgCol>
+        </SgRow>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>With Search</h2>
-        <p>Filter tree nodes by typing in the search box.</p>
+    <!-- 2. Variants, Sizes, MaxHeight -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Variants, Sizes & MaxHeight
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Three visual variants, three sizes, and configurable dropdown height.
+            </SgTypography>
+        </div>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="Outlined (default)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Outlined" Variant="SgCascaderVariant.Outlined" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Borderless" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Borderless" Variant="SgCascaderVariant.Borderless" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Filled" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Filled" Variant="SgCascaderVariant.Filled" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Sizes" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTreeSelect Nodes="_simple" Placeholder="Small" Size="SgSize.Sm" />
+                        <SgTreeSelect Nodes="_simple" Placeholder="Medium (default)" Size="SgSize.Md" />
+                        <SgTreeSelect Nodes="_simple" Placeholder="Large" Size="SgSize.Lg" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="MaxHeight" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_largeFlat" Placeholder="Max 140px" MaxHeight="140px" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Loading State" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_simple" Placeholder="Loading…" Loading="true" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="12"><SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm"><PropertyTable Items="_styleProperties" /></SgCard></SgCol>
+        </SgRow>
+    </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <SgTreeSelect Nodes="_nodes" @bind-Value="_selectedSearch" Placeholder="Search departments..." ShowSearch="true" />
-                <div style="margin-top: 8px; font-size: 12px; color: var(--sui-text-muted);">
-                    Try typing "front" or "design".
-                </div>
+    <!-- 3. Search & Highlight -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Search & Highlight
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Set <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ShowSearch</SgTypography> to filter the tree. Matching text is highlighted with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">&lt;mark&gt;</SgTypography>.
+            </SgTypography>
+        </div>
+        <div class="demo-two-col">
+            <SgCard Title="Searchable Departments" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTreeSelect Nodes="_departmentStore" ShowSearch="true" Placeholder="Type to filter…" />
             </SgCard>
-
-            <SgCard Title="Search Properties">
+            <SgCard Title="Search Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_searchProperties" />
             </SgCard>
         </div>
     </div>
 
-    <!-- Code example -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
+    <!-- 4. Checkable / Cascade -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Checkable — Cascade & LeafOnly
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Multiple</SgTypography> with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Cascade</SgTypography> propagates selection to descendants. <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">LeafOnly</SgTypography> restricts selection to leaf nodes.
+            </SgTypography>
+        </div>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="Cascade = true (default)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTreeSelect Nodes="_locations" Multiple="true" Cascade="true" Placeholder="Select regions" />
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Checking a parent checks all children.</SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Cascade = false" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTreeSelect Nodes="_locations" Multiple="true" Cascade="false" Placeholder="Select individually" />
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Each node toggles independently.</SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="LeafOnly" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTreeSelect Nodes="_locations" Multiple="true" LeafOnly="true" Placeholder="Select leaves only" />
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Only leaf nodes can be selected.</SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="12"><SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm"><PropertyTable Items="_checkProperties" /></SgCard></SgCol>
+        </SgRow>
     </div>
 
+    <!-- 5. Placement -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Placement
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Dropdown menu placement relative to the trigger. JS-powered positioning with viewport clamping.
+            </SgTypography>
+        </div>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="3">
+                <SgCard Title="BottomStart (default)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Bottom start" Placement="SgPlacement.BottomStart" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="3">
+                <SgCard Title="BottomEnd" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Bottom end" Placement="SgPlacement.BottomEnd" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="3">
+                <SgCard Title="TopStart" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Top start" Placement="SgPlacement.TopStart" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="3">
+                <SgCard Title="TopEnd" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_departments" Placeholder="Top end" Placement="SgPlacement.TopEnd" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="12"><SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm"><PropertyTable Items="_placementProperties" /></SgCard></SgCol>
+        </SgRow>
+    </div>
+
+    <!-- 6. Advanced — DisabledOption, OnChange, NodeTemplate, Icons -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Advanced — DisabledOption, OnChange, Templates
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Dynamic disable logic, change callback, custom node rendering, and rich options with badges and icons.
+            </SgTypography>
+        </div>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="DisabledOption Callback" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTreeSelect Nodes="_departments" Placeholder="Dynamic disable" DisabledOption="@(n => n.Key == "frontend")" />
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Frontend is disabled via callback.</SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="OnChange Callback" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTreeSelect Nodes="_departments" Placeholder="Select…" OnChange="HandleOnChange" />
+                        <div class="demo-selected"><SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@_onChangeLog</SgTypography></div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="NodeTemplate" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_iconOptions" Placeholder="Custom template…">
+                        <NodeTemplate Context="n">
+                            <span style="display:flex;align-items:center;gap:6px;width:100%;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:@(n.Children.Count > 0 ? "#8b5cf6" : "#10b981");flex-shrink:0;"></span>
+                                <span style="flex:1;font-size:12px;">@n.Text</span>
+                                @if (n.Children.Count == 0) { <span style="font-size:9px;color:var(--sg-fg-muted)">leaf</span> }
+                            </span>
+                        </NodeTemplate>
+                    </SgTreeSelect>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Icons & Badges" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_iconOptions" Placeholder="Select…" ShowSearch="true" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="EmptyContent Override" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTreeSelect Nodes="_simple" Placeholder="Type 'xyz'…" ShowSearch="true">
+                        <EmptyContent><div style="padding:24px;text-align:center;color:var(--sg-color-warning);font-size:12px;">✨ Nothing found</div></EmptyContent>
+                    </SgTreeSelect>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- 7. Live Constructor -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgTreeSelect Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure all parameters and see the result live. Click <strong>Copy</strong> for generated code.
+            </SgTypography>
+        </div>
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Placeholder</SgTypography>
+                            <input type="text" class="demo-ctor-input" value="@_ctorPlaceholder" @onchange="HandlePlaceholderChange" />
+                        </SgStack>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgSegmented TValue="SgSize" Value="@_ctorSize" ValueChanged="v => { _ctorSize = v; UpdateConstructorCode(); }" Block="true" Size="sm" Options="_sizeOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Variant</SgTypography>
+                                    <SgSegmented TValue="SgCascaderVariant" Value="@_ctorVariant" ValueChanged="v => { _ctorVariant = v; UpdateConstructorCode(); }" Block="true" Size="sm" Options="_variantOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Placement</SgTypography>
+                                    <SgSelect TValue="SgPlacement" Value="@_ctorPlacement" ValueChanged="v => { _ctorPlacement = v; UpdateConstructorCode(); }" Items="_placementItems" LabelSelector="x => x.ToString()" Block="true" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Multiple</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorMultiple" ValueChanged="v => { _ctorMultiple = v; UpdateConstructorCode(); }" Block="true" Size="sm" Options="_boolSeg" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="4">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Search</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorSearch" ValueChanged="v => { _ctorSearch = v; UpdateConstructorCode(); }" Block="true" Size="sm" Options="_boolSeg" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="4">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Clear</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorClear" ValueChanged="v => { _ctorClear = v; UpdateConstructorCode(); }" Block="true" Size="sm" Options="_boolSeg2" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="4">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Block</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorBlock" ValueChanged="v => { _ctorBlock = v; UpdateConstructorCode(); }" Block="true" Size="sm" Options="_boolSeg" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorSize.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Variant</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorVariant.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Placement</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorPlacement.ToString()" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgTreeSelect Nodes="_constructorOptions"
+                                            Placeholder="@_ctorPlaceholder"
+                                            Size="@_ctorSize"
+                                            Variant="@_ctorVariant"
+                                            Placement="@_ctorPlacement"
+                                            Multiple="@_ctorMultiple"
+                                            ShowSearch="@_ctorSearch"
+                                            Clearable="@_ctorClear"
+                                            Block="@_ctorBlock" />
+                            </div>
+                        </SgStack>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" @onclick="CopyCodeToClipboard">
+                                    <span>@_copyIcon</span>
+                                    <span style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block">
+                                @foreach (var line in _generatedCodeLines) { <code>@line</code> }
+                            </div>
+                        </SgStack>
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </SgCard>
+    </div>
+
+</ChildContent>
 </SgCard>
 
-@code {
-    private string? _selected;
-    private string? _selectedSearch;
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
 
-    private List<TreeNode> _nodes = new()
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    .demo-selected {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 10px 14px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .demo-ctor-input { width:100%; padding:6px 10px; border:1px solid var(--sg-border); border-radius:var(--sg-radius-md); background:var(--sg-bg); color:var(--sg-fg); font-size:13px; font-family:inherit; outline:none; transition:border-color .15s ease; box-sizing:border-box; }
+    .demo-ctor-input:focus { border-color:var(--sg-color-primary); box-shadow:var(--sg-focus-ring); }
+    .constructor-preview { background:var(--sg-surface-alt); border:1px solid var(--sg-border); border-radius:8px; padding:16px; min-height:60px; transition:all .3s ease; }
+    .ctrl-summary { background:var(--sg-surface-alt); border:1px solid var(--sg-border); border-radius:8px; padding:12px 14px; }
+    .code-block { background:#0f172a; color:#7dd3fc; padding:14px 16px; border-radius:8px; font-family:'JetBrains Mono','Fira Code',monospace; font-size:12px; line-height:1.9; overflow-x:auto; }
+    .code-block code { background:none; padding:0; color:inherit; font-size:inherit; display:block; white-space:pre; }
+    .demo-copy-btn { display:inline-flex; align-items:center; gap:4px; background:var(--sg-surface-alt); border:1px solid var(--sg-border); border-radius:6px; padding:4px 10px; cursor:pointer; color:var(--sg-text-muted); transition:all .2s ease; font-family:inherit; }
+    .demo-copy-btn:hover { color:var(--sg-primary); border-color:var(--sg-primary); background:color-mix(in srgb, var(--sg-primary) 8%, transparent); }
+    .demo-copy-btn:active { transform:scale(.95); }
+</style>
+
+@code {
+    private RenderFragment _mainHeader => __builder =>
     {
-        new TreeNode
-        {
-            Key = "engineering", Text = "Engineering",
-            Children = new()
-            {
-                new TreeNode { Key = "frontend", Text = "Frontend" },
-                new TreeNode { Key = "backend", Text = "Backend" },
-                new TreeNode { Key = "devops", Text = "DevOps" }
-            }
-        },
-        new TreeNode
-        {
-            Key = "design", Text = "Design",
-            Children = new()
-            {
-                new TreeNode { Key = "ui", Text = "UI Design" },
-                new TreeNode { Key = "ux", Text = "UX Research" }
-            }
-        },
-        new TreeNode
-        {
-            Key = "marketing", Text = "Marketing",
-            Children = new()
-            {
-                new TreeNode { Key = "content", Text = "Content" },
-                new TreeNode { Key = "seo", Text = "SEO" },
-                new TreeNode { Key = "social", Text = "Social Media" }
-            }
-        }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgTreeSelect</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Hierarchical tree dropdown with single/multi-select, search, cascade, lazy loading, placement control, custom templates, badges, and more. 25+ parameters — all optional.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
     };
 
+    // ── State ──
+    private string? _selSingle;
+    private IEnumerable<string> _selMulti = new List<string>();
+    private string _onChangeLog = "none";
+
+    private void HandleOnChange(List<TreeNode> nodes) =>
+        _onChangeLog = nodes.Count > 0 ? string.Join(", ", nodes.Select(n => n.Text)) : "none";
+
+    // ── Demo Data ──
+
+    private List<TreeNode> _departments = new()
+    {
+        new() { Key = "engineering", Text = "Engineering", Children = { new() { Key = "frontend", Text = "Frontend" }, new() { Key = "backend", Text = "Backend" }, new() { Key = "devops", Text = "DevOps" } } },
+        new() { Key = "design", Text = "Design", Children = { new() { Key = "ui", Text = "UI Design" }, new() { Key = "ux", Text = "UX Research" } } },
+        new() { Key = "marketing", Text = "Marketing", Children = { new() { Key = "content", Text = "Content" }, new() { Key = "seo", Text = "SEO" }, new() { Key = "social", Text = "Social Media" } } }
+    };
+
+    private List<TreeNode> _simple = new()
+    {
+        new() { Key = "a", Text = "Alpha", IsLeaf = true },
+        new() { Key = "b", Text = "Beta", IsLeaf = true },
+        new() { Key = "c", Text = "Gamma", IsLeaf = true },
+        new() { Key = "d", Text = "Delta", IsLeaf = true }
+    };
+
+    private List<TreeNode> _largeFlat = new()
+    {
+        new() { Key = "a1", Text = "Node Alpha", IsLeaf = true }, new() { Key = "a2", Text = "Node Beta", IsLeaf = true },
+        new() { Key = "a3", Text = "Node Gamma", IsLeaf = true }, new() { Key = "a4", Text = "Node Delta", IsLeaf = true },
+        new() { Key = "a5", Text = "Node Epsilon", IsLeaf = true }, new() { Key = "a6", Text = "Node Zeta", IsLeaf = true },
+        new() { Key = "a7", Text = "Node Eta", IsLeaf = true }, new() { Key = "a8", Text = "Node Theta", IsLeaf = true },
+        new() { Key = "a9", Text = "Node Iota", IsLeaf = true }, new() { Key = "a10", Text = "Node Kappa", IsLeaf = true }
+    };
+
+    private List<TreeNode> _locations = new()
+    {
+        new() { Key = "americas", Text = "Americas", Children = { new() { Key = "us", Text = "USA", Children = { new() { Key = "ny", Text = "New York", IsLeaf = true }, new() { Key = "sf", Text = "San Francisco", IsLeaf = true } } }, new() { Key = "ca", Text = "Canada", Children = { new() { Key = "tor", Text = "Toronto", IsLeaf = true }, new() { Key = "van", Text = "Vancouver", IsLeaf = true } } } } },
+        new() { Key = "europe", Text = "Europe", Children = { new() { Key = "uk", Text = "UK", Children = { new() { Key = "ldn", Text = "London", IsLeaf = true }, new() { Key = "mcr", Text = "Manchester", IsLeaf = true } } }, new() { Key = "de", Text = "Germany", Children = { new() { Key = "ber", Text = "Berlin", IsLeaf = true }, new() { Key = "mun", Text = "Munich", IsLeaf = true } } } } },
+        new() { Key = "asia", Text = "Asia", Children = { new() { Key = "jp", Text = "Japan", Children = { new() { Key = "tky", Text = "Tokyo", IsLeaf = true }, new() { Key = "osk", Text = "Osaka", IsLeaf = true } } }, new() { Key = "kr", Text = "South Korea", Children = { new() { Key = "sel", Text = "Seoul", IsLeaf = true } } } } }
+    };
+
+    private List<TreeNode> _departmentStore = new()
+    {
+        new() { Key = "electronics", Text = "Electronics", Children = { new() { Key = "computers", Text = "Computers", Children = { new() { Key = "laptops", Text = "Laptops", IsLeaf = true }, new() { Key = "desktops", Text = "Desktops", IsLeaf = true } } }, new() { Key = "audio", Text = "Audio", Children = { new() { Key = "headphones", Text = "Headphones", IsLeaf = true }, new() { Key = "speakers", Text = "Speakers", IsLeaf = true } } }, new() { Key = "phones", Text = "Phones", Children = { new() { Key = "smartphones", Text = "Smartphones", IsLeaf = true }, new() { Key = "accessories", Text = "Accessories", IsLeaf = true } } } } },
+        new() { Key = "clothing", Text = "Clothing", Children = { new() { Key = "men", Text = "Men", Children = { new() { Key = "shirts", Text = "Shirts", IsLeaf = true }, new() { Key = "pants", Text = "Pants", IsLeaf = true } } }, new() { Key = "women", Text = "Women", Children = { new() { Key = "dresses", Text = "Dresses", IsLeaf = true }, new() { Key = "tops", Text = "Tops", IsLeaf = true } } } } },
+        new() { Key = "home", Text = "Home & Garden", Children = { new() { Key = "furniture", Text = "Furniture", Children = { new() { Key = "living", Text = "Living Room", IsLeaf = true }, new() { Key = "bedroom", Text = "Bedroom", IsLeaf = true } } }, new() { Key = "garden", Text = "Garden", Children = { new() { Key = "tools", Text = "Tools", IsLeaf = true }, new() { Key = "plants", Text = "Plants", IsLeaf = true } } } } },
+        new() { Key = "sports", Text = "Sports & Outdoors", Children = { new() { Key = "fitness", Text = "Fitness", Children = { new() { Key = "weights", Text = "Weights", IsLeaf = true }, new() { Key = "yoga", Text = "Yoga", IsLeaf = true } } }, new() { Key = "team", Text = "Team Sports", Children = { new() { Key = "soccer", Text = "Soccer", IsLeaf = true }, new() { Key = "basketball", Text = "Basketball", IsLeaf = true } } } } }
+    };
+
+    private List<TreeNode> _iconOptions = new()
+    {
+        new() { Key = "doc", Text = "Documents", IsLeaf = true, BadgeText = "13", BadgeVariant = SgBadgeVariant.Info },
+        new() { Key = "img", Text = "Images", IsLeaf = true, BadgeText = "42", BadgeVariant = SgBadgeVariant.Info },
+        new() { Key = "music", Text = "Music", IsLeaf = true, BadgeText = "7", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Key = "video", Text = "Videos", IsLeaf = true, BadgeText = "5", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Key = "arch", Text = "Archives", IsLeaf = true, BadgeText = "3", BadgeVariant = SgBadgeVariant.Success }
+    };
+
+    // ── Constructor state ──
+    private string _ctorPlaceholder = "Select...";
+    private SgSize _ctorSize = SgSize.Md;
+    private SgCascaderVariant _ctorVariant = SgCascaderVariant.Outlined;
+    private SgPlacement _ctorPlacement = SgPlacement.BottomStart;
+    private bool _ctorMultiple;
+    private bool _ctorSearch;
+    private bool _ctorClear;
+    private bool _ctorBlock = true;
+
+    private List<TreeNode> _constructorOptions = new()
+    {
+        new() { Key = "cat1", Text = "Category One", Children = { new() { Key = "sub1", Text = "Sub A", IsLeaf = true }, new() { Key = "sub2", Text = "Sub B", IsLeaf = true }, new() { Key = "sub3", Text = "Sub C", IsLeaf = true } } },
+        new() { Key = "cat2", Text = "Category Two", Children = { new() { Key = "sub4", Text = "Sub D", IsLeaf = true }, new() { Key = "sub5", Text = "Sub E", IsLeaf = true } } },
+        new() { Key = "cat3", Text = "Category Three", Children = { new() { Key = "sub6", Text = "Sub F", IsLeaf = true } } }
+    };
+
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private readonly List<SgSegmentedOption<SgSize>> _sizeOptions = new() { new() { Value = SgSize.Sm, Label = "Sm" }, new() { Value = SgSize.Md, Label = "Md" }, new() { Value = SgSize.Lg, Label = "Lg" } };
+    private readonly List<SgSegmentedOption<SgCascaderVariant>> _variantOptions = new() { new() { Value = SgCascaderVariant.Outlined, Label = "Outlined" }, new() { Value = SgCascaderVariant.Borderless, Label = "Bord'less" }, new() { Value = SgCascaderVariant.Filled, Label = "Filled" } };
+    private readonly List<SgSegmentedOption<bool>> _boolSeg = new() { new() { Value = false, Label = "Off" }, new() { Value = true, Label = "On" } };
+    private readonly List<SgSegmentedOption<bool>> _boolSeg2 = new() { new() { Value = true, Label = "On" }, new() { Value = false, Label = "Off" } };
+    private readonly List<SgPlacement> _placementItems = new() { SgPlacement.BottomStart, SgPlacement.BottomEnd, SgPlacement.TopStart, SgPlacement.TopEnd };
+
+    protected override void OnInitialized() => UpdateConstructorCode();
+
+    private void HandlePlaceholderChange(ChangeEventArgs e)
+    {
+        _ctorPlaceholder = (string?)e.Value ?? "";
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string> { "<SgTreeSelect", "    Nodes=\"_myNodes\"", $"    Placeholder=\"{_ctorPlaceholder}\"" };
+        if (_ctorSize != SgSize.Md) lines.Add($"    Size=\"SgSize.{_ctorSize}\"");
+        if (_ctorVariant != SgCascaderVariant.Outlined) lines.Add($"    Variant=\"SgCascaderVariant.{_ctorVariant}\"");
+        if (_ctorPlacement != SgPlacement.BottomStart) lines.Add($"    Placement=\"SgPlacement.{_ctorPlacement}\"");
+        if (_ctorMultiple) lines.Add("    Multiple=\"true\"");
+        if (_ctorSearch) lines.Add("    ShowSearch=\"true\"");
+        if (_ctorClear) lines.Add("    Clearable=\"true\"");
+        if (!_ctorBlock) lines.Add("    Block=\"false\"");
+        lines.Add("    @bind-Value=\"_myValue\" />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        try { await JS.InvokeVoidAsync("navigator.clipboard.writeText", string.Join("\n", _generatedCodeLines)); _copyIcon = "✓"; _copyLabel = "Copied!"; StateHasChanged(); await Task.Delay(2000); _copyIcon = "📋"; _copyLabel = "Copy"; StateHasChanged(); }
+        catch { _copyIcon = "✗"; _copyLabel = "Failed"; StateHasChanged(); await Task.Delay(1500); _copyIcon = "📋"; _copyLabel = "Copy"; StateHasChanged(); }
+    }
+
+    // ── Property tables ──
     private List<PropertyPanelItem> _basicProperties = new()
     {
-        new() { Label = "Nodes", Value = "List<TreeNode>", BadgeText = "Tree data" },
-        new() { Label = "Value", Value = "string?", BadgeText = "Selected key (two-way)" },
-        new() { Label = "Placeholder", Value = "string?", BadgeText = "Placeholder text" },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Disabled state" }
+        new() { Label = "Nodes", Value = "List<TreeNode>", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Value", Value = "string?", BadgeText = "Two-way", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Values", Value = "IEnumerable<string>?", BadgeText = "Multi two-way", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Placeholder", Value = "string?", BadgeText = "Prompt" },
+        new() { Label = "Multiple", Value = "bool", BadgeText = "Multi-select" },
+        new() { Label = "Block", Value = "bool (default: true)", BadgeText = "Full width" },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "Disabled", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Clearable", Value = "bool", BadgeText = "Clear button" },
     };
-
+    private List<PropertyPanelItem> _styleProperties = new()
+    {
+        new() { Label = "Size", Value = "SgSize", BadgeText = "Sm/Md/Lg", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Variant", Value = "SgCascaderVariant", BadgeText = "Outlined/Borderless/Filled", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxHeight", Value = "string? (CSS)", BadgeText = "Max menu height" },
+        new() { Label = "Loading", Value = "bool", BadgeText = "Loading state", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Class", Value = "string?", BadgeText = "Custom CSS" },
+    };
     private List<PropertyPanelItem> _searchProperties = new()
     {
-        new() { Label = "ShowSearch",        Value = "bool",                  BadgeText = "Enable search" },
-        new() { Label = "SearchPlaceholder", Value = "string",                BadgeText = "Search hint" },
-        new() { Label = "TextSelector",      Value = "Func<TreeNode, string>?",BadgeText = "Custom text" }
+        new() { Label = "ShowSearch", Value = "bool", BadgeText = "Enable search", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SearchPlaceholder", Value = "string?", BadgeText = "Search hint" },
+        new() { Label = "EmptyText", Value = "string?", BadgeText = "No results" },
+        new() { Label = "EmptyContent", Value = "RenderFragment?", BadgeText = "Custom empty" },
+        new() { Label = "TextSelector", Value = "Func<TreeNode, string>?", BadgeText = "Custom text" },
+    };
+    private List<PropertyPanelItem> _checkProperties = new()
+    {
+        new() { Label = "Cascade", Value = "bool (default: true)", BadgeText = "Cascade to children", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "LeafOnly", Value = "bool", BadgeText = "Leaves only", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ExpandAll", Value = "bool", BadgeText = "Auto-expand", BadgeVariant = SgBadgeVariant.Info },
+    };
+    private List<PropertyPanelItem> _placementProperties = new()
+    {
+        new() { Label = "Placement", Value = "SgPlacement", BadgeText = "BottomStart/End, TopStart/End", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OpenChanged", Value = "EventCallback<bool>", BadgeText = "Open/close event", BadgeVariant = SgBadgeVariant.Warn },
     };
 }

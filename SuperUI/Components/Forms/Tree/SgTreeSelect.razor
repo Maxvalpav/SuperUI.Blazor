@@ -1,15 +1,20 @@
 @namespace SuperUI.Components
-@implements IDisposable
+@implements IAsyncDisposable
 @using SuperUI.Localization
+@using SuperUI.Enums
+@using Microsoft.JSInterop
 @inject ISuperUILocalizer Localizer
+@inject IJSRuntime JS
 
-<div class="sgc-treeselect @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @CssClass"
+<div class="@GetRootClasses()"
      role="combobox"
      aria-expanded="@(_open ? "true" : "false")"
      aria-haspopup="tree"
      aria-disabled="@(Disabled ? "true" : null)"
+     @ref="_rootRef"
      tabindex="@(Disabled ? "-1" : "0")"
      @onkeydown="OnRootKeyDownAsync"
+     @onfocusin="() => _focusWithin = true"
      @onfocusout="HandleFocusOutAsync">
     <div class="sgc-treeselect-control" @onclick="ToggleAsync">
         @{ var selectedKeys = GetSelectedKeys(); }
@@ -31,9 +36,11 @@
                         {
                             <button type="button"
                                     class="sgc-treeselect-tag-x"
-                                     aria-label="@Localizer["TreeSelect_Remove"]"
+                                    aria-label="@Localizer["TreeSelect_Remove"]"
                                     @onclick:stopPropagation="true"
-                                    @onclick="() => RemoveKeyAsync(kLocal)">×</button>
+                                    @onclick="() => RemoveKeyAsync(kLocal)">
+                                @ClearIcon
+                            </button>
                         }
                     </span>
                 }
@@ -56,27 +63,56 @@
                     class="sgc-treeselect-clear"
                     aria-label="@Localizer["TreeSelect_Clear"]"
                     @onclick:stopPropagation="true"
-                    @onclick="ClearAsync">×</button>
+                    @onclick="ClearAsync">
+                @ClearIcon
+            </button>
         }
-        <span class="sgc-treeselect-caret" aria-hidden="true">@(_open ? "▲" : "▼")</span>
+        @if (Loading)
+        {
+            <span class="sgc-treeselect-loading" aria-hidden="true">
+                @LoadingIcon
+            </span>
+        }
+        <span class="sgc-treeselect-caret @(_open ? "sgc-caret-open" : "")" aria-hidden="true">
+            @CaretIcon
+        </span>
     </div>
     @if (_open)
     {
-        <div class="sgc-treeselect-menu" @onclick:stopPropagation="true">
+        <div class="sgc-treeselect-menu" style="max-height:@CurrentMaxHeight;"
+             @onclick:stopPropagation="true" @onmousedown:stopPropagation="true">
             @if (ShowSearch)
             {
-                <input type="text"
-                       class="sgc-treeselect-search"
-                       placeholder="@SearchPlaceholder"
-                       value="@_search"
-                       @oninput="OnSearchInput"
-                       @onkeydown="OnSearchKeyDownAsync" />
+                <div class="sgc-treeselect-search-wrap">
+                    <span class="sgc-treeselect-search-icon">@SearchIcon</span>
+                    <input type="text"
+                           class="sgc-treeselect-search"
+                           placeholder="@SearchPlaceholder"
+                           value="@_search"
+                           @oninput="OnSearchInput"
+                           @ref="_searchInputRef"
+                           @onkeydown="OnSearchKeyDownAsync"
+                           @onclick:stopPropagation="true" />
+                    @if (!string.IsNullOrEmpty(_search))
+                    {
+                        <span class="sgc-treeselect-search-clear" @onclick="ClearSearch" role="button" tabindex="-1">
+                            @ClearIcon
+                        </span>
+                    }
+                </div>
             }
             <div class="sgc-treeselect-tree" role="tree">
                 @{ var visible = GetVisibleNodes().ToList(); }
                 @if (visible.Count == 0)
                 {
-                    <div class="sgc-treeselect-empty">@EmptyText</div>
+                    @if (EmptyContent != null)
+                    {
+                        @EmptyContent
+                    }
+                    else
+                    {
+                        <div class="sgc-treeselect-empty">@EmptyText</div>
+                    }
                 }
                 else
                 {
@@ -91,37 +127,69 @@
 </div>
 
 @code {
+    private IJSObjectReference? _jsModule;
+    private ElementReference _rootRef;
+    private ElementReference _searchInputRef;
+    private DotNetObjectReference<SgTreeSelect>? _dotNetRef;
     private bool _open;
+    private bool _focusWithin;
+    private bool _disposed;
     private string _search = "";
     private string? _focusedKey;
     private readonly HashSet<string> _expanded = new();
     private bool _expandInitialized;
 
-    [Parameter] public List<TreeNode> Nodes { get; set; } = new();
-
-    // Single-select API
+    [Parameter, EditorRequired] public List<TreeNode> Nodes { get; set; } = new();
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
-
-    // Multi-select API
     [Parameter] public bool Multiple { get; set; }
     [Parameter] public IEnumerable<string>? Values { get; set; }
     [Parameter] public EventCallback<IEnumerable<string>> ValuesChanged { get; set; }
-
     [Parameter] public string? Placeholder { get; set; }
     [Parameter] public bool Block { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public bool ShowSearch { get; set; }
     [Parameter] public string SearchPlaceholder { get; set; } = "";
     [Parameter] public string EmptyText { get; set; } = "";
-    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Class { get; set; }
     [Parameter] public Func<TreeNode, string>? TextSelector { get; set; }
-
-    // Behavior
     [Parameter] public bool Cascade { get; set; } = true;
     [Parameter] public bool Clearable { get; set; }
     [Parameter] public bool LeafOnly { get; set; }
     [Parameter] public bool ExpandAll { get; set; }
+
+    [Parameter] public SgCascaderVariant Variant { get; set; } = SgCascaderVariant.Outlined;
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
+    [Parameter] public string? MaxHeight { get; set; }
+    [Parameter] public bool Loading { get; set; }
+    [Parameter] public Func<TreeNode, bool>? DisabledOption { get; set; }
+    [Parameter] public EventCallback<List<TreeNode>> OnChange { get; set; }
+    [Parameter] public RenderFragment<TreeNode>? NodeTemplate { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    [Parameter] public RenderFragment? CaretIconOverride { get; set; }
+    [Parameter] public RenderFragment? ClearIconOverride { get; set; }
+    [Parameter] public RenderFragment? LoadingIconOverride { get; set; }
+    [Parameter] public RenderFragment? SearchIconOverride { get; set; }
+    [Parameter] public RenderFragment? ExpandIconOverride { get; set; }
+    [Parameter] public RenderFragment? CollapseIconOverride { get; set; }
+    [Parameter] public RenderFragment? CheckIconOverride { get; set; }
+    [Parameter] public RenderFragment? UncheckIconOverride { get; set; }
+    [Parameter] public RenderFragment? IndeterminateIconOverride { get; set; }
+
+    private string CurrentMaxHeight => MaxHeight ?? "300px";
+
+    private RenderFragment CaretIcon => CaretIconOverride ?? _defaultCaret;
+    private RenderFragment ClearIcon => ClearIconOverride ?? _defaultClear;
+    private RenderFragment LoadingIcon => LoadingIconOverride ?? _defaultLoading;
+    private RenderFragment SearchIcon => SearchIconOverride ?? _defaultSearchIcon;
+    private RenderFragment ExpandIcon => ExpandIconOverride ?? _defaultExpandIcon;
+    private RenderFragment CollapseIcon => CollapseIconOverride ?? _defaultCollapseIcon;
+    private RenderFragment CheckedIcon => CheckIconOverride ?? _defaultCheckedIcon;
+    private RenderFragment UncheckedIcon => UncheckIconOverride ?? _defaultUncheckedIcon;
+    private RenderFragment IndeterminateIcon => IndeterminateIconOverride ?? _defaultIndeterminateIcon;
 
     private string NodeText(TreeNode n) => TextSelector?.Invoke(n) ?? n.Text;
     private string DisplayText => string.IsNullOrEmpty(Value) ? "" : FindText(Nodes, Value!) ?? Value!;
@@ -129,6 +197,128 @@
     private bool HasSelection => Multiple
         ? (Values?.Any() ?? false)
         : !string.IsNullOrEmpty(Value);
+
+    private bool IsDisabled(TreeNode n) => n.Disabled || (DisabledOption?.Invoke(n) ?? false);
+
+    // ── Default Icons ──
+
+    private RenderFragment _defaultCaret => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""16"" height=""16"">
+            <path fill-rule=""evenodd"" d=""M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultClear => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <path d=""M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultLoading => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"" class=""sgc-treeselect-spinner"">
+            <path d=""M15.655 4.344a8 8 0 1 0-.028 11.345.75.75 0 1 1 1.06 1.06 9.5 9.5 0 1 1 .03-13.487.75.75 0 0 1-1.062 1.082Z""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultSearchIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <path fill-rule=""evenodd"" d=""M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultExpandIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""12"" height=""12"">
+            <path fill-rule=""evenodd"" d=""M7.21 14.77a.75.75 0 0 1 .02-1.06L11.168 10 7.23 6.29a.75.75 0 1 1 1.04-1.08l4.5 4.25a.75.75 0 0 1 0 1.08l-4.5 4.25a.75.75 0 0 1-1.06-.02Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultCollapseIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""12"" height=""12"">
+            <path fill-rule=""evenodd"" d=""M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultCheckedIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <path fill-rule=""evenodd"" d=""M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultUncheckedIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""none"" stroke=""currentColor"" stroke-width=""1.5"" width=""14"" height=""14"">
+            <rect x=""2.75"" y=""2.75"" width=""14.5"" height=""14.5"" rx=""2"" />
+        </svg>");
+    };
+
+    private RenderFragment _defaultIndeterminateIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <rect x=""3"" y=""3"" width=""14"" height=""14"" rx=""2"" fill=""currentColor""/>
+            <path d=""M6 10h8"" stroke=""#fff"" stroke-width=""2"" stroke-linecap=""round""/>
+        </svg>");
+    };
+
+    // ── CSS Classes ──
+
+    private string GetRootClasses()
+    {
+        var sb = new List<string> { "sgc-treeselect" };
+        if (Block) sb.Add("sgc-block");
+        if (_open) sb.Add("sgc-open");
+        if (Disabled) sb.Add("sgc-disabled");
+        if (_focusWithin) sb.Add("sgc-focus");
+        if (Size != SgSize.Md) sb.Add($"sgc-treeselect-{Size.ToString().ToLowerInvariant()}");
+        if (Variant != SgCascaderVariant.Outlined) sb.Add($"sgc-treeselect-{Variant.ToString().ToLowerInvariant()}");
+        if (!string.IsNullOrEmpty(Class)) sb.Add(Class);
+        return string.Join(" ", sb);
+    }
+
+    private string GetPlacementString() => Placement switch
+    {
+        SgPlacement.BottomStart => "BottomStart",
+        SgPlacement.BottomEnd => "BottomEnd",
+        SgPlacement.TopStart => "TopStart",
+        SgPlacement.TopEnd => "TopEnd",
+        _ => "BottomStart"
+    };
+
+    // ── Lifecycle ──
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
+                    "./_content/SuperUI/superui-treeselect.js");
+                _dotNetRef = DotNetObjectReference.Create(this);
+                var placementStr = GetPlacementString();
+                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr);
+            }
+            catch
+            {
+                // JS module not available (e.g., during testing)
+            }
+        }
+
+        if (_open)
+        {
+            try
+            {
+                await _jsModule!.InvokeVoidAsync("repositionMenu", _rootRef);
+            }
+            catch { }
+        }
+    }
 
     protected override void OnParametersSet()
     {
@@ -146,6 +336,13 @@
             EmptyText = Localizer["TreeSelect_EmptyText"];
     }
 
+    protected override void OnInitialized()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+    }
+
+    // ── Expansion ──
+
     private void InitExpansion(IEnumerable<TreeNode> nodes)
     {
         foreach (var n in nodes)
@@ -154,6 +351,13 @@
             if (n.Children.Count > 0) InitExpansion(n.Children);
         }
     }
+
+    private void ToggleExpand(string key)
+    {
+        if (!_expanded.Add(key)) _expanded.Remove(key);
+    }
+
+    // ── Selection ──
 
     private List<string> GetSelectedKeys()
     {
@@ -189,7 +393,8 @@
         return null;
     }
 
-    // --- Visible (flattened) row computation ---
+    // ── Visible rows ──
+
     private record struct VisibleRow(TreeNode Node, int Level, bool MatchesSearch);
 
     private IEnumerable<VisibleRow> GetVisibleNodes()
@@ -232,20 +437,18 @@
         }
     }
 
-    // --- Cascade / check state ---
+    // ── Check state ──
+
     private enum CheckState { Unchecked, Checked, Indeterminate }
 
     private CheckState GetCheckState(TreeNode node)
     {
         if (!Multiple) return IsSelected(node.Key) ? CheckState.Checked : CheckState.Unchecked;
-
         var values = Values?.ToHashSet() ?? new HashSet<string>();
         if (!Cascade)
             return values.Contains(node.Key) ? CheckState.Checked : CheckState.Unchecked;
-
         if (node.Children.Count == 0)
             return values.Contains(node.Key) ? CheckState.Checked : CheckState.Unchecked;
-
         var (total, checkedCount) = CountLeafState(node, values);
         if (checkedCount == 0) return CheckState.Unchecked;
         if (checkedCount == total) return CheckState.Checked;
@@ -277,20 +480,56 @@
         foreach (var c in node.Children) CollectAllKeys(c, bag);
     }
 
-    // --- Selection actions ---
-    private async Task OnRowClickAsync(TreeNode node)
+    private List<TreeNode> CollectSelectedNodes()
+    {
+        var keys = GetSelectedKeys();
+        var result = new List<TreeNode>();
+        foreach (var k in keys)
+        {
+            var n = FindNode(Nodes, k);
+            if (n != null) result.Add(n);
+        }
+        return result;
+    }
+
+    private async Task NotifyOnChangeAsync()
+    {
+        if (OnChange.HasDelegate)
+            await OnChange.InvokeAsync(CollectSelectedNodes());
+    }
+
+    private async Task ToggleAsync()
     {
         if (Disabled) return;
+        _open = !_open;
+        if (_open)
+        {
+            _focusedKey ??= GetVisibleNodes().FirstOrDefault().Node?.Key;
+            if (ShowSearch)
+            {
+                await Task.Delay(50);
+                try { await _searchInputRef.FocusAsync(); } catch { }
+            }
+        }
+        if (OpenChanged.HasDelegate)
+            await OpenChanged.InvokeAsync(_open);
+        StateHasChanged();
+    }
+
+    // ── Row click ──
+
+    private async Task OnRowClickAsync(TreeNode node)
+    {
+        if (Disabled || IsDisabled(node)) return;
         if (Multiple)
         {
             await ToggleNodeAsync(node);
         }
         else
         {
-            if (LeafOnly && node.Children.Count > 0)
+            if (LeafOnly && node.Children.Count > 0 && !node.IsLeaf)
             {
                 ToggleExpand(node.Key);
-                await InvokeAsync(StateHasChanged);
                 return;
             }
             await SelectSingleAsync(node.Key);
@@ -302,15 +541,18 @@
         Value = key;
         _open = false;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(key);
-        await InvokeAsync(StateHasChanged);
+        await NotifyOnChangeAsync();
+        if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
+        StateHasChanged();
     }
 
     private async Task ToggleNodeAsync(TreeNode node)
     {
+        if (IsDisabled(node)) return;
         var current = (Values?.ToList()) ?? new List<string>();
         var set = new HashSet<string>(current);
         var state = GetCheckState(node);
-        var willCheck = state != CheckState.Checked; // unchecked or indeterminate -> check
+        var willCheck = state != CheckState.Checked;
 
         if (Cascade)
         {
@@ -318,7 +560,6 @@
             if (LeafOnly) CollectLeafKeys(node, keys); else CollectAllKeys(node, keys);
             if (willCheck) foreach (var k in keys) set.Add(k);
             else foreach (var k in keys) set.Remove(k);
-            // Recompute parent presence (only relevant when !LeafOnly)
             if (!LeafOnly) RecomputeAncestors(set);
         }
         else
@@ -327,13 +568,14 @@
         }
 
         var newList = set.ToList();
+        Values = newList;
         if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(newList);
-        await InvokeAsync(StateHasChanged);
+        await NotifyOnChangeAsync();
+        StateHasChanged();
     }
 
     private void RecomputeAncestors(HashSet<string> set)
     {
-        // Walk all parents; if all children present -> add parent, else remove.
         bool Visit(TreeNode n)
         {
             if (n.Children.Count == 0) return set.Contains(n.Key);
@@ -350,17 +592,20 @@
     {
         var node = FindNode(Nodes, key);
         if (node != null) { await ToggleNodeAsync(node); return; }
-        // fallback: just remove key
         var set = (Values?.ToHashSet()) ?? new HashSet<string>();
         set.Remove(key);
-        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(set.ToList());
-        await InvokeAsync(StateHasChanged);
+        var newList = set.ToList();
+        Values = newList;
+        if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(newList);
+        await NotifyOnChangeAsync();
+        StateHasChanged();
     }
 
     private async Task ClearAsync()
     {
         if (Multiple)
         {
+            Values = Array.Empty<string>();
             if (ValuesChanged.HasDelegate) await ValuesChanged.InvokeAsync(Array.Empty<string>());
         }
         else
@@ -368,37 +613,25 @@
             Value = null;
             if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(null);
         }
-        await InvokeAsync(StateHasChanged);
+        await NotifyOnChangeAsync();
+        StateHasChanged();
     }
 
-    // --- Expansion ---
-    private void ToggleExpand(string key)
-    {
-        if (!_expanded.Add(key)) _expanded.Remove(key);
-    }
-
-    // --- Open/close & focus ---
-    public async Task ToggleAsync()
-    {
-        if (Disabled) return;
-        _open = !_open;
-        if (_open && _focusedKey == null)
-        {
-            var first = GetVisibleNodes().FirstOrDefault();
-            _focusedKey = first.Node?.Key;
-        }
-        await InvokeAsync(StateHasChanged);
-    }
+    // ── Focus ──
 
     private async Task HandleFocusOutAsync(FocusEventArgs e)
     {
-        await Task.Delay(150);
-        if (_open)
+        await Task.Delay(160);
+        if (_open && !_focusWithin)
         {
             _open = false;
-            await InvokeAsync(StateHasChanged);
+            if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
+            StateHasChanged();
         }
+        _focusWithin = false;
     }
+
+    // ── Search ──
 
     private Task OnSearchInput(ChangeEventArgs e)
     {
@@ -408,16 +641,22 @@
         return InvokeAsync(StateHasChanged);
     }
 
-    // --- Keyboard ---
+    private void ClearSearch()
+    {
+        _search = "";
+        _focusedKey = GetVisibleNodes().FirstOrDefault().Node?.Key;
+        StateHasChanged();
+    }
+
+    // ── Keyboard ──
+
     private async Task OnRootKeyDownAsync(KeyboardEventArgs e)
     {
         if (Disabled) return;
         if (!_open)
         {
             if (e.Key == "Enter" || e.Key == " " || e.Key == "ArrowDown")
-            {
                 await ToggleAsync();
-            }
             return;
         }
         await HandleMenuKeyAsync(e);
@@ -430,7 +669,7 @@
         var rows = GetVisibleNodes().ToList();
         if (rows.Count == 0)
         {
-            if (e.Key == "Escape") { _open = false; await InvokeAsync(StateHasChanged); }
+            if (e.Key == "Escape") { _open = false; StateHasChanged(); }
             return;
         }
         var idx = _focusedKey == null ? -1 : rows.FindIndex(r => r.Node.Key == _focusedKey);
@@ -474,7 +713,6 @@
                     }
                     else
                     {
-                        // jump to parent
                         var lvl = rows[idx].Level;
                         for (var p = idx - 1; p >= 0; p--)
                         {
@@ -494,19 +732,43 @@
                 break;
             case "Enter":
             case " ":
-                if (idx >= 0)
-                {
-                    await OnRowClickAsync(rows[idx].Node);
-                }
+                if (idx >= 0) await OnRowClickAsync(rows[idx].Node);
                 break;
             case "Escape":
                 _open = false;
+                if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
                 await InvokeAsync(StateHasChanged);
                 break;
         }
     }
 
-    // --- Render row ---
+    // ── JSInvokable ──
+
+    [JSInvokable]
+    public async Task CloseFromJsAsync()
+    {
+        if (_open)
+        {
+            _open = false;
+            _focusWithin = false;
+            if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
+            StateHasChanged();
+        }
+    }
+
+    // ── Row Rendering ──
+
+    private static string HighlightMatch(string text, string query)
+    {
+        if (string.IsNullOrEmpty(query)) return text;
+        var idx = text.IndexOf(query, StringComparison.CurrentCultureIgnoreCase);
+        if (idx < 0) return text;
+        var before = text[..idx];
+        var match = text.Substring(idx, query.Length);
+        var after = text[(idx + query.Length)..];
+        return $"{before}<mark>{match}</mark>{after}";
+    }
+
     private RenderFragment RenderRow(VisibleRow row) => __builder =>
     {
         var node = row.Node;
@@ -514,24 +776,33 @@
         var checkState = GetCheckState(node);
         var isSelected = !Multiple && IsSelected(node.Key);
         var isFocused = _focusedKey == node.Key;
-        var hasChildren = node.Children.Count > 0;
+        var hasChildren = node.Children.Count > 0 && !node.IsLeaf;
         var isExpanded = _expanded.Contains(node.Key) || !string.IsNullOrEmpty(_search?.Trim());
         var disabledLeafSelect = !Multiple && LeafOnly && hasChildren;
+        var isDisabled = IsDisabled(node);
+
+        var optClasses = "sgc-treeselect-row";
+        if (isSelected) optClasses += " sgc-selected";
+        if (isFocused) optClasses += " sgc-focused";
+        if (disabledLeafSelect) optClasses += " sgc-non-selectable";
+        if (isDisabled) optClasses += " sgc-disabled-option";
+        if (!string.IsNullOrEmpty(node.CssClass)) optClasses += " " + node.CssClass;
 
         __builder.OpenElement(0, "div");
-        __builder.AddAttribute(1, "class",
-            "sgc-treeselect-row" +
-            (isSelected ? " sgc-selected" : "") +
-            (isFocused ? " sgc-focused" : "") +
-            (disabledLeafSelect ? " sgc-non-selectable" : ""));
+        __builder.AddAttribute(1, "class", optClasses);
         __builder.AddAttribute(2, "role", "treeitem");
         __builder.AddAttribute(3, "aria-level", (level + 1).ToString());
         __builder.AddAttribute(4, "aria-selected", isSelected ? "true" : "false");
-        if (hasChildren) __builder.AddAttribute(5, "aria-expanded", isExpanded ? "true" : "false");
-        __builder.AddAttribute(6, "style", $"padding-left: {6 + level * 16}px");
-        __builder.AddAttribute(7, "onclick", EventCallback.Factory.Create(this, () => OnRowClickAsync(node)));
+        __builder.AddAttribute(5, "aria-disabled", isDisabled ? "true" : "false");
+        if (hasChildren) __builder.AddAttribute(6, "aria-expanded", isExpanded ? "true" : "false");
+        __builder.AddAttribute(7, "style", $"padding-left: {8 + level * 16}px");
 
-        // Toggle
+        if (!isDisabled)
+        {
+            __builder.AddAttribute(8, "onclick", EventCallback.Factory.Create(this, () => OnRowClickAsync(node)));
+        }
+
+        // Expand/Collapse toggle
         __builder.OpenElement(10, "span");
         __builder.AddAttribute(11, "class", "sgc-treeselect-toggle" + (hasChildren ? "" : " sgc-empty"));
         if (hasChildren)
@@ -543,39 +814,82 @@
                     return InvokeAsync(StateHasChanged);
                 }));
             __builder.AddEventStopPropagationAttribute(13, "onclick", true);
-            __builder.AddContent(14, isExpanded ? "▾" : "▸");
+            if (isExpanded)
+                __builder.AddContent(14, CollapseIcon);
+            else
+                __builder.AddContent(14, ExpandIcon);
         }
         __builder.CloseElement();
 
-        // Checkbox (multi)
+        // Checkbox (multi-select)
         if (Multiple)
         {
-            __builder.OpenElement(20, "span");
-            __builder.AddAttribute(21, "class",
-                "sgc-treeselect-check" +
-                (checkState == CheckState.Checked ? " sgc-checked" : "") +
-                (checkState == CheckState.Indeterminate ? " sgc-indeterminate" : ""));
-            __builder.AddAttribute(22, "aria-hidden", "true");
-            __builder.CloseElement();
+            if (checkState == CheckState.Checked)
+                __builder.AddContent(20, CheckedIcon);
+            else if (checkState == CheckState.Indeterminate)
+                __builder.AddContent(20, IndeterminateIcon);
+            else
+                __builder.AddContent(20, UncheckedIcon);
         }
 
-        // Icon
-        if (!string.IsNullOrEmpty(node.Icon))
+        // Custom template
+        if (NodeTemplate != null)
         {
-            __builder.OpenElement(30, "span");
-            __builder.AddAttribute(31, "class", "sgc-treeselect-icon");
-            __builder.AddContent(32, node.Icon);
-            __builder.CloseElement();
+            __builder.AddContent(25, NodeTemplate(node));
         }
+        else
+        {
+            // Icon
+            if (!string.IsNullOrEmpty(node.Icon))
+            {
+                __builder.OpenElement(30, "span");
+                __builder.AddAttribute(31, "class", "sgc-treeselect-icon");
+                __builder.AddContent(32, node.Icon);
+                __builder.CloseElement();
+            }
 
-        // Label
-        __builder.OpenElement(40, "span");
-        __builder.AddAttribute(41, "class", "sgc-treeselect-label");
-        __builder.AddContent(42, NodeText(node));
-        __builder.CloseElement();
+            // Label (with highlight when search matches)
+            __builder.OpenElement(40, "span");
+            __builder.AddAttribute(41, "class", "sgc-treeselect-label");
+            if (row.MatchesSearch && !string.IsNullOrEmpty(_search))
+            {
+                __builder.AddMarkupContent(42, HighlightMatch(NodeText(node), _search));
+            }
+            else
+            {
+                __builder.AddContent(42, NodeText(node));
+            }
+            __builder.CloseElement();
+
+            // Badge
+            if (!string.IsNullOrEmpty(node.BadgeText))
+            {
+                __builder.OpenElement(50, "span");
+                __builder.AddAttribute(51, "class",
+                    $"sgc-treeselect-badge sgc-badge-{node.BadgeVariant.ToString().ToLowerInvariant()}");
+                __builder.AddContent(52, node.BadgeText);
+                __builder.CloseElement();
+            }
+        }
 
         __builder.CloseElement();
     };
 
-    public void Dispose() => _open = false;
+    // ── Dispose ──
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _dotNetRef?.Dispose();
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("detach", _rootRef);
+                await _jsModule.DisposeAsync();
+            }
+            catch { }
+        }
+    }
 }
