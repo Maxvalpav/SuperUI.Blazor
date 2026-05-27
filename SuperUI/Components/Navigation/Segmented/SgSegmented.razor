@@ -26,13 +26,9 @@
 
         <span class="sgc-segmented-slider" id="@_sliderId"></span>
 
-        @{
-            var optionList = Options as IList<SgSegmentedOption<TValue>> ?? Options.ToList();
-        }
-        @for (var i = 0; i < optionList.Count; i++)
+        @for (var i = 0; i < _resolvedOptions.Count; i++)
         {
-            var idx = i;
-            var o = optionList[idx];
+            var o = _resolvedOptions[i];
             var isActive = AllowMultiple
                 ? _selectedSet.Contains(o.Value)
                 : EqualityComparer<TValue>.Default.Equals(Value, o.Value);
@@ -44,7 +40,7 @@
                     role="tab"
                     aria-selected="@(isActive ? "true" : "false")"
                     disabled="@isDisabled"
-                    tabindex="@(isActive || (!optionList.Any(IsSelected) && idx == 0) ? 0 : -1)"
+                    tabindex="@((isActive || (!_resolvedOptions.Any(IsSelected) && i == 0)) ? 0 : -1)"
                     title="@o.Tooltip"
                     @onclick="() => SelectAsync(o.Value)">
                 @if (ItemTemplate is not null)
@@ -60,7 +56,7 @@
                     <span class="sgc-segmented-label">@o.Label</span>
                     @if (o.BadgeText is not null)
                     {
-                        <span class="sgc-segmented-badge sgc-badge-@o.BadgeVariant.ToLowerInvariant()">@o.BadgeText</span>
+                        <span class="sgc-segmented-badge sgc-badge-@o.BadgeVariant.ToLowerInvariant() @o.BadgeClass">@o.BadgeText</span>
                     }
                 }
             </button>
@@ -180,6 +176,7 @@
     [Parameter] public Dictionary<string, object?>? AdditionalAttributes { get; set; }
 
     // ── Internal state ──────────────────────────────────────────────────
+    private List<SgSegmentedOption<TValue>> _resolvedOptions = new();
     private HashSet<TValue> _selectedSet = new();
     private ElementReference[] _itemRefs = Array.Empty<ElementReference>();
     private static readonly string[] _skeletonWidths = { "48px", "64px", "56px", "72px" };
@@ -251,22 +248,26 @@
     // ── Lifecycle ───────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
-        if (AllowMultiple && SelectedValues is not null)
-        {
-            _selectedSet = new HashSet<TValue>(SelectedValues);
-        }
+        ResolveState();
     }
 
     protected override void OnParametersSet()
     {
+        ResolveState();
+    }
+
+    private void ResolveState()
+    {
+        _resolvedOptions = Options as List<SgSegmentedOption<TValue>>
+            ?? Options.ToList();
+
         if (AllowMultiple && SelectedValues is not null)
         {
             _selectedSet = new HashSet<TValue>(SelectedValues);
         }
 
-        var list = Options as IList<SgSegmentedOption<TValue>> ?? Options.ToList();
-        _itemRefs = new ElementReference[list.Count];
-        _skeletonCount = Math.Max(2, Math.Min(list.Count, 6));
+        _itemRefs = new ElementReference[_resolvedOptions.Count];
+        _skeletonCount = Math.Max(2, Math.Min(_resolvedOptions.Count, 6));
     }
 
     // ── Selection ───────────────────────────────────────────────────────
@@ -315,45 +316,46 @@
     {
         if (Disabled) return;
 
-        var optionList = Options as IList<SgSegmentedOption<TValue>> ?? Options.ToList();
-        if (optionList.Count == 0) return;
+        if (_resolvedOptions.Count == 0) return;
 
-        var currentIndex = optionList.IndexOf(
-            optionList.FirstOrDefault(o => IsSelected(o))!);
+        var currentIndex = _resolvedOptions.IndexOf(
+            _resolvedOptions.FirstOrDefault(o => IsSelected(o))!);
         if (currentIndex < 0) currentIndex = 0;
 
         var newIndex = currentIndex;
 
         if (e.Key == "ArrowRight" || e.Key == "ArrowDown")
         {
-            newIndex = (currentIndex + 1) % optionList.Count;
-            while (newIndex != currentIndex && (Disabled || optionList[newIndex].Disabled))
-                newIndex = (newIndex + 1) % optionList.Count;
+            newIndex = (currentIndex + 1) % _resolvedOptions.Count;
+            while (newIndex != currentIndex && (Disabled || _resolvedOptions[newIndex].Disabled))
+                newIndex = (newIndex + 1) % _resolvedOptions.Count;
         }
         else if (e.Key == "ArrowLeft" || e.Key == "ArrowUp")
         {
-            newIndex = (currentIndex - 1 + optionList.Count) % optionList.Count;
-            while (newIndex != currentIndex && (Disabled || optionList[newIndex].Disabled))
-                newIndex = (newIndex - 1 + optionList.Count) % optionList.Count;
+            newIndex = (currentIndex - 1 + _resolvedOptions.Count) % _resolvedOptions.Count;
+            while (newIndex != currentIndex && (Disabled || _resolvedOptions[newIndex].Disabled))
+                newIndex = (newIndex - 1 + _resolvedOptions.Count) % _resolvedOptions.Count;
         }
         else if (e.Key == "Home")
         {
             newIndex = 0;
-            while (newIndex < optionList.Count && (Disabled || optionList[newIndex].Disabled))
+            while (newIndex < _resolvedOptions.Count && (Disabled || _resolvedOptions[newIndex].Disabled))
                 newIndex++;
-            if (newIndex >= optionList.Count) newIndex = currentIndex;
+            if (newIndex >= _resolvedOptions.Count) newIndex = currentIndex;
         }
         else if (e.Key == "End")
         {
-            newIndex = optionList.Count - 1;
-            while (newIndex >= 0 && (Disabled || optionList[newIndex].Disabled))
+            newIndex = _resolvedOptions.Count - 1;
+            while (newIndex >= 0 && (Disabled || _resolvedOptions[newIndex].Disabled))
                 newIndex--;
             if (newIndex < 0) newIndex = currentIndex;
         }
 
-        if (newIndex != currentIndex && newIndex >= 0 && newIndex < optionList.Count)
+        if (newIndex != currentIndex && newIndex >= 0 && newIndex < _resolvedOptions.Count)
         {
-            await SelectAsync(optionList[newIndex].Value);
+            await SelectAsync(_resolvedOptions[newIndex].Value);
         }
     }
+
+
 }

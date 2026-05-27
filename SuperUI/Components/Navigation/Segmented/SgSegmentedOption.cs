@@ -28,9 +28,15 @@ public sealed class SgSegmentedOption<TValue>
     /// </summary>
     public string BadgeVariant { get; set; } = "Default";
 
+    /// <summary>Additional CSS class applied to the badge element.</summary>
+    public string? BadgeClass { get; set; }
+
     /// <summary>Tooltip text shown on hover.</summary>
     public string? Tooltip { get; set; }
 
     /// <summary>Additional CSS class for this specific option.</summary>
     public string? Class { get; set; }
+
+    /// <summary>Optional ARIA label for the option button.</summary>
+    public string? AriaLabel { get; set; }
 }
