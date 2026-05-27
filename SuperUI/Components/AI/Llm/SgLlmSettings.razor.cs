@@ -38,6 +38,13 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
     private bool _filterToolsOnly;
     private bool _filterJsonOnly;
     private bool _filterReasoningOnly;
+
+    // Stage 5 — model catalog UX
+    private string _modelSearchText = string.Empty;
+    private bool _catalogExpanded;
+    private int _catalogTop = 25;
+    private string _modelSort = "recommended"; // recommended | context | name
+    private string? _selectedFamily;
     private List<SgLlmProfile> _profiles = new();
     private string? _selectedProfileId;
     private string _profileName = "";
@@ -66,16 +73,144 @@ public partial class SgLlmSettings : ComponentBase, IDisposable
         get
         {
             if (_models.Count == 0) return _modelIds;
-            return _models
+            return FilteredModels
+                .Select(m => m.Id)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
+
+    /// <summary>Models after applying free/vision/tools/json/reasoning filters, family filter, free-text search and sort.</summary>
+    private IEnumerable<SgLlmModelInfo> FilteredModels
+    {
+        get
+        {
+            if (_models.Count == 0) return Enumerable.Empty<SgLlmModelInfo>();
+            var q = _models.AsEnumerable()
                 .Where(m => (!Config.OnlyFreeModels && !_filterFreeOnly) || IsModelFree(m))
                 .Where(m => !_filterVisionOnly || m.SupportsVision)
                 .Where(m => !_filterToolsOnly || m.SupportsTools)
                 .Where(m => !_filterJsonOnly || m.SupportsJsonSchema)
-                .Where(m => !_filterReasoningOnly || m.SupportsReasoning)
-                .Select(m => m.Id)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(id => id)
-                .ToList();
+                .Where(m => !_filterReasoningOnly || m.SupportsReasoning);
+
+            if (_selectedFamily != null)
+                q = q.Where(m => ExtractFamily(m.Id) == _selectedFamily);
+
+            if (!string.IsNullOrWhiteSpace(_modelSearchText))
+            {
+                var s = _modelSearchText.Trim();
+                q = q.Where(m =>
+                    m.Id.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || m.Name.Contains(s, StringComparison.OrdinalIgnoreCase)
+                    || (m.Description?.Contains(s, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            return _modelSort switch
+            {
+                "context" => q.OrderByDescending(m => m.ContextWindow ?? 0).ThenBy(m => m.Name),
+                "name" => q.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase),
+                _ => q
+                    .OrderByDescending(m => m.IsRecommended)
+                    .ThenByDescending(m => m.IsFree)
+                    .ThenByDescending(m => m.ContextWindow ?? 0)
+                    .ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
+            };
+        }
+    }
+
+    /// <summary>Distinct families present in the loaded model list, with counts (for the family chip bar).</summary>
+    private IReadOnlyList<(string Family, int Count)> ModelFamilies =>
+        _models
+            .Select(m => ExtractFamily(m.Id))
+            .Where(f => !string.IsNullOrEmpty(f))
+            .GroupBy(f => f!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, g.Count()))
+            .OrderByDescending(t => t.Item2)
+            .ToList();
+
+    /// <summary>Best-effort family extraction from a model id (gpt, claude, gemini, llama, qwen, deepseek, mistral, gemma, kimi, phi, grok, command).</summary>
+    private static string? ExtractFamily(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return null;
+        var lower = id.ToLowerInvariant();
+        // Strip namespace prefix (openai/, anthropic/, meta-llama/...)
+        var slash = lower.LastIndexOf('/');
+        if (slash >= 0 && slash < lower.Length - 1) lower = lower[(slash + 1)..];
+
+        static string? Find(string s, params string[] families)
+        {
+            foreach (var f in families)
+                if (s.Contains(f, StringComparison.Ordinal)) return f;
+            return null;
+        }
+
+        return Find(lower,
+            "gpt-oss", "gpt", "claude", "gemini", "gemma",
+            "llama", "qwen", "deepseek", "mistral", "mixtral",
+            "kimi", "phi", "grok", "command", "yi", "nemotron",
+            "minimax", "glm", "sonar", "voyage", "jina", "nomic", "whisper", "nova", "aura");
+    }
+
+    /// <summary>Reset Top-N counter when filters or search change so the user sees the first page.</summary>
+    private void OnCatalogFilterChanged()
+    {
+        _catalogTop = 25;
+    }
+
+    /// <summary>Show 25 more rows in the catalog.</summary>
+    private void LoadMoreCatalogRows()
+    {
+        _catalogTop += 25;
+    }
+
+    /// <summary>Toggle between Top-N and "show all".</summary>
+    private void ToggleCatalogExpanded()
+    {
+        _catalogExpanded = !_catalogExpanded;
+        if (!_catalogExpanded) _catalogTop = 25;
+    }
+
+    private void ToggleFamily(string family)
+    {
+        _selectedFamily = _selectedFamily == family ? null : family;
+        OnCatalogFilterChanged();
+    }
+
+    private void ClearModelFilters()
+    {
+        _modelSearchText = string.Empty;
+        _filterFreeOnly = _filterVisionOnly = _filterToolsOnly = _filterJsonOnly = _filterReasoningOnly = false;
+        _selectedFamily = null;
+        OnCatalogFilterChanged();
+    }
+
+    /// <summary>True when any model filter narrows down the visible list.</summary>
+    private bool HasModelFilters =>
+        !string.IsNullOrWhiteSpace(_modelSearchText)
+        || _filterFreeOnly || _filterVisionOnly || _filterToolsOnly
+        || _filterJsonOnly || _filterReasoningOnly
+        || _selectedFamily != null;
+
+    /// <summary>True when the connection is set but no models are loaded — surface a CTA.</summary>
+    private bool NeedsConnectionForModels =>
+        _models.Count == 0
+        && Config.Provider != SgLlmProvider.None
+        && (Config.Provider != SgLlmProvider.Ollama || string.IsNullOrWhiteSpace(Config.BaseUrl) || !_loadingModels);
+
+    /// <summary>Human-readable hint for why the catalog might be empty.</summary>
+    private string EmptyCatalogHint
+    {
+        get
+        {
+            var p = Config.Provider;
+            if (p == SgLlmProvider.None) return "Выберите провайдера сверху, чтобы загрузить список моделей.";
+            if (p == SgLlmProvider.Ollama)
+                return "Запустите Ollama (по умолчанию http://localhost:11434) и нажмите «Обновить». Не забудьте OLLAMA_ORIGINS, если открываете из браузера.";
+            if (SgLlmProviderRegistry.GetPreset(p) is { Category: SgLlmProviderCategory.Local })
+                return "Запустите локальный сервер и проверьте Base URL. Часто нужна опция CORS — см. подсказки во вкладке «Соединение».";
+            if (SgLlmProviderRegistry.RequiresKey(p) && string.IsNullOrWhiteSpace(Config.ApiKey))
+                return "Введите API-ключ и нажмите «Обновить» — для этого провайдера он обязателен.";
+            return "Если /v1/models возвращает CORS, попробуйте включить Backend proxy в разделе «Соединение».";
         }
     }
 

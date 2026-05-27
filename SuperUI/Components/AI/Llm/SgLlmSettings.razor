@@ -273,6 +273,18 @@
                     </div>
                     <SgIconButton Icon="@SgIcons.Refresh" OnClick="LoadModelsAsync" Variant="SgButtonVariant.Ghost" Size="SgSize.Sm" Loading="_loadingModels" Title="Обновить модели" />
                 </div>
+                <div class="sgc-model-search">
+                    <SgTextBox @bind-Value="_modelSearchText" Placeholder="Поиск моделей: claude, gpt, qwen…" Debounce="200" />
+                    <select class="sgc-model-sort" @bind="_modelSort" @bind:after="OnCatalogFilterChanged" title="Порядок сортировки">
+                        <option value="recommended">Рекомендованные первыми</option>
+                        <option value="context">По контексту (убыв.)</option>
+                        <option value="name">По имени</option>
+                    </select>
+                    @if (HasModelFilters)
+                    {
+                        <button type="button" class="sgc-model-clear" @onclick="ClearModelFilters" title="Сбросить все фильтры">✕ сброс</button>
+                    }
+                </div>
                 <div class="sgc-model-filters">
                     <SgSwitch @bind-Value="_filterFreeOnly" Label="free/local" Size="SgSize.Sm" />
                     <SgSwitch @bind-Value="_filterVisionOnly" Label="vision" Size="SgSize.Sm" />
@@ -280,6 +292,20 @@
                     <SgSwitch @bind-Value="_filterJsonOnly" Label="json" Size="SgSize.Sm" />
                     <SgSwitch @bind-Value="_filterReasoningOnly" Label="reasoning" Size="SgSize.Sm" />
                 </div>
+                @if (ModelFamilies.Count > 1)
+                {
+                    <div class="sgc-model-families">
+                        @foreach (var (fam, cnt) in ModelFamilies)
+                        {
+                            <button type="button"
+                                    class="sgc-model-family @(_selectedFamily == fam ? "active" : "")"
+                                    @onclick="@(() => ToggleFamily(fam))"
+                                    title="Фильтр по семейству @fam">
+                                @fam <em>@cnt</em>
+                            </button>
+                        }
+                    </div>
+                }
                 @if (RecommendedModels.Any())
                 {
                     <div class="sgc-model-chips">
@@ -307,32 +333,79 @@
                 }
                 @if (_models.Count > 0)
                 {
-                    <details class="sgc-model-catalog">
-                        <summary>Каталог моделей (@FilteredModelIds.Count)</summary>
-                        <div class="sgc-model-table-wrap">
-                            <table class="sgc-model-table">
-                                <thead>
-                                    <tr><th>Модель</th><th>Context</th><th>Caps</th><th>Type</th></tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var m in _models.Where(x => FilteredModelIds.Contains(x.Id)).Take(25))
-                                    {
-                                        <tr class="@(Config.ModelId == m.Id ? "active" : "")" @onclick="@(() => SelectRecommendedModel(m.Id))">
-                                            <td><b>@m.Name</b><small>@m.Id</small></td>
-                                            <td>@(m.ContextWindow is > 0 ? m.ContextWindow.Value.ToString("N0") : "—")</td>
-                                            <td>
-                                                @if (m.SupportsVision) { <span>vision</span> }
-                                                @if (m.SupportsTools) { <span>tools</span> }
-                                                @if (m.SupportsJsonSchema) { <span>json</span> }
-                                                @if (m.SupportsReasoning) { <span>reasoning</span> }
-                                            </td>
-                                            <td>@(IsModelFree(m) ? "free/local" : "paid/unknown")</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
+                    var filtered = FilteredModels.ToList();
+                    var visible = _catalogExpanded ? filtered : filtered.Take(_catalogTop).ToList();
+                    <details class="sgc-model-catalog" open="@(HasModelFilters || _catalogExpanded)">
+                        <summary>Каталог моделей (@filtered.Count из @_models.Count)</summary>
+                        @if (filtered.Count == 0)
+                        {
+                            <div class="sgc-model-empty">
+                                <div class="sgc-model-empty-icon">🔎</div>
+                                <div class="sgc-model-empty-title">По фильтрам ничего не найдено</div>
+                                <div class="sgc-model-empty-hint">Очистите фильтры или измените поиск.</div>
+                                <button type="button" class="sgc-model-empty-btn" @onclick="ClearModelFilters">Сбросить фильтры</button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="sgc-model-table-wrap">
+                                <table class="sgc-model-table">
+                                    <thead>
+                                        <tr><th>Модель</th><th>Family</th><th>Context</th><th>Caps</th><th>Type</th></tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var m in visible)
+                                        {
+                                            <tr class="@(Config.ModelId == m.Id ? "active" : "")"
+                                                @onclick="@(() => SelectRecommendedModel(m.Id))"
+                                                title="@(m.Description ?? m.Id)">
+                                                <td><b>@m.Name</b><small>@m.Id</small></td>
+                                                <td><span>@(ExtractFamily(m.Id) ?? "—")</span></td>
+                                                <td>@(m.ContextWindow is > 0 ? m.ContextWindow.Value.ToString("N0") : "—")</td>
+                                                <td>
+                                                    @if (m.SupportsVision) { <span>vision</span> }
+                                                    @if (m.SupportsTools) { <span>tools</span> }
+                                                    @if (m.SupportsJsonSchema) { <span>json</span> }
+                                                    @if (m.SupportsReasoning) { <span>reasoning</span> }
+                                                </td>
+                                                <td>@(IsModelFree(m) ? "free/local" : "paid/unknown")</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                            @if (filtered.Count > visible.Count)
+                            {
+                                <div class="sgc-model-pager">
+                                    <button type="button" class="sgc-model-page-btn" @onclick="LoadMoreCatalogRows">
+                                        Показать ещё 25 (осталось @(filtered.Count - visible.Count))
+                                    </button>
+                                    <button type="button" class="sgc-model-page-btn ghost" @onclick="ToggleCatalogExpanded">
+                                        Раскрыть всё
+                                    </button>
+                                </div>
+                            }
+                            else if (_catalogExpanded && filtered.Count > 25)
+                            {
+                                <div class="sgc-model-pager">
+                                    <button type="button" class="sgc-model-page-btn ghost" @onclick="ToggleCatalogExpanded">
+                                        Свернуть
+                                    </button>
+                                </div>
+                            }
+                        }
                     </details>
+                }
+                else if (Config.Provider != SgLlmProvider.None)
+                {
+                    <div class="sgc-model-empty">
+                        <div class="sgc-model-empty-icon">📦</div>
+                        <div class="sgc-model-empty-title">Список моделей пока пуст</div>
+                        <div class="sgc-model-empty-hint">@EmptyCatalogHint</div>
+                        <button type="button" class="sgc-model-empty-btn" @onclick="LoadModelsAsync" disabled="@_loadingModels">
+                            @(_loadingModels ? "Загрузка…" : "Обновить каталог")
+                        </button>
+                    </div>
                 }
             </SgStack>
         </SgCard>
@@ -930,6 +1003,101 @@
     .sgc-profile-io { border-top: 1px dashed var(--sgc-border); padding-top: 10px; margin-top: 4px; }
     .sgc-profile-io > summary { cursor: pointer; font-size: 11.5px; color: var(--sg-fg-muted, #64748b); display: flex; align-items: center; gap: 6px; }
     
+    .sgc-model-search { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .sgc-model-search > :first-child { flex: 1 1 260px; min-width: 200px; }
+    .sgc-model-sort {
+        font-size: 11.5px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--sgc-border);
+        background: var(--sgc-bg);
+        color: var(--sg-fg, #111827);
+    }
+    .sgc-model-clear {
+        font-size: 11px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        background: #fffbeb;
+        border: 1px solid #fde68a;
+        color: #92400e;
+        cursor: pointer;
+    }
+    .sgc-model-families { display: flex; gap: 6px; flex-wrap: wrap; padding: 2px 0; }
+    .sgc-model-family {
+        font-size: 10.5px;
+        font-weight: 650;
+        padding: 3px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--sgc-border);
+        background: var(--sgc-bg);
+        color: var(--sg-fg, #111827);
+        cursor: pointer;
+        display: inline-flex;
+        gap: 4px;
+        align-items: center;
+        text-transform: lowercase;
+    }
+    .sgc-model-family:hover { border-color: var(--sg-color-primary); color: var(--sg-color-primary); }
+    .sgc-model-family.active {
+        background: var(--sg-color-primary, #2563eb);
+        border-color: var(--sg-color-primary, #2563eb);
+        color: #fff;
+    }
+    .sgc-model-family em {
+        font-style: normal;
+        font-size: 9px;
+        padding: 1px 5px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, .08);
+        color: inherit;
+    }
+    .sgc-model-family.active em { background: rgba(255,255,255,.2); }
+
+    .sgc-model-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 18px 16px;
+        text-align: center;
+        color: var(--sg-fg-muted, #64748b);
+        border: 1px dashed var(--sgc-border);
+        border-radius: 10px;
+        margin-top: 8px;
+    }
+    .sgc-model-empty-icon { font-size: 26px; }
+    .sgc-model-empty-title { font-size: 13px; font-weight: 650; color: var(--sg-fg, #111827); }
+    .sgc-model-empty-hint { font-size: 11.5px; max-width: 480px; line-height: 1.4; }
+    .sgc-model-empty-btn {
+        margin-top: 6px;
+        padding: 6px 12px;
+        font-size: 12px;
+        border-radius: 6px;
+        border: 1px solid var(--sgc-border);
+        background: var(--sg-color-primary, #2563eb);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .sgc-model-empty-btn:disabled { opacity: .6; cursor: progress; }
+
+    .sgc-model-pager { display: flex; gap: 8px; justify-content: center; padding: 8px 0; }
+    .sgc-model-page-btn {
+        padding: 5px 12px;
+        font-size: 11.5px;
+        border-radius: 6px;
+        border: 1px solid var(--sgc-border);
+        background: var(--sg-color-primary, #2563eb);
+        color: #fff;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .sgc-model-page-btn.ghost {
+        background: var(--sg-bg, #fff);
+        color: var(--sg-fg, #111827);
+    }
+    .sgc-model-table thead th { position: sticky; top: 0; z-index: 1; }
+
     .sgc-model-filters { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; padding: 4px 0; }
     .sgc-model-chips { display: flex; gap: 8px; flex-wrap: wrap; }
     .sgc-model-chip {
