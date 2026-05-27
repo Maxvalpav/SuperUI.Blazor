@@ -445,9 +445,6 @@ public sealed class DefaultTheme : ThemeBase
            ═══════════════════════════════════════════════════════════════ */
         [data-theme-id="superui-default"] .sgc-chip,
         [data-theme-id="superui-default"] .sgc-badge {
-            background: var(--sg-bg-muted);
-            color: var(--sg-fg-subtle);
-            border: 1px solid var(--sg-border);
             border-radius: 3px;
             padding: 1px 7px;
             font-size: 11px;
