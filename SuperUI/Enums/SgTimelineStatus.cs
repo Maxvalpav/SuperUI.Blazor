@@ -1,4 +1,4 @@
 namespace SuperUI.Enums;
 
-/// <summary>Статус элемента таймлайна.</summary>
-public enum SgTimelineStatus { Pending, InProgress, Done, Error }
+/// <summary>Status of a timeline item dot.</summary>
+public enum SgTimelineStatus { Default, InProgress, Done, Error, Pending }

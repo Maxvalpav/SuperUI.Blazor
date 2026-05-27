@@ -1,6 +1,12 @@
 @namespace SuperUI.Components
+@using Microsoft.AspNetCore.Components.Web
 
-<div class="sgc-timeline @(Reverse ? "sgc-timeline-reverse" : "") sgc-timeline-@Mode.ToString().ToLowerInvariant() @CssClass" style="@Style">
+<div @ref="_containerRef"
+     class="sgc-timeline sgc-timeline-@ModeClass @(Reverse ? "sgc-timeline-reverse" : "") @(Animation ? "sgc-timeline-animated" : "") @DotSizeClass @LineStyleClass @CssClass"
+     style="@Style"
+     role="list"
+     aria-label="@(AriaLabel ?? "Timeline")">
+
     @if (_items.Count == 0)
     {
         <div class="sgc-timeline-empty">@EmptyText</div>
@@ -9,7 +15,7 @@
     {
         <SgVirtualList TItem="TimelineItem" Items="_items" Height="@Height" ItemHeight="72">
             <ChildContent>
-                @RenderItem(context)
+                @RenderItem(context, false)
             </ChildContent>
         </SgVirtualList>
     }
@@ -18,24 +24,53 @@
         @for (var i = 0; i < _items.Count; i++)
         {
             var item = _items[i];
-            var last = i == _items.Count - 1;
-            @RenderItem(item, last)
+            var isLast = i == _items.Count - 1;
+            @RenderItem(item, isLast)
         }
     }
-    @ChildContent
+
+    @if (Pending is not null)
+    {
+        @RenderPending(Pending)
+    }
+
+    @if (ChildContent is not null)
+    {
+        @ChildContent
+    }
 </div>
 
 @code {
-    private RenderFragment RenderItem(TimelineItem item, bool isLast = false) =>
-        @<div class="sgc-timeline-item @(isLast ? "sgc-timeline-item-last" : "")">
-            @if (Mode == SgTimelineMode.Alternate)
+    private string ModeClass => Mode switch
+    {
+        SgTimelineMode.Right => "right",
+        SgTimelineMode.Alternate => "alternate",
+        SgTimelineMode.AlternateReverse => "alternate",
+        _ => "left"
+    };
+
+    private RenderFragment RenderItem(TimelineItem item, bool isLast) => __builder =>
+    {
+        var effectiveStatus = item.EffectiveStatus;
+        var itemClickable = IsItemClickable(item);
+        var itemDisabled = IsItemDisabled(item);
+        <div class="sgc-timeline-item @(isLast ? "sgc-timeline-item-last" : "") @(itemClickable ? "sgc-tl-clickable" : "") @(itemDisabled ? "sgc-tl-disabled" : "")"
+             role="listitem"
+             aria-label="@item.Title"
+             @onclick="() => HandleItemClickAsync(item)"
+             @onkeydown="e => HandleItemKeyDownAsync(e, item)"
+             tabindex="@(itemClickable ? "0" : null)"
+             title="@(item.Title ?? "")">
+
+            @if (Mode == SgTimelineMode.Alternate || Mode == SgTimelineMode.AlternateReverse)
             {
                 <div class="sgc-timeline-item-time sgc-timeline-item-time-left">
                     @if (!string.IsNullOrEmpty(item.Time)) { <span>@item.Time</span> }
                 </div>
             }
-            <div class="sgc-timeline-item-axis">
-                <div class="sgc-timeline-item-dot sgc-timeline-item-dot-@item.Status"
+
+            <div class="sgc-timeline-item-axis" aria-hidden="true">
+                <div class="sgc-timeline-item-dot sgc-timeline-item-dot-@effectiveStatus"
                      style="@GetDotStyle(item)">
                     @if (item.DotContent is not null)
                     {
@@ -43,16 +78,17 @@
                     }
                     else if (item.Icon is not null)
                     {
-                        <span class="sgc-timeline-item-icon" aria-hidden="true">@item.Icon</span>
+                        <span class="sgc-timeline-item-icon">@item.Icon</span>
                     }
                 </div>
-                @if (!isLast)
+                @if (ShowLine && !isLast)
                 {
                     <div class="sgc-timeline-item-tail"></div>
                 }
             </div>
+
             <div class="sgc-timeline-item-content">
-                @if (Mode != SgTimelineMode.Alternate && !string.IsNullOrEmpty(item.Time))
+                @if (Mode != SgTimelineMode.Alternate && Mode != SgTimelineMode.AlternateReverse && !string.IsNullOrEmpty(item.Time))
                 {
                     <div class="sgc-timeline-item-time">@item.Time</div>
                 }
@@ -70,4 +106,45 @@
                 }
             </div>
         </div>;
+    };
+
+    private RenderFragment RenderPending(TimelineItem pending) => __builder =>
+    {
+        <div class="sgc-timeline-item sgc-timeline-item-pending" role="listitem" aria-label="@(pending.Title ?? PendingLabel ?? "Pending")">
+            @if (Mode == SgTimelineMode.Alternate || Mode == SgTimelineMode.AlternateReverse)
+            {
+                <div class="sgc-timeline-item-time sgc-timeline-item-time-left">
+                    @if (!string.IsNullOrEmpty(pending.Time)) { <span>@pending.Time</span> }
+                </div>
+            }
+            <div class="sgc-timeline-item-axis" aria-hidden="true">
+                <div class="sgc-timeline-item-dot sgc-timeline-item-dot-pending sgc-timeline-item-dot-ghost"
+                     style="@GetDotStyle(pending)">
+                    @if (pending.DotContent is not null) { @pending.DotContent }
+                    else if (pending.Icon is not null) { <span class="sgc-timeline-item-icon">@pending.Icon</span> }
+                </div>
+            </div>
+            <div class="sgc-timeline-item-content">
+                @if (Mode != SgTimelineMode.Alternate && Mode != SgTimelineMode.AlternateReverse && !string.IsNullOrEmpty(pending.Time))
+                {
+                    <div class="sgc-timeline-item-time">@pending.Time</div>
+                }
+                @if (!string.IsNullOrEmpty(pending.Title))
+                {
+                    <div class="sgc-timeline-item-title sgc-tl-pending-text">@pending.Title</div>
+                }
+                @if (!string.IsNullOrEmpty(pending.Description))
+                {
+                    <div class="sgc-timeline-item-description">@pending.Description</div>
+                }
+            </div>
+        </div>;
+    };
+
+    private async Task HandleItemKeyDownAsync(KeyboardEventArgs e, TimelineItem item)
+    {
+        if (!IsItemClickable(item)) return;
+        if (e.Key is "Enter" or " ")
+            await HandleItemClickAsync(item);
+    }
 }

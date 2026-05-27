@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Components;
+using SuperUI.Enums;
 
 namespace SuperUI.Components;
 
@@ -17,16 +18,22 @@ public sealed class TimelineItem
     public string? Time { get; set; }
 
     /// <summary>
-    /// Gets or sets the dot color as a hex value or CSS variable (e.g. "#52c41a" or "var(--sui-success)").
+    /// Gets or sets the dot color as a hex value or CSS variable (e.g. "#52c41a" or "var(--sg-color-success)").
     /// When null the default accent color is used.
     /// </summary>
     public string? Color { get; set; }
 
     /// <summary>
-    /// Gets or sets the item status. Supported values: "default", "active", "done", "pending", "error".
+    /// Gets or sets the item status as a string. Supported values: "default", "active", "done", "pending", "error".
     /// Controls the dot appearance when <see cref="Color"/> is not set.
     /// </summary>
     public string Status { get; set; } = "default";
+
+    /// <summary>
+    /// Gets or sets the item status using the <see cref="SgTimelineStatus"/> enum.
+    /// When set, overrides <see cref="Status"/>.
+    /// </summary>
+    public SgTimelineStatus? StatusEnum { get; set; }
 
     /// <summary>Gets or sets a custom icon rendered inside the dot.</summary>
     public RenderFragment? Icon { get; set; }
@@ -36,4 +43,24 @@ public sealed class TimelineItem
 
     /// <summary>Gets or sets custom content rendered below the description.</summary>
     public RenderFragment? ExtraContent { get; set; }
+
+    /// <summary>Whether this item can be clicked. Default is true when <see cref="SgTimeline.Clickable"/> is enabled.</summary>
+    public bool? Clickable { get; set; }
+
+    /// <summary>Whether this item is disabled (no click, muted style).</summary>
+    public bool Disabled { get; set; }
+
+    /// <summary>
+    /// Gets the effective status string, preferring <see cref="StatusEnum"/> over <see cref="Status"/>.
+    /// </summary>
+    internal string EffectiveStatus => StatusEnum switch
+    {
+        SgTimelineStatus.Default => "default",
+        SgTimelineStatus.InProgress => "active",
+        SgTimelineStatus.Done => "done",
+        SgTimelineStatus.Error => "error",
+        SgTimelineStatus.Pending => "pending",
+        null => Status,
+        _ => Status
+    };
 }

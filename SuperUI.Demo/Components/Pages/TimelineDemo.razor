@@ -1,200 +1,670 @@
 ﻿@page "/timeline-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Временная шкала - SUI</PageTitle>
+<PageTitle>SgTimeline — Timeline — SuperUI</PageTitle>
 
-<SgCard Title="SgTimeline — Временная шкала"
-        Subtitle="Компонент для отображения последовательности событий. Поддерживает статусы, цвета, иконки и режимы выравнивания.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>История проекта</h2>
-        <p>Хронология ключевых событий с цветовыми статусами.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Modes — Left / Right / Alternate                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Modes — SgTimelineMode
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Three layout modes: <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Left</SgTypography> (default), <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Right</SgTypography>, and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Alternate</SgTypography>.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Режим left (по умолчанию)">
-                <SgTimeline Items="_projectTimeline" />
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="Left" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTimeline Items="_projectTimeline" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Right" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTimeline Items="_projectTimeline" Mode="SgTimelineMode.Right" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Alternate" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTimeline Items="_projectTimeline" Mode="SgTimelineMode.Alternate" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Status Variants + Colors                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Status Variants &amp; Dot Colors
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Status</SgTypography> for semantic dots (Default, Active, Done, Error, Pending) or <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Color</SgTypography> for custom colors.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Semantic Statuses" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTimeline Items="_statusTimeline" />
             </SgCard>
-
-            <SgCard Title="Режим alternate">
-                <SgTimeline Items="_projectTimeline" Mode="SgTimelineMode.Alternate" />
+            <SgCard Title="Custom Dot Colors" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTimeline Items="_colorTimeline" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Статусы задачи</h2>
-        <p>Используйте <code>Status</code> для семантической окраски точки без явного цвета.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Dot Sizes & Line Styles                                          -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Dot Sizes &amp; Line Styles
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Control dot size with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">DotSize</SgTypography> (Sm/Md/Lg/Xl) and line style with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">LineStyle</SgTypography> (Solid/Dashed/Dotted).
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Статусы (default / active / done / error / pending)">
-                <SgTimeline Items="_taskTimeline" />
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Dot Sizes" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTimeline Items="_smItem" DotSize="SgSize.Sm" />
+                        <SgTimeline Items="_mdItem" DotSize="SgSize.Md" />
+                        <SgTimeline Items="_lgItem" DotSize="SgSize.Lg" />
+                        <SgTimeline Items="_xlItem" DotSize="SgSize.Xl" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Line Styles" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">Solid</SgTypography>
+                        <SgTimeline Items="_lineStyleDemo" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;margin-top:8px;">Dashed</SgTypography>
+                        <SgTimeline Items="_lineStyleDemo" LineStyle="SgTimelineLineStyle.Dashed" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;margin-top:8px;">Dotted</SgTypography>
+                        <SgTimeline Items="_lineStyleDemo" LineStyle="SgTimelineLineStyle.Dotted" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;margin-top:8px;">None</SgTypography>
+                        <SgTimeline Items="_lineStyleDemo" LineStyle="SgTimelineLineStyle.None" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Clickable Items + Pending + ShowLine                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Interactive — Click, Pending &amp; ShowLine
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Clickable</SgTypography> + <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">OnItemClick</SgTypography> for click events. <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Pending</SgTypography> adds a ghost last item. <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ShowLine</SgTypography> hides connecting lines.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Clickable Timeline" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgTimeline Items="_clickableTimeline" Clickable="true" OnItemClick="OnTimelineItemClick" />
+                    @if (_lastClicked is not null)
+                    {
+                        <SgAlert Variant="SgAlertVariant.Info" Dismissible="true" OnClose="() => _lastClicked = null">
+                            <ChildContent>
+                                <SgTypography Size="SgTypographySize.Sm">Clicked: <strong>@_lastClicked.Title</strong> — @_lastClicked.Description</SgTypography>
+                            </ChildContent>
+                        </SgAlert>
+                    }
+                </SgStack>
             </SgCard>
-
-            <SgCard Title="Активность за сегодня">
-                <SgTimeline Items="_activityTimeline" />
+            <SgCard Title="Pending + ShowLine=false" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">Pending ghost item</SgTypography>
+                    <SgTimeline Items="_pendingTimeline" Pending="@_pendingItem" />
+                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;border-bottom:1px solid var(--sg-border);padding-bottom:4px;margin-top:8px;">No connecting lines (ShowLine=false)</SgTypography>
+                    <SgTimeline Items="_showLineTimeline" ShowLine="false" />
+                </SgStack>
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Свойства компонента</h2>
-        <PropertyTable Items="_timelineProperties" />
-    </div>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Extra Content + Icons in Dots                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Extra Content &amp; Icons
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ExtraContent</SgTypography> for expandable details, cards, or badges. Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Icon</SgTypography> to render an SVG inside the dot.
+            </SgTypography>
+        </div>
 
-    <!-- Enum tables + code -->
-    <div style="margin-top: 32px;">
-        <h2>Перечисления</h2>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgTimelineMode">
-                <PropertyTable Items="_modeEnum" />
+        <div class="demo-two-col">
+            <SgCard Title="Extra content panels" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTimeline Items="_extraTimeline" />
             </SgCard>
-            <SgCard Title="SgTimelineStatus (TimelineItem.Status)">
-                <PropertyTable Items="_statusEnum" />
+            <SgCard Title="Icons in dots" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTimeline Items="_iconTimeline" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Live Constructor                                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the timeline render in real time. Copy the generated code.
+            </SgTypography>
         </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Mode</SgTypography>
+                            <SgSegmented TValue="SgTimelineMode"
+                                         Value="@_ctorMode"
+                                         ValueChanged="v => { _ctorMode = v; UpdateCtorCode(); }"
+                                         Block="true" Size="sm"
+                                         Options="@(_ctorModeOptions)" />
+                        </SgStack>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Dot Size</SgTypography>
+                                    <SgSegmented TValue="SgSize"
+                                                 Value="@_ctorDotSize"
+                                                 ValueChanged="v => { _ctorDotSize = v; UpdateCtorCode(); }"
+                                                 Block="true" Size="sm"
+                                                 Options="@(_ctorSizeOptions)" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Line Style</SgTypography>
+                                    <SgSegmented TValue="SgTimelineLineStyle"
+                                                 Value="@_ctorLineStyle"
+                                                 ValueChanged="v => { _ctorLineStyle = v; UpdateCtorCode(); }"
+                                                 Block="true" Size="sm"
+                                                 Options="@(_ctorLineStyleOptions)" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Reverse</SgTypography>
+                                    <SgSwitch Value="@_ctorReverse"
+                                              ValueChanged="v => { _ctorReverse = v; UpdateCtorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Animation</SgTypography>
+                                    <SgSwitch Value="@_ctorAnim"
+                                              ValueChanged="v => { _ctorAnim = v; UpdateCtorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowLine</SgTypography>
+                                    <SgSwitch Value="@_ctorShowLine"
+                                              ValueChanged="v => { _ctorShowLine = v; UpdateCtorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Clickable</SgTypography>
+                                    <SgSwitch Value="@_ctorClickable"
+                                              ValueChanged="v => { _ctorClickable = v; UpdateCtorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Mode</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorMode.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Dot Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorDotSize.ToString()" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgTimeline Items="@_ctorItems"
+                                            Mode="@_ctorMode"
+                                            DotSize="@_ctorDotSize"
+                                            LineStyle="@_ctorLineStyle"
+                                            Reverse="@_ctorReverse"
+                                            Animation="@_ctorAnim"
+                                            ShowLine="@_ctorShowLine"
+                                            Clickable="@_ctorClickable" />
+                            </div>
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCtorCode">
+                                    <span id="copy-icon">@_ctorCopyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_ctorCopyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block">
+                                @foreach (var line in _ctorCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 7. Properties                                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                All SgTimeline Parameters
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Complete reference of public parameters on <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgTimeline</SgTypography> and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">TimelineItem</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <SgStack Vertical Space="SgSize.Md">
+            <SgCard Title="SgTimeline" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_tlProps" />
+            </SgCard>
+            <SgCard Title="TimelineItem" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_itemProps" />
+            </SgCard>
+            <SgCard Title="Enums" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_enumProps" />
+            </SgCard>
+        </SgStack>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
-<SgCard Title="SgActivityFeed — Лента активности"
-        Subtitle="Компонент для отображения ленты событий с аватарами пользователей, группировкой и поддержкой кликов."
-        style="margin-top: 24px;">
-
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-        <SgCard Title="Базовый пример">
-            <SgActivityFeed Items="_activityFeedItems"
-                            Title="Активность"
-                            Subtitle="Последние действия в системе"
-                            OnItemClick="OnFeedItemClick" />
-        </SgCard>
-
-        <SgCard Title="С группировкой по дате">
-            <SgActivityFeed Items="_activityFeedGrouped"
-                            GroupBy="@(item => item.Time ?? "")" />
-        </SgCard>
-    </div>
-
-    @if (_lastClicked is not null)
-    {
-        <SgAlert Variant="SgAlertVariant.Info" Text="@($"Клик: {_lastClicked.Title}")" Dismissible="true" style="margin-top: 16px;" />
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
+    .demo-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @@media (max-width: 768px) { .demo-two-col { grid-template-columns: 1fr; } }
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 180px;
+        transition: all 0.3s ease;
     }
-
-    <div style="margin-top: 24px;">
-        <h2>Свойства компонента</h2>
-        <PropertyTable Items="_activityFeedProperties" />
-    </div>
-
-</SgCard>
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+    }
+    .code-block code {
+        background: none; padding: 0; color: inherit; font-size: inherit;
+        display: block; white-space: pre;
+    }
+    .demo-copy-btn {
+        display: inline-flex; align-items: center; gap: 4px;
+        background: var(--sg-surface-alt); border: 1px solid var(--sg-border);
+        border-radius: 6px; padding: 4px 10px; cursor: pointer;
+        color: var(--sg-text-muted); transition: all 0.2s ease; font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary); border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active { transform: scale(0.95); }
+</style>
 
 @code {
-    private ActivityFeedItem? _lastClicked;
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgTimeline — Timeline</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Vertical timeline with modes, status dots, clickable items, icons, extra content, pending ghost item, and more.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
 
-    private void OnFeedItemClick(ActivityFeedItem item) => _lastClicked = item;
+    // ── Clickable demo ──────────────────────────────────────────────────
+    private TimelineItem? _lastClicked;
 
-    // ── SgTimeline data ──────────────────────────────────────────────────────
+    private void OnTimelineItemClick(TimelineItem item) => _lastClicked = item;
 
+    // ── Timeline data ──────────────────────────────────────────────────
     private readonly List<TimelineItem> _projectTimeline = new()
     {
-        new() { Title = "Проект создан",              Description = "Инициализация репозитория и настройка окружения",    Time = "15 янв 2026", Status = "done",    Color = "#16a34a" },
-        new() { Title = "Первый релиз v1.0",          Description = "Базовые компоненты: Button, TextBox, Select, Card",  Time = "1 фев 2026",  Status = "done",    Color = "#16a34a" },
-        new() { Title = "Компоненты данных",          Description = "DataGrid, PivotTable, Kanban, Gantt",                Time = "10 мар 2026", Status = "done",    Color = "#16a34a" },
-        new() { Title = "Релиз v1.2 — SgChart",       Description = "Chart.js, 7 типов графиков, LTTB-decimation",        Time = "28 апр 2026", Status = "active",  Color = "#2563eb" },
-        new() { Title = "Планируемый релиз v2.0",     Description = "Полная поддержка WCAG 2.1 AA, новые компоненты",     Time = "Июнь 2026",   Status = "pending" },
+        new() { Title = "Project Created",  Description = "Repository init & environment setup", Time = "15 Jan 2026", Status = "done" },
+        new() { Title = "Release v1.0",     Description = "Core components: Button, Card, Grid", Time = "1 Feb 2026",  Status = "done" },
+        new() { Title = "Data Components",  Description = "DataGrid, PivotTable, Kanban",         Time = "10 Mar 2026", Status = "done" },
+        new() { Title = "Release v1.2",     Description = "Charts, 7 types, LTTB decimation",    Time = "28 Apr 2026", Status = "active" },
+        new() { Title = "Planned v2.0",     Description = "WCAG 2.1 AA support, new components", Time = "Jun 2026",    Status = "pending" },
     };
 
-    private readonly List<TimelineItem> _taskTimeline = new()
+    private readonly List<TimelineItem> _statusTimeline = new()
     {
-        new() { Title = "Задача создана",   Description = "Добавлена в бэклог",          Time = "Пн 09:00", Status = "done"    },
-        new() { Title = "Взята в работу",   Description = "Назначена разработчику",       Time = "Вт 10:00", Status = "done"    },
-        new() { Title = "На проверке",      Description = "Отправлена на code review",    Time = "Ср 15:00", Status = "active"  },
-        new() { Title = "Ошибка в тестах",  Description = "Упали 2 unit-теста",           Time = "Ср 17:00", Status = "error"   },
-        new() { Title = "Завершена",        Description = "Принята и закрыта",            Time = "Чт 11:00", Status = "pending" },
+        new() { Title = "Default",     Description = "Neutral dot",                              Time = "Status: Default" },
+        new() { Title = "Active",      Description = "In progress — pulsing dot",                Time = "Status: Active",  StatusEnum = SgTimelineStatus.InProgress },
+        new() { Title = "Done",        Description = "Completed — green dot",                    Time = "Status: Done",    StatusEnum = SgTimelineStatus.Done },
+        new() { Title = "Error",       Description = "Failed — red dot",                         Time = "Status: Error",   StatusEnum = SgTimelineStatus.Error },
+        new() { Title = "Pending",     Description = "Awaiting — muted dot",                     Time = "Status: Pending", StatusEnum = SgTimelineStatus.Pending },
     };
 
-    private readonly List<TimelineItem> _activityTimeline = new()
+    private readonly List<TimelineItem> _colorTimeline = new()
     {
-        new() { Title = "Иван создал задачу",      Description = "Реализовать SgChart компонент",    Time = "10:30", Color = "#2563eb" },
-        new() { Title = "Мария закрыла баг",       Description = "Исправлен баг в SgModal",          Time = "11:15", Color = "#16a34a" },
-        new() { Title = "Деплой на staging",       Description = "Версия 1.2.0-rc1 задеплоена",      Time = "12:00", Color = "#7c3aed" },
-        new() { Title = "Алексей добавил тест",    Description = "Unit-тесты для DataDecimation.cs", Time = "14:30", Color = "#ea580c" },
-        new() { Title = "Code review завершён",    Description = "PR #142 одобрен и смержен",        Time = "16:00", Color = "#16a34a" },
+        new() { Title = "Violet",      Description = "Custom #7c3aed",     Time = "Custom color", Color = "#7c3aed" },
+        new() { Title = "Orange",      Description = "Custom #ea580c",     Time = "Custom color", Color = "#ea580c" },
+        new() { Title = "Cyan",        Description = "Custom #06b6d4",     Time = "Custom color", Color = "#06b6d4" },
+        new() { Title = "Pink",        Description = "Custom #ec4899",     Time = "Custom color", Color = "#ec4899" },
+        new() { Title = "Lime",        Description = "Custom #65a30d",     Time = "Custom color", Color = "#65a30d" },
     };
 
-    // ── SgActivityFeed data ──────────────────────────────────────────────────
-
-    private readonly List<ActivityFeedItem> _activityFeedItems = new()
+    private readonly List<TimelineItem> _clickableTimeline = new()
     {
-        new() { Title = "Иван Петров создал задачу",        Description = "Реализовать SgChart компонент",   Time = "5 мин назад",  User = "Иван Петров",    AccentColor = "#2563eb" },
-        new() { Title = "Мария Сидорова закрыла задачу",    Description = "Исправить баг в SgModal",         Time = "20 мин назад", User = "Мария Сидорова", AccentColor = "#16a34a" },
-        new() { Title = "Алексей Козлов прокомментировал",  Description = "Обновить документацию",           Time = "1 час назад",  User = "Алексей Козлов", AccentColor = "#7c3aed" },
-        new() { Title = "Деплой выполнен",                  Description = "v1.2.0 задеплоена на production", Time = "2 часа назад", User = "⚙",              AccentColor = "#ea580c" },
-        new() { Title = "Елена Новикова добавила комментарий", Description = "Дизайн главной страницы",      Time = "3 часа назад", User = "Елена Новикова", AccentColor = "#db2777" },
+        new() { Title = "Review PR #142", Description = "Awaiting approval",   Time = "2 min ago" },
+        new() { Title = "Fix SgModal bug", Description = "Priority: High",     Time = "15 min ago" },
+        new() { Title = "Deploy staging",  Description = "v1.2.0-rc1",         Time = "1 hour ago" },
     };
 
-    private readonly List<ActivityFeedItem> _activityFeedGrouped = new()
+    private readonly List<TimelineItem> _pendingTimeline = new()
     {
-        new() { Title = "Иван создал задачу",   Description = "SgChart компонент",  Time = "Сегодня",  User = "ИП", AccentColor = "#2563eb" },
-        new() { Title = "Мария закрыла баг",    Description = "SgModal",            Time = "Сегодня",  User = "МС", AccentColor = "#16a34a" },
-        new() { Title = "Деплой на staging",    Description = "v1.2.0-rc1",         Time = "Вчера",    User = "⚙",  AccentColor = "#ea580c" },
-        new() { Title = "Code review завершён", Description = "PR #142 смержен",    Time = "Вчера",    User = "АК", AccentColor = "#7c3aed" },
-        new() { Title = "Проект создан",        Description = "Инициализация репо", Time = "15 янв",   User = "ИП", AccentColor = "#2563eb" },
+        new() { Title = "Sprint Planning",  Description = "Scope defined",     Time = "Mon" },
+        new() { Title = "Development",      Description = "In progress",       Time = "Tue" },
+        new() { Title = "Code Review",      Description = "PR submitted",      Time = "Wed" },
     };
 
-    // ── Property tables ──────────────────────────────────────────────────────
-
-    private readonly List<PropertyPanelItem> _timelineProperties = new()
+    private readonly TimelineItem _pendingItem = new()
     {
-        new() { Label = "Items",       Value = "IEnumerable<TimelineItem>", BadgeText = "Список элементов",          BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Mode",        Value = "left|right|alternate",      BadgeText = "Режим (SgTimelineMode)",    BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Reverse",     Value = "bool",                      BadgeText = "Обратный порядок",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Virtualize",  Value = "bool",                      BadgeText = "Виртуализация",             BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EmptyText",   Value = "string",                    BadgeText = "Текст при пустом списке",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Title",       Value = "string",                    BadgeText = "Заголовок элемента",        BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Description", Value = "string",                    BadgeText = "Описание",                  BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Time",        Value = "string",                    BadgeText = "Метка времени",             BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Status",      Value = "string",                    BadgeText = "default/active/done/error/pending", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Color",       Value = "string",                    BadgeText = "Цвет точки (hex / var)",    BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Icon",        Value = "RenderFragment",            BadgeText = "Иконка внутри точки",       BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "DotContent",  Value = "RenderFragment",            BadgeText = "Полная замена точки",       BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "ExtraContent",Value = "RenderFragment",            BadgeText = "Доп. контент под описанием",BadgeVariant = SgBadgeVariant.Warn    },
+        Title = "QA Testing",
+        Description = "Awaiting deployment to staging",
+        Time = "Next",
     };
 
-    private readonly List<PropertyPanelItem> _activityFeedProperties = new()
+    private readonly List<TimelineItem> _showLineTimeline = new()
     {
-        new() { Label = "Items",       Value = "IEnumerable<ActivityFeedItem>", BadgeText = "Список событий",          BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Title",       Value = "string",                        BadgeText = "Заголовок панели",         BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Subtitle",    Value = "string",                        BadgeText = "Подзаголовок",             BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EmptyText",   Value = "string",                        BadgeText = "Текст при пустом списке",  BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "GroupBy",     Value = "Func<ActivityFeedItem,string>", BadgeText = "Группировка",              BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "Virtualize",  Value = "bool",                          BadgeText = "Виртуализация",            BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "OnItemClick", Value = "EventCallback<ActivityFeedItem>",BadgeText = "Клик по элементу",        BadgeVariant = SgBadgeVariant.Warn    },
-        new() { Label = "User",        Value = "string",                        BadgeText = "Имя / инициалы аватара",   BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "AvatarUrl",   Value = "string",                        BadgeText = "URL изображения аватара",  BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "AccentColor", Value = "string",                        BadgeText = "Цвет аватара",             BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "BadgeText",   Value = "string",                        BadgeText = "Текст значка",             BadgeVariant = SgBadgeVariant.Info    },
-        new() { Label = "ExtraContent",Value = "RenderFragment",                BadgeText = "Доп. контент в карточке",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Title = "Notification 1", Description = "System update",       Time = "09:00" },
+        new() { Title = "Notification 2", Description = "Build completed",     Time = "10:30" },
+        new() { Title = "Notification 3", Description = "Deploy successful",   Time = "12:00" },
     };
 
-    // ── Enum tables ──────────────────────────────────────────────────────────
-    private List<PropertyPanelItem> _modeEnum = new()
+    private readonly List<TimelineItem> _smItem = new() { new() { Title = "Dot size: Sm", Description = "DotSize=Sm", Time = "demo" } };
+    private readonly List<TimelineItem> _mdItem = new() { new() { Title = "Dot size: Md", Description = "DotSize=Md", Time = "demo" } };
+    private readonly List<TimelineItem> _lgItem = new() { new() { Title = "Dot size: Lg", Description = "DotSize=Lg", Time = "demo" } };
+    private readonly List<TimelineItem> _xlItem = new() { new() { Title = "Dot size: Xl", Description = "DotSize=Xl", Time = "demo" } };
+    private readonly List<TimelineItem> _lineStyleDemo = new()
     {
-        new() { Label = "SgTimelineMode.Left",      Value = "\"left\"",      BadgeText = "Слева (по умолч.)", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgTimelineMode.Right",     Value = "\"right\"",     BadgeText = "Справа",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgTimelineMode.Alternate", Value = "\"alternate\"", BadgeText = "Чередование",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Title = "Step 1", Description = "Design",          Time = "Day 1" },
+        new() { Title = "Step 2", Description = "Develop",        Time = "Day 2" },
+        new() { Title = "Step 3", Description = "Test",           Time = "Day 3" },
+        new() { Title = "Step 4", Description = "Deploy",         Time = "Day 4" },
     };
 
-    private List<PropertyPanelItem> _statusEnum = new()
+    private List<TimelineItem> _singleItem(string label) => new()
     {
-        new() { Label = "SgTimelineStatus.Default", Value = "\"default\"", BadgeText = "Нейтральный",    BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgTimelineStatus.Active",  Value = "\"active\"",  BadgeText = "В процессе",     BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgTimelineStatus.Done",    Value = "\"done\"",    BadgeText = "Завершено",       BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "SgTimelineStatus.Error",   Value = "\"error\"",   BadgeText = "Ошибка",          BadgeVariant = SgBadgeVariant.Danger },
-        new() { Label = "SgTimelineStatus.Pending", Value = "\"pending\"", BadgeText = "Ожидает",         BadgeVariant = SgBadgeVariant.Muted },
+        new() { Title = $"Dot size: {label}", Description = "Controlled via DotSize param", Time = "demo" },
+    };
+
+    private readonly List<TimelineItem> _extraTimeline = new()
+    {
+        new()
+        {
+            Title = "Build v1.2.0", Description = "Release pipeline",
+            Time = "28 Apr 2026", Status = "done",
+            ExtraContent = __builder =>
+            {
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <SgBadge Text="Success" Variant="SgBadgeVariant.Success" Standalone="true" />
+                    <SgBadge Text="3 min" Variant="SgBadgeVariant.Info" Standalone="true" />
+                    <SgBadge Text="v1.2.0" Variant="SgBadgeVariant.Default" Standalone="true" />
+                </div>
+            }
+        },
+        new()
+        {
+            Title = "Code Review", Description = "PR #142",
+            Time = "27 Apr 2026", Status = "active",
+            ExtraContent = __builder =>
+            {
+                <SgCard Size="SgSize.Sm" Shadow="SgShadow.Sm" NoPadding="true">
+                    <div style="padding:8px 12px;font-size:12px;display:flex;align-items:center;gap:8px;">
+                        <span style="font-weight:600;">+120</span>
+                        <span style="color:var(--sg-color-success);">−15</span>
+                        <span style="color:var(--sg-text-muted);margin-left:auto;">2 reviewers</span>
+                    </div>
+                </SgCard>
+            }
+        },
+    };
+
+    private readonly List<TimelineItem> _iconTimeline = new()
+    {
+        new() { Title = "Commit pushed",  Description = "abc1234 — feat: add timeline", Time = "14:32",
+                StatusEnum = SgTimelineStatus.Done,
+                Icon = __builder => { <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor"><path d="M1 6l3-3v2h5v2H4v2z"/></svg>; } },
+        new() { Title = "Build started",  Description = "CI pipeline #8912",             Time = "14:35",
+                StatusEnum = SgTimelineStatus.InProgress,
+                Icon = __builder => { <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor"><circle cx="6" cy="6" r="3"/></svg>; } },
+        new() { Title = "Tests failed",   Description = "2 unit tests failing",          Time = "14:40",
+                StatusEnum = SgTimelineStatus.Error,
+                Icon = __builder => { <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor"><path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" stroke-width="1.5"/></svg>; } },
+        new() { Title = "Deployed",       Description = "Staging environment",           Time = "15:00",
+                StatusEnum = SgTimelineStatus.Done,
+                Icon = __builder => { <svg viewBox="0 0 12 12" width="10" height="10" fill="currentColor"><path d="M6 1v7M3 5l3 3 3-3"/></svg>; } },
+    };
+
+    // ── Live Constructor state ──────────────────────────────────────────
+    private SgTimelineMode _ctorMode = SgTimelineMode.Left;
+    private SgSize _ctorDotSize = SgSize.Sm;
+    private SgTimelineLineStyle _ctorLineStyle = SgTimelineLineStyle.Solid;
+    private bool _ctorReverse;
+    private bool _ctorAnim = true;
+    private bool _ctorShowLine = true;
+    private bool _ctorClickable;
+    private string[] _ctorCodeLines = Array.Empty<string>();
+    private string _ctorCopyIcon = "📋";
+    private string _ctorCopyLabel = "Copy";
+
+    private readonly List<TimelineItem> _ctorItems = new()
+    {
+        new() { Title = "Design",  Description = "UI mockups",  Time = "Day 1", StatusEnum = SgTimelineStatus.Done },
+        new() { Title = "Develop", Description = "Implementation", Time = "Day 2", StatusEnum = SgTimelineStatus.InProgress },
+        new() { Title = "Review",  Description = "Code review",  Time = "Day 3" },
+        new() { Title = "Deploy",  Description = "Release",      Time = "Day 4" },
+    };
+
+    private readonly List<SgSegmentedOption<SgTimelineMode>> _ctorModeOptions = new()
+    {
+        new() { Value = SgTimelineMode.Left,      Label = "Left" },
+        new() { Value = SgTimelineMode.Right,     Label = "Right" },
+        new() { Value = SgTimelineMode.Alternate, Label = "Alt" },
+    };
+
+    private readonly List<SgSegmentedOption<SgSize>> _ctorSizeOptions = new()
+    {
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
+        new() { Value = SgSize.Xl, Label = "Xl" },
+    };
+
+    private readonly List<SgSegmentedOption<SgTimelineLineStyle>> _ctorLineStyleOptions = new()
+    {
+        new() { Value = SgTimelineLineStyle.Solid,  Label = "Solid" },
+        new() { Value = SgTimelineLineStyle.Dashed, Label = "Dash" },
+        new() { Value = SgTimelineLineStyle.Dotted, Label = "Dot" },
+        new() { Value = SgTimelineLineStyle.None,   Label = "None" },
+    };
+
+    protected override void OnInitialized() => UpdateCtorCode();
+
+    private void UpdateCtorCode()
+    {
+        var lines = new List<string>();
+        var attrs = new List<string> { "Items=\"_myItems\"" };
+        if (_ctorMode != SgTimelineMode.Left) attrs.Add($"Mode=\"SgTimelineMode.{_ctorMode}\"");
+        if (_ctorDotSize != SgSize.Sm) attrs.Add($"DotSize=\"SgSize.{_ctorDotSize}\"");
+        if (_ctorLineStyle != SgTimelineLineStyle.Solid) attrs.Add($"LineStyle=\"SgTimelineLineStyle.{_ctorLineStyle}\"");
+        if (_ctorReverse) attrs.Add("Reverse=\"true\"");
+        if (!_ctorAnim) attrs.Add("Animation=\"false\"");
+        if (!_ctorShowLine) attrs.Add("ShowLine=\"false\"");
+        if (_ctorClickable) attrs.Add("Clickable=\"true\"");
+        lines.Add("<SgTimeline " + string.Join("\n               ", attrs) + " />");
+        _ctorCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCtorCode()
+    {
+        var code = string.Join("\n", _ctorCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _ctorCopyIcon = "✓";
+            _ctorCopyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _ctorCopyIcon = "✗";
+            _ctorCopyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ────────────────────────────────────────────────
+    private readonly List<PropertyPanelItem> _tlProps = new()
+    {
+        new() { Label = "Items",       Value = "IEnumerable<TimelineItem>", BadgeText = "Item collection", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Mode",        Value = "SgTimelineMode",           BadgeText = "Left/Right/Alternate", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Reverse",     Value = "bool",                     BadgeText = "Newest first", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Clickable",   Value = "bool",                     BadgeText = "Click items", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "OnItemClick", Value = "EventCallback<TimelineItem>",BadgeText = "Click handler", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "DotSize",     Value = "SgSize",                   BadgeText = "Sm/Md/Lg/Xl", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "LineStyle",   Value = "SgTimelineLineStyle",      BadgeText = "Solid/Dash/Dot/None", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowLine",    Value = "bool (true)",              BadgeText = "Hide lines", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Animation",   Value = "bool (true)",              BadgeText = "Staggered anim", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Pending",     Value = "TimelineItem?",            BadgeText = "Ghost item", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "PendingLabel",Value = "string?",                  BadgeText = "Pending label", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Color",       Value = "string?",                  BadgeText = "Global dot color", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AutoScrollToEnd",Value = "bool",                  BadgeText = "Auto scroll", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Virtualize",  Value = "bool",                     BadgeText = "Virtual list", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Height",      Value = "string (400px)",           BadgeText = "Virt. height", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EmptyText",   Value = "string",                   BadgeText = "Empty message", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ChildContent",Value = "RenderFragment?",          BadgeText = "Extra after list", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private readonly List<PropertyPanelItem> _itemProps = new()
+    {
+        new() { Label = "Title",       Value = "string?",                  BadgeText = "Item title", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Description", Value = "string?",                  BadgeText = "Description", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Time",        Value = "string?",                  BadgeText = "Time label", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Status",      Value = "string",                   BadgeText = "default/active/done/error/pending", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "StatusEnum",  Value = "SgTimelineStatus?",        BadgeText = "Enum-based status", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Color",       Value = "string?",                  BadgeText = "Dot color", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Icon",        Value = "RenderFragment?",          BadgeText = "Dot icon", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "DotContent",  Value = "RenderFragment?",          BadgeText = "Custom dot", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ExtraContent",Value = "RenderFragment?",          BadgeText = "Extra below", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Clickable",   Value = "bool?",                    BadgeText = "Per-item override", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",    Value = "bool",                     BadgeText = "Muted item", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private readonly List<PropertyPanelItem> _enumProps = new()
+    {
+        new() { Label = "SgTimelineMode.Left",        Value = "Dot on left",              BadgeText = "Default", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgTimelineMode.Right",       Value = "Dot on right",             BadgeText = "Right", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgTimelineMode.Alternate",   Value = "Left/right alternating",   BadgeText = "Alternate", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgTimelineStatus.Default",   Value = "Neutral dot",              BadgeText = "Default", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgTimelineStatus.InProgress",Value = "Pulsing active dot",       BadgeText = "Active", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SgTimelineStatus.Done",      Value = "Green dot",                BadgeText = "Done", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SgTimelineStatus.Error",     Value = "Red dot",                  BadgeText = "Error", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "SgTimelineStatus.Pending",   Value = "Muted dot",                BadgeText = "Pending", BadgeVariant = SgBadgeVariant.Muted },
+        new() { Label = "SgTimelineLineStyle.Solid",  Value = "Solid line",               BadgeText = "Default", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgTimelineLineStyle.Dashed", Value = "Dashed line",              BadgeText = "Dashed", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgTimelineLineStyle.Dotted", Value = "Dotted line",              BadgeText = "Dotted", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SgTimelineLineStyle.None",   Value = "No connecting lines",      BadgeText = "None", BadgeVariant = SgBadgeVariant.Default },
     };
 }
