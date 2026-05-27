@@ -2,7 +2,6 @@
 @using SuperUI.Components
 @using SuperUI.Enums
 @using Microsoft.JSInterop
-@using Microsoft.AspNetCore.Components.Rendering
 @inject IJSRuntime JS
 
 <PageTitle>SgQrCode — QR Code Generator — SuperUI</PageTitle>
@@ -12,827 +11,508 @@
         HeaderContent="@_mainHeader">
     <ChildContent>
 
-    @_renderContent
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Interactive Generator                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="sgc-demo-section">
+        <div class="sgc-demo-section-header">
+            <div class="sgc-demo-section-header-content">
+                <div class="sgc-demo-section-title-row">
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                        Interactive Generator
+                    </SgTypography>
+                    <span class="demo-live-badge">LIVE</span>
+                </div>
+                <div class="sgc-demo-section-subtitle">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        Type any text or URL to generate a QR code instantly. Compare Medium and High error correction side by side.
+                    </SgTypography>
+                </div>
+            </div>
+        </div>
+        <div class="sgc-demo-section-body">
+            <div class="sgc-demo-controls">
+                <div class="sgc-demo-control-group" style="flex:1;min-width:200px;">
+                    <span class="sgc-demo-control-label">Text / URL</span>
+                    <SgTextBox @bind-Value="_text" Placeholder="Enter text or URL to encode" Block />
+                </div>
+                <div class="sgc-demo-control-group" style="min-width:120px;">
+                    <span class="sgc-demo-control-label">Size</span>
+                    <SgSelect TValue="int" @bind-Value="_size" Items="_sizeItems" LabelSelector="@(x => $"{x}px")" Block />
+                </div>
+                <div class="sgc-demo-control-group" style="min-width:140px;">
+                    <span class="sgc-demo-control-label">Error Correction</span>
+                    <SgSelect TValue="SgQrCodeEcc" @bind-Value="_ecc" Items="_eccItems" LabelSelector="@(x => x.ToString())" Block />
+                </div>
+                <div class="sgc-demo-control-group" style="justify-content:flex-end;">
+                    <SgSwitch @bind-Value="_generatorDownloadable" Label="Downloadable" />
+                </div>
+            </div>
 
-</ChildContent>
+            <SgRow Space="SgSize.Lg" Justify="SgJustifyContent.Center" Align="SgAlignItems.Center">
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                            Medium ECC (~15% recovery)
+                        </SgTypography>
+                        <SgQrCode Value="@_text" Size="@_size" ErrorCorrection="SgQrCodeEcc.Medium" Downloadable="@_generatorDownloadable" />
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                            High ECC (~30% recovery)
+                        </SgTypography>
+                        <SgQrCode Value="@_text" Size="@_size" ErrorCorrection="SgQrCodeEcc.High" Downloadable="@_generatorDownloadable" />
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Color & Styling                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="sgc-demo-section">
+        <div class="sgc-demo-section-header">
+            <div class="sgc-demo-section-header-content">
+                <div class="sgc-demo-section-title-row">
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                        Color &amp; Styling
+                    </SgTypography>
+                </div>
+                <div class="sgc-demo-section-subtitle">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        Customize fill and background colors. Try preset swatches or pick your own.
+                    </SgTypography>
+                </div>
+            </div>
+        </div>
+        <div class="sgc-demo-section-body">
+            <SgRow Space="SgSize.Lg">
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <SgRow Space="SgSize.Md">
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <span class="sgc-demo-control-label">Fill Color</span>
+                                    <SgColorPicker @bind-Value="_fillColor" Block />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <span class="sgc-demo-control-label">Background Color</span>
+                                    <SgColorPicker @bind-Value="_bgColor" Block />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+                        <SgRow Space="SgSize.Sm">
+                            @foreach (var swatch in _colorSwatches)
+                            {
+                                var sw = swatch;
+                                <SgCol>
+                                    <button type="button" class="sgc-demo-color-swatch"
+                                            style="--swatch-fill:@sw.Fill;--swatch-bg:@sw.Background;"
+                                            @onclick="() => SelectColorSwatch(sw)"
+                                            title="@sw.Name"
+                                            aria-label="@sw.Name">
+                                        <span class="sgc-demo-color-swatch-dot" style="background:@sw.Fill;"></span>
+                                    </button>
+                                </SgCol>
+                            }
+                        </SgRow>
+                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                            <SgBadge Text="@($"Fill: {_fillColor}")" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" Standalone />
+                            <SgBadge Text="@($"Bg: {_bgColor}")" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
+                        </SgStack>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Lg" Align="SgAlignItems.Center">
+                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                            <span class="sgc-demo-control-label">Gradient</span>
+                            <SgSwitch @bind-Value="_fillGradient" />
+                        </SgStack>
+                        @if (_fillGradient)
+                        {
+                            <SgRow Space="SgSize.Md" Style="width:100%;max-width:320px;">
+                                <SgCol Xs="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <span class="sgc-demo-control-label">Gradient Start</span>
+                                        <SgColorPicker @bind-Value="_fillGradientStart" Block />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <span class="sgc-demo-control-label">Gradient End</span>
+                                        <SgColorPicker @bind-Value="_fillGradientEnd" Block />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                        }
+                        <SgQrCode Value="@_text" Size="180"
+                                   FillColor="@_fillColor" BackgroundColor="@_bgColor"
+                                   FillGradient="@_fillGradient"
+                                   FillGradientStart="@_fillGradientStart"
+                                   FillGradientEnd="@_fillGradientEnd" />
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Visual Styles                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="sgc-demo-section">
+        <div class="sgc-demo-section-header">
+            <div class="sgc-demo-section-header-content">
+                <div class="sgc-demo-section-title-row">
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                        Visual Styles
+                    </SgTypography>
+                </div>
+                <div class="sgc-demo-section-subtitle">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        Eye patterns, module shapes, gradients, and logo overlays.
+                    </SgTypography>
+                </div>
+            </div>
+        </div>
+        <div class="sgc-demo-section-body">
+            <SgRow Space="SgSize.Lg">
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                            Eye Style
+                        </SgTypography>
+                        <SgRow Space="SgSize.Md" Justify="SgJustifyContent.SpaceAround" Align="SgAlignItems.Center">
+                            @foreach (var eye in Enum.GetValues<SgQrCodeEyeStyle>())
+                            {
+                                var e = eye;
+                                <SgCol>
+                                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@e.ToString()</SgTypography>
+                                        <SgQrCode Value="@_text" Size="110" FillColor="#0d9488" EyeStyle="@e" />
+                                    </SgStack>
+                                </SgCol>
+                            }
+                        </SgRow>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                            Module Shape
+                        </SgTypography>
+                        <SgRow Space="SgSize.Md" Justify="SgJustifyContent.SpaceAround" Align="SgAlignItems.Center">
+                            @foreach (var mod in Enum.GetValues<SgQrCodeModuleStyle>())
+                            {
+                                var m = mod;
+                                <SgCol>
+                                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">@m.ToString()</SgTypography>
+                                        <SgQrCode Value="@_text" Size="110" FillColor="#7c3aed" ModuleStyle="@m" />
+                                    </SgStack>
+                                </SgCol>
+                            }
+                        </SgRow>
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+            <div style="height:24px"></div>
+            <SgRow Space="SgSize.Lg">
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                            Gradient Fill
+                        </SgTypography>
+                        <SgQrCode Value="@_text" Size="140"
+                                   FillGradient="true"
+                                   FillGradientStart="#0d9488"
+                                   FillGradientEnd="#7c3aed" />
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="6">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                            Logo Overlay
+                        </SgTypography>
+                        <SgQrCode Value="https://github.com/SuperUI/SuperUI" Size="140"
+                                   Logo="<svg viewBox='0 0 24 24' width='24' height='24' fill='none' stroke='%230d9488' stroke-width='2'><path d='M12 2L2 7l10 5 10-5-10-5z'/><path d='M2 17l10 5 10-5'/><path d='M2 12l10 5 10-5'/></svg>"
+                                   LogoSize="36" />
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="sgc-demo-section">
+        <div class="sgc-demo-section-header">
+            <div class="sgc-demo-section-header-content">
+                <div class="sgc-demo-section-title-row">
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                        Live SgQrCode Constructor
+                    </SgTypography>
+                    <span class="demo-live-badge">INTERACTIVE</span>
+                </div>
+                <div class="sgc-demo-section-subtitle">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        Tweak every parameter and see the result in real time. Copy the generated Blazor code.
+                    </SgTypography>
+                </div>
+            </div>
+        </div>
+        <div class="sgc-demo-section-body" style="padding:0;">
+            <SgRow Space="SgSize.Sm">
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <div>
+                            <span class="sgc-demo-control-label">Text / URL</span>
+                            <SgTextBox Value="@_ctorText" ValueChanged="@((string v) => { _ctorText = v; UpdateConstructorCode(); })" Placeholder="Enter text or URL" Block />
+                        </div>
+
+                        <div>
+                            <span class="sgc-demo-control-label">Size: @((int)_ctorSize) px</span>
+                            <SgSlider TValue="double" Value="@_ctorSize" Min="80" Max="400" Step="10" ShowTooltip="true" FormatValue="@((double v) => $"{v:F0}px")" ValueChanged="@((double v) => { _ctorSize = v; UpdateConstructorCode(); })" />
+                        </div>
+
+                        <div>
+                            <span class="sgc-demo-control-label">Error Correction</span>
+                            <SgSegmented TValue="SgQrCodeEcc" Options="_eccSegOptions"
+                                         Value="@_ctorEcc"
+                                         ValueChanged="@((SgQrCodeEcc v) => { _ctorEcc = v; UpdateConstructorCode(); })"
+                                         Block SizeEnum="SgSize.Sm" />
+                        </div>
+
+                        <div>
+                            <span class="sgc-demo-control-label">Border</span>
+                            <SgSegmented TValue="int" Options="_borderSegOptions"
+                                         Value="@_ctorBorder"
+                                         ValueChanged="@((int v) => { _ctorBorder = v; UpdateConstructorCode(); })"
+                                         Block SizeEnum="SgSize.Sm" />
+                        </div>
+
+                        <SgRow Space="SgSize.Md">
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <span class="sgc-demo-control-label">Fill Color</span>
+                                    <SgColorPicker Value="@_ctorFillColor" ValueChanged="@((string v) => { _ctorFillColor = v; UpdateConstructorCode(); })" Block />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <span class="sgc-demo-control-label">Background</span>
+                                    <SgColorPicker Value="@_ctorBgColor" ValueChanged="@((string v) => { _ctorBgColor = v; UpdateConstructorCode(); })" Block />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <div>
+                            <span class="sgc-demo-control-label">Eye Style</span>
+                            <SgSegmented TValue="SgQrCodeEyeStyle" Options="_eyeStyleSegOptions"
+                                         Value="@_ctorEyeStyle"
+                                         ValueChanged="@((SgQrCodeEyeStyle v) => { _ctorEyeStyle = v; UpdateConstructorCode(); })"
+                                         Block SizeEnum="SgSize.Sm" />
+                        </div>
+
+                        <div>
+                            <span class="sgc-demo-control-label">Module Style</span>
+                            <SgSegmented TValue="SgQrCodeModuleStyle" Options="_moduleStyleSegOptions"
+                                         Value="@_ctorModuleStyle"
+                                         ValueChanged="@((SgQrCodeModuleStyle v) => { _ctorModuleStyle = v; UpdateConstructorCode(); })"
+                                         Block SizeEnum="SgSize.Sm" />
+                        </div>
+
+                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                            <span class="sgc-demo-control-label">Gradient</span>
+                            <SgSwitch Value="@_ctorFillGradient" ValueChanged="@((bool v) => { _ctorFillGradient = v; UpdateConstructorCode(); })" />
+                        </SgStack>
+
+                        @if (_ctorFillGradient)
+                        {
+                            <SgRow Space="SgSize.Md">
+                                <SgCol Xs="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <span class="sgc-demo-control-label">Start</span>
+                                        <SgColorPicker Value="@_ctorFillGradientStart" ValueChanged="@((string v) => { _ctorFillGradientStart = v; UpdateConstructorCode(); })" Block />
+                                    </SgStack>
+                                </SgCol>
+                                <SgCol Xs="6">
+                                    <SgStack Vertical Space="SgSize.Sm">
+                                        <span class="sgc-demo-control-label">End</span>
+                                        <SgColorPicker Value="@_ctorFillGradientEnd" ValueChanged="@((string v) => { _ctorFillGradientEnd = v; UpdateConstructorCode(); })" Block />
+                                    </SgStack>
+                                </SgCol>
+                            </SgRow>
+                        }
+
+                        <div>
+                            <span class="sgc-demo-control-label">Logo SVG (optional)</span>
+                            <SgTextBox Value="@_ctorLogo" ValueChanged="@((string v) => { _ctorLogo = v; UpdateConstructorCode(); })" Placeholder="<svg ...>" Block />
+                        </div>
+
+                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                            <span class="sgc-demo-control-label">Show Label</span>
+                            <SgSwitch Value="@_ctorShowLabel" ValueChanged="@((bool v) => { _ctorShowLabel = v; UpdateConstructorCode(); })" />
+                            @if (_ctorShowLabel)
+                            {
+                                <SgTextBox Value="@_ctorLabelText" ValueChanged="@((string v) => { _ctorLabelText = v; UpdateConstructorCode(); })" Placeholder="Label text" Style="flex:1;" />
+                            }
+                        </SgStack>
+
+                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                            <SgSwitch Value="@_ctorResponsive" ValueChanged="@((bool v) => { _ctorResponsive = v; UpdateConstructorCode(); })" Label="Responsive" />
+                        </SgStack>
+
+                        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+                            <SgSwitch Value="@_ctorDownloadable" ValueChanged="@((bool v) => { _ctorDownloadable = v; UpdateConstructorCode(); })" Label="Downloadable" />
+                        </SgStack>
+
+                        <div class="sgc-demo-controls" style="margin-bottom:0;">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="width:100%;">
+                                Summary
+                            </SgTypography>
+                            <SgStack Vertical Space="SgSize.Sm" Style="width:100%;">
+                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Text="@($"{(int)_ctorSize}px")" Variant="SgBadgeVariant.Info" Size="SgSize.Sm" Standalone />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">ECC</SgTypography>
+                                    <SgBadge Text="@_ctorEcc.ToString()" Variant="SgBadgeVariant.Success" Size="SgSize.Sm" Standalone />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Border</SgTypography>
+                                    <SgBadge Text="@_ctorBorder.ToString()" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Fill</SgTypography>
+                                    <SgBadge Text="@_ctorFillColor" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Background</SgTypography>
+                                    <SgBadge Text="@_ctorBgColor" Variant="SgBadgeVariant.Default" Size="SgSize.Sm" Standalone />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+                    </SgStack>
+                </SgCol>
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <SgStack Horizontal Space="SgSize.Md" Justify="SgJustifyContent.SpaceBetween" Align="SgAlignItems.Center">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                Result
+                            </SgTypography>
+                        </SgStack>
+                        <div class="sgc-demo-controls" style="display:flex;align-items:center;justify-content:center;min-height:240px;margin-bottom:0;">
+                            <SgQrCode Value="@_ctorText"
+                                       Size="@((int)_ctorSize)"
+                                       ErrorCorrection="@_ctorEcc"
+                                       Border="@_ctorBorder"
+                                       FillColor="@_ctorFillColor"
+                                       BackgroundColor="@_ctorBgColor"
+                                       EyeStyle="@_ctorEyeStyle"
+                                       ModuleStyle="@_ctorModuleStyle"
+                                       FillGradient="@_ctorFillGradient"
+                                       FillGradientStart="@_ctorFillGradientStart"
+                                       FillGradientEnd="@_ctorFillGradientEnd"
+                                       Logo="@(string.IsNullOrEmpty(_ctorLogo) ? null : _ctorLogo)"
+                                       ShowLabel="@_ctorShowLabel"
+                                       LabelText="@_ctorLabelText"
+                                       Responsive="@_ctorResponsive"
+                                       Downloadable="@_ctorDownloadable" />
+                        </div>
+
+                        <div class="sgc-demo-code-card">
+                            <SgCard NoPadding Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                                <ChildContent>
+                                    <div class="sgc-demo-code-header">
+                                        <div class="sgc-demo-code-header-left">
+                                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
+                                                Generated Code
+                                            </SgTypography>
+                                        </div>
+                                        <div class="sgc-demo-code-header-right">
+                                            <span class="sgc-demo-code-copy-status @(_copyLabel == "Copied!" ? "sgc-demo-code-copied" : "")">
+                                                <SgTypography Size="SgTypographySize.Xs" Color="@(_copyLabel == "Copied!" ? "var(--sg-color-success)" : "var(--sg-text-muted)")">
+                                                    @_copyLabel
+                                                </SgTypography>
+                                            </span>
+                                            <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" @onclick="CopyCodeToClipboard" Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.ClipboardDocument)))" />
+                                        </div>
+                                    </div>
+                                    <pre class="sgc-demo-code-pre"><code class="sgc-demo-code-content">@_generatedCode</code></pre>
+                                </ChildContent>
+                            </SgCard>
+                        </div>
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. API Reference                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="sgc-demo-section">
+        <div class="sgc-demo-section-header">
+            <div class="sgc-demo-section-header-content">
+                <div class="sgc-demo-section-title-row">
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                        SgQrCode Properties
+                    </SgTypography>
+                </div>
+                <div class="sgc-demo-section-subtitle">
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        All configurable parameters on the SgQrCode component.
+                    </SgTypography>
+                </div>
+            </div>
+        </div>
+        <div class="sgc-demo-section-body">
+            <PropertyTable Items="_allProperties" />
+        </div>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
-<style>
-    .demo-section { margin-top: 48px; }
-    .demo-section-header { margin-bottom: 20px; }
-    .demo-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    @@media (max-width: 768px) { .demo-two-col { grid-template-columns: 1fr; } }
-    .qr-color-swatch { width: 40px; height: 40px; border-radius: 50%; border: 3px solid; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: transform 0.2s ease, box-shadow 0.2s ease; background: none; padding: 0; font-family: inherit; }
-    .qr-color-swatch:hover { transform: scale(1.15); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-    .qr-color-swatch:active { transform: scale(0.95); }
-    .qr-color-swatch-inner { width: 18px; height: 18px; border-radius: 50%; }
-    .constructor-preview { background: var(--sg-surface-alt); border: 1px solid var(--sg-border); border-radius: 8px; padding: 16px; min-height: 200px; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; }
-    .ctrl-summary { background: var(--sg-surface-alt); border: 1px solid var(--sg-border); border-radius: 8px; padding: 12px 14px; }
-    .code-block { background: #0f172a; color: #7dd3fc; padding: 14px 16px; border-radius: 8px; font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.9; overflow-x: auto; }
-    .code-block code { background: none; padding: 0; color: inherit; font-size: inherit; display: block; white-space: pre; }
-    .demo-copy-btn { display: inline-flex; align-items: center; gap: 4px; background: var(--sg-surface-alt); border: 1px solid var(--sg-border); border-radius: 6px; padding: 4px 10px; cursor: pointer; color: var(--sg-text-muted); transition: all 0.2s ease; font-family: inherit; }
-    .demo-copy-btn:hover { color: var(--sg-primary); border-color: var(--sg-primary); background: color-mix(in srgb, var(--sg-primary) 8%, transparent); }
-    .demo-copy-btn:active { transform: scale(0.95); }
-    .demo-copy-btn.copied { color: var(--sg-color-success); border-color: var(--sg-color-success); }
-</style>
-
 @code {
+    // ── Header ──────────────────────────────────────────────────────────
     private RenderFragment _mainHeader => __builder =>
     {
         <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
             <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="3" y="3" width="5" height="5"/><rect x="16" y="3" width="5" height="5"/>
-                    <rect x="3" y="16" width="5" height="5"/><rect x="16" y="16" width="5" height="5"/>
-                    <rect x="10" y="10" width="4" height="4"/>
-                </svg>
+                @((MarkupString)SgHeroicons.Outline.QrCode)
             </div>
             <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
                 <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">QR Code Generator</SgTypography>
                 <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                    SgQrCode — pure C# QR code generation powered by Net.Codecrete.QrCodeGenerator. No JavaScript required.
+                    SgQrCode — pure C# QR code generation powered by Net.Codecrete.QrCodeGenerator. No JavaScript required for generation.
                 </SgTypography>
             </SgStack>
         </SgStack>
     };
 
-    private RenderFragment _renderContent => BuildRenderContent();
-    private RenderFragment _renderConstructor => BuildConstructorContent();
-
-    private RenderFragment BuildRenderContent()
-    {
-        return builder =>
-        {
-            var s = 0;
-            // Section 1 — Interactive Generator
-            builder.AddContent(s++, BuildSection1());
-            // Section 2 — Custom Colors
-            builder.AddContent(s++, BuildSection2());
-            // Section 2.5 — Visual Styles
-            builder.AddContent(s++, BuildSectionVisualStyles());
-            // Section 3 — Sizes & Border
-            builder.AddContent(s++, BuildSection3());
-            // Section 4 — URL Example
-            builder.AddContent(s++, BuildSection4());
-            // Section 5 — Properties
-            builder.AddContent(s++, BuildSection5());
-            // Section 6 — Live Constructor
-            builder.AddContent(s++, BuildConstructorContent());
-        };
-    }
-
-    private RenderFragment BuildSection1() => __builder =>
-    {
-        var s = 0;
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section");
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section-header");
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); __builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Interactive Generator"))); __builder.CloseComponent();
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); __builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Type any text or URL to generate a QR code instantly. Compare Medium and High error correction side by side."))); __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-two-col");
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Generator"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            var s2 = 0;
-            b.OpenComponent<SgStack>(s2++); b.AddAttribute(s2++, "Vertical", true); b.AddAttribute(s2++, "Space", "SgSize.Lg");
-            b.AddAttribute(s2++, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s3 = 0;
-                b2.OpenComponent(s3++, typeof(SgTextBox<string>)); b2.AddAttribute(s3++, "Value", _text); b2.AddAttribute(s3++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => _text = v)); b2.AddAttribute(s3++, "Placeholder", "Enter text or URL to encode"); b2.AddAttribute(s3++, "Block", true); b2.CloseComponent();
-                b2.OpenComponent<SgRow>(s3++); b2.AddAttribute(s3++, "Space", "SgSize.Md");
-                b2.AddAttribute(s3++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    var s4 = 0;
-                    b3.OpenComponent<SgCol>(s4++); b3.AddAttribute(s4++, "Span", 6);
-                    b3.AddAttribute(s4++, "ChildContent", (RenderFragment)(b4 =>
-                    {
-                        var s5 = 0;
-                        b4.OpenComponent<SgStack>(s5++); b4.AddAttribute(s5++, "Vertical", true); b4.AddAttribute(s5++, "Space", "SgSize.Sm");
-                        b4.AddAttribute(s5++, "ChildContent", (RenderFragment)(b5 =>
-                        {
-                            var s6 = 0;
-                            AddSectionLabel(b5, ref s6, "Size");
-                            b5.OpenComponent(s6++, typeof(SgSelect<int>)); b5.AddAttribute(s6++, "Value", _size); b5.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<int>(this, v => _size = v)); b5.AddAttribute(s6++, "Items", _sizeItems); b5.AddAttribute(s6++, "LabelSelector", (Func<int, string>)(x => $"{x}px")); b5.AddAttribute(s6++, "Block", true); b5.CloseComponent();
-                        }));
-                        b4.CloseComponent();
-                    }));
-                    b3.CloseComponent();
-                    b3.OpenComponent<SgCol>(s4++); b3.AddAttribute(s4++, "Span", 6);
-                    b3.AddAttribute(s4++, "ChildContent", (RenderFragment)(b4 =>
-                    {
-                        var s5 = 0;
-                        b4.OpenComponent<SgStack>(s5++); b4.AddAttribute(s5++, "Vertical", true); b4.AddAttribute(s5++, "Space", "SgSize.Sm");
-                        b4.AddAttribute(s5++, "ChildContent", (RenderFragment)(b5 =>
-                        {
-                            var s6 = 0;
-                            AddSectionLabel(b5, ref s6, "Error Correction");
-                            b5.OpenComponent(s6++, typeof(SgSelect<SgQrCodeEcc>)); b5.AddAttribute(s6++, "Value", _ecc); b5.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<SgQrCodeEcc>(this, v => _ecc = v)); b5.AddAttribute(s6++, "Items", _eccItems); b5.AddAttribute(s6++, "LabelSelector", (Func<SgQrCodeEcc, string>)(x => x.ToString())); b5.AddAttribute(s6++, "Block", true); b5.CloseComponent();
-                        }));
-                        b4.CloseComponent();
-                    }));
-                    b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-                b2.OpenComponent<SgStack>(s3++); b2.AddAttribute(s3++, "Horizontal", true); b2.AddAttribute(s3++, "Space", "SgSize.Lg"); b2.AddAttribute(s3++, "Align", "SgAlignItems.Center");
-                b2.AddAttribute(s3++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    var s4 = 0;
-                    b3.OpenComponent<SgStack>(s4++); b3.AddAttribute(s4++, "Vertical", true); b3.AddAttribute(s4++, "Space", "SgSize.Sm"); b3.AddAttribute(s4++, "Align", "SgAlignItems.Center");
-                    b3.AddAttribute(s4++, "ChildContent", (RenderFragment)(b4 =>
-                    {
-                        var s5 = 0;
-                        b4.OpenComponent<SgTypography>(s5++); b4.AddAttribute(s5++, "Size", "SgTypographySize.Xs"); b4.AddAttribute(s5++, "Color", "var(--sg-text-muted)"); b4.AddAttribute(s5++, "ChildContent", (RenderFragment)(b5 => b5.AddContent(0, "Medium ECC"))); b4.CloseComponent();
-                        b4.OpenComponent<SgQrCode>(s5++); b4.AddAttribute(s5++, "Value", _text); b4.AddAttribute(s5++, "Size", _size); b4.AddAttribute(s5++, "ErrorCorrection", SgQrCodeEcc.Medium); b4.AddAttribute(s5++, "Downloadable", _generatorDownloadable); b4.CloseComponent();
-                    }));
-                    b3.CloseComponent();
-                    b3.OpenComponent<SgStack>(s4++); b3.AddAttribute(s4++, "Vertical", true); b3.AddAttribute(s4++, "Space", "SgSize.Sm"); b3.AddAttribute(s4++, "Align", "SgAlignItems.Center");
-                    b3.AddAttribute(s4++, "ChildContent", (RenderFragment)(b4 =>
-                    {
-                        var s5 = 0;
-                        b4.OpenComponent<SgTypography>(s5++); b4.AddAttribute(s5++, "Size", "SgTypographySize.Xs"); b4.AddAttribute(s5++, "Color", "var(--sg-text-muted)"); b4.AddAttribute(s5++, "ChildContent", (RenderFragment)(b5 => b5.AddContent(0, "High ECC"))); b4.CloseComponent();
-                        b4.OpenComponent<SgQrCode>(s5++); b4.AddAttribute(s5++, "Value", _text); b4.AddAttribute(s5++, "Size", _size); b4.AddAttribute(s5++, "ErrorCorrection", SgQrCodeEcc.High); b4.AddAttribute(s5++, "Downloadable", _generatorDownloadable); b4.CloseComponent();
-                    }));
-                    b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-                b2.OpenComponent<SgStack>(s3++); b2.AddAttribute(s3++, "Horizontal", true); b2.AddAttribute(s3++, "Space", "SgSize.Md"); b2.AddAttribute(s3++, "Align", "SgAlignItems.Center"); b2.AddAttribute(s3++, "Justify", "SgJustifyContent.Center");
-                b2.AddAttribute(s3++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    var s4 = 0;
-                    b3.OpenComponent<SgSwitch>(s4++); b3.AddAttribute(s4++, "Value", _generatorDownloadable); b3.AddAttribute(s4++, "ValueChanged", EventCallback.Factory.Create<bool>(this, v => _generatorDownloadable = v)); b3.AddAttribute(s4++, "Label", "Downloadable"); b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-            }));
-            b.CloseComponent();
-        }));
-        __builder.CloseComponent();
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Parameters"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            b.OpenComponent<PropertyTable>(0); b.AddAttribute(1, "Items", _basicProperties); b.CloseComponent();
-        }));
-        __builder.CloseComponent();
-        __builder.CloseElement(); // demo-two-col
-        __builder.CloseElement(); // demo-section
-    };
-
-    private RenderFragment BuildSection2() => __builder =>
-    {
-        var s = 0;
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section");
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section-header");
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); __builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Custom Colors"))); __builder.CloseComponent();
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); __builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Click a color swatch to apply preset fill and background colors."))); __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-two-col");
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Color Swatches"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            var s2 = 0;
-            b.OpenComponent<SgStack>(s2++); b.AddAttribute(s2++, "Vertical", true); b.AddAttribute(s2++, "Space", "SgSize.Lg");
-            b.AddAttribute(s2++, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s3 = 0;
-                b2.OpenComponent<SgRow>(s3++); b2.AddAttribute(s3++, "Space", "SgSize.Sm");
-                b2.AddAttribute(s3++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    var s4 = 0;
-                    foreach (var swatch in _colorSwatches)
-                    {
-                        var sw = swatch;
-                        b3.OpenComponent<SgCol>(s4++);
-                        b3.AddAttribute(s4++, "ChildContent", (RenderFragment)(b4 =>
-                        {
-                            var s5 = 0;
-                            b4.OpenElement(s5++, "button");
-                            b4.AddAttribute(s5++, "type", "button");
-                            b4.AddAttribute(s5++, "class", "qr-color-swatch");
-                            b4.AddAttribute(s5++, "style", $"background:{sw.Fill};border-color:{sw.Background};");
-                            b4.AddAttribute(s5++, "onclick", EventCallback.Factory.Create(this, () => SelectColorSwatch(sw)));
-                            b4.AddAttribute(s5++, "title", sw.Name);
-                            b4.OpenElement(s5++, "div"); b4.AddAttribute(s5++, "class", "qr-color-swatch-inner"); b4.AddAttribute(s5++, "style", $"background:{sw.Fill};"); b4.CloseElement();
-                            b4.CloseElement();
-                        }));
-                        b3.CloseComponent();
-                    }
-                }));
-                b2.CloseComponent();
-                b2.OpenComponent<SgSpace>(s3++);
-                b2.AddAttribute(s3++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    b3.OpenComponent<SgBadge>(0); b3.AddAttribute(1, "Variant", "SgBadgeVariant.Info"); b3.AddAttribute(2, "Text", $"Fill: {_fillColor}"); b3.AddAttribute(3, "Standalone", true); b3.CloseComponent();
-                    b3.OpenComponent<SgBadge>(0); b3.AddAttribute(1, "Variant", "SgBadgeVariant.Default"); b3.AddAttribute(2, "Text", $"Bg: {_bgColor}"); b3.AddAttribute(3, "Standalone", true); b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-                b2.OpenComponent<SgStack>(s3++); b2.AddAttribute(s3++, "Horizontal", true); b2.AddAttribute(s3++, "Space", "SgSize.Sm"); b2.AddAttribute(s3++, "Align", "SgAlignItems.Center"); b2.AddAttribute(s3++, "Justify", "SgJustifyContent.Center");
-                b2.AddAttribute(s3++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    b3.OpenComponent<SgQrCode>(0); b3.AddAttribute(1, "Value", _text); b3.AddAttribute(2, "Size", 180); b3.AddAttribute(3, "FillColor", _fillColor); b3.AddAttribute(4, "BackgroundColor", _bgColor); b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-            }));
-            b.CloseComponent();
-        }));
-        __builder.CloseComponent();
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Style Properties"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => { b.OpenComponent<PropertyTable>(0); b.AddAttribute(1, "Items", _styleProperties); b.CloseComponent(); }));
-        __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.CloseElement();
-    };
-
-    private RenderFragment BuildSection3() => __builder =>
-    {
-        var s = 0;
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section");
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section-header");
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); __builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Sizes & Border"))); __builder.CloseComponent();
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); __builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Adjust display size and module border width."))); __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm"); __builder.AddAttribute(s++, "NoPadding", true);
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            b.OpenElement(0, "div"); b.AddAttribute(1, "style", "padding:24px;");
-            b.OpenComponent<SgRow>(2); b.AddAttribute(3, "Space", "SgSize.Lg"); b.AddAttribute(4, "Justify", "SgJustifyContent.SpaceAround"); b.AddAttribute(5, "Align", "SgAlignItems.Center");
-            b.AddAttribute(6, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                AddQrSizePreview(b2, ref s2, "100px / Border 0", 100, 0);
-                AddQrSizePreview(b2, ref s2, "140px / Border 2", 140, 2);
-                AddQrSizePreview(b2, ref s2, "180px / Border 4", 180, 4);
-                AddQrSizePreview(b2, ref s2, "220px / Border 8", 220, 8);
-                AddQrSizePreview(b2, ref s2, "260px / Border 4", 260, 4);
-            }));
-            b.CloseComponent();
-            b.CloseElement();
-        }));
-        __builder.CloseComponent();
-        __builder.CloseElement();
-    };
-
-    private RenderFragment BuildSectionVisualStyles() => __builder =>
-    {
-        var s = 0;
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section");
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section-header");
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); __builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Visual Styles"))); __builder.CloseComponent();
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); __builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Eye styles, module shapes, gradients, and logo overlay variations."))); __builder.CloseComponent();
-        __builder.CloseElement();
-
-        // Eye Style Variations
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Eye Style Variations"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm"); __builder.AddAttribute(s++, "NoPadding", true);
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            b.OpenElement(0, "div"); b.AddAttribute(1, "style", "padding:20px;");
-            b.OpenComponent<SgRow>(2); b.AddAttribute(3, "Space", "SgSize.Md"); b.AddAttribute(4, "Justify", "SgJustifyContent.SpaceAround"); b.AddAttribute(5, "Align", "SgAlignItems.Center");
-            b.AddAttribute(6, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                AddStylePreview(b2, ref s2, "Square", 120, SgQrCodeEyeStyle.Square);
-                AddStylePreview(b2, ref s2, "Circle", 120, SgQrCodeEyeStyle.Circle);
-                AddStylePreview(b2, ref s2, "Rounded", 120, SgQrCodeEyeStyle.Rounded);
-                AddStylePreview(b2, ref s2, "Diamond", 120, SgQrCodeEyeStyle.Diamond);
-                AddStylePreview(b2, ref s2, "Leaf", 120, SgQrCodeEyeStyle.Leaf);
-            }));
-            b.CloseComponent();
-            b.CloseElement();
-        }));
-        __builder.CloseComponent();
-
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "style", "margin-top:24px;");
-
-        // Module Style Variations
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Module Shape Variations"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm"); __builder.AddAttribute(s++, "NoPadding", true);
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            b.OpenElement(0, "div"); b.AddAttribute(1, "style", "padding:20px;");
-            b.OpenComponent<SgRow>(2); b.AddAttribute(3, "Space", "SgSize.Md"); b.AddAttribute(4, "Justify", "SgJustifyContent.SpaceAround"); b.AddAttribute(5, "Align", "SgAlignItems.Center");
-            b.AddAttribute(6, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                AddModuleStylePreview(b2, ref s2, "Square", 120, SgQrCodeModuleStyle.Square);
-                AddModuleStylePreview(b2, ref s2, "Circle", 120, SgQrCodeModuleStyle.Circle);
-                AddModuleStylePreview(b2, ref s2, "Rounded", 120, SgQrCodeModuleStyle.Rounded);
-                AddModuleStylePreview(b2, ref s2, "Droplet", 120, SgQrCodeModuleStyle.Droplet);
-            }));
-            b.CloseComponent();
-            b.CloseElement();
-        }));
-        __builder.CloseComponent();
-
-        __builder.CloseElement();
-
-        // Gradient & Logo Examples
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "style", "margin-top:24px;");
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Gradient & Logo Overlay"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm"); __builder.AddAttribute(s++, "NoPadding", true);
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            b.OpenElement(0, "div"); b.AddAttribute(1, "style", "padding:20px;");
-            b.OpenComponent<SgRow>(2); b.AddAttribute(3, "Space", "SgSize.Md"); b.AddAttribute(4, "Justify", "SgJustifyContent.SpaceAround"); b.AddAttribute(5, "Align", "SgAlignItems.Center");
-            b.AddAttribute(6, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                // Gradient example
-                b2.OpenComponent<SgCol>(s2++);
-                b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    var s3 = 0;
-                    b3.OpenComponent<SgStack>(s3++); b3.AddAttribute(s3++, "Vertical", true); b3.AddAttribute(s3++, "Space", "SgSize.Sm"); b3.AddAttribute(s3++, "Align", "SgAlignItems.Center");
-                    b3.AddAttribute(s3++, "ChildContent", (RenderFragment)(b4 =>
-                    {
-                        var s4 = 0;
-                        b4.OpenComponent<SgTypography>(s4++); b4.AddAttribute(s4++, "Size", "SgTypographySize.Xs"); b4.AddAttribute(s4++, "Weight", "SgTypographyWeight.Bold"); b4.AddAttribute(s4++, "Color", "var(--sg-text-muted)"); b4.AddAttribute(s4++, "ChildContent", (RenderFragment)(b5 => b5.AddContent(0, "Gradient Fill"))); b4.CloseComponent();
-                        b4.OpenComponent<SgQrCode>(s4++); b4.AddAttribute(s4++, "Value", _text); b4.AddAttribute(s4++, "Size", 140); b4.AddAttribute(s4++, "FillGradient", true); b4.AddAttribute(s4++, "FillGradientStart", "#0d9488"); b4.AddAttribute(s4++, "FillGradientEnd", "#7c3aed"); b4.CloseComponent();
-                    }));
-                    b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-                // Logo example
-                b2.OpenComponent<SgCol>(s2++);
-                b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 =>
-                {
-                    var s3 = 0;
-                    b3.OpenComponent<SgStack>(s3++); b3.AddAttribute(s3++, "Vertical", true); b3.AddAttribute(s3++, "Space", "SgSize.Sm"); b3.AddAttribute(s3++, "Align", "SgAlignItems.Center");
-                    b3.AddAttribute(s3++, "ChildContent", (RenderFragment)(b4 =>
-                    {
-                        var s4 = 0;
-                        b4.OpenComponent<SgTypography>(s4++); b4.AddAttribute(s4++, "Size", "SgTypographySize.Xs"); b4.AddAttribute(s4++, "Weight", "SgTypographyWeight.Bold"); b4.AddAttribute(s4++, "Color", "var(--sg-text-muted)"); b4.AddAttribute(s4++, "ChildContent", (RenderFragment)(b5 => b5.AddContent(0, "Logo Overlay"))); b4.CloseComponent();
-                        b4.OpenComponent<SgQrCode>(s4++); b4.AddAttribute(s4++, "Value", "https://github.com/SuperUI/SuperUI"); b4.AddAttribute(s4++, "Size", 140); b4.AddAttribute(s4++, "Logo", "<svg viewBox='0 0 24 24' width='24' height='24' fill='none' stroke='%230d9488' stroke-width='2'><path d='M12 2L2 7l10 5 10-5-10-5z'/><path d='M2 17l10 5 10-5'/><path d='M2 12l10 5 10-5'/></svg>"); b4.AddAttribute(s4++, "LogoSize", 36); b4.CloseComponent();
-                    }));
-                    b3.CloseComponent();
-                }));
-                b2.CloseComponent();
-            }));
-            b.CloseComponent();
-            b.CloseElement();
-        }));
-        __builder.CloseComponent();
-        __builder.CloseElement();
-
-        __builder.CloseElement(); // demo-section
-    };
-
-    private void AddStylePreview(RenderTreeBuilder builder, ref int seq, string label, int size, SgQrCodeEyeStyle eyeStyle)
-    {
-        builder.OpenComponent<SgCol>(seq++);
-        builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b =>
-        {
-            var s = 0;
-            b.OpenComponent<SgStack>(s++); b.AddAttribute(s++, "Vertical", true); b.AddAttribute(s++, "Space", "SgSize.Sm"); b.AddAttribute(s++, "Align", "SgAlignItems.Center");
-            b.AddAttribute(s++, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                b2.OpenComponent<SgTypography>(s2++); b2.AddAttribute(s2++, "Size", "SgTypographySize.Xs"); b2.AddAttribute(s2++, "Weight", "SgTypographyWeight.Bold"); b2.AddAttribute(s2++, "Color", "var(--sg-text-muted)"); b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 => b3.AddContent(0, label))); b2.CloseComponent();
-                b2.OpenComponent<SgQrCode>(s2++); b2.AddAttribute(s2++, "Value", _text); b2.AddAttribute(s2++, "Size", size); b2.AddAttribute(s2++, "EyeStyle", eyeStyle); b2.CloseComponent();
-            }));
-            b.CloseComponent();
-        }));
-        builder.CloseComponent();
-    }
-
-    private void AddModuleStylePreview(RenderTreeBuilder builder, ref int seq, string label, int size, SgQrCodeModuleStyle moduleStyle)
-    {
-        builder.OpenComponent<SgCol>(seq++);
-        builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b =>
-        {
-            var s = 0;
-            b.OpenComponent<SgStack>(s++); b.AddAttribute(s++, "Vertical", true); b.AddAttribute(s++, "Space", "SgSize.Sm"); b.AddAttribute(s++, "Align", "SgAlignItems.Center");
-            b.AddAttribute(s++, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                b2.OpenComponent<SgTypography>(s2++); b2.AddAttribute(s2++, "Size", "SgTypographySize.Xs"); b2.AddAttribute(s2++, "Weight", "SgTypographyWeight.Bold"); b2.AddAttribute(s2++, "Color", "var(--sg-text-muted)"); b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 => b3.AddContent(0, label))); b2.CloseComponent();
-                b2.OpenComponent<SgQrCode>(s2++); b2.AddAttribute(s2++, "Value", _text); b2.AddAttribute(s2++, "Size", size); b2.AddAttribute(s2++, "FillColor", "#0d9488"); b2.AddAttribute(s2++, "ModuleStyle", moduleStyle); b2.CloseComponent();
-            }));
-            b.CloseComponent();
-        }));
-        builder.CloseComponent();
-    }
-
-    private RenderFragment BuildSection4() => __builder =>
-    {
-        var s = 0;
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section");
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section-header");
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); __builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "URL Example"))); __builder.CloseComponent();
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); __builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Generate a scannable QR code pointing to a project URL."))); __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-two-col");
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Preview"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b =>
-        {
-            b.OpenComponent<SgStack>(0); b.AddAttribute(1, "Vertical", true); b.AddAttribute(2, "Space", "SgSize.Lg"); b.AddAttribute(3, "Align", "SgAlignItems.Center");
-            b.AddAttribute(4, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                b2.OpenComponent<SgQrCode>(s2++); b2.AddAttribute(s2++, "Value", _gitUrl); b2.AddAttribute(s2++, "Size", 240); b2.AddAttribute(s2++, "ErrorCorrection", SgQrCodeEcc.Medium); b2.CloseComponent();
-                b2.OpenComponent<SgTypography>(s2++); b2.AddAttribute(s2++, "Size", "SgTypographySize.Sm"); b2.AddAttribute(s2++, "Color", "var(--sg-text-muted)"); b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 => b3.AddContent(0, _gitUrl))); b2.CloseComponent();
-                b2.OpenComponent<SgButton>(s2++); b2.AddAttribute(s2++, "Variant", "SgButtonVariant.Primary"); b2.AddAttribute(s2++, "Icon", SgHeroicons.Outline.ArrowDownTray); b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 => b3.AddContent(0, "Download PNG"))); b2.CloseComponent();
-            }));
-            b.CloseComponent();
-        }));
-        __builder.CloseComponent();
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Title", "Error Correction Levels"); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => { b.OpenComponent<PropertyTable>(0); b.AddAttribute(1, "Items", _eccProperties); b.CloseComponent(); }));
-        __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.CloseElement();
-    };
-
-    private RenderFragment BuildSection5() => __builder =>
-    {
-        var s = 0;
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section");
-        __builder.OpenElement(s++, "div"); __builder.AddAttribute(s++, "class", "demo-section-header");
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); __builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "SgQrCode Properties"))); __builder.CloseComponent();
-        __builder.OpenComponent<SgTypography>(s++); __builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); __builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "All configurable parameters on the SgQrCode component."))); __builder.CloseComponent();
-        __builder.CloseElement();
-        __builder.OpenComponent<SgCard>(s++); __builder.AddAttribute(s++, "Shadow", "SgShadow.Sm"); __builder.AddAttribute(s++, "Size", "SgSize.Sm");
-        __builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b => { b.OpenComponent<PropertyTable>(0); b.AddAttribute(1, "Items", _allProperties); b.CloseComponent(); }));
-        __builder.CloseComponent();
-        __builder.CloseElement();
-    };
-
-    private RenderFragment BuildConstructorContent()
-    {
-        return builder =>
-        {
-            var s = 0;
-            builder.OpenElement(s++, "div"); builder.AddAttribute(s++, "class", "demo-section");
-            builder.OpenElement(s++, "div"); builder.AddAttribute(s++, "class", "demo-section-header");
-            builder.OpenComponent<SgTypography>(s++); builder.AddAttribute(s++, "Variant", "SgTypographyVariant.Heading5"); builder.AddAttribute(s++, "Weight", "SgTypographyWeight.Semibold"); builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, "Live SgQrCode Constructor"))); builder.CloseComponent();
-            builder.OpenComponent<SgTypography>(s++); builder.AddAttribute(s++, "Size", "SgTypographySize.Sm"); builder.AddAttribute(s++, "Color", "var(--sg-text-muted)"); builder.AddAttribute(s++, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, "Tweak every parameter and see the result in real time. Copy the generated code."))); builder.CloseComponent();
-            builder.CloseElement();
-            builder.OpenComponent<SgCard>(s++); builder.AddAttribute(s++, "Shadow", "SgShadow.Md"); builder.AddAttribute(s++, "Radius", "SgSize.Lg"); builder.AddAttribute(s++, "NoPadding", true);
-            builder.AddAttribute(s++, "ChildContent", (RenderFragment)(builder2 =>
-            {
-                var s2 = 0;
-                builder2.OpenComponent<SgRow>(s2++); builder2.AddAttribute(s2++, "Space", "SgSize.Md");
-                builder2.AddAttribute(s2++, "ChildContent", (RenderFragment)(builder3 =>
-                {
-                    var s3 = 0;
-                    builder3.OpenComponent<SgCol>(s3++); builder3.AddAttribute(s3++, "Xs", 12); builder3.AddAttribute(s3++, "Md", 5); builder3.AddAttribute(s3++, "Style", "padding:24px;border-right:1px solid var(--sg-border);");
-                    builder3.AddAttribute(s3++, "ChildContent", (RenderFragment)(builder4 =>
-                    {
-                        var s4 = 0;
-                        builder4.OpenComponent<SgStack>(s4++); builder4.AddAttribute(s4++, "Vertical", true); builder4.AddAttribute(s4++, "Space", "SgSize.Lg");
-                        builder4.AddAttribute(s4++, "ChildContent", (RenderFragment)(builder5 =>
-                        {
-                            var s5 = 0;
-                            // Text input
-                            AddControlLabel(builder5, ref s5, "Text / URL");
-                            builder5.OpenComponent(s5++, typeof(SgTextBox<string>));
-                            builder5.AddAttribute(s5++, "Value", _ctorText);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorText = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Placeholder", "Enter text or URL");
-                            builder5.AddAttribute(s5++, "Block", true);
-                            builder5.CloseComponent();
-                            // Size slider
-                            AddControlLabel(builder5, ref s5, $"Size: {_ctorSize:F0} px");
-                            builder5.OpenComponent(s5++, typeof(SgSlider<double>));
-                            builder5.AddAttribute(s5++, "Value", _ctorSize);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<double>(this, v => { _ctorSize = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Min", 80.0);
-                            builder5.AddAttribute(s5++, "Max", 400.0);
-                            builder5.AddAttribute(s5++, "Step", 10.0);
-                            builder5.AddAttribute(s5++, "ShowTooltip", true);
-                            builder5.AddAttribute(s5++, "FormatValue", (Func<double, string>)(v => $"{v:F0}px"));
-                            builder5.CloseComponent();
-                            // ECC segmented
-                            AddControlLabel(builder5, ref s5, "Error Correction");
-                            builder5.OpenComponent<SgSegmented<SgQrCodeEcc>>(s5++);
-                            builder5.AddAttribute(s5++, "Value", _ctorEcc);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<SgQrCodeEcc>(this, v => { _ctorEcc = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Block", true);
-                            builder5.AddAttribute(s5++, "size", "sm");
-                            builder5.AddAttribute(s5++, "Options", _eccSegOptions);
-                            builder5.CloseComponent();
-                            // Border segmented
-                            AddControlLabel(builder5, ref s5, "Border");
-                            builder5.OpenComponent<SgSegmented<int>>(s5++);
-                            builder5.AddAttribute(s5++, "Value", _ctorBorder);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<int>(this, v => { _ctorBorder = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Block", true);
-                            builder5.AddAttribute(s5++, "size", "sm");
-                            builder5.AddAttribute(s5++, "Options", _borderSegOptions);
-                            builder5.CloseComponent();
-                            // Fill + Background
-                            builder5.OpenComponent<SgRow>(s5++); builder5.AddAttribute(s5++, "Space", "SgSize.Md");
-                            builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                            {
-                                var s6 = 0;
-                                builder6.OpenComponent<SgCol>(s6++); builder6.AddAttribute(s6++, "Span", 6);
-                                builder6.AddAttribute(s6++, "ChildContent", (RenderFragment)(builder7 =>
-                                {
-                                    var s7 = 0;
-                                    builder7.OpenComponent<SgStack>(s7++); builder7.AddAttribute(s7++, "Vertical", true); builder7.AddAttribute(s7++, "Space", "SgSize.Sm");
-                                    builder7.AddAttribute(s7++, "ChildContent", (RenderFragment)(builder8 =>
-                                    {
-                                        var s8 = 0;
-                                        AddControlLabel(builder8, ref s8, "Fill Color");
-                                        builder8.OpenComponent(s8++, typeof(SgTextBox<string>));
-                                        builder8.AddAttribute(s8++, "Value", _ctorFillColor);
-                                        builder8.AddAttribute(s8++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorFillColor = v; UpdateConstructorCode(); }));
-                                        builder8.AddAttribute(s8++, "Placeholder", "#000000");
-                                        builder8.AddAttribute(s8++, "Block", true);
-                                        builder8.CloseComponent();
-                                    }));
-                                    builder7.CloseComponent();
-                                }));
-                                builder6.CloseComponent();
-                                builder6.OpenComponent<SgCol>(s6++); builder6.AddAttribute(s6++, "Span", 6);
-                                builder6.AddAttribute(s6++, "ChildContent", (RenderFragment)(builder7 =>
-                                {
-                                    var s7 = 0;
-                                    builder7.OpenComponent<SgStack>(s7++); builder7.AddAttribute(s7++, "Vertical", true); builder7.AddAttribute(s7++, "Space", "SgSize.Sm");
-                                    builder7.AddAttribute(s7++, "ChildContent", (RenderFragment)(builder8 =>
-                                    {
-                                        var s8 = 0;
-                                        AddControlLabel(builder8, ref s8, "Background Color");
-                                        builder8.OpenComponent(s8++, typeof(SgTextBox<string>));
-                                        builder8.AddAttribute(s8++, "Value", _ctorBgColor);
-                                        builder8.AddAttribute(s8++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorBgColor = v; UpdateConstructorCode(); }));
-                                        builder8.AddAttribute(s8++, "Placeholder", "#ffffff");
-                                        builder8.AddAttribute(s8++, "Block", true);
-                                        builder8.CloseComponent();
-                                    }));
-                                    builder7.CloseComponent();
-                                }));
-                                builder6.CloseComponent();
-                            }));
-                            builder5.CloseComponent();
-                            // Eye Style segmented
-                            AddControlLabel(builder5, ref s5, "Eye Style");
-                            builder5.OpenComponent<SgSegmented<SgQrCodeEyeStyle>>(s5++);
-                            builder5.AddAttribute(s5++, "Value", _ctorEyeStyle);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<SgQrCodeEyeStyle>(this, v => { _ctorEyeStyle = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Block", true);
-                            builder5.AddAttribute(s5++, "size", "sm");
-                            builder5.AddAttribute(s5++, "Options", _eyeStyleSegOptions);
-                            builder5.CloseComponent();
-                            // Module Style segmented
-                            AddControlLabel(builder5, ref s5, "Module Style");
-                            builder5.OpenComponent<SgSegmented<SgQrCodeModuleStyle>>(s5++);
-                            builder5.AddAttribute(s5++, "Value", _ctorModuleStyle);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<SgQrCodeModuleStyle>(this, v => { _ctorModuleStyle = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Block", true);
-                            builder5.AddAttribute(s5++, "size", "sm");
-                            builder5.AddAttribute(s5++, "Options", _moduleStyleSegOptions);
-                            builder5.CloseComponent();
-                            // Fill Gradient toggle
-                            builder5.OpenComponent<SgStack>(s5++); builder5.AddAttribute(s5++, "Horizontal", true); builder5.AddAttribute(s5++, "Space", "SgSize.Md"); builder5.AddAttribute(s5++, "Align", "SgAlignItems.Center");
-                            builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                            {
-                                var s6 = 0;
-                                AddControlLabel(builder6, ref s6, "Fill Gradient");
-                                builder6.OpenComponent<SgSwitch>(s6++); builder6.AddAttribute(s6++, "Value", _ctorFillGradient); builder6.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<bool>(this, v => { _ctorFillGradient = v; UpdateConstructorCode(); })); builder6.CloseComponent();
-                            }));
-                            builder5.CloseComponent();
-                            if (_ctorFillGradient)
-                            {
-                                builder5.OpenComponent<SgRow>(s5++); builder5.AddAttribute(s5++, "Space", "SgSize.Md");
-                                builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                                {
-                                    var s6 = 0;
-                                    builder6.OpenComponent<SgCol>(s6++); builder6.AddAttribute(s6++, "Span", 6);
-                                    builder6.AddAttribute(s6++, "ChildContent", (RenderFragment)(builder7 =>
-                                    {
-                                        var s7 = 0;
-                                        builder7.OpenComponent<SgStack>(s7++); builder7.AddAttribute(s7++, "Vertical", true); builder7.AddAttribute(s7++, "Space", "SgSize.Sm");
-                                        builder7.AddAttribute(s7++, "ChildContent", (RenderFragment)(builder8 =>
-                                        {
-                                            var s8 = 0;
-                                            AddControlLabel(builder8, ref s8, "Gradient Start");
-                                            builder8.OpenComponent(s8++, typeof(SgTextBox<string>));
-                                            builder8.AddAttribute(s8++, "Value", _ctorFillGradientStart);
-                                            builder8.AddAttribute(s8++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorFillGradientStart = v; UpdateConstructorCode(); }));
-                                            builder8.AddAttribute(s8++, "Placeholder", "#000000");
-                                            builder8.AddAttribute(s8++, "Block", true);
-                                            builder8.CloseComponent();
-                                        }));
-                                        builder7.CloseComponent();
-                                    }));
-                                    builder6.CloseComponent();
-                                    builder6.OpenComponent<SgCol>(s6++); builder6.AddAttribute(s6++, "Span", 6);
-                                    builder6.AddAttribute(s6++, "ChildContent", (RenderFragment)(builder7 =>
-                                    {
-                                        var s7 = 0;
-                                        builder7.OpenComponent<SgStack>(s7++); builder7.AddAttribute(s7++, "Vertical", true); builder7.AddAttribute(s7++, "Space", "SgSize.Sm");
-                                        builder7.AddAttribute(s7++, "ChildContent", (RenderFragment)(builder8 =>
-                                        {
-                                            var s8 = 0;
-                                            AddControlLabel(builder8, ref s8, "Gradient End");
-                                            builder8.OpenComponent(s8++, typeof(SgTextBox<string>));
-                                            builder8.AddAttribute(s8++, "Value", _ctorFillGradientEnd);
-                                            builder8.AddAttribute(s8++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorFillGradientEnd = v; UpdateConstructorCode(); }));
-                                            builder8.AddAttribute(s8++, "Placeholder", "#000000");
-                                            builder8.AddAttribute(s8++, "Block", true);
-                                            builder8.CloseComponent();
-                                        }));
-                                        builder7.CloseComponent();
-                                    }));
-                                    builder6.CloseComponent();
-                                }));
-                                builder5.CloseComponent();
-                            }
-                            // Logo
-                            AddControlLabel(builder5, ref s5, "Logo SVG/HTML (optional)");
-                            builder5.OpenComponent(s5++, typeof(SgTextBox<string>));
-                            builder5.AddAttribute(s5++, "Value", _ctorLogo);
-                            builder5.AddAttribute(s5++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorLogo = v; UpdateConstructorCode(); }));
-                            builder5.AddAttribute(s5++, "Placeholder", "<svg ...>");
-                            builder5.AddAttribute(s5++, "Block", true);
-                            builder5.CloseComponent();
-                            // ShowLabel + LabelText
-                            builder5.OpenComponent<SgStack>(s5++); builder5.AddAttribute(s5++, "Horizontal", true); builder5.AddAttribute(s5++, "Space", "SgSize.Md"); builder5.AddAttribute(s5++, "Align", "SgAlignItems.Center");
-                            builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                            {
-                                var s6 = 0;
-                                AddControlLabel(builder6, ref s6, "Show Label");
-                                builder6.OpenComponent<SgSwitch>(s6++); builder6.AddAttribute(s6++, "Value", _ctorShowLabel); builder6.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<bool>(this, v => { _ctorShowLabel = v; UpdateConstructorCode(); })); builder6.CloseComponent();
-                                if (_ctorShowLabel)
-                                {
-                                    builder6.OpenComponent(s6++, typeof(SgTextBox<string>));
-                                    builder6.AddAttribute(s6++, "Value", _ctorLabelText);
-                                    builder6.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<string>(this, v => { _ctorLabelText = v; UpdateConstructorCode(); }));
-                                    builder6.AddAttribute(s6++, "Placeholder", "Label text");
-                                    builder6.AddAttribute(s6++, "Block", true);
-                                    builder6.CloseComponent();
-                                }
-                            }));
-                            builder5.CloseComponent();
-                            // Responsive toggle
-                            builder5.OpenComponent<SgStack>(s5++); builder5.AddAttribute(s5++, "Horizontal", true); builder5.AddAttribute(s5++, "Space", "SgSize.Md"); builder5.AddAttribute(s5++, "Align", "SgAlignItems.Center");
-                            builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                            {
-                                var s6 = 0;
-                                AddControlLabel(builder6, ref s6, "Responsive");
-                                builder6.OpenComponent<SgSwitch>(s6++); builder6.AddAttribute(s6++, "Value", _ctorResponsive); builder6.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<bool>(this, v => { _ctorResponsive = v; UpdateConstructorCode(); })); builder6.CloseComponent();
-                            }));
-                            builder5.CloseComponent();
-                            // Downloadable toggle
-                            builder5.OpenComponent<SgStack>(s5++); builder5.AddAttribute(s5++, "Horizontal", true); builder5.AddAttribute(s5++, "Space", "SgSize.Md"); builder5.AddAttribute(s5++, "Align", "SgAlignItems.Center");
-                            builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                            {
-                                var s6 = 0;
-                                AddControlLabel(builder6, ref s6, "Downloadable");
-                                builder6.OpenComponent<SgSwitch>(s6++); builder6.AddAttribute(s6++, "Value", _ctorDownloadable); builder6.AddAttribute(s6++, "ValueChanged", EventCallback.Factory.Create<bool>(this, v => { _ctorDownloadable = v; UpdateConstructorCode(); })); builder6.CloseComponent();
-                            }));
-                            builder5.CloseComponent();
-                            // Summary
-                            builder5.OpenElement(s5++, "div"); builder5.AddAttribute(s5++, "class", "ctrl-summary");
-                            builder5.OpenComponent<SgStack>(s5++); builder5.AddAttribute(s5++, "Vertical", true); builder5.AddAttribute(s5++, "Space", "SgSize.Sm");
-                            builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(builder6 =>
-                            {
-                                var s6 = 0;
-                                AddSummaryRow(builder6, ref s6, "Size", $"{_ctorSize:F0}px", "SgBadgeVariant.Info");
-                                AddSummaryRow(builder6, ref s6, "ECC", _ctorEcc.ToString(), "SgBadgeVariant.Success");
-                                AddSummaryRow(builder6, ref s6, "Border", _ctorBorder.ToString(), "SgBadgeVariant.Default");
-                                AddSummaryRow(builder6, ref s6, "Fill", _ctorFillColor, "SgBadgeVariant.Default");
-                                AddSummaryRow(builder6, ref s6, "Background", _ctorBgColor, "SgBadgeVariant.Default");
-                                AddSummaryRow(builder6, ref s6, "Eye", _ctorEyeStyle.ToString(), "SgBadgeVariant.Info");
-                                AddSummaryRow(builder6, ref s6, "Module", _ctorModuleStyle.ToString(), "SgBadgeVariant.Default");
-                                if (_ctorFillGradient) AddSummaryRow(builder6, ref s6, "Gradient", $"{_ctorFillGradientStart} → {_ctorFillGradientEnd}", "SgBadgeVariant.Success");
-                                if (!string.IsNullOrEmpty(_ctorLogo)) AddSummaryRow(builder6, ref s6, "Logo", "Yes", "SgBadgeVariant.Default");
-                                if (_ctorShowLabel && !string.IsNullOrEmpty(_ctorLabelText)) AddSummaryRow(builder6, ref s6, "Label", _ctorLabelText, "SgBadgeVariant.Default");
-                                if (_ctorResponsive) AddSummaryRow(builder6, ref s6, "Responsive", "Yes", "SgBadgeVariant.Default");
-                                if (_ctorDownloadable) AddSummaryRow(builder6, ref s6, "Download", "Yes", "SgBadgeVariant.Default");
-                            }));
-                            builder5.CloseComponent();
-                            builder5.CloseElement(); // ctrl-summary
-                        }));
-                        builder4.CloseComponent();
-                    }));
-                    builder3.CloseComponent();
-                    builder3.OpenComponent<SgCol>(s3++); builder3.AddAttribute(s3++, "Xs", 12); builder3.AddAttribute(s3++, "Md", 7); builder3.AddAttribute(s3++, "Style", "padding:24px;");
-                    builder3.AddAttribute(s3++, "ChildContent", (RenderFragment)(builder4 =>
-                    {
-                        var s4 = 0;
-                        builder4.OpenComponent<SgStack>(s4++); builder4.AddAttribute(s4++, "Vertical", true); builder4.AddAttribute(s4++, "Space", "SgSize.Lg");
-                        builder4.AddAttribute(s4++, "ChildContent", (RenderFragment)(builder5 =>
-                        {
-                            var s5 = 0;
-                            builder5.OpenElement(s5++, "div"); builder5.AddAttribute(s5++, "style", "display:flex;align-items:center;justify-content:space-between;");
-                            builder5.OpenComponent<SgTypography>(s5++); builder5.AddAttribute(s5++, "Size", "SgTypographySize.Xs"); builder5.AddAttribute(s5++, "Weight", "SgTypographyWeight.Bold"); builder5.AddAttribute(s5++, "Transform", "SgTypographyTransform.Uppercase"); builder5.AddAttribute(s5++, "Tracking", "SgTypographyTracking.Wide"); builder5.AddAttribute(s5++, "Color", "var(--sg-text-muted)"); builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Result"))); builder5.CloseComponent();
-                            builder5.CloseElement();
-                            builder5.OpenElement(s5++, "div"); builder5.AddAttribute(s5++, "class", "constructor-preview");
-                            builder5.OpenComponent<SgQrCode>(s5++);
-                            builder5.AddAttribute(s5++, "Value", _ctorText);
-                            builder5.AddAttribute(s5++, "Size", (int)_ctorSize);
-                            builder5.AddAttribute(s5++, "ErrorCorrection", _ctorEcc);
-                            builder5.AddAttribute(s5++, "Border", _ctorBorder);
-                            builder5.AddAttribute(s5++, "FillColor", _ctorFillColor);
-                            builder5.AddAttribute(s5++, "BackgroundColor", _ctorBgColor);
-                            builder5.AddAttribute(s5++, "EyeStyle", _ctorEyeStyle);
-                            builder5.AddAttribute(s5++, "ModuleStyle", _ctorModuleStyle);
-                            builder5.AddAttribute(s5++, "FillGradient", _ctorFillGradient);
-                            if (!string.IsNullOrEmpty(_ctorFillGradientStart)) builder5.AddAttribute(s5++, "FillGradientStart", _ctorFillGradientStart);
-                            if (!string.IsNullOrEmpty(_ctorFillGradientEnd)) builder5.AddAttribute(s5++, "FillGradientEnd", _ctorFillGradientEnd);
-                            if (!string.IsNullOrEmpty(_ctorLogo)) builder5.AddAttribute(s5++, "Logo", _ctorLogo);
-                            builder5.AddAttribute(s5++, "ShowLabel", _ctorShowLabel);
-                            if (!string.IsNullOrEmpty(_ctorLabelText)) builder5.AddAttribute(s5++, "LabelText", _ctorLabelText);
-                            builder5.AddAttribute(s5++, "Responsive", _ctorResponsive);
-                            builder5.AddAttribute(s5++, "Downloadable", _ctorDownloadable);
-                            builder5.CloseComponent();
-                            builder5.CloseElement();
-                            builder5.OpenElement(s5++, "div"); builder5.AddAttribute(s5++, "style", "display:flex;align-items:center;justify-content:space-between;");
-                            builder5.OpenComponent<SgTypography>(s5++); builder5.AddAttribute(s5++, "Size", "SgTypographySize.Xs"); builder5.AddAttribute(s5++, "Weight", "SgTypographyWeight.Bold"); builder5.AddAttribute(s5++, "Transform", "SgTypographyTransform.Uppercase"); builder5.AddAttribute(s5++, "Tracking", "SgTypographyTracking.Wide"); builder5.AddAttribute(s5++, "Color", "var(--sg-text-muted)"); builder5.AddAttribute(s5++, "ChildContent", (RenderFragment)(b => b.AddContent(0, "Generated Code"))); builder5.CloseComponent();
-                            builder5.OpenElement(s5++, "button"); builder5.AddAttribute(s5++, "type", "button"); builder5.AddAttribute(s5++, "class", "demo-copy-btn"); builder5.AddAttribute(s5++, "title", "Copy to clipboard"); builder5.AddAttribute(s5++, "onclick", EventCallback.Factory.Create(this, CopyCodeToClipboard));
-                            builder5.OpenElement(s5++, "span"); builder5.AddAttribute(s5++, "id", "qrc-copy-icon"); builder5.AddContent(s5++, _copyIcon); builder5.CloseElement();
-                            builder5.OpenElement(s5++, "span"); builder5.AddAttribute(s5++, "id", "qrc-copy-text"); builder5.AddAttribute(s5++, "style", "font-size:11px;font-weight:600;"); builder5.AddContent(s5++, _copyLabel); builder5.CloseElement();
-                            builder5.CloseElement();
-                            builder5.OpenElement(s5++, "div"); builder5.AddAttribute(s5++, "class", "code-block");
-                            foreach (var line in _generatedCodeLines)
-                            {
-                                builder5.OpenElement(s5++, "code"); builder5.AddContent(s5++, line); builder5.CloseElement();
-                            }
-                            builder5.CloseElement();
-                        }));
-                        builder4.CloseComponent();
-                    }));
-                    builder3.CloseComponent();
-                }));
-                builder2.CloseComponent();
-            }));
-            builder.CloseComponent();
-            builder.CloseElement();
-        };
-    }
-
-    // ── Helpers ──────────────────────────────────────────────────────────
-
-    private static void AddSectionLabel(RenderTreeBuilder builder, ref int seq, string text)
-    {
-        builder.OpenComponent<SgTypography>(seq++);
-        builder.AddAttribute(seq++, "Size", "SgTypographySize.Xs");
-        builder.AddAttribute(seq++, "Weight", "SgTypographyWeight.Bold");
-        builder.AddAttribute(seq++, "Transform", "SgTypographyTransform.Uppercase");
-        builder.AddAttribute(seq++, "Tracking", "SgTypographyTracking.Wide");
-        builder.AddAttribute(seq++, "Color", "var(--sg-text-muted)");
-        builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b => b.AddContent(0, text)));
-        builder.CloseComponent();
-    }
-
-    private static void AddControlLabel(RenderTreeBuilder builder, ref int seq, string text)
-    {
-        builder.OpenComponent<SgStack>(seq++);
-        builder.AddAttribute(seq++, "Vertical", true);
-        builder.AddAttribute(seq++, "Space", "SgSize.Sm");
-        builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b2 =>
-        {
-            var s = 0;
-            b2.OpenComponent<SgTypography>(s++);
-            b2.AddAttribute(s++, "Size", "SgTypographySize.Xs");
-            b2.AddAttribute(s++, "Weight", "SgTypographyWeight.Bold");
-            b2.AddAttribute(s++, "Transform", "SgTypographyTransform.Uppercase");
-            b2.AddAttribute(s++, "Tracking", "SgTypographyTracking.Wide");
-            b2.AddAttribute(s++, "Color", "var(--sg-text-muted)");
-            b2.AddAttribute(s++, "ChildContent", (RenderFragment)(b3 => b3.AddContent(0, text)));
-            b2.CloseComponent();
-        }));
-        builder.CloseComponent();
-    }
-
-    private void AddQrSizePreview(RenderTreeBuilder builder, ref int seq, string label, int size, int border)
-    {
-        builder.OpenComponent<SgCol>(seq++);
-        builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b =>
-        {
-            var s = 0;
-            b.OpenComponent<SgStack>(s++); b.AddAttribute(s++, "Vertical", true); b.AddAttribute(s++, "Space", "SgSize.Sm"); b.AddAttribute(s++, "Align", "SgAlignItems.Center");
-            b.AddAttribute(s++, "ChildContent", (RenderFragment)(b2 =>
-            {
-                var s2 = 0;
-                b2.OpenComponent<SgTypography>(s2++); b2.AddAttribute(s2++, "Size", "SgTypographySize.Xs"); b2.AddAttribute(s2++, "Weight", "SgTypographyWeight.Bold"); b2.AddAttribute(s2++, "Color", "var(--sg-text-muted)"); b2.AddAttribute(s2++, "ChildContent", (RenderFragment)(b3 => b3.AddContent(0, label))); b2.CloseComponent();
-                b2.OpenComponent<SgQrCode>(s2++); b2.AddAttribute(s2++, "Value", _text); b2.AddAttribute(s2++, "Size", size); b2.AddAttribute(s2++, "Border", border); b2.CloseComponent();
-            }));
-            b.CloseComponent();
-        }));
-        builder.CloseComponent();
-    }
-
-    private static void AddSummaryRow(RenderTreeBuilder builder, ref int seq, string label, string valueText, string badgeVariant)
-    {
-        builder.OpenComponent<SgStack>(seq++);
-        builder.AddAttribute(seq++, "Horizontal", true);
-        builder.AddAttribute(seq++, "Space", "SgSize.Sm");
-        builder.AddAttribute(seq++, "Align", "SgAlignItems.Center");
-        builder.AddAttribute(seq++, "Justify", "SgJustifyContent.SpaceBetween");
-        builder.AddAttribute(seq++, "ChildContent", (RenderFragment)(b =>
-        {
-            var s = 0;
-            b.OpenComponent<SgTypography>(s++); b.AddAttribute(s++, "Size", "SgTypographySize.Sm"); b.AddAttribute(s++, "Color", "var(--sg-text-muted)"); b.AddAttribute(s++, "ChildContent", (RenderFragment)(b2 => b2.AddContent(0, label))); b.CloseComponent();
-            b.OpenComponent<SgBadge>(s++); b.AddAttribute(s++, "Variant", SgBadgeVariant.Default); b.AddAttribute(s++, "Text", valueText); b.AddAttribute(s++, "Standalone", true); b.CloseComponent();
-        }));
-        builder.CloseComponent();
-    }
-
-    // ── State ────────────────────────────────────────────────────────────
+    // ── Section 1: Interactive Generator state ──────────────────────────
     private string _text = "https://github.com/SuperUI/SuperUI";
     private int _size = 160;
     private SgQrCodeEcc _ecc = SgQrCodeEcc.Medium;
+    private bool _generatorDownloadable = false;
+
+    private readonly List<int> _sizeItems = new() { 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300 };
+    private readonly List<SgQrCodeEcc> _eccItems = Enum.GetValues<SgQrCodeEcc>().ToList();
+
+    // ── Section 2: Color & Styling state ────────────────────────────────
     private string _fillColor = "#0d9488";
     private string _bgColor = "#f0fdfa";
-    private bool _generatorDownloadable = false;
+    private bool _fillGradient = false;
+    private string _fillGradientStart = "#0d9488";
+    private string _fillGradientEnd = "#7c3aed";
 
     private readonly List<ColorSwatch> _colorSwatches = new()
     {
@@ -841,6 +521,9 @@
         new() { Name = "Blue",  Fill = "#2563eb", Background = "#eff6ff" },
         new() { Name = "Red",   Fill = "#dc2626", Background = "#fef2f2" },
         new() { Name = "Purple",Fill = "#7c3aed", Background = "#f5f3ff" },
+        new() { Name = "Dark",  Fill = "#1e293b", Background = "#f8fafc" },
+        new() { Name = "Amber", Fill = "#d97706", Background = "#fffbeb" },
+        new() { Name = "Pink",  Fill = "#db2777", Background = "#fdf2f8" },
     };
 
     private void SelectColorSwatch(ColorSwatch swatch)
@@ -849,8 +532,7 @@
         _bgColor = swatch.Background;
     }
 
-    private string _gitUrl => "https://github.com/SuperUI/SuperUI";
-
+    // ── Section 4: Constructor state ────────────────────────────────────
     private string _ctorText = "Hello from SuperUI!";
     private double _ctorSize = 200;
     private SgQrCodeEcc _ctorEcc = SgQrCodeEcc.Medium;
@@ -860,20 +542,16 @@
     private SgQrCodeEyeStyle _ctorEyeStyle = SgQrCodeEyeStyle.Square;
     private SgQrCodeModuleStyle _ctorModuleStyle = SgQrCodeModuleStyle.Square;
     private bool _ctorFillGradient = false;
-    private string _ctorFillGradientStart = "#000000";
-    private string _ctorFillGradientEnd = "#000000";
+    private string _ctorFillGradientStart = "#0d9488";
+    private string _ctorFillGradientEnd = "#7c3aed";
     private string _ctorLogo = "";
     private bool _ctorShowLabel = false;
     private string _ctorLabelText = "";
     private bool _ctorResponsive = false;
     private bool _ctorDownloadable = false;
 
-    private string[] _generatedCodeLines = Array.Empty<string>();
-    private string _copyIcon = "📋";
+    private string _generatedCode = "";
     private string _copyLabel = "Copy";
-
-    private readonly List<int> _sizeItems = new() { 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300 };
-    private readonly List<SgQrCodeEcc> _eccItems = Enum.GetValues<SgQrCodeEcc>().ToList();
 
     private readonly List<SgSegmentedOption<SgQrCodeEcc>> _eccSegOptions = new()
     {
@@ -894,17 +572,17 @@
 
     private readonly List<SgSegmentedOption<SgQrCodeEyeStyle>> _eyeStyleSegOptions = new()
     {
-        new() { Value = SgQrCodeEyeStyle.Square, Label = "Square" },
-        new() { Value = SgQrCodeEyeStyle.Circle, Label = "Circle" },
+        new() { Value = SgQrCodeEyeStyle.Square,  Label = "Square" },
+        new() { Value = SgQrCodeEyeStyle.Circle,  Label = "Circle" },
         new() { Value = SgQrCodeEyeStyle.Rounded, Label = "Rounded" },
         new() { Value = SgQrCodeEyeStyle.Diamond, Label = "Diamond" },
-        new() { Value = SgQrCodeEyeStyle.Leaf, Label = "Leaf" },
+        new() { Value = SgQrCodeEyeStyle.Leaf,    Label = "Leaf" },
     };
 
     private readonly List<SgSegmentedOption<SgQrCodeModuleStyle>> _moduleStyleSegOptions = new()
     {
-        new() { Value = SgQrCodeModuleStyle.Square, Label = "Square" },
-        new() { Value = SgQrCodeModuleStyle.Circle, Label = "Circle" },
+        new() { Value = SgQrCodeModuleStyle.Square,  Label = "Square" },
+        new() { Value = SgQrCodeModuleStyle.Circle,  Label = "Circle" },
         new() { Value = SgQrCodeModuleStyle.Rounded, Label = "Rounded" },
         new() { Value = SgQrCodeModuleStyle.Droplet, Label = "Droplet" },
     };
@@ -917,8 +595,9 @@
     private void UpdateConstructorCode()
     {
         var lines = new List<string>();
-        lines.Add($"<SgQrCode");
-        lines.Add($"    Value=\"{_ctorText}\"");
+        var val = _ctorText.Replace("\"", "&quot;");
+        lines.Add("<SgQrCode");
+        lines.Add($"    Value=\"{val}\"");
         lines.Add($"    Size=\"{(int)_ctorSize}\"");
         lines.Add($"    ErrorCorrection=\"SgQrCodeEcc.{_ctorEcc}\"");
         lines.Add($"    Border=\"{_ctorBorder}\"");
@@ -933,13 +612,13 @@
         if (_ctorFillGradient)
         {
             lines.Add($"    FillGradient=\"true\"");
-            if (!string.IsNullOrEmpty(_ctorFillGradientStart) && _ctorFillGradientStart != "#000000")
+            if (!string.IsNullOrEmpty(_ctorFillGradientStart))
                 lines.Add($"    FillGradientStart=\"{_ctorFillGradientStart}\"");
-            if (!string.IsNullOrEmpty(_ctorFillGradientEnd) && _ctorFillGradientEnd != "#000000")
+            if (!string.IsNullOrEmpty(_ctorFillGradientEnd))
                 lines.Add($"    FillGradientEnd=\"{_ctorFillGradientEnd}\"");
         }
         if (!string.IsNullOrEmpty(_ctorLogo))
-            lines.Add($"    Logo=\"{_ctorLogo}\"");
+            lines.Add($"    Logo=\"{_ctorLogo.Replace("\"", "&quot;")}\"");
         if (_ctorShowLabel)
         {
             lines.Add($"    ShowLabel=\"true\"");
@@ -950,91 +629,68 @@
             lines.Add($"    Responsive=\"true\"");
         if (_ctorDownloadable)
             lines.Add($"    Downloadable=\"true\"");
-        lines.Add($" />");
-        _generatedCodeLines = lines.ToArray();
+        lines.Add(" />");
+        _generatedCode = string.Join("\n", lines);
     }
 
     private async Task CopyCodeToClipboard()
     {
-        var code = string.Join("\n", _generatedCodeLines);
         try
         {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
-            _copyIcon = "✓";
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _generatedCode);
             _copyLabel = "Copied!";
             StateHasChanged();
             await Task.Delay(2000);
-            _copyIcon = "📋";
             _copyLabel = "Copy";
             StateHasChanged();
         }
         catch
         {
-            _copyIcon = "✗";
             _copyLabel = "Failed";
             StateHasChanged();
             await Task.Delay(1500);
-            _copyIcon = "📋";
             _copyLabel = "Copy";
             StateHasChanged();
         }
     }
 
-    private List<PropertyPanelItem> _basicProperties = new()
-    {
-        new() { Label = "Value",           Value = "string",               BadgeText = "Text/URL to encode",  BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size",            Value = "int (default: 200)",   BadgeText = "Display px",          BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Border",          Value = "int (default: 2)",     BadgeText = "Module border",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ErrorCorrection", Value = "SgQrCodeEcc",          BadgeText = "Recovery level",      BadgeVariant = SgBadgeVariant.Success },
-    };
-
-    private List<PropertyPanelItem> _styleProperties = new()
-    {
-        new() { Label = "FillColor",      Value = "string (#000000)", BadgeText = "QR module color",    BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "BackgroundColor",Value = "string (#ffffff)", BadgeText = "Background color",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "CssClass",       Value = "string?",          BadgeText = "Custom CSS class",   BadgeVariant = SgBadgeVariant.Default },
-    };
-
-    private List<PropertyPanelItem> _eccProperties = new()
-    {
-        new() { Label = "SgQrCodeEcc.Low",      Value = "\"low\"",      BadgeText = "~7% recovery",    BadgeVariant = SgBadgeVariant.Muted },
-        new() { Label = "SgQrCodeEcc.Medium",   Value = "\"medium\"",   BadgeText = "~15% (default)",   BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgQrCodeEcc.Quartile", Value = "\"quartile\"", BadgeText = "~25% recovery",    BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgQrCodeEcc.High",     Value = "\"high\"",     BadgeText = "~30% maximum",     BadgeVariant = SgBadgeVariant.Success },
-    };
-
+    // ── API Reference ───────────────────────────────────────────────────
     private List<PropertyPanelItem> _allProperties = new()
     {
-        new() { Label = "Value",           Value = "string",                         BadgeText = "Text/URL to encode",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size",            Value = "int (default: 200)",             BadgeText = "Display size in px",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Border",          Value = "int (default: 2)",               BadgeText = "Module border width",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ErrorCorrection", Value = "SgQrCodeEcc",                    BadgeText = "Low/Medium/Quartile/High", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "FillColor",       Value = "string (#000000)",               BadgeText = "QR module fill color",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "BackgroundColor", Value = "string (#ffffff)",               BadgeText = "QR background color",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EyeStyle",        Value = "SgQrCodeEyeStyle (Square)",      BadgeText = "Corner eye pattern style", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EyeColor",        Value = "string?",                        BadgeText = "Custom eye color",         BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "EyeInnerStyle",   Value = "SgQrCodeEyeStyle?",              BadgeText = "Inner eye style",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ModuleStyle",     Value = "SgQrCodeModuleStyle (Square)",   BadgeText = "Module dot shape",         BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradient",    Value = "bool (false)",                   BadgeText = "Use gradient fill",        BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradientStart",Value = "string?",                       BadgeText = "Gradient start color",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradientEnd", Value = "string?",                        BadgeText = "Gradient end color",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FillGradientDirection", Value = "string",                   BadgeText = "Gradient direction",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Logo",            Value = "string?",                        BadgeText = "SVG/HTML logo overlay",    BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LogoSize",        Value = "int (default: 40)",              BadgeText = "Logo size in px",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LogoBackground",  Value = "string (#ffffff)",               BadgeText = "Logo bg color",            BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LogoPadding",     Value = "int (default: 4)",               BadgeText = "Logo padding",             BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "ShowLabel",       Value = "bool (false)",                   BadgeText = "Show label below QR",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LabelText",       Value = "string?",                        BadgeText = "Label text",               BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "LabelFontSize",   Value = "string (12px)",                  BadgeText = "Label font size",          BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Responsive",      Value = "bool (false)",                   BadgeText = "Fill available width",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "MaxSize",         Value = "int (default: 400)",             BadgeText = "Max responsive size",      BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Downloadable",    Value = "bool (false)",                   BadgeText = "Show download button",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "DownloadButtonText",Value = "string (Download PNG)",        BadgeText = "Download button text",     BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "DownloadFileName",Value = "string (qrcode.png)",            BadgeText = "Download file name",       BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "CssClass",        Value = "string?",                        BadgeText = "Additional CSS class",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Value",               Value = "string",                        BadgeText = "Text/URL to encode",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Size",                Value = "int (default: 200)",            BadgeText = "Display size in px",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Border",              Value = "int (default: 2)",              BadgeText = "Module border width",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ErrorCorrection",     Value = "SgQrCodeEcc",                   BadgeText = "Low/Medium/Quartile/High", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "FillColor",           Value = "string (#000000)",              BadgeText = "QR module fill color",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "BackgroundColor",     Value = "string (#ffffff)",              BadgeText = "QR background color",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EyeStyle",            Value = "SgQrCodeEyeStyle",              BadgeText = "Corner eye pattern style", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EyeColor",            Value = "string?",                       BadgeText = "Custom eye color",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "EyeInnerStyle",       Value = "SgQrCodeEyeStyle?",             BadgeText = "Inner eye style",          BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ModuleStyle",         Value = "SgQrCodeModuleStyle",           BadgeText = "Module dot shape",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FillGradient",        Value = "bool (false)",                  BadgeText = "Use gradient fill",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FillGradientStart",   Value = "string?",                       BadgeText = "Gradient start color",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FillGradientEnd",     Value = "string?",                       BadgeText = "Gradient end color",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FillGradientDirection", Value = "string",                      BadgeText = "Gradient direction",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Logo",                Value = "string?",                        BadgeText = "SVG/HTML logo overlay",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LogoContent",         Value = "RenderFragment?",                BadgeText = "Logo as component",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "LogoSize",            Value = "int (default: 40)",              BadgeText = "Logo size in px",          BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LogoBackground",      Value = "string (#ffffff)",               BadgeText = "Logo bg color",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LogoPadding",         Value = "int (default: 4)",               BadgeText = "Logo padding",             BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowLabel",           Value = "bool (false)",                   BadgeText = "Show label below QR",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LabelText",           Value = "string?",                        BadgeText = "Label text",               BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LabelFontSize",       Value = "string (12px)",                  BadgeText = "Label font size",          BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Responsive",          Value = "bool (false)",                   BadgeText = "Fill available width",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxSize",             Value = "int (default: 400)",             BadgeText = "Max responsive size",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Downloadable",        Value = "bool (false)",                   BadgeText = "Show download button",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "DownloadButtonText",   Value = "string (Download PNG)",         BadgeText = "Download button text",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "DownloadFileName",    Value = "string (qrcode.png)",            BadgeText = "Download file name",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnGenerated",         Value = "EventCallback",                  BadgeText = "Fired on generation",      BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ErrorText",           Value = "string",                         BadgeText = "Error display text",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CssClass",            Value = "string?",                        BadgeText = "Additional CSS class",     BadgeVariant = SgBadgeVariant.Default },
     };
 
-    class ColorSwatch
+    // ── Helper types ────────────────────────────────────────────────────
+    private class ColorSwatch
     {
         public string Name { get; set; } = string.Empty;
         public string Fill { get; set; } = "#000000";
