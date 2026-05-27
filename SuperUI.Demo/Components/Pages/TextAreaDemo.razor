@@ -1,145 +1,748 @@
 ﻿@page "/textarea-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@using System.ComponentModel.DataAnnotations
+@inject IJSRuntime JS
 
-<PageTitle>TextArea - SUI</PageTitle>
+<PageTitle>SgTextArea — Multi-line Input — SuperUI</PageTitle>
 
-<SgCard Title="SgTextArea - Multi-line Text Input"
-        Subtitle="Dedicated textarea component with validation, counter, and auto-resize support.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Basic Usage</h2>
-        <p>Simple multi-line text input with label and placeholder.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Usage                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Usage
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Simple multi-line text input with label, placeholder, and hint support. Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">@@bind-Value</SgTypography> for two-way binding.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">With label</div>
-                        <SgTextArea Label="Description" @bind-Value="_basic" Placeholder="Enter description..." Rows="4" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            With label & hint
+                        </SgTypography>
+                        <SgTextArea Label="Description" @bind-Value="_basic" Placeholder="Enter a detailed description..." Hint="Tell us about your project" Rows="4" />
                     </div>
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Without label</div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Without label
+                        </SgTypography>
                         <SgTextArea @bind-Value="_plain" Placeholder="Type something..." Rows="3" />
                     </div>
-                </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Live preview
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_basic" Placeholder="Typing updates the preview..." Rows="2" />
+                        <div class="demo-preview-box">
+                            <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Current value: <strong>@_basic</strong></SgTypography>
+                        </div>
+                    </div>
+                </SgStack>
             </SgCard>
 
-            <SgCard Title="Properties">
+            <SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_basicProperties" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Counter & Clear</h2>
-        <p>Character counter and clear button for better UX.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Counter & Clear                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Counter & Clear
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Character counter with threshold warning and one-click clear button. The counter turns amber when approaching the limit.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">With counter</div>
-                        <SgTextArea @bind-Value="_counter" Placeholder="Bio (max 200 chars)" MaxLength="200" ShowCounter="true" Rows="3" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            With character counter (max 100)
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_counter" Placeholder="Bio (max 100 chars)..." MaxLength="100" ShowCounter="true" Rows="3" />
                     </div>
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">With clear button</div>
-                        <SgTextArea @bind-Value="_clearable" Placeholder="Type and clear..." ShowClearButton="true" Rows="2" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            With clear button
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_clearable" Placeholder="Type something and clear..." AllowClear="true" Rows="2" />
                     </div>
-                </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Counter + Clear together (max 50)
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_counterClear" Placeholder="Short text only..." MaxLength="50" ShowCounter="true" AllowClear="true" Rows="2" />
+                    </div>
+                </SgStack>
             </SgCard>
 
-            <SgCard Title="Properties">
-                <PropertyTable Items="_extraProperties" />
+            <SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_counterProperties" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>States</h2>
-        <p>Disabled and read-only states.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Auto-resize & Rows                                              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Auto-Resize & Rows
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Textarea grows automatically as you type. Set <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">AutoResize="true"</SgTypography> with optional <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">MaxRows</SgTypography> to cap the height.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Disabled</div>
-                        <SgTextArea @bind-Value="_disabled" Placeholder="Disabled textarea" Disabled="true" Rows="2" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Auto-resize (unlimited)
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_autoResize" Placeholder="Type here — height grows automatically..." AutoResize="true" Rows="2" />
                     </div>
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Read-only</div>
-                        <SgTextArea @bind-Value="_readonly" ReadOnly="true" Rows="2" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Auto-resize with max rows (5)
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_autoResizeMax" Placeholder="Grows but stops at 5 rows..." AutoResize="true" Rows="2" MaxRows="5" />
                     </div>
-                </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Resize handle: Both directions
+                        </SgTypography>
+                        <SgTextArea @bind-Value="_resizeBoth" Placeholder="Drag the corner to resize..." Resize="SgTextResize.Both" Rows="3" />
+                    </div>
+                </SgStack>
             </SgCard>
 
-            <SgCard Title="Properties">
+            <SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_resizeProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. States                                                          -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                States
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Disabled, read-only, required, and error states for different form scenarios.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <SgRow Space="SgSize.Md">
+                        <SgCol Span="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Disabled
+                            </SgTypography>
+                            <SgTextArea @bind-Value="_disabled" Placeholder="Disabled textarea" Disabled="true" Rows="2" />
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Read-only
+                            </SgTypography>
+                            <SgTextArea @bind-Value="_readonly" ReadOnly="true" Rows="2" />
+                        </SgCol>
+                    </SgRow>
+                    <SgRow Space="SgSize.Md">
+                        <SgCol Span="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Required
+                            </SgTypography>
+                            <SgTextArea Label="Feedback" Placeholder="Required field..." Required="true" Rows="2" />
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                                Error state
+                            </SgTypography>
+                            <SgTextArea Label="Comments" @bind-Value="_error" Placeholder="This field has an error..." ErrorText="Comments must be at least 10 characters" Rows="2" />
+                        </SgCol>
+                    </SgRow>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_stateProperties" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Two-way Binding</h2>
-        <p>Value updates immediately as you type.</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example">
-                <SgTextArea @bind-Value="_bound" Placeholder="Type to see binding..." Rows="3" />
-                <div style="margin-top: 8px; font-size: 12px; color: var(--sui-text-muted);">
-                    Value: <strong>@_bound</strong>
-                </div>
-            </SgCard>
-
-            <SgCard Title="Properties">
-                <PropertyTable Items="_bindingProperties" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Two-way Binding                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Two-way Binding
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Value updates in real time. The panel below reflects every keystroke via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">@@bind-Value</SgTypography>.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Live Binding" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTextArea @bind-Value="_bound" Placeholder="Type something here..." Rows="4" />
+                        <div class="demo-preview-box">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Value: <strong>@_bound</strong></SgTypography>
+                                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Length: <strong>@(_bound?.Length ?? 0)</strong> characters</SgTypography>
+                            </SgStack>
+                        </div>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_bindingProperties" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <!-- Code example -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Validation (EditForm)                                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Form Validation
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Integrates with Blazor <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">EditForm</SgTypography> and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">DataAnnotationsValidator</SgTypography>. Validation messages appear automatically.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Validation Example" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <EditForm Model="@_model">
+                        <DataAnnotationsValidator />
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgTextArea Label="Bio" @bind-Value="_model.Bio" Placeholder="Enter your bio (5-200 chars)..." MaxLength="200" ShowCounter="true" Rows="3" />
+                            <SgTextArea Label="Notes" @bind-Value="_model.Notes" Placeholder="Optional notes..." Rows="2" />
+                            <SgButton Variant="SgButtonVariant.Primary" Type="SgButtonType.Submit">Submit</SgButton>
+                        </SgStack>
+                    </EditForm>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Validation Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_validationProperties" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 7. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgTextArea Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Tweak parameters interactively and see the result in real time. Click the copy button to grab the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Rows -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Rows</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="_cRows"
+                                         ValueChanged="v => { _cRows = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_cRowsOptions" />
+                        </SgStack>
+
+                        <!-- MaxLength -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">MaxLength</SgTypography>
+                            <SgSegmented TValue="int?"
+                                         Value="@_cMaxLength"
+                                         ValueChanged="v => { _cMaxLength = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_cMaxLengthOptions" />
+                        </SgStack>
+
+                        <!-- Toggles row -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowCounter</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_cShowCounter"
+                                                 ValueChanged="v => { _cShowCounter = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_cBoolOpts" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">AllowClear</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_cAllowClear"
+                                                 ValueChanged="v => { _cAllowClear = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_cBoolOpts2" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- AutoResize + Disabled -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">AutoResize</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_cAutoResize"
+                                                 ValueChanged="v => { _cAutoResize = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_cBoolOpts" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_cDisabled"
+                                                 ValueChanged="v => { _cDisabled = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_cBoolOpts" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Resize style -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Resize Handle</SgTypography>
+                            <SgSegmented TValue="SgTextResize"
+                                         Value="@_cResize"
+                                         ValueChanged="v => { _cResize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_cResizeOptions" />
+                        </SgStack>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Rows</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_cRows.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">MaxLength</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="@(_cMaxLength?.ToString() ?? "∞")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Resize</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_cResize.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">AutoResize</SgTypography>
+                                    <SgBadge Variant="@(_cAutoResize ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_cAutoResize ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgTextArea @bind-Value="_cValue"
+                                            Placeholder="Interactive SgTextArea..."
+                                            Rows="@_cRows"
+                                            MaxLength="@_cMaxLength"
+                                            ShowCounter="@_cShowCounter"
+                                            AllowClear="@_cAllowClear"
+                                            AutoResize="@_cAutoResize"
+                                            Disabled="@_cDisabled"
+                                            Resize="@_cResize" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Generated Code -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Preview box ────────────────────────────────────────────────────────── */
+    .demo-preview-box {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 10px 12px;
+        margin-top: 8px;
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+</style>
+
 @code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                    <line x1="9" y1="20" x2="15" y2="20"></line>
+                    <line x1="12" y1="4" x2="12" y2="20"></line>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgTextArea — Multi-line Text Input</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    A feature-rich textarea with auto-resize, character counter, clear button, validation support,
+                    configurable resize handles, and seamless EditForm integration.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Demo state ────────────────────────────────────────────────────────
     private string _basic = "";
     private string _plain = "";
     private string _counter = "";
     private string _clearable = "Clear me!";
+    private string _counterClear = "";
+    private string _autoResize = "";
+    private string _autoResizeMax = "";
+    private string _resizeBoth = "";
     private string _disabled = "This field is disabled.";
-    private string _readonly = "This field is read-only.";
+    private string _readonly = "This field is read-only and cannot be edited.";
+    private string _error = "";
     private string _bound = "Hello from SgTextArea!";
 
-    private List<PropertyPanelItem> _basicProperties = new()
+    // ── Validation model ───────────────────────────────────────────────────
+    private TextAreaDemoModel _model = new();
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private int _cRows = 3;
+    private int? _cMaxLength = null;
+    private bool _cShowCounter;
+    private bool _cAllowClear = true;
+    private bool _cAutoResize;
+    private bool _cDisabled;
+    private SgTextResize _cResize = SgTextResize.Vertical;
+    private string _cValue = "";
+
+    // ── Code generation ───────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    // ── Segmented options ─────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<int>> _cRowsOptions = new()
     {
-        new() { Label = "Label", Value = "string?", BadgeText = "Label text" },
-        new() { Label = "Placeholder", Value = "string?", BadgeText = "Placeholder text" },
-        new() { Label = "Rows", Value = "int (default: 3)", BadgeText = "Visible rows" },
-        new() { Label = "Value", Value = "string", BadgeText = "Two-way binding" }
+        new() { Value = 1, Label = "1" },
+        new() { Value = 2, Label = "2" },
+        new() { Value = 3, Label = "3" },
+        new() { Value = 4, Label = "4" },
+        new() { Value = 6, Label = "6" },
+        new() { Value = 10, Label = "10" },
     };
 
-    private List<PropertyPanelItem> _extraProperties = new()
+    private readonly List<SgSegmentedOption<int?>> _cMaxLengthOptions = new()
     {
-        new() { Label = "MaxLength", Value = "int?", BadgeText = "Max characters" },
-        new() { Label = "ShowCounter", Value = "bool", BadgeText = "Show char count" },
-        new() { Label = "ShowClearButton", Value = "bool", BadgeText = "Clear button" },
-        new() { Label = "AutoResize", Value = "bool", BadgeText = "Auto height" }
+        new() { Value = null, Label = "None" },
+        new() { Value = 50,   Label = "50" },
+        new() { Value = 100,  Label = "100" },
+        new() { Value = 200,  Label = "200" },
+        new() { Value = 500,  Label = "500" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _cBoolOpts = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _cBoolOpts2 = new()
+    {
+        new() { Value = true,  Label = "On" },
+        new() { Value = false, Label = "Off" },
+    };
+
+    private readonly List<SgSegmentedOption<SgTextResize>> _cResizeOptions = new()
+    {
+        new() { Value = SgTextResize.None,       Label = "None" },
+        new() { Value = SgTextResize.Vertical,   Label = "Vert" },
+        new() { Value = SgTextResize.Horizontal, Label = "Horiz" },
+        new() { Value = SgTextResize.Both,       Label = "Both" },
+    };
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgTextArea");
+        lines.Add($"    @@bind-Value=\"_myValue\"");
+        lines.Add($"    Placeholder=\"Interactive SgTextArea...\"");
+        lines.Add($"    Rows=\"{_cRows}\"");
+        if (_cMaxLength.HasValue)
+            lines.Add($"    MaxLength=\"{_cMaxLength}\"");
+        if (_cShowCounter)
+            lines.Add($"    ShowCounter=\"true\"");
+        if (!_cAllowClear)
+            lines.Add($"    AllowClear=\"false\"");
+        if (_cAutoResize)
+            lines.Add($"    AutoResize=\"true\"");
+        if (_cDisabled)
+            lines.Add($"    Disabled=\"true\"");
+        if (_cResize != SgTextResize.Vertical)
+            lines.Add($"    Resize=\"SgTextResize.{_cResize}\"");
+        lines.Add($"    />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ───────────────────────────────────────────────────
+    private List<PropertyPanelItem> _basicProperties = new()
+    {
+        new() { Label = "Label",       Value = "string?",                BadgeText = "Label text",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Placeholder", Value = "string?",                BadgeText = "Placeholder",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Hint",        Value = "string?",                BadgeText = "Hint text",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Rows",        Value = "int (default: 3)",       BadgeText = "Visible rows", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Value",       Value = "string",                 BadgeText = "Two-way bind", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Block",       Value = "bool (default: true)",   BadgeText = "Full width",   BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _counterProperties = new()
+    {
+        new() { Label = "MaxLength",      Value = "int?",                    BadgeText = "Max chars",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowCounter",    Value = "bool",                    BadgeText = "Counter vis.",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AllowClear",     Value = "bool (default: true)",    BadgeText = "Clear btn",      BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CharCountPctThreshold", Value = "double (80)",      BadgeText = "Warn at %",      BadgeVariant = SgBadgeVariant.Warn },
+    };
+
+    private List<PropertyPanelItem> _resizeProperties = new()
+    {
+        new() { Label = "AutoResize", Value = "bool",                BadgeText = "Auto height", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "MaxRows",    Value = "int (0 = unlim)",     BadgeText = "Max height",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Resize",     Value = "SgTextResize enum",   BadgeText = "Handle dir",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Rows",       Value = "int (default: 3)",    BadgeText = "Init rows",   BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _stateProperties = new()
     {
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Disabled state" },
-        new() { Label = "ReadOnly", Value = "bool", BadgeText = "Read-only state" },
-        new() { Label = "Required", Value = "bool", BadgeText = "Required field" }
+        new() { Label = "Disabled", Value = "bool",             BadgeText = "Disabled",     BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "ReadOnly", Value = "bool",             BadgeText = "Read-only",    BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "Required", Value = "bool",             BadgeText = "Required",     BadgeVariant = SgBadgeVariant.Warn  },
+        new() { Label = "ErrorText",Value = "string?",          BadgeText = "Custom error", BadgeVariant = SgBadgeVariant.Danger },
     };
 
     private List<PropertyPanelItem> _bindingProperties = new()
     {
-        new() { Label = "Value",        Value = "string",                  BadgeText = "Current text" },
-        new() { Label = "ValueChanged", Value = "EventCallback<string>",   BadgeText = "Change event" },
-        new() { Label = "Immediate",    Value = "bool (default: true)",    BadgeText = "Update on input" },
-        new() { Label = "Debounce",     Value = "int",                     BadgeText = "Debounce delay (ms)" }
+        new() { Label = "Value",        Value = "string",                   BadgeText = "Current text",    BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ValueChanged", Value = "EventCallback<string>",    BadgeText = "Change event",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Immediate",    Value = "bool (default: true)",     BadgeText = "Live update",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Debounce",     Value = "int (ms)",                 BadgeText = "Debounce delay",  BadgeVariant = SgBadgeVariant.Default },
     };
+
+    private List<PropertyPanelItem> _validationProperties = new()
+    {
+        new() { Label = "CascadedEditContext", Value = "EditContext?",    BadgeText = "From EditForm", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ValueExpression",     Value = "Expression",      BadgeText = "Field ID",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "HasValidationErrors", Value = "bool (ro)",       BadgeText = "Read-only",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ValidationMessages",  Value = "IEnumerable<>",    BadgeText = "Messages",      BadgeVariant = SgBadgeVariant.Default },
+    };
+}
+
+@code {
+    private class TextAreaDemoModel
+    {
+        [Required(ErrorMessage = "Bio is required")]
+        [StringLength(200, MinimumLength = 5, ErrorMessage = "Bio must be 5-200 characters")]
+        public string Bio { get; set; } = "";
+
+        public string Notes { get; set; } = "";
+    }
 }
