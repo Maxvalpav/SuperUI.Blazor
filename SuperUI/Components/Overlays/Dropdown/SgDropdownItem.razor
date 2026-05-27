@@ -5,27 +5,35 @@
 {
     <div class="sgc-dropdown-divider @CssClass" role="separator"></div>
 }
+else if (!string.IsNullOrEmpty(Href))
+{
+    <a href="@Href"
+       class="sgc-dropdown-item @ItemClasses @CssClass"
+       role="menuitem"
+       tabindex="-1"
+       @ref="_btn"
+       @onclick="OnClickAsync">
+        @ItemIcon
+        <span class="sgc-dropdown-item-text">
+            <span class="sgc-dropdown-item-label">@Text</span>
+            @if (!string.IsNullOrEmpty(Subtext))
+            {
+                <span class="sgc-dropdown-item-subtext">@Subtext</span>
+            }
+        </span>
+        @ItemShortcut
+    </a>
+}
 else
 {
     <button type="button"
-            class="sgc-dropdown-item @(Disabled ? "sgc-disabled" : "") @(Danger ? "sgc-danger" : "") @(Selected ? "sgc-selected" : "") @CssClass"
+            class="sgc-dropdown-item @ItemClasses @CssClass"
             role="menuitem"
             disabled="@Disabled"
             tabindex="-1"
             @ref="_btn"
             @onclick="OnClickAsync">
-        @if (Selected)
-        {
-            <span class="sgc-dropdown-item-check" aria-hidden="true">✓</span>
-        }
-        else if (!string.IsNullOrEmpty(Icon))
-        {
-            <span class="sgc-dropdown-item-icon">@((MarkupString)Icon)</span>
-        }
-        else
-        {
-            <span class="sgc-dropdown-item-icon" aria-hidden="true"></span>
-        }
+        @ItemIcon
         <span class="sgc-dropdown-item-text">
             @if (ChildContent is not null)
             {
@@ -33,13 +41,14 @@ else
             }
             else
             {
-                @Text
+                <span class="sgc-dropdown-item-label">@Text</span>
+            }
+            @if (!string.IsNullOrEmpty(Subtext))
+            {
+                <span class="sgc-dropdown-item-subtext">@Subtext</span>
             }
         </span>
-        @if (!string.IsNullOrEmpty(Shortcut))
-        {
-            <span class="sgc-dropdown-item-shortcut">@Shortcut</span>
-        }
+        @ItemShortcut
     </button>
 }
 
@@ -51,8 +60,14 @@ else
     /// <summary>Item label.</summary>
     [Parameter] public string Text { get; set; } = "";
 
+    /// <summary>Optional description text shown below the label.</summary>
+    [Parameter] public string? Subtext { get; set; }
+
     /// <summary>Optional leading icon (raw markup/SVG).</summary>
     [Parameter] public string? Icon { get; set; }
+
+    /// <summary>Optional color override for the item icon.</summary>
+    [Parameter] public string? IconColor { get; set; }
 
     /// <summary>Optional right-aligned shortcut hint (e.g. "⌘K").</summary>
     [Parameter] public string? Shortcut { get; set; }
@@ -77,6 +92,45 @@ else
 
     /// <summary>Click handler. The dropdown closes after this fires (when CloseOnSelect is true).</summary>
     [Parameter] public EventCallback OnClick { get; set; }
+
+    /// <summary>When set, renders as an anchor tag instead of a button.</summary>
+    [Parameter] public string? Href { get; set; }
+
+    private string ItemClasses
+    {
+        get
+        {
+            var c = "";
+            if (Disabled) c += "sgc-disabled ";
+            if (Danger) c += "sgc-danger ";
+            if (Selected) c += "sgc-selected ";
+            return c.TrimEnd();
+        }
+    }
+
+    private RenderFragment ItemIcon => __builder =>
+    {
+        if (Selected)
+        {
+            <span class="sgc-dropdown-item-check" aria-hidden="true">✓</span>
+        }
+        else if (!string.IsNullOrEmpty(Icon))
+        {
+            <span class="sgc-dropdown-item-icon" style="@(IconColor is not null ? $"color:{IconColor}" : "")">
+                @((MarkupString)Icon)
+            </span>
+        }
+    };
+
+    private RenderFragment ItemShortcut => __builder =>
+    {
+        if (!string.IsNullOrEmpty(Shortcut))
+        {
+            <span class="sgc-dropdown-item-shortcut">@Shortcut</span>
+        }
+    };
+
+    internal bool IsHiddenBySearch => Parent?.IsItemFiltered(this) ?? false;
 
     protected override void OnInitialized()
     {
