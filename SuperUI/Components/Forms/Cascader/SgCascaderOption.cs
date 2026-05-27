@@ -1,3 +1,5 @@
+using SuperUI.Enums;
+
 namespace SuperUI.Components;
 
 /// <summary>
@@ -16,4 +18,19 @@ public sealed class SgCascaderOption
 
     /// <summary>When true the option cannot be selected.</summary>
     public bool Disabled { get; set; }
+
+    /// <summary>Optional icon (SVG markup) shown before the label.</summary>
+    public string? Icon { get; set; }
+
+    /// <summary>Optional badge text shown after the label.</summary>
+    public string? BadgeText { get; set; }
+
+    /// <summary>Optional badge variant.</summary>
+    public SgBadgeVariant BadgeVariant { get; set; } = SgBadgeVariant.Default;
+
+    /// <summary>
+    /// Explicitly marks this option as a leaf (no children).
+    /// When true, no expand arrow is shown even if <see cref="Children"/> is non-empty.
+    /// </summary>
+    public bool IsLeaf { get; set; }
 }
