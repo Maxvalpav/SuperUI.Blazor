@@ -21,15 +21,44 @@
             var o = _optionsList[idx];
             var checkedNow = EqualityComparer<TValue>.Default.Equals(Value, o.Value);
             var optDisabled = Disabled || ReadOnly || o.Disabled;
-             <label class="sgc-check @SizeClass @(ButtonGroup ? "sgc-radio-btn" : "") @(optDisabled ? "sgc-disabled" : "") @(checkedNow && ButtonGroup ? "sgc-radio-btn-active" : "")">
-                <input type="radio"
-                       name="@(Name ?? _name)"
-                       checked="@checkedNow"
-                       disabled="@optDisabled"
-                       tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
-                       data-sg-rg-index="@idx"
-                       @onchange="() => SelectAsync(o.Value)" />
-                <span>@o.Label</span>
+            <label class="@OptionClasses(checkedNow, optDisabled)">
+                @if (Card)
+                {
+                    <div class="sgc-radio-card-content">
+                        <div class="sgc-radio-card-row">
+                            <input type="radio"
+                                   name="@(Name ?? _name)"
+                                   checked="@checkedNow"
+                                   disabled="@optDisabled"
+                                   tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
+                                   data-sg-rg-index="@idx"
+                                   @onchange="() => SelectAsync(o.Value)" />
+                            <span class="sgc-radio-card-dot"></span>
+                            <span class="sgc-radio-card-label">@o.Label</span>
+                        </div>
+                        @if (!string.IsNullOrEmpty(o.Description))
+                        {
+                            <span class="sgc-radio-card-desc">@o.Description</span>
+                        }
+                    </div>
+                }
+                else
+                {
+                    <input type="radio"
+                           name="@(Name ?? _name)"
+                           checked="@checkedNow"
+                           disabled="@optDisabled"
+                           tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
+                           data-sg-rg-index="@idx"
+                           @onchange="() => SelectAsync(o.Value)" />
+                    <span class="sgc-radio-label">
+                        <span>@o.Label</span>
+                        @if (!string.IsNullOrEmpty(o.Description))
+                        {
+                            <span class="sgc-radio-desc">@o.Description</span>
+                        }
+                    </span>
+                }
             </label>
         }
     </div>
@@ -73,6 +102,8 @@
     {
         get
         {
+            if (Card)
+                return $"sgc-radio-cards {(Columns.HasValue ? $"sgc-radio-cols-{Columns.Value}" : "")} {(Block ? "sgc-block" : "")}";
             if (ButtonGroup)
                 return $"sgc-radio-btn-group {(Block ? "sgc-block" : "")}";
             return $"sgc-radio-list {(Orientation == SgRadioOrientation.Vertical ? "sgc-vertical" : "")}";
@@ -98,6 +129,18 @@
                 return $"--sgc-radio-color:var(--sg-color-{RadioColor.Value.ToString().ToLowerInvariant()})";
             return null;
         }
+    }
+
+    private string OptionClasses(bool checkedNow, bool optDisabled)
+    {
+        var classes = new List<string> { "sgc-check" };
+        if (SizeClass is not null) classes.Add(SizeClass);
+        if (ButtonGroup) classes.Add("sgc-radio-btn");
+        if (Card) classes.Add("sgc-radio-card");
+        if (optDisabled) classes.Add("sgc-disabled");
+        if (checkedNow && ButtonGroup) classes.Add("sgc-radio-btn-active");
+        if (checkedNow && Card) classes.Add("sgc-radio-card-active");
+        return string.Join(" ", classes);
     }
 
     /// <summary>Callback invoked when the selected value changes. Fires after the value has been updated.</summary>
@@ -138,6 +181,15 @@
 
     /// <summary>When true, renders options as a connected segmented button group instead of radio buttons.</summary>
     [Parameter] public bool ButtonGroup { get; set; }
+
+    /// <summary>When true, renders options as cards with border and description support.</summary>
+    [Parameter] public bool Card { get; set; }
+
+    /// <summary>Number of columns for card layout (2, 3, or 4).</summary>
+    [Parameter] public int? Columns { get; set; }
+
+    /// <summary>When true, clicking the already-selected option deselects it.</summary>
+    [Parameter] public bool Clearable { get; set; }
 
     /// <summary>Gets or sets whether the radio group should take full width of its container. Default is false.</summary>
     [Parameter] public bool Block { get; set; } = false;
@@ -190,6 +242,12 @@
     private async Task SelectAsync(TValue? value)
     {
         if (ReadOnly) return;
+        if (Clearable && value is not null && EqualityComparer<TValue>.Default.Equals(Value, value))
+        {
+            await SetValueAsync(default);
+            if (OnChange.HasDelegate) await OnChange.InvokeAsync(default!);
+            return;
+        }
         await SetValueAsync(value);
         if (value is not null && OnChange.HasDelegate) await OnChange.InvokeAsync(value);
     }

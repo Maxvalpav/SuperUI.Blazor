@@ -9,36 +9,63 @@
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <label class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
-           aria-labelledby="@_labelId"
-           aria-invalid="@(IsInvalid ? "true" : null)"
-           aria-describedby="@DescribedBy"
-           @ondragover:preventDefault="true"
-           @ondragover="OnDragOver"
-           @ondragenter="OnDragEnter"
-           @ondragleave="OnDragLeave"
-           @ondrop:preventDefault="true"
-           @ondrop="OnDrop">
-        <InputFile OnChange="OnFileInputChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
-        <span class="sgc-upload-icon" aria-hidden="true">
-            <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor">
-                <path d="M8 1a.75.75 0 0 1 .75.75v5.5h1.5a.25.25 0 0 1 .177.427l-2.25 2.25a.25.25 0 0 1-.354 0l-2.25-2.25A.25.25 0 0 1 5.75 7.25h1.5V1.75A.75.75 0 0 1 8 1zM2 11.75a.75.75 0 0 1 1.5 0v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.25v-1.5z"/>
-            </svg>
-        </span>
-        <span class="sgc-upload-text">@(string.IsNullOrEmpty(Text) ? Localizer["FileUpload_DropFiles"] : Text)</span>
-        @if (!string.IsNullOrEmpty(AcceptDescription))
-        {
-            <span class="sgc-upload-hint-text">@AcceptDescription</span>
-        }
-        else if (!string.IsNullOrEmpty(Accept))
-        {
-            <span class="sgc-upload-hint-text">@Accept</span>
-        }
-        @if (MaxFileSizeBytes.HasValue)
-        {
-            <span class="sgc-upload-hint-text">@string.Format(Localizer["FileUpload_MaxSize"], FormatSize(MaxFileSizeBytes.Value))</span>
-        }
-    </label>
+    @if (ChildContent is not null)
+    {
+        <label class="sgc-upload sgc-upload-custom @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
+               aria-labelledby="@_labelId"
+               aria-invalid="@(IsInvalid ? "true" : null)"
+               aria-describedby="@DescribedBy"
+               @ondragover:preventDefault="true"
+               @ondragover="OnDragOver"
+               @ondragenter="OnDragEnter"
+               @ondragleave="OnDragLeave"
+               @ondrop:preventDefault="true"
+               @ondrop="OnDrop">
+            <InputFile OnChange="OnFileInputChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
+            @ChildContent
+        </label>
+    }
+    else
+    {
+        <label class="sgc-upload @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "") @(_isDragOver ? "sgc-drag-over" : "")"
+               aria-labelledby="@_labelId"
+               aria-invalid="@(IsInvalid ? "true" : null)"
+               aria-describedby="@DescribedBy"
+               @ondragover:preventDefault="true"
+               @ondragover="OnDragOver"
+               @ondragenter="OnDragEnter"
+               @ondragleave="OnDragLeave"
+               @ondrop:preventDefault="true"
+               @ondrop="OnDrop">
+            <InputFile OnChange="OnFileInputChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
+            <span class="sgc-upload-icon" aria-hidden="true">
+                <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor">
+                    <path d="M8 1a.75.75 0 0 1 .75.75v5.5h1.5a.25.25 0 0 1 .177.427l-2.25 2.25a.25.25 0 0 1-.354 0l-2.25-2.25A.25.25 0 0 1 5.75 7.25h1.5V1.75A.75.75 0 0 1 8 1zM2 11.75a.75.75 0 0 1 1.5 0v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.25v-1.5z"/>
+                </svg>
+            </span>
+            <span class="sgc-upload-text">@(string.IsNullOrEmpty(Text) ? Localizer["FileUpload_DropFiles"] : Text)</span>
+            @if (!string.IsNullOrEmpty(AcceptDescription))
+            {
+                <span class="sgc-upload-hint-text">@AcceptDescription</span>
+            }
+            else if (!string.IsNullOrEmpty(Accept))
+            {
+                <span class="sgc-upload-hint-text">@Accept</span>
+            }
+            @if (MaxFileSizeBytes.HasValue)
+            {
+                <span class="sgc-upload-hint-text">@string.Format(Localizer["FileUpload_MaxSize"], FormatSize(MaxFileSizeBytes.Value))</span>
+            }
+        </label>
+    }
+
+    @if (Progress.HasValue)
+    {
+        <div class="sgc-upload-progress">
+            <div class="sgc-upload-progress-bar" style="width:@(Progress.Value)%"></div>
+            <span class="sgc-upload-progress-text">@Progress.Value%</span>
+        </div>
+    }
 
     @if (ShowFileList && _files.Count > 0)
     {
@@ -46,12 +73,35 @@
             @foreach (var f in _files)
             {
                 var file = f;
+                var isImage = file.ContentType?.StartsWith("image/") == true;
                 <li class="sgc-upload-item" role="listitem">
                     <div class="sgc-upload-item-info">
-                        <svg class="sgc-upload-file-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
-                            <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
-                            <path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
-                        </svg>
+                        @if (isImage)
+                        {
+                            <img src="@($"data:{file.ContentType};base64,{_previews.GetValueOrDefault(file.Name)}")"
+                                 class="sgc-upload-thumb" alt="" />
+                        }
+                        else
+                        {
+                            <svg class="sgc-upload-file-icon" viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true">
+                                @if (file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                }
+                                else if (file.Name.EndsWith(".doc", StringComparison.OrdinalIgnoreCase) || file.Name.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                }
+                                else if (file.Name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase) || file.Name.EndsWith(".rar", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                }
+                                else
+                                {
+                                    <path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/><path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+                                }
+                            </svg>
+                        }
                         <span class="sgc-upload-item-name" title="@file.Name">@file.Name</span>
                         <span class="sgc-hint">@FormatSize(file.Size)</span>
                     </div>
@@ -87,6 +137,7 @@
     private readonly string _hintId = "sg-upload-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-upload-err-" + Guid.NewGuid().ToString("N")[..8];
     private readonly List<IBrowserFile> _files = new();
+    private readonly Dictionary<string, string> _previews = new();
     private SgEditContextBinder<IReadOnlyList<IBrowserFile>?>? _binder;
     private bool _isDragOver;
 
@@ -146,6 +197,12 @@
     /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
+    /// <summary>Custom content that replaces the default drag & drop zone content. InputFile is still rendered.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Upload progress percentage (0-100). When set, a progress bar is shown below the upload area.</summary>
+    [Parameter] public double? Progress { get; set; }
+
     /// <summary>Gets or sets the callback invoked when files are selected (legacy).</summary>
     [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>> OnFilesSelected { get; set; }
 
@@ -177,7 +234,6 @@
     private async Task OnDrop(DragEventArgs e)
     {
         _isDragOver = false;
-        // InputFile handles the actual file reading; this just resets visual state.
         await Task.CompletedTask;
     }
 
@@ -185,6 +241,7 @@
     {
         _isDragOver = false;
         _files.Clear();
+        _previews.Clear();
         if (Multiple)
         {
             var max = MaxFiles.GetValueOrDefault(100);
@@ -193,6 +250,20 @@
         else
         {
             _files.Add(e.File);
+        }
+
+        foreach (var f in _files)
+        {
+            if (f.ContentType?.StartsWith("image/") == true)
+            {
+                try
+                {
+                    using var ms = new MemoryStream();
+                    await f.OpenReadStream(maxAllowedSize: MaxFileSizeBytes ?? 10_485_760).CopyToAsync(ms);
+                    _previews[f.Name] = Convert.ToBase64String(ms.ToArray());
+                }
+                catch { }
+            }
         }
 
         var fileList = _files.AsReadOnly();
@@ -207,6 +278,7 @@
     private async Task RemoveFileAsync(IBrowserFile file)
     {
         _files.Remove(file);
+        _previews.Remove(file.Name);
         var fileList = _files.AsReadOnly();
         Value = fileList;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(fileList);

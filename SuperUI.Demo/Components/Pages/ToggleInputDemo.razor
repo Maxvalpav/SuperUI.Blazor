@@ -2,12 +2,30 @@
 @using SuperUI.Components
 @using SuperUI.Demo.Models
 @using SuperUI.Enums
+@inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Toggle Input — SuperUI</PageTitle>
 
 <SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
         HeaderContent="@_mainHeader">
     <ChildContent>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 0. Theme Toggle                                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section" style="margin-top:0;">
+        <div class="demo-flex-between" style="padding: 8px 0;">
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Toggle dark/light mode for the demo
+            </SgTypography>
+            <div style="display:flex;align-items:center;gap:8px;">
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">☀️</SgTypography>
+                <SgSwitch @bind-Value="@_darkMode" OnChange="ToggleThemeAsync" />
+                <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">🌙</SgTypography>
+            </div>
+        </div>
+    </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <!-- 1. SgCheckBox                                                    -->
@@ -63,6 +81,9 @@
                             <SgCheckBox @bind-Value="@_check13" Label="With ChildContent">
                                 <span style="color:var(--sg-color-primary);font-weight:600;">Custom label via ChildContent</span>
                             </SgCheckBox>
+                            <SgCheckBox @bind-Value="@_check14" Label="Tile variant" Tile="true" />
+                            <SgCheckBox @bind-Value="@_check15" Label="Tile + Danger" Tile="true" CheckColor="SgColor.Danger" />
+                            <SgCheckBox @bind-Value="@_check16" Label="Ripple disabled" Ripple="false" />
                         </SgStack>
                     </div>
 
@@ -178,6 +199,23 @@
                                 <span style="color:var(--sg-color-success);font-weight:600;">Airplane mode</span>
                             </SgSwitch>
                         </div>
+                        <SgDivider />
+                        <div class="demo-flex-between">
+                            <SgTypography>Thumb icons (🔆/🌙)</SgTypography>
+                            <SgSwitch @bind-Value="@_switch15"
+                                      ThumbIconOn="@_sunIcon"
+                                      ThumbIconOff="@_moonIcon" />
+                        </div>
+                        <div class="demo-flex-between">
+                            <SgTypography>Thumb icons (✓/✗)</SgTypography>
+                            <SgSwitch @bind-Value="@_switch16"
+                                      ThumbIconOn="@_checkIcon"
+                                      ThumbIconOff="@_xIcon" />
+                        </div>
+                        <div class="demo-flex-between">
+                            <SgTypography>RTL mode</SgTypography>
+                            <SgSwitch @bind-Value="@_switch17" Rtl="true" />
+                        </div>
                     </div>
 
                     @* Live state *@
@@ -255,6 +293,27 @@
                         </SgTypography>
                         <SgRadioGroup TValue="string" @bind-Value="@_radio9" ItemsSource="@_radioItems" OptionLabelSelector="@(x => x)" Label="Raw string items" />
                     </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:4px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Card mode with description
+                        </SgTypography>
+                        <SgRadioGroup TValue="string" @bind-Value="@_radio10" Options="@_radioCardOptions" Card="true" Label="Choose a plan" />
+                        <div class="demo-value-display">
+                            <span class="demo-value-display-label">Selected:</span>
+                            <span class="demo-value-display-value">@(_radio10 ?? "—")</span>
+                        </div>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:4px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Card mode with columns + clearable
+                        </SgTypography>
+                        <SgRadioGroup TValue="string" @bind-Value="@_radio11" Options="@_radioCardOptions2" Card="true" Columns="3" Label="Pick framework" Clearable="true" />
+                        <div class="demo-value-display">
+                            <span class="demo-value-display-label">Selected:</span>
+                            <span class="demo-value-display-value">@(_radio11 ?? "—")</span>
+                            <span class="demo-value-display-label" style="margin-left:8px;">(click again to clear)</span>
+                        </div>
+                    </div>
                 </SgStack>
             </SgCard>
 
@@ -299,6 +358,24 @@
                         <SgFileUpload Label="PDF documents" Accept=".pdf" MaxFileSizeBytes="5_242_880" Multiple="true"
                                        AcceptDescription="PDF files up to 5 MB"
                                        Text="Drop PDFs here or click to browse" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:4px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Custom drag zone
+                        </SgTypography>
+                        <SgFileUpload Label="Custom drop zone" Accept="image/*" Multiple="true" AcceptDescription="Drop images anywhere">
+                            <div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px;">
+                                <span style="font-size:28px;">🖼️</span>
+                                <span style="font-weight:600;">Drop images here</span>
+                                <span style="font-size:11px;color:var(--sg-fg-muted);">or click to browse</span>
+                            </div>
+                        </SgFileUpload>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:4px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            With progress bar
+                        </SgTypography>
+                        <SgFileUpload Label="File upload with progress" Progress="@_uploadProgress" />
                     </div>
                     <div>
                         <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:4px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
@@ -445,8 +522,12 @@
                                 <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">
                                     Generated Code
                                 </SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
                             </div>
-                            <div class="code-block">
+                            <div class="code-block" id="code-block">
                                 @foreach (var line in _generatedCode)
                                 {
                                     <code>@line</code>
@@ -587,6 +668,9 @@
     private bool _check13;
     private bool _check12 = true;
     private bool _check12Indeterminate = true;
+    private bool _check14 = true;
+    private bool _check15 = true;
+    private bool _check16;
 
     // ── Switch State ─────────────────────────────────────────────────
     private bool _switch1 = true;
@@ -603,6 +687,27 @@
     private bool _switch12 = true;
     private bool _switch13 = true;
     private bool _switch14;
+    private bool _switch15 = true;
+    private bool _switch16 = true;
+    private bool _switch17 = true;
+
+    // ── Switch thumb icons ───────────────────────────────────────────
+    private RenderFragment _sunIcon => __builder =>
+    {
+        <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M8 1a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5A.75.75 0 0 1 8 1zm0 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4zm6-2a.75.75 0 0 0 0-1.5h-1.5a.75.75 0 0 0 0 1.5H14zM2 8a.75.75 0 0 0 .75.75h1.5a.75.75 0 0 0 0-1.5h-1.5A.75.75 0 0 0 2 8zm10.3-4.3a.75.75 0 0 1 0 1.06l-1.06 1.06a.75.75 0 1 1-1.06-1.06l1.06-1.06a.75.75 0 0 1 1.06 0zM4.76 9.18a.75.75 0 0 0-1.06 1.06l1.06 1.06a.75.75 0 1 0 1.06-1.06L4.76 9.18zm7.78 2.12a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 1 1 1.06-1.06l1.06 1.06zm-7.78-7.78a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 1 1-1.06 1.06L4.76 3.52a.75.75 0 0 1 0-1.06z"/></svg>
+    };
+    private RenderFragment _moonIcon => __builder =>
+    {
+        <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M6 .278a.768.768 0 0 1 .08.858 7.208 7.208 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277.527 0 1.04-.055 1.533-.16a.787.787 0 0 1 .81.316.733.733 0 0 1-.031.893A8.349 8.349 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.752.752 0 0 1 6 .278z"/></svg>
+    };
+    private RenderFragment _checkIcon => __builder =>
+    {
+        <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M13.78 3.22a.75.75 0 0 1 0 1.06l-7.5 7.5a.75.75 0 0 1-1.06 0L1.97 8.53a.75.75 0 0 1 1.06-1.06L5.75 10.69l6.97-6.97a.75.75 0 0 1 1.06 0z"/></svg>
+    };
+    private RenderFragment _xIcon => __builder =>
+    {
+        <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06z"/></svg>
+    };
 
     // ── RadioGroup State ─────────────────────────────────────────────
     private string? _radio1 = "Option 1";
@@ -614,6 +719,8 @@
     private string? _radio7 = "Option 2";
     private string? _radio8;
     private string? _radio9;
+    private string? _radio10;
+    private string? _radio11;
 
     private List<RadioOption<string>> _radioOptions = new()
     {
@@ -628,6 +735,28 @@
         new() { Value = "C", Label = "Another" }
     };
     private List<string> _radioItems = new() { "Item A", "Item B", "Item C" };
+    private List<RadioOption<string>> _radioCardOptions = new()
+    {
+        new() { Value = "free", Label = "Free", Description = "Basic features, 1 user" },
+        new() { Value = "pro", Label = "Pro", Description = "Advanced features, 5 users" },
+        new() { Value = "enterprise", Label = "Enterprise", Description = "Everything, unlimited users" }
+    };
+    private List<RadioOption<string>> _radioCardOptions2 = new()
+    {
+        new() { Value = "blazor", Label = "Blazor", Description = "WebAssembly / Server" },
+        new() { Value = "react", Label = "React", Description = "SPA / SSR" },
+        new() { Value = "vue", Label = "Vue", Description = "Progressive" },
+        new() { Value = "angular", Label = "Angular", Description = "Enterprise" },
+        new() { Value = "svelte", Label = "Svelte", Description = "Lightweight" },
+        new() { Value = "solid", Label = "Solid", Description = "Reactive" }
+    };
+
+    // ── Demo UI state ────────────────────────────────────────────────
+    private bool _darkMode;
+    private double _uploadProgress = 65;
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+    private IDisposable? _themeDisposable;
 
     // ── Constructor state ────────────────────────────────────────────
     private string _constructorLabel = "Accept terms";
@@ -673,6 +802,43 @@
         _generatedCode = lines.ToArray();
     }
 
+    private async Task ToggleThemeAsync(bool isDark)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"document.documentElement.setAttribute('data-theme', '{ (isDark ? "dark" : "light") }')");
+        }
+        catch { }
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCode);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    public void Dispose() => _themeDisposable?.Dispose();
+
     // ── Property tables ──────────────────────────────────────────────
     private List<PropertyPanelItem> _checkBoxProperties = new()
     {
@@ -689,6 +855,8 @@
         new() { Label = "Color", Value = "string?", BadgeText = "Custom CSS color", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "Animation", Value = "bool (true)", BadgeText = "Animated", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "Indeterminate", Value = "bool", BadgeText = "Tri-state", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Ripple", Value = "bool (true)", BadgeText = "Click ripple", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Tile", Value = "bool", BadgeText = "Card style", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Custom label", BadgeVariant = SgBadgeVariant.Info },
     };
 
@@ -709,6 +877,8 @@
         new() { Label = "SwitchColor", Value = "SgColor?", BadgeText = "Semantic color", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "OnColor / OffColor", Value = "string?", BadgeText = "Custom colors", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "Animation", Value = "bool (true)", BadgeText = "Animated", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ThumbIconOn / Off", Value = "RenderFragment?", BadgeText = "Thumb icons", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Rtl", Value = "bool", BadgeText = "RTL layout", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Custom content", BadgeVariant = SgBadgeVariant.Info },
     };
 
@@ -731,6 +901,9 @@
         new() { Label = "Size", Value = "Sm | Md | Lg", BadgeText = "Size", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "RadioColor", Value = "SgColor?", BadgeText = "Semantic color", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "Color", Value = "string?", BadgeText = "Custom CSS color", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Card", Value = "bool", BadgeText = "Card mode", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Columns", Value = "int? (2-4)", BadgeText = "Grid columns", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Clearable", Value = "bool", BadgeText = "Deselect on re-click", BadgeVariant = SgBadgeVariant.Warn },
     };
 
     private List<PropertyPanelItem> _fileUploadProperties = new()
@@ -749,5 +922,7 @@
         new() { Label = "Required", Value = "bool", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "Disabled", Value = "bool", BadgeText = "Disabled", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "Block", Value = "bool (true)", BadgeText = "Full width", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Custom zone", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Progress", Value = "double?", BadgeText = "Progress bar", BadgeVariant = SgBadgeVariant.Warn },
     };
 }

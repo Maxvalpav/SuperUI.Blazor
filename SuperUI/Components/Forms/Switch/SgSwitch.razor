@@ -3,9 +3,9 @@
 @inherits SgInputBase<bool>
 
 <div class="sgc-check-field @(Block ? "sgc-block" : "") @CssClass">
-    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(IsInvalid ? "sgc-check-invalid" : "")"
+    <label class="sgc-check @(Disabled ? "sgc-disabled" : "") @(ReadOnly ? "sgc-readonly" : "") @(IsInvalid ? "sgc-check-invalid" : "") @(Rtl ? "sgc-rtl" : "")"
            style="@SwitchColors">
-        <span class="sgc-switch @SwitchSizeClass @(Animation ? "sgc-switch-animated" : "") @(Loading ? "sgc-switch-loading" : "")">
+        <span class="sgc-switch @SwitchSizeClass @(Animation ? "sgc-switch-animated" : "") @(Loading ? "sgc-switch-loading" : "") @(Rtl ? "sgc-switch-rtl" : "")">
             <input type="checkbox"
                    role="switch"
                    checked="@Value"
@@ -16,7 +16,15 @@
                    @onchange="OnChangeAsync"
                    @attributes="AdditionalAttributes"
                    @ref="_inputRef" />
-            <span class="sgc-switch-slider"></span>
+            <span class="sgc-switch-slider">
+                @if (ThumbIconOn is not null || ThumbIconOff is not null)
+                {
+                    <span class="sgc-switch-thumb-icon">
+                        @if (Value && ThumbIconOn is not null) { @ThumbIconOn }
+                        else if (!Value && ThumbIconOff is not null) { @ThumbIconOff }
+                    </span>
+                }
+            </span>
             @if (Loading)
             {
                 <span class="sgc-switch-spinner"></span>
@@ -33,7 +41,7 @@
         }
         else if (ShowLabel && !string.IsNullOrEmpty(Label))
         {
-            <span>@Label</span>
+            <span class="sgc-switch-label @(Animation ? "sgc-switch-label-animated" : "")">@Label</span>
         }
     </label>
     @if (!string.IsNullOrEmpty(HelpText))
@@ -118,6 +126,15 @@
 
     /// <summary>Enables smooth animation on the thumb. Default is true.</summary>
     [Parameter] public bool Animation { get; set; } = true;
+
+    /// <summary>Custom icon rendered inside the thumb when switch is ON.</summary>
+    [Parameter] public RenderFragment? ThumbIconOn { get; set; }
+
+    /// <summary>Custom icon rendered inside the thumb when switch is OFF.</summary>
+    [Parameter] public RenderFragment? ThumbIconOff { get; set; }
+
+    /// <summary>Enables RTL (right-to-left) layout for the switch.</summary>
+    [Parameter] public bool Rtl { get; set; }
 
     private bool IsInvalid => HasValidationErrors || !string.IsNullOrEmpty(ErrorText);
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);

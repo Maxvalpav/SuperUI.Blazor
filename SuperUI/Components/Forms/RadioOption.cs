@@ -14,4 +14,7 @@ public sealed class RadioOption<TValue>
 
     /// <summary>When true the option is rendered but cannot be selected.</summary>
     public bool Disabled { get; set; }
+
+    /// <summary>Optional description text shown below the label in card mode.</summary>
+    public string? Description { get; set; }
 }
