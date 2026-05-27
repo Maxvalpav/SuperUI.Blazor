@@ -35,7 +35,7 @@
                     <SgTypography Variant="SgTypographyVariant.Heading6">H6. Minor Heading</SgTypography>
                     <SgDivider />
                     <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
-                        <SgSegmented TValue="SgTypographyVariant?" Options="_semanticOptions" Value="_selectedSemantic" ValueChanged="@(v => _selectedSemantic = v)" SizeEnum="SgSize.Sm" />
+                        <SgSegmented TValue="SgTypographyVariant" Options="_semanticOptions" Value="_selectedSemantic" ValueChanged="@(v => _selectedSemantic = v)" SizeEnum="SgSize.Sm" />
                         <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Renders as <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">&lt;@_currentTag&gt;</SgTypography></SgTypography>
                     </SgStack>
                     <SgTypography As="@_currentElement" Variant="@_currentVariant" Color="var(--sg-primary)" Weight="SgTypographyWeight.Bold">
@@ -646,7 +646,7 @@
 
                         <div class="ctrl-summary">
                             <SgSpace Wrap="true">
-                                <SgBadge Variant="SgBadgeVariant.Info" Size="SgSize.Sm">@(_ctorVariant?.ToString() ?? "Body")</SgBadge>
+                                <SgBadge Variant="SgBadgeVariant.Info" Size="SgSize.Sm">@(_ctorVariant == SgTypographyVariant.None ? "Body" : _ctorVariant.ToString())</SgBadge>
                                 <SgBadge Variant="SgBadgeVariant.Default" Size="SgSize.Sm">@_ctorSize.ToString()</SgBadge>
                                 <SgBadge Variant="SgBadgeVariant.Warn" Size="SgSize.Sm">@_ctorWeight.ToString()</SgBadge>
                                 @if (_ctorItalic) { <SgBadge Variant="SgBadgeVariant.Success" Size="SgSize.Sm">Italic</SgBadge> }
@@ -781,7 +781,7 @@
     };
 
     // ── Section 1: Interactive heading demo ──────────────────────────────
-    private List<SgSegmentedOption<SgTypographyVariant?>> _semanticOptions = new()
+    private List<SgSegmentedOption<SgTypographyVariant>> _semanticOptions = new()
     {
         new() { Value = SgTypographyVariant.Heading1, Label = "H1" },
         new() { Value = SgTypographyVariant.Heading2, Label = "H2" },
@@ -791,7 +791,7 @@
         new() { Value = SgTypographyVariant.Heading6, Label = "H6" },
     };
 
-    private SgTypographyVariant? _selectedSemantic = SgTypographyVariant.Heading1;
+    private SgTypographyVariant _selectedSemantic = SgTypographyVariant.Heading1;
     private SgTypographyElement _currentElement => _selectedSemantic switch
     {
         SgTypographyVariant.Heading1 => SgTypographyElement.H1,
@@ -802,8 +802,8 @@
         SgTypographyVariant.Heading6 => SgTypographyElement.H6,
         _ => SgTypographyElement.P
     };
-    private SgTypographyVariant? _currentVariant => _selectedSemantic;
-    private string _currentTag => _selectedSemantic?.ToString()?.ToLowerInvariant() switch
+    private SgTypographyVariant _currentVariant => _selectedSemantic;
+    private string _currentTag => _selectedSemantic.ToString().ToLowerInvariant() switch
     {
         "heading1" => "h1",
         "heading2" => "h2",
@@ -813,7 +813,7 @@
         "heading6" => "h6",
         _ => "p"
     };
-    private string _currentTagName => _selectedSemantic?.ToString() switch
+    private string _currentTagName => _selectedSemantic.ToString() switch
     {
         "Heading1" => "H1",
         "Heading2" => "H2",
@@ -823,7 +823,7 @@
         "Heading6" => "H6",
         _ => "p"
     };
-    private string _currentVariantName => _selectedSemantic?.ToString() ?? "body";
+    private string _currentVariantName => _selectedSemantic == SgTypographyVariant.None ? "body" : _selectedSemantic.ToString();
     // ── Section 5: Color + Alignment demo ───────────────────────────────
     private string _demoColor = "var(--sg-primary)";
     private SgTypographyAlign? _demoAlign = SgTypographyAlign.Left;
@@ -838,7 +838,7 @@
     // ── Section 13: Live Constructor ─────────────────────────────────────
     private string _ctorText = "The quick brown fox jumps over the lazy dog.";
     private string _ctorVariantStr = "";
-    private SgTypographyVariant? _ctorVariant => string.IsNullOrEmpty(_ctorVariantStr) ? null : Enum.Parse<SgTypographyVariant>(_ctorVariantStr);
+    private SgTypographyVariant _ctorVariant => string.IsNullOrEmpty(_ctorVariantStr) ? SgTypographyVariant.None : Enum.Parse<SgTypographyVariant>(_ctorVariantStr);
     private SgTypographySize _ctorSize = SgTypographySize.Base;
     private SgTypographyWeight _ctorWeight = SgTypographyWeight.Normal;
     private bool _ctorItalic;
@@ -906,8 +906,8 @@
         var lines = new List<string>();
         lines.Add("<SgTypography");
 
-        if (_ctorVariant.HasValue)
-            lines.Add($"    Variant=\"SgTypographyVariant.{_ctorVariant.Value}\"");
+        if (_ctorVariant != SgTypographyVariant.None)
+            lines.Add($"    Variant=\"SgTypographyVariant.{_ctorVariant}\"");
 
         if (_ctorSize != SgTypographySize.Base)
             lines.Add($"    Size=\"SgTypographySize.{_ctorSize}\"");

@@ -3,6 +3,8 @@ namespace SuperUI.Enums;
 /// <summary>Visual typography variant. Overrides the semantic element for styling.</summary>
 public enum SgTypographyVariant
 {
+    /// <summary>No variant (use semantic element default).</summary>
+    None = 0,
     /// <summary>H1-style heading.</summary>
     Heading1,
     /// <summary>H2-style heading.</summary>
