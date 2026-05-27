@@ -40,9 +40,26 @@ else if (Ribbon)
 }
 else
 {
-    @if (!Hidden && !_hidden)
+    @if (!Hidden && !_hidden && !_closed)
     {
-        @if (OnClick.HasDelegate)
+        @if (Closable)
+        {
+            var ariaLabel = AriaLabel ?? Text ?? Localizer["Badge"];
+            <span class="@StandaloneBadgeClasses sgc-badge-closable-wrap @(OnClick.HasDelegate ? "sgc-badge-clickable" : "")"
+                  style="@ComputedColorStyle @Style"
+                  role="status"
+                  aria-label="@ariaLabel"
+                  title="@BadgeTooltip"
+                  @onclick="HandleWrapperClick"
+                  @attributes="AdditionalAttributes">
+                @BadgeInner
+                <button type="button" class="sgc-badge-close" aria-label="@Localizer["Close"]"
+                        @onclick="HandleClose" @onclick:stopPropagation="true">
+                    @((MarkupString)"&times;")
+                </button>
+            </span>
+        }
+        else if (OnClick.HasDelegate)
         {
             <button type="button"
                     class="@StandaloneBadgeClasses sgc-badge-clickable"
@@ -181,6 +198,15 @@ else
     /// <summary>Click callback. When set, the badge renders as a <c>&lt;button&gt;</c>.</summary>
     [Parameter] public EventCallback OnClick { get; set; }
 
+    /// <summary>When true, shows a close (×) button. Clicking it fires <see cref="OnClose"/> and hides the badge.</summary>
+    [Parameter] public bool Closable { get; set; }
+
+    /// <summary>Fired when the close button is clicked. The badge hides automatically after firing.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>Custom text color. Overrides the variant default color.</summary>
+    [Parameter] public string? TextColor { get; set; }
+
     /// <summary>Accessibility label for screen readers.</summary>
     [Parameter] public string? AriaLabel { get; set; }
 
@@ -196,6 +222,7 @@ else
     // ── Internals ────────────────────────────────────────────────────────────
 
     private bool _hidden;
+    private bool _closed;
     private CancellationTokenSource? _autoHideCts;
 
     protected override void OnInitialized()
@@ -206,6 +233,7 @@ else
     protected override void OnParametersSet()
     {
         _hidden = false;
+        _closed = false;
         ResetAutoHide();
     }
 
@@ -244,6 +272,18 @@ else
         {
             // Component disposed or parameters changed — no-op
         }
+    }
+
+    private async Task HandleClose(Microsoft.AspNetCore.Components.Web.MouseEventArgs e)
+    {
+        _closed = true;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleWrapperClick()
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync();
     }
 
     private bool IsZero => Count is 0 && !ShowZero && string.IsNullOrEmpty(Text) && InnerContent is null && !Dot && !Processing;
@@ -339,6 +379,8 @@ else
     {
         if (!string.IsNullOrEmpty(BorderColor))
             sb.Append("border-color:").Append(BorderColor).Append(";");
+        if (!string.IsNullOrEmpty(TextColor))
+            sb.Append("color:").Append(TextColor).Append(" !important;");
         if (Glow)
         {
             var gc = !string.IsNullOrEmpty(Color) ? Color : "";
