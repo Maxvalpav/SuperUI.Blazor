@@ -292,6 +292,16 @@
     /// <summary>Optional content rendered at the bottom of the card, separated by a divider.</summary>
     [Parameter] public RenderFragment? FooterContent { get; set; }
 
+    // ── Formatting ────────────────────────────────────────────────────────────
+    /// <summary>Custom formatter callback. When set, overrides <see cref="Format"/> and <see cref="ValueText"/>.</summary>
+    [Parameter] public Func<double, string>? FormatLabel { get; set; }
+
+    // ── Display ───────────────────────────────────────────────────────────────
+    /// <summary>Tighter padding for dense dashboard layouts.</summary>
+    [Parameter] public bool Compact { get; set; }
+    /// <summary>Explicit chart area height in px. Default is 60 (Card area), 56 (Analytic sparkline).</summary>
+    [Parameter] public int? ChartHeight { get; set; }
+
     // ── Passthrough ───────────────────────────────────────────────────────────
     /// <summary>Additional CSS class names appended to the root element.</summary>
     [Parameter] public string? CssClass { get; set; }
@@ -355,9 +365,34 @@
     /// <summary>Content rendered on the back face of the card when <see cref="Flipable"/> is <c>true</c>.</summary>
     [Parameter] public RenderFragment? BackContent { get; set; }
 
+    // ── Progress bar (independent of Target) ───────────────────────────────────
+    /// <summary>Shows a standalone horizontal progress bar below the value. Independent of <see cref="Target"/>.</summary>
+    [Parameter] public bool ProgressBar { get; set; }
+    /// <summary>Max value for the progress bar. Default 100.</summary>
+    [Parameter] public double ProgressBarMax { get; set; } = 100;
+    /// <summary>Custom CSS color for the progress fill.</summary>
+    [Parameter] public string? ProgressBarColor { get; set; }
+
+    // ── Corner badge ───────────────────────────────────────────────────────────
+    /// <summary>Small label text displayed in the top-right corner (e.g. "New", "Hot", "+12%").</summary>
+    [Parameter] public string? CornerBadge { get; set; }
+    /// <summary>Color variant for the corner badge. Default <see cref="SgKPIVariant.Primary"/>.</summary>
+    [Parameter] public SgKPIVariant CornerBadgeVariant { get; set; } = SgKPIVariant.Primary;
+
+    // ── Animation ──────────────────────────────────────────────────────────────
+    /// <summary>When <c>true</c> applies a subtle fade-in-up animation on mount.</summary>
+    [Parameter] public bool MountAnimation { get; set; }
+
+    // ── Trend icons ────────────────────────────────────────────────────────────
+    /// <summary>Custom SVG markup for the up-trend icon. Default is a chevron-up.</summary>
+    [Parameter] public string? TrendUpIcon { get; set; }
+    /// <summary>Custom SVG markup for the down-trend icon. Default is a chevron-down.</summary>
+    [Parameter] public string? TrendDownIcon { get; set; }
+
     // ── Fields ────────────────────────────────────────────────────────────────
 
     private CancellationTokenSource? _cts;
+    private Task? _animationTask;
     private double _displayValue;
     private double? _previousValue;
 
@@ -391,10 +426,19 @@
         }
     }
 
+    private string TrendIconSvg => IsPositiveTrend
+        ? (TrendUpIcon ?? ArrowUpSvg)
+        : (TrendDownIcon ?? ArrowDownSvg);
+
+    private double ProgressBarPct => ProgressBarMax > 0
+        ? Math.Clamp((Value ?? 0) / ProgressBarMax, 0, 1)
+        : 0;
+
     private string FormattedValue
     {
         get
         {
+            if (FormatLabel is not null && DisplayValue.HasValue) return FormatLabel(DisplayValue.Value);
             if (!string.IsNullOrEmpty(ValueText)) return ValueText;
             var val = DisplayValue;
             if (!val.HasValue) return "—";
@@ -441,6 +485,9 @@
             if (Flipable)                             cls.Add("sgc-kpi-flipable");
             if (ShowMiniGauge && (DisplayMode == SgKPIDisplayMode.Card || DisplayMode == SgKPIDisplayMode.Ban))
                                                       cls.Add("sgc-kpi-has-gauge");
+            if (Compact)                              cls.Add("sgc-kpi-compact");
+            if (!string.IsNullOrEmpty(CornerBadge))   cls.Add("sgc-kpi-has-badge");
+            if (MountAnimation)                       cls.Add("sgc-kpi-mount-animate");
             if (!string.IsNullOrWhiteSpace(CssClass)) cls.Add(CssClass!);
             return string.Join(' ', cls);
         }
@@ -516,7 +563,7 @@
             _displayValue = 0;
             var target = Value.Value;
             var token = _cts.Token;
-            _ = AnimateValueAsync(target, AnimateDuration, token);
+            _animationTask = AnimateValueAsync(target, AnimateDuration, token);
         }
         else if (!AnimatedValue)
         {
@@ -607,6 +654,7 @@
     private RenderFragment RenderCard() => __builder =>
     {
         <div class="sgc-kpi-body">
+            @RenderCornerBadge()
             <div class="sgc-kpi-header">
                 <div class="sgc-kpi-header-text">
                     @RenderStatusDot()
@@ -649,7 +697,7 @@
                 <div class="sgc-kpi-trend-wrap">
                     <span class="sgc-kpi-trend-pill @TrendClass" aria-label="@TrendAriaLabel">
                         <span class="sgc-kpi-trend-icon" aria-hidden="true">
-                            @((MarkupString)(IsPositiveTrend ? ArrowUpSvg : ArrowDownSvg))
+                            @((MarkupString)TrendIconSvg)
                         </span>
                         <span class="sgc-kpi-trend-val">@TrendText</span>
                     </span>
@@ -670,6 +718,8 @@
                     </span>
                 </div>
             }
+
+            @RenderProgressBar()
 
             @if (FooterContent is not null) { <div class="sgc-kpi-footer">@FooterContent</div> }
         </div>
@@ -778,7 +828,7 @@
         @if (ShowTrend && (TrendPercent.HasValue || TrendValue.HasValue))
         {
             <span class="sgc-kpi-inline-trend @TrendClass" aria-label="@TrendAriaLabel">
-                @((MarkupString)(IsPositiveTrend ? ArrowUpSvg : ArrowDownSvg))
+                @((MarkupString)TrendIconSvg)
                 @TrendText
             </span>
         }
@@ -846,7 +896,9 @@
         var min   = data.Min();
         var max   = data.Max();
         var range = max - min;
-        const double W = 200.0, H = 60.0, PT = 4.0;
+        var ch = (ChartHeight ?? 60);
+        const double W = 200.0;
+        double H = ch, PT = 4.0;
 
         var color = !string.IsNullOrEmpty(ChartColor) ? ChartColor : "rgba(255,255,255,0.9)";
         var ic    = System.Globalization.CultureInfo.InvariantCulture;
@@ -1036,6 +1088,7 @@
     // ── BAN mode ──────────────────────────────────────────────────────────────
     private RenderFragment RenderBan() => __builder =>
     {
+        @RenderCornerBadge()
         <div class="sgc-kpi-ban-header">
             @if (StatusDot.HasValue && StatusDot.Value != SgAvatarStatus.None)
             {
@@ -1068,7 +1121,7 @@
             {
                 <span class="sgc-kpi-ban-badge @TrendClass" aria-label="@TrendAriaLabel">
                     <span class="sgc-kpi-trend-icon" aria-hidden="true">
-                        @((MarkupString)(IsPositiveTrend ? ArrowUpSvg : ArrowDownSvg))
+                        @((MarkupString)TrendIconSvg)
                     </span>
                     @TrendText
                 </span>
@@ -1100,6 +1153,8 @@
             </div>
         }
 
+        @RenderProgressBar()
+
         @if (FooterContent is not null) { <div class="sgc-kpi-footer">@FooterContent</div> }
     };
 
@@ -1110,6 +1165,7 @@
             ? ChartColor
             : IsPositiveTrend ? "#10b981" : "#f43f5e";
 
+        @RenderCornerBadge()
         <div class="sgc-kpi-an-header">
             @if (StatusDot.HasValue && StatusDot.Value != SgAvatarStatus.None)
             {
@@ -1166,6 +1222,8 @@
             </div>
         }
 
+        @RenderProgressBar()
+
         @if (FooterContent is not null) { <div class="sgc-kpi-footer">@FooterContent</div> }
     };
 
@@ -1178,7 +1236,10 @@
         var min   = data.Min();
         var max   = data.Max();
         var range = max - min;
-        const double W = 200.0, H = 56.0, PT = 5.0, PB = 5.0;
+        var ah = (ChartHeight ?? 56);
+        const double W = 200.0;
+        double H = ah;
+        const double PT = 5.0, PB = 5.0;
         var ic = System.Globalization.CultureInfo.InvariantCulture;
 
         var pointList = Enumerable.Range(0, count).Select(i => (
@@ -1330,6 +1391,39 @@
                 </text>
             </svg>
         </div>
+    };
+
+    // ── Progress bar ──────────────────────────────────────────────────────────
+    private RenderFragment RenderProgressBar() => __builder =>
+    {
+        if (!ProgressBar || !Value.HasValue) return;
+        var pct = ProgressBarPct * 100;
+        var color = ProgressBarColor ?? "";
+        var colorStyle = !string.IsNullOrEmpty(color) ? $"background:{color};" : "";
+
+        <div class="sgc-kpi-pb" role="progressbar"
+             aria-valuenow="@((int)pct)" aria-valuemin="0" aria-valuemax="100">
+            <div class="sgc-kpi-pb-track">
+                <div class="sgc-kpi-pb-fill" style="width:@(pct.ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;@colorStyle"></div>
+            </div>
+        </div>
+    };
+
+    // ── Corner badge ──────────────────────────────────────────────────────────
+    private RenderFragment RenderCornerBadge() => __builder =>
+    {
+        if (string.IsNullOrEmpty(CornerBadge)) return;
+        var vk = CornerBadgeVariant switch
+        {
+            SgKPIVariant.Primary => "primary",
+            SgKPIVariant.Success => "success",
+            SgKPIVariant.Warning => "warning",
+            SgKPIVariant.Danger  => "danger",
+            SgKPIVariant.Info    => "info",
+            _                    => "default"
+        };
+
+        <div class="sgc-kpi-badge sgc-kpi-badge-@vk">@CornerBadge</div>
     };
 
     // ── Utility ───────────────────────────────────────────────────────────────
