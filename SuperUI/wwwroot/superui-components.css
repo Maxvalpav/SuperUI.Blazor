@@ -18647,6 +18647,27 @@ a.sgc-icon-btn {
 }
 
 /* ── Textarea improvements ──────────────────────────────────────────────── */
+
+/* ── Textarea Wrapper (outer) ──────────────────────────────────────────── */
+.sgc-textarea-wrapper {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    border-radius: var(--sg-radius-md);
+    transition: box-shadow 0.2s ease;
+}
+.sgc-textarea-wrapper.sgc-focused {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-primary, #3b82f6) 20%, transparent);
+}
+.sgc-textarea-wrapper.sgc-invalid.sgc-focused {
+    box-shadow: 0 0 0 2px rgba(244, 63, 94, 0.2);
+}
+.sgc-textarea-wrapper.sgc-disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+/* ── Textarea input wrap ───────────────────────────────────────────────── */
 .sgc-textarea-wrap {
     position: relative;
 }
@@ -18657,13 +18678,69 @@ a.sgc-icon-btn {
     padding-right: 32px;
 }
 
+/* ── Resize classes ────────────────────────────────────────────────────── */
 .sgc-textarea.sgc-resize-none       { resize: none; }
 .sgc-textarea.sgc-resize-vertical   { resize: vertical; }
 .sgc-textarea.sgc-resize-horizontal { resize: horizontal; }
 .sgc-textarea.sgc-resize-both       { resize: both; }
 .sgc-textarea.sgc-auto-resize       { resize: none; overflow: hidden; }
 
-/* Counter inside the textarea wrap */
+/* ── Textarea focus ring animation ─────────────────────────────────────── */
+.sgc-textarea {
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.sgc-textarea:focus {
+    border-color: var(--sgc-input-border-focus, var(--sg-color-primary));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-primary, #3b82f6) 15%, transparent);
+    outline: none;
+}
+
+/* ── Floating label ────────────────────────────────────────────────────── */
+.sgc-field.sgc-floating-label .sgc-label {
+    position: absolute;
+    top: 6px;
+    left: 10px;
+    font-size: 12px;
+    color: var(--sg-fg-muted);
+    transition: all 0.18s ease;
+    pointer-events: none;
+    transform-origin: left top;
+    z-index: 2;
+    background: var(--sg-bg);
+    padding: 0 3px;
+    line-height: 1;
+}
+.sgc-field.sgc-floating-label.sgc-field-active .sgc-label {
+    transform: translateY(-14px) scale(0.82);
+    color: var(--sg-color-primary);
+}
+.sgc-field.sgc-floating-label.sgc-field-invalid.sgc-field-active .sgc-label {
+    color: var(--sg-color-danger);
+}
+
+/* Floating placeholder (alternative when no Placeholder set) */
+.sgc-floating-placeholder {
+    position: absolute;
+    top: 8px;
+    left: 10px;
+    font-size: 12px;
+    color: var(--sg-fg-muted);
+    pointer-events: none;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+    z-index: 1;
+}
+.sgc-textarea:focus ~ .sgc-floating-placeholder,
+.sgc-textarea:not(:placeholder-shown) ~ .sgc-floating-placeholder {
+    opacity: 0;
+}
+
+/* Floating label style textarea padding */
+.sgc-textarea.sgc-textarea-floating {
+    padding-top: 14px;
+}
+
+/* ── Counter inside the textarea wrap ──────────────────────────────────── */
 .sgc-textarea-counter {
     position: absolute;
     right: 8px;
@@ -18671,7 +18748,7 @@ a.sgc-icon-btn {
     font-size: 10px;
     color: var(--sg-fg-muted);
     background: color-mix(in srgb, var(--sg-bg) 80%, transparent);
-    padding: 1px 4px;
+    padding: 1px 5px;
     border-radius: 4px;
     pointer-events: none;
     font-variant-numeric: tabular-nums;
@@ -18679,10 +18756,13 @@ a.sgc-icon-btn {
     display: flex;
     align-items: center;
     gap: 2px;
+    white-space: nowrap;
+    backdrop-filter: blur(2px);
 }
-.sgc-textarea-counter-current { font-weight: 600; }
-.sgc-textarea-counter-sep { opacity: 0.4; margin: 0 1px; }
+.sgc-textarea-counter-current { font-weight: 700; font-size: 10.5px; }
+.sgc-textarea-counter-sep { opacity: 0.4; margin: 0 1px; font-size: 9px; }
 .sgc-textarea-counter-max { opacity: 0.6; }
+.sgc-textarea-counter-remaining { font-weight: 500; font-size: 10px; color: var(--sg-color-success, #059669); }
 .sgc-textarea-counter-warn {
     color: var(--sg-color-warning, #f59e0b);
     background: color-mix(in srgb, var(--sg-color-warning, #f59e0b) 12%, transparent);
@@ -18690,8 +18770,44 @@ a.sgc-icon-btn {
 .sgc-textarea-counter-warn .sgc-textarea-counter-current {
     color: var(--sg-color-warning, #f59e0b);
 }
+.sgc-textarea-counter-warn .sgc-textarea-counter-remaining {
+    color: var(--sg-color-warning, #f59e0b);
+}
 
-/* Clear button on textarea */
+/* ── Stats below textarea ──────────────────────────────────────────────── */
+.sgc-textarea-stats {
+    display: flex;
+    gap: 12px;
+    padding: 2px 4px 0;
+}
+.sgc-textarea-stat {
+    font-size: 10.5px;
+    color: var(--sg-fg-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ── Char Progress bar ──────────────────────────────────────────────────── */
+.sgc-char-progress {
+    height: 2px;
+    background: var(--sg-border);
+    border-radius: 0 0 var(--sg-radius-sm, 3px) var(--sg-radius-sm, 3px);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.sgc-char-progress-fill {
+    height: 100%;
+    background: var(--sg-color-primary, #3b82f6);
+    border-radius: inherit;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+.sgc-char-progress-warn {
+    background: var(--sg-color-warning, #f59e0b);
+}
+.sgc-char-progress-danger {
+    background: var(--sg-color-danger, #ef4444);
+}
+
+/* ── Clear button on textarea ──────────────────────────────────────────── */
 .sgc-textarea-clear {
     position: absolute;
     right: 4px;
@@ -18708,6 +18824,7 @@ a.sgc-icon-btn {
     align-items: center;
     justify-content: center;
     transition: color 0.15s, background 0.15s, transform 0.15s;
+    z-index: 1;
 }
 .sgc-textarea-clear:hover {
     color: var(--sg-color-danger);
@@ -18716,6 +18833,188 @@ a.sgc-icon-btn {
 }
 .sgc-textarea-clear:active {
     transform: scale(0.9);
+}
+
+/* ── Emoji picker button (inside textarea) ─────────────────────────────── */
+.sgc-textarea-emoji-btn {
+    position: absolute;
+    right: 4px;
+    bottom: 22px;
+    background: none;
+    border: none;
+    color: var(--sg-fg-muted);
+    cursor: pointer;
+    padding: 2px;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+    z-index: 1;
+}
+.sgc-textarea-emoji-btn:hover {
+    color: var(--sg-color-primary);
+    background: color-mix(in srgb, var(--sg-color-primary) 10%, transparent);
+}
+
+/* ── Emoji Picker Dropdown ─────────────────────────────────────────────── */
+.sgc-emoji-picker {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: 4px;
+    width: 280px;
+    max-height: 260px;
+    overflow-y: auto;
+    background: var(--sg-bg);
+    border: 1px solid var(--sg-border);
+    border-radius: var(--sg-radius-md, 8px);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    padding: 8px;
+    z-index: 100;
+    animation: sgc-emoji-in 0.15s ease;
+}
+.sgc-emoji-picker-toolbar {
+    bottom: auto;
+    top: 100%;
+    margin-top: 4px;
+}
+@keyframes sgc-emoji-in {
+    from { opacity: 0; transform: translateY(4px) scale(0.96); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.sgc-emoji-category {
+    margin-bottom: 6px;
+}
+.sgc-emoji-cat-label {
+    display: block;
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--sg-fg-muted);
+    margin-bottom: 4px;
+    opacity: 0.6;
+}
+.sgc-emoji-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1px;
+}
+.sgc-emoji-item {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 18px;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: background 0.1s, transform 0.1s;
+    padding: 0;
+}
+.sgc-emoji-item:hover {
+    background: var(--sg-surface-alt);
+    transform: scale(1.2);
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────────────── */
+.sgc-textarea-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 3px 8px;
+    background: var(--sg-surface-alt);
+    border: 1px solid var(--sg-border);
+    border-top: none;
+    border-radius: 0 0 var(--sg-radius-sm, 4px) var(--sg-radius-sm, 4px);
+    gap: 8px;
+    position: relative;
+    min-height: 26px;
+}
+.sgc-textarea-toolbar-left,
+.sgc-textarea-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.sgc-toolbar-counter {
+    font-size: 10.5px;
+    color: var(--sg-fg-muted);
+    font-variant-numeric: tabular-nums;
+}
+.sgc-toolbar-counter-warn {
+    color: var(--sg-color-warning, #f59e0b);
+}
+.sgc-toolbar-stat {
+    font-size: 10.5px;
+    color: var(--sg-fg-muted);
+    font-variant-numeric: tabular-nums;
+}
+.sgc-toolbar-btn {
+    background: none;
+    border: none;
+    color: var(--sg-fg-muted);
+    cursor: pointer;
+    padding: 3px;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, background 0.15s;
+}
+.sgc-toolbar-btn:hover {
+    color: var(--sg-color-primary);
+    background: color-mix(in srgb, var(--sg-color-primary) 10%, transparent);
+}
+.sgc-toolbar-clear:hover {
+    color: var(--sg-color-danger);
+    background: rgba(244, 63, 94, 0.1);
+}
+
+/* ── Resize grip ───────────────────────────────────────────────────────── */
+.sgc-has-resize-grip .sgc-textarea-wrap {
+    position: relative;
+}
+.sgc-resize-grip {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    color: var(--sg-fg-muted);
+    opacity: 0.4;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* ── Error animation ───────────────────────────────────────────────────── */
+.sgc-textarea-error {
+    display: inline-flex;
+    align-items: center;
+    animation: sgc-shake 0.3s ease;
+}
+@keyframes sgc-shake {
+    0%, 100% { transform: translateX(0); }
+    20%      { transform: translateX(-4px); }
+    40%      { transform: translateX(4px); }
+    60%      { transform: translateX(-3px); }
+    80%      { transform: translateX(3px); }
+}
+
+/* ── Floating label field padding ──────────────────────────────────────── */
+.sgc-field.sgc-floating-label {
+    padding-top: 10px;
+    position: relative;
 }
 
 /* ── Checkbox / Switch field wrapper (for hint & error) ─────────────────── */

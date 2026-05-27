@@ -1,270 +1,230 @@
 @namespace SuperUI.Components
 @using SuperUI.Enums
 @inherits SgInputBase<string>
-@using SuperUI.Localization
-@inject ISuperUILocalizer Localizer
-@inject IJSRuntime JS
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "") @CssClass">
+<div class="sgc-field
+            @(Block ? "sgc-block" : "")
+            @(LabelPosition == SgLabelPosition.Left ? "sgc-label-left" : LabelPosition == SgLabelPosition.Right ? "sgc-label-right" : "")
+            @(_showFloatingLabel ? "sgc-floating-label" : "")
+            @(_focused || _hasValue ? "sgc-field-active" : "")
+            @(IsInvalid ? "sgc-field-invalid" : "")
+            @CssClass">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label class="sgc-label @(Required ? "sgc-required" : "") @(LabelPosition == SgLabelPosition.Left || LabelPosition == SgLabelPosition.Right ? "sgc-label-side" : "")"
+        <label class="sgc-label @(Required ? "sgc-required" : "")"
                for="@_id">@Label</label>
     }
-    <div class="sgc-input-wrap sgc-textarea-wrap @(AllowClear && !string.IsNullOrEmpty(Value) ? "sgc-has-clear" : "") @(ShowCounter && MaxLength.HasValue ? "sgc-has-counter" : "")">
-        @if (!string.IsNullOrEmpty(IconPrefix))
+    <div class="sgc-textarea-wrapper
+                @(Disabled ? "sgc-disabled" : "")
+                @(IsInvalid ? "sgc-invalid" : "")
+                @(_focused ? "sgc-focused" : "")
+                @(ShowCharProgressBar && MaxLength.HasValue ? "sgc-has-progress" : "")
+                @(ShowToolbar ? "sgc-has-toolbar" : "")
+                @(ShowResizeGrip ? "sgc-has-resize-grip" : "")">
+        <div class="sgc-input-wrap sgc-textarea-wrap
+                    @(AllowClear && _hasValue ? "sgc-has-clear" : "")
+                    @(ShowCounter && MaxLength.HasValue ? "sgc-has-counter" : "")">
+            @if (!string.IsNullOrEmpty(IconPrefix))
+            {
+                <span class="sgc-input-affix sgc-input-affix-prefix">@((MarkupString)IconPrefix!)</span>
+            }
+            @if (_showFloatingLabel && string.IsNullOrEmpty(Placeholder))
+            {
+                <div class="sgc-floating-placeholder" aria-hidden="true">@Label</div>
+            }
+            <textarea id="@_id"
+                      class="sgc-textarea
+                            @(IsInvalid ? "sgc-invalid" : "")
+                            @(AutoResize ? "sgc-auto-resize" : "")
+                            sgc-resize-@ResizeClass
+                            @(_showFloatingLabel ? "sgc-textarea-floating" : "")"
+                      rows="@Rows"
+                      placeholder="@(_showFloatingLabel ? "" : Placeholder ?? (string.IsNullOrEmpty(Label) ? "" : Label))"
+                      disabled="@Disabled"
+                      readonly="@ReadOnly"
+                      required="@Required"
+                      maxlength="@(SoftMaxLength ? null : MaxLength)"
+                      spellcheck="@(_spellCheckAttr)"
+                      wrap="@(_wrapAttr)"
+                      tabindex="@TabIndex"
+                      style="@_combinedStyle"
+                      aria-required="@(Required ? "true" : null)"
+                      aria-invalid="@(IsInvalid ? "true" : null)"
+                      aria-describedby="@DescribedBy"
+                      aria-label="@(string.IsNullOrEmpty(Label) ? Placeholder ?? "Text input" : null)"
+                      value="@Value"
+                      @oninput="OnInputAsync"
+                      @onchange="OnChangeAsync"
+                      @onfocus="OnFocusAsync"
+                      @onblur="OnBlurAsync"
+                      @onpaste="OnPasteAsync"
+                      @ref="_textareaRef"
+                      @attributes="AdditionalAttributes"></textarea>
+            @if (!string.IsNullOrEmpty(IconSuffix))
+            {
+                <span class="sgc-input-affix sgc-input-affix-suffix">@((MarkupString)IconSuffix!)</span>
+            }
+            @if (ShowEmojiPicker)
+            {
+                <button type="button" class="sgc-textarea-emoji-btn" @onclick="ToggleEmojiPicker" aria-label="Emoji" tabindex="-1">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+                    </svg>
+                </button>
+                @if (_emojiPickerOpen)
+                {
+                    <div class="sgc-emoji-picker" @onclick:stopPropagation>
+                        @foreach (var cat in EmojiCategories)
+                        {
+                            <div class="sgc-emoji-category">
+                                <span class="sgc-emoji-cat-label">@cat.Key</span>
+                                <div class="sgc-emoji-grid">
+                                    @foreach (var emoji in cat.Value)
+                                    {
+                                        var e = emoji;
+                                        <button type="button" class="sgc-emoji-item" @onclick="() => SelectEmojiAsync(e)" title="@e">@e</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            }
+            @if (CounterTemplate is not null)
+            {
+                @CounterTemplate
+            }
+            else if (ShowCounter && MaxLength.HasValue)
+            {
+                <span class="sgc-textarea-counter @(_counterWarn ? "sgc-textarea-counter-warn" : "")">
+                    @if (CounterMode == SgTextAreaCounterMode.CharCount || CounterMode == SgTextAreaCounterMode.Both)
+                    {
+                        <span class="sgc-textarea-counter-current">@_charLen</span>
+                        <span class="sgc-textarea-counter-sep">/</span>
+                        <span class="sgc-textarea-counter-max">@MaxLength</span>
+                    }
+                    @if (CounterMode == SgTextAreaCounterMode.Remaining || CounterMode == SgTextAreaCounterMode.Both)
+                    {
+                        var rem = Math.Max(0, MaxLength.Value - _charLen);
+                        if (CounterMode == SgTextAreaCounterMode.Both)
+                        {
+                            <span class="sgc-textarea-counter-sep" style="margin-left:4px;">·</span>
+                        }
+                        <span class="sgc-textarea-counter-remaining">@rem remaining</span>
+                    }
+                </span>
+            }
+            @if (ShowResizeGrip && !AutoResize)
+            {
+                <div class="sgc-resize-grip" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M4 12h8v-1H5.5l6.5-6.5-.7-.7L4 10.3V4H3v8h1z"/></svg>
+                </div>
+            }
+            @if (AllowClear && _hasValue)
+            {
+                <button type="button" class="sgc-input-clear sgc-textarea-clear" @onclick="ClearAsync" aria-label="@Localizer["Common_Clear"]" tabindex="-1">
+                    <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
+                        <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
+                    </svg>
+                </button>
+            }
+        </div>
+
+        @if (ShowCharProgressBar && MaxLength.HasValue)
         {
-            <span class="sgc-input-affix sgc-input-affix-prefix">@((MarkupString)IconPrefix!)</span>
+            <div class="sgc-char-progress" role="progressbar" aria-valuenow="@_charLen" aria-valuemin="0" aria-valuemax="@MaxLength">
+                <div class="sgc-char-progress-fill @(_counterWarn ? "sgc-char-progress-warn" : _charPct >= 95 ? "sgc-char-progress-danger" : "")"
+                     style="width:@Math.Min(_charPct, 100)%"></div>
+            </div>
         }
-        <textarea id="@_id"
-                  class="sgc-textarea @(IsInvalid ? "sgc-invalid" : "") @(AutoResize ? "sgc-auto-resize" : "") sgc-resize-@ResizeClass"
-                  rows="@Rows"
-                  placeholder="@Placeholder"
-                  disabled="@Disabled"
-                  readonly="@ReadOnly"
-                  required="@Required"
-                  maxlength="@MaxLength"
-                  spellcheck="@(_spellCheckAttr)"
-                  wrap="@(_wrapAttr)"
-                  tabindex="@TabIndex"
-                  style="@(LineHeight != 1.5 ? $"line-height:{LineHeight}" : null)"
-                  aria-required="@(Required ? "true" : null)"
-                  aria-invalid="@(IsInvalid ? "true" : null)"
-                  aria-describedby="@DescribedBy"
-                  aria-label="@(string.IsNullOrEmpty(Label) ? Placeholder ?? "Text input" : null)"
-                  value="@Value"
-                  @oninput="OnInputAsync"
-                  @onchange="OnChangeAsync"
-                  @onfocus="OnFocusAsync"
-                  @onblur="OnBlurAsync"
-                  @ref="_textareaRef"
-                  @attributes="AdditionalAttributes"></textarea>
-        @if (!string.IsNullOrEmpty(IconSuffix))
+
+        @if (ShowWordCount || ShowLineCount)
         {
-            <span class="sgc-input-affix sgc-input-affix-suffix">@((MarkupString)IconSuffix!)</span>
+            <div class="sgc-textarea-stats">
+                @if (ShowWordCount)
+                {
+                    <span class="sgc-textarea-stat">@_wordCount words</span>
+                }
+                @if (ShowLineCount)
+                {
+                    <span class="sgc-textarea-stat">@_lineCount lines</span>
+                }
+            </div>
         }
-        @if (ShowCounter && MaxLength.HasValue)
+
+        @if (ShowToolbar)
         {
-            var len = Value?.Length ?? 0;
-            var pct = MaxLength.Value > 0 ? (double)len / MaxLength.Value * 100.0 : 0.0;
-            var warn = pct >= CharCountPctThreshold;
-            <span class="sgc-textarea-counter @(warn ? "sgc-textarea-counter-warn" : "")" title="@len / @MaxLength characters">
-                <span class="sgc-textarea-counter-current">@len</span>
-                <span class="sgc-textarea-counter-sep">/</span>
-                <span class="sgc-textarea-counter-max">@MaxLength</span>
+            <div class="sgc-textarea-toolbar">
+                @if (ToolbarContent is not null)
+                {
+                    @ToolbarContent
+                }
+                else
+                {
+                    <div class="sgc-textarea-toolbar-left">
+                        @if (ShowCounter && MaxLength.HasValue)
+                        {
+                            <span class="sgc-toolbar-counter @(_counterWarn ? "sgc-toolbar-counter-warn" : "")">
+                                @_charLen / @MaxLength
+                            </span>
+                        }
+                        @if (ShowWordCount)
+                        {
+                            <span class="sgc-toolbar-stat">@_wordCount words</span>
+                        }
+                        @if (ShowLineCount)
+                        {
+                            <span class="sgc-toolbar-stat">@_lineCount lines</span>
+                        }
+                    </div>
+                    <div class="sgc-textarea-toolbar-right">
+                        @if (ShowEmojiPicker)
+                        {
+                            <button type="button" class="sgc-toolbar-btn" @onclick="ToggleEmojiPicker" aria-label="Emoji">
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+                                </svg>
+                            </button>
+                        }
+                        @if (_hasValue)
+                        {
+                            <button type="button" class="sgc-toolbar-btn sgc-toolbar-clear" @onclick="ClearAsync" aria-label="Clear">
+                                <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/></svg>
+                            </button>
+                        }
+                    </div>
+                }
+                @if (_emojiPickerOpen)
+                {
+                    <div class="sgc-emoji-picker sgc-emoji-picker-toolbar" @onclick:stopPropagation>
+                        @foreach (var cat in EmojiCategories)
+                        {
+                            <div class="sgc-emoji-category">
+                                <span class="sgc-emoji-cat-label">@cat.Key</span>
+                                <div class="sgc-emoji-grid">
+                                    @foreach (var emoji in cat.Value)
+                                    {
+                                        var e = emoji;
+                                        <button type="button" class="sgc-emoji-item" @onclick="() => SelectEmojiAsync(e)" title="@e">@e</button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
+        @if (IsInvalid)
+        {
+            <span id="@_errorId" class="sgc-error sgc-textarea-error">
+                <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true" style="margin-right:3px;vertical-align:middle;"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zM7.25 5v3.5h1.5V5h-1.5zm0 5v1.5h1.5V10h-1.5z"/></svg>
+                @DisplayedError
             </span>
         }
-        @if (AllowClear && !string.IsNullOrEmpty(Value))
+        else if (!string.IsNullOrEmpty(Hint))
         {
-            <button type="button" class="sgc-input-clear sgc-textarea-clear" @onclick="ClearAsync" aria-label="@Localizer["Common_Clear"]" tabindex="-1">
-                <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor" aria-hidden="true">
-                    <path d="M3.72 3.72a.75.75 0 011.06 0L8 6.94l3.22-3.22a.75.75 0 111.06 1.06L9.06 8l3.22 3.22a.75.75 0 11-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 01-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 010-1.06z"/>
-                </svg>
-            </button>
+            <span id="@_hintId" class="sgc-hint">@Hint</span>
         }
     </div>
-    @if (IsInvalid)
-    {
-        <span id="@_errorId" class="sgc-error">
-            <svg viewBox="0 0 16 16" width="12" height="12" fill="currentColor" aria-hidden="true" style="margin-right:3px;vertical-align:middle;"><path d="M8 1a7 7 0 110 14A7 7 0 018 1zM7.25 5v3.5h1.5V5h-1.5zm0 5v1.5h1.5V10h-1.5z"/></svg>
-            @DisplayedError
-        </span>
-    }
-    else if (!string.IsNullOrEmpty(Hint))
-    {
-        <span id="@_hintId" class="sgc-hint">@Hint</span>
-    }
 </div>
-
-@code {
-    private readonly string _id = "sg-ta-" + Guid.NewGuid().ToString("N")[..8];
-    private string _hintId => _id + "-hint";
-    private string _errorId => _id + "-err";
-    private ElementReference _textareaRef;
-    private IJSObjectReference? _module;
-    private bool _isDisposed;
-
-    /// <summary>Label displayed above or beside the textarea.</summary>
-    [Parameter] public string? Label { get; set; }
-
-    /// <summary>Position of the label relative to the textarea.</summary>
-    [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-
-    /// <summary>Placeholder text when the textarea is empty.</summary>
-    [Parameter] public string? Placeholder { get; set; }
-
-    /// <summary>Hint text displayed below the textarea.</summary>
-    [Parameter] public string? Hint { get; set; }
-
-    /// <summary>Error text displayed below the textarea. Overrides validation messages.</summary>
-    [Parameter] public string? ErrorText { get; set; }
-
-    /// <summary>Marks the field as required (adds asterisk and native required attribute).</summary>
-    [Parameter] public bool Required { get; set; }
-
-    /// <summary>Disables the textarea so it cannot be interacted with.</summary>
-    [Parameter] public bool Disabled { get; set; }
-
-    /// <summary>Makes the textarea read-only (content visible but not editable).</summary>
-    [Parameter] public bool ReadOnly { get; set; }
-
-    /// <summary>Expands the field to fill its container width.</summary>
-    [Parameter] public bool Block { get; set; } = true;
-
-    /// <summary>Additional CSS class for the outer field wrapper.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>If true, updates the value on every keystroke. If false, waits for blur/change.</summary>
-    [Parameter] public bool Immediate { get; set; } = true;
-
-    /// <summary>Debounce delay in milliseconds before committing the value.</summary>
-    [Parameter] public int Debounce { get; set; }
-
-    /// <summary>Maximum character length allowed.</summary>
-    [Parameter] public int? MaxLength { get; set; }
-
-    /// <summary>Show a clear button when the textarea has a value.</summary>
-    [Parameter] public bool AllowClear { get; set; } = true;
-
-    /// <summary>Alias for <see cref="AllowClear"/>. Use AllowClear instead.</summary>
-    [Parameter] public bool ShowClearButton { get => AllowClear; set => AllowClear = value; }
-
-    /// <summary>Shows a character counter (requires <see cref="MaxLength"/>).</summary>
-    [Parameter] public bool ShowCounter { get; set; }
-
-    /// <summary>Number of visible text rows.</summary>
-    [Parameter] public int Rows { get; set; } = 3;
-
-    /// <summary>Maximum number of visible rows when <see cref="AutoResize"/> is true. 0 = unlimited.</summary>
-    [Parameter] public int MaxRows { get; set; }
-
-    /// <summary>Automatically grow the textarea height to fit content.</summary>
-    [Parameter] public bool AutoResize { get; set; }
-
-    /// <summary>Controls the resize handle direction.</summary>
-    [Parameter] public SgTextResize Resize { get; set; } = SgTextResize.Vertical;
-
-    /// <summary>Enables browser spellcheck. Null = browser default.</summary>
-    [Parameter] public bool? Spellcheck { get; set; }
-
-    /// <summary>Text wrapping: "soft" (default), "hard", or "off".</summary>
-    [Parameter] public string? Wrap { get; set; }
-
-    /// <summary>Tab index for keyboard navigation.</summary>
-    [Parameter] public int? TabIndex { get; set; }
-
-    /// <summary>Line-height multiplier for the textarea content. Default = 1.5.</summary>
-    [Parameter] public double LineHeight { get; set; } = 1.5;
-
-    /// <summary>Character count warning threshold as percentage (0-100). When exceeded, the counter turns warning color. Default 80.</summary>
-    [Parameter] public double CharCountPctThreshold { get; set; } = 80.0;
-
-    /// <summary>Optional SVG/HTML string rendered as a prefix icon inside the textarea.</summary>
-    [Parameter] public string? IconPrefix { get; set; }
-
-    /// <summary>Optional SVG/HTML string rendered as a suffix icon inside the textarea.</summary>
-    [Parameter] public string? IconSuffix { get; set; }
-
-    /// <summary>Event raised when the textarea gains focus.</summary>
-    [Parameter] public EventCallback<FocusEventArgs> OnFocus { get; set; }
-
-    /// <summary>Event raised when the textarea loses focus.</summary>
-    [Parameter] public EventCallback<FocusEventArgs> OnBlur { get; set; }
-
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private CancellationTokenSource? _debounceCts;
-
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault();
-    private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-
-    private string? _spellCheckAttr => Spellcheck.HasValue ? (Spellcheck.Value ? "true" : "false") : null;
-    private string? _wrapAttr => string.IsNullOrEmpty(Wrap) ? null : Wrap;
-
-    private string ResizeClass => AutoResize ? "none" : Resize switch
-    {
-        SgTextResize.None       => "none",
-        SgTextResize.Horizontal => "horizontal",
-        SgTextResize.Both       => "both",
-        _                       => "vertical"
-    };
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && AutoResize)
-            await CallAutoResizeAsync();
-    }
-
-    private async Task CallAutoResizeAsync()
-    {
-        if (_isDisposed) return;
-        try
-        {
-            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/SuperUI/superui.js");
-            if (_isDisposed) return;
-            await _module.InvokeVoidAsync("autoResizeTextarea", _textareaRef, Rows, MaxRows);
-        }
-        catch (JSException) { }
-        catch (TaskCanceledException) { }
-    }
-
-    private async Task OnFocusAsync(FocusEventArgs e)
-    {
-        await OnFocus.InvokeAsync(e);
-    }
-
-    private async Task OnBlurAsync(FocusEventArgs e)
-    {
-        await OnBlur.InvokeAsync(e);
-    }
-
-    private void OnInputAsync(ChangeEventArgs e)
-    {
-        if (Debounce > 0)
-        {
-            _debounceCts?.Cancel();
-            _debounceCts?.Dispose();
-            _debounceCts = new CancellationTokenSource();
-            var token = _debounceCts.Token;
-            var raw = e.Value?.ToString();
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(Debounce, token);
-                    await InvokeAsync(async () =>
-                    {
-                        await CommitAsync(raw);
-                        if (AutoResize) await CallAutoResizeAsync();
-                    });
-                }
-                catch (TaskCanceledException) { }
-            });
-        }
-        else if (Immediate)
-        {
-            _ = SafeCommitAsync(e.Value?.ToString());
-            if (AutoResize) _ = CallAutoResizeAsync();
-        }
-    }
-
-    private Task OnChangeAsync(ChangeEventArgs e) => !Immediate && Debounce <= 0 ? CommitAsync(e.Value?.ToString()) : Task.CompletedTask;
-
-    private async Task SafeCommitAsync(string? raw)
-    {
-        try { await CommitAsync(raw); }
-        catch (Exception ex) { Console.Error.WriteLine($"[SgTextArea.CommitAsync] {ex}"); }
-    }
-
-    private Task ClearAsync() => SetValueAsync(string.Empty);
-    private Task CommitAsync(string? raw) => SetValueAsync(raw ?? string.Empty);
-
-    public override void Dispose()
-    {
-        _isDisposed = true;
-        _debounceCts?.Cancel();
-        _debounceCts?.Dispose();
-        base.Dispose();
-    }
-}

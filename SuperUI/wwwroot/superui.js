@@ -3,6 +3,34 @@ export function setIndeterminate(el, value) {
 }
 
 /**
+ * Focus a textarea element.
+ * @param {HTMLTextAreaElement} el
+ */
+export function focusElement(el) {
+    if (el) el.focus();
+}
+
+/**
+ * Select all text in a textarea.
+ * @param {HTMLTextAreaElement} el
+ */
+export function selectText(el) {
+    if (el) el.select();
+}
+
+/**
+ * Get pasted text from the clipboard.
+ * @returns {Promise<string|null>}
+ */
+export async function getPastedText() {
+    try {
+        return await navigator.clipboard.readText();
+    } catch {
+        return null;
+    }
+}
+
+/**
  * Auto-resize a textarea to fit its content.
  * @param {HTMLTextAreaElement} el - The textarea element
  * @param {number} minRows - Minimum number of rows
