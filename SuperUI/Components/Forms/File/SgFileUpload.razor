@@ -19,14 +19,18 @@
            @ondragleave="OnDragLeave"
            @ondrop:preventDefault="true"
            @ondrop="OnDrop">
-        <InputFile OnChange="OnChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
+        <InputFile OnChange="OnFileInputChange" multiple="@Multiple" accept="@Accept" disabled="@Disabled" />
         <span class="sgc-upload-icon" aria-hidden="true">
             <svg viewBox="0 0 16 16" width="24" height="24" fill="currentColor">
                 <path d="M8 1a.75.75 0 0 1 .75.75v5.5h1.5a.25.25 0 0 1 .177.427l-2.25 2.25a.25.25 0 0 1-.354 0l-2.25-2.25A.25.25 0 0 1 5.75 7.25h1.5V1.75A.75.75 0 0 1 8 1zM2 11.75a.75.75 0 0 1 1.5 0v1.5h9v-1.5a.75.75 0 0 1 1.5 0v1.5A1.5 1.5 0 0 1 12.5 15h-9A1.5 1.5 0 0 1 2 13.25v-1.5z"/>
             </svg>
         </span>
         <span class="sgc-upload-text">@(string.IsNullOrEmpty(Text) ? Localizer["FileUpload_DropFiles"] : Text)</span>
-        @if (!string.IsNullOrEmpty(Accept))
+        @if (!string.IsNullOrEmpty(AcceptDescription))
+        {
+            <span class="sgc-upload-hint-text">@AcceptDescription</span>
+        }
+        else if (!string.IsNullOrEmpty(Accept))
         {
             <span class="sgc-upload-hint-text">@Accept</span>
         }
@@ -36,7 +40,7 @@
         }
     </label>
 
-    @if (_files.Count > 0)
+    @if (ShowFileList && _files.Count > 0)
     {
         <ul class="sgc-upload-list" role="list">
             @foreach (var f in _files)
@@ -106,6 +110,18 @@
     /// <summary>Gets or sets the hint text displayed below the upload area.</summary>
     [Parameter] public string? Hint { get; set; }
 
+    /// <summary>Human-readable description of accepted file types (e.g., "Images: PNG, JPG, GIF").</summary>
+    [Parameter] public string? AcceptDescription { get; set; }
+
+    /// <summary>When false, the file list is hidden. The upload area and remove buttons still work. Default is true.</summary>
+    [Parameter] public bool ShowFileList { get; set; } = true;
+
+    /// <summary>Maximum number of files allowed. When set, excess files are ignored.</summary>
+    [Parameter] public int? MaxFiles { get; set; }
+
+    /// <summary>Callback invoked when the selected files change. Fires after the file list has been updated.</summary>
+    [Parameter] public EventCallback<IReadOnlyList<IBrowserFile>?> OnChange { get; set; }
+
     /// <summary>Gets or sets the error text to display.</summary>
     [Parameter] public string? ErrorText { get; set; }
 
@@ -165,13 +181,14 @@
         await Task.CompletedTask;
     }
 
-    private async Task OnChange(InputFileChangeEventArgs e)
+    private async Task OnFileInputChange(InputFileChangeEventArgs e)
     {
         _isDragOver = false;
         _files.Clear();
         if (Multiple)
         {
-            foreach (var f in e.GetMultipleFiles(100)) _files.Add(f);
+            var max = MaxFiles.GetValueOrDefault(100);
+            foreach (var f in e.GetMultipleFiles(max)) { if (_files.Count >= max) break; _files.Add(f); }
         }
         else
         {
@@ -184,6 +201,7 @@
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(fileList);
         _binder?.NotifyFieldChanged();
         if (OnFilesSelected.HasDelegate) await OnFilesSelected.InvokeAsync(fileList);
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync(fileList);
     }
 
     private async Task RemoveFileAsync(IBrowserFile file)

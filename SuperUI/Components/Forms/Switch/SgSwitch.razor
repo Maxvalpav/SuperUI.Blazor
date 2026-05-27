@@ -27,15 +27,19 @@
             <span class="sgc-switch-label sgc-switch-label-on">@OnLabel</span>
             <span class="sgc-switch-label sgc-switch-label-off">@OffLabel</span>
         }
-        else if (ChildContent is not null)
+        else if (ShowLabel && ChildContent is not null)
         {
             @ChildContent
         }
-        else if (!string.IsNullOrEmpty(Label))
+        else if (ShowLabel && !string.IsNullOrEmpty(Label))
         {
             <span>@Label</span>
         }
     </label>
+    @if (!string.IsNullOrEmpty(HelpText))
+    {
+        <span class="sgc-helptext">@HelpText</span>
+    }
     @if (IsInvalid)
     {
         <span id="@_errorId" class="sgc-error">@(!string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault())</span>
@@ -55,6 +59,12 @@
     /// <summary>Label text displayed next to the switch. Ignored if <see cref="ChildContent"/> or On/OffLabel are set.</summary>
     [Parameter] public string? Label { get; set; }
 
+    /// <summary>Callback invoked when the switch value changes. Fires after the value has been updated.</summary>
+    [Parameter] public EventCallback<bool> OnChange { get; set; }
+
+    /// <summary>When false, the label text is hidden. Only the switch control is visible. Default is true.</summary>
+    [Parameter] public bool ShowLabel { get; set; } = true;
+
     /// <summary>Label shown when switch is ON. When set, takes precedence over <see cref="Label"/>.</summary>
     [Parameter] public string? OnLabel { get; set; }
 
@@ -63,6 +73,9 @@
 
     /// <summary>Hint text displayed below the switch.</summary>
     [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Small help text displayed between the switch label and the error/hint text.</summary>
+    [Parameter] public string? HelpText { get; set; }
 
     /// <summary>Override error text displayed below the switch. Takes precedence over EditContext validation messages.</summary>
     [Parameter] public string? ErrorText { get; set; }
@@ -152,9 +165,11 @@
     /// <summary>Programmatically focuses the switch input.</summary>
     public ValueTask FocusAsync() => _inputRef.FocusAsync();
 
-    private Task OnChangeAsync(ChangeEventArgs e)
+    private async Task OnChangeAsync(ChangeEventArgs e)
     {
-        if (ReadOnly || Loading) return Task.CompletedTask;
-        return SetValueAsync(e.Value is true);
+        if (ReadOnly || Loading) return;
+        var newVal = e.Value is true;
+        await SetValueAsync(newVal);
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync(newVal);
     }
 }

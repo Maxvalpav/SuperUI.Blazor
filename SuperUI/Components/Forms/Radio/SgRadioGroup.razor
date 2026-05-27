@@ -21,9 +21,9 @@
             var o = _optionsList[idx];
             var checkedNow = EqualityComparer<TValue>.Default.Equals(Value, o.Value);
             var optDisabled = Disabled || ReadOnly || o.Disabled;
-            <label class="sgc-check @SizeClass @(ButtonGroup ? "sgc-radio-btn" : "") @(optDisabled ? "sgc-disabled" : "") @(checkedNow && ButtonGroup ? "sgc-radio-btn-active" : "")">
+             <label class="sgc-check @SizeClass @(ButtonGroup ? "sgc-radio-btn" : "") @(optDisabled ? "sgc-disabled" : "") @(checkedNow && ButtonGroup ? "sgc-radio-btn-active" : "")">
                 <input type="radio"
-                       name="@_name"
+                       name="@(Name ?? _name)"
                        checked="@checkedNow"
                        disabled="@optDisabled"
                        tabindex="@(checkedNow || (Value is null && idx == _firstEnabledIndex) ? 0 : -1)"
@@ -33,6 +33,10 @@
             </label>
         }
     </div>
+    @if (!string.IsNullOrEmpty(HelpText))
+    {
+        <span class="sgc-helptext">@HelpText</span>
+    }
     @if (IsInvalid)
     {
         <span id="@_errorId" class="sgc-error">@(!string.IsNullOrEmpty(ErrorText) ? ErrorText : ValidationMessages.FirstOrDefault())</span>
@@ -96,6 +100,12 @@
         }
     }
 
+    /// <summary>Callback invoked when the selected value changes. Fires after the value has been updated.</summary>
+    [Parameter] public EventCallback<TValue> OnChange { get; set; }
+
+    /// <summary>Custom HTML name attribute for the radio inputs. Useful for form integration with native HTML forms.</summary>
+    [Parameter] public string? Name { get; set; }
+
     /// <summary>Gets or sets the collection of radio button options to display.</summary>
     [Parameter] public IEnumerable<RadioOption<TValue>> Options { get; set; } = Array.Empty<RadioOption<TValue>>();
 
@@ -116,6 +126,9 @@
 
     /// <summary>Hint text shown below the radio group.</summary>
     [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Small help text displayed between the radio group and the error/hint text.</summary>
+    [Parameter] public string? HelpText { get; set; }
 
     /// <summary>Override error text displayed below the radio group. Takes precedence over EditContext validation messages.</summary>
     [Parameter] public string? ErrorText { get; set; }
@@ -174,10 +187,11 @@
         }
     }
 
-    private Task SelectAsync(TValue? value)
+    private async Task SelectAsync(TValue? value)
     {
-        if (ReadOnly) return Task.CompletedTask;
-        return SetValueAsync(value);
+        if (ReadOnly) return;
+        await SetValueAsync(value);
+        if (value is not null && OnChange.HasDelegate) await OnChange.InvokeAsync(value);
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
