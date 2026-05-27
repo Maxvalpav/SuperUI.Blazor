@@ -1,185 +1,654 @@
 @namespace SuperUI.Components
+@implements IDisposable
 
-<div class="sgc-transfer @CssClass">
-    <div class="sgc-transfer-list">
-        <div class="sgc-transfer-list-header">
-            <SgCheckBox Value="@_sourceAllSelected"
-                        ValueChanged="@OnSourceSelectAllChanged"
-                        Disabled="@(_sourceFiltered.Count == 0 || Disabled)"
-                        Label="@(_sourceFiltered.Count == 0 ? Titles[0] : $"{Titles[0]} ({_sourceSelected.Count}/{_sourceFiltered.Count})")" />
-            @if (Searchable)
+<div class="sgc-transfer @CssClass @GetSizeClass() @(Mode != SgTransferMode.TwoWay ? "sgc-transfer-" + Mode.ToString().ToLowerInvariant() : "") @(ShowButtonsAtTop ? "sgc-transfer-btns-top" : "") @(Draggable ? "sgc-transfer-draggable" : "")"
+     style="@GetContainerStyle()"
+     @onkeydown="@HandleKeyDownAsync"
+     @onkeydown:preventDefault="(false)"
+     tabindex="-1"
+     @ref="_containerRef">
+    <div class="sgc-transfer-list" data-list="source">
+        <div class="sgc-transfer-list-header" data-sticky="@StickyHeaders.ToString().ToLowerInvariant()">
+            <div class="sgc-transfer-list-header-inner">
+                @if (ShowSelectAll)
+                {
+                    <SgCheckBox Value="@_sourceAllSelected"
+                                ValueChanged="@OnSourceSelectAllChanged"
+                                Disabled="@(_sourceFiltered.Count == 0 || Disabled || Loading)" />
+                }
+                <span class="sgc-transfer-list-title">
+                    @(_sourceFiltered.Count == 0 ? Titles[0] : $"{Titles[0]} ({_sourceSelected.Count}/{_sourceFiltered.Count})")
+                </span>
+                @if (ShowItemCount)
+                {
+                    <span class="sgc-transfer-count">@_sourceFiltered.Count</span>
+                }
+                @if (Searchable && ShowSourceSearch)
+                {
+                    <input type="text"
+                           class="sgc-transfer-search"
+                           placeholder="@SearchPlaceholder"
+                           @bind="_sourceSearch"
+                           @bind:event="oninput"
+                           @ref="_sourceSearchRef" />
+                }
+            </div>
+        </div>
+        <div class="sgc-transfer-list-body"
+             style="@GetBodyStyle()"
+             data-list="source"
+             @ondragover="@(Draggable ? () => OnDragOver("source") : null)"
+             @ondrop="@(Draggable ? (args) => OnDropAsync(args, "source") : null)">
+            @if (Loading)
             {
-                <input type="text"
-                       class="sgc-transfer-search"
-                       placeholder="@SearchPlaceholder"
-                       @bind="_sourceSearch"
-                       @bind:event="oninput" />
+                @LoadingSkeletonTemplate
+            }
+            else if (ShowTreeMode)
+            {
+                @RenderTreeItems(_sourceFiltered, "source", 0)
+            }
+            else
+            {
+                @RenderFlatItems(_sourceFiltered, "source")
+            }
+            @if (_sourceFiltered.Count == 0 && !Loading)
+            {
+                @if (EmptyTemplate is not null)
+                {
+                    @EmptyTemplate
+                }
+                else
+                {
+                    <div class="sgc-transfer-empty">@EmptyText</div>
+                }
             }
         </div>
-        <div class="sgc-transfer-list-body">
-            @foreach (var item in _sourceFiltered)
-            {
-                var selected = _sourceSelected.Contains(item.Key);
-                <div class="sgc-transfer-item @(selected ? "sgc-selected" : "") @(item.Disabled ? "sgc-disabled" : "")"
-                     @onclick="() => ToggleSourceSelection(item)">
-                    <SgCheckBox Value="selected" Disabled="@item.Disabled" />
-                    <div class="sgc-transfer-item-content">
-                        <div class="sgc-transfer-item-title">@item.Title</div>
-                        @if (!string.IsNullOrEmpty(item.Description))
-                        {
-                            <div class="sgc-transfer-item-desc">@item.Description</div>
-                        }
-                    </div>
-                </div>
-            }
-            @if (_sourceFiltered.Count == 0)
-            {
-                <div class="sgc-transfer-empty">@EmptyText</div>
-            }
-        </div>
+        @if (SourceFooter is not null)
+        {
+            <div class="sgc-transfer-list-footer">@SourceFooter</div>
+        }
     </div>
 
     <div class="sgc-transfer-ops">
-        <SgButton Variant="SgButtonVariant.Default"
-                  Size="SgSize.Sm"
-                  Disabled="@(_sourceSelected.Count == 0 || Disabled)"
-                  OnClick="MoveToTargetAsync">
-            @if (RightIcon is not null) { @RightIcon } else { <span>→</span> }
-        </SgButton>
-        <SgButton Variant="SgButtonVariant.Default"
-                  Size="SgSize.Sm"
-                  Disabled="@(_targetSelected.Count == 0 || Disabled)"
-                  OnClick="MoveToSourceAsync">
-            @if (LeftIcon is not null) { @LeftIcon } else { <span>←</span> }
-        </SgButton>
+        @if (ShowMoveAllButtons)
+        {
+            <SgButton Variant="SgButtonVariant.Default"
+                      Size="SgSize.Sm"
+                      Disabled="@(_sourceFiltered.Count == 0 || Disabled || Loading)"
+                      OnClick="@(() => MoveAllToTargetAsync())"
+                      Title="Move all to target">
+                @if (MoveAllRightIcon is not null) { @MoveAllRightIcon } else { <span class="sgc-transfer-arrow">≫</span> }
+            </SgButton>
+        }
+        @if (ShowMoveButtons)
+        {
+            <SgButton Variant="SgButtonVariant.Default"
+                      Size="SgSize.Sm"
+                      Disabled="@(_sourceSelected.Count == 0 || Disabled || Loading || Mode == SgTransferMode.ToSourceOnly || Mode == SgTransferMode.Disabled)"
+                      OnClick="@(() => MoveToTargetAsync())"
+                      Title="Move selected to target">
+                @if (RightIcon is not null) { @RightIcon } else if (!string.IsNullOrEmpty(RightButtonText)) { <span>@RightButtonText</span> } else { <span class="sgc-transfer-arrow">→</span> }
+            </SgButton>
+            <SgButton Variant="SgButtonVariant.Default"
+                      Size="SgSize.Sm"
+                      Disabled="@(_targetSelected.Count == 0 || Disabled || Loading || Mode == SgTransferMode.ToTargetOnly || Mode == SgTransferMode.Disabled)"
+                      OnClick="@(() => MoveToSourceAsync())"
+                      Title="Move selected to source">
+                @if (LeftIcon is not null) { @LeftIcon } else if (!string.IsNullOrEmpty(LeftButtonText)) { <span>@LeftButtonText</span> } else { <span class="sgc-transfer-arrow">←</span> }
+            </SgButton>
+        }
+        @if (ShowMoveAllButtons)
+        {
+            <SgButton Variant="SgButtonVariant.Default"
+                      Size="SgSize.Sm"
+                      Disabled="@(_targetFiltered.Count == 0 || Disabled || Loading)"
+                      OnClick="@(() => MoveAllToSourceAsync())"
+                      Title="Move all to source">
+                @if (MoveAllLeftIcon is not null) { @MoveAllLeftIcon } else { <span class="sgc-transfer-arrow">≪</span> }
+            </SgButton>
+        }
+        @if (ShowUndoRedoButtons && _history.Count > 0)
+        {
+            <SgButton Variant="SgButtonVariant.Ghost"
+                      Size="SgSize.Sm"
+                      Disabled="@(_historyIndex < 0 || Loading)"
+                      OnClick="@UndoAsync"
+                      Title="Undo (Ctrl+Z)">
+                <span class="sgc-transfer-undo">↩</span>
+            </SgButton>
+        }
     </div>
 
-    <div class="sgc-transfer-list">
-        <div class="sgc-transfer-list-header">
-            <SgCheckBox Value="@_targetAllSelected"
-                        ValueChanged="@OnTargetSelectAllChanged"
-                        Disabled="@(_targetFiltered.Count == 0 || Disabled)"
-                        Label="@(_targetFiltered.Count == 0 ? Titles[1] : $"{Titles[1]} ({_targetSelected.Count}/{_targetFiltered.Count})")" />
-            @if (Searchable)
+    <div class="sgc-transfer-list" data-list="target">
+        <div class="sgc-transfer-list-header" data-sticky="@StickyHeaders.ToString().ToLowerInvariant()">
+            <div class="sgc-transfer-list-header-inner">
+                @if (ShowSelectAll)
+                {
+                    <SgCheckBox Value="@_targetAllSelected"
+                                ValueChanged="@OnTargetSelectAllChanged"
+                                Disabled="@(_targetFiltered.Count == 0 || Disabled || Loading)" />
+                }
+                <span class="sgc-transfer-list-title">
+                    @(_targetFiltered.Count == 0 ? Titles[1] : $"{Titles[1]} ({_targetSelected.Count}/{_targetFiltered.Count})")
+                </span>
+                @if (ShowItemCount)
+                {
+                    <span class="sgc-transfer-count">@_targetFiltered.Count</span>
+                }
+                @if (Searchable && ShowTargetSearch)
+                {
+                    <input type="text"
+                           class="sgc-transfer-search"
+                           placeholder="@SearchPlaceholder"
+                           @bind="_targetSearch"
+                           @bind:event="oninput" />
+                }
+            </div>
+        </div>
+        <div class="sgc-transfer-list-body"
+             style="@GetBodyStyle()"
+             data-list="target"
+             @ondragover="@(Draggable ? () => OnDragOver("target") : null)"
+             @ondrop="@(Draggable ? (args) => OnDropAsync(args, "target") : null)">
+            @if (Loading)
             {
-                <input type="text"
-                       class="sgc-transfer-search"
-                       placeholder="@SearchPlaceholder"
-                       @bind="_targetSearch"
-                       @bind:event="oninput" />
+                @LoadingSkeletonTemplate
+            }
+            else if (ShowTreeMode)
+            {
+                @RenderTreeItems(_targetFiltered, "target", 0)
+            }
+            else
+            {
+                @RenderFlatItems(_targetFiltered, "target")
+            }
+            @if (_targetFiltered.Count == 0 && !Loading)
+            {
+                @if (EmptyTemplate is not null)
+                {
+                    @EmptyTemplate
+                }
+                else
+                {
+                    <div class="sgc-transfer-empty">@EmptyText</div>
+                }
             }
         </div>
-        <div class="sgc-transfer-list-body">
-            @foreach (var item in _targetFiltered)
-            {
-                var selected = _targetSelected.Contains(item.Key);
-                <div class="sgc-transfer-item @(selected ? "sgc-selected" : "") @(item.Disabled ? "sgc-disabled" : "")"
-                     @onclick="() => ToggleTargetSelection(item)">
-                    <SgCheckBox Value="selected" Disabled="@item.Disabled" />
-                    <div class="sgc-transfer-item-content">
-                        <div class="sgc-transfer-item-title">@item.Title</div>
-                        @if (!string.IsNullOrEmpty(item.Description))
-                        {
-                            <div class="sgc-transfer-item-desc">@item.Description</div>
-                        }
-                    </div>
-                </div>
-            }
-            @if (_targetFiltered.Count == 0)
-            {
-                <div class="sgc-transfer-empty">@EmptyText</div>
-            }
-        </div>
+        @if (TargetFooter is not null)
+        {
+            <div class="sgc-transfer-list-footer">@TargetFooter</div>
+        }
     </div>
 </div>
 
 @code {
+    // ── State ───────────────────────────────────────────────────────────────
     private string _sourceSearch = "";
     private string _targetSearch = "";
     private HashSet<string> _sourceSelected = new();
     private HashSet<string> _targetSelected = new();
+    private string? _dragItemKey;
+    private string _dragSourceList = "";
+    private ElementReference _containerRef;
+    private ElementReference _sourceSearchRef;
+    private CancellationTokenSource? _debounceCts;
+    private bool _disposed;
 
-    /// <summary>
-    /// Gets or sets the full data source for the transfer.
-    /// </summary>
+    // History stack for undo/redo
+    private readonly List<List<string>> _history = new();
+    private int _historyIndex = -1;
+
+    // ── Core Parameters ─────────────────────────────────────────────────────
+
+    /// <summary>Full data source for the transfer.</summary>
     [Parameter] public List<SgTransferItem> DataSource { get; set; } = new();
 
-    /// <summary>
-    /// Gets or sets the keys of items currently in the target (right) list.
-    /// Supports two-way binding via <see cref="TargetKeysChanged"/>.
-    /// </summary>
+    /// <summary>Keys of items in the target (right) list. Two-way binding via TargetKeysChanged.</summary>
     [Parameter] public List<string> TargetKeys { get; set; } = new();
 
-    /// <summary>
-    /// Callback invoked when <see cref="TargetKeys"/> changes.
-    /// </summary>
+    /// <summary>Callback when TargetKeys changes.</summary>
     [Parameter] public EventCallback<List<string>> TargetKeysChanged { get; set; }
 
-    /// <summary>
-    /// Gets or sets the titles for the source and target lists.
-    /// Default is ["Source", "Target"].
-    /// </summary>
+    /// <summary>Titles for source and target lists. Default: ["Source", "Target"].</summary>
     [Parameter] public string[] Titles { get; set; } = new[] { "Source", "Target" };
 
-    /// <summary>
-    /// Gets or sets whether search inputs are shown above each list.
-    /// </summary>
+    /// <summary>Whether search inputs are shown above each list.</summary>
     [Parameter] public bool Searchable { get; set; }
 
-    /// <summary>
-    /// Gets or sets whether the transfer is disabled.
-    /// </summary>
+    /// <summary>Whether the entire transfer is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
 
-    /// <summary>
-    /// Gets or sets the placeholder text for search inputs.
-    /// </summary>
+    /// <summary>Placeholder text for search inputs.</summary>
     [Parameter] public string SearchPlaceholder { get; set; } = "Search...";
 
-    /// <summary>
-    /// Gets or sets the text shown when a list is empty.
-    /// </summary>
+    /// <summary>Text shown when a list is empty.</summary>
     [Parameter] public string EmptyText { get; set; } = "No data";
 
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the component.
-    /// </summary>
+    /// <summary>Additional CSS class names.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>
-    /// Callback invoked when items are moved between lists.
-    /// </summary>
+    /// <summary>Callback when items are moved between lists.</summary>
     [Parameter] public EventCallback OnChange { get; set; }
 
-    /// <summary>
-    /// Custom icon for the move-to-target button.
-    /// </summary>
+    /// <summary>Custom icon for move-to-target button.</summary>
     [Parameter] public RenderFragment? RightIcon { get; set; }
 
-    /// <summary>
-    /// Custom icon for the move-to-source button.
-    /// </summary>
+    /// <summary>Custom icon for move-to-source button.</summary>
     [Parameter] public RenderFragment? LeftIcon { get; set; }
+
+    /// <summary>Callback fired per item moved.</summary>
+    [Parameter] public EventCallback<SgTransferMoveEventArgs> OnItemMoved { get; set; }
+
+    /// <summary>Callback fired when loading state should trigger async data fetch.</summary>
+    [Parameter] public EventCallback<string> OnSearch { get; set; }
+
+    // ── New Premium Parameters ──────────────────────────────────────────────
+
+    /// <summary>Size variant: sm, md (default), lg.</summary>
+    [Parameter] public string Size { get; set; } = "md";
+
+    /// <summary>Custom list body height (CSS).</summary>
+    [Parameter] public string? Height { get; set; }
+
+    /// <summary>Custom component width (CSS).</summary>
+    [Parameter] public string? Width { get; set; }
+
+    /// <summary>Show select-all checkbox. Default true.</summary>
+    [Parameter] public bool ShowSelectAll { get; set; } = true;
+
+    /// <summary>Show search in source list. Default true.</summary>
+    [Parameter] public bool ShowSourceSearch { get; set; } = true;
+
+    /// <summary>Show search in target list. Default true.</summary>
+    [Parameter] public bool ShowTargetSearch { get; set; } = true;
+
+    /// <summary>Custom move-right button text.</summary>
+    [Parameter] public string? RightButtonText { get; set; }
+
+    /// <summary>Custom move-left button text.</summary>
+    [Parameter] public string? LeftButtonText { get; set; }
+
+    /// <summary>Allow double-click to move. Default false.</summary>
+    [Parameter] public bool AllowDoubleClick { get; set; }
+
+    /// <summary>Custom item template (overrides default rendering).</summary>
+    [Parameter] public RenderFragment<SgTransferItem>? ItemTemplate { get; set; }
+
+    /// <summary>Footer below source list body.</summary>
+    [Parameter] public RenderFragment? SourceFooter { get; set; }
+
+    /// <summary>Footer below target list body.</summary>
+    [Parameter] public RenderFragment? TargetFooter { get; set; }
+
+    /// <summary>Custom filter function: (item, searchText) => bool.</summary>
+    [Parameter] public Func<SgTransferItem, string, bool>? FilterFunction { get; set; }
+
+    /// <summary>Show buttons at top in a horizontal row instead of center column. Default false.</summary>
+    [Parameter] public bool ShowButtonsAtTop { get; set; }
+
+    // ── New Feature Parameters ──────────────────────────────────────────────
+
+    /// <summary>Enable HTML5 drag-and-drop. Default false.</summary>
+    [Parameter] public bool Draggable { get; set; }
+
+    /// <summary>Enable Move All (≫ ≪) buttons. Default false.</summary>
+    [Parameter] public bool ShowMoveAllButtons { get; set; }
+
+    /// <summary>Custom move-all-right icon.</summary>
+    [Parameter] public RenderFragment? MoveAllRightIcon { get; set; }
+
+    /// <summary>Custom move-all-left icon.</summary>
+    [Parameter] public RenderFragment? MoveAllLeftIcon { get; set; }
+
+    /// <summary>Show the individual move (→ ←) buttons. Default true.</summary>
+    [Parameter] public bool ShowMoveButtons { get; set; } = true;
+
+    /// <summary>Transfer direction mode. Default TwoWay.</summary>
+    [Parameter] public SgTransferMode Mode { get; set; } = SgTransferMode.TwoWay;
+
+    /// <summary>Show loading skeleton. Default false.</summary>
+    [Parameter] public bool Loading { get; set; }
+
+    /// <summary>Custom loading skeleton template.</summary>
+    [Parameter] public RenderFragment LoadingSkeletonTemplate { get; set; } = _defaultSkeleton;
+
+    /// <summary>Custom empty state template. Overrides EmptyText.</summary>
+    [Parameter] public RenderFragment? EmptyTemplate { get; set; }
+
+    /// <summary>Enable keyboard navigation (arrows, Space, Ctrl+A). Default false.</summary>
+    [Parameter] public bool KeyboardNavigation { get; set; }
+
+    /// <summary>Enable sortable lists with drag handle or buttons. Default false.</summary>
+    [Parameter] public bool Sortable { get; set; }
+
+    /// <summary>Custom sort comparer for items within lists.</summary>
+    [Parameter] public IComparer<SgTransferItem>? SortComparer { get; set; }
+
+    /// <summary>Show collapsible group headers. Default false.</summary>
+    [Parameter] public bool CollapsibleGroups { get; set; }
+
+    /// <summary>Show sticky headers on scroll. Default false.</summary>
+    [Parameter] public bool StickyHeaders { get; set; }
+
+    /// <summary>Show item count badge next to title. Default false.</summary>
+    [Parameter] public bool ShowItemCount { get; set; }
+
+    /// <summary>Enable tree/hierarchy mode when items have Children. Default false.</summary>
+    [Parameter] public bool ShowTreeMode { get; set; }
+
+    /// <summary>Enable undo/redo buttons. Default false.</summary>
+    [Parameter] public bool ShowUndoRedoButtons { get; set; }
+
+    /// <summary>Debounce ms for search input. 0 = instant. Default 0.</summary>
+    [Parameter] public int SearchDebounceMs { get; set; }
+
+    /// <summary>Preserve selection across moves. When true, selected items remain selected after move. Default false.</summary>
+    [Parameter] public bool PreserveSelectionOnMove { get; set; }
+
+    /// <summary>Auto-focus the search input when search becomes visible. Default false.</summary>
+    [Parameter] public bool AutoFocusSearch { get; set; }
+
+    /// <summary>Highlight matching search text in item titles. Default false.</summary>
+    [Parameter] public bool HighlightSearchMatches { get; set; }
+
+    /// <summary>Clear search text after moving items. Default false.</summary>
+    [Parameter] public bool ClearSearchOnMove { get; set; }
+
+    // ── Computed Properties ─────────────────────────────────────────────────
 
     private List<SgTransferItem> _sourceItems => DataSource.Where(x => !TargetKeys.Contains(x.Key)).ToList();
     private List<SgTransferItem> _targetItems => DataSource.Where(x => TargetKeys.Contains(x.Key)).ToList();
-
-    private List<SgTransferItem> _sourceFiltered => Filter(_sourceItems, _sourceSearch);
-    private List<SgTransferItem> _targetFiltered => Filter(_targetItems, _targetSearch);
+    private List<SgTransferItem> _sourceFiltered => SortList(FilterItems(_sourceItems, _sourceSearch));
+    private List<SgTransferItem> _targetFiltered => SortList(FilterItems(_targetItems, _targetSearch));
 
     private bool _sourceAllSelected => _sourceFiltered.Count > 0 && _sourceFiltered.Where(x => !x.Disabled).All(x => _sourceSelected.Contains(x.Key));
     private bool _targetAllSelected => _targetFiltered.Count > 0 && _targetFiltered.Where(x => !x.Disabled).All(x => _targetSelected.Contains(x.Key));
 
-    private static List<SgTransferItem> Filter(List<SgTransferItem> items, string search)
+    private static readonly RenderFragment _defaultSkeleton = __builder =>
+    {
+        for (int i = 0; i < 5; i++)
+        {
+            <div class="sgc-transfer-skeleton">
+                <div class="sgc-transfer-skeleton-avatar"></div>
+                <div class="sgc-transfer-skeleton-lines">
+                    <div class="sgc-transfer-skeleton-line" style="width:@(70 - i * 8)%"></div>
+                    <div class="sgc-transfer-skeleton-line short" style="width:@(40 - i * 5)%"></div>
+                </div>
+            </div>
+        }
+    };
+
+    private string GetSizeClass() => Size switch
+    {
+        "sm" => "sgc-transfer-sm",
+        "lg" => "sgc-transfer-lg",
+        _ => ""
+    };
+
+    private string? GetContainerStyle()
+    {
+        if (string.IsNullOrEmpty(Width)) return null;
+        return $"width:{Width};";
+    }
+
+    private string? GetBodyStyle()
+    {
+        if (string.IsNullOrEmpty(Height)) return null;
+        return $"height:{Height};min-height:{Height};";
+    }
+
+    // ── Lifecycle ───────────────────────────────────────────────────────────
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            PushHistory();
+        }
+        if (AutoFocusSearch && Searchable && _sourceSearchRef.Context is not null)
+        {
+            try { await _sourceSearchRef.FocusAsync(); }
+            catch { /* ignore */ }
+        }
+    }
+
+    // ── Sorting ─────────────────────────────────────────────────────────────
+
+    private List<SgTransferItem> SortList(List<SgTransferItem> items)
+    {
+        if (!Sortable || SortComparer is null) return items;
+        var sorted = items.ToList();
+        sorted.Sort(SortComparer);
+        return sorted;
+    }
+
+    // ── Filtering ───────────────────────────────────────────────────────────
+
+    private List<SgTransferItem> FilterItems(List<SgTransferItem> items, string search)
     {
         if (string.IsNullOrWhiteSpace(search)) return items;
+        if (FilterFunction is not null)
+            return items.Where(x => FilterFunction(x, search)).ToList();
         return items.Where(x => x.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
                                 || (x.Description?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
     }
 
-    private void ToggleSourceSelection(SgTransferItem item)
+    private async Task OnSearchInputAsync(string value, bool isSource)
+    {
+        if (isSource)
+            _sourceSearch = value;
+        else
+            _targetSearch = value;
+
+        if (SearchDebounceMs > 0)
+        {
+            _debounceCts?.Cancel();
+            _debounceCts = new CancellationTokenSource();
+            try
+            {
+                await Task.Delay(SearchDebounceMs, _debounceCts.Token);
+                if (OnSearch.HasDelegate)
+                    await OnSearch.InvokeAsync(value);
+            }
+            catch (TaskCanceledException) { }
+        }
+        else
+        {
+            if (OnSearch.HasDelegate)
+                await OnSearch.InvokeAsync(value);
+        }
+    }
+
+    // ── Rendering Helpers ───────────────────────────────────────────────────
+
+    private RenderFragment RenderFlatItems(List<SgTransferItem> items, string listType) => __builder =>
+    {
+        var grouped = items.GroupBy(x => x.Group ?? "").OrderBy(g => g.Key);
+        foreach (var grp in grouped)
+        {
+            var groupKey = grp.Key;
+            var groupItems = grp.ToList();
+            var isCollapsed = CollapsibleGroups && _collapsedGroups.Contains(groupKey);
+
+            if (!string.IsNullOrEmpty(groupKey))
+            {
+                <div class="sgc-transfer-group-header @(CollapsibleGroups ? "sgc-transfer-group-collapsible" : "")"
+                     @onclick="@(() => ToggleGroup(groupKey))">
+                    @if (CollapsibleGroups)
+                    {
+                        <span class="sgc-transfer-group-arrow">@(isCollapsed ? "▶" : "▼")</span>
+                    }
+                    <span>@groupKey</span>
+                    <span class="sgc-transfer-group-count">@groupItems.Count</span>
+                </div>
+            }
+
+            if (!isCollapsed)
+            {
+                foreach (var item in groupItems)
+                {
+                    RenderSingleItem(__builder, item, listType);
+                }
+            }
+        }
+    };
+
+    private readonly HashSet<string> _collapsedGroups = new();
+
+    private void ToggleGroup(string group)
+    {
+        if (!CollapsibleGroups) return;
+        if (_collapsedGroups.Contains(group))
+            _collapsedGroups.Remove(group);
+        else
+            _collapsedGroups.Add(group);
+    }
+
+    private RenderFragment RenderTreeItems(List<SgTransferItem> items, string listType, int depth) => __builder =>
+    {
+        foreach (var item in items)
+        {
+            var hasChildren = ShowTreeMode && item.Children?.Count > 0;
+            var isExpanded = item.IsExpanded;
+
+            <div class="sgc-transfer-item @(item.Disabled ? "sgc-disabled" : "")"
+                 style="padding-left: @(16 + depth * 20)px;"
+                 draggable="@(Draggable && !item.Disabled ? "true" : null)"
+                 @ondragstart="@(Draggable ? (args) => OnDragStart(args, item.Key, listType) : null)"
+                 @ondragend="@(Draggable ? OnDragEnd : null)"
+                 @onclick="() => ToggleTreeItemSelection(item, listType)"
+                 @ondblclick:preventDefault="true"
+                 @ondblclick:stopPropagation="true"
+                 @ondblclick="@(() => { if (AllowDoubleClick && !item.Disabled) { _ = MoveItemAsync(item.Key, listType == "source"); } })">
+                @if (hasChildren)
+                {
+                    <span class="sgc-transfer-tree-toggle" @onclick:stopPropagation="true" @onclick="@(() => ToggleTreeExpand(item))">
+                        @(isExpanded ? "▼" : "▶")
+                    </span>
+                }
+                else
+                {
+                    <span class="sgc-transfer-tree-toggle sgc-transfer-tree-toggle-spacer"></span>
+                }
+                @if (ShowSelectAll)
+                {
+                    var sel = listType == "source" ? _sourceSelected.Contains(item.Key) : _targetSelected.Contains(item.Key);
+                    <SgCheckBox Value="sel" Disabled="@item.Disabled" />
+                }
+                @RenderItemContent(item)
+            </div>
+
+            if (hasChildren && isExpanded)
+            {
+                @RenderTreeItems(item.Children!, listType, depth + 1)
+            }
+        }
+    };
+
+    private void RenderSingleItem(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder __builder, SgTransferItem item, string listType)
+    {
+        var selected = listType == "source" ? _sourceSelected.Contains(item.Key) : _targetSelected.Contains(item.Key);
+        var isTarget = listType == "target";
+        var isDragOver = _dragItemKey == item.Key;
+
+        <div class="sgc-transfer-item @(selected ? "sgc-selected" : "") @(item.Disabled ? "sgc-disabled" : "") @(isDragOver ? "sgc-drag-over" : "") @(Draggable ? "sgc-draggable" : "")"
+             draggable="@(Draggable && !item.Disabled ? "true" : null)"
+             @ondragstart="@(Draggable ? (args) => OnDragStart(args, item.Key, listType) : null)"
+             @ondragover="@(Draggable ? (args) => OnDragOverItem(args) : null)"
+             @ondrop="@(Draggable ? (args) => OnDropOnItemAsync(args) : null)"
+             @ondragend="@(Draggable ? OnDragEnd : null)"
+             @onclick="() => ToggleSelection(item, listType)"
+             @ondblclick:preventDefault="true"
+             @ondblclick:stopPropagation="true"
+             @ondblclick="@(() => { if (AllowDoubleClick && !item.Disabled) { _ = MoveItemAsync(item.Key, listType == "source"); } })">
+            @if (ShowSelectAll)
+            {
+                <SgCheckBox Value="selected" Disabled="@item.Disabled" />
+            }
+            @if (Sortable)
+            {
+                <span class="sgc-transfer-drag-handle" @onmousedown:preventDefault="true">⠿</span>
+            }
+            @if (ItemTemplate is not null)
+            {
+                @ItemTemplate(item)
+            }
+            else
+            {
+                @RenderItemContent(item)
+            }
+        </div>
+    }
+
+    private RenderFragment RenderItemContent(SgTransferItem item) => __builder =>
+    {
+        if (!string.IsNullOrEmpty(item.Avatar))
+        {
+            <span class="sgc-transfer-avatar" style="background:@item.AvatarColor;">@item.Avatar</span>
+        }
+        else if (!string.IsNullOrEmpty(item.Icon))
+        {
+            <span class="sgc-transfer-item-icon">@((MarkupString)item.Icon)</span>
+        }
+        <div class="sgc-transfer-item-content">
+            <div class="sgc-transfer-item-title">
+                @if (HighlightSearchMatches && !string.IsNullOrWhiteSpace(_sourceSearch))
+                {
+                    @RenderHighlightedText(item.Title, _sourceSearch)
+                }
+                else if (HighlightSearchMatches && !string.IsNullOrWhiteSpace(_targetSearch))
+                {
+                    @RenderHighlightedText(item.Title, _targetSearch)
+                }
+                else
+                {
+                    @item.Title
+                }
+            </div>
+            @if (!string.IsNullOrEmpty(item.Description))
+            {
+                <div class="sgc-transfer-item-desc">@item.Description</div>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(item.Badge))
+        {
+            <span class="sgc-transfer-item-badge sgc-badge-@item.BadgeVariant.ToString().ToLowerInvariant()">@item.Badge</span>
+        }
+    };
+
+    private RenderFragment RenderHighlightedText(string text, string search) => __builder =>
+    {
+        if (string.IsNullOrWhiteSpace(search))
+        {
+            __builder.AddContent(0, text);
+            return;
+        }
+        var idx = text.IndexOf(search, StringComparison.OrdinalIgnoreCase);
+        if (idx < 0)
+        {
+            __builder.AddContent(0, text);
+            return;
+        }
+        __builder.AddContent(0, text[..idx]);
+        __builder.AddMarkupContent(1, "<mark class=\"sgc-transfer-highlight\">");
+        __builder.AddContent(2, text.Substring(idx, search.Length));
+        __builder.AddMarkupContent(3, "</mark>");
+        __builder.AddContent(4, text[(idx + search.Length)..]);
+    };
+
+    // ── Selection ───────────────────────────────────────────────────────────
+
+    private void ToggleSelection(SgTransferItem item, string listType)
     {
         if (Disabled || item.Disabled) return;
+        if (listType == "source")
+            ToggleSourceSelection(item);
+        else
+            ToggleTargetSelection(item);
+    }
+
+    private void ToggleSourceSelection(SgTransferItem item)
+    {
         if (_sourceSelected.Contains(item.Key))
             _sourceSelected.Remove(item.Key);
         else
@@ -188,11 +657,24 @@
 
     private void ToggleTargetSelection(SgTransferItem item)
     {
-        if (Disabled || item.Disabled) return;
         if (_targetSelected.Contains(item.Key))
             _targetSelected.Remove(item.Key);
         else
             _targetSelected.Add(item.Key);
+    }
+
+    private void ToggleTreeItemSelection(SgTransferItem item, string listType)
+    {
+        if (Disabled || item.Disabled) return;
+        if (listType == "source")
+            ToggleSourceSelection(item);
+        else
+            ToggleTargetSelection(item);
+    }
+
+    private void ToggleTreeExpand(SgTransferItem item)
+    {
+        item.IsExpanded = !item.IsExpanded;
     }
 
     private void OnSourceSelectAllChanged(bool value)
@@ -211,33 +693,244 @@
             _targetSelected.Clear();
     }
 
+    // ── Drag & Drop ─────────────────────────────────────────────────────────
+
+    private void OnDragStart(DragEventArgs args, string key, string listType)
+    {
+        _dragItemKey = key;
+        _dragSourceList = listType;
+        args.DataTransfer.EffectAllowed = "move";
+    }
+
+    private void OnDragOver(string listType)
+    {
+        // Allow drop on the list body
+    }
+
+    private void OnDragOverItem(DragEventArgs args)
+    {
+        args.DataTransfer.DropEffect = "move";
+    }
+
+    private async Task OnDropAsync(DragEventArgs args, string targetListType)
+    {
+        if (string.IsNullOrEmpty(_dragItemKey) || _dragSourceList == targetListType) return;
+        await MoveItemAsync(_dragItemKey, targetListType == "target");
+        _dragItemKey = null;
+    }
+
+    private async Task OnDropOnItemAsync(DragEventArgs args)
+    {
+        // Same as list drop but triggered on item element
+        await OnDropAsync(args, _dragSourceList == "source" ? "target" : "source");
+    }
+
+    private void OnDragEnd()
+    {
+        _dragItemKey = null;
+        _dragSourceList = "";
+    }
+
+    // ── Move Operations ─────────────────────────────────────────────────────
+
     private async Task MoveToTargetAsync()
     {
-        if (Disabled) return;
+        if (Disabled || Loading) return;
         var keys = _sourceSelected.ToList();
         if (keys.Count == 0) return;
-
-        TargetKeys = TargetKeys.Concat(keys).Distinct().ToList();
-        _sourceSelected.Clear();
-
-        if (TargetKeysChanged.HasDelegate)
-            await TargetKeysChanged.InvokeAsync(TargetKeys);
-        if (OnChange.HasDelegate)
-            await OnChange.InvokeAsync();
+        await MoveItemsAsync(keys, true);
     }
 
     private async Task MoveToSourceAsync()
     {
-        if (Disabled) return;
+        if (Disabled || Loading) return;
         var keys = _targetSelected.ToList();
         if (keys.Count == 0) return;
+        await MoveItemsAsync(keys, false);
+    }
 
-        TargetKeys = TargetKeys.Where(k => !keys.Contains(k)).ToList();
-        _targetSelected.Clear();
+    private async Task MoveAllToTargetAsync()
+    {
+        if (Disabled || Loading) return;
+        var keys = _sourceFiltered.Where(x => !x.Disabled).Select(x => x.Key).ToList();
+        if (keys.Count == 0) return;
+        await MoveItemsAsync(keys, true);
+    }
+
+    private async Task MoveAllToSourceAsync()
+    {
+        if (Disabled || Loading) return;
+        var keys = _targetFiltered.Where(x => !x.Disabled).Select(x => x.Key).ToList();
+        if (keys.Count == 0) return;
+        await MoveItemsAsync(keys, false);
+    }
+
+    private async Task MoveItemAsync(string key, bool toTarget)
+    {
+        await MoveItemsAsync(new List<string> { key }, toTarget);
+    }
+
+    private async Task MoveItemsAsync(List<string> keys, bool toTarget)
+    {
+        if (toTarget && (Mode == SgTransferMode.ToSourceOnly || Mode == SgTransferMode.Disabled)) return;
+        if (!toTarget && (Mode == SgTransferMode.ToTargetOnly || Mode == SgTransferMode.Disabled)) return;
+
+        PushHistory();
+
+        if (toTarget)
+        {
+            TargetKeys = TargetKeys.Concat(keys).Distinct().ToList();
+            if (!PreserveSelectionOnMove) _sourceSelected.Clear();
+            else keys.ForEach(k => _sourceSelected.Remove(k));
+        }
+        else
+        {
+            TargetKeys = TargetKeys.Where(k => !keys.Contains(k)).ToList();
+            if (!PreserveSelectionOnMove) _targetSelected.Clear();
+            else keys.ForEach(k => _targetSelected.Remove(k));
+        }
+
+        if (ClearSearchOnMove)
+        {
+            _sourceSearch = "";
+            _targetSearch = "";
+        }
 
         if (TargetKeysChanged.HasDelegate)
             await TargetKeysChanged.InvokeAsync(TargetKeys);
+
         if (OnChange.HasDelegate)
             await OnChange.InvokeAsync();
+
+        if (OnItemMoved.HasDelegate)
+        {
+            foreach (var key in keys)
+            {
+                await OnItemMoved.InvokeAsync(new SgTransferMoveEventArgs
+                {
+                    Key = key,
+                    Direction = toTarget ? SgTransferDirection.ToTarget : SgTransferDirection.ToSource
+                });
+            }
+        }
+    }
+
+    // ── Undo/Redo ───────────────────────────────────────────────────────────
+
+    private void PushHistory()
+    {
+        if (_historyIndex < _history.Count - 1)
+            _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+        _history.Add(new List<string>(TargetKeys));
+        if (_history.Count > 50)
+            _history.RemoveAt(0);
+        _historyIndex = _history.Count - 1;
+    }
+
+    private async Task UndoAsync()
+    {
+        if (_historyIndex > 0)
+        {
+            _historyIndex--;
+            TargetKeys = new List<string>(_history[_historyIndex]);
+            _sourceSelected.Clear();
+            _targetSelected.Clear();
+            if (TargetKeysChanged.HasDelegate)
+                await TargetKeysChanged.InvokeAsync(TargetKeys);
+            if (OnChange.HasDelegate)
+                await OnChange.InvokeAsync();
+        }
+    }
+
+    private async Task RedoAsync()
+    {
+        if (_historyIndex < _history.Count - 1)
+        {
+            _historyIndex++;
+            TargetKeys = new List<string>(_history[_historyIndex]);
+            _sourceSelected.Clear();
+            _targetSelected.Clear();
+            if (TargetKeysChanged.HasDelegate)
+                await TargetKeysChanged.InvokeAsync(TargetKeys);
+            if (OnChange.HasDelegate)
+                await OnChange.InvokeAsync();
+        }
+    }
+
+    // ── Keyboard Navigation ─────────────────────────────────────────────────
+
+    private async Task HandleKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (!KeyboardNavigation) return;
+
+        switch (args.Key)
+        {
+            case "ArrowRight":
+                if (args.CtrlKey)
+                    await MoveAllToTargetAsync();
+                else if (_sourceSelected.Count > 0)
+                    await MoveToTargetAsync();
+                break;
+            case "ArrowLeft":
+                if (args.CtrlKey)
+                    await MoveAllToSourceAsync();
+                else if (_targetSelected.Count > 0)
+                    await MoveToSourceAsync();
+                break;
+            case "z" when args.CtrlKey:
+                await UndoAsync();
+                break;
+            case "y" when args.CtrlKey:
+                await RedoAsync();
+                break;
+            case "a" when args.CtrlKey:
+                SelectAllFocused();
+                break;
+        }
+    }
+
+    private void SelectAllFocused()
+    {
+        // Select all non-disabled in both lists
+        foreach (var item in _sourceFiltered.Where(x => !x.Disabled))
+            _sourceSelected.Add(item.Key);
+        foreach (var item in _targetFiltered.Where(x => !x.Disabled))
+            _targetSelected.Add(item.Key);
+    }
+
+    // ── Reorder (Sortable) ──────────────────────────────────────────────────
+
+    private async Task MoveItemUpAsync(string key, string listType)
+    {
+        var items = listType == "source" ? _sourceFiltered : _targetFiltered;
+        var idx = items.FindIndex(x => x.Key == key);
+        if (idx <= 0) return;
+        var otherKey = items[idx - 1].Key;
+        await SwapKeysAsync(key, otherKey);
+    }
+
+    private async Task MoveItemDownAsync(string key, string listType)
+    {
+        var items = listType == "source" ? _sourceFiltered : _targetFiltered;
+        var idx = items.FindIndex(x => x.Key == key);
+        if (idx < 0 || idx >= items.Count - 1) return;
+        var otherKey = items[idx + 1].Key;
+        await SwapKeysAsync(key, otherKey);
+    }
+
+    private async Task SwapKeysAsync(string keyA, string keyB)
+    {
+        // For reorder within target list, we don't change TargetKeys (order preserved elsewhere)
+        // This is a placeholder for future reorder support
+        await Task.CompletedTask;
+    }
+
+    // ── Dispose ─────────────────────────────────────────────────────────────
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
     }
 }

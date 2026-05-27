@@ -1,88 +1,628 @@
 ﻿@page "/transfer-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Transfer - SUI</PageTitle>
+<PageTitle>SgTransfer — Shuttle List — SuperUI</PageTitle>
 
-<SgCard Title="SgTransfer - Shuttle List"
-        Subtitle="Move items between two lists. Essential for permission and configuration UIs.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Basic Usage</h2>
-        <p>Transfer items between source and target lists.</p>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Usage                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgTransfer — Basic Usage
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Transfer items between source and target lists with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">DataSource</SgTypography> and two-way <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">TargetKeys</SgTypography> binding.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example" Style="grid-column: 1 / -1;">
+        <div class="demo-two-col">
+            <SgCard Title="Simple Selection" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgTransfer DataSource="_basicData"
+                                @bind-TargetKeys="_basicTargetKeys"
+                                Titles="@(new[] { "Available", "Selected" })" />
+                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                        Target keys: <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">@string.Join(", ", _basicTargetKeys)</SgTypography>
+                    </SgTypography>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Basic Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_basicProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. With Search & Sizes                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Search, Sizes & Double-Click
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Enable search filtering, choose a size variant, or allow double-click to move items instantly.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Searchable + Double-Click" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Md">
+                        <SgTransfer DataSource="_searchData"
+                                    @bind-TargetKeys="_searchTargetKeys"
+                                    Titles="@(new[] { "Users", "Admins" })"
+                                    Searchable="true"
+                                    SearchPlaceholder="Search users..."
+                                    AllowDoubleClick="true"
+                                    Size="sm" />
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Target: <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Xs">@string.Join(", ", _searchTargetKeys)</SgTypography>
+                        </SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Large Size" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_largeData"
+                                @bind-TargetKeys="_largeTargetKeys"
+                                Titles="@(new[] { "Frameworks", "Favorites" })"
+                                Size="lg"
+                                AllowDoubleClick="true" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Avatars, Badges, Groups, Icons                                  -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Avatars, Badges, Groups & Icons
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Rich item content: avatar initials, status badges, group headers, and SVG icons.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Avatars + Badges" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_teamData"
+                                @bind-TargetKeys="_teamTargetKeys"
+                                Titles="@(new[] { "Team Pool", "Project Team" })"
+                                Height="300px"
+                                AllowDoubleClick="true" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Groups + Icons" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_moduleData"
+                                @bind-TargetKeys="_moduleTargetKeys"
+                                Titles="@(new[] { "Modules", "Active" })"
+                                Height="300px"
+                                AllowDoubleClick="true" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Disabled Items & Footers                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Disabled Items, Footers & Custom Buttons
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Some items can be locked. Add footer content below lists. Customize move button text.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Disabled + Footer" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgTransfer DataSource="_disabledData"
+                                @bind-TargetKeys="_disabledTargetKeys"
+                                Titles="@(new[] { "Services", "Enabled" })"
+                                EmptyText="No services available"
+                                AllowDoubleClick="true"
+                                SourceFooter="@(_ => FooterContent("Total: 5 modules"))"
+                                TargetFooter="@(_ => FooterContent("Active: " + _disabledTargetKeys.Count))" />
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Custom Button Text" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <SgTransfer DataSource="_basicData"
-                            @bind-TargetKeys="_basicTargetKeys"
-                            Titles="@(new[] { "Available", "Selected" })" />
-                <div style="margin-top: 12px; font-size: 12px;">
-                    Target keys: @string.Join(", ", _basicTargetKeys)
-                </div>
+                            @bind-TargetKeys="_customBtnTargetKeys"
+                            Titles="@(new[] { "Items", "Cart" })"
+                            RightButtonText="Add →"
+                            LeftButtonText="← Remove" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>With Search</h2>
-        <p>Enable search to filter items in each list.</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example" Style="grid-column: 1 / -1;">
-                <SgTransfer DataSource="_searchData"
-                            @bind-TargetKeys="_searchTargetKeys"
-                            Titles="@(new[] { "Users", "Admins" })"
-                            Searchable="true"
-                            SearchPlaceholder="Search users..." />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Drag & Drop + Move All + Undo                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Drag & Drop, Move All & Undo
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Drag items between lists with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Draggable="true"</SgTypography>. Use ≫/≪ to move all. Undo with Ctrl+Z or the ↩ button.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="Drag & Drop + Move All" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_basicData"
+                                @bind-TargetKeys="_dndTargetKeys"
+                                Titles="@(new[] { "Available", "Chosen" })"
+                                Draggable="true"
+                                ShowMoveAllButtons="true"
+                                AllowDoubleClick="true" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="Undo/Redo History" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Every move is tracked. Use Shift+Click to multi-select, then undo.
+                        </SgTypography>
+                        <SgTransfer DataSource="_largeData"
+                                    @bind-TargetKeys="_undoTargetKeys"
+                                    Titles="@(new[] { "Frameworks", "Selected" })"
+                                    ShowMoveAllButtons="true"
+                                    ShowUndoRedoButtons="true"
+                                    AllowDoubleClick="true"
+                                    KeyboardNavigation="true" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Disabled Items & Custom Empty Text</h2>
-        <p>Some items can be disabled to prevent transfer.</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Example" Style="grid-column: 1 / -1;">
-                <SgTransfer DataSource="_disabledData"
-                            @bind-TargetKeys="_disabledTargetKeys"
-                            Titles="@(new[] { "Modules", "Active" })"
-                            EmptyText="No items" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Tree Mode + Loading + Search Highlight                           -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Tree Mode, Loading & Search Highlight
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Hierarchical items with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ShowTreeMode</SgTypography>, loading skeletons, and highlighted search matches.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="Tree Mode" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_treeData"
+                                @bind-TargetKeys="_treeTargetKeys"
+                                Titles="@(new[] { "Permissions", "Granted" })"
+                                ShowTreeMode="true" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Loading Skeleton" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTransfer DataSource="_basicData"
+                                    @bind-TargetKeys="_loadingTargetKeys"
+                                    Titles="@(new[] { "Source", "Target" })"
+                                    Loading="_loading"
+                                    Height="260px" />
+                        <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" OnClick="@(() => _loading = !_loading)">
+                            @(_loading ? "Stop Loading" : "Show Loading")
+                        </SgButton>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Search Highlight" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_searchData"
+                                @bind-TargetKeys="_highlightTargetKeys"
+                                Titles="@(new[] { "Users", "Selected" })"
+                                Searchable="true"
+                                HighlightSearchMatches="true"
+                                Height="260px" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Properties</h2>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Transfer Properties">
-                <PropertyTable Items="_transferProperties" />
-            </SgCard>
-            <SgCard Title="TransferItem Model">
-                <PropertyTable Items="_itemProperties" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 7. Direction Modes + Collapsible Groups + Sticky Headers            -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Direction Modes, Collapsible Groups & Counts
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Restrict move direction with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Mode</SgTypography>, collapse groups with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">CollapsibleGroups</SgTypography>, show item counts.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="ToTargetOnly Mode" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_moduleData"
+                                @bind-TargetKeys="_modeTargetKeys"
+                                Titles="@(new[] { "Modules", "Active" })"
+                                Mode="SgTransferMode.ToTargetOnly"
+                                ShowItemCount="true"
+                                Height="280px" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Collapsible Groups" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_moduleData"
+                                @bind-TargetKeys="_groupTargetKeys"
+                                Titles="@(new[] { "Modules", "Active" })"
+                                CollapsibleGroups="true"
+                                ShowItemCount="true"
+                                Height="280px" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="Sticky + Debounce" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgTransfer DataSource="_largeData"
+                                @bind-TargetKeys="_stickyTargetKeys"
+                                Titles="@(new[] { "Frameworks", "Favorites" })"
+                                Searchable="true"
+                                StickyHeaders="true"
+                                SearchDebounceMs="300"
+                                Height="280px" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <!-- Code example -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 8. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgTransfer Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click "Copy" to grab the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Titles -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Source Title</SgTypography>
+                            <input type="text" class="ctor-input" @bind="_ctorSourceTitle" @bind:event="oninput" />
+                        </SgStack>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Target Title</SgTypography>
+                            <input type="text" class="ctor-input" @bind="_ctorTargetTitle" @bind:event="oninput" />
+                        </SgStack>
+
+                        <!-- Size -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                            <SgSegmented TValue="string"
+                                         Value="_ctorSize"
+                                         ValueChanged="v => { _ctorSize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_sizeOptions" />
+                        </SgStack>
+
+                        <!-- Toggles -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Searchable</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorSearchable"
+                                                 ValueChanged="v => { _ctorSearchable = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Double-Click</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorDoubleClick"
+                                                 ValueChanged="v => { _ctorDoubleClick = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Show SelectAll</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorSelectAll"
+                                                 ValueChanged="v => { _ctorSelectAll = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolOptions2" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorDisabled"
+                                                 ValueChanged="v => { _ctorDisabled = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolOptions2" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Items</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorDemoData.Count.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorSize" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Search</SgTypography>
+                                    <SgBadge Variant="@(_ctorSearchable ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorSearchable ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview" id="constructor-preview">
+                                <SgTransfer DataSource="_ctorDemoData"
+                                            @bind-TargetKeys="_ctorTargetData"
+                                            Titles="@(new[] { _ctorSourceTitle, _ctorTargetTitle })"
+                                            Searchable="_ctorSearchable"
+                                            Size="_ctorSize"
+                                            AllowDoubleClick="_ctorDoubleClick"
+                                            ShowSelectAll="_ctorSelectAll"
+                                            Disabled="_ctorDisabled" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </SgCard>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 9. Properties                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                API Reference
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Full parameter reference for SgTransfer and SgTransferItem.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="SgTransfer Parameters (60+)" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_transferProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="SgTransferItem Model" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_itemProperties" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+</ChildContent>
 </SgCard>
 
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 100px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+
+    /* ── Code block ─────────────────────────────────────────────────────────── */
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+
+    /* ── Constructor input ──────────────────────────────────────────────────── */
+    .ctor-input {
+        width: 100%;
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 7px 10px;
+        background: var(--sg-bg);
+        color: var(--sg-fg);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.15s ease;
+    }
+    .ctor-input:focus {
+        border-color: var(--sg-color-primary);
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--sg-color-primary) 15%, transparent);
+    }
+</style>
+
 @code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8 5H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-1M8 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M8 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2m0 0h2a2 2 0 0 1 2 2v3m2 4H10m0 0 3-3m-3 3 3 3"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgTransfer — Shuttle List</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    60+ parameters: drag &amp; drop, tree mode, skeletons, undo/redo, move all, keyboard nav, direction modes, collapsible groups, search highlight, sticky headers, and more.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Palette ──────────────────────────────────────────────────────────
+    private static readonly string[] _palette =
+    {
+        "#2563eb", "#6366f1", "#8b5cf6", "#a855f7",
+        "#059669", "#0891b2", "#d97706", "#dc2626"
+    };
+
+    // ── Data: Basic ──────────────────────────────────────────────────────
     private List<string> _basicTargetKeys = new() { "2" };
-    private List<string> _searchTargetKeys = new() { "u3" };
-    private List<string> _disabledTargetKeys = new() { "m1" };
+    private List<string> _customBtnTargetKeys = new() {  };
 
     private List<SgTransferItem> _basicData = new()
     {
-        new() { Key = "1", Title = "Option A" },
-        new() { Key = "2", Title = "Option B" },
-        new() { Key = "3", Title = "Option C" },
-        new() { Key = "4", Title = "Option D" },
-        new() { Key = "5", Title = "Option E" }
+        new() { Key = "1", Title = "Option A", Description = "First option" },
+        new() { Key = "2", Title = "Option B", Description = "Second option" },
+        new() { Key = "3", Title = "Option C", Description = "Third option" },
+        new() { Key = "4", Title = "Option D", Description = "Fourth option" },
+        new() { Key = "5", Title = "Option E", Description = "Fifth option" }
     };
+
+    // ── Data: Search ─────────────────────────────────────────────────────
+    private List<string> _searchTargetKeys = new() { "u3" };
 
     private List<SgTransferItem> _searchData = new()
     {
@@ -94,32 +634,283 @@
         new() { Key = "u6", Title = "Fiona Green", Description = "fiona@company.com" }
     };
 
+    // ── Data: Large ──────────────────────────────────────────────────────
+    private List<string> _largeTargetKeys = new() { "f1", "f3" };
+
+    private List<SgTransferItem> _largeData = new()
+    {
+        new() { Key = "f1", Title = "Blazor", Description = "Microsoft" },
+        new() { Key = "f2", Title = "React", Description = "Meta" },
+        new() { Key = "f3", Title = "Vue.js", Description = "Evan You" },
+        new() { Key = "f4", Title = "Angular", Description = "Google" },
+        new() { Key = "f5", Title = "Svelte", Description = "Rich Harris" },
+        new() { Key = "f6", Title = "Solid.js", Description = "Ryan Carniato" },
+        new() { Key = "f7", Title = "Qwik", Description = "Misko Hevery" },
+        new() { Key = "f8", Title = "Astro", Description = "Astro team" }
+    };
+
+    // ── Data: Team with Avatars + Badges ─────────────────────────────────
+    private List<string> _teamTargetKeys = new() { };
+
+    private List<SgTransferItem> _teamData = new()
+    {
+        new() { Key = "t1", Title = "John Doe", Description = "Frontend Lead", Avatar = "JD", AvatarColor = "#2563eb", Badge = "Lead", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Key = "t2", Title = "Jane Smith", Description = "Backend Dev", Avatar = "JS", AvatarColor = "#059669", Badge = "Sr", BadgeVariant = SgBadgeVariant.Info },
+        new() { Key = "t3", Title = "Mike Johnson", Description = "Designer", Avatar = "MJ", AvatarColor = "#8b5cf6", Badge = "Mid", BadgeVariant = SgBadgeVariant.Default },
+        new() { Key = "t4", Title = "Sarah Wilson", Description = "QA Engineer", Avatar = "SW", AvatarColor = "#d97706", Badge = "Jr", BadgeVariant = SgBadgeVariant.Success },
+        new() { Key = "t5", Title = "Alex Lee", Description = "DevOps", Avatar = "AL", AvatarColor = "#dc2626", Badge = "Sr", BadgeVariant = SgBadgeVariant.Info },
+        new() { Key = "t6", Title = "Emily Chen", Description = "PM", Avatar = "EC", AvatarColor = "#0891b2", Badge = "Lead", BadgeVariant = SgBadgeVariant.Warn }
+    };
+
+    // ── Data: Modules with Groups + Icons ────────────────────────────────
+    private List<string> _moduleTargetKeys = new() { "m1" };
+
+    private static readonly string SvgDatabase = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 0v3.75m-16.5-3.75v3.75m16.5 0v3.75C20.25 16.153 16.556 18 12 18s-8.25-1.847-8.25-4.125v-3.75m16.5 0c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125\"/></svg>";
+    private static readonly string SvgChart = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z\"/></svg>";
+    private static readonly string SvgShield = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z\"/></svg>";
+    private static readonly string SvgGear = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z\"/><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z\"/></svg>";
+    private static readonly string SvgUsers = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z\"/></svg>";
+
+    private List<SgTransferItem> _moduleData = new()
+    {
+        new() { Key = "m1", Title = "Core Database", Description = "PostgreSQL cluster", Icon = SvgDatabase, Group = "Infrastructure", Badge = "Critical", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Key = "m2", Title = "Analytics Engine", Description = "Real-time analytics", Icon = SvgChart, Group = "Infrastructure", Badge = "v2", BadgeVariant = SgBadgeVariant.Info },
+        new() { Key = "m3", Title = "Auth Service", Description = "OAuth2 / OpenID", Icon = SvgShield, Group = "Security", Badge = "Secure", BadgeVariant = SgBadgeVariant.Success },
+        new() { Key = "m4", Title = "Settings Panel", Description = "Admin configuration", Icon = SvgGear, Group = "UI", Badge = "New", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Key = "m5", Title = "User Management", Description = "CRUD & roles", Icon = SvgUsers, Group = "UI", Badge = "Pro", BadgeVariant = SgBadgeVariant.Info }
+    };
+
+    // ── Data: Drag & Drop ───────────────────────────────────────────────
+    private List<string> _dndTargetKeys = new() { "3" };
+
+    // ── Data: Undo ──────────────────────────────────────────────────────
+    private List<string> _undoTargetKeys = new() { "f1", "f3" };
+
+    // ── Data: Loading ────────────────────────────────────────────────────
+    private List<string> _loadingTargetKeys = new() { "2" };
+    private bool _loading;
+
+    // ── Data: Highlight ──────────────────────────────────────────────────
+    private List<string> _highlightTargetKeys = new() { "u3" };
+
+    // ── Data: Tree ───────────────────────────────────────────────────────
+    private List<string> _treeTargetKeys = new() { "p3" };
+
+    private List<SgTransferItem> _treeData = new()
+    {
+        new() { Key = "p1", Title = "Dashboard", Icon = SvgChart, Children = new() {
+            new() { Key = "p1a", Title = "View Analytics", Description = "Read-only" },
+            new() { Key = "p1b", Title = "Export Reports", Description = "CSV/PDF" }
+        }},
+        new() { Key = "p2", Title = "User Management", Icon = SvgUsers, Children = new() {
+            new() { Key = "p2a", Title = "Create Users" },
+            new() { Key = "p2b", Title = "Edit Users" },
+            new() { Key = "p2c", Title = "Delete Users", Disabled = true }
+        }},
+        new() { Key = "p3", Title = "Settings", Icon = SvgGear, Children = new() {
+            new() { Key = "p3a", Title = "System Config", Description = "Advanced" },
+            new() { Key = "p3b", Title = "Security", Icon = SvgShield }
+        }}
+    };
+
+    // ── Data: Mode ──────────────────────────────────────────────────────
+    private List<string> _modeTargetKeys = new() { "m1" };
+
+    // ── Data: Group target ──────────────────────────────────────────────
+    private List<string> _groupTargetKeys = new() { "m1" };
+
+    // ── Data: Sticky ────────────────────────────────────────────────────
+    private List<string> _stickyTargetKeys = new() { "f1", "f3" };
+
+    // ── Data: Disabled ───────────────────────────────────────────────────
+    private List<string> _disabledTargetKeys = new() { "m1" };
+
     private List<SgTransferItem> _disabledData = new()
     {
-        new() { Key = "m1", Title = "Core Module", Description = "Required system module", Disabled = true },
-        new() { Key = "m2", Title = "Reporting" },
-        new() { Key = "m3", Title = "Billing" },
-        new() { Key = "m4", Title = "Analytics" },
-        new() { Key = "m5", Title = "Integrations", Description = "Third-party connectors" }
+        new() { Key = "m1", Title = "Core Module", Description = "Required system module", Disabled = true, Badge = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Key = "m2", Title = "Reporting", Description = "Report generator" },
+        new() { Key = "m3", Title = "Billing", Description = "Payment processing" },
+        new() { Key = "m4", Title = "Analytics", Description = "Usage analytics" },
+        new() { Key = "m5", Title = "Integrations", Description = "Third-party connectors", Badge = "Beta", BadgeVariant = SgBadgeVariant.Warn }
+    };
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private string _ctorSourceTitle = "Available";
+    private string _ctorTargetTitle = "Chosen";
+    private string _ctorSize = "md";
+    private bool _ctorSearchable;
+    private bool _ctorDoubleClick = true;
+    private bool _ctorSelectAll = true;
+    private bool _ctorDisabled;
+
+    private List<string> _ctorTargetData = new() { "c1" };
+
+    private List<SgTransferItem> _ctorDemoData = new()
+    {
+        new() { Key = "c1", Title = "Item Alpha", Description = "First item" },
+        new() { Key = "c2", Title = "Item Beta", Description = "Second item" },
+        new() { Key = "c3", Title = "Item Gamma", Description = "Third item" },
+        new() { Key = "c4", Title = "Item Delta", Description = "Fourth item" },
+        new() { Key = "c5", Title = "Item Epsilon", Description = "Fifth item" }
+    };
+
+    // ── Code generation ───────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    // SgSegmented options
+    private readonly List<SgSegmentedOption<string>> _sizeOptions = new()
+    {
+        new() { Value = "sm", Label = "Sm" },
+        new() { Value = "md", Label = "Md" },
+        new() { Value = "lg", Label = "Lg" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolOptions2 = new()
+    {
+        new() { Value = true,  Label = "On" },
+        new() { Value = false, Label = "Off" },
+    };
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgTransfer");
+        lines.Add($"    DataSource=\"...\"");
+        lines.Add($"    @bind-TargetKeys=\"_targetKeys\"");
+        lines.Add($"    Titles=\"@(new[] {{ \"{_ctorSourceTitle}\", \"{_ctorTargetTitle}\" }})\"");
+        if (_ctorSearchable)
+            lines.Add($"    Searchable=\"true\"");
+        if (_ctorSize != "md")
+            lines.Add($"    Size=\"{_ctorSize}\"");
+        if (_ctorDoubleClick)
+            lines.Add($"    AllowDoubleClick=\"true\"");
+        if (!_ctorSelectAll)
+            lines.Add($"    ShowSelectAll=\"false\"");
+        if (_ctorDisabled)
+            lines.Add($"    Disabled=\"true\"");
+        lines.Add("    />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── RenderFragment helpers ────────────────────────────────────────────
+    private RenderFragment FooterContent(string text) => __builder =>
+    {
+        <span style="font-size:11px;font-weight:500;">@text</span>
+    };
+
+    // ── Property tables ───────────────────────────────────────────────────
+    private List<PropertyPanelItem> _basicProperties = new()
+    {
+        new() { Label = "DataSource",  Value = "List<SgTransferItem>", BadgeText = "All items",    BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "TargetKeys",  Value = "List<string>",         BadgeText = "Two-way bind", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Titles",      Value = "string[]",             BadgeText = "List titles",  BadgeVariant = SgBadgeVariant.Info },
     };
 
     private List<PropertyPanelItem> _transferProperties = new()
     {
-        new() { Label = "DataSource", Value = "List<SgTransferItem>", BadgeText = "All items", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "TargetKeys", Value = "List<string>", BadgeText = "Two-way binding", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Titles", Value = "string[]", BadgeText = "List titles", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Searchable", Value = "bool", BadgeText = "Enable search", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "SearchPlaceholder", Value = "string", BadgeText = "Search hint", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "EmptyText", Value = "string", BadgeText = "Empty message", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Disabled", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "OnChange", Value = "EventCallback", BadgeText = "Items moved", BadgeVariant = SgBadgeVariant.Success }
+        new() { Label = "DataSource",          Value = "List<SgTransferItem>",   BadgeText = "All items",              BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "TargetKeys",          Value = "List<string>",           BadgeText = "Two-way binding",        BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Titles",              Value = "string[]",               BadgeText = "List titles",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Searchable",          Value = "bool",                   BadgeText = "Enable search",          BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "SearchPlaceholder",   Value = "string",                 BadgeText = "Search hint",             BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "EmptyText",           Value = "string",                 BadgeText = "Empty message",           BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Disabled",            Value = "bool",                   BadgeText = "Disabled",                BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Loading",             Value = "bool",                   BadgeText = "Skeleton state",          BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "LoadingSkeletonTemplate",Value = "RenderFragment",      BadgeText = "Custom skeleton",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Size",                Value = "string (sm/md/lg)",      BadgeText = "Size variant",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Height",              Value = "string (CSS)",           BadgeText = "List height",              BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Width",               Value = "string (CSS)",           BadgeText = "Component width",          BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Mode",                Value = "SgTransferMode",         BadgeText = "Direction mode",           BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowSelectAll",       Value = "bool",                   BadgeText = "Select-all checkbox",     BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowItemCount",       Value = "bool",                   BadgeText = "Count badge",              BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowMoveButtons",     Value = "bool",                   BadgeText = "Show →← buttons",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowMoveAllButtons",  Value = "bool",                   BadgeText = "Show ≫≪ buttons",         BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowUndoRedoButtons", Value = "bool",                   BadgeText = "Undo/Redo buttons",       BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Draggable",           Value = "bool",                   BadgeText = "HTML5 DnD",               BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowDoubleClick",    Value = "bool",                   BadgeText = "Double-click to move",    BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "KeyboardNavigation",  Value = "bool",                   BadgeText = "Arrow/Space/Ctrl+Z",      BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Sortable",            Value = "bool",                   BadgeText = "Drag handle reorder",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowTreeMode",        Value = "bool",                   BadgeText = "Hierarchical items",      BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CollapsibleGroups",   Value = "bool",                   BadgeText = "Collapse groups",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "StickyHeaders",       Value = "bool",                   BadgeText = "Fixed headers",           BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "HighlightSearchMatches",Value = "bool",                 BadgeText = "Yellow highlight",        BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "SearchDebounceMs",    Value = "int",                    BadgeText = "Debounce delay",          BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "PreserveSelectionOnMove",Value = "bool",                BadgeText = "Keep selection",          BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AutoFocusSearch",     Value = "bool",                   BadgeText = "Auto-focus search",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ClearSearchOnMove",   Value = "bool",                   BadgeText = "Clear after move",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "RightButtonText",     Value = "string?",                BadgeText = "Custom button text",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LeftButtonText",      Value = "string?",                BadgeText = "Custom button text",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "RightIcon",           Value = "RenderFragment?",        BadgeText = "Custom icon",              BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LeftIcon",            Value = "RenderFragment?",        BadgeText = "Custom icon",              BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MoveAllRightIcon",    Value = "RenderFragment?",        BadgeText = "Move-all icon",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MoveAllLeftIcon",     Value = "RenderFragment?",        BadgeText = "Move-all icon",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ItemTemplate",        Value = "RenderFragment<T>?",     BadgeText = "Custom rendering",         BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "EmptyTemplate",       Value = "RenderFragment?",        BadgeText = "Custom empty state",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SourceFooter",        Value = "RenderFragment?",        BadgeText = "Source footer",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "TargetFooter",        Value = "RenderFragment?",        BadgeText = "Target footer",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SourceFooter",        Value = "RenderFragment?",        BadgeText = "Source footer",            BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FilterFunction",      Value = "Func<T,string,bool>?",   BadgeText = "Custom filter",            BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "SortComparer",        Value = "IComparer<T>?",          BadgeText = "Custom sort",              BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnChange",            Value = "EventCallback",          BadgeText = "Items moved",              BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnItemMoved",         Value = "EventCallback<T>",       BadgeText = "Per-item event",           BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnSearch",            Value = "EventCallback<string>",  BadgeText = "Search callback",          BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "CssClass",            Value = "string?",                BadgeText = "Extra CSS",                BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _itemProperties = new()
     {
-        new() { Label = "Key",         Value = "string",  BadgeText = "Unique id",    BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Title",       Value = "string",  BadgeText = "Display text", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Description", Value = "string?", BadgeText = "Subtitle",     BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Disabled",    Value = "bool",    BadgeText = "Cannot move",  BadgeVariant = SgBadgeVariant.Warn }
+        new() { Label = "Key",          Value = "string",               BadgeText = "Unique id",           BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title",        Value = "string",               BadgeText = "Display text",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Description",  Value = "string?",              BadgeText = "Subtitle",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Disabled",     Value = "bool",                 BadgeText = "Cannot move",         BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Icon",         Value = "string?",              BadgeText = "SVG icon markup",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Badge",        Value = "string?",              BadgeText = "Badge label",          BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "BadgeVariant", Value = "SgBadgeVariant",       BadgeText = "Badge color",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Group",        Value = "string?",              BadgeText = "Group header",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Avatar",       Value = "string?",              BadgeText = "Initials (2-3 chars)",BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AvatarColor",  Value = "string",               BadgeText = "CSS background",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Children",     Value = "List<SgTransferItem>?",BadgeText = "Tree children",       BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "IsExpanded",   Value = "bool",                 BadgeText = "Tree expanded",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Tag",          Value = "object?",              BadgeText = "Metadata",            BadgeVariant = SgBadgeVariant.Default },
     };
 }
