@@ -205,6 +205,8 @@ export async function initEditor(dotnetRef, containerRef, instanceId, opts, init
         overviewRulerLanes: 0,
         overviewRulerBorder: false,
         hideCursorInOverviewRuler: true,
+        ...(opts?.minHeight != null && { minHeight: opts.minHeight }),
+        ...(opts?.maxHeight != null && { maxHeight: opts.maxHeight }),
     });
 
     if (trackSgTheme) _wireThemeObserver(monaco);
@@ -244,17 +246,208 @@ export async function initEditor(dotnetRef, containerRef, instanceId, opts, init
     });
 }
 
+// ── Save handler (Ctrl+S / Cmd+S) ──────────────────────────────────────────────
+
+export function setupMonacoSaveHandler(instanceId) {
+    const inst = _instances.get(instanceId);
+    if (!inst) return;
+
+    if (inst._saveDisposable) {
+        inst._saveDisposable.dispose();
+    }
+
+    const targetEditor = inst._isDiffEditor ? inst.editor.getModifiedEditor() : inst.editor;
+    inst._saveDisposable = targetEditor.addCommand(
+        inst.monaco.KeyMod.CtrlCmd | inst.monaco.KeyCode.KeyS,
+        function () {
+            try {
+                inst.dotnetRef.invokeMethodAsync('OnSaveAsync', targetEditor.getValue());
+            } catch { /* component disposed */ }
+        }
+    );
+}
+
+// ── Format keybinding (Shift+Alt+F) ────────────────────────────────────────────
+
+export function setupMonacoFormatKeybinding(instanceId) {
+    const inst = _instances.get(instanceId);
+    if (!inst) return;
+
+    if (inst._formatDisposable) {
+        inst._formatDisposable.dispose();
+    }
+
+    const targetEditor = inst._isDiffEditor ? inst.editor.getModifiedEditor() : inst.editor;
+    inst._formatDisposable = targetEditor.addCommand(
+        inst.monaco.KeyMod.Shift | inst.monaco.KeyMod.Alt | inst.monaco.KeyCode.KeyF,
+        function () {
+            try { targetEditor.getAction('editor.action.formatDocument')?.run(); } catch { /* swallow */ }
+        }
+    );
+}
+
+// ── Markers ────────────────────────────────────────────────────────────────────
+
+export function setMonacoMarkers(instanceId, markersJson) {
+    const inst = _instances.get(instanceId);
+    if (!inst) return;
+
+    const model = inst._isDiffEditor ? inst._modifiedModel : inst.editor.getModel();
+    if (!model) return;
+
+    if (!markersJson || markersJson === '[]' || markersJson === '') {
+        inst.monaco.editor.setModelMarkers(model, 'sg-monaco', []);
+        return;
+    }
+
+    let markers;
+    try { markers = JSON.parse(markersJson); } catch { return; }
+    if (!Array.isArray(markers)) return;
+
+    const severityValues = [
+        inst.monaco.MarkerSeverity.Hint,
+        inst.monaco.MarkerSeverity.Info,
+        inst.monaco.MarkerSeverity.Warning,
+        inst.monaco.MarkerSeverity.Error,
+    ];
+
+    const monacoMarkers = markers.map(m => ({
+        severity:    severityValues[m.severity] ?? inst.monaco.MarkerSeverity.Info,
+        startLineNumber:   m.line,
+        startColumn:       m.column,
+        endLineNumber:     m.line,
+        endColumn:         m.column + 1,
+        message:           m.message || '',
+    }));
+
+    inst.monaco.editor.setModelMarkers(model, 'sg-monaco', monacoMarkers);
+}
+
+// ── Diff Editor ────────────────────────────────────────────────────────────────
+
+export async function createDiffEditor(dotnetRef, containerRef, instanceId, originalValue, modifiedValue, opts, sources) {
+    await disposeEditor(instanceId);
+
+    if (!containerRef || !(containerRef instanceof HTMLElement) || !containerRef.isConnected) {
+        throw new Error('Container element is not connected to the DOM.');
+    }
+
+    const monaco = await _loadMonaco(sources);
+
+    let theme = opts?.theme;
+    let trackSgTheme = false;
+    if (!theme || theme === 'sg-auto') {
+        theme = _detectSgTheme();
+        trackSgTheme = true;
+    }
+
+    const lang = opts?.language ?? 'json';
+    const originalModel = monaco.editor.createModel(originalValue ?? '', lang);
+    const modifiedModel = monaco.editor.createModel(modifiedValue ?? '', lang);
+
+    const diffEditor = monaco.editor.createDiffEditor(containerRef, {
+        theme,
+        fontSize:               opts?.fontSize ?? 13,
+        readOnly:               opts?.readOnly ?? false,
+        minimap:                { enabled: opts?.minimap ?? false },
+        lineNumbers:            opts?.lineNumbers !== false ? 'on' : 'off',
+        wordWrap:               opts?.wordWrap ? 'on' : 'off',
+        automaticLayout:        true,
+        scrollBeyondLastLine:   false,
+        smoothScrolling:        true,
+        cursorBlinking:         'smooth',
+        cursorSmoothCaretAnimation: 'on',
+        renderLineHighlight:    'line',
+        renderWhitespace:       'selection',
+        roundedSelection:       false,
+        padding:                { top: 10, bottom: 10 },
+        fontFamily:             opts?.fontFamily
+                                || "'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, SFMono-Regular, Consolas, monospace",
+        fontLigatures:          opts?.fontLigatures !== false,
+        tabSize:                opts?.tabSize ?? 2,
+        insertSpaces:           true,
+        bracketPairColorization:{ enabled: true },
+        guides:                 { bracketPairs: 'active', indentation: true },
+        scrollbar: {
+            useShadows: false,
+            verticalScrollbarSize: 10,
+            horizontalScrollbarSize: 10,
+        },
+        overviewRulerLanes: 0,
+        overviewRulerBorder: false,
+        hideCursorInOverviewRuler: true,
+        ...(opts?.minHeight != null && { minHeight: opts.minHeight }),
+        ...(opts?.maxHeight != null && { maxHeight: opts.maxHeight }),
+    });
+
+    diffEditor.setModel({ original: originalModel, modified: modifiedModel });
+
+    if (trackSgTheme) _wireThemeObserver(monaco);
+
+    // Change handler on the modified editor
+    let debounce = null;
+    const modifiedEditor = diffEditor.getModifiedEditor();
+    const changeSub = modifiedEditor.onDidChangeModelContent(() => {
+        const inst = _instances.get(instanceId);
+        if (!inst || inst._settingValue) return;
+        clearTimeout(debounce);
+        debounce = setTimeout(() => {
+            try { dotnetRef.invokeMethodAsync('OnValueChangedAsync', modifiedEditor.getValue()); }
+            catch { /* component disposed mid-flight */ }
+        }, 250);
+    });
+
+    // Resize observer
+    let ro = null;
+    if (typeof ResizeObserver !== 'undefined') {
+        ro = new ResizeObserver(() => { try { diffEditor.layout(); } catch {} });
+        ro.observe(containerRef);
+    }
+
+    _instances.set(instanceId, {
+        editor: diffEditor,
+        monaco, dotnetRef, ro,
+        changeSub,
+        _settingValue: false,
+        _debounce: debounce,
+        _isDiffEditor: true,
+        _originalModel: originalModel,
+        _modifiedModel: modifiedModel,
+    });
+}
+
 export function getValue(instanceId) {
-    return _instances.get(instanceId)?.editor.getValue() ?? '';
+    const inst = _instances.get(instanceId);
+    if (!inst) return '';
+    if (inst._isDiffEditor) return inst._modifiedModel?.getValue() ?? '';
+    return inst.editor.getValue() ?? '';
 }
 
 export function setValue(instanceId, value) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
+
+    const next = value ?? '';
+
+    if (inst._isDiffEditor) {
+        const model = inst._modifiedModel;
+        if (!model || model.getValue() === next) return;
+        inst._settingValue = true;
+        try {
+            model.applyEdits([{
+                range: model.getFullModelRange(),
+                text: next,
+                forceMoveMarkers: true,
+            }]);
+        } finally {
+            inst._settingValue = false;
+        }
+        return;
+    }
+
     const model = inst.editor.getModel();
     if (!model) return;
 
-    const next = value ?? '';
     if (model.getValue() === next) return; // no-op — keeps undo stack clean
 
     // Use executeEdits to keep undo/redo working, and silence change event.
@@ -285,8 +478,13 @@ export function setValue(instanceId, value) {
 export function setLanguage(instanceId, language) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
-    const model = inst.editor.getModel();
-    if (model) inst.monaco.editor.setModelLanguage(model, language);
+    if (inst._isDiffEditor) {
+        if (inst._originalModel) inst.monaco.editor.setModelLanguage(inst._originalModel, language);
+        if (inst._modifiedModel) inst.monaco.editor.setModelLanguage(inst._modifiedModel, language);
+    } else {
+        const model = inst.editor.getModel();
+        if (model) inst.monaco.editor.setModelLanguage(model, language);
+    }
 }
 
 export function setTheme(instanceId, theme) {
@@ -299,19 +497,29 @@ export function setTheme(instanceId, theme) {
 export function format(instanceId) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
-    try { inst.editor.getAction('editor.action.formatDocument')?.run(); } catch {}
+    const target = inst._isDiffEditor ? inst.editor.getModifiedEditor() : inst.editor;
+    try { target.getAction('editor.action.formatDocument')?.run(); } catch {}
 }
 
 export function setReadOnly(instanceId, readOnly) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
-    inst.editor.updateOptions({ readOnly });
+    if (inst._isDiffEditor) {
+        inst.editor.getModifiedEditor().updateOptions({ readOnly });
+    } else {
+        inst.editor.updateOptions({ readOnly });
+    }
 }
 
 export function setFontSize(instanceId, size) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
-    inst.editor.updateOptions({ fontSize: size });
+    if (inst._isDiffEditor) {
+        inst.editor.getModifiedEditor().updateOptions({ fontSize: size });
+        inst.editor.getOriginalEditor().updateOptions({ fontSize: size });
+    } else {
+        inst.editor.updateOptions({ fontSize: size });
+    }
 }
 
 export function layout(instanceId) {
@@ -323,14 +531,24 @@ export function layout(instanceId) {
 export function focus(instanceId) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
-    try { inst.editor.focus(); } catch {}
+    if (inst._isDiffEditor) {
+        try { inst.editor.getModifiedEditor().focus(); } catch {}
+    } else {
+        try { inst.editor.focus(); } catch {}
+    }
 }
 
 export function disposeEditor(instanceId) {
     const inst = _instances.get(instanceId);
     if (!inst) return;
+    try { inst._saveDisposable?.dispose(); } catch {}
+    try { inst._formatDisposable?.dispose(); } catch {}
     try { inst.ro?.disconnect(); } catch {}
     try { inst.changeSub?.dispose(); } catch {}
+    if (inst._isDiffEditor) {
+        try { inst._originalModel?.dispose(); } catch {}
+        try { inst._modifiedModel?.dispose(); } catch {}
+    }
     try { inst.editor.dispose(); } catch {}
     _instances.delete(instanceId);
 }

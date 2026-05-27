@@ -1,6 +1,8 @@
 @namespace SuperUI.Components
+@using System.Text
 @using System.Text.Json
 @using System.Text.Json.Nodes
+@using System.Text.RegularExpressions
 @using SuperUI.Localization
 @inject ISuperUILocalizer Localizer
 
@@ -13,16 +15,80 @@
             <span class="sg-jsf-schema-title">@Schema.Title</span>
         }
         <div class="sg-jsf-toolbar-actions">
-            <SgButton Text="@Localizer["JsonSchema_FormatJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
-                      OnClick="@(_ => FormatJsonAsync())" Title="@Localizer["JsonSchema_FormatJSON"]" />
+
+            @* Format / Minify *@
+            @if (AllowFormat)
+            {
+                <SgButton Text="@Localizer["JsonSchema_FormatJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                          OnClick="@(_ => BeautifyJson())" Title="Beautify JSON" />
+                <SgButton Text="Minify" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                          OnClick="@(_ => MinifyJson())" Title="Minify JSON" />
+            }
+
             <SgButton Text="@Localizer["JsonSchema_CopyJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
                       OnClick="@(_ => CopyJsonAsync())" Title="@Localizer["JsonSchema_CopyJSON"]" />
             <SgButton Text="@Localizer["JsonSchema_ResetDefaults"]" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
                       OnClick="@(_ => ResetAsync())" Title="@Localizer["JsonSchema_ResetDefaults"]" />
+
+            @* Undo / Redo *@
+            @if (EnableUndoRedo)
+            {
+                <SgButton Text="Undo" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                          Disabled="@(!CanUndo)" OnClick="@(_ => UndoAsync())" Title="Undo (Ctrl+Z)" />
+                <SgButton Text="Redo" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                          Disabled="@(!CanRedo)" OnClick="@(_ => RedoAsync())" Title="Redo (Ctrl+Shift+Z)" />
+            }
+
+            @* Generate Schema *@
+            @if (GenerateSchemaEnabled)
+            {
+                <SgButton Text="Generate Schema" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                          OnClick="@(_ => GenerateSchemaFromJson())" Title="Generate JSON Schema from current JSON" />
+            }
+
+            @* Generate C# Class *@
+            @if (GenerateClassEnabled)
+            {
+                <SgButton Text="Generate C# Class" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                          OnClick="@(OnGenerateClassClick)"
+                          Title="Generate C# class from current JSON" />
+            }
+
             <SgButton Text="@Localizer["JsonSchema_ValidateJSON"]" Size="SgSize.Sm" Variant="SgButtonVariant.Primary"
                       OnClick="@(_ => ValidateAsync())" Title="@Localizer["JsonSchema_ValidateJSON"]" />
         </div>
     </div>
+
+    @* ── JSON Path breadcrumb ────────────────────────────────────────────── *@
+    @if (ShowJsonPath && !string.IsNullOrEmpty(_activeFieldPath))
+    {
+        <div class="sg-jsf-path">
+            @RenderBreadcrumb()
+        </div>
+    }
+
+    @* ── Generated C# Class panel ────────────────────────────────────────── *@
+    @if (_showGeneratedClass && !string.IsNullOrEmpty(_generatedClassCode))
+    {
+        <div class="sg-jsf-class-overlay">
+            <div class="sg-jsf-class-panel">
+                <div class="sg-jsf-class-header">
+                    <span class="sg-jsf-class-title">Generated C# Class</span>
+                    <button type="button" class="sg-jsf-class-close"
+                            onclick="@(() => { _showGeneratedClass = false; StateHasChanged(); })">&times;</button>
+                </div>
+                <div class="sg-jsf-class-body">
+                    <pre class="sg-jsf-class-code"><code>@_generatedClassCode</code></pre>
+                </div>
+                <div class="sg-jsf-class-footer">
+                    <SgButton Text="Copy Code" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                              OnClick="@(_ => CopyTextAsync(_generatedClassCode))" />
+                    <SgButton Text="Close" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost"
+                              OnClick="@(_ => { _showGeneratedClass = false; StateHasChanged(); })" />
+                </div>
+            </div>
+        </div>
+    }
 
     @* ── Validation errors ────────────────────────────────────────────────── *@
     @if (_validationErrors.Count > 0)
@@ -44,6 +110,19 @@
         <div class="sg-jsf-validation">
             <SgAlert Variant="SgAlertVariant.Success" Text="@Localizer["JsonSchema_ValidJSON"]" Dismissible="true"
                      OnClose="@(() => { _validationOk = false; StateHasChanged(); })" />
+        </div>
+    }
+
+    @* ── Diff view ───────────────────────────────────────────────────────── *@
+    @if (ShowDiff && !string.IsNullOrEmpty(CompareWith))
+    {
+        <div class="sg-jsf-diff">
+            <div class="sg-jsf-diff-header">
+                <span class="sg-jsf-diff-title">Diff: Current vs. Compare</span>
+            </div>
+            <div class="sg-jsf-diff-body">
+                @RenderDiffLines()
+            </div>
         </div>
     }
 
@@ -69,8 +148,12 @@
                 <div class="sg-jsf-editor-header">
                     <span class="sg-jsf-editor-label">JSON</span>
                     <span class="sg-jsf-editor-meta">
-                        <span class="sg-jsf-editor-stat" title="@Localizer["JsonSchema_Characters"]">@(_jsonValue?.Length ?? 0) @Localizer["JsonSchema_Characters"]</span>
-                        <span class="sg-jsf-editor-stat" title="@Localizer["JsonSchema_Strings"]">@CountLines(_jsonValue) @Localizer["JsonSchema_Strings"]</span>
+                        <span class="sg-jsf-editor-stat" title="Characters">@(_jsonValue?.Length ?? 0) @Localizer["JsonSchema_Characters"]</span>
+                        <span class="sg-jsf-editor-stat" title="Lines">@CountLines(_jsonValue) Lines</span>
+                        @if (ShowSize)
+                        {
+                            <span class="sg-jsf-editor-stat" title="Size">@FormatSize(_jsonValue)</span>
+                        }
                     </span>
                 </div>
                 <SgMonaco @ref="_monaco"
@@ -83,6 +166,24 @@
             </div>
         }
     </div>
+
+    @* ── Status bar ──────────────────────────────────────────────────────── *@
+    @if (ShowSize || ShowJsonPath)
+    {
+        <div class="sg-jsf-status">
+            @if (ShowSize && _jsonValue is not null)
+            {
+                <span class="sg-jsf-status-item">Size: @FormatSize(_jsonValue)</span>
+                <span class="sg-jsf-status-sep">|</span>
+                <span class="sg-jsf-status-item">Lines: @CountLines(_jsonValue)</span>
+            }
+            @if (ShowJsonPath && !string.IsNullOrEmpty(_activeFieldPath))
+            {
+                <span class="sg-jsf-status-sep">|</span>
+                <span class="sg-jsf-status-item">Path: @_activeFieldPath</span>
+            }
+        </div>
+    }
 </div>
 
 @* ── Render helpers ───────────────────────────────────────────────────────── *@
@@ -112,6 +213,50 @@
     /// <summary>Fires after validation is run.</summary>
     [Parameter] public EventCallback<SgJsonSchemaValidationResult> OnValidate { get; set; }
 
+    // ── JsonPath navigation ───────────────────────────────────────────────────
+
+    /// <summary>Show the JSON path breadcrumb of the currently focused field. Default false.</summary>
+    [Parameter] public bool ShowJsonPath { get; set; }
+
+    /// <summary>Fires when the focused JSON path changes.</summary>
+    [Parameter] public EventCallback<string> OnJsonPathChanged { get; set; }
+
+    // ── Schema generation ─────────────────────────────────────────────────────
+
+    /// <summary>Enable the "Generate Schema" button. Default false.</summary>
+    [Parameter] public bool GenerateSchemaEnabled { get; set; }
+
+    // ── C# class generation ───────────────────────────────────────────────────
+
+    /// <summary>Enable the "Generate C# Class" feature. Default false.</summary>
+    [Parameter] public bool GenerateClassEnabled { get; set; }
+
+    // ── Undo/Redo ─────────────────────────────────────────────────────────────
+
+    /// <summary>Enable undo/redo history. Default false.</summary>
+    [Parameter] public bool EnableUndoRedo { get; set; }
+
+    /// <summary>Maximum history entries for undo/redo. Default 50.</summary>
+    [Parameter] public int MaxHistory { get; set; } = 50;
+
+    // ── Size display ──────────────────────────────────────────────────────────
+
+    /// <summary>Show JSON size in the status bar. Default true.</summary>
+    [Parameter] public bool ShowSize { get; set; } = true;
+
+    // ── Minify / Beautify ─────────────────────────────────────────────────────
+
+    /// <summary>Show format (beautify/minify) buttons in the toolbar. Default true.</summary>
+    [Parameter] public bool AllowFormat { get; set; } = true;
+
+    // ── JSON Diff ─────────────────────────────────────────────────────────────
+
+    /// <summary>JSON string to compare against for diff view.</summary>
+    [Parameter] public string? CompareWith { get; set; }
+
+    /// <summary>Enable diff view when CompareWith is set. Default false.</summary>
+    [Parameter] public bool ShowDiff { get; set; }
+
     // ── State ─────────────────────────────────────────────────────────────────
 
     private SgMonaco? _monaco;
@@ -122,9 +267,7 @@
     private bool _updatingFromMonaco;
     private bool _updatingFromForm;
     private System.Threading.CancellationTokenSource? _monacoDebounceCts;
-    // Tag input state: key → current input text
     private Dictionary<string, string> _tagInputs = new();
-    // Inline-edit state for array list rows: "key#idx" being edited and current buffer
     private string? _editingRow;
     private string _editBuffer = "";
 
@@ -136,11 +279,29 @@
         AutoFormat = true,
     };
 
+    // ── JsonPath state ────────────────────────────────────────────────────────
+
+    private string _activeFieldPath = "";
+
+    // ── Generated class state ─────────────────────────────────────────────────
+
+    private bool _showGeneratedClass;
+    private string _generatedClassCode = "";
+
+    // ── Undo/Redo state ───────────────────────────────────────────────────────
+
+    private List<string?> _history = new();
+    private int _historyIndex = -1;
+
+    // ── Diff state ────────────────────────────────────────────────────────────
+
+    private List<DiffLine> _diffLines = new();
+    private bool _diffDirty = true;
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     protected override void OnParametersSet()
     {
-        // If Value changed externally (not from form itself), parse it into form values
         if (!string.Equals(Value, _jsonValue, StringComparison.Ordinal) && !_updatingFromForm)
         {
             _jsonValue = Value;
@@ -152,6 +313,7 @@
                 InitDefaults();
                 _jsonValue = SerializeFormToJson();
             }
+            _diffDirty = true;
         }
     }
 
@@ -159,7 +321,6 @@
     {
         if (Schema is not null) InitDefaults();
 
-        // If Value provided externally — parse it; otherwise serialize defaults
         if (!string.IsNullOrWhiteSpace(Value))
         {
             _jsonValue = Value;
@@ -169,6 +330,8 @@
         {
             _jsonValue = SerializeFormToJson();
         }
+
+        PushHistory(_jsonValue);
     }
 
     private void InitDefaults()
@@ -204,6 +367,7 @@
     private async Task OnFieldChangedAsync(string key, object? value)
     {
         _formValues[key] = value;
+        SetActivePath(key);
         await SyncFormToEditorAsync();
     }
 
@@ -216,6 +380,8 @@
             _jsonValue = SerializeFormToJson();
             if (ValueChanged.HasDelegate)
                 await ValueChanged.InvokeAsync(_jsonValue);
+            PushHistory(_jsonValue);
+            _diffDirty = true;
             await InvokeAsync(StateHasChanged);
         }
         finally
@@ -227,6 +393,12 @@
     private static readonly JsonSerializerOptions _jsonWriteOpts = new()
     {
         WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private static readonly JsonSerializerOptions _jsonCompactOpts = new()
+    {
+        WriteIndented = false,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
@@ -304,6 +476,8 @@
             ParseJsonToForm(json);
             if (ValueChanged.HasDelegate)
                 await ValueChanged.InvokeAsync(json);
+            PushHistory(json);
+            _diffDirty = true;
             await InvokeAsync(StateHasChanged);
         }
         finally
@@ -330,7 +504,6 @@
         }
         catch
         {
-            // Keep existing form values on parse error
         }
     }
 
@@ -380,7 +553,151 @@
         return list;
     }
 
+    // ── Undo / Redo ───────────────────────────────────────────────────────────
+
+    /// <summary>Whether the undo operation is available.</summary>
+    public bool CanUndo => EnableUndoRedo && _historyIndex > 0;
+
+    /// <summary>Whether the redo operation is available.</summary>
+    public bool CanRedo => EnableUndoRedo && _historyIndex < _history.Count - 1;
+
+    private void PushHistory(string? snapshot)
+    {
+        if (!EnableUndoRedo) return;
+
+        if (_historyIndex >= 0 && _historyIndex < _history.Count && _history[_historyIndex] == snapshot)
+            return;
+
+        // Truncate history beyond current index (destroy redo stack)
+        if (_historyIndex < _history.Count - 1)
+        {
+            _history.RemoveRange(_historyIndex + 1, _history.Count - _historyIndex - 1);
+        }
+
+        _history.Add(snapshot);
+
+        // Enforce max history
+        if (_history.Count > MaxHistory)
+        {
+            _history.RemoveAt(0);
+        }
+
+        _historyIndex = _history.Count - 1;
+    }
+
+    private async Task UndoAsync()
+    {
+        if (!CanUndo) return;
+        _historyIndex--;
+        await RestoreHistoryAsync();
+    }
+
+    private async Task RedoAsync()
+    {
+        if (!CanRedo) return;
+        _historyIndex++;
+        await RestoreHistoryAsync();
+    }
+
+    private async Task RestoreHistoryAsync()
+    {
+        if (_historyIndex < 0 || _historyIndex >= _history.Count) return;
+        var snapshot = _history[_historyIndex];
+        _updatingFromMonaco = true;
+        try
+        {
+            _jsonValue = snapshot;
+            ParseJsonToForm(snapshot);
+            if (_monaco is not null)
+            {
+                _updatingFromForm = true;
+                try { /* Monaco binds to _jsonValue */ }
+                finally { _updatingFromForm = false; }
+            }
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(snapshot);
+            _diffDirty = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _updatingFromMonaco = false;
+        }
+    }
+
+    // ── JSON Path ─────────────────────────────────────────────────────────────
+
+    private void SetActivePath(string path)
+    {
+        if (_activeFieldPath == path) return;
+        _activeFieldPath = path;
+        if (OnJsonPathChanged.HasDelegate)
+            _ = OnJsonPathChanged.InvokeAsync(path);
+    }
+
+    private async void JumpToField(string path)
+    {
+        SetActivePath(path);
+        var elementId = "sg-jsf-field-" + path.Replace('.', '-');
+        try
+        {
+            await JS.InvokeVoidAsync("eval", $"document.getElementById('{elementId}')?.scrollIntoView({{ behavior: 'smooth', block: 'center' }})");
+        }
+        catch { }
+    }
+
     // ── Toolbar actions ───────────────────────────────────────────────────────
+
+    /// <summary>Beautify the current JSON with indentation.</summary>
+    public async Task BeautifyJson()
+    {
+        if (string.IsNullOrWhiteSpace(_jsonValue)) return;
+        try
+        {
+            var node = JsonNode.Parse(_jsonValue);
+            _jsonValue = node.ToJsonString(_jsonWriteOpts);
+            if (_monaco is not null)
+            {
+                _updatingFromForm = true;
+                try { await _monaco.FormatAsync(); }
+                finally { _updatingFromForm = false; }
+            }
+            PushHistory(_jsonValue);
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(_jsonValue);
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    /// <summary>Minify the current JSON by removing whitespace.</summary>
+    public async Task MinifyJson()
+    {
+        if (string.IsNullOrWhiteSpace(_jsonValue)) return;
+        try
+        {
+            var node = JsonNode.Parse(_jsonValue);
+            _jsonValue = node.ToJsonString(_jsonCompactOpts);
+            if (_monaco is not null)
+            {
+                _updatingFromForm = true;
+                try { /* Monaco will update via Value binding */ }
+                finally { _updatingFromForm = false; }
+            }
+            PushHistory(_jsonValue);
+            if (ValueChanged.HasDelegate)
+                await ValueChanged.InvokeAsync(_jsonValue);
+            StateHasChanged();
+        }
+        catch { }
+    }
+
+    private async Task OnGenerateClassClick()
+    {
+        _showGeneratedClass = true;
+        _generatedClassCode = GenerateCSharpClass("Root");
+        StateHasChanged();
+    }
 
     private async Task FormatJsonAsync()
     {
@@ -390,11 +707,19 @@
 
     private async Task CopyJsonAsync()
     {
-        // Use JS interop to copy to clipboard
         try
         {
             var json = _jsonValue ?? "{}";
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", json);
+        }
+        catch { }
+    }
+
+    private async Task CopyTextAsync(string text)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
         }
         catch { }
     }
@@ -407,9 +732,10 @@
         if (_monaco is not null)
         {
             _updatingFromForm = true;
-            try { /* Monaco will update via Value binding */ }
+            try { }
             finally { _updatingFromForm = false; }
         }
+        PushHistory(_jsonValue);
         if (ValueChanged.HasDelegate)
             await ValueChanged.InvokeAsync(_jsonValue);
         StateHasChanged();
@@ -422,12 +748,11 @@
 
         if (Schema is null)
         {
-            _validationErrors.Add("Схема не задана");
+            _validationErrors.Add("Schema not specified");
             StateHasChanged();
             return;
         }
 
-        // Parse current JSON
         JsonObject? obj = null;
         try
         {
@@ -436,7 +761,7 @@
         }
         catch (Exception ex)
         {
-            _validationErrors.Add($"Невалидный JSON: {ex.Message}");
+            _validationErrors.Add($"Invalid JSON: {ex.Message}");
         }
 
         if (obj is not null && Schema.Required is not null)
@@ -446,7 +771,7 @@
                 if (!obj.ContainsKey(req) || obj[req] is null)
                 {
                     var title = Schema.Properties?.GetValueOrDefault(req)?.Title ?? req;
-                    _validationErrors.Add($"Поле «{title}» обязательно");
+                    _validationErrors.Add($"Field '{title}' is required");
                 }
             }
         }
@@ -465,6 +790,434 @@
         StateHasChanged();
     }
 
+    // ── Schema generation from JSON ───────────────────────────────────────────
+
+    /// <summary>Generate a JSON Schema from the current JSON value.</summary>
+    /// <returns>A new <see cref="SgJsonSchema"/> inferred from the current JSON.</returns>
+    public SgJsonSchema? GenerateSchemaFromJson()
+    {
+        if (string.IsNullOrWhiteSpace(_jsonValue))
+            return null;
+
+        try
+        {
+            var node = JsonNode.Parse(_jsonValue);
+            var schema = InferSchema(node, "object");
+            schema.Title = Schema?.Title ?? "Generated Schema";
+            return schema;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private SgJsonSchema InferSchema(JsonNode? node, string fallbackType)
+    {
+        var schema = new SgJsonSchema
+        {
+            Type = fallbackType,
+            Properties = new Dictionary<string, SgJsonSchemaProperty>(),
+            Required = new List<string>()
+        };
+
+        if (node is JsonObject obj)
+        {
+            foreach (var (key, val) in obj)
+            {
+                var prop = InferProperty(key, val);
+                schema.Properties[key] = prop;
+                if (val is not null && val.GetValueKind() != JsonValueKind.Null)
+                    schema.Required.Add(key);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            schema.Type = "array";
+            var first = arr.FirstOrDefault();
+            if (first is not null)
+            {
+                var itemSchema = InferSchema(first, "string");
+                schema.Properties["items"] = new SgJsonSchemaProperty
+                {
+                    Type = itemSchema.Type,
+                    Properties = itemSchema.Properties?.Count > 0 ? itemSchema.Properties : null
+                };
+            }
+        }
+
+        return schema;
+    }
+
+    private SgJsonSchemaProperty InferProperty(string key, JsonNode? node)
+    {
+        if (node is null)
+            return new SgJsonSchemaProperty { Type = "null" };
+
+        return node.GetValueKind() switch
+        {
+            JsonValueKind.Object => InferObjectProperty(node),
+            JsonValueKind.Array => InferArrayProperty(node),
+            JsonValueKind.String => InferStringProperty(node.GetValue<string>()),
+            JsonValueKind.Number => InferNumberProperty(node),
+            JsonValueKind.True or JsonValueKind.False => new SgJsonSchemaProperty { Type = "boolean" },
+            JsonValueKind.Null => new SgJsonSchemaProperty { Type = "null" },
+            _ => new SgJsonSchemaProperty { Type = "string" }
+        };
+    }
+
+    private SgJsonSchemaProperty InferObjectProperty(JsonNode node)
+    {
+        var nested = InferSchema(node, "object");
+        return new SgJsonSchemaProperty
+        {
+            Type = "object",
+            Properties = nested.Properties,
+            Required = nested.Required
+        };
+    }
+
+    private SgJsonSchemaProperty InferArrayProperty(JsonNode node)
+    {
+        var arr = node.AsArray();
+        var first = arr.FirstOrDefault();
+        var itemType = "string";
+
+        if (first is not null)
+        {
+            itemType = first.GetValueKind() switch
+            {
+                JsonValueKind.Object => "object",
+                JsonValueKind.Array => "array",
+                JsonValueKind.String => "string",
+                JsonValueKind.Number => first.GetValue<decimal>() % 1 == 0 ? "integer" : "number",
+                JsonValueKind.True or JsonValueKind.False => "boolean",
+                JsonValueKind.Null => "null",
+                _ => "string"
+            };
+        }
+
+        return new SgJsonSchemaProperty
+        {
+            Type = "array",
+            Items = new SgJsonSchemaProperty { Type = itemType }
+        };
+    }
+
+    private SgJsonSchemaProperty InferStringProperty(string value)
+    {
+        var prop = new SgJsonSchemaProperty { Type = "string" };
+
+        if (Regex.IsMatch(value, @"^\d{4}-\d{2}-\d{2}$"))
+            prop.Format = "date";
+        else if (Regex.IsMatch(value, @"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}"))
+            prop.Format = "date-time";
+        else if (Regex.IsMatch(value, @"^[^\s@]+@[^\s@]+\.[^\s@]+$"))
+            prop.Format = "email";
+        else if (Regex.IsMatch(value, @"^https?://"))
+            prop.Format = "uri";
+
+        return prop;
+    }
+
+    private SgJsonSchemaProperty InferNumberProperty(JsonNode node)
+    {
+        var raw = node.ToJsonString();
+        return new SgJsonSchemaProperty
+        {
+            Type = raw.Contains('.') ? "number" : "integer"
+        };
+    }
+
+    // ── C# Class generation ───────────────────────────────────────────────────
+
+    /// <summary>Generate C# class code from the current JSON value.</summary>
+    /// <param name="className">Name of the root class. Defaults to "Root".</param>
+    /// <returns>Generated C# class source code as a string.</returns>
+    public string GenerateCSharpClass(string className = "Root")
+    {
+        if (string.IsNullOrWhiteSpace(_jsonValue))
+            return "// No JSON data to generate from";
+
+        try
+        {
+            var node = JsonNode.Parse(_jsonValue);
+            var sb = new StringBuilder();
+            sb.AppendLine("// Auto-generated from JSON");
+            sb.AppendLine("#nullable enable");
+            sb.AppendLine();
+            sb.AppendLine("using System;");
+            sb.AppendLine("using System.Collections.Generic;");
+            sb.AppendLine();
+            sb.Append("public class ").Append(SanitizeClassName(className));
+            sb.AppendLine();
+            sb.AppendLine("{");
+
+            if (node is JsonObject obj)
+            {
+                foreach (var (key, val) in obj)
+                {
+                    var (propType, propName) = InferCSharpType(key, val);
+                    sb.Append("    public ").Append(propType).Append(" ").Append(propName);
+                    sb.AppendLine(" { get; set; }");
+                }
+            }
+            else if (node is JsonArray)
+            {
+                sb.AppendLine("    // Root is a JSON array");
+                var (itemType, _) = InferCSharpType("Item", (node as JsonArray)?.FirstOrDefault());
+                sb.Append("    public List<").Append(itemType).AppendLine("> Items { get; set; } = new();");
+            }
+            else
+            {
+                sb.AppendLine("    // Root is a primitive value");
+            }
+
+            sb.AppendLine("}");
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            return $"// Error generating class: {ex.Message}";
+        }
+    }
+
+    private (string type, string name) InferCSharpType(string key, JsonNode? node)
+    {
+        var propName = SanitizePropertyName(key);
+
+        if (node is null)
+            return ("object?", propName);
+
+        return node.GetValueKind() switch
+        {
+            JsonValueKind.Object => GenerateNestedClass(key, node) is { } nestedClass
+                ? (nestedClass, propName)
+                : ("object?", propName),
+
+            JsonValueKind.Array => InferArrayCSharpType(key, node),
+
+            JsonValueKind.String => ("string", propName),
+
+            JsonValueKind.Number => node.ToJsonString().Contains('.')
+                ? ("double", propName)
+                : ("int", propName),
+
+            JsonValueKind.True or JsonValueKind.False => ("bool", propName),
+
+            JsonValueKind.Null => ("object?", propName),
+
+            _ => ("string", propName)
+        };
+    }
+
+    private (string type, string name) InferArrayCSharpType(string key, JsonNode node)
+    {
+        var arr = node.AsArray();
+        var first = arr.FirstOrDefault();
+        var propName = SanitizePropertyName(key);
+
+        if (first is null)
+            return ("List<object?>", propName);
+
+        var (itemType, _) = first.GetValueKind() switch
+        {
+            JsonValueKind.Object => (GenerateNestedClass(key + "Item", first) ?? "object?", ""),
+            JsonValueKind.Array => ("List<object?>", ""),
+            JsonValueKind.String => ("string", ""),
+            JsonValueKind.Number => (first.ToJsonString().Contains('.') ? "double" : "int", ""),
+            JsonValueKind.True or JsonValueKind.False => ("bool", ""),
+            JsonValueKind.Null => ("object?", ""),
+            _ => ("string", "")
+        };
+
+        return ($"List<{itemType}>", propName);
+    }
+
+    private string? GenerateNestedClass(string key, JsonNode node)
+    {
+        if (node is not JsonObject obj || obj.Count == 0)
+            return null;
+
+        var className = SanitizeClassName(key);
+        _nestedClasses ??= new List<string>();
+        if (_nestedClasses.Any(c => c.StartsWith("class " + className)))
+            return className;
+
+        var sb = new StringBuilder();
+        sb.AppendLine();
+        sb.Append("public class ").Append(className);
+        sb.AppendLine();
+        sb.AppendLine("{");
+
+        foreach (var (k, val) in obj)
+        {
+            var (propType, propName) = InferCSharpType(k, val);
+            sb.Append("    public ").Append(propType).Append(" ").Append(propName);
+            sb.AppendLine(" { get; set; }");
+        }
+
+        sb.AppendLine("}");
+
+        // Insert the nested class before the last closing brace of the generated code
+        var insertPos = _generatedClassCode.LastIndexOf('}');
+        if (insertPos >= 0)
+        {
+            _generatedClassCode = _generatedClassCode.Insert(insertPos, sb.ToString());
+        }
+        else
+        {
+            _generatedClassCode += sb.ToString();
+        }
+
+        _nestedClasses.Add("class " + className);
+        return className;
+    }
+
+    private List<string>? _nestedClasses;
+
+    private static string SanitizeClassName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "Root";
+        var sanitized = Regex.Replace(name, @"[^a-zA-Z0-9_]", "");
+        if (string.IsNullOrEmpty(sanitized) || char.IsDigit(sanitized[0]))
+            sanitized = "Item_" + sanitized;
+        if (sanitized.Length > 0)
+            sanitized = char.ToUpper(sanitized[0]) + (sanitized.Length > 1 ? sanitized[1..] : "");
+        return sanitized.Length > 0 ? sanitized : "Root";
+    }
+
+    private static string SanitizePropertyName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return "Value";
+        var sanitized = Regex.Replace(name, @"[^a-zA-Z0-9_]", "");
+        if (string.IsNullOrEmpty(sanitized) || char.IsDigit(sanitized[0]))
+            sanitized = "_" + sanitized;
+        if (sanitized.Length > 0)
+            sanitized = char.ToUpper(sanitized[0]) + (sanitized.Length > 1 ? sanitized[1..] : "");
+        return sanitized.Length > 0 ? sanitized : "Value";
+    }
+
+    // ── Breadcrumb rendering ──────────────────────────────────────────────────
+
+    private RenderFragment RenderBreadcrumb() => builder =>
+    {
+        var segs = _activeFieldPath.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        var cumulative = "";
+        int seq = 0;
+
+        for (int i = 0; i < segs.Length; i++)
+        {
+            var seg = segs[i];
+            cumulative = string.IsNullOrEmpty(cumulative) ? seg : $"{cumulative}.{seg}";
+            var jump = cumulative;
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jsf-path-seg");
+            builder.AddAttribute(seq++, "role", "button");
+            builder.AddAttribute(seq++, "tabindex", "0");
+            builder.AddAttribute(seq++, "title", "Jump to " + cumulative);
+            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => JumpToField(jump)));
+            builder.AddContent(seq++, seg);
+            builder.CloseElement();
+
+            if (i < segs.Length - 1)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "sg-jsf-path-chev");
+                builder.AddContent(seq++, ">");
+                builder.CloseElement();
+            }
+        }
+    };
+
+    // ── Diff rendering ────────────────────────────────────────────────────────
+
+    private RenderFragment RenderDiffLines() => builder =>
+    {
+        int seq = 0;
+        foreach (var line in _diffLines)
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "class", $"sg-jsf-diff-line sg-jsf-diff-{line.Kind}");
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jsf-diff-ln");
+            builder.AddContent(seq++, line.LeftNum);
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jsf-diff-marker");
+            builder.AddContent(seq++, line.Kind switch { "added" => "+", "removed" => "-", _ => " " });
+            builder.CloseElement();
+
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jsf-diff-text");
+            builder.AddContent(seq++, line.Text);
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+    };
+
+    // ── Diff ──────────────────────────────────────────────────────────────────
+
+    public class DiffLine
+    {
+        public string Kind { get; set; } = "unchanged"; // added, removed, changed, unchanged
+        public string Text { get; set; } = "";
+        public int LeftNum { get; set; }
+    }
+
+    private void ComputeDiff()
+    {
+        _diffLines.Clear();
+
+        if (string.IsNullOrWhiteSpace(CompareWith))
+            return;
+
+        var left = (CompareWith ?? "").Split('\n', StringSplitOptions.None);
+        var right = (_jsonValue ?? "").Split('\n', StringSplitOptions.None);
+
+        var maxLen = Math.Max(left.Length, right.Length);
+        for (int i = 0; i < maxLen; i++)
+        {
+            var leftLine = i < left.Length ? left[i].TrimEnd('\r') : "";
+            var rightLine = i < right.Length ? right[i].TrimEnd('\r') : "";
+
+            if (i >= left.Length)
+            {
+                _diffLines.Add(new DiffLine { Kind = "added", Text = rightLine, LeftNum = i + 1 });
+            }
+            else if (i >= right.Length)
+            {
+                _diffLines.Add(new DiffLine { Kind = "removed", Text = leftLine, LeftNum = i + 1 });
+            }
+            else if (leftLine != rightLine)
+            {
+                _diffLines.Add(new DiffLine { Kind = "changed", Text = rightLine, LeftNum = i + 1 });
+            }
+            else
+            {
+                _diffLines.Add(new DiffLine { Kind = "unchanged", Text = leftLine, LeftNum = i + 1 });
+            }
+        }
+    }
+
+    // ── Size helper ───────────────────────────────────────────────────────────
+
+    private static string FormatSize(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return "0 B";
+        var bytes = Encoding.UTF8.GetByteCount(json);
+        return bytes switch
+        {
+            < 1024 => $"{bytes} B",
+            < 1024 * 1024 => $"{bytes / 1024.0:F1} KB",
+            _ => $"{bytes / (1024.0 * 1024.0):F2} MB"
+        };
+    }
+
     // ── Render helpers ────────────────────────────────────────────────────────
 
     private RenderFragment RenderProperties(
@@ -473,7 +1226,6 @@
         Dictionary<string, object?> values,
         string prefix) => builder =>
     {
-        // Group by uiGroup
         var groups = props
             .OrderBy(p => p.Value.UiOrder ?? int.MaxValue)
             .ThenBy(p => p.Key)
@@ -503,13 +1255,19 @@
 
                 builder.OpenElement(seq++, "div");
                 builder.AddAttribute(seq++, "class", "sg-jsf-field-wrap");
+
+                if (ShowJsonPath)
+                {
+                    builder.AddAttribute(seq++, "id", "sg-jsf-field-" + fullKey.Replace('.', '-'));
+                }
+
                 builder.AddContent(seq++, RenderField(key, fullKey, prop, isRequired, currentVal, values));
                 builder.CloseElement();
             }
 
             if (!string.IsNullOrEmpty(group.Key))
             {
-                builder.CloseElement(); // sg-jsf-group
+                builder.CloseElement();
             }
         }
     };
@@ -526,7 +1284,6 @@
         var label = prop.Title ?? key;
         var isReadOnly = ReadOnly || prop.ReadOnly;
 
-        // Boolean → SgSwitch
         if (prop.Type == "boolean")
         {
             var boolVal = currentVal is bool bv ? bv : false;
@@ -535,12 +1292,11 @@
             builder.AddAttribute(seq++, "Value", boolVal);
             builder.AddAttribute(seq++, "Disabled", isReadOnly);
             builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<bool>(this,
-                v => OnFieldChangedAsync(key, v)));
+                v => OnFieldChangedWithPathAsync(key, fullKey, v)));
             builder.CloseComponent();
             return;
         }
 
-        // Number / Integer
         if (prop.Type is "number" or "integer")
         {
             if (prop.UiWidget == "slider")
@@ -552,13 +1308,14 @@
                 builder.AddAttribute(seq++, "class", $"sgc-label{(isRequired ? " sgc-required" : "")}");
                 builder.AddContent(seq++, label);
                 builder.CloseElement();
+
                 builder.OpenComponent<SgSlider<double>>(seq++);
                 builder.AddAttribute(seq++, "Value", dblVal);
                 builder.AddAttribute(seq++, "Min", prop.Minimum ?? 0);
                 builder.AddAttribute(seq++, "Max", prop.Maximum ?? 100);
                 builder.AddAttribute(seq++, "Disabled", isReadOnly);
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<double>(this,
-                    v => OnFieldChangedAsync(key, prop.Type == "integer" ? (object)(long)v : v)));
+                    v => OnFieldChangedWithPathAsync(key, fullKey, prop.Type == "integer" ? (object)(long)v : v)));
                 builder.CloseComponent();
                 builder.CloseElement();
             }
@@ -572,7 +1329,7 @@
                 builder.AddAttribute(seq++, "Max", prop.Maximum);
                 builder.AddAttribute(seq++, "ReadOnly", isReadOnly);
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<double?>(this,
-                    v => OnFieldChangedAsync(key, v.HasValue
+                    v => OnFieldChangedWithPathAsync(key, fullKey, v.HasValue
                         ? (prop.Type == "integer" ? (object)(long)v.Value : v.Value)
                         : null)));
                 builder.CloseComponent();
@@ -580,14 +1337,13 @@
             return;
         }
 
-        // String
         if (prop.Type == "string")
         {
-            // Enum → SgSelect
             if (prop.Enum is not null && prop.Enum.Count > 0)
             {
                 var strVal = currentVal?.ToString() ?? "";
                 var enumStrings = prop.Enum.Select(e => e?.ToString() ?? "").ToList();
+
                 builder.OpenComponent<SgSelect<string>>(seq++);
                 builder.AddAttribute(seq++, "Label", isRequired ? $"{label} *" : label);
                 builder.AddAttribute(seq++, "Value", strVal);
@@ -605,12 +1361,11 @@
                         }));
                 }
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
-                    v => OnFieldChangedAsync(key, v)));
+                    v => OnFieldChangedWithPathAsync(key, fullKey, v)));
                 builder.CloseComponent();
                 return;
             }
 
-            // Date
             if (prop.Format == "date" || prop.Format == "date-time")
             {
                 DateTime? dtVal = null;
@@ -621,12 +1376,11 @@
                 builder.AddAttribute(seq++, "Disabled", isReadOnly);
                 builder.AddAttribute(seq++, "Required", isRequired);
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<DateTime?>(this,
-                    v => OnFieldChangedAsync(key, v?.ToString("yyyy-MM-dd"))));
+                    v => OnFieldChangedWithPathAsync(key, fullKey, v?.ToString("yyyy-MM-dd"))));
                 builder.CloseComponent();
                 return;
             }
 
-            // Color
             if (prop.Format == "color" || prop.UiWidget == "color")
             {
                 var colorVal = currentVal?.ToString() ?? "#000000";
@@ -636,12 +1390,11 @@
                 builder.AddAttribute(seq++, "Disabled", isReadOnly);
                 builder.AddAttribute(seq++, "Required", isRequired);
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
-                    v => OnFieldChangedAsync(key, v)));
+                    v => OnFieldChangedWithPathAsync(key, fullKey, v)));
                 builder.CloseComponent();
                 return;
             }
 
-            // Code widget → small Monaco
             if (prop.UiWidget == "code")
             {
                 var codeVal = currentVal?.ToString() ?? "";
@@ -656,13 +1409,12 @@
                 builder.AddAttribute(seq++, "Height", "150px");
                 builder.AddAttribute(seq++, "Options", new SgMonacoOptions { Language = "json", FontSize = 12, ReadOnly = isReadOnly });
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string?>(this,
-                    v => OnFieldChangedAsync(key, v)));
+                    v => OnFieldChangedWithPathAsync(key, fullKey, v)));
                 builder.CloseComponent();
                 builder.CloseElement();
                 return;
             }
 
-            // Textarea
             if (prop.UiWidget == "textarea")
             {
                 var taVal = currentVal?.ToString() ?? "";
@@ -676,12 +1428,11 @@
                 if (prop.MaxLength.HasValue)
                     builder.AddAttribute(seq++, "MaxLength", prop.MaxLength.Value);
                 builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
-                    v => OnFieldChangedAsync(key, v)));
+                    v => OnFieldChangedWithPathAsync(key, fullKey, v)));
                 builder.CloseComponent();
                 return;
             }
 
-            // Default string input
             var inputType = prop.Format switch
             {
                 "password" => "password",
@@ -699,12 +1450,11 @@
             if (prop.MaxLength.HasValue)
                 builder.AddAttribute(seq++, "MaxLength", prop.MaxLength.Value);
             builder.AddAttribute(seq++, "ValueChanged", EventCallback.Factory.Create<string>(this,
-                v => OnFieldChangedAsync(key, v)));
+                v => OnFieldChangedWithPathAsync(key, fullKey, v)));
             builder.CloseComponent();
             return;
         }
 
-        // Array of strings → tag input
         if (prop.Type == "array")
         {
             var listVal = currentVal is List<string> lv ? lv : new List<string>();
@@ -714,12 +1464,11 @@
             builder.AddAttribute(seq++, "class", $"sgc-label{(isRequired ? " sgc-required" : "")}");
             builder.AddContent(seq++, label);
             builder.CloseElement();
-            builder.AddContent(seq++, RenderTagInput(key, listVal, isReadOnly));
+            builder.AddContent(seq++, RenderTagInput(key, fullKey, listVal, isReadOnly));
             builder.CloseElement();
             return;
         }
 
-        // Object → nested card
         if (prop.Type == "object" && prop.Properties is not null)
         {
             var nestedVals = currentVal is Dictionary<string, object?> nv ? nv : new Dictionary<string, object?>();
@@ -735,7 +1484,14 @@
         }
     };
 
-    private RenderFragment RenderTagInput(string key, List<string> items, bool readOnly) => builder =>
+    private async Task OnFieldChangedWithPathAsync(string key, string fullKey, object? value)
+    {
+        SetActivePath(fullKey);
+        _formValues[key] = value;
+        await SyncFormToEditorAsync();
+    }
+
+    private RenderFragment RenderTagInput(string key, string fullKey, List<string> items, bool readOnly) => builder =>
     {
         if (!_tagInputs.ContainsKey(key)) _tagInputs[key] = "";
 
@@ -743,12 +1499,11 @@
         builder.OpenElement(seq++, "div");
         builder.AddAttribute(seq++, "class", "sg-jsf-list" + (readOnly ? " sg-jsf-list-ro" : "") + (items.Count == 0 ? " sg-jsf-list-empty" : ""));
 
-        // ── Rows ──
         if (items.Count == 0 && readOnly)
         {
             builder.OpenElement(seq++, "div");
             builder.AddAttribute(seq++, "class", "sg-jsf-list-empty-msg");
-                    builder.AddContent(seq++, Localizer["JsonSchema_EmptyList"]);
+            builder.AddContent(seq++, Localizer["JsonSchema_EmptyList"]);
             builder.CloseElement();
         }
         else
@@ -762,13 +1517,11 @@
                 builder.OpenElement(seq++, "div");
                 builder.AddAttribute(seq++, "class", "sg-jsf-list-row" + (isEditing ? " sg-jsf-list-row-edit" : ""));
 
-                // Index badge
                 builder.OpenElement(seq++, "span");
                 builder.AddAttribute(seq++, "class", "sg-jsf-list-idx");
                 builder.AddContent(seq++, (idx + 1).ToString());
                 builder.CloseElement();
 
-                // Value (display or edit)
                 if (isEditing && !readOnly)
                 {
                     builder.OpenElement(seq++, "input");
@@ -782,11 +1535,12 @@
                     }));
                     builder.AddAttribute(seq++, "onblur", EventCallback.Factory.Create<FocusEventArgs>(this, async _ =>
                     {
+                        SetActivePath(fullKey);
                         await CommitListEditAsync(key, items, capturedIdx);
                     }));
                     builder.AddAttribute(seq++, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, async e =>
                     {
-                        if (e.Key == "Enter") await CommitListEditAsync(key, items, capturedIdx);
+                        if (e.Key == "Enter") { SetActivePath(fullKey); await CommitListEditAsync(key, items, capturedIdx); }
                         else if (e.Key == "Escape") { _editingRow = null; await InvokeAsync(StateHasChanged); }
                     }));
                     builder.CloseElement();
@@ -802,6 +1556,7 @@
                         {
                             _editingRow = rowKey;
                             _editBuffer = item;
+                            SetActivePath($"{fullKey}[{capturedIdx}]");
                             StateHasChanged();
                         }));
                     }
@@ -819,13 +1574,11 @@
                     builder.CloseElement();
                 }
 
-                // Actions
                 if (!readOnly)
                 {
                     builder.OpenElement(seq++, "div");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-actions");
 
-                    // Up
                     builder.OpenElement(seq++, "button");
                     builder.AddAttribute(seq++, "type", "button");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-act");
@@ -834,6 +1587,7 @@
                     builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                     {
                         if (capturedIdx == 0) return;
+                        SetActivePath(fullKey);
                         var newList = new List<string>(items);
                         (newList[capturedIdx - 1], newList[capturedIdx]) = (newList[capturedIdx], newList[capturedIdx - 1]);
                         _ = OnFieldChangedAsync(key, newList);
@@ -841,7 +1595,6 @@
                     builder.AddMarkupContent(seq++, "<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M3.22 9.78a.75.75 0 0 0 1.06 0L8 6.06l3.72 3.72a.75.75 0 1 0 1.06-1.06l-4.25-4.25a.75.75 0 0 0-1.06 0L3.22 8.72a.75.75 0 0 0 0 1.06Z\"/></svg>");
                     builder.CloseElement();
 
-                    // Down
                     builder.OpenElement(seq++, "button");
                     builder.AddAttribute(seq++, "type", "button");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-act");
@@ -850,6 +1603,7 @@
                     builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                     {
                         if (capturedIdx >= items.Count - 1) return;
+                        SetActivePath(fullKey);
                         var newList = new List<string>(items);
                         (newList[capturedIdx + 1], newList[capturedIdx]) = (newList[capturedIdx], newList[capturedIdx + 1]);
                         _ = OnFieldChangedAsync(key, newList);
@@ -857,13 +1611,13 @@
                     builder.AddMarkupContent(seq++, "<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M12.78 6.22a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L3.22 7.28a.75.75 0 1 1 1.06-1.06L8 9.94l3.72-3.72a.75.75 0 0 1 1.06 0Z\"/></svg>");
                     builder.CloseElement();
 
-                    // Delete
                     builder.OpenElement(seq++, "button");
                     builder.AddAttribute(seq++, "type", "button");
                     builder.AddAttribute(seq++, "class", "sg-jsf-list-act sg-jsf-list-act-del");
                     builder.AddAttribute(seq++, "title", @Localizer["Common_Delete"]);
                     builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () =>
                     {
+                        SetActivePath(fullKey);
                         var newList = new List<string>(items);
                         newList.RemoveAt(capturedIdx);
                         _editingRow = null;
@@ -872,14 +1626,13 @@
                     builder.AddMarkupContent(seq++, "<svg viewBox=\"0 0 16 16\" width=\"12\" height=\"12\" fill=\"currentColor\" aria-hidden=\"true\"><path d=\"M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z\"/></svg>");
                     builder.CloseElement();
 
-                    builder.CloseElement(); // actions
+                    builder.CloseElement();
                 }
 
-                builder.CloseElement(); // row
+                builder.CloseElement();
             }
         }
 
-        // ── Footer (add input) ──
         if (!readOnly)
         {
             builder.OpenElement(seq++, "div");
@@ -904,6 +1657,7 @@
             {
                 if ((e.Key == "Enter" || e.Key == ",") && !string.IsNullOrWhiteSpace(_tagInputs[key]))
                 {
+                    SetActivePath(fullKey);
                     var newList = new List<string>(items) { _tagInputs[key].Trim().TrimEnd(',') };
                     _tagInputs[key] = "";
                     await OnFieldChangedAsync(key, newList);
@@ -914,7 +1668,7 @@
             builder.CloseElement();
         }
 
-        builder.CloseElement(); // sg-jsf-list
+        builder.CloseElement();
     };
 
     private async Task CommitListEditAsync(string key, List<string> items, int idx)
@@ -934,5 +1688,17 @@
         int n = 1;
         foreach (var c in s) if (c == '\n') n++;
         return n;
+    }
+
+    // ── Diff rendering refresh ────────────────────────────────────────────────
+
+    protected override bool ShouldRender()
+    {
+        if (_diffDirty && ShowDiff && !string.IsNullOrEmpty(CompareWith))
+        {
+            ComputeDiff();
+            _diffDirty = false;
+        }
+        return true;
     }
 }

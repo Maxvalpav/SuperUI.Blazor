@@ -2,14 +2,32 @@ namespace SuperUI.Components;
 
 public class SgMonacoOptions
 {
+    /// <summary>Editor language (e.g. "json", "csharp", "xml"). Default "json".</summary>
     public string Language { get; set; } = "json";
-    public string Theme { get; set; } = "vs"; // vs, vs-dark, hc-black
+    /// <summary>Editor theme: "vs", "vs-dark", "hc-black", "sg-auto", "sg-light", "sg-dark". Default "vs".</summary>
+    public string Theme { get; set; } = "vs";
+    /// <summary>Editor font size in px. Default 13.</summary>
     public int FontSize { get; set; } = 13;
+    /// <summary>Whether the editor is read-only. Default false.</summary>
     public bool ReadOnly { get; set; } = false;
+    /// <summary>Whether the minimap is visible. Default false.</summary>
     public bool Minimap { get; set; } = false;
+    /// <summary>Whether line numbers are shown. Default true.</summary>
     public bool LineNumbers { get; set; } = true;
+    /// <summary>Whether word wrap is enabled. Default false.</summary>
     public bool WordWrap { get; set; } = false;
+    /// <summary>Auto-format JSON on load and external value changes. Default true.</summary>
     public bool AutoFormat { get; set; } = true;
+    /// <summary>Custom monospace font family (CSS value). Default null (uses built-in stack).</summary>
+    public string? FontFamily { get; set; }
+    /// <summary>Whether font ligatures are enabled. Default null (true).</summary>
+    public bool? FontLigatures { get; set; }
+    /// <summary>Tab width in spaces. Default null (2).</summary>
+    public int? TabSize { get; set; }
+    /// <summary>Minimum editor height in px (native Monaco option). Default null.</summary>
+    public int? MinHeight { get; set; }
+    /// <summary>Maximum editor height in px (editor scrolls / grows to this). Default null.</summary>
+    public int? MaxHeight { get; set; }
 }
 
 public class SgMonacoSources

@@ -1,0 +1,87 @@
+@namespace SuperUI.Components
+@using SuperUI.Enums
+
+<div class="@RootClasses"
+     style="@BuildStyle()"
+     role="@(Selectable ? "group" : null)"
+     aria-label="@(AriaLabel ?? Label)"
+     @attributes="AdditionalAttributes">
+
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="sgc-chip-group-label">@Label</span>
+    }
+
+    <div class="sgc-chip-group-items" style="display:flex; flex-wrap:@(Wrap ? "wrap" : "nowrap"); gap:@SpaceCss;">
+        <CascadingValue Value="this" IsFixed="true">
+            @ChildContent
+        </CascadingValue>
+    </div>
+</div>
+
+@code {
+    /// <summary>Chip items (typically <see cref="SgChip"/> components).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Gap between chips. Default <see cref="SgSize.Sm"/>.</summary>
+    [Parameter] public SgSize Space { get; set; } = SgSize.Sm;
+
+    /// <summary>Whether chips wrap to the next line. Default true.</summary>
+    [Parameter] public bool Wrap { get; set; } = true;
+
+    /// <summary>When true, chips in this group behave as a selection group (radio by default).</summary>
+    [Parameter] public bool Selectable { get; set; }
+
+    /// <summary>When true together with <see cref="Selectable"/>, allows multiple chips to be selected (checkbox behavior).</summary>
+    [Parameter] public bool AllowMultiple { get; set; }
+
+    /// <summary>Size applied to all child chips. Individual chip values take precedence.</summary>
+    [Parameter] public SgSize? Size { get; set; }
+
+    /// <summary>Visual variant applied to all child chips. Individual chip values take precedence.</summary>
+    [Parameter] public SgChipVariant? Variant { get; set; }
+
+    /// <summary>Optional label displayed above the chip group.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Accessibility label for the group.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Additional CSS classes.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Inline CSS styles.</summary>
+    [Parameter] public string? Style { get; set; }
+
+    /// <summary>Additional HTML attributes for the root element.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string SpaceCss => Space switch
+    {
+        SgSize.Sm => "4px",
+        SgSize.Md => "8px",
+        SgSize.Lg => "12px",
+        SgSize.Xl => "16px",
+        _         => "4px"
+    };
+
+    private string RootClasses
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder("sgc-chip-group ");
+            if (!Wrap) sb.Append("sgc-nowrap ");
+            if (Selectable) sb.Append("sgc-chip-group-selectable ");
+            if (!string.IsNullOrEmpty(CssClass)) sb.Append(CssClass);
+            return sb.ToString().TrimEnd();
+        }
+    }
+
+    private string BuildStyle()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrEmpty(Style)) sb.Append(Style);
+        return sb.ToString();
+    }
+}

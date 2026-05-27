@@ -3,7 +3,14 @@
 @inherits SgJsComponentBase
 
 <div class="@Css("sg-monaco-container").Build()"
-     style="@Styles().AddStyle("height", Height).AddStyle("width", Width).AddStyle("position", "relative").AddStyle("overflow", "hidden").Build()"
+     style="@Styles()
+        .AddStyle("height", Height)
+        .AddStyle("width", Width)
+        .AddStyle("min-height", MinHeight)
+        .AddStyle("max-height", MaxHeight)
+        .AddStyle("position", "relative")
+        .AddStyle("overflow", "hidden")
+        .Build()"
      @ref="RootRef">
 
     @if (_error is not null)
@@ -26,6 +33,11 @@
                 <span>Загрузка редактора…</span>
             </div>
         }
+
+        @if ((Options?.ReadOnly ?? false) && ReadOnlyBadge)
+        {
+            <div class="sg-monaco-readonly-badge" aria-label="Read Only">Read Only</div>
+        }
     }
 </div>
 
@@ -35,6 +47,9 @@
     private string? _error;
     private string? _lastExternalValue;
     private bool _suppressNextChange;
+    private bool _isDiffEditor;
+    private IReadOnlyList<SgMonacoMarker>? _prevMarkers;
+    private Timer? _autoSaveTimer;
 
     protected override string ModulePath => "./_content/SuperUI/sg-monaco.js";
     protected override string IdPrefix   => "sg-monaco";
@@ -59,6 +74,65 @@
     /// <summary>Container width. Default "100%".</summary>
     [Parameter] public string Width { get; set; } = "100%";
 
+    // ── Feature: OnSave (Ctrl+S) ──────────────────────────────────────────────
+
+    /// <summary>Fires when the user presses Ctrl+S (or Cmd+S on Mac).</summary>
+    [Parameter] public EventCallback<string?> OnSave { get; set; }
+
+    // ── Feature: FormatAction ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, registers Shift+Alt+F keyboard shortcut and enables the public
+    /// <see cref="FormatAsync"/> method. Default false.
+    /// </summary>
+    [Parameter] public bool FormatEnabled { get; set; } = false;
+
+    // ── Feature: ErrorMarkers / WarningMarkers ─────────────────────────────────
+
+    /// <summary>
+    /// List of diagnostic markers (errors, warnings, info, hints) displayed
+    /// as squiggly underlines and gutter icons. Set to null or empty to clear.
+    /// </summary>
+    [Parameter] public IReadOnlyList<SgMonacoMarker>? Markers { get; set; }
+
+    // ── Feature: ReadOnly badge ────────────────────────────────────────────────
+
+    /// <summary>When true and the editor is in read-only mode (see <see cref="SgMonacoOptions.ReadOnly"/>),
+    /// shows a "Read Only" badge in the top-right corner. Default true.</summary>
+    [Parameter] public bool ReadOnlyBadge { get; set; } = true;
+
+    // ── Feature: AutoSave ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When true, automatically invokes <see cref="OnAutoSave"/> after a
+    /// debounce period (<see cref="AutoSaveDelay"/>) following the last edit.
+    /// Default false.
+    /// </summary>
+    [Parameter] public bool AutoSave { get; set; } = false;
+
+    /// <summary>Debounce delay in milliseconds for auto-save. Default 2000.</summary>
+    [Parameter] public int AutoSaveDelay { get; set; } = 2000;
+
+    /// <summary>Fires when auto-save triggers after a debounced pause.</summary>
+    [Parameter] public EventCallback<string?> OnAutoSave { get; set; }
+
+    // ── Feature: MinHeight / MaxHeight ─────────────────────────────────────────
+
+    /// <summary>Minimum editor container height (CSS value, e.g. "200px").</summary>
+    [Parameter] public string? MinHeight { get; set; }
+
+    /// <summary>Maximum editor container height (CSS value, e.g. "800px").</summary>
+    [Parameter] public string? MaxHeight { get; set; }
+
+    // ── Feature: DiffEditor ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// When set, the editor renders as a diff editor comparing this original
+    /// value against the <see cref="Value"/> (modified side).
+    /// Set to null to use the standard editor.
+    /// </summary>
+    [Parameter] public string? DiffValue { get; set; }
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     protected override async Task OnParametersSetAsync()
@@ -71,6 +145,13 @@
             _lastExternalValue = Value;
             _suppressNextChange = true;
             await SafeInvokeVoidAsync("setValue", ResolvedId, Value ?? "");
+        }
+
+        // Sync markers when the collection reference changes
+        if (!ReferenceEquals(Markers, _prevMarkers))
+        {
+            _prevMarkers = Markers;
+            await SyncMarkersAsync();
         }
     }
 
@@ -94,11 +175,36 @@
             var opts = BuildOpts();
             var sources = Sources ?? new SgMonacoSources();
             _lastExternalValue = Value;
-            await SafeInvokeVoidAsync("initEditor",
-                SelfRef, _containerRef, ResolvedId,
-                opts, Value ?? "", sources);
+
+            if (!string.IsNullOrEmpty(DiffValue))
+            {
+                _isDiffEditor = true;
+                await SafeInvokeVoidAsync("createDiffEditor",
+                    SelfRef, _containerRef, ResolvedId,
+                    DiffValue, Value ?? "", opts, sources);
+            }
+            else
+            {
+                _isDiffEditor = false;
+                await SafeInvokeVoidAsync("initEditor",
+                    SelfRef, _containerRef, ResolvedId,
+                    opts, Value ?? "", sources);
+            }
+
             _ready = true;
+            _prevMarkers = Markers;
             await InvokeAsync(StateHasChanged);
+
+            // Post-init: save handler
+            if (OnSave.HasDelegate)
+                await SafeInvokeVoidAsync("setupMonacoSaveHandler", ResolvedId);
+
+            // Post-init: format keybinding
+            if (FormatEnabled)
+                await SafeInvokeVoidAsync("setupMonacoFormatKeybinding", ResolvedId);
+
+            // Post-init: markers
+            await SyncMarkersAsync();
         }
         catch (Exception ex)
         {
@@ -112,20 +218,52 @@
         var o = Options ?? new SgMonacoOptions();
         return new
         {
-            language    = o.Language,
-            theme       = o.Theme,
-            fontSize    = o.FontSize,
-            readOnly    = o.ReadOnly,
-            minimap     = o.Minimap,
-            lineNumbers = o.LineNumbers,
-            wordWrap    = o.WordWrap,
-            autoFormat  = o.AutoFormat,
+            language      = o.Language,
+            theme         = o.Theme,
+            fontSize      = o.FontSize,
+            readOnly      = o.ReadOnly,
+            minimap       = o.Minimap,
+            lineNumbers   = o.LineNumbers,
+            wordWrap      = o.WordWrap,
+            autoFormat    = o.AutoFormat,
+            fontFamily    = o.FontFamily,
+            fontLigatures = o.FontLigatures,
+            tabSize       = o.TabSize,
+            minHeight     = o.MinHeight,
+            maxHeight     = o.MaxHeight,
         };
+    }
+
+    private async Task SyncMarkersAsync()
+    {
+        if (!_ready)
+            return;
+
+        if (Markers is null || Markers.Count == 0)
+        {
+            await SafeInvokeVoidAsync("setMonacoMarkers", ResolvedId, "");
+            return;
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(
+            Markers.Select(m => new
+            {
+                line     = m.Line,
+                column   = m.Column,
+                message  = m.Message,
+                severity = (int)m.Severity
+            }),
+            new System.Text.Json.JsonSerializerOptions
+            {
+                PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+            });
+
+        await SafeInvokeVoidAsync("setMonacoMarkers", ResolvedId, json);
     }
 
     // ── Public methods ────────────────────────────────────────────────────────
 
-    /// <summary>Formats the document (pretty-print JSON).</summary>
+    /// <summary>Formats the document using Monaco's format action.</summary>
     public async Task FormatAsync() =>
         await SafeInvokeVoidAsync("format", ResolvedId);
 
@@ -170,12 +308,40 @@
         _lastExternalValue = value;
         if (ValueChanged.HasDelegate)
             await ValueChanged.InvokeAsync(value);
+
+        // Debounce auto-save
+        if (AutoSave)
+        {
+            _autoSaveTimer?.Dispose();
+            var captured = value;
+            _autoSaveTimer = new Timer(async _ =>
+            {
+                try
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        if (!IsDisposed && OnAutoSave.HasDelegate)
+                            await OnAutoSave.InvokeAsync(captured);
+                    });
+                }
+                catch { /* component disposed */ }
+            }, null, AutoSaveDelay, Timeout.Infinite);
+        }
+    }
+
+    [JSInvokable]
+    public async Task OnSaveAsync(string value)
+    {
+        if (OnSave.HasDelegate)
+            await OnSave.InvokeAsync(value);
     }
 
     // ── Dispose ───────────────────────────────────────────────────────────────
 
     protected override async ValueTask OnDisposingAsync()
     {
+        _autoSaveTimer?.Dispose();
+        _autoSaveTimer = null;
         await SafeInvokeVoidAsync("disposeEditor", ResolvedId);
     }
 }

@@ -1,197 +1,906 @@
 @page "/monaco-demo"
 @using SuperUI.Components
-@using SuperUI.Demo.Models
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Monaco Editor - SUI</PageTitle>
+<PageTitle>SgMonaco — Code Editor — SuperUI</PageTitle>
 
-<SgCard Title="Monaco Editor"
-        Subtitle="Мощный редактор кода на базе Monaco Editor (движок VS Code) для Blazor.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    @* ── Basic Usage ────────────────────────────────────────────────────── *@
-    <div style="margin-top: 32px;">
-        <h2>Базовое использование</h2>
-        <p>Редактор поддерживает подсветку синтаксиса, автодополнение и множество других функций VS Code.</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Пример (JSON)">
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <SgMonaco Value="@_jsonCode" Height="300px" Options="@_jsonOptions" />
-                </div>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Basic Editing                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Editing
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                JSON editor with auto-save, Ctrl+S handler, format keyboard shortcut, and live syntax markers on invalid JSON.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="JSON Editor" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.End">
+                        <SgCol Fill="true">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-bottom:6px;">Language</SgTypography>
+                            <SgSelect TValue="string" Value="@_basicLang" ValueChanged="@(v => { _basicLang = v; ValidateBasicJson(_basicCode); StateHasChanged(); })" Items="_languages" LabelSelector="x => x" Block="true" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgButton Variant="@(_basicReadOnly ? SgButtonVariant.Primary : SgButtonVariant.Outlined)"
+                                      Size="SgSize.Sm"
+                                      OnClick="ToggleReadOnly">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    @if (_basicReadOnly)
+                                    {
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                        </svg>
+                                        <span>Read-Only</span>
+                                    }
+                                    else
+                                    {
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                                        </svg>
+                                        <span>Editable</span>
+                                    }
+                                </SgStack>
+                            </SgButton>
+                        </SgCol>
+                    </SgRow>
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgCol Auto="true">
+                            <SgSwitch @bind-Value="_basicAutoSave" Label="Auto-Save" Size="SgSize.Sm" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgSwitch @bind-Value="_basicFormatEnabled" Label="Format (Shift+Alt+F)" Size="SgSize.Sm" />
+                        </SgCol>
+                        <SgCol Fill="true">
+                            @if (_basicLastSave is not null)
+                            {
+                                <SgBadge Text="@_basicLastSave" Variant="SgBadgeVariant.Success" Size="SgSize.Sm" />
+                            }
+                        </SgCol>
+                    </SgRow>
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgCol Fill="true">
+                            <SgSlider TValue="int" @bind-Value="_basicAutoSaveDelay" Label="Auto-Save Delay (ms)" Min="500" Max="5000" Step="100" ShowValue="true" Suffix="ms" Size="SgSize.Sm" />
+                        </SgCol>
+                    </SgRow>
+                    <SgMonaco Value="@_basicCode"
+                              ValueChanged="@(v => { _basicCode = v; ValidateBasicJson(v); StateHasChanged(); })"
+                              Height="300px"
+                              AutoSave="_basicAutoSave"
+                              AutoSaveDelay="_basicAutoSaveDelay"
+                              OnAutoSave="@(v => { _basicLastSave = "Auto: " + DateTime.Now.ToString("HH:mm:ss"); StateHasChanged(); })"
+                              FormatEnabled="_basicFormatEnabled"
+                              OnSave="@(v => { _basicLastSave = "Ctrl+S: " + DateTime.Now.ToString("HH:mm:ss"); StateHasChanged(); })"
+                              Markers="@_basicMarkers"
+                              Options="@(new SgMonacoOptions { Language = _basicLang, Minimap = false, ReadOnly = _basicReadOnly })" />
+                </SgStack>
             </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_monacoProperties" />
-            </SgCard>
+            <SgStack Vertical Space="SgSize.Md">
+                <SgCard Title="Live Value" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <div class="demo-code-preview">
+                        @_basicCode
+                    </div>
+                </SgCard>
+                <SgCard Title="SgMonaco Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_monacoProperties" />
+                </SgCard>
+            </SgStack>
         </div>
     </div>
 
-    @* ── Languages & Themes ─────────────────────────────────────────────── *@
-    <div style="margin-top: 32px;">
-        <h2>Языки и темы</h2>
-        <p>Вы можете переключать языки программирования и темы оформления на лету.</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Демонстрация">
-                <div style="display: flex; flex-direction: column; gap: 16px;">
-                    <div style="display: flex; gap: 12px; align-items: center;">
-                        <SgSelect Label="Язык" TValue="string" @bind-Value="_selectedLang" Items="_languages" style="width: 150px;" />
-                        <SgSelect Label="Тема" TValue="string" @bind-Value="_selectedTheme" Items="_themes" style="width: 150px;" />
-                    </div>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Languages & Themes                                              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Languages & Themes
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Switch between programming languages, color themes, font settings, and editor height constraints.
+            </SgTypography>
+        </div>
 
-                    <SgMonaco @bind-Value="_dynamicCode" 
-                              Height="300px" 
-                              Options="@(new SgMonacoOptions { Language = _selectedLang, Theme = _selectedTheme, Minimap = true })" />
-                </div>
+        <div class="demo-two-col">
+            <SgCard Title="Live Demo" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgRow Space="SgSize.Sm">
+                        <SgCol Xs="12" Md="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-bottom:6px;">Language</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_selectedLang" Items="_languages" LabelSelector="x => x" Block="true" />
+                        </SgCol>
+                        <SgCol Xs="12" Md="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-bottom:6px;">Theme</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_selectedTheme" Items="_themes" LabelSelector="x => x" Block="true" />
+                        </SgCol>
+                    </SgRow>
+                    <SgRow Space="SgSize.Sm">
+                        <SgCol Xs="12" Md="6">
+                            <SgSlider TValue="int" @bind-Value="_section2FontSize" Label="Font Size" Min="8" Max="28" Step="1" ShowValue="true" Suffix="px" Size="SgSize.Sm" />
+                        </SgCol>
+                        <SgCol Xs="12" Md="6">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-bottom:6px;">Tab Size</SgTypography>
+                            <SgSelect TValue="int" @bind-Value="_section2TabSize" Items="_tabSizeOptions" LabelSelector="x => x.ToString()" Block="true" />
+                        </SgCol>
+                    </SgRow>
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgCol Auto="true">
+                            <SgSwitch @bind-Value="_section2FontLigatures" Label="Font Ligatures" Size="SgSize.Sm" />
+                        </SgCol>
+                        <SgCol Fill="true">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-bottom:6px;">Min Height</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_section2MinHeight" Items="_heightOptions" LabelSelector="@(x => string.IsNullOrEmpty(x) ? "none" : x)" Block="true" />
+                        </SgCol>
+                        <SgCol Fill="true">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-bottom:6px;">Max Height</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_section2MaxHeight" Items="_heightOptions" LabelSelector="@(x => string.IsNullOrEmpty(x) ? "none" : x)" Block="true" />
+                        </SgCol>
+                    </SgRow>
+                    <SgMonaco @bind-Value="_dynamicCode"
+                              Height="300px"
+                              MinHeight="@_section2MinHeight"
+                              MaxHeight="@_section2MaxHeight"
+                              Options="@(new SgMonacoOptions {
+                                  Language = _selectedLang,
+                                  Theme = _selectedTheme,
+                                  FontSize = _section2FontSize,
+                                  FontLigatures = _section2FontLigatures,
+                                  TabSize = _section2TabSize,
+                                  Minimap = true
+                              })" />
+                </SgStack>
             </SgCard>
-            <SgCard Title="Опции SgMonacoOptions">
+            <SgCard Title="SgMonacoOptions" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_optionsProperties" />
             </SgCard>
         </div>
     </div>
 
-    @* ── Two-way Binding ────────────────────────────────────────────────── *@
-    <div style="margin-top: 32px;">
-        <h2>Двустороннее связывание</h2>
-        <p>Значение редактора синхронизируется с переменной в Blazor через <code>@@bind-Value</code>.</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Редактор">
-                <SgMonaco @bind-Value="_syncCode" Height="200px" Options="@(new SgMonacoOptions { Language = "markdown" })" />
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Two-way Binding — Markdown Preview                              -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Two-way Binding — Markdown Preview
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Edit markdown on the left; the preview pane updates in real time via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">@@bind-Value</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Editor" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgMonaco @bind-Value="_markdownCode"
+                          Height="350px"
+                          Options="@(new SgMonacoOptions { Language = "markdown", Minimap = false, WordWrap = true })" />
             </SgCard>
-            <SgCard Title="Результат (Синхронизация)">
-                <div style="padding: 12px; border: 1px solid var(--sui-border); border-radius: 4px; height: 200px; overflow: auto; background: var(--sui-bg-secondary); white-space: pre-wrap; font-family: monospace;">
-                    @_syncCode
+            <SgCard Title="Rendered Preview" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div class="demo-markdown-preview">
+                    @_markdownCode
                 </div>
             </SgCard>
         </div>
     </div>
 
-    @* ── IDE Demo ───────────────────────────────────────────────────────── *@
-    <div style="margin-top: 32px;">
-        <h2>IDE-style Dock Layout</h2>
-        <p>Пример использования Monaco Editor внутри <code>SgDockManager</code> для создания полноценного рабочего пространства.</p>
-        
-        <div style="height: 500px; border: 1px solid var(--sui-border); border-radius: 8px; overflow: hidden; margin-top: 16px;">
-            <SgDockManager Panels="_idePanels" 
-                           EnableConstructor="true"
-                           StatusBarContent="@RenderStatusBar()">
-                <PanelTemplate>
-                    @if (context.Id == "editor")
-                    {
-                        <SgMonaco Value="@_ideCode" Height="100%" Options="@(new SgMonacoOptions { Language = "csharp", Theme = "vs" })" />
-                    }
-                    else
-                    {
-                        <div style="padding: 16px; color: var(--sui-text-secondary);">
-                            Содержимое панели: @context.Title
-                        </div>
-                    }
-                </PanelTemplate>
-            </SgDockManager>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. IDE-like Demo (SgDockManager)                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                IDE-like Dock Layout
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                SgDockManager with editor, explorer, and output panels. Resize panels by dragging the splitters.
+            </SgTypography>
         </div>
-    </div>
 
-    @* ── Glassmorphism Demo ─────────────────────────────────────────────── *@
-    <div style="margin-top: 32px;">
-        <h2>Glassmorphism</h2>
-        <p>Эффект «матового стекла» для современных интерфейсов. Лучше всего проявляется на ярком или текстурированном фоне.</p>
-        
-        <div style="padding: 40px; border-radius: 12px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); position: relative; overflow: hidden;">
-            @* Декоративные круги для фона *@
-            <div style="position: absolute; width: 200px; height: 200px; background: rgba(255,255,255,0.2); border-radius: 50%; top: -50px; left: -50px;"></div>
-            <div style="position: absolute; width: 150px; height: 150px; background: rgba(255,255,255,0.1); border-radius: 50%; bottom: -30px; right: 20px;"></div>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; position: relative; z-index: 1;">
-                <SgCard Title="Glass Editor" Glass="true" Subtitle="Редактор с эффектом стекла">
-                    <SgMonaco Value="@_glassCode" Height="200px" 
-                              Options="@(new SgMonacoOptions { Language = "javascript", Theme = "vs-dark" })" 
-                              style="border-radius: 8px; overflow: hidden;" />
-                </SgCard>
-
-                <SgCard Title="Glass Info" Glass="true" Subtitle="Характеристики эффекта">
-                    <div style="color: #fff; display: flex; flex-direction: column; gap: 12px;">
-                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                            <span>Transparency</span>
-                            <span>60%</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                            <span>Blur</span>
-                            <span>12px</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px;">
-                            <span>Border</span>
-                            <span>1px Solid</span>
-                        </div>
-                        <p style="font-size: 13px; opacity: 0.8; margin-top: 8px;">
-                            Используйте параметр <code>Glass="true"</code> для активации этого стиля в компоненте <code>SgCard</code>.
-                        </p>
-                    </div>
-                </SgCard>
+        <SgCard Shadow="SgShadow.Sm" Radius="SgSize.Lg" NoPadding="true">
+            <div style="height:500px;">
+                <SgDockManager Panels="_idePanels"
+                               EnableConstructor="true"
+                               StatusBarContent="@_statusBar">
+                    <PanelTemplate>
+                        @if (context.Id == "editor")
+                        {
+                            <SgMonaco Value="@_ideCode"
+                                      Height="100%"
+                                      Options="@(new SgMonacoOptions { Language = "csharp", Theme = "vs-dark", Minimap = true })" />
+                        }
+                        else if (context.Id == "explorer")
+                        {
+                            <div class="demo-explorer-panel">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    @foreach (var file in _explorerFiles)
+                                    {
+                                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--sg-text-muted);flex-shrink:0;">
+                                                <path d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z"/>
+                                            </svg>
+                                            <span style="font-size:13px;">@file</span>
+                                        </SgStack>
+                                    }
+                                </SgStack>
+                            </div>
+                        }
+                        else if (context.Id == "output")
+                        {
+                            <div class="demo-output-panel">
+                                @foreach (var line in _outputLines)
+                                {
+                                    <div class="demo-output-line">@line</div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="padding:16px;color:var(--sg-text-muted);font-size:13px;">
+                                @context.Title
+                            </div>
+                        }
+                    </PanelTemplate>
+                </SgDockManager>
             </div>
+        </SgCard>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. SgMonacoOptions Reference                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgMonacoOptions Reference
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                All configuration properties available on <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgMonacoOptions</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <PropertyTable Items="_allOptionsProperties" />
+        </SgCard>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Format & Diff Demo                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Format &amp; Diff
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">FormatAsync()</SgTypography> to beautify JSON, or switch to diff mode to compare changes.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="JSON Formatter" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgSpace>
+                        <SgButton Variant="SgButtonVariant.Primary"
+                                  OnClick="FormatCode">
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182"/>
+                                </svg>
+                                <span>Format</span>
+                            </SgStack>
+                        </SgButton>
+                        <SgButton Variant="SgButtonVariant.Outlined"
+                                  OnClick="ResetFormatCode">
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3"/>
+                                </svg>
+                                <span>Reset</span>
+                            </SgStack>
+                        </SgButton>
+                    </SgSpace>
+                    <SgMonaco @ref="_formatRef"
+                              @bind-Value="_formatCode"
+                              Height="300px"
+                              FormatEnabled="true"
+                              Options="@(new SgMonacoOptions { Language = "json", Minimap = false, AutoFormat = false })" />
+                </SgStack>
+            </SgCard>
+            <SgCard Title="Diff Viewer" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgCol Auto="true">
+                            <SgSegmented TValue="bool"
+                                         Value="_formatDiffMode"
+                                         ValueChanged="v => { _formatDiffMode = v; StateHasChanged(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_formatModeOptions" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgSwitch @bind-Value="_formatReadOnlyBadge" Label="Read Only Badge" Size="SgSize.Sm" />
+                        </SgCol>
+                    </SgRow>
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Diff Original Value</SgTypography>
+                        <SgTextBox @bind-Value="_diffValue" Placeholder="Enter original value for diff comparison..." Block="true" />
+                    </SgStack>
+                    <SgMonaco @bind-Value="_formatDiffCode"
+                              Height="300px"
+                              ReadOnlyBadge="_formatReadOnlyBadge"
+                              DiffValue="@(_formatDiffMode ? _diffValue : null)"
+                              Options="@(new SgMonacoOptions { Language = "json", Minimap = false, ReadOnly = _formatDiffMode })" />
+                </SgStack>
+            </SgCard>
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 7. Live SgMonaco Constructor                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgMonaco Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click <strong>Copy</strong> to copy the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Language -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Language</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_ctorLang" Items="_languages" LabelSelector="x => x" Block="true" />
+                        </SgStack>
+
+                        <!-- Theme -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Theme</SgTypography>
+                            <SgSelect TValue="string" @bind-Value="_ctorTheme" Items="_themes" LabelSelector="x => x" Block="true" />
+                        </SgStack>
+
+                        <!-- Font Size -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgSlider TValue="int" @bind-Value="_ctorFontSize" Label="Font Size" Min="8" Max="28" Step="1" ShowValue="true" Suffix="px" Size="SgSize.Sm" />
+                        </SgStack>
+
+                        <!-- Read Only + ReadOnlyBadge row -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Read Only</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorReadOnly" ValueChanged="v => { _ctorReadOnly = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Badge</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorReadOnlyBadge" ValueChanged="v => { _ctorReadOnlyBadge = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Format Enabled + AutoSave row -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Format Enabled</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorFormatEnabled" ValueChanged="v => { _ctorFormatEnabled = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Auto Save</SgTypography>
+                                    <SgSegmented TValue="bool" Value="_ctorAutoSave" ValueChanged="v => { _ctorAutoSave = v; UpdateConstructorCode(); StateHasChanged(); }" Block="true" Size="sm" Options="_boolOnOff" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Min Height + Max Height row -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Min Height</SgTypography>
+                                    <SgSelect TValue="string" @bind-Value="_ctorMinHeight" Items="_ctorHeightOptions" LabelSelector="@(x => string.IsNullOrEmpty(x) ? "none" : x)" Block="true" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Xs="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Max Height</SgTypography>
+                                    <SgSelect TValue="string" @bind-Value="_ctorMaxHeight" Items="_ctorHeightOptions" LabelSelector="@(x => string.IsNullOrEmpty(x) ? "none" : x)" Block="true" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Diff Value -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Diff Value</SgTypography>
+                            <SgTextBox @bind-Value="_ctorDiffValue" Placeholder="Original value for diff editor..." Block="true" />
+                        </SgStack>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Language</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorLang" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Theme</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorTheme" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Font Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@($"{_ctorFontSize}px")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Read Only</SgTypography>
+                                    <SgBadge Variant="@(_ctorReadOnly ? SgBadgeVariant.Warn : SgBadgeVariant.Default)" Text="@(_ctorReadOnly ? "Yes" : "No")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Read Only Badge</SgTypography>
+                                    <SgBadge Variant="@(_ctorReadOnlyBadge ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorReadOnlyBadge ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgMonaco @bind-Value="_ctorContent"
+                                          Height="300px"
+                                          AutoSave="_ctorAutoSave"
+                                          FormatEnabled="_ctorFormatEnabled"
+                                          ReadOnlyBadge="_ctorReadOnlyBadge"
+                                          MinHeight="@_ctorMinHeight"
+                                          MaxHeight="@_ctorMaxHeight"
+                                          DiffValue="@(string.IsNullOrEmpty(_ctorDiffValue) ? null : _ctorDiffValue)"
+                                          Options="@(new SgMonacoOptions {
+                                              Language = _ctorLang,
+                                              Theme = _ctorTheme,
+                                              FontSize = _ctorFontSize,
+                                              ReadOnly = _ctorReadOnly,
+                                              Minimap = false
+                                          })" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Generated Code -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyConstructorCode">
+                                    <span style="font-size:11px;font-weight:600;">📋 Copy</span>
+                                </button>
+                            </div>
+                            <div class="demo-code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                    <br />
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+    .demo-code-preview {
+        padding: 12px;
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        background: var(--sg-surface-alt);
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        overflow: auto;
+        max-height: 300px;
+        white-space: pre-wrap;
+    }
+    .demo-markdown-preview {
+        padding: 16px;
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        background: var(--sg-surface-alt);
+        height: 350px;
+        overflow: auto;
+        font-family: var(--sg-font-family);
+        line-height: 1.7;
+        white-space: pre-wrap;
+        font-size: 14px;
+    }
+    .demo-explorer-panel {
+        padding: 12px;
+        font-size: 13px;
+        color: var(--sg-text-muted);
+    }
+    .demo-output-panel {
+        padding: 12px;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--sg-text-muted);
+    }
+    .demo-output-line {
+        padding: 2px 0;
+    }
+    .demo-output-line::before {
+        content: "> ";
+        color: var(--sg-primary);
+        opacity: 0.6;
+    }
+    .constructor-preview {
+        border: 1px solid var(--sg-border);
+        border-radius: var(--sui-radius, 8px);
+        overflow: hidden;
+        background: var(--sg-surface);
+    }
+    .demo-code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 12px;
+        border-radius: var(--sui-radius, 8px);
+        font-size: 11px;
+        overflow: auto;
+        max-height: 240px;
+        margin: 0;
+        tab-size: 2;
+        line-height: 1.5;
+    }
+    .demo-code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        white-space: pre;
+    }
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        border: 1px solid var(--sg-border);
+        background: var(--sg-surface);
+        color: var(--sg-text-muted);
+        cursor: pointer;
+        font-size: 11px;
+        transition: all 0.15s ease;
+    }
+    .demo-copy-btn:hover {
+        border-color: var(--sg-primary);
+        color: var(--sg-primary);
+    }
+    .ctrl-summary {
+        padding: 12px;
+        background: var(--sg-surface-alt);
+        border-radius: 6px;
+        border: 1px solid var(--sg-border);
+    }
+</style>
+
 @code {
-    private string _glassCode = "// Glassmorphism is cool!\nfunction hello() {\n  console.log('Hello from glass editor');\n}";
-    private string _ideCode = "using System;\n\npublic class Program\n{\n    public static void Main()\n    {\n        Console.WriteLine(\"Hello from SgMonaco IDE Demo!\");\n    }\n}";
-    
-    private List<SgDockPanel> _idePanels = new()
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
     {
-        SgDockPanel.Create("Explorer").WithIcon(SgIcons.Search).At(SgDockPosition.Left).Build(),
-        SgDockPanel.Create("Program.cs").WithIcon(SgIcons.FileText).At(SgDockPosition.Center).WithId("editor").Build(),
-        SgDockPanel.Create("Properties").WithIcon(SgIcons.Settings).At(SgDockPosition.Right).Build(),
-        SgDockPanel.Create("Output").WithIcon(SgIcons.BarChart).At(SgDockPosition.Bottom).Build(),
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Monaco Editor</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgMonaco — a Blazor wrapper around the Monaco Editor (VS Code engine). Supports syntax highlighting, Intellisense, multi-language editing, customizable themes, diff view, auto-save, and diagnostic markers.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
     };
 
-    private RenderFragment RenderStatusBar() => __builder =>
+    // ── Section 1: Basic Editing ─────────────────────────────────────────
+    private string _basicCode = "{\n  \"name\": \"SuperUI\",\n  \"version\": \"1.0.0\",\n  \"features\": [\n    \"Fast\",\n    \"Modern\",\n    \"Blazor\"\n  ]\n}";
+    private string _basicLang = "json";
+    private bool _basicReadOnly;
+    private bool _basicAutoSave;
+    private int _basicAutoSaveDelay = 2000;
+    private bool _basicFormatEnabled;
+    private string? _basicLastSave;
+    private IReadOnlyList<SgMonacoMarker> _basicMarkers = Array.Empty<SgMonacoMarker>();
+
+    private void ToggleReadOnly()
     {
-        <div style="display: flex; gap: 16px; align-items: center; width: 100%; height: 100%; color: #fff; font-size: 11px;">
-            <div style="display: flex; align-items: center; gap: 6px; padding: 0 8px; background: rgba(0,0,0,0.1); height: 100%;">
-                <SgIcon Icon="@SgIcons.Sigma" Size="12px" />
+        _basicReadOnly = !_basicReadOnly;
+    }
+
+    private void ValidateBasicJson(string? value)
+    {
+        if (_basicLang != "json" || string.IsNullOrEmpty(value))
+        {
+            _basicMarkers = Array.Empty<SgMonacoMarker>();
+            return;
+        }
+        try
+        {
+            System.Text.Json.JsonDocument.Parse(value);
+            _basicMarkers = Array.Empty<SgMonacoMarker>();
+        }
+        catch (System.Text.Json.JsonException ex)
+        {
+            _basicMarkers = new[]
+            {
+                new SgMonacoMarker
+                {
+                    Line = (int)Math.Max(1, (ex.LineNumber ?? 0) + 1),
+                    Column = (int)Math.Max(1, (ex.BytePositionInLine ?? 0) + 1),
+                    Message = ex.Message,
+                    Severity = SgMonacoMarkerSeverity.Error
+                }
+            };
+        }
+    }
+
+    // ── Section 2: Languages & Themes ────────────────────────────────────
+    private string _dynamicCode = "public class Hello {\n    public void Say() => Console.WriteLine(\"Hello World\");\n}";
+    private string _selectedLang = "csharp";
+    private string _selectedTheme = "vs-dark";
+    private int _section2FontSize = 14;
+    private int _section2TabSize = 4;
+    private bool _section2FontLigatures = true;
+    private string _section2MinHeight = "";
+    private string _section2MaxHeight = "";
+
+    private readonly List<string> _languages = new() { "json", "csharp", "javascript", "typescript", "html", "css", "python", "markdown", "sql" };
+    private readonly List<string> _themes = new() { "vs", "vs-dark", "hc-black" };
+    private readonly List<int> _tabSizeOptions = new() { 2, 4, 6, 8 };
+    private readonly List<string> _heightOptions = new() { "", "200px", "300px", "400px", "500px", "600px", "800px" };
+
+    // ── Section 3: Two-way Binding ───────────────────────────────────────
+    private string _markdownCode = "# Hello Monaco\n\nEdit this markdown text and see the preview update in real time!\n\n- **Bold** and *italic* text\n- Lists and `code` snippets\n- Headers and paragraphs";
+
+    // ── Section 4: IDE Demo ──────────────────────────────────────────────
+    private string _ideCode = "using System;\n\npublic class Program\n{\n    public static void Main()\n    {\n        Console.WriteLine(\"Hello from SgMonaco IDE Demo!\");\n    }\n}";
+
+    private readonly List<string> _explorerFiles = new()
+    {
+        "Program.cs", "Startup.cs", "appsettings.json",
+        "Controllers/", "Models/", "Views/",
+        "README.md", ".gitignore"
+    };
+
+    private readonly List<string> _outputLines = new()
+    {
+        "Build started...",
+        "Restoring NuGet packages...",
+        "Compilation succeeded (0 errors, 0 warnings)",
+        "Ready"
+    };
+
+    private List<SgDockPanel> _idePanels = new()
+    {
+        SgDockPanel.Create("Explorer").WithIcon(SgHeroicons.Outline.FolderOpen).At(SgDockPosition.Left).WithId("explorer").Build(),
+        SgDockPanel.Create("Program.cs").WithIcon(SgHeroicons.Outline.CodeBracket).At(SgDockPosition.Center).WithId("editor").Build(),
+        SgDockPanel.Create("Output").WithIcon(SgHeroicons.Outline.CommandLine).At(SgDockPosition.Bottom).WithId("output").Build(),
+    };
+
+    private RenderFragment _statusBar => __builder =>
+    {
+        <div style="display:flex;gap:16px;align-items:center;width:100%;height:100%;color:#fff;font-size:11px;">
+            <div style="display:flex;align-items:center;gap:6px;padding:0 8px;background:rgba(0,0,0,0.1);height:100%;">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
+                </svg>
                 <span>Ready</span>
             </div>
             <span>main*</span>
-            <span>0 ↓ 1 ↑</span>
-            <div style="margin-left: auto; display: flex; gap: 12px; align-items: center; padding-right: 8px;">
+            <span>0 errors</span>
+            <div style="margin-left:auto;display:flex;gap:12px;align-items:center;padding-right:8px;">
                 <span>Ln 1, Col 1</span>
                 <span>Spaces: 4</span>
                 <span>UTF-8</span>
                 <span>C#</span>
-                <SgIcon Icon="@SgIcons.Bell" Size="12px" />
             </div>
         </div>
     };
 
-    private string _jsonCode = "{\n  \"name\": \"SuperUI\",\n  \"version\": \"1.0.0\",\n  \"features\": [\n    \"Fast\",\n    \"Modern\",\n    \"Blazor\"\n  ]\n}";
-    private string _dynamicCode = "public class Hello {\n    public void Say() => Console.WriteLine(\"Hello World\");\n}";
-    private string? _syncCode = "# Hello Monaco\n\nTry typing here and see the preview on the right!\n\n- List item 1\n- List item 2";
+    // ── Section 6: Format & Diff ─────────────────────────────────────────
+    private SgMonaco? _formatRef;
+    private string _formatCode = "{\n  \"name\": \"SuperUI\",\n\"version\":\"1.0.0\",\n  \"dependencies\": {\n \"monaco\":\"0.45.0\",\n\"blazor\":\"9.0.0\"\n  }\n}";
+    private readonly string _formatOriginalCode = "{\n  \"name\": \"SuperUI\",\n\"version\":\"1.0.0\",\n  \"dependencies\": {\n \"monaco\":\"0.45.0\",\n\"blazor\":\"9.0.0\"\n  }\n}";
+    private string _formatDiffCode = "{\n  \"modified\": true,\n  \"changes\": 3\n}";
+    private string _diffValue = "{\n  \"original\": true,\n  \"changes\": 1\n}";
+    private bool _formatDiffMode;
+    private bool _formatReadOnlyBadge = true;
 
-    private string _selectedLang = "csharp";
-    private string _selectedTheme = "vs-dark";
+    private readonly List<SgSegmentedOption<bool>> _formatModeOptions = new()
+    {
+        new() { Value = false, Label = "Standard" },
+        new() { Value = true,  Label = "Diff" },
+    };
 
-    private List<string> _languages = new() { "json", "csharp", "sql", "markdown", "javascript", "typescript", "html", "css" };
-    private List<string> _themes = new() { "vs", "vs-dark", "hc-black" };
+    private async Task FormatCode()
+    {
+        if (_formatRef is not null)
+            await _formatRef.FormatAsync();
+    }
 
-    private SgMonacoOptions _jsonOptions = new() { Language = "json", Minimap = false };
+    private async Task ResetFormatCode()
+    {
+        _formatCode = _formatOriginalCode;
+        StateHasChanged();
+    }
 
+    // ── Section 7: Constructor ───────────────────────────────────────────
+    private string _ctorLang = "json";
+    private string _ctorTheme = "vs-dark";
+    private int _ctorFontSize = 14;
+    private bool _ctorReadOnly;
+    private bool _ctorReadOnlyBadge = true;
+    private bool _ctorFormatEnabled;
+    private bool _ctorAutoSave;
+    private string _ctorMinHeight = "";
+    private string _ctorMaxHeight = "";
+    private string _ctorDiffValue = "";
+    private string _ctorContent = "{\n  \"name\": \"Live Constructor\",\n  \"version\": \"1.0.0\"\n}";
+    private string[] _generatedCodeLines = Array.Empty<string>();
+
+    private readonly List<string> _ctorHeightOptions = new() { "", "200px", "300px", "400px", "500px", "600px" };
+    private readonly List<SgSegmentedOption<bool>> _boolOnOff = new()
+    {
+        new() { Value = true,  Label = "On" },
+        new() { Value = false, Label = "Off" },
+    };
+
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgMonaco");
+        lines.Add("    Height=\"300px\"");
+        if (_ctorAutoSave)
+            lines.Add("    AutoSave=\"true\"");
+        if (_ctorFormatEnabled)
+            lines.Add("    FormatEnabled=\"true\"");
+        if (!_ctorReadOnlyBadge)
+            lines.Add("    ReadOnlyBadge=\"false\"");
+        if (!string.IsNullOrEmpty(_ctorMinHeight))
+            lines.Add($"    MinHeight=\"{_ctorMinHeight}\"");
+        if (!string.IsNullOrEmpty(_ctorMaxHeight))
+            lines.Add($"    MaxHeight=\"{_ctorMaxHeight}\"");
+        if (!string.IsNullOrEmpty(_ctorDiffValue))
+            lines.Add($"    DiffValue=\"{_ctorDiffValue.Replace("\"", "&quot;")}\"");
+        lines.Add("    Options=\"@(new SgMonacoOptions {");
+        lines.Add($"        Language = \"{_ctorLang}\",");
+        lines.Add($"        Theme = \"{_ctorTheme}\",");
+        lines.Add($"        FontSize = {_ctorFontSize},");
+        lines.Add($"        ReadOnly = {(_ctorReadOnly ? "true" : "false")},");
+        lines.Add($"        Minimap = false");
+        lines.Add("    })\" />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyConstructorCode()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+        }
+        catch { }
+    }
+
+    // ── Property Tables ──────────────────────────────────────────────────
     private List<PropertyPanelItem> _monacoProperties = new()
     {
-        new() { Label = "Value", Value = "string?", BadgeText = "Текущее значение редактора." },
-        new() { Label = "Height", Value = "string", BadgeText = "Высота контейнера." },
-        new() { Label = "Width", Value = "string", BadgeText = "Ширина контейнера." },
-        new() { Label = "Glass", Value = "bool", BadgeText = "Включить эффект матового стекла." },
-        new() { Label = "Options", Value = "SgMonacoOptions", BadgeText = "Настройки редактора." },
-        new() { Label = "Sources", Value = "SgMonacoSources", BadgeText = "Источники CDN для скриптов Monaco." },
-        new() { Label = "ValueChanged", Value = "EventCallback<string?>", BadgeText = "Событие при изменении текста." }
+        new() { Label = "Value",         Value = "string?",                         BadgeText = "Editor content",    BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Height",        Value = "string",                          BadgeText = "CSS height",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Width",         Value = "string",                          BadgeText = "CSS width",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Options",       Value = "SgMonacoOptions",                 BadgeText = "Config object",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Sources",       Value = "SgMonacoSources",                 BadgeText = "CDN overrides",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ValueChanged",  Value = "EventCallback<string?>",          BadgeText = "Change event",      BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnSave",        Value = "EventCallback<string?>",          BadgeText = "Ctrl+S handler",    BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "FormatEnabled", Value = "bool",                            BadgeText = "Format shortcut",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Markers",       Value = "IReadOnlyList&lt;SgMonacoMarker&gt;?", BadgeText = "Diagnostics", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AutoSave",      Value = "bool",                            BadgeText = "Periodic save",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AutoSaveDelay", Value = "int",                             BadgeText = "Debounce ms",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnAutoSave",    Value = "EventCallback<string?>",          BadgeText = "Auto-save event",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ReadOnlyBadge", Value = "bool",                            BadgeText = "Read-only badge",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MinHeight",     Value = "string?",                         BadgeText = "Min container",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxHeight",     Value = "string?",                         BadgeText = "Max container",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "DiffValue",     Value = "string?",                         BadgeText = "Diff original",     BadgeVariant = SgBadgeVariant.Success },
     };
 
     private List<PropertyPanelItem> _optionsProperties = new()
     {
-        new() { Label = "Language", Value = "string", BadgeText = "Язык подсветки (json, csharp, sql, etc.)." },
-        new() { Label = "Theme", Value = "string", BadgeText = "Тема (vs, vs-dark, hc-black)." },
-        new() { Label = "FontSize", Value = "int", BadgeText = "Размер шрифта." },
-        new() { Label = "ReadOnly", Value = "bool", BadgeText = "Только для чтения." },
-        new() { Label = "Minimap", Value = "bool", BadgeText = "Отображать мини-карту кода." },
-        new() { Label = "LineNumbers", Value = "bool", BadgeText = "Отображать номера строк." },
-        new() { Label = "WordWrap", Value = "bool", BadgeText = "Перенос строк." },
-        new() { Label = "AutoFormat", Value = "bool", BadgeText = "Автоматическое форматирование при вставке." }
+        new() { Label = "Language",      Value = "string",    BadgeText = "json, csharp, sql, etc.",        BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Theme",         Value = "string",    BadgeText = "vs, vs-dark, hc-black",           BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "FontSize",      Value = "int",       BadgeText = "Font size in pixels",             BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FontFamily",    Value = "string?",   BadgeText = "Custom monospace font",           BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "FontLigatures", Value = "bool?",     BadgeText = "Enable font ligatures",           BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "TabSize",       Value = "int?",      BadgeText = "Tab width in spaces",             BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ReadOnly",      Value = "bool",      BadgeText = "Prevent editing",                 BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Minimap",       Value = "bool",      BadgeText = "Show code minimap",               BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LineNumbers",   Value = "bool",      BadgeText = "Show line number gutter",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "WordWrap",      Value = "bool",      BadgeText = "Wrap long lines",                 BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AutoFormat",    Value = "bool",      BadgeText = "Format on paste/load",            BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "MinHeight",     Value = "int?",      BadgeText = "Native Monaco min height (px)",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxHeight",     Value = "int?",      BadgeText = "Native Monaco max height (px)",   BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _allOptionsProperties = new()
+    {
+        new() { Label = "Language",      Value = "string",    BadgeText = "Syntax highlighting language",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Theme",         Value = "string",    BadgeText = "Color theme (vs, vs-dark, hc-black)",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "FontSize",      Value = "int",       BadgeText = "Editor font size (default 13)",           BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FontFamily",    Value = "string?",   BadgeText = "Custom monospace font family",            BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "FontLigatures", Value = "bool?",     BadgeText = "Enable/disable font ligatures",           BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "TabSize",       Value = "int?",      BadgeText = "Tab width in spaces (default 2)",         BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ReadOnly",      Value = "bool",      BadgeText = "Lock editor content",                     BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Minimap",       Value = "bool",      BadgeText = "Show code minimap",                       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LineNumbers",   Value = "bool",      BadgeText = "Show line numbers (default true)",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "WordWrap",      Value = "bool",      BadgeText = "Enable word wrapping",                    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "AutoFormat",    Value = "bool",      BadgeText = "Auto-format on paste/load",               BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "MinHeight",     Value = "int?",      BadgeText = "Native Monaco min editor height (px)",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxHeight",     Value = "int?",      BadgeText = "Native Monaco max editor height (px)",    BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _formatApiProperties = new()
+    {
+        new() { Label = "FormatAsync()",        Value = "Task",                       BadgeText = "Format document",       BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "SetLanguageAsync()",   Value = "Task",                       BadgeText = "Change language",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SetThemeAsync()",      Value = "Task",                       BadgeText = "Change theme",          BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "GetValueAsync()",      Value = "Task&lt;string&gt;",            BadgeText = "Get current value", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SetReadOnlyAsync()",   Value = "Task",                       BadgeText = "Toggle read-only mode", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "RetryAsync()",         Value = "Task",                       BadgeText = "Retry failed init",     BadgeVariant = SgBadgeVariant.Default },
     };
 }

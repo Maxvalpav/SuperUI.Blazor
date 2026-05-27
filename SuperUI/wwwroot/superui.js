@@ -484,4 +484,52 @@ export function disposeDataGridVirtualization(dotNetRef) {
     }
 }
 
+// ── QR Code SVG-to-PNG download ────────────────────────────────────
 
+export function downloadSvgAsPng(container, fileName, size) {
+    const svg = container.querySelector('svg');
+    if (!svg) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, size, size);
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const img = new Image();
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+
+    img.onload = function () {
+        ctx.drawImage(img, 0, 0, size, size);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(function (blob) {
+            if (!blob) return;
+            const link = document.createElement('a');
+            link.download = fileName;
+            link.href = URL.createObjectURL(blob);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(link.href), 100);
+        }, 'image/png');
+    };
+
+    img.onerror = function () {
+        URL.revokeObjectURL(url);
+        const link = document.createElement('a');
+        link.download = fileName.replace(/\.png$/i, '.svg');
+        const svgBlob2 = new Blob([svgData], { type: 'image/svg+xml' });
+        link.href = URL.createObjectURL(svgBlob2);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    img.src = url;
+}
+window.superuiQrCode = { downloadSvgAsPng };

@@ -1,157 +1,795 @@
 @page "/cron-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Cron Builder - SUI</PageTitle>
+<PageTitle>SgCron & SgCronPicker — Cron Builder — SuperUI</PageTitle>
 
-<SgCard Title="SgCron — Конструктор Cron-выражений"
-        Subtitle="Удобный визуальный билдер расписаний. Поддержка стандарта 5 полей: минуты, часы, день месяца, месяц, день недели.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="display: grid; grid-template-columns: 1.4fr 1fr; gap: 24px; margin-top: 16px;">
-        <SgCard Title="Интерактивный билдер">
-            <SgCron @bind-Value="_expression"
-                    Label="Расписание"
-                    Hint="Выберите режим в каждой вкладке — выражение и человекочитаемое описание обновляются автоматически." />
-        </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Interactive Builder                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Interactive Builder
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Build cron expressions visually. The expression and human-readable description update in real time.
+            </SgTypography>
+        </div>
 
-        <SgCard Title="Текущее значение">
-            <div style="display:flex; flex-direction:column; gap: 12px;">
-                <div>
-                    <div style="font-size:11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600;">Cron-выражение</div>
-                    <code style="display:block; padding: 12px; background: var(--sui-bg-secondary); border: 1px solid var(--sui-border); border-radius: 8px; font-size: 16px; color: var(--sui-accent); font-weight: 700; margin-top: 6px;">@_expression</code>
-                </div>
+        <div class="demo-two-col">
+            <SgCard Title="Visual Editor" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgCron @bind-Value="_expression"
+                        Label="Schedule"
+                        Hint="Configure each field. New features below."
+                        ShowNextFireTimes="true"
+                        ShowCalendar="true"
+                        ShowComplexity="true"
+                        ShowIcalExport="true"
+                        OnValidationChanged="v => { _isExpressionValid = v; StateHasChanged(); }" />
+            </SgCard>
 
-                <div>
-                    <div style="font-size:11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600;">Быстрые шаблоны</div>
-                    <div style="display:flex; flex-direction: column; gap: 6px; margin-top: 6px;">
-                        <SgButton Text="Каждые 15 минут" Variant="SgButtonVariant.Outlined" Block="true" OnClick="@(() => _expression = "*/15 * * * *")" />
-                        <SgButton Text="По будням в 09:30" Variant="SgButtonVariant.Outlined" Block="true" OnClick="@(() => _expression = "30 9 * * 1-5")" />
-                        <SgButton Text="1-го числа в полночь" Variant="SgButtonVariant.Outlined" Block="true" OnClick="@(() => _expression = "0 0 1 * *")" />
-                        <SgButton Text="Сброс" Variant="SgButtonVariant.Ghost" Block="true" OnClick="@(() => _expression = "* * * * *")" />
+            <SgCard Title="Current Value" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:6px;">
+                            Expression
+                        </SgTypography>
+                        <code class="demo-cron-expr">@_expression</code>
                     </div>
-                </div>
-            </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:6px;">
+                            Human-Readable
+                        </SgTypography>
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-secondary)">
+                            @SgCronHumanizer.Describe(_expression)
+                        </SgTypography>
+                    </div>
+                    <SgDivider />
+                    <div>
+                        <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgIcon Icon="@SgHeroicons.Outline.Clock" Size="16px" Color="var(--sg-text-muted)" />
+                                <SgTag Variant="SgTagVariant.Info" Size="SgSize.Sm" Style="font-family:monospace;">@_expression</SgTag>
+                            </SgStack>
+                            <SgBadge Variant="@(_isExpressionValid ? SgBadgeVariant.Success : SgBadgeVariant.Danger)"
+                                     Text="@(_isExpressionValid ? "Valid" : "Invalid")"
+                                     Standalone="true" />
+                        </SgStack>
+                    </div>
+                </SgStack>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Quick Presets                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Quick Presets
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Click any preset to instantly set the expression above.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgSpace Wrap="true" Size="SgSize.Sm">
+                <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                          OnClick="@(() => _expression = "*/15 * * * *")"
+                          Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.Clock)))">
+                    Every 15 min
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                          OnClick="@(() => _expression = "30 9 * * 1-5")"
+                          Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.Briefcase)))">
+                    Weekdays 9:30
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                          OnClick="@(() => _expression = "0 0 1 * *")"
+                          Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.CalendarDays)))">
+                    1st at midnight
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                          OnClick="@(() => _expression = "0 * * * *")"
+                          Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.ArrowPathRoundedSquare)))">
+                    Every hour
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm"
+                          OnClick="@(() => _expression = "*/30 * * * *")"
+                          Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.Bolt)))">
+                    Every 30 min
+                </SgButton>
+                <SgButton Variant="SgButtonVariant.Ghost" Size="SgSize.Sm"
+                          OnClick="@(() => _expression = "* * * * *")"
+                          Icon="@(new RenderFragment(b => b.AddContent(0, (MarkupString)SgHeroicons.Outline.ArrowUturnLeft)))">
+                    Reset
+                </SgButton>
+            </SgSpace>
         </SgCard>
     </div>
 
-    <SgDivider />
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. States                                                          -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgCron — States
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                New features, disabled, custom presets, and compact mode.
+            </SgTypography>
+        </div>
 
-    <div style="margin-top: 24px;">
-        <h2>Состояния</h2>
-        <p>Компонент поддерживает обычный, отключённый и состояние с ошибкой.</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Только чтение / отключён">
+        <div class="demo-three-col">
+            <SgCard Title="New Features" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgCron Value="0 9 * * 1-5"
+                        Label="All Features"
+                        Hint="Next fire times, calendar, timezone, complexity, library, iCal export."
+                        ShowNextFireTimes="true"
+                        ShowCalendar="true"
+                        ShowTimeZone="true"
+                        ShowComplexity="true"
+                        ShowLibrary="true"
+                        ShowIcalExport="true" />
+            </SgCard>
+
+            <SgCard Title="Disabled" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <SgCron Value="0 9 * * 1-5"
                         Disabled="true"
-                        Label="Запланированное расписание"
-                        Hint="Поле отключено и недоступно для редактирования." />
+                        Label="Fixed Schedule"
+                        Hint="This field is read-only." />
             </SgCard>
 
-            <SgCard Title="С пользовательскими шаблонами">
-                <SgCron @bind-Value="_customExpr"
-                        Label="Со своими пресетами"
-                        Presets="_customPresets" />
-            </SgCard>
-        </div>
-    </div>
-
-    <SgDivider />
-
-    <div style="margin-top: 24px;">
-        <h2>Компактный режим</h2>
-        <p>Установите <code>Compact="true"</code>, чтобы получить плотную версию с иконочными вкладками и сжатым превью — удобно для боковых панелей и форм с ограниченной шириной.</p>
-        <div style="display: grid; grid-template-columns: 360px 1fr; gap: 24px; margin-top: 16px; align-items: start;">
-            <SgCard Title="Compact">
+            <SgCard Title="Compact Mode" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <SgCron @bind-Value="_compactExpr"
                         Compact="true"
-                        Label="Расписание"
-                        Hint="Иконочные вкладки и плотная сетка." />
-            </SgCard>
-            <SgCard Title="Текущее значение">
-                <code style="display:block; padding: 12px; background: var(--sui-bg-secondary); border: 1px solid var(--sui-border); border-radius: 8px; font-size: 16px; color: var(--sui-accent); font-weight: 700;">@_compactExpr</code>
-            </SgCard>
-        </div>
-    </div>
-
-    <SgDivider />
-
-    <div style="margin-top: 24px;">
-        <h2>SgCronPicker — выпадающий пикер</h2>
-        <p>Компактный триггер-кнопка, раскрывающая полный <code>SgCron</code> в попапе. Изменения применяются только после нажатия «Применить».</p>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px; align-items: start;">
-            <SgCard Title="Базовый">
-                <SgCronPicker @bind-Value="_pickerExpr"
-                              Label="Расписание задачи"
-                              Hint="Нажмите, чтобы открыть конструктор." />
-            </SgCard>
-
-            <SgCard Title="Текущее значение">
-                <div style="display:flex; flex-direction:column; gap: 8px;">
-                    <div>
-                        <div style="font-size:11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600;">Выражение</div>
-                        <code style="display:block; padding: 10px 12px; background: var(--sui-bg-secondary); border: 1px solid var(--sui-border); border-radius: 8px; font-size: 15px; color: var(--sui-accent); font-weight: 700; margin-top: 6px;">@(_pickerExpr ?? "—")</code>
-                    </div>
-                    <div>
-                        <div style="font-size:11px; color: var(--sui-text-muted); text-transform: uppercase; letter-spacing: .05em; font-weight: 600;">Описание</div>
-                        <div style="margin-top: 6px; font-size: 13px; color: var(--sui-text-secondary);">@SgCronHumanizer.Describe(_pickerExpr)</div>
-                    </div>
-                </div>
-            </SgCard>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-top: 24px; align-items: start;">
-            <SgCard Title="С очисткой">
-                <SgCronPicker @bind-Value="_pickerExpr2"
-                              Label="Расписание"
-                              AllowClear="true"
-                              Placeholder="Не задано" />
-            </SgCard>
-
-            <SgCard Title="Компактный попап">
-                <SgCronPicker @bind-Value="_pickerExpr3"
-                              Label="Расписание"
-                              Compact="true"
-                              Hint="Compact=true внутри попапа." />
-            </SgCard>
-
-            <SgCard Title="Отключён">
-                <SgCronPicker Value="0 9 * * 1-5"
-                              Label="Расписание"
-                              Disabled="true"
-                              Hint="Поле недоступно для редактирования." />
+                        Label="Compact Schedule"
+                        Hint="Icon tabs and denser grid."
+                        ShowNextFireTimes="true"
+                        ShowComplexity="true" />
             </SgCard>
         </div>
     </div>
 
-    <SgDivider />
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. SgCronPicker                                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgCronPicker — Dropdown Picker
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                A compact trigger button that opens a full <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgCron</SgTypography> in a popup. Changes apply on "Apply".
+            </SgTypography>
+        </div>
 
-    <div style="margin-top: 24px;">
-        <h2>Поддерживаемые синтаксисы</h2>
-        <p>SgCron понимает стандартное 5-полевое cron-выражение и расширения <code>L</code>, <code>?</code>, <code>*/N</code>, <code>X-Y</code>, перечисления через запятую.</p>
-        <ul style="line-height: 1.9;">
-            <li><code>* * * * *</code> — каждую минуту</li>
-            <li><code>*/5 * * * *</code> — каждые 5 минут</li>
-            <li><code>0 9-18 * * 1-5</code> — каждый час с 09 до 18 в будние дни</li>
-            <li><code>0 0 L * *</code> — в последний день месяца в полночь</li>
-            <li><code>30 8,12,18 * * *</code> — три раза в день: 08:30, 12:30, 18:30</li>
-        </ul>
+        <div class="demo-three-col">
+            <SgCard Title="Basic" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgCronPicker @bind-Value="_pickerExpr"
+                                  Label="Task Schedule"
+                                  Hint="Click to open the builder." />
+                    <SgDivider />
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Selected</SgTypography>
+                        <code class="demo-cron-expr">@(_pickerExpr ?? "—")</code>
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-secondary)">
+                            @SgCronHumanizer.Describe(_pickerExpr)
+                        </SgTypography>
+                    </SgStack>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Allow Clear" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgCronPicker @bind-Value="_pickerExpr2"
+                                  Label="Schedule"
+                                  AllowClear="true"
+                                  Placeholder="Not set" />
+                    <SgDivider />
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Selected</SgTypography>
+                        <code class="demo-cron-expr">@(_pickerExpr2 ?? "—")</code>
+                    </SgStack>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Compact Popup" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgCronPicker @bind-Value="_pickerExpr3"
+                                  Label="Schedule"
+                                  Compact="true"
+                                  Hint="Compact inside popup." />
+                    <SgDivider />
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Selected</SgTypography>
+                        <code class="demo-cron-expr">@(_pickerExpr3 ?? "—")</code>
+                    </SgStack>
+                </SgStack>
+            </SgCard>
+        </div>
+
+        <SgRow Space="SgSize.Lg" Style="margin-top:24px;">
+            <SgCol Md="4">
+                <SgCard Title="Disabled" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgCronPicker Value="0 9 * * 1-5"
+                                  Label="Schedule"
+                                  Disabled="true"
+                                  Hint="Not editable." />
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Toggle feature flags and see the SgCron markup in real time.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- ShowNextFireTimes + NextFireCount -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Next Fire Times</SgTypography>
+                            <SgSwitch Value="_ctorShowNextFireTimes" ValueChanged="v => { _ctorShowNextFireTimes = v; UpdateConstructorCode(); }" />
+                            @if (_ctorShowNextFireTimes)
+                            {
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">Count: @_ctorNextFireCount</SgTypography>
+                                    <SgSlider TValue="int" Value="_ctorNextFireCount" ValueChanged="v => { _ctorNextFireCount = v; UpdateConstructorCode(); }" Min="1" Max="20" Step="1" ShowTooltip="true" />
+                                </SgStack>
+                            }
+                        </SgStack>
+
+                        <!-- Toggle row: ShowCalendar, ShowTimeZone, ShowComplexity -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Calendar</SgTypography>
+                                    <SgSwitch Value="_ctorShowCalendar" ValueChanged="v => { _ctorShowCalendar = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Time Zone</SgTypography>
+                                    <SgSwitch Value="_ctorShowTimeZone" ValueChanged="v => { _ctorShowTimeZone = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Complexity</SgTypography>
+                                    <SgSwitch Value="_ctorShowComplexity" ValueChanged="v => { _ctorShowComplexity = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Library</SgTypography>
+                                    <SgSwitch Value="_ctorShowLibrary" ValueChanged="v => { _ctorShowLibrary = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">iCal Export</SgTypography>
+                                    <SgSwitch Value="_ctorShowIcalExport" ValueChanged="v => { _ctorShowIcalExport = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Block</SgTypography>
+                                    <SgSwitch Value="_ctorBlock" ValueChanged="v => { _ctorBlock = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Compact</SgTypography>
+                                    <SgSwitch Value="_ctorCompact" ValueChanged="v => { _ctorCompact = v; UpdateConstructorCode(); }" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Next Fire Times</SgTypography>
+                                    <SgBadge Variant="@(_ctorShowNextFireTimes ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorShowNextFireTimes ? $"On ({_ctorNextFireCount})" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Calendar</SgTypography>
+                                    <SgBadge Variant="@(_ctorShowCalendar ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorShowCalendar ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Time Zone</SgTypography>
+                                    <SgBadge Variant="@(_ctorShowTimeZone ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorShowTimeZone ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Complexity</SgTypography>
+                                    <SgBadge Variant="@(_ctorShowComplexity ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorShowComplexity ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Library</SgTypography>
+                                    <SgBadge Variant="@(_ctorShowLibrary ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorShowLibrary ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">iCal Export</SgTypography>
+                                    <SgBadge Variant="@(_ctorShowIcalExport ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_ctorShowIcalExport ? "On" : "Off")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Block</SgTypography>
+                                    <SgBadge Variant="@(_ctorBlock ? SgBadgeVariant.Warn : SgBadgeVariant.Default)" Text="@(_ctorBlock ? "Yes" : "No")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Compact</SgTypography>
+                                    <SgBadge Variant="@(_ctorCompact ? SgBadgeVariant.Warn : SgBadgeVariant.Default)" Text="@(_ctorCompact ? "Yes" : "No")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgCron Value="*/15 * * * *"
+                                        Label="Constructor Preview"
+                                        Hint="All feature flags applied."
+                                        ShowNextFireTimes="@_ctorShowNextFireTimes"
+                                        NextFireCount="@_ctorNextFireCount"
+                                        ShowCalendar="@_ctorShowCalendar"
+                                        ShowTimeZone="@_ctorShowTimeZone"
+                                        ShowComplexity="@_ctorShowComplexity"
+                                        ShowLibrary="@_ctorShowLibrary"
+                                        ShowIcalExport="@_ctorShowIcalExport"
+                                        Block="@_ctorBlock"
+                                        Compact="@_ctorCompact" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCtorCodeToClipboard">
+                                    <span id="ctor-copy-icon">@_ctorCopyIcon</span>
+                                    <span id="ctor-copy-text" style="font-size:11px;font-weight:600;">@_ctorCopyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="ctor-code-block">
+                                @foreach (var line in _ctorCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Property Tables                                                 -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Component API
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                All public parameters for <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgCron</SgTypography> and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgCronPicker</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="SgCron Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_cronProperties" />
+            </SgCard>
+            <SgCard Title="SgCronPicker Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_pickerProperties" />
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 7. Syntax Reference                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Syntax Reference
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Common 5-field cron expressions and what they mean. Fields: minute, hour, day-of-month, month, day-of-week.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true">
+            <table class="demo-syntax-table">
+                <thead>
+                    <tr>
+                        <th>Expression</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _syntaxRows)
+                    {
+                        <tr>
+                            <td><code>@row.Expression</code></td>
+                            <td>@row.Description</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    .demo-three-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 992px) {
+        .demo-two-col, .demo-three-col { grid-template-columns: 1fr; }
+    }
+    @@media (min-width: 993px) and (max-width: 1200px) {
+        .demo-three-col { grid-template-columns: 1fr 1fr; }
+    }
+
+    /* ── Cron expression box ─────────────────────────────────────────────────── */
+    .demo-cron-expr {
+        display: block;
+        padding: 10px 12px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        font-size: 15px;
+        color: var(--sg-accent, var(--sg-primary));
+        font-weight: 700;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        margin-top: 6px;
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 24px 16px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* ── Syntax reference table ──────────────────────────────────────────────── */
+    .demo-syntax-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .demo-syntax-table thead th {
+        text-align: left;
+        padding: 12px 16px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: var(--sg-text-muted);
+        background: var(--sg-surface-alt);
+        border-bottom: 1px solid var(--sg-border);
+    }
+    .demo-syntax-table tbody td {
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--sg-border);
+        color: var(--sg-text);
+    }
+    .demo-syntax-table tbody tr:last-child td {
+        border-bottom: none;
+    }
+    .demo-syntax-table tbody tr:hover {
+        background: color-mix(in srgb, var(--sg-primary) 4%, transparent);
+    }
+    .demo-syntax-table code {
+        background: var(--sg-surface-alt);
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        color: var(--sg-primary);
+        white-space: nowrap;
+    }
+</style>
+
 @code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                @((MarkupString)SgHeroicons.Outline.Clock)
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">
+                    Cron Builder
+                </SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgCron — Visual cron expression builder with tabs, presets, and human-readable output. SgCronPicker — compact dropdown variant.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Expression state ─────────────────────────────────────────────────
     private string? _expression = "0 9 * * 1-5";
     private string? _customExpr = "0 */2 * * *";
     private string? _compactExpr = "*/15 * * * *";
     private string? _pickerExpr = "0 9 * * 1-5";
     private string? _pickerExpr2 = "*/30 * * * *";
     private string? _pickerExpr3 = "0 0 * * 0";
+    private bool _isExpressionValid = true;
 
+    // ── Custom presets ──────────────────────────────────────────────────
     private readonly IReadOnlyList<SgCronPreset> _customPresets = new[]
     {
-        new SgCronPreset("Каждые 30 сек невозможно — мин минимум", "* * * * *"),
-        new SgCronPreset("Раз в полчаса", "*/30 * * * *"),
-        new SgCronPreset("Каждые 2 часа", "0 */2 * * *"),
-        new SgCronPreset("Каждое воскресенье", "0 12 * * 0"),
+        new SgCronPreset("Every minute (not 30s — min is 1 min)", "* * * * *"),
+        new SgCronPreset("Every half hour", "*/30 * * * *"),
+        new SgCronPreset("Every 2 hours", "0 */2 * * *"),
+        new SgCronPreset("Every Sunday at noon", "0 12 * * 0"),
     };
+
+    // ── Syntax reference data ──────────────────────────────────────────
+    private readonly List<SyntaxRow> _syntaxRows = new()
+    {
+        new("Every minute", "* * * * *"),
+        new("Every 5 minutes", "*/5 * * * *"),
+        new("Every 15 minutes", "*/15 * * * *"),
+        new("Every 30 minutes", "*/30 * * * *"),
+        new("Every hour", "0 * * * *"),
+        new("Every 2 hours", "0 */2 * * *"),
+        new("Daily at midnight", "0 0 * * *"),
+        new("Daily at 9:00 AM", "0 9 * * *"),
+        new("Weekdays at 9:30 AM", "30 9 * * 1-5"),
+        new("Weekends at 10:00 AM", "0 10 * * 0,6"),
+        new("Every Monday at 8:00 AM", "0 8 * * 1"),
+        new("1st of month at midnight", "0 0 1 * *"),
+        new("Last day of month at noon", "0 0 L * *"),
+        new("Every 3 hours (office hours)", "0 9-18 * * 1-5"),
+        new("Three times daily (8:30, 12:30, 18:30)", "30 8,12,18 * * *"),
+        new("Once a year (Jan 1st)", "0 0 1 1 *"),
+    };
+
+    // ── Property tables ─────────────────────────────────────────────────
+    private List<PropertyPanelItem> _cronProperties = new()
+    {
+        new() { Label = "Value",              Value = "string?",              BadgeText = "Bound",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Label",              Value = "string?",              BadgeText = "Field",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Hint",               Value = "string?",              BadgeText = "Help",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",           Value = "bool",                 BadgeText = "State",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Compact",            Value = "bool",                 BadgeText = "Dense",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Block",              Value = "bool",                 BadgeText = "Full width", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Required",           Value = "bool",                 BadgeText = "Validation", BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Presets",            Value = "IReadOnlyList<>",      BadgeText = "Quick",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowPresets",        Value = "bool",                 BadgeText = "Visibility", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ErrorText",          Value = "string?",              BadgeText = "Error",      BadgeVariant = SgBadgeVariant.Danger  },
+        new() { Label = "CssClass",           Value = "string?",              BadgeText = "Custom CSS", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowNextFireTimes",  Value = "bool",                 BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "NextFireCount",      Value = "int (default 5)",      BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowCalendar",       Value = "bool",                 BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowTimeZone",       Value = "bool",                 BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "TimeZoneId",         Value = "string?",              BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnTimeZoneChanged",  Value = "EventCallback<string>",BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowComplexity",     Value = "bool",                 BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowLibrary",        Value = "bool",                 BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowIcalExport",     Value = "bool",                 BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "OnValidationChanged",Value = "EventCallback<bool>",  BadgeText = "New",        BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _pickerProperties = new()
+    {
+        new() { Label = "Value",         Value = "string?",              BadgeText = "Bound",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Label",         Value = "string?",              BadgeText = "Field",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Hint",          Value = "string?",              BadgeText = "Help",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Placeholder",   Value = "string?",              BadgeText = "Empty",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled",      Value = "bool",                 BadgeText = "State",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "AllowClear",    Value = "bool",                 BadgeText = "Clear",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Compact",       Value = "bool",                 BadgeText = "Dense popup",BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Block",         Value = "bool",                 BadgeText = "Full width", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Required",      Value = "bool",                 BadgeText = "Validation", BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowPresets",   Value = "bool",                 BadgeText = "Visibility", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Presets",       Value = "IReadOnlyList<>",      BadgeText = "Quick",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ErrorText",     Value = "string?",              BadgeText = "Error",      BadgeVariant = SgBadgeVariant.Danger  },
+        new() { Label = "CssClass",      Value = "string?",              BadgeText = "Custom CSS", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    // ── Constructor state ───────────────────────────────────────────────
+    private bool _ctorShowNextFireTimes = true;
+    private int _ctorNextFireCount = 5;
+    private bool _ctorShowCalendar;
+    private bool _ctorShowTimeZone;
+    private bool _ctorShowComplexity = true;
+    private bool _ctorShowLibrary;
+    private bool _ctorShowIcalExport;
+    private bool _ctorBlock = true;
+    private bool _ctorCompact;
+
+    // ── Code generation ─────────────────────────────────────────────────
+    private string[] _ctorCodeLines = Array.Empty<string>();
+    private string _ctorCopyIcon = "📋";
+    private string _ctorCopyLabel = "Copy";
+
+    // ── Lifecycle ───────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add("<SgCron");
+        lines.Add("           Value=\"@_myValue\"");
+        lines.Add("           Label=\"Constructor Preview\"");
+        lines.Add("           Hint=\"All feature flags applied.\"");
+        if (_ctorShowNextFireTimes)
+        {
+            if (_ctorNextFireCount != 5)
+                lines.Add($"           ShowNextFireTimes=\"true\" NextFireCount=\"{_ctorNextFireCount}\"");
+            else
+                lines.Add("           ShowNextFireTimes=\"true\"");
+        }
+        if (_ctorShowCalendar)
+            lines.Add("           ShowCalendar=\"true\"");
+        if (_ctorShowTimeZone)
+            lines.Add("           ShowTimeZone=\"true\"");
+        if (_ctorShowComplexity)
+            lines.Add("           ShowComplexity=\"true\"");
+        if (_ctorShowLibrary)
+            lines.Add("           ShowLibrary=\"true\"");
+        if (_ctorShowIcalExport)
+            lines.Add("           ShowIcalExport=\"true\"");
+        if (!_ctorBlock)
+            lines.Add("           Block=\"false\"");
+        if (_ctorCompact)
+            lines.Add("           Compact=\"true\"");
+        lines.Add("           />");
+        _ctorCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCtorCodeToClipboard()
+    {
+        var code = string.Join("\n", _ctorCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _ctorCopyIcon = "✓";
+            _ctorCopyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _ctorCopyIcon = "✗";
+            _ctorCopyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _ctorCopyIcon = "📋";
+            _ctorCopyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Helper record for syntax table ──────────────────────────────────
+    private sealed record SyntaxRow(string Description, string Expression);
 }

@@ -1,5 +1,6 @@
 @namespace SuperUI.Components
 @using System.Linq.Expressions
+@using System.Text
 @using SuperUI.Localization
 @implements IDisposable
 @inject ISuperUILocalizer Localizer
@@ -186,6 +187,139 @@
                 <div class="sgc-cron-human">@_humanReadable</div>
             </div>
 
+            @* ── TimeZone & Complexity toolbar ─────────────────────────────── *@
+            @if (ShowTimeZone || ShowComplexity || ShowIcalExport)
+            {
+                <div class="sgc-cron-toolbar">
+                    @if (ShowTimeZone)
+                    {
+                        <div class="sgc-cron-tz">
+                            <label class="sgc-cron-tz-label">@T("Cron_TimeZone", "Time zone")</label>
+                            <select class="sgc-cron-tz-select"
+                                    disabled="@Disabled"
+                                    @onchange="OnTimeZoneSelectedAsync">
+                                @foreach (var tz in _timeZones)
+                                {
+                                    <option value="@tz.Id" selected="@(_selectedTimeZone?.Id == tz.Id)">@tz.DisplayName</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    @if (ShowComplexity && !string.IsNullOrEmpty(_complexity))
+                    {
+                        <span class="sgc-cron-complexity sgc-cron-complexity-@_complexityClass" title="@T("Cron_ComplexityHint", "Expression complexity")">
+                            <span class="sgc-cron-complexity-dot" aria-hidden="true"></span>
+                            @_complexity
+                        </span>
+                    }
+                    @if (ShowIcalExport)
+                    {
+                        <button type="button"
+                                class="sgc-cron-ical-btn"
+                                title="@T("Cron_CopyIcal", "Copy iCal RRULE")"
+                                disabled="@(_icalRule is null || Disabled)"
+                                @onclick="CopyIcalAsync">
+                            @if (_icalCopied)
+                            {
+                                <span>@T("Cron_Copied", "Copied!")</span>
+                            }
+                            else
+                            {
+                                <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2Zm4.5 4.5v7a.5.5 0 0 1-1 0v-7a.5.5 0 0 1 1 0ZM8 6a.5.5 0 0 1 .5.5v5a.5.5 0 0 1-1 0V6.5A.5.5 0 0 1 8 6Zm3 .5v4a.5.5 0 0 1-1 0v-4a.5.5 0 0 1 1 0Z"/></svg>
+                                <span>iCal</span>
+                            }
+                        </button>
+                    }
+                </div>
+            }
+
+            @* ── Next fire times ────────────────────────────────────────────── *@
+            @if (ShowNextFireTimes && _nextFireTimes.Count > 0)
+            {
+                <div class="sgc-cron-section sgc-cron-nextfires">
+                    <div class="sgc-cron-section-title">@T("Cron_NextFireTimes", "Next fire times")</div>
+                    <ol class="sgc-cron-nextfires-list">
+                        @foreach (var dt in _nextFireTimes)
+                        {
+                            <li>
+                                <span class="sgc-cron-nextfires-date">@dt.ToString("ddd, dd MMM yyyy HH:mm")</span>
+                                <span class="sgc-cron-nextfires-rel">@GetRelativeTime(dt)</span>
+                            </li>
+                        }
+                    </ol>
+                </div>
+            }
+
+            @* ── Calendar preview ──────────────────────────────────────────── *@
+            @if (ShowCalendar)
+            {
+                <div class="sgc-cron-section sgc-cron-cal">
+                    <div class="sgc-cron-cal-head">
+                        <button type="button" class="sgc-cron-cal-nav" disabled="@Disabled" @onclick="() => NavigateCalendar(-1)" title="@T("Calendar_PrevMonth", "Previous month")">◀</button>
+                        <span class="sgc-cron-cal-title">@_calendarDate.ToString("MMMM yyyy")</span>
+                        <button type="button" class="sgc-cron-cal-nav" disabled="@Disabled" @onclick="() => NavigateCalendar(1)" title="@T("Calendar_NextMonth", "Next month")">▶</button>
+                    </div>
+                    <div class="sgc-cron-cal-grid">
+                        <span class="sgc-cron-cal-dow">@T("Cron_Mon", "Mo")</span>
+                        <span class="sgc-cron-cal-dow">@T("Cron_Tue", "Tu")</span>
+                        <span class="sgc-cron-cal-dow">@T("Cron_Wed", "We")</span>
+                        <span class="sgc-cron-cal-dow">@T("Cron_Thu", "Th")</span>
+                        <span class="sgc-cron-cal-dow">@T("Cron_Fri", "Fr")</span>
+                        <span class="sgc-cron-cal-dow sgc-cron-cal-weekend">@T("Cron_Sat", "Sa")</span>
+                        <span class="sgc-cron-cal-dow sgc-cron-cal-weekend">@T("Cron_Sun", "Su")</span>
+                        @for (int i = 0; i < _calendarOffset; i++)
+                        {
+                            <span class="sgc-cron-cal-day sgc-cron-cal-other"></span>
+                        }
+                        @for (int d = 1; d <= _calendarDays; d++)
+                        {
+                            var day = d;
+                            var isActive = _calendarActiveDays.Contains(day);
+                            var isToday = day == DateTime.Today.Day && _calendarDate.Year == DateTime.Today.Year && _calendarDate.Month == DateTime.Today.Month;
+                            <span class="sgc-cron-cal-day @(isActive ? "sgc-cron-cal-active" : "") @(isToday ? "sgc-cron-cal-today" : "")">@day</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @* ── Cron Library ──────────────────────────────────────────────── *@
+            @if (ShowLibrary)
+            {
+                <div class="sgc-cron-section sgc-cron-library">
+                    <button type="button"
+                            class="sgc-cron-library-toggle"
+                            @onclick="ToggleLibrary">
+                        <span>@T("Cron_Library", "Cron library")</span>
+                        <span class="sgc-cron-library-arrow @(_libraryOpen ? "sgc-open" : "")">▾</span>
+                    </button>
+                    @if (_libraryOpen)
+                    {
+                        <div class="sgc-cron-library-body">
+                            @foreach (var cat in _libraryCategories)
+                            {
+                                <div class="sgc-cron-library-cat">
+                                    <div class="sgc-cron-library-cat-title">@cat.Category</div>
+                                    <div class="sgc-cron-library-items">
+                                        @foreach (var item in cat.Items)
+                                        {
+                                            <button type="button"
+                                                    class="sgc-cron-library-item @(_currentExpression == item.Expression ? "sgc-active" : "")"
+                                                    disabled="@Disabled"
+                                                    title="@item.Description"
+                                                    @onclick="() => ApplyPreset(item.Expression)">
+                                                <code>@item.Expression</code>
+                                                <span class="sgc-cron-library-item-desc">@item.Description</span>
+                                            </button>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+
+            @* ── Presets (existing) ────────────────────────────────────────── *@
             @if (ShowPresets)
             {
                 <div class="sgc-cron-presets">
@@ -217,15 +351,15 @@
 </div>
 
 @code {
-    private string[] GetMonthNames() => new[] { 
-        Localizer["Jan"], Localizer["Feb"], Localizer["Mar"], Localizer["Apr"], 
-        Localizer["May"], Localizer["Jun"], Localizer["Jul"], Localizer["Aug"], 
-        Localizer["Sep"], Localizer["Oct"], Localizer["Nov"], Localizer["Dec"] 
+    private string[] GetMonthNames() => new[] {
+        Localizer["Jan"], Localizer["Feb"], Localizer["Mar"], Localizer["Apr"],
+        Localizer["May"], Localizer["Jun"], Localizer["Jul"], Localizer["Aug"],
+        Localizer["Sep"], Localizer["Oct"], Localizer["Nov"], Localizer["Dec"]
     };
-    
-    private string[] GetWeekDayNames() => new[] { 
-        Localizer["Sun"], Localizer["Mon"], Localizer["Tue"], Localizer["Wed"], 
-        Localizer["Thu"], Localizer["Fri"], Localizer["Sat"] 
+
+    private string[] GetWeekDayNames() => new[] {
+        Localizer["Sun"], Localizer["Mon"], Localizer["Tue"], Localizer["Wed"],
+        Localizer["Thu"], Localizer["Fri"], Localizer["Sat"]
     };
 
     private (CronTab Key, string Label, string Icon)[] GetTabs() => new[]
@@ -269,17 +403,6 @@
         (CronMode.Any, Localizer["Cron_AnyWeekDay"]?.ToString() ?? "Any weekday"),
         (CronMode.Specific, Localizer["Cron_Specific"].ToString()),
     };
-    private static readonly (CronMode Mode, string Label)[] MonthOptions = new[]
-    {
-        (CronMode.Any, "Каждый месяц"),
-        (CronMode.Every, "Каждые N месяцев"),
-        (CronMode.Specific, "Конкретные"),
-    };
-    private static readonly (CronMode Mode, string Label)[] WeekOptions = new[]
-    {
-        (CronMode.Any, "Любой"),
-        (CronMode.Specific, "Конкретные дни"),
-    };
 
     private CronTab _activeTab = CronTab.Minutes;
     private CronState _state = new();
@@ -288,6 +411,26 @@
     private bool _copied;
     private bool _suppressBindBack;
     private SgEditContextBinder<string?>? _binder;
+
+    // ── new feature state ──────────────────────────────────────────────────
+    private List<DateTime> _nextFireTimes = new();
+    private DateTime _calendarDate = DateTime.Today;
+    private int _calendarOffset;
+    private int _calendarDays;
+    private HashSet<int> _calendarActiveDays = new();
+    private string? _complexity;
+    private string _complexityClass = "";
+    private string? _icalRule;
+    private bool _icalCopied;
+    private bool _libraryOpen;
+    private TimeZoneInfo? _selectedTimeZone;
+    private List<TimeZoneInfo> _timeZones = new();
+    private bool _previousValid;
+    private string? _fieldErrorMinute;
+    private string? _fieldErrorHour;
+    private string? _fieldErrorDay;
+    private string? _fieldErrorMonth;
+    private string? _fieldErrorWeek;
 
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
@@ -357,10 +500,75 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
-    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
+    // ═══════════════════════════════════════════════════════════════════════
+    //  NEW FEATURE PARAMETERS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// When true, shows the next N scheduled fire times below the expression preview.
+    /// </summary>
+    [Parameter] public bool ShowNextFireTimes { get; set; }
+
+    /// <summary>
+    /// How many future fire times to calculate and display. Default 5.
+    /// </summary>
+    [Parameter] public int NextFireCount { get; set; } = 5;
+
+    /// <summary>
+    /// When true, shows a mini monthly calendar with days that match the cron expression highlighted.
+    /// </summary>
+    [Parameter] public bool ShowCalendar { get; set; }
+
+    /// <summary>
+    /// When true, shows a timezone selector dropdown.
+    /// </summary>
+    [Parameter] public bool ShowTimeZone { get; set; }
+
+    /// <summary>
+    /// Gets or sets the selected timezone identifier (e.g. "UTC", "America/New_York").
+    /// When set, fire times and descriptions adjust to this timezone.
+    /// </summary>
+    [Parameter] public string? TimeZoneId { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the selected timezone changes.
+    /// </summary>
+    [Parameter] public EventCallback<string> OnTimeZoneChanged { get; set; }
+
+    /// <summary>
+    /// When true, shows a complexity badge (Simple / Medium / Complex) for the cron expression.
+    /// </summary>
+    [Parameter] public bool ShowComplexity { get; set; }
+
+    /// <summary>
+    /// When true, shows a collapsible library of common cron expression presets organized by category.
+    /// </summary>
+    [Parameter] public bool ShowLibrary { get; set; }
+
+    /// <summary>
+    /// When true, shows an "iCal" button that generates and copies an iCalendar RRULE from the cron expression.
+    /// </summary>
+    [Parameter] public bool ShowIcalExport { get; set; }
+
+    /// <summary>
+    /// Callback invoked when the validation state changes. Receives true if the expression is valid, false otherwise.
+    /// </summary>
+    [Parameter] public EventCallback<bool> OnValidationChanged { get; set; }
+
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private bool IsInvalid => !string.IsNullOrEmpty(ErrorText)
+        || (_binder?.HasValidationErrors ?? false)
+        || _fieldErrorMinute != null
+        || _fieldErrorHour != null
+        || _fieldErrorDay != null
+        || _fieldErrorMonth != null
+        || _fieldErrorWeek != null;
+
     private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
         ? ErrorText
-        : _binder?.ValidationMessages.FirstOrDefault();
+        : _fieldErrorMinute ?? _fieldErrorHour ?? _fieldErrorDay ?? _fieldErrorMonth ?? _fieldErrorWeek
+        ?? _binder?.ValidationMessages.FirstOrDefault();
 
     protected override void OnInitialized()
     {
@@ -370,6 +578,9 @@
             Value = "* * * * *";
         }
         ParseExpression(Value!);
+        InitTimeZones();
+        InitLibrary();
+        Recompute();
     }
 
     protected override void OnParametersSet()
@@ -384,7 +595,52 @@
         {
             ParseExpression(Value!);
         }
+        if (TimeZoneId != _selectedTimeZone?.Id)
+        {
+            ApplyTimeZoneId(TimeZoneId);
+        }
     }
+
+    private void InitTimeZones()
+    {
+        try
+        {
+            _timeZones = TimeZoneInfo.GetSystemTimeZones().ToList();
+        }
+        catch
+        {
+            _timeZones = new List<TimeZoneInfo> { TimeZoneInfo.Utc, TimeZoneInfo.Local };
+        }
+        ApplyTimeZoneId(TimeZoneId);
+    }
+
+    private void ApplyTimeZoneId(string? tzId)
+    {
+        if (string.IsNullOrEmpty(tzId))
+        {
+            _selectedTimeZone = null;
+            return;
+        }
+        try
+        {
+            _selectedTimeZone = TimeZoneInfo.FindSystemTimeZoneById(tzId);
+        }
+        catch
+        {
+            _selectedTimeZone = _timeZones.FirstOrDefault(t => t.Id == tzId);
+        }
+    }
+
+    private async Task OnTimeZoneSelectedAsync(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        _selectedTimeZone = _timeZones.FirstOrDefault(t => t.Id == id);
+        Recompute();
+        if (OnTimeZoneChanged.HasDelegate)
+            await OnTimeZoneChanged.InvokeAsync(id ?? "");
+    }
+
+    private string T(string key, string fallback) => Localizer[key] ?? fallback;
 
     private async Task SetTabAsync(CronTab tab)
     {
@@ -432,9 +688,9 @@
                 setter(v);
             }
         }));
-        builder.CloseElement(); // input
+        builder.CloseElement();
         builder.AddContent(11, " " + unit);
-        builder.CloseElement(); // div
+        builder.CloseElement();
     };
 
     private RenderFragment RenderRange(int from, int to, int min, int max, Action<int> setFrom, Action<int> setTo) => builder =>
@@ -568,14 +824,44 @@
             StateHasChanged();
             _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _copied = false; StateHasChanged(); }));
         }
-        catch { /* clipboard not available */ }
+        catch { }
     }
 
     private void Recompute()
     {
         _currentExpression = BuildExpression();
         _humanReadable = HumanReadable(_currentExpression);
+        RecomputeDerived();
         _ = EmitAsync();
+    }
+
+    private void RecomputeDerived()
+    {
+        var valid = ValidateFields(_currentExpression);
+
+        if (ShowNextFireTimes)
+            _nextFireTimes = CalculateNextFireTimes(_currentExpression, NextFireCount);
+
+        if (ShowCalendar)
+            BuildCalendar();
+
+        if (ShowComplexity)
+        {
+            (_complexity, _complexityClass) = EvaluateComplexity(_currentExpression);
+        }
+
+        if (ShowIcalExport)
+        {
+            _icalRule = ToIcalRule(_currentExpression);
+        }
+
+        var isValid = valid && string.IsNullOrEmpty(ErrorText);
+        if (isValid != _previousValid)
+        {
+            _previousValid = isValid;
+            if (OnValidationChanged.HasDelegate)
+                _ = OnValidationChanged.InvokeAsync(isValid);
+        }
     }
 
     private async Task EmitAsync()
@@ -655,6 +941,7 @@
 
         _currentExpression = BuildExpression();
         _humanReadable = HumanReadable(_currentExpression);
+        RecomputeDerived();
     }
 
     private void ParseWeek(string token)
@@ -731,6 +1018,539 @@
 
     private static string HumanReadable(string expr) => SgCronHumanizer.Describe(expr);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    //  FIELD VALIDATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Validates the 5 cron fields independently and sets per-field error messages.
+    /// </summary>
+    private bool ValidateFields(string expr)
+    {
+        _fieldErrorMinute = null;
+        _fieldErrorHour = null;
+        _fieldErrorDay = null;
+        _fieldErrorMonth = null;
+        _fieldErrorWeek = null;
+
+        if (string.IsNullOrWhiteSpace(expr))
+        {
+            _fieldErrorMinute = T("Cron_ErrEmpty", "Expression is empty");
+            return false;
+        }
+
+        var parts = expr.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5)
+        {
+            _fieldErrorMinute = T("Cron_ErrFieldCount", "Expression must have exactly 5 fields");
+            return false;
+        }
+
+        bool valid = true;
+        if (!ValidateField(parts[0], 0, 59, out var errMin))
+        {
+            _fieldErrorMinute = errMin;
+            valid = false;
+        }
+        if (!ValidateField(parts[1], 0, 23, out var errHr))
+        {
+            _fieldErrorHour = errHr;
+            valid = false;
+        }
+        if (parts[2] != "L" && parts[2] != "?" && !ValidateField(parts[2], 1, 31, out var errDay))
+        {
+            _fieldErrorDay = errDay;
+            valid = false;
+        }
+        if (!ValidateField(parts[3], 1, 12, out var errMon))
+        {
+            _fieldErrorMonth = errMon;
+            valid = false;
+        }
+        if (parts[4] != "?" && !ValidateField(parts[4], 0, 6, out var errWk))
+        {
+            _fieldErrorWeek = errWk;
+            valid = false;
+        }
+        return valid;
+    }
+
+    private static bool ValidateField(string token, int min, int max, out string? error)
+    {
+        error = null;
+        if (token == "*" || token == "?") return true;
+
+        if (token.StartsWith("*/"))
+        {
+            if (!int.TryParse(token[2..], out var step) || step < 1)
+            {
+                error = $"Invalid step '{token}'";
+                return false;
+            }
+            return true;
+        }
+
+        foreach (var part in token.Split(','))
+        {
+            if (part.Contains('-'))
+            {
+                var rr = part.Split('-');
+                if (rr.Length != 2 || !int.TryParse(rr[0], out var a) || !int.TryParse(rr[1], out var b))
+                {
+                    error = $"Invalid range '{part}'";
+                    return false;
+                }
+                if (a < min || a > max || b < min || b > max || a > b)
+                {
+                    error = $"Range '{part}' out of bounds ({min}-{max})";
+                    return false;
+                }
+            }
+            else
+            {
+                if (!int.TryParse(part, out var v) || v < min || v > max)
+                {
+                    error = $"Value '{part}' out of bounds ({min}-{max})";
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  NEXT FIRE TIMES CALCULATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Calculates the next N future times when the cron expression will fire.
+    /// </summary>
+    private List<DateTime> CalculateNextFireTimes(string expression, int count)
+    {
+        var result = new List<DateTime>();
+        var parts = expression.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5) return result;
+
+        var now = _selectedTimeZone != null
+            ? TimeZoneInfo.ConvertTime(DateTime.UtcNow, _selectedTimeZone)
+            : DateTime.Now;
+
+        var searchFrom = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, now.Kind).AddMinutes(1);
+
+        var minuteFn = ParseFieldPredicate(parts[0], 0, 59);
+        var hourFn = ParseFieldPredicate(parts[1], 0, 23);
+        var dayFn = parts[2] == "L" ? IsLastDayOfMonth : ParseFieldPredicate(parts[2], 1, 31);
+        var monthFn = ParseFieldPredicate(parts[3], 1, 12);
+        var weekFn = parts[4] == "?" ? _ => true : ParseFieldPredicate(parts[4], 0, 6);
+
+        bool useDayOrWeek = parts[2] != "*" && parts[2] != "?" && parts[4] != "*" && parts[4] != "?";
+
+        var dt = searchFrom;
+        int maxIterations = 525600;
+        while (result.Count < count && maxIterations > 0)
+        {
+            maxIterations--;
+
+            if (monthFn(dt.Month)
+                && dayFn(dt.Day)
+                && hourFn(dt.Hour)
+                && minuteFn(dt.Minute))
+            {
+                bool weekOk = weekFn((int)dt.DayOfWeek);
+                bool domOk = parts[2] == "*" || parts[2] == "?" || dayFn(dt.Day);
+
+                if (useDayOrWeek)
+                {
+                    if (weekOk || domOk)
+                        result.Add(dt);
+                }
+                else if (parts[4] == "*" || parts[4] == "?")
+                {
+                    result.Add(dt);
+                }
+                else if (weekOk)
+                {
+                    result.Add(dt);
+                }
+            }
+
+            dt = dt.AddMinutes(1);
+            if (dt.Year > now.Year + 5) break;
+        }
+
+        return result;
+    }
+
+    private static Func<int, bool> ParseFieldPredicate(string token, int min, int max)
+    {
+        if (token == "*" || token == "?")
+            return _ => true;
+
+        if (token.StartsWith("*/") && int.TryParse(token[2..], out var step) && step > 0)
+            return v => v >= min && v <= max && (v % step == 0);
+
+        var values = new HashSet<int>();
+        foreach (var part in token.Split(','))
+        {
+            if (part.Contains('-'))
+            {
+                var rr = part.Split('-');
+                if (int.TryParse(rr[0], out var a) && int.TryParse(rr[1], out var b))
+                {
+                    for (int i = a; i <= b; i++) values.Add(i);
+                }
+            }
+            else if (int.TryParse(part, out var v))
+            {
+                values.Add(v);
+            }
+        }
+        return v => values.Contains(v);
+    }
+
+    private static bool IsLastDayOfMonth(int day)
+    {
+        return false;
+    }
+
+    /// <summary>
+    /// Returns a human-readable relative time string (e.g. "in 2 hours", "tomorrow at 9:00").
+    /// </summary>
+    private string GetRelativeTime(DateTime dt)
+    {
+        var now = _selectedTimeZone != null
+            ? TimeZoneInfo.ConvertTime(DateTime.UtcNow, _selectedTimeZone)
+            : DateTime.Now;
+
+        var diff = dt - now;
+        var totalMinutes = (int)diff.TotalMinutes;
+
+        if (totalMinutes < 1) return T("Cron_Now", "now");
+        if (totalMinutes < 60)
+            return string.Format(T("Cron_InMinutes", "in {0} min"), totalMinutes);
+        if (totalMinutes < 1440)
+        {
+            var hours = totalMinutes / 60;
+            return string.Format(T("Cron_InHours", "in {0} h"), hours);
+        }
+
+        if (dt.Date == now.Date.AddDays(1))
+            return T("Cron_TomorrowAt", "tomorrow") + " " + dt.ToString("HH:mm");
+        if (dt.Date == now.Date.AddDays(2))
+            return T("Cron_DayAfter", "day after") + " " + dt.ToString("HH:mm");
+
+        var days = (dt.Date - now.Date).Days;
+        return string.Format(T("Cron_InDays", "in {0} days"), days);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  CALENDAR PREVIEW
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void BuildCalendar()
+    {
+        var year = _calendarDate.Year;
+        var month = _calendarDate.Month;
+        _calendarDays = DateTime.DaysInMonth(year, month);
+        var firstDay = new DateTime(year, month, 1);
+        _calendarOffset = ((int)firstDay.DayOfWeek + 6) % 7;
+
+        _calendarActiveDays = GetCalendarActiveDays(year, month);
+    }
+
+    private HashSet<int> GetCalendarActiveDays(int year, int month)
+    {
+        var active = new HashSet<int>();
+        var parts = _currentExpression.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5) return active;
+
+        var minuteFn = ParseFieldPredicate(parts[0], 0, 59);
+        var hourFn = ParseFieldPredicate(parts[1], 0, 23);
+        var dayFn = parts[2] == "L" ? IsLastDayOfMonth : ParseFieldPredicate(parts[2], 1, 31);
+        var monthFn = ParseFieldPredicate(parts[3], 1, 12);
+        var weekFn = parts[4] == "?" ? _ => true : ParseFieldPredicate(parts[4], 0, 6);
+
+        if (!monthFn(month)) return active;
+
+        bool useDayOrWeek = parts[2] != "*" && parts[2] != "?" && parts[4] != "*" && parts[4] != "?";
+        int daysInMonth = DateTime.DaysInMonth(year, month);
+
+        for (int day = 1; day <= daysInMonth; day++)
+        {
+            var dt = new DateTime(year, month, day);
+            bool weekOk = weekFn((int)dt.DayOfWeek);
+            bool domOk = dayFn(day);
+
+            if (useDayOrWeek)
+            {
+                if (weekOk || domOk)
+                    active.Add(day);
+            }
+            else if (parts[4] == "*" || parts[4] == "?")
+            {
+                if (domOk)
+                    active.Add(day);
+            }
+            else if (weekOk)
+            {
+                active.Add(day);
+            }
+        }
+
+        return active;
+    }
+
+    private void NavigateCalendar(int delta)
+    {
+        _calendarDate = _calendarDate.AddMonths(delta);
+        BuildCalendar();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  COMPLEXITY INDICATOR
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Evaluates the cron expression and returns a complexity level and CSS class.
+    /// </summary>
+    private static (string label, string cssClass) EvaluateComplexity(string expr)
+    {
+        var parts = expr.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5) return ("Unknown", "unknown");
+
+        bool hasComplex = false;
+        bool hasMedium = false;
+
+        foreach (var field in parts)
+        {
+            if (field.Contains('L') || field.Contains('W') || field.Contains('#'))
+                hasComplex = true;
+
+            if (field.Contains(',') && field.Split(',').Length > 3)
+                hasComplex = true;
+
+            if (field.Contains(',') && field.Split(',').Length > 1)
+                hasMedium = true;
+
+            if (field.Contains('-'))
+                hasMedium = true;
+        }
+
+        bool allAny = parts.All(p => p == "*" || p == "?");
+        bool simpleStep = parts[0] == "*" || parts[0].StartsWith("*/");
+        bool hourStar = parts[1] == "*" || parts[1].StartsWith("*/");
+        bool dayStar = parts[2] == "*" || parts[2] == "?" || parts[2] == "L";
+        bool monthStar = parts[3] == "*";
+        bool weekStar = parts[4] == "*" || parts[4] == "?";
+
+        if (allAny || (simpleStep && hourStar && dayStar && monthStar && weekStar))
+            return ("Simple", "simple");
+
+        if (hasComplex)
+            return ("Complex", "complex");
+
+        if (hasMedium)
+            return ("Medium", "medium");
+
+        return ("Simple", "simple");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  iCAL RRULE GENERATION
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// Converts a 5-field cron expression to an iCalendar RRULE string.
+    /// </summary>
+    private static string? ToIcalRule(string expr)
+    {
+        var parts = expr.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length != 5) return null;
+
+        var sb = new StringBuilder("FREQ=");
+        var minuteToken = parts[0];
+        var hourToken = parts[1];
+        var dayToken = parts[2];
+        var monthToken = parts[3];
+        var weekToken = parts[4];
+
+        bool hasMinuteSpecific = minuteToken != "*" && !minuteToken.StartsWith("*/");
+        bool hasHourSpecific = hourToken != "*" && !hourToken.StartsWith("*/");
+        bool hasDaySpecific = dayToken != "*" && dayToken != "?";
+        bool hasMonthSpecific = monthToken != "*" && !monthToken.StartsWith("*/");
+        bool hasWeekSpecific = weekToken != "*" && weekToken != "?";
+
+        // Determine frequency
+        bool minuteStep = minuteToken.StartsWith("*/");
+        bool hourStep = hourToken.StartsWith("*/");
+        bool dayStep = dayToken.StartsWith("*/");
+        bool monthStep = monthToken.StartsWith("*/");
+
+        int minuteVal = minuteStep && int.TryParse(minuteToken[2..], out var mv) ? mv : 1;
+        int hourVal = hourStep && int.TryParse(hourToken[2..], out var hv) ? hv : 1;
+        int dayVal = dayStep && int.TryParse(dayToken[2..], out var dv) ? dv : 1;
+        int monthVal = monthStep && int.TryParse(monthToken[2..], out var mov) ? mov : 1;
+
+        if (monthStep && monthVal > 1)
+        {
+            sb.Append($"MONTHLY;INTERVAL={monthVal}");
+        }
+        else if (dayStep && dayVal > 1)
+        {
+            sb.Append($"DAILY;INTERVAL={dayVal}");
+        }
+        else if (hourStep && hourVal > 1)
+        {
+            sb.Append($"HOURLY;INTERVAL={hourVal}");
+        }
+        else if (minuteStep && minuteVal > 1)
+        {
+            sb.Append($"MINUTELY;INTERVAL={minuteVal}");
+        }
+        else if (hasWeekSpecific)
+        {
+            sb.Append("WEEKLY");
+        }
+        else if (hasMonthSpecific && monthToken != "*")
+        {
+            sb.Append("MONTHLY");
+        }
+        else if (hasDaySpecific && dayToken != "*" && dayToken != "?")
+        {
+            sb.Append("DAILY");
+        }
+        else if (hasHourSpecific)
+        {
+            sb.Append("DAILY");
+        }
+        else if (hasMinuteSpecific)
+        {
+            sb.Append("HOURLY");
+        }
+        else
+        {
+            sb.Append("MINUTELY;INTERVAL=1");
+        }
+
+        // BYMINUTE
+        if (hasMinuteSpecific)
+        {
+            sb.Append(";BYMINUTE=");
+            sb.Append(minuteToken);
+        }
+
+        // BYHOUR
+        if (hasHourSpecific)
+        {
+            sb.Append(";BYHOUR=");
+            sb.Append(hourToken);
+        }
+
+        // BYMONTHDAY
+        if (hasDaySpecific && dayToken != "L")
+        {
+            sb.Append(";BYMONTHDAY=");
+            sb.Append(dayToken);
+        }
+        else if (dayToken == "L")
+        {
+            sb.Append(";BYMONTHDAY=-1");
+        }
+
+        // BYMONTH
+        if (hasMonthSpecific)
+        {
+            sb.Append(";BYMONTH=");
+            sb.Append(monthToken);
+        }
+
+        // BYDAY
+        if (hasWeekSpecific && weekToken != "*" && weekToken != "?")
+        {
+            sb.Append(";BYDAY=");
+            var dayParts = weekToken.Split(',');
+            var dayNames = new[] { "SU", "MO", "TU", "WE", "TH", "FR", "SA" };
+            var mapped = dayParts.Select(p =>
+            {
+                if (int.TryParse(p, out var d))
+                    return dayNames[d % 7];
+                return p;
+            });
+            sb.Append(string.Join(",", mapped));
+        }
+
+        return sb.ToString();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  COPY iCal RRULE
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private async Task CopyIcalAsync()
+    {
+        if (_icalRule is null) return;
+        try
+        {
+            var icalText = $"RRULE:{_icalRule}";
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", icalText);
+            _icalCopied = true;
+            StateHasChanged();
+            _ = Task.Delay(1500).ContinueWith(_ => InvokeAsync(() => { _icalCopied = false; StateHasChanged(); }));
+        }
+        catch { }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  CRON LIBRARY
+    // ═══════════════════════════════════════════════════════════════════════
+
+    private void ToggleLibrary()
+    {
+        _libraryOpen = !_libraryOpen;
+    }
+
+    private List<CronLibraryCategory> _libraryCategories = new();
+
+    private void InitLibrary()
+    {
+        _libraryCategories = new List<CronLibraryCategory>
+        {
+            new CronLibraryCategory(T("Cron_LibEveryN", "Every N minutes"),
+                new CronLibraryItem("*/5 * * * *", T("Cron_LibEvery5", "Every 5 minutes")),
+                new CronLibraryItem("*/10 * * * *", T("Cron_LibEvery10", "Every 10 minutes")),
+                new CronLibraryItem("*/15 * * * *", T("Cron_LibEvery15", "Every 15 minutes")),
+                new CronLibraryItem("*/30 * * * *", T("Cron_LibEvery30", "Every 30 minutes"))
+            ),
+            new CronLibraryCategory(T("Cron_LibHourly", "Hourly"),
+                new CronLibraryItem("0 * * * *", T("Cron_LibEveryHour", "Every hour")),
+                new CronLibraryItem("15 * * * *", T("Cron_LibHour15", "At :15 past every hour")),
+                new CronLibraryItem("30 * * * *", T("Cron_LibHour30", "At :30 past every hour"))
+            ),
+            new CronLibraryCategory(T("Cron_LibDaily", "Daily"),
+                new CronLibraryItem("0 0 * * *", T("Cron_LibDailyMidnight", "Daily at midnight")),
+                new CronLibraryItem("0 9 * * *", T("Cron_LibDaily9", "Daily at 09:00")),
+                new CronLibraryItem("0 18 * * *", T("Cron_LibDaily18", "Daily at 18:00"))
+            ),
+            new CronLibraryCategory(T("Cron_LibWeekly", "Weekly"),
+                new CronLibraryItem("0 9 * * 1", T("Cron_LibMon9", "Monday at 09:00")),
+                new CronLibraryItem("0 9 * * 1-5", T("Cron_LibWeekdays9", "Weekdays at 09:00")),
+                new CronLibraryItem("0 10 * * 0,6", T("Cron_LibWeekends10", "Weekends at 10:00"))
+            ),
+            new CronLibraryCategory(T("Cron_LibMonthly", "Monthly"),
+                new CronLibraryItem("0 0 1 * *", T("Cron_LibFirstDay", "1st of month at midnight")),
+                new CronLibraryItem("0 9 1 * *", T("Cron_LibFirstDay9", "1st of month at 09:00")),
+                new CronLibraryItem("0 0 15 * *", T("Cron_Lib15th", "15th of month at midnight"))
+            ),
+            new CronLibraryCategory(T("Cron_LibSpecial", "Special"),
+                new CronLibraryItem("@yearly", T("Cron_LibYearly", "Once a year (Jan 1)")),
+                new CronLibraryItem("@monthly", T("Cron_LibMonthlyLabel", "Once a month (1st)")),
+                new CronLibraryItem("@weekly", T("Cron_LibWeeklyLabel", "Once a week (Sunday)")),
+                new CronLibraryItem("@daily", T("Cron_LibDailyLabel", "Once a day (midnight)")),
+                new CronLibraryItem("@hourly", T("Cron_LibHourlyLabel", "Once an hour"))
+            )
+        };
+    }
+
     public void Dispose() => _binder?.Dispose();
 
     private enum CronTab { Minutes, Hours, Days, Months, WeekDays }
@@ -760,5 +1580,27 @@
 
         public CronMode WeekMode = CronMode.Any;
         public HashSet<int> WeekDays = new();
+    }
+
+    private sealed class CronLibraryCategory
+    {
+        public string Category { get; }
+        public List<CronLibraryItem> Items { get; } = new();
+        public CronLibraryCategory(string category, params CronLibraryItem[] items)
+        {
+            Category = category;
+            Items.AddRange(items);
+        }
+    }
+
+    private sealed class CronLibraryItem
+    {
+        public string Expression { get; }
+        public string Description { get; }
+        public CronLibraryItem(string expression, string description)
+        {
+            Expression = expression;
+            Description = description;
+        }
     }
 }

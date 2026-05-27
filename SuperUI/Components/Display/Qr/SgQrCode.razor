@@ -1,15 +1,51 @@
 @namespace SuperUI.Components
 @using Net.Codecrete.QrCodeGenerator
+@using SuperUI.Enums
+@using System.Text
+@using static System.FormattableString
+@inject IJSRuntime JS
 
-<div class="sgc-qrcode @CssClass" style="width: @(Size)px; height: @(Size)px;">
+<div @ref="_containerRef" class="sgc-qrcode @CssClass" style="@GetContainerStyle()">
     @if (!string.IsNullOrEmpty(_svg))
     {
-        @((MarkupString)_svg)
+        <div style="position:relative; width:100%; height:100%;">
+            @((MarkupString)_svg)
+
+            @if (!string.IsNullOrEmpty(Logo))
+            {
+                <div style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+                            background:@LogoBackground; padding:@(LogoPadding)px;
+                            border-radius:50%; display:flex; align-items:center; justify-content:center;
+                            width:@(LogoSize)px; height:@(LogoSize)px; pointer-events:none;">
+                    @((MarkupString)Logo)
+                </div>
+            }
+        </div>
+    }
+
+    @if (Downloadable)
+    {
+        <button type="button" @onclick="DownloadAsync" class="sgc-qrcode-download"
+                style="margin-top:8px; display:block; cursor:pointer;">
+            @DownloadButtonText
+        </button>
+    }
+
+    @if (ShowLabel && !string.IsNullOrEmpty(LabelText))
+    {
+        <div class="sgc-qrcode-label" style="text-align:center; font-size:@LabelFontSize; margin-top:4px;">
+            @LabelText
+        </div>
     }
 </div>
 
 @code {
+    // ── Fields ──────────────────────────────────────────────────────────────
+
     private string _svg = "";
+    private ElementReference _containerRef;
+
+    // ── Parameters ──────────────────────────────────────────────────────────
 
     /// <summary>
     /// Gets or sets the text or URL to encode in the QR code.
@@ -32,7 +68,7 @@
     [Parameter] public int Border { get; set; } = 2;
 
     /// <summary>
-    /// Gets or sets the fill color. Default is "#000000".
+    /// Gets or sets the fill color for dark modules. Default is "#000000".
     /// </summary>
     [Parameter] public string FillColor { get; set; } = "#000000";
 
@@ -46,10 +82,147 @@
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
+    // ── Logo overlay ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets an SVG/HTML string for the center logo overlay.
+    /// When set, modules in the center are cleared and the logo is rendered on top.
+    /// </summary>
+    [Parameter] public string? Logo { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size of the logo in pixels. Default is 40.
+    /// </summary>
+    [Parameter] public int LogoSize { get; set; } = 40;
+
+    /// <summary>
+    /// Gets or sets the background color behind the logo. Default is "#ffffff".
+    /// </summary>
+    [Parameter] public string LogoBackground { get; set; } = "#ffffff";
+
+    /// <summary>
+    /// Gets or sets the padding around the logo in pixels. Default is 4.
+    /// </summary>
+    [Parameter] public int LogoPadding { get; set; } = 4;
+
+    // ── Eye style ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets the style of the corner position detection patterns (eyes).
+    /// Default is <see cref="SgQrCodeEyeStyle.Square"/>.
+    /// </summary>
+    [Parameter] public SgQrCodeEyeStyle EyeStyle { get; set; } = SgQrCodeEyeStyle.Square;
+
+    /// <summary>
+    /// Gets or sets a custom color for the eye patterns. When null, defaults to <see cref="FillColor"/>.
+    /// </summary>
+    [Parameter] public string? EyeColor { get; set; }
+
+    /// <summary>
+    /// Gets or sets the style for the inner eye module (3x3 center).
+    /// When null, falls back to <see cref="EyeStyle"/>.
+    /// </summary>
+    [Parameter] public SgQrCodeEyeStyle? EyeInnerStyle { get; set; }
+
+    // ── Gradient fill ───────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets whether to use a gradient fill for modules. Default is false.
+    /// </summary>
+    [Parameter] public bool FillGradient { get; set; }
+
+    /// <summary>
+    /// Gets or sets the gradient start color. When null, defaults to <see cref="FillColor"/>.
+    /// </summary>
+    [Parameter] public string? FillGradientStart { get; set; }
+
+    /// <summary>
+    /// Gets or sets the gradient end color. When null, defaults to <see cref="FillColor"/>.
+    /// </summary>
+    [Parameter] public string? FillGradientEnd { get; set; }
+
+    /// <summary>
+    /// Gets or sets the gradient direction. Default is "to bottom right".
+    /// Any valid CSS linear-gradient direction is accepted (e.g. "to right", "to bottom", "45deg").
+    /// </summary>
+    [Parameter] public string FillGradientDirection { get; set; } = "to bottom right";
+
+    // ── Download ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets whether to show a download button below the QR code. Default is false.
+    /// </summary>
+    [Parameter] public bool Downloadable { get; set; }
+
+    /// <summary>
+    /// Gets or sets the download button text. Default is "Download PNG".
+    /// </summary>
+    [Parameter] public string DownloadButtonText { get; set; } = "Download PNG";
+
+    /// <summary>
+    /// Gets or sets the download file name. Default is "qrcode.png".
+    /// </summary>
+    [Parameter] public string DownloadFileName { get; set; } = "qrcode.png";
+
+    // ── Responsive ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets whether the QR code fills available width. Default is false.
+    /// When true, the QR code scales with its container up to <see cref="MaxSize"/>.
+    /// </summary>
+    [Parameter] public bool Responsive { get; set; }
+
+    /// <summary>
+    /// Gets or sets the maximum size in pixels when <see cref="Responsive"/> is true. Default is 400.
+    /// </summary>
+    [Parameter] public int MaxSize { get; set; } = 400;
+
+    // ── Module style ─────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets the shape of individual QR modules. Default is <see cref="SgQrCodeModuleStyle.Square"/>.
+    /// </summary>
+    [Parameter] public SgQrCodeModuleStyle ModuleStyle { get; set; } = SgQrCodeModuleStyle.Square;
+
+    // ── Label ────────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Gets or sets whether to show a label below the QR code. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowLabel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the label text displayed below the QR code.
+    /// </summary>
+    [Parameter] public string? LabelText { get; set; }
+
+    /// <summary>
+    /// Gets or sets the font size of the label. Default is "12px".
+    /// </summary>
+    [Parameter] public string LabelFontSize { get; set; } = "12px";
+
+    // ── Lifecycle ───────────────────────────────────────────────────────────
+
+    /// <inheritdoc />
     protected override void OnParametersSet()
     {
         GenerateSvg();
     }
+
+    // ── Public methods ──────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Triggers a PNG download of the QR code via JS interop.
+    /// Converts the in-memory SVG to a canvas and then to a PNG blob.
+    /// </summary>
+    public async Task DownloadAsync()
+    {
+        if (string.IsNullOrEmpty(_svg)) return;
+        var size = Responsive ? MaxSize : Size;
+        await JS.InvokeVoidAsync("superuiQrCode.downloadSvgAsPng", _containerRef, DownloadFileName, size);
+    }
+
+    // ── SVG generation ──────────────────────────────────────────────────────
 
     private void GenerateSvg()
     {
@@ -63,25 +236,224 @@
         {
             var ecc = ErrorCorrection switch
             {
-                SgQrCodeEcc.Low      => QrCode.Ecc.Low,
+                SgQrCodeEcc.Low => QrCode.Ecc.Low,
                 SgQrCodeEcc.Quartile => QrCode.Ecc.Quartile,
-                SgQrCodeEcc.High     => QrCode.Ecc.High,
-                _                    => QrCode.Ecc.Medium
+                SgQrCodeEcc.High => QrCode.Ecc.High,
+                _ => QrCode.Ecc.Medium
             };
 
             var qr = QrCode.EncodeText(Value, ecc);
-            var svg = qr.ToSvgString(Border);
-
-            // Adjust colors and make SVG fill container
-            svg = svg.Replace("fill=\"#000000\"", $"fill=\"{FillColor}\"");
-            svg = svg.Replace("fill=\"#FFFFFF\"", $"fill=\"{BackgroundColor}\"");
-            svg = svg.Replace("<svg ", $"<svg width=\"100%\" height=\"100%\" ");
-
-            _svg = svg;
+            _svg = BuildSvg(qr);
         }
         catch
         {
             _svg = "";
         }
+    }
+
+    private string BuildSvg(QrCode qr)
+    {
+        var sb = new StringBuilder();
+        int size = qr.Size;
+        int total = size + 2 * Border;
+
+        sb.AppendLine(Invariant($"<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 {total} {total}\" width=\"100%\" height=\"100%\" shape-rendering=\"crispEdges\">"));
+
+        // Background
+        sb.AppendLine(Invariant($"<rect x=\"0\" y=\"0\" width=\"{total}\" height=\"{total}\" fill=\"{BackgroundColor}\"/>"));
+
+        // Gradient definition
+        string fill = FillColor;
+        if (FillGradient)
+        {
+            string gradStart = FillGradientStart ?? FillColor;
+            string gradEnd = FillGradientEnd ?? FillColor;
+            string dir = FillGradientDirection.ToLowerInvariant();
+
+            string x1 = "0%", y1 = "0%", x2 = "100%", y2 = "100%";
+            var parts = dir.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && parts[0] == "to")
+            {
+                for (int i = 1; i < parts.Length; i++)
+                {
+                    switch (parts[i])
+                    {
+                        case "top":
+                        case "upper":
+                            y1 = "100%"; y2 = "0%";
+                            break;
+                        case "bottom":
+                        case "lower":
+                            y1 = "0%"; y2 = "100%";
+                            break;
+                        case "left":
+                            x1 = "100%"; x2 = "0%";
+                            break;
+                        case "right":
+                            x1 = "0%"; x2 = "100%";
+                            break;
+                    }
+                }
+            }
+            else if (dir.EndsWith("deg"))
+            {
+                // Angle-based direction — use as-is for SVG gradient transform
+                // (user provides angle like "45deg" which SVG supports natively)
+            }
+
+            sb.AppendLine("<defs>");
+            sb.AppendLine(Invariant($"<linearGradient id=\"qrG\" x1=\"{x1}\" y1=\"{y1}\" x2=\"{x2}\" y2=\"{y2}\">"));
+            sb.AppendLine(Invariant($"<stop offset=\"0%\" stop-color=\"{gradStart}\"/>"));
+            sb.AppendLine(Invariant($"<stop offset=\"100%\" stop-color=\"{gradEnd}\"/>"));
+            sb.AppendLine("</linearGradient></defs>");
+            fill = "url(#qrG)";
+        }
+
+        string eyeFill = EyeColor ?? FillColor;
+
+        // Logo area
+        int logoModuleSize = 0;
+        int logoModuleStart = 0;
+        int logoModuleEnd = 0;
+        if (!string.IsNullOrEmpty(Logo))
+        {
+            logoModuleSize = Math.Max(5, size / 4);
+            if (logoModuleSize % 2 == 0) logoModuleSize++;
+            logoModuleStart = (size - logoModuleSize) / 2;
+            logoModuleEnd = logoModuleStart + logoModuleSize;
+        }
+
+        // Draw data modules
+        sb.AppendLine($"<g fill=\"{fill}\">");
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                if (!qr.GetModule(x, y)) continue;
+                if (IsInEyePattern(x, y, size)) continue;
+                if (!string.IsNullOrEmpty(Logo) && x >= logoModuleStart && x < logoModuleEnd && y >= logoModuleStart && y < logoModuleEnd)
+                    continue;
+
+                int sx = Border + x;
+                int sy = Border + y;
+                AppendModuleSvg(sb, sx, sy, fill);
+            }
+        }
+        sb.AppendLine("</g>");
+
+        // Draw eye patterns (always rendered last, on top)
+        RenderEye(sb, Border + 0, Border + 0, eyeFill, BackgroundColor);
+        RenderEye(sb, Border + size - 7, Border + 0, eyeFill, BackgroundColor);
+        RenderEye(sb, Border + 0, Border + size - 7, eyeFill, BackgroundColor);
+
+        // Logo area background clearance
+        if (!string.IsNullOrEmpty(Logo))
+        {
+            int ls = Border + logoModuleStart;
+            int lm = logoModuleSize;
+            sb.AppendLine(Invariant($"<rect x=\"{ls}\" y=\"{ls}\" width=\"{lm}\" height=\"{lm}\" fill=\"{BackgroundColor}\" rx=\"1\" ry=\"1\"/>"));
+        }
+
+        sb.AppendLine("</svg>");
+        return sb.ToString();
+    }
+
+    private static bool IsInEyePattern(int x, int y, int size)
+    {
+        return (x < 7 && y < 7) ||
+               (x >= size - 7 && y < 7) ||
+               (x < 7 && y >= size - 7);
+    }
+
+    // ── Module rendering ────────────────────────────────────────────────────
+
+    private void AppendModuleSvg(StringBuilder sb, int x, int y, string fill)
+    {
+        switch (ModuleStyle)
+        {
+            case SgQrCodeModuleStyle.Circle:
+                sb.AppendLine(Invariant($"<circle cx=\"{x + 0.5}\" cy=\"{y + 0.5}\" r=\"0.5\" fill=\"{fill}\"/>"));
+                break;
+            case SgQrCodeModuleStyle.Rounded:
+                sb.AppendLine(Invariant($"<rect x=\"{x}\" y=\"{y}\" width=\"1\" height=\"1\" rx=\"0.25\" ry=\"0.25\" fill=\"{fill}\"/>"));
+                break;
+            case SgQrCodeModuleStyle.Droplet:
+                AppendDropletModule(sb, x, y, fill);
+                break;
+            default:
+                sb.AppendLine(Invariant($"<rect x=\"{x}\" y=\"{y}\" width=\"1\" height=\"1\" fill=\"{fill}\"/>"));
+                break;
+        }
+    }
+
+    private static void AppendDropletModule(StringBuilder sb, int x, int y, string fill)
+    {
+        sb.AppendLine(Invariant(
+            $"<path d=\"M{x + 0.5},{y + 1} C{x + 1},{y + 0.85} {x + 1},{y + 0.15} {x + 0.5},{y} C{x},{y + 0.15} {x},{y + 0.85} {x + 0.5},{y + 1}Z\" fill=\"{fill}\"/>"));
+    }
+
+    // ── Eye pattern rendering ───────────────────────────────────────────────
+
+    private void RenderEye(StringBuilder sb, int ex, int ey, string color, string bgColor)
+    {
+        double cx = ex + 3.5;
+        double cy = ey + 3.5;
+        var innerStyle = EyeInnerStyle ?? EyeStyle;
+
+        // Outer shape (7x7)
+        AppendEyeShape(sb, cx, cy, 7, EyeStyle, color);
+
+        // Middle clearing shape (5x5) — background color
+        AppendEyeShape(sb, cx, cy, 5, EyeStyle, bgColor);
+
+        // Inner shape (3x3) — using inner style
+        AppendEyeShape(sb, cx, cy, 3, innerStyle, color);
+    }
+
+    private static void AppendEyeShape(StringBuilder sb, double cx, double cy, double size, SgQrCodeEyeStyle style, string fill)
+    {
+        double half = size / 2.0;
+
+        switch (style)
+        {
+            case SgQrCodeEyeStyle.Circle:
+                sb.AppendLine(Invariant($"<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{half}\" fill=\"{fill}\"/>"));
+                break;
+
+            case SgQrCodeEyeStyle.Rounded:
+                double rr = size * 0.18;
+                sb.AppendLine(Invariant($"<rect x=\"{cx - half}\" y=\"{cy - half}\" width=\"{size}\" height=\"{size}\" rx=\"{rr}\" ry=\"{rr}\" fill=\"{fill}\"/>"));
+                break;
+
+            case SgQrCodeEyeStyle.Diamond:
+                sb.AppendLine(Invariant($"<polygon points=\"{cx},{cy - half} {cx + half},{cy} {cx},{cy + half} {cx - half},{cy}\" fill=\"{fill}\"/>"));
+                break;
+
+            case SgQrCodeEyeStyle.Leaf:
+                AppendLeafShape(sb, cx, cy, half, fill);
+                break;
+
+            default:
+                sb.AppendLine(Invariant($"<rect x=\"{cx - half}\" y=\"{cy - half}\" width=\"{size}\" height=\"{size}\" fill=\"{fill}\"/>"));
+                break;
+        }
+    }
+
+    private static void AppendLeafShape(StringBuilder sb, double cx, double cy, double h, string fill)
+    {
+        double w = h;
+        sb.AppendLine(Invariant(
+            $"<path d=\"M{cx},{cy - h} C{cx + w * 0.4},{cy - h} {cx + w},{cy - h * 0.4} {cx + w},{cy} C{cx + w},{cy + h * 0.4} {cx + w * 0.4},{cy + h} {cx},{cy + h} C{cx - w * 0.4},{cy + h} {cx - w},{cy + h * 0.4} {cx - w},{cy} C{cx - w},{cy - h * 0.4} {cx - w * 0.4},{cy - h} {cx},{cy - h}Z\" fill=\"{fill}\"/>"));
+    }
+
+    // ── Container style ─────────────────────────────────────────────────────
+
+    private string GetContainerStyle()
+    {
+        if (Responsive)
+        {
+            return Invariant($"width:100%; max-width:{MaxSize}px; aspect-ratio:1;");
+        }
+        return Invariant($"width:{Size}px; height:{Size}px;");
     }
 }

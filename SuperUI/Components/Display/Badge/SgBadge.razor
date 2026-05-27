@@ -1,17 +1,19 @@
 @namespace SuperUI.Components
 @using SuperUI.Enums
 @inject ISuperUILocalizer Localizer
+@implements IDisposable
 
 @if (ChildContent is not null && !Standalone)
 {
     <span class="sgc-badge-wrap @(Block ? "sgc-badge-block" : "") @CssClass" style="@Style" @attributes="AdditionalAttributes">
         @ChildContent
-        @if (!Hidden && !IsZero)
+        @if (!Hidden && !_hidden && !IsZero)
         {
             <span class="@WrapBadgeClasses"
                   style="@ComputedOffsetStyle"
                   role="status"
-                  aria-label="@BadgeAriaLabel">
+                  aria-label="@BadgeAriaLabel"
+                  title="@BadgeTooltip">
                 @if (!Dot && !Processing)
                 {
                     @BadgeText
@@ -22,12 +24,13 @@
 }
 else if (Ribbon)
 {
-    <span class="sgc-badge sgc-badge-ribbon @VariantClass @PlacementClass @(Square ? "sgc-badge-square" : "") @CssClass"
+    <span class="sgc-badge sgc-badge-ribbon @VariantClass @PlacementClass @(Square ? "sgc-badge-square" : "") @AnimationClasses @CssClass"
           style="@ComputedColorStyle @Style"
           role="status"
           aria-label="@BadgeAriaLabel"
+          title="@BadgeTooltip"
           @attributes="AdditionalAttributes">
-        @if (!Dot)
+        @if (!Hidden && !_hidden && !Dot)
         {
             @if (Text is not null) { @Text }
             else if (InnerContent is not null) { @InnerContent }
@@ -37,27 +40,32 @@ else if (Ribbon)
 }
 else
 {
-    @if (OnClick.HasDelegate)
+    @if (!Hidden && !_hidden)
     {
-        <button type="button"
-                class="@StandaloneBadgeClasses sgc-badge-clickable"
-                style="@ComputedColorStyle @Style"
-                role="status"
-                aria-label="@(AriaLabel ?? Text ?? Localizer["Badge"])"
-                @onclick="OnClick"
-                @attributes="AdditionalAttributes">
-            @BadgeInner
-        </button>
-    }
-    else
-    {
-        <span class="@StandaloneBadgeClasses"
-              style="@ComputedColorStyle @Style"
-              role="status"
-              aria-label="@(AriaLabel ?? Text ?? Localizer["Badge"])"
-              @attributes="AdditionalAttributes">
-            @BadgeInner
-        </span>
+        @if (OnClick.HasDelegate)
+        {
+            <button type="button"
+                    class="@StandaloneBadgeClasses sgc-badge-clickable"
+                    style="@ComputedColorStyle @Style"
+                    role="status"
+                    aria-label="@(AriaLabel ?? Text ?? Localizer["Badge"])"
+                    title="@BadgeTooltip"
+                    @onclick="OnClick"
+                    @attributes="AdditionalAttributes">
+                @BadgeInner
+            </button>
+        }
+        else
+        {
+            <span class="@StandaloneBadgeClasses"
+                  style="@ComputedColorStyle @Style"
+                  role="status"
+                  aria-label="@(AriaLabel ?? Text ?? Localizer["Badge"])"
+                  title="@BadgeTooltip"
+                  @attributes="AdditionalAttributes">
+                @BadgeInner
+            </span>
+        }
     }
 }
 
@@ -106,6 +114,30 @@ else
 
     /// <summary>Adds a pulsing animation to draw attention.</summary>
     [Parameter] public bool Pulse { get; set; }
+
+    /// <summary>When true, the badge blinks (sharp opacity toggle) in a repeating pattern. Different from Pulse — Blink is a sharp on/off, Pulse is a smooth breathing.</summary>
+    [Parameter] public bool Blink { get; set; }
+
+    /// <summary>Auto-hide delay in milliseconds. After the specified delay the badge becomes hidden automatically.</summary>
+    [Parameter] public int? AutoHide { get; set; }
+
+    /// <summary>When true, the badge background uses a gradient from the base color to a lighter variant.</summary>
+    [Parameter] public bool Gradient { get; set; }
+
+    /// <summary>When true, adds a pulsing box-shadow glow effect matching the badge color.</summary>
+    [Parameter] public bool Glow { get; set; }
+
+    /// <summary>Custom CSS border-color for the badge. Useful for setting a distinct border on outlined badges.</summary>
+    [Parameter] public string? BorderColor { get; set; }
+
+    /// <summary>When true, adds a subtle drop shadow to the badge.</summary>
+    [Parameter] public bool Shadow { get; set; }
+
+    /// <summary>Animation style for badge visual effects. When non-default, takes precedence over <see cref="Pulse"/> and <see cref="Blink"/>.</summary>
+    [Parameter] public SgBadgeAnimation BadgeAnimation { get; set; } = SgBadgeAnimation.None;
+
+    /// <summary>Native browser tooltip text shown on hover.</summary>
+    [Parameter] public string? Tooltip { get; set; }
 
     /// <summary>Renders an animated processing dot (replaces text).</summary>
     [Parameter] public bool Processing { get; set; }
@@ -163,6 +195,57 @@ else
 
     // ── Internals ────────────────────────────────────────────────────────────
 
+    private bool _hidden;
+    private CancellationTokenSource? _autoHideCts;
+
+    protected override void OnInitialized()
+    {
+        ResetAutoHide();
+    }
+
+    protected override void OnParametersSet()
+    {
+        _hidden = false;
+        ResetAutoHide();
+    }
+
+    void IDisposable.Dispose()
+    {
+        _autoHideCts?.Cancel();
+        _autoHideCts?.Dispose();
+    }
+
+    private void ResetAutoHide()
+    {
+        _autoHideCts?.Cancel();
+        _autoHideCts?.Dispose();
+        _autoHideCts = null;
+
+        if (AutoHide.HasValue && AutoHide.Value > 0)
+        {
+            _autoHideCts = new CancellationTokenSource();
+            var token = _autoHideCts.Token;
+            _ = AutoHideAsync(AutoHide.Value, token);
+        }
+    }
+
+    private async Task AutoHideAsync(int delayMs, CancellationToken token)
+    {
+        try
+        {
+            await Task.Delay(delayMs, token);
+            if (!token.IsCancellationRequested)
+            {
+                _hidden = true;
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Component disposed or parameters changed — no-op
+        }
+    }
+
     private bool IsZero => Count is 0 && !ShowZero && string.IsNullOrEmpty(Text) && InnerContent is null && !Dot && !Processing;
 
     private string VariantClass => Variant switch
@@ -191,23 +274,80 @@ else
         _                            => "sgc-badge-tr"
     };
 
-    private string ComputedOffsetStyle
+    private string AnimationClasses
     {
         get
         {
-            if (!OffsetX.HasValue && !OffsetY.HasValue && string.IsNullOrEmpty(Color)) return "";
+            if (BadgeAnimation != SgBadgeAnimation.None)
+            {
+                return BadgeAnimation switch
+                {
+                    SgBadgeAnimation.Pulse  => " sgc-badge-pulse",
+                    SgBadgeAnimation.Blink  => " sgc-badge-blink",
+                    SgBadgeAnimation.Ripple => " sgc-badge-ripple",
+                    SgBadgeAnimation.Shine  => " sgc-badge-shine",
+                    _ => ""
+                };
+            }
             var sb = new System.Text.StringBuilder();
-            if (OffsetX.HasValue) sb.Append("--sgc-badge-ox:").Append(OffsetX.Value).Append("px;");
-            if (OffsetY.HasValue) sb.Append("--sgc-badge-oy:").Append(OffsetY.Value).Append("px;");
-            if (!string.IsNullOrEmpty(Color))
-                sb.Append("background:").Append(Color).Append(";border-color:").Append(Color).Append(';');
+            if (Pulse) sb.Append(" sgc-badge-pulse");
+            if (Blink) sb.Append(" sgc-badge-blink");
             return sb.ToString();
         }
     }
 
-    private string ComputedColorStyle => !string.IsNullOrEmpty(Color)
-        ? $"background:{Color};border-color:{Color};"
-        : "";
+    private string ComputedOffsetStyle
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+            if (OffsetX.HasValue) sb.Append("--sgc-badge-ox:").Append(OffsetX.Value).Append("px;");
+            if (OffsetY.HasValue) sb.Append("--sgc-badge-oy:").Append(OffsetY.Value).Append("px;");
+            AppendColorStyle(sb);
+            AppendFeatureStyle(sb);
+            return sb.ToString();
+        }
+    }
+
+    private string ComputedColorStyle
+    {
+        get
+        {
+            var sb = new System.Text.StringBuilder();
+            AppendColorStyle(sb);
+            AppendFeatureStyle(sb);
+            return sb.ToString();
+        }
+    }
+
+    private void AppendColorStyle(System.Text.StringBuilder sb)
+    {
+        if (string.IsNullOrEmpty(Color)) return;
+        if (Gradient)
+        {
+            sb.Append("background:linear-gradient(135deg,").Append(Color)
+              .Append(",color-mix(in srgb,").Append(Color).Append(",white 35%));");
+            sb.Append("border-color:").Append(Color).Append(";");
+        }
+        else
+        {
+            sb.Append("background:").Append(Color).Append(";border-color:").Append(Color).Append(";");
+        }
+    }
+
+    private void AppendFeatureStyle(System.Text.StringBuilder sb)
+    {
+        if (!string.IsNullOrEmpty(BorderColor))
+            sb.Append("border-color:").Append(BorderColor).Append(";");
+        if (Glow)
+        {
+            var gc = !string.IsNullOrEmpty(Color) ? Color : "";
+            if (!string.IsNullOrEmpty(gc))
+                sb.Append("--sgc-badge-glow-color:").Append(gc).Append(";");
+        }
+        if (Shadow)
+            sb.Append("filter:drop-shadow(0 1px 2px rgba(0,0,0,0.2));");
+    }
 
     private string WrapBadgeClasses
     {
@@ -216,10 +356,13 @@ else
             var sb = new System.Text.StringBuilder("sgc-badge ");
             sb.Append(VariantClass).Append(' ').Append(SizeClass).Append(' ').Append(PlacementClass);
             if (Dot)        sb.Append(" sgc-badge-dot");
-            if (Pulse)      sb.Append(" sgc-badge-pulse");
             if (Outlined)   sb.Append(" sgc-badge-outlined");
             if (Square)     sb.Append(" sgc-badge-square");
             if (Processing) sb.Append(" sgc-badge-processing");
+            if (Gradient && string.IsNullOrEmpty(Color)) sb.Append(" sgc-badge-gradient");
+            if (Glow)       sb.Append(" sgc-badge-glow");
+            if (Shadow)     sb.Append(" sgc-badge-shadow");
+            sb.Append(AnimationClasses);
             return sb.ToString();
         }
     }
@@ -231,10 +374,13 @@ else
             var sb = new System.Text.StringBuilder("sgc-badge sgc-badge-inline ");
             sb.Append(VariantClass).Append(' ').Append(SizeClass);
             if (Dot)        sb.Append(" sgc-badge-dot");
-            if (Pulse)      sb.Append(" sgc-badge-pulse");
             if (Outlined)   sb.Append(" sgc-badge-outlined");
             if (Square)     sb.Append(" sgc-badge-square");
             if (Processing) sb.Append(" sgc-badge-processing");
+            if (Gradient && string.IsNullOrEmpty(Color)) sb.Append(" sgc-badge-gradient");
+            if (Glow)       sb.Append(" sgc-badge-glow");
+            if (Shadow)     sb.Append(" sgc-badge-shadow");
+            sb.Append(AnimationClasses);
             if (Icon is not null && (Text is not null || Count.HasValue)) sb.Append(" sgc-badge-with-icon");
             if (!string.IsNullOrEmpty(CssClass)) sb.Append(' ').Append(CssClass);
             return sb.ToString();
@@ -263,4 +409,6 @@ else
             return Text ?? Localizer["Badge"];
         }
     }
+
+    private string? BadgeTooltip => Tooltip;
 }

@@ -1,123 +1,645 @@
 ﻿@page "/skeleton-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Скелет загрузки - SUI</PageTitle>
+<PageTitle>SgSkeleton — Loading Placeholder — SuperUI</PageTitle>
 
-<SgCard Title="SgSkeleton - Скелет загрузки"
-        Subtitle="Компонент для отображения заполнителей во время загрузки контента. Поддерживает различные формы и анимацию.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <SgTypography Variant="SgTypographyVariant.Heading2">Варианты скелетов</SgTypography>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)">Различные конфигурации скелетов для разных типов контента.</SgTypography>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Текстовый скелет">
-                <SgSkeleton Active="true" Paragraph="true" />
-            </SgCard>
-
-            <SgCard Title="Скелет с аватаром">
-                <SgSkeleton Active="true" Avatar="true" Paragraph="true" />
-            </SgCard>
-
-            <SgCard Title="Только заголовок">
-                <SgSkeleton Active="true" Paragraph="false" />
-            </SgCard>
-
-            <SgCard Title="Округлённый">
-                <SgSkeleton Active="true" Round="true" Paragraph="true" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. Skeleton Variants                                               -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Skeleton Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                The <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgSkeleton</SgTypography> component supports composite (avatar + title + paragraph) and primitive (shape) modes.
+            </SgTypography>
         </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Text Skeleton" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                        <SgBadge Variant="SgBadgeVariant.Info" Text="Active + Paragraph" Standalone="true" />
+                        <SgSkeleton Active="true" Paragraph="true" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="With Avatar" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                        <SgBadge Variant="SgBadgeVariant.Success" Text="Active + Avatar" Standalone="true" />
+                        <SgSkeleton Active="true" Avatar="true" Paragraph="true" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Title Only" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                        <SgBadge Variant="SgBadgeVariant.Warn" Text="Active, no Paragraph" Standalone="true" />
+                        <SgSkeleton Active="true" Paragraph="false" />
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6" Lg="3">
+                <SgCard Title="Custom Shapes" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <SgStack Vertical Space="SgSize.Sm">
+                        <SgSpace>
+                            <SgSkeleton Shape="SgSkeletonShape.Circle" Width="40px" Height="40px" />
+                            <SgSkeleton Shape="SgSkeletonShape.Rect" Width="80px" Height="40px" />
+                            <SgSkeleton Shape="SgSkeletonShape.Text" Width="120px" />
+                        </SgSpace>
+                        <SgSpace>
+                            <SgSkeleton Shape="SgSkeletonShape.Rect" Width="100%" Height="32px" />
+                        </SgSpace>
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Circle, Rect, Text — set Width and Height for custom sizes.
+                        </SgTypography>
+                    </SgStack>
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
-    <div style="margin-top: 32px;">
-        <SgTypography Variant="SgTypographyVariant.Heading2">Интерактивный пример</SgTypography>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)">Переключите загрузку для просмотра скелета и реального контента.</SgTypography>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Interactive Example                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Interactive Example
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Toggle the switch to see the skeleton transition to real content.
+            </SgTypography>
+        </div>
 
-        <SgCard Title="Карточка пользователя" Style="margin-top: 16px;">
-            <div style="margin-bottom: 16px;">
-                <SgSwitch @bind-Value="@_isLoading" Label="Режим загрузки" />
-            </div>
+        <SgCard Title="User Profile" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgStack Vertical Space="SgSize.Lg">
+                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                    <SgSwitch @bind-Value="@_isLoading" />
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        @(_isLoading ? "Showing skeleton..." : "Showing real content")
+                    </SgTypography>
+                </SgStack>
 
-            @if (_isLoading)
-            {
-                <SgSkeleton Active="true" Avatar="true" Paragraph="true" />
-            }
-            else
-            {
-                <div style="display: flex; align-items: flex-start; gap: 16px;">
-                    <SgAvatar Title="Иван Петров" Color="#1890ff" Size="SgSize.Lg" />
-                    <div>
-                        <div style="font-size: 16px; font-weight: 600;">Иван Петров</div>
-                        <div style="color: var(--sui-text-muted); margin-top: 4px;">Старший разработчик · Отдел R&D</div>
-                        <div style="margin-top: 8px; display: flex; gap: 8px;">
-                            <SgBadge Text="Blazor" Variant="SgBadgeVariant.Success" />
-                            <SgBadge Text="C#" Variant="SgBadgeVariant.Default" />
-                            <SgBadge Text=".NET" Variant="SgBadgeVariant.Default" />
+                @if (_isLoading)
+                {
+                    <div style="min-height:100px;">
+                        <SgSkeleton Active="true" Avatar="true" Paragraph="true" ParagraphRows="4" />
+                    </div>
+                }
+                else
+                {
+                    <div style="display:flex;align-items:flex-start;gap:16px;">
+                        <SgAvatar Title="Alex Morgan" Color="#3b82f6" Size="SgSize.Lg" />
+                        <div style="flex:1;">
+                            <div style="font-size:16px;font-weight:600;margin-bottom:4px;">Alex Morgan</div>
+                            <div style="font-size:13px;color:var(--sg-text-muted);margin-bottom:8px;">Senior Engineer · Platform Team</div>
+                            <SgSpace>
+                                <SgBadge Variant="SgBadgeVariant.Success" Text="Blazor" Standalone="true" />
+                                <SgBadge Variant="SgBadgeVariant.Info" Text="C#" Standalone="true" />
+                                <SgBadge Variant="SgBadgeVariant.Default" Text=".NET" Standalone="true" />
+                                <SgBadge Variant="SgBadgeVariant.Warn" Text="Azure" Standalone="true" />
+                            </SgSpace>
+                            <div style="margin-top:12px;font-size:13px;color:var(--sg-text-muted);line-height:1.6;">
+                                Building UI component libraries since 2022. Passionate about developer experience, performance, and accessibility. Contributor to open-source Blazor ecosystems.
+                            </div>
                         </div>
-                        <div style="margin-top: 12px; font-size: 13px; color: var(--sui-text-muted);">
-                            Разрабатывает компоненты SuperUI с 2024 года. Специализируется на производительности и доступности.
+                    </div>
+                }
+            </SgStack>
+        </SgCard>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Skeleton List                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Skeleton List
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Multiple skeletons arranged in a list layout, ideal for loading feeds, search results, or tables.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="Loading Feed" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgStack Vertical Space="SgSize.Lg">
+                @for (int i = 0; i < 4; i++)
+                {
+                    <div style="padding-bottom:16px;@(i < 3 ? "border-bottom:1px solid var(--sg-border);" : "")">
+                        <SgSkeleton Active="true" Avatar="true" Paragraph="true" ParagraphRows="2" />
+                    </div>
+                }
+            </SgStack>
+        </SgCard>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Custom Card Skeleton                                            -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Custom Card Skeleton
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Compose multiple primitive skeletons inside a card-like container for complex placeholder layouts.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Blog Post Card" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div class="custom-card-skeleton">
+                    <SgSkeleton Shape="SgSkeletonShape.Rect" Width="100%" Height="140px"
+                                Style="border-radius:8px 8px 0 0;" />
+                    <div style="padding:16px;">
+                        <SgSkeleton Active="true" Paragraph="true" ParagraphRows="3" Round="true" />
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;padding-top:16px;border-top:1px solid var(--sg-border);">
+                            <SgSpace>
+                                <SgSkeleton Shape="SgSkeletonShape.Rect" Width="60px" Height="28px" />
+                                <SgSkeleton Shape="SgSkeletonShape.Rect" Width="60px" Height="28px" />
+                            </SgSpace>
+                            <SgSkeleton Shape="SgSkeletonShape.Circle" Width="28px" Height="28px" />
                         </div>
                     </div>
                 </div>
-            }
-        </SgCard>
-    </div>
+            </SgCard>
 
-    <div style="margin-top: 32px;">
-        <SgTypography Variant="SgTypographyVariant.Heading2">Список с загрузкой</SgTypography>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)">Скелеты для списков и таблиц.</SgTypography>
-
-        <SgCard Title="Список элементов" Style="margin-top: 16px;">
-            <div style="display: flex; flex-direction: column; gap: 16px;">
-                @for (int i = 0; i < 3; i++)
-                {
-                    <SgSkeleton Active="true" Avatar="true" Paragraph="false" />
-                }
-            </div>
-        </SgCard>
-    </div>
-
-    <div style="margin-top: 32px;">
-        <SgTypography Variant="SgTypographyVariant.Heading2">Свойства компонента</SgTypography>
-
-        <SgCard Title="SgSkeleton" Style="margin-top: 16px;">
-            <PropertyTable Items="_skeletonProperties" />
-        </SgCard>
-    </div>
-
-    <!-- Enum + code -->
-    <div style="margin-top: 32px;">
-        <SgTypography Variant="SgTypographyVariant.Heading2">Перечисление SgSkeletonShape и примеры кода</SgTypography>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgSkeletonShape">
-                <PropertyTable Items="_shapeEnum" />
+            <SgCard Title="Dashboard Card" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <div class="custom-card-skeleton">
+                    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+                        <SgSkeleton Shape="SgSkeletonShape.Circle" Width="44px" Height="44px" />
+                        <div style="flex:1;">
+                            <SgSkeleton Shape="SgSkeletonShape.Rect" Width="60%" Height="16px" />
+                            <div style="margin-top:8px;">
+                                <SgSkeleton Shape="SgSkeletonShape.Rect" Width="40%" Height="12px" />
+                            </div>
+                        </div>
+                        <SgSkeleton Shape="SgSkeletonShape.Rect" Width="24px" Height="24px" />
+                    </div>
+                    <SgSkeleton Shape="SgSkeletonShape.Rect" Width="100%" Height="72px" />
+                    <div style="display:flex;gap:8px;margin-top:16px;">
+                        <SgSkeleton Shape="SgSkeletonShape.Rect" Width="64px" Height="24px" />
+                        <SgSkeleton Shape="SgSkeletonShape.Rect" Width="64px" Height="24px" />
+                        <SgSkeleton Shape="SgSkeletonShape.Rect" Width="64px" Height="24px" />
+                    </div>
+                </div>
             </SgCard>
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 5. Properties                                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Properties
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                All configurable parameters for the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgSkeleton</SgTypography> component.
+            </SgTypography>
+        </div>
+
+        <PropertyTable Items="_skeletonProperties" />
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Live Constructor                                                -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgSkeleton Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Toggle parameters and see the result in real time. Click the copy button to grab the generated code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Avatar -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Avatar</SgTypography>
+                            <SgSegmented TValue="bool"
+                                         Value="_ctorAvatar"
+                                         ValueChanged="v => { _ctorAvatar = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_boolSegOptions" />
+                        </SgStack>
+
+                        <!-- Paragraph -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Paragraph</SgTypography>
+                            <SgSegmented TValue="bool"
+                                         Value="_ctorParagraph"
+                                         ValueChanged="v => { _ctorParagraph = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_boolSegOptions" />
+                        </SgStack>
+
+                        <!-- Paragraph Rows -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Paragraph Rows</SgTypography>
+                            <SgSegmented TValue="int"
+                                         Value="_ctorRows"
+                                         ValueChanged="v => { _ctorRows = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_rowsOptions" />
+                        </SgStack>
+
+                        <!-- Round -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Round</SgTypography>
+                            <SgSegmented TValue="bool"
+                                         Value="_ctorRound"
+                                         ValueChanged="v => { _ctorRound = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_boolSegOptions" />
+                        </SgStack>
+
+                        <!-- Shape -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Shape (primitive mode)</SgTypography>
+                            <SgSegmented TValue="SgSkeletonShape"
+                                         Value="_ctorShape"
+                                         ValueChanged="v => { _ctorShape = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_shapeOptions" />
+                        </SgStack>
+
+                        <!-- Width / Height -->
+                        <SgRow Space="SgSize.Md">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Width</SgTypography>
+                                    <input type="text" class="demo-input"
+                                           value="@_ctorWidth"
+                                           @oninput="e => { _ctorWidth = e.Value?.ToString() ?? string.Empty; UpdateConstructorCode(); }"
+                                           placeholder="e.g. 200px" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Height</SgTypography>
+                                    <input type="text" class="demo-input"
+                                           value="@_ctorHeight"
+                                           @oninput="e => { _ctorHeight = e.Value?.ToString() ?? string.Empty; UpdateConstructorCode(); }"
+                                           placeholder="e.g. 40px" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Mode</SgTypography>
+                                    <SgBadge Variant="@(_ctorAvatar || _ctorParagraph ? SgBadgeVariant.Success : SgBadgeVariant.Info)" Text="@(_ctorAvatar || _ctorParagraph ? "Composite" : "Primitive")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Shape</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorShape.ToString()" Standalone="true" />
+                                </SgStack>
+                                @if (!string.IsNullOrEmpty(_ctorWidth))
+                                {
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Width</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorWidth" Standalone="true" />
+                                    </SgStack>
+                                }
+                                @if (!string.IsNullOrEmpty(_ctorHeight))
+                                {
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Height</SgTypography>
+                                        <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorHeight" Standalone="true" />
+                                    </SgStack>
+                                }
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview" id="constructor-preview">
+                                @if (_ctorAvatar || _ctorParagraph)
+                                {
+                                    <SgSkeleton Active="true"
+                                                Avatar="@_ctorAvatar"
+                                                Paragraph="@_ctorParagraph"
+                                                ParagraphRows="@_ctorRows"
+                                                Round="@_ctorRound" />
+                                }
+                                else
+                                {
+                                    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;">
+                                        <SgSkeleton Shape="@_ctorShape"
+                                                    Width="@(string.IsNullOrEmpty(_ctorWidth) ? null : _ctorWidth)"
+                                                    Height="@(string.IsNullOrEmpty(_ctorHeight) ? null : _ctorHeight)"
+                                                    Animated="true" />
+                                    </div>
+                                }
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
-@code {
-    private bool _isLoading = true;
+<style>
+    /* ── Section layout ─────────────────────────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
+    }
 
-    private List<PropertyPanelItem> _skeletonProperties = new()
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Custom card skeleton ───────────────────────────────────────────────── */
+    .custom-card-skeleton {
+        padding: 0;
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 20px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+
+    /* ── Constructor input ──────────────────────────────────────────────────── */
+    .demo-input {
+        width: 100%;
+        padding: 6px 10px;
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        background: var(--sg-surface);
+        color: var(--sg-text);
+        font-size: 13px;
+        font-family: inherit;
+        outline: none;
+        transition: border-color 0.2s;
+        box-sizing: border-box;
+    }
+    .demo-input:focus {
+        border-color: var(--sg-primary);
+    }
+</style>
+
+@code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
     {
-        new() { Label = "Active",        Value = "bool",                    BadgeText = "Анимация",              BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Avatar",        Value = "bool",                    BadgeText = "Показать аватар",       BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Paragraph",     Value = "bool",                    BadgeText = "Показать параграф",     BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Round",         Value = "bool",                    BadgeText = "Округлённые края",      BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Shape",         Value = "text|rect|circle",        BadgeText = "Форма (SgSkeletonShape)", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Width",         Value = "string",                  BadgeText = "Ширина",                BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Height",        Value = "string",                  BadgeText = "Высота",                BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ChildContent",  Value = "RenderFragment",          BadgeText = "Содержимое",            BadgeVariant = SgBadgeVariant.Info }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                @((MarkupString)SgHeroicons.Outline.RectangleStack)
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgSkeleton — Loading Placeholder</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Composite and primitive skeleton placeholders with shimmer animation, avatar, title, paragraph rows, and custom shapes.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
     };
 
-    // ── Enum tables ──────────────────────────────────────────────────────────
-    private List<PropertyPanelItem> _shapeEnum = new()
+    // ── Interactive state ────────────────────────────────────────────────
+    private bool _isLoading = true;
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private bool _ctorAvatar = true;
+    private bool _ctorParagraph = true;
+    private int _ctorRows = 3;
+    private bool _ctorRound;
+    private SgSkeletonShape _ctorShape = SgSkeletonShape.Text;
+    private string _ctorWidth = string.Empty;
+    private string _ctorHeight = string.Empty;
+
+    // ── Code generation ───────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    // ── Segmented options ─────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
     {
-        new() { Label = "SgSkeletonShape.Text",   Value = "\"text\"",   BadgeText = "Строка текста (по умолч.)", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgSkeletonShape.Rect",   Value = "\"rect\"",   BadgeText = "Прямоугольник",             BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgSkeletonShape.Circle", Value = "\"circle\"", BadgeText = "Круг (аватар)",             BadgeVariant = SgBadgeVariant.Info },
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<int>> _rowsOptions = new()
+    {
+        new() { Value = 1, Label = "1" },
+        new() { Value = 2, Label = "2" },
+        new() { Value = 3, Label = "3" },
+        new() { Value = 4, Label = "4" },
+        new() { Value = 5, Label = "5" },
+    };
+
+    private readonly List<SgSegmentedOption<SgSkeletonShape>> _shapeOptions = new()
+    {
+        new() { Value = SgSkeletonShape.Text,   Label = "Text" },
+        new() { Value = SgSkeletonShape.Circle, Label = "Circle" },
+        new() { Value = SgSkeletonShape.Rect,   Label = "Rect" },
+    };
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+
+        if (_ctorAvatar || _ctorParagraph)
+        {
+            lines.Add("<SgSkeleton Active=\"true\"");
+            if (_ctorAvatar)
+                lines.Add("           Avatar=\"true\"");
+            lines.Add($"           Paragraph=\"{_ctorParagraph.ToString().ToLowerInvariant()}\"");
+            if (_ctorParagraph && _ctorRows != 3)
+                lines.Add($"           ParagraphRows=\"{_ctorRows}\"");
+            if (_ctorRound)
+                lines.Add("           Round=\"true\"");
+            lines.Add(" />");
+        }
+        else
+        {
+            lines.Add("<SgSkeleton");
+            if (_ctorShape != SgSkeletonShape.Text)
+                lines.Add($"           Shape=\"SgSkeletonShape.{_ctorShape}\"");
+            if (!string.IsNullOrEmpty(_ctorWidth))
+                lines.Add($"           Width=\"{_ctorWidth}\"");
+            if (!string.IsNullOrEmpty(_ctorHeight))
+                lines.Add($"           Height=\"{_ctorHeight}\"");
+            lines.Add("           Animated=\"true\"");
+            lines.Add(" />");
+        }
+
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property table ────────────────────────────────────────────────────
+    private List<PropertyPanelItem> _skeletonProperties = new()
+    {
+        new() { Label = "Active",        Value = "bool",                    BadgeText = "Shimmer animation",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Avatar",        Value = "bool",                    BadgeText = "Left circle avatar",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Paragraph",     Value = "bool",                    BadgeText = "Paragraph lines",        BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ParagraphRows", Value = "int (default 3)",         BadgeText = "Line count",             BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Round",         Value = "bool",                    BadgeText = "Rounded corners",        BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Shape",         Value = "SgSkeletonShape",         BadgeText = "text|circle|rect",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Width",         Value = "string? (CSS)",           BadgeText = "Custom width",           BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Height",        Value = "string? (CSS)",           BadgeText = "Custom height",          BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Animated",      Value = "bool (default true)",     BadgeText = "Pulse animation",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Style",         Value = "string? (CSS)",           BadgeText = "Inline style",           BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CssClass",      Value = "string?",                 BadgeText = "CSS class",              BadgeVariant = SgBadgeVariant.Default },
     };
 }

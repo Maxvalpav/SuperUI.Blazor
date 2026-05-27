@@ -10,6 +10,10 @@
        rel="@Rel"
        aria-label="@(AriaLabel ?? Text)"
        aria-busy="@(Loading ? "true" : null)"
+       draggable="@(Draggable ? "true" : null)"
+       title="@(Disabled && !string.IsNullOrEmpty(DisabledTooltip) ? DisabledTooltip : null)"
+       @ondragstart="HandleDragStartAsync"
+       @ondragend="HandleDragEndAsync"
        @onclick="HandleClickAsync"
        @attributes="AdditionalAttributes">
         @ChipBody
@@ -25,6 +29,10 @@ else
           aria-disabled="@(Disabled ? "true" : null)"
           aria-label="@(AriaLabel ?? Text)"
           aria-busy="@(Loading ? "true" : null)"
+          draggable="@(Draggable ? "true" : null)"
+          title="@(Disabled && !string.IsNullOrEmpty(DisabledTooltip) ? DisabledTooltip : null)"
+          @ondragstart="HandleDragStartAsync"
+          @ondragend="HandleDragEndAsync"
           @onclick="HandleClickAsync"
           @onkeydown="HandleKeyDownAsync"
           @attributes="AdditionalAttributes">
@@ -35,6 +43,20 @@ else
 @code {
     private RenderFragment ChipBody => __builder =>
     {
+        @if (DragHandle)
+        {
+            <span class="sgc-chip-drag-handle" aria-hidden="true">
+                <svg viewBox="0 0 12 12" fill="currentColor">
+                    <circle cx="3" cy="2" r="1.2"/>
+                    <circle cx="9" cy="2" r="1.2"/>
+                    <circle cx="3" cy="6" r="1.2"/>
+                    <circle cx="9" cy="6" r="1.2"/>
+                    <circle cx="3" cy="10" r="1.2"/>
+                    <circle cx="9" cy="10" r="1.2"/>
+                </svg>
+            </span>
+        }
+
         @if (Loading)
         {
             <span class="sgc-chip-spinner" aria-hidden="true"></span>
@@ -63,6 +85,10 @@ else
         {
             <span class="sgc-chip-icon" aria-hidden="true">@Icon</span>
         }
+        else if (!string.IsNullOrEmpty(LeadingIcon))
+        {
+            <span class="sgc-chip-leading" aria-hidden="true">@((MarkupString)LeadingIcon)</span>
+        }
 
         <span class="sgc-chip-text">@ChildContent@Text</span>
 
@@ -74,15 +100,19 @@ else
         {
             <span class="sgc-chip-trailing" aria-hidden="true">@TrailingContent</span>
         }
+        else if (!string.IsNullOrEmpty(TrailingIcon) && !Loading)
+        {
+            <span class="sgc-chip-trailing" aria-hidden="true">@((MarkupString)TrailingIcon)</span>
+        }
 
-        @if (Closable && !Loading && !Disabled)
+        @if ((Closable || Removable) && !Loading && !Disabled && !_isRemoving)
         {
             <button type="button"
                     class="sgc-chip-x"
                     tabindex="-1"
                     aria-label="@Localizer.GetString("RemoveItem", Text ?? Localizer["Item"])"
                     @onclick:stopPropagation="true"
-                    @onclick="OnCloseAsync">
+                    @onclick="HandleRemoveAsync">
                 <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
                     <line x1="2" y1="2" x2="10" y2="10"/>
                     <line x1="10" y1="2" x2="2" y2="10"/>
@@ -90,6 +120,18 @@ else
             </button>
         }
     };
+
+    // ── Group cascading ────────────────────────────────────────────────────────
+
+    /// <summary>Chip group context received from parent <see cref="SgChipGroup"/>.</summary>
+    [CascadingParameter] public SgChipGroup? ChipGroup { get; set; }
+
+    // ── State fields ───────────────────────────────────────────────────────────
+
+    private bool _isRemoving;
+    private bool _isDragging;
+
+    // ── Parameters ─────────────────────────────────────────────────────────────
 
     /// <summary>Accessibility label for screen readers.</summary>
     [Parameter] public string? AriaLabel { get; set; }
@@ -100,7 +142,7 @@ else
     /// <summary>Custom content inside the chip. Takes precedence over <see cref="Text"/>.</summary>
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>Icon rendered before the text.</summary>
+    /// <summary>Icon rendered before the text (RenderFragment). Takes precedence over <see cref="LeadingIcon"/>.</summary>
     [Parameter] public RenderFragment? Icon { get; set; }
 
     /// <summary>Avatar rendered before the text (replaces <see cref="Icon"/>).</summary>
@@ -111,6 +153,12 @@ else
 
     /// <summary>Trailing content rendered after the text.</summary>
     [Parameter] public RenderFragment? TrailingContent { get; set; }
+
+    /// <summary>SVG markup string for a leading icon. Simpler alternative to <see cref="Icon"/>. Ignored if <see cref="Icon"/> is set.</summary>
+    [Parameter] public string? LeadingIcon { get; set; }
+
+    /// <summary>SVG markup string for a trailing icon. Ignored if <see cref="TrailingContent"/> is set.</summary>
+    [Parameter] public string? TrailingIcon { get; set; }
 
     /// <summary>Renders a small status dot before the text.</summary>
     [Parameter] public bool Dot { get; set; }
@@ -124,14 +172,29 @@ else
     /// <summary>Outlined visual style.</summary>
     [Parameter] public bool Outlined { get; set; }
 
-    /// <summary>Visual variant. Default <see cref="SgChipVariant.Default"/>.</summary>
-    [Parameter] public SgChipVariant Variant { get; set; } = SgChipVariant.Default;
+    /// <summary>Visual variant. Default <see cref="SgChipVariant.Default"/>. Overridden by parent <see cref="SgChipGroup"/>.</summary>
+    [Parameter] public SgChipVariant? Variant { get; set; }
 
-    /// <summary>Chip size. Default <see cref="SgSize.Md"/>.</summary>
-    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+    /// <summary>Chip size. Default <see cref="SgSize.Md"/>. Overridden by parent <see cref="SgChipGroup"/>.</summary>
+    [Parameter] public SgSize? Size { get; set; }
 
-    /// <summary>Renders a close button.</summary>
+    /// <summary>Renders a close button (immediate removal).</summary>
     [Parameter] public bool Closable { get; set; }
+
+    /// <summary>Renders a close button with a fade-out animation before invoking <see cref="OnClose"/>.</summary>
+    [Parameter] public bool Removable { get; set; }
+
+    /// <summary>Shows a drag handle (⠿ grid) on the left side of the chip.</summary>
+    [Parameter] public bool DragHandle { get; set; }
+
+    /// <summary>Makes the chip draggable (adds draggable="true" and drag events).</summary>
+    [Parameter] public bool Draggable { get; set; }
+
+    /// <summary>When true and no explicit <see cref="Color"/> is set, generates a deterministic HSL color from the <see cref="Text"/> hash.</summary>
+    [Parameter] public bool ColorFromText { get; set; }
+
+    /// <summary>Tooltip text shown via native title attribute when the chip is <see cref="Disabled"/>.</summary>
+    [Parameter] public string? DisabledTooltip { get; set; }
 
     /// <summary>Makes the chip activatable (button-like).</summary>
     [Parameter] public bool Clickable { get; set; }
@@ -189,6 +252,10 @@ else
 
     // ── Internals ────────────────────────────────────────────────────────────
 
+    private SgSize EffectiveSize => Size ?? ChipGroup?.Size ?? SgSize.Md;
+
+    private SgChipVariant EffectiveVariant => Variant ?? ChipGroup?.Variant ?? SgChipVariant.Default;
+
     private bool Interactive => (Clickable || Selectable || SelectedChanged.HasDelegate) && !Disabled;
 
     private string Role => !string.IsNullOrEmpty(Href) ? "" :
@@ -199,7 +266,10 @@ else
         ? (Selected ? "true" : "false")
         : null;
 
-    private string SizeClass => Size switch
+    private string? ComputedColor => !string.IsNullOrEmpty(Color) ? Color :
+        (ColorFromText && !string.IsNullOrEmpty(Text) ? HashToHsl(Text) : null);
+
+    private string SizeClass => EffectiveSize switch
     {
         SgSize.Sm => "sgc-chip-sm",
         SgSize.Lg => "sgc-chip-lg",
@@ -207,7 +277,7 @@ else
         _         => ""
     };
 
-    private string VariantClass => Variant switch
+    private string VariantClass => EffectiveVariant switch
     {
         SgChipVariant.Primary => "sgc-primary",
         SgChipVariant.Success => "sgc-success",
@@ -225,34 +295,67 @@ else
             if (!string.IsNullOrEmpty(VariantClass)) sb.Append(VariantClass).Append(' ');
             if (!string.IsNullOrEmpty(SizeClass))    sb.Append(SizeClass).Append(' ');
             if (Outlined)               sb.Append("sgc-outlined ");
-            if (Closable)               sb.Append("sgc-closable ");
+            if (Closable || Removable)  sb.Append("sgc-closable ");
             if (Loading)                sb.Append("sgc-chip-loading ");
             if (Interactive)            sb.Append("sgc-chip-clickable ");
             if (Selected)               sb.Append("sgc-chip-selected ");
             if (Disabled)               sb.Append("sgc-chip-disabled ");
+            if (Draggable)              sb.Append("sgc-chip-draggable ");
+            if (_isDragging)            sb.Append("sgc-chip-dragging ");
+            if (_isRemoving)            sb.Append("sgc-chip-removing ");
             if (!string.IsNullOrEmpty(CssClass)) sb.Append(CssClass);
-            return sb.ToString();
+            return sb.ToString().TrimEnd();
         }
     }
 
     private string BuildStyle()
     {
         var sb = new System.Text.StringBuilder();
-        if (!string.IsNullOrEmpty(Color))     sb.Append("background:").Append(Color).Append(';');
-        if (!string.IsNullOrEmpty(TextColor)) sb.Append("color:").Append(TextColor).Append(';');
-        if (!string.IsNullOrEmpty(Style))     sb.Append(Style);
+        var bgColor = ComputedColor;
+        if (!string.IsNullOrEmpty(bgColor))    sb.Append("background:").Append(bgColor).Append(';');
+        if (!string.IsNullOrEmpty(TextColor))  sb.Append("color:").Append(TextColor).Append(';');
+        if (!string.IsNullOrEmpty(Style))      sb.Append(Style);
         return sb.ToString();
     }
 
-    private async Task OnCloseAsync()
+    private static string HashToHsl(string text)
     {
-        if (Disabled || Loading) return;
+        int hash = 0;
+        foreach (char c in text)
+            hash += c;
+        int hue = hash % 360;
+        return $"hsl({hue}, 60%, 70%)";
+    }
+
+    private async Task HandleRemoveAsync()
+    {
+        if (Disabled || Loading || _isRemoving) return;
+        if (Removable)
+        {
+            _isRemoving = true;
+            StateHasChanged();
+            await Task.Delay(300);
+        }
         if (OnClose.HasDelegate) await OnClose.InvokeAsync();
+    }
+
+    private async Task HandleDragStartAsync(DragEventArgs e)
+    {
+        if (!Draggable) return;
+        _isDragging = true;
+        StateHasChanged();
+    }
+
+    private async Task HandleDragEndAsync(DragEventArgs e)
+    {
+        if (!Draggable) return;
+        _isDragging = false;
+        StateHasChanged();
     }
 
     private async Task HandleClickAsync(MouseEventArgs e)
     {
-        if (Disabled || Loading) return;
+        if (Disabled || Loading || _isRemoving) return;
         if (Selectable || SelectedChanged.HasDelegate)
         {
             Selected = !Selected;
@@ -265,6 +368,7 @@ else
     {
         if (!Interactive) return;
         if (e.Key is "Enter" or " ") await HandleClickAsync(new MouseEventArgs());
-        else if ((e.Key is "Delete" or "Backspace") && Closable) await OnCloseAsync();
+        else if ((e.Key is "Delete" or "Backspace") && (Closable || Removable)) await HandleRemoveAsync();
     }
+
 }

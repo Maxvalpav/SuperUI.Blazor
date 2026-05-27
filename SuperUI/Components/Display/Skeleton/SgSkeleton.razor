@@ -1,44 +1,228 @@
 @namespace SuperUI.Components
+@using Microsoft.AspNetCore.Components.Rendering
 
-@if (_isCompositeMode)
+@{
+    var itemCount = Math.Max(1, Count);
+}
+
+@if (itemCount > 1)
 {
-    <div class="sgc-skeleton-wrapper @(Active ? "sgc-skeleton-active" : "") @(Round ? "sgc-skeleton-round" : "") @CssClass"
-         style="@Style"
+    <div class="sgc-skeleton-list @AnimationClass @CssClass"
+         style="@GetListStyle()"
          @attributes="AdditionalAttributes">
-        @if (Avatar)
+        @for (int i = 0; i < itemCount; i++)
         {
-            <div class="sgc-skeleton-avatar-wrap">
-                <div class="sgc-skeleton-element sgc-skeleton-circle" style="width:40px;height:40px;"></div>
+            var idx = i;
+            <div class="sgc-skeleton-list-item" style="@GetItemStyle(idx)">
+                @RenderItemContent
             </div>
         }
-        <div class="sgc-skeleton-content">
-            <div class="sgc-skeleton-element sgc-skeleton-title"></div>
-            @if (Paragraph)
-            {
-                <div class="sgc-skeleton-paragraph">
-                    @for (int i = 0; i < ParagraphRows; i++)
-                    {
-                        var isLast = i == ParagraphRows - 1;
-                        <div class="sgc-skeleton-element sgc-skeleton-paragraph-line @(isLast ? "sgc-skeleton-paragraph-line-last" : "")"> </div>
-                    }
-                </div>
-            }
-        </div>
     </div>
 }
 else
 {
-    <div class="sgc-skeleton @ShapeClass @CssClass"
-         style="@GetStyle()"
-         @attributes="AdditionalAttributes">
-    </div>
+    @RenderItemContent
 }
 
+<style>
+/* ── Animation keyframes ─────────────────────────────────────────────── */
+
+@@keyframes sgc-skeleton-shine {
+    0%   { background-position: -200% 50%; }
+    100% { background-position: 200% 50%; }
+}
+
+@@keyframes sgc-skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
+
+@@keyframes sgc-skeleton-fade {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.2; }
+}
+
+@@keyframes sgc-skeleton-scale {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(0.98); }
+}
+
+/* ── Animation overrides for composite / variant wrappers ───────────── */
+
+.sgc-skeleton-anim-shine .sgc-skeleton-element {
+    animation: sgc-skeleton-shine 2s ease infinite !important;
+    background: linear-gradient(90deg,
+        var(--sgc-skeleton-bg, var(--sg-bg-subtle)) 25%,
+        var(--sg-bg-muted) 37%,
+        var(--sgc-skeleton-bg, var(--sg-bg-subtle)) 63%
+    ) !important;
+    background-size: 200% 100% !important;
+}
+
+.sgc-skeleton-anim-pulse .sgc-skeleton-element {
+    animation: sgc-skeleton-pulse 2s ease infinite !important;
+    background: var(--sgc-skeleton-bg, var(--sg-bg-muted)) !important;
+    background-size: auto !important;
+}
+
+.sgc-skeleton-anim-fade .sgc-skeleton-element {
+    animation: sgc-skeleton-fade 1.8s ease infinite !important;
+    background: var(--sgc-skeleton-bg, var(--sg-bg-muted)) !important;
+    background-size: auto !important;
+}
+
+.sgc-skeleton-anim-scale .sgc-skeleton-element {
+    animation: sgc-skeleton-scale 2s ease infinite !important;
+    background: var(--sgc-skeleton-bg, var(--sg-bg-muted)) !important;
+    background-size: auto !important;
+}
+
+/* ── Variant: Card ──────────────────────────────────────────────────── */
+
+.sgc-skeleton-card-image {
+    height: 140px;
+    border-radius: var(--sg-radius-md) var(--sg-radius-md) 0 0;
+}
+.sgc-skeleton-card-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.sgc-skeleton-variant-card {
+    border-radius: var(--sg-radius-md);
+    overflow: hidden;
+    background: var(--sg-surface, #fff);
+}
+
+/* ── Variant: Table ─────────────────────────────────────────────────── */
+
+.sgc-skeleton-variant-table {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.sgc-skeleton-table-header,
+.sgc-skeleton-table-row {
+    display: flex;
+    gap: 12px;
+    padding: 10px 12px;
+}
+.sgc-skeleton-table-header > div,
+.sgc-skeleton-table-row > div {
+    height: 12px;
+    border-radius: var(--sg-radius-sm);
+    flex: 1;
+}
+
+/* ── Variant: Dashboard ─────────────────────────────────────────────── */
+
+.sgc-skeleton-variant-dashboard {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.sgc-skeleton-dashboard-row {
+    display: flex;
+    gap: 12px;
+}
+.sgc-skeleton-dashboard-widget {
+    flex: 1;
+    height: 100px;
+    border-radius: var(--sg-radius-md);
+}
+
+/* ── Variant: AvatarList ────────────────────────────────────────────── */
+
+.sgc-skeleton-variant-avatar-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.sgc-skeleton-avatar-list-item {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+.sgc-skeleton-avatar-list-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* ── Variant: Article ───────────────────────────────────────────────── */
+
+.sgc-skeleton-variant-article {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+.sgc-skeleton-article-image {
+    height: 200px;
+    border-radius: var(--sg-radius-md);
+}
+.sgc-skeleton-article-headline {
+    height: 24px;
+    width: 70%;
+    border-radius: var(--sg-radius-sm);
+}
+.sgc-skeleton-article-paragraph {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ── List wrapper ───────────────────────────────────────────────────── */
+
+.sgc-skeleton-list {
+    display: flex;
+    flex-direction: column;
+}
+</style>
+
 @code {
-    // ── Composite / high-level API ──────────────────────────────────────────
+    // ── New parameters ─────────────────────────────────────────────────────
 
     /// <summary>
-    /// Enables the shimmer animation. Default is false.
+    /// Type of animation to apply. Default is <see cref="SgSkeletonAnimation.Wave"/>.
+    /// </summary>
+    [Parameter] public SgSkeletonAnimation Animation { get; set; } = SgSkeletonAnimation.Wave;
+
+    /// <summary>
+    /// Number of skeleton items to render. Default is 1. When greater than 1,
+    /// items are wrapped in a spaced list container.
+    /// </summary>
+    [Parameter] public int Count { get; set; } = 1;
+
+    /// <summary>
+    /// Stagger delay in milliseconds between each item when <see cref="Count"/> &gt; 1.
+    /// Applied as <c>animation-delay</c>. Default is 0.
+    /// </summary>
+    [Parameter] public int StaggerDelay { get; set; }
+
+    /// <summary>
+    /// Pre-built layout template that overrides individual shape parameters.
+    /// When set, renders a preset skeleton composite. Default is <c>null</c>.
+    /// </summary>
+    [Parameter] public SgSkeletonVariant? Variant { get; set; }
+
+    /// <summary>
+    /// CSS gap value between items when <see cref="Count"/> &gt; 1
+    /// (e.g. <c>"16px"</c>, <c>"1rem"</c>). Default is <c>null</c>.
+    /// </summary>
+    [Parameter] public string? Gap { get; set; }
+
+    /// <summary>
+    /// CSS border-radius override applied to all skeleton elements
+    /// (e.g. <c>"8px"</c>, <c>"var(--sg-radius-lg)"</c>). Default is <c>null</c>.
+    /// </summary>
+    [Parameter] public string? Radius { get; set; }
+
+    // ── Existing parameters (unchanged) ─────────────────────────────────────
+
+    /// <summary>
+    /// Enables the shimmer animation on composite skeletons. Default is false.
     /// </summary>
     [Parameter] public bool Active { get; set; }
 
@@ -61,8 +245,6 @@ else
     /// Rounds the edges of the title and paragraph lines. Default is false.
     /// </summary>
     [Parameter] public bool Round { get; set; }
-
-    // ── Low-level / primitive API ───────────────────────────────────────────
 
     /// <summary>
     /// Shape of the primitive skeleton. Default is <see cref="SgSkeletonShape.Text"/>.
@@ -101,10 +283,17 @@ else
 
     // ── Internals ───────────────────────────────────────────────────────────
 
-    // Composite mode is used when any high-level parameter is explicitly set.
-    // We detect this by checking whether Avatar was set or Active was set
-    // alongside Paragraph — i.e. the caller is using the rich API.
     private bool _isCompositeMode => Active || Avatar;
+
+    private string AnimationClass => Animation switch
+    {
+        SgSkeletonAnimation.Wave   => "sgc-skeleton-anim-wave",
+        SgSkeletonAnimation.Shine  => "sgc-skeleton-anim-shine",
+        SgSkeletonAnimation.Pulse  => "sgc-skeleton-anim-pulse",
+        SgSkeletonAnimation.Fade   => "sgc-skeleton-anim-fade",
+        SgSkeletonAnimation.Scale  => "sgc-skeleton-anim-scale",
+        _ => "sgc-skeleton-anim-wave"
+    };
 
     private string ShapeClass => Shape switch
     {
@@ -119,7 +308,309 @@ else
         if (!string.IsNullOrEmpty(Width))  styles.Add($"width: {Width}");
         if (!string.IsNullOrEmpty(Height)) styles.Add($"height: {Height}");
         if (!Animated)                     styles.Add("animation: none");
+        if (Animated && Animation != SgSkeletonAnimation.Wave)
+        {
+            styles.Add(GetAnimationOverride());
+        }
+        if (!string.IsNullOrEmpty(Radius)) styles.Add($"border-radius: {Radius}");
         if (!string.IsNullOrEmpty(Style))  styles.Add(Style);
         return string.Join("; ", styles);
+    }
+
+    private string GetAnimationOverride()
+    {
+        return Animation switch
+        {
+            SgSkeletonAnimation.Shine => "animation: sgc-skeleton-shine 2s ease infinite; background: linear-gradient(90deg, var(--sgc-skeleton-bg, var(--sg-bg-subtle)) 25%, var(--sg-bg-muted) 37%, var(--sgc-skeleton-bg, var(--sg-bg-subtle)) 63%); background-size: 200% 100%",
+            SgSkeletonAnimation.Pulse => "animation: sgc-skeleton-pulse 2s ease infinite; background: var(--sgc-skeleton-bg, var(--sg-bg-muted)); background-size: auto",
+            SgSkeletonAnimation.Fade  => "animation: sgc-skeleton-fade 1.8s ease infinite; background: var(--sgc-skeleton-bg, var(--sg-bg-muted)); background-size: auto",
+            SgSkeletonAnimation.Scale => "animation: sgc-skeleton-scale 2s ease infinite; background: var(--sgc-skeleton-bg, var(--sg-bg-muted)); background-size: auto",
+            _ => ""
+        };
+    }
+
+    private string GetListStyle()
+    {
+        var styles = new List<string>();
+        if (!string.IsNullOrEmpty(Gap)) styles.Add($"gap: {Gap}");
+        else if (Count > 1)            styles.Add("gap: 8px");
+        if (!string.IsNullOrEmpty(Style) && Count > 1) styles.Add(Style);
+        return styles.Count > 0 ? string.Join("; ", styles) : "";
+    }
+
+    private string GetItemStyle(int index)
+    {
+        var styles = new List<string>();
+        if (StaggerDelay > 0 && index > 0)
+        {
+            var delay = index * StaggerDelay;
+            styles.Add($"animation-delay: {delay}ms");
+        }
+        return styles.Count > 0 ? string.Join("; ", styles) : "";
+    }
+
+    private string GetRadiusStyle()
+    {
+        return !string.IsNullOrEmpty(Radius) ? $"border-radius: {Radius}; overflow: hidden;" : "";
+    }
+
+    // ── Single-item renderer ────────────────────────────────────────────────
+
+    private RenderFragment RenderItemContent => __builder =>
+    {
+        if (Variant.HasValue)
+        {
+            BuildVariant(__builder);
+        }
+        else if (_isCompositeMode)
+        {
+            BuildComposite(__builder);
+        }
+        else
+        {
+            BuildPrimitive(__builder);
+        }
+    };
+
+    private void BuildVariant(RenderTreeBuilder __builder)
+    {
+        var anim = AnimationClass;
+        var radiusStyle = GetRadiusStyle();
+
+        switch (Variant!.Value)
+        {
+            case SgSkeletonVariant.Card:
+                __builder.OpenElement(0, "div");
+                __builder.AddAttribute(1, "class", $"sgc-skeleton-variant-card {anim}");
+                if (!string.IsNullOrEmpty(radiusStyle))
+                    __builder.AddAttribute(2, "style", radiusStyle);
+
+                __builder.OpenElement(4, "div");
+                __builder.AddAttribute(5, "class", "sgc-skeleton-card-image sgc-skeleton-element");
+                __builder.CloseElement();
+
+                __builder.OpenElement(6, "div");
+                __builder.AddAttribute(7, "class", "sgc-skeleton-card-body");
+
+                __builder.OpenElement(8, "div");
+                __builder.AddAttribute(9, "class", "sgc-skeleton-element sgc-skeleton-title");
+                __builder.CloseElement();
+
+                __builder.OpenElement(10, "div");
+                __builder.AddAttribute(11, "class", "sgc-skeleton-element sgc-skeleton-paragraph-line");
+                __builder.CloseElement();
+
+                __builder.OpenElement(12, "div");
+                __builder.AddAttribute(13, "class", "sgc-skeleton-element sgc-skeleton-paragraph-line");
+                __builder.CloseElement();
+
+                __builder.CloseElement(); // card-body
+                __builder.CloseElement(); // variant-card
+                break;
+
+            case SgSkeletonVariant.Table:
+                __builder.OpenElement(0, "div");
+                __builder.AddAttribute(1, "class", $"sgc-skeleton-variant-table {anim}");
+                if (!string.IsNullOrEmpty(radiusStyle))
+                    __builder.AddAttribute(2, "style", radiusStyle);
+
+                // Header row
+                __builder.OpenElement(3, "div");
+                __builder.AddAttribute(4, "class", "sgc-skeleton-table-header");
+                var headerWidths = new[] { "30%", "25%", "20%", "15%", "10%" };
+                for (int h = 0; h < headerWidths.Length; h++)
+                {
+                    var seq = 5 + h * 2;
+                    __builder.OpenElement(seq, "div");
+                    __builder.AddAttribute(seq + 1, "class", "sgc-skeleton-element");
+                    __builder.AddAttribute(seq + 1, "style", $"width:{headerWidths[h]}");
+                    __builder.CloseElement();
+                }
+                __builder.CloseElement();
+
+                // Data rows
+                var rowWidths = new[] { "22%", "28%", "18%", "20%", "12%" };
+                for (int r = 0; r < 4; r++)
+                {
+                    var rowSeq = 100 + r * 20;
+                    __builder.OpenElement(rowSeq, "div");
+                    __builder.AddAttribute(rowSeq + 1, "class", "sgc-skeleton-table-row");
+                    for (int c = 0; c < rowWidths.Length; c++)
+                    {
+                        var colSeq = rowSeq + 2 + c * 2;
+                        __builder.OpenElement(colSeq, "div");
+                        __builder.AddAttribute(colSeq + 1, "class", "sgc-skeleton-element");
+                        __builder.AddAttribute(colSeq + 1, "style", $"width:{rowWidths[c]}");
+                        __builder.CloseElement();
+                    }
+                    __builder.CloseElement();
+                }
+
+                __builder.CloseElement(); // variant-table
+                break;
+
+            case SgSkeletonVariant.Dashboard:
+                __builder.OpenElement(0, "div");
+                __builder.AddAttribute(1, "class", $"sgc-skeleton-variant-dashboard {anim}");
+                if (!string.IsNullOrEmpty(radiusStyle))
+                    __builder.AddAttribute(2, "style", radiusStyle);
+
+                for (int row = 0; row < 2; row++)
+                {
+                    var rowSeq = 3 + row * 20;
+                    __builder.OpenElement(rowSeq, "div");
+                    __builder.AddAttribute(rowSeq + 1, "class", "sgc-skeleton-dashboard-row");
+                    for (int col = 0; col < 2; col++)
+                    {
+                        var colSeq = rowSeq + 2 + col * 2;
+                        __builder.OpenElement(colSeq, "div");
+                        __builder.AddAttribute(colSeq + 1, "class", "sgc-skeleton-dashboard-widget sgc-skeleton-element");
+                        __builder.CloseElement();
+                    }
+                    __builder.CloseElement();
+                }
+
+                __builder.CloseElement(); // variant-dashboard
+                break;
+
+            case SgSkeletonVariant.AvatarList:
+                __builder.OpenElement(0, "div");
+                __builder.AddAttribute(1, "class", $"sgc-skeleton-variant-avatar-list {anim}");
+                if (!string.IsNullOrEmpty(radiusStyle))
+                    __builder.AddAttribute(2, "style", radiusStyle);
+
+                for (int a = 0; a < 3; a++)
+                {
+                    var seq = 3 + a * 30;
+                    __builder.OpenElement(seq, "div");
+                    __builder.AddAttribute(seq + 1, "class", "sgc-skeleton-avatar-list-item");
+
+                    __builder.OpenElement(seq + 2, "div");
+                    __builder.AddAttribute(seq + 3, "class", "sgc-skeleton-element sgc-skeleton-circle");
+                    __builder.AddAttribute(seq + 3, "style", "width:40px;height:40px;flex-shrink:0");
+                    __builder.CloseElement();
+
+                    __builder.OpenElement(seq + 4, "div");
+                    __builder.AddAttribute(seq + 5, "class", "sgc-skeleton-avatar-list-content");
+
+                    __builder.OpenElement(seq + 6, "div");
+                    __builder.AddAttribute(seq + 7, "class", "sgc-skeleton-element sgc-skeleton-title");
+                    __builder.CloseElement();
+
+                    __builder.OpenElement(seq + 8, "div");
+                    __builder.AddAttribute(seq + 9, "class", "sgc-skeleton-element sgc-skeleton-paragraph-line");
+                    __builder.CloseElement();
+
+                    __builder.CloseElement(); // avatar-list-content
+                    __builder.CloseElement(); // avatar-list-item
+                }
+
+                __builder.CloseElement(); // variant-avatar-list
+                break;
+
+            case SgSkeletonVariant.Article:
+                __builder.OpenElement(0, "div");
+                __builder.AddAttribute(1, "class", $"sgc-skeleton-variant-article {anim}");
+                if (!string.IsNullOrEmpty(radiusStyle))
+                    __builder.AddAttribute(2, "style", radiusStyle);
+
+                __builder.OpenElement(3, "div");
+                __builder.AddAttribute(4, "class", "sgc-skeleton-article-image sgc-skeleton-element");
+                __builder.CloseElement();
+
+                __builder.OpenElement(5, "div");
+                __builder.AddAttribute(6, "class", "sgc-skeleton-element sgc-skeleton-article-headline");
+                __builder.CloseElement();
+
+                __builder.OpenElement(7, "div");
+                __builder.AddAttribute(8, "class", "sgc-skeleton-article-paragraph");
+
+                for (int p = 0; p < 3; p++)
+                {
+                    var pSeq = 9 + p * 2;
+                    __builder.OpenElement(pSeq, "div");
+                    __builder.AddAttribute(pSeq + 1, "class", "sgc-skeleton-element sgc-skeleton-paragraph-line");
+                    __builder.CloseElement();
+                }
+                __builder.OpenElement(15, "div");
+                __builder.AddAttribute(16, "class", "sgc-skeleton-element sgc-skeleton-paragraph-line sgc-skeleton-paragraph-line-last");
+                __builder.CloseElement();
+
+                __builder.CloseElement(); // article-paragraph
+                __builder.CloseElement(); // variant-article
+                break;
+
+            default:
+                BuildComposite(__builder);
+                break;
+        }
+    }
+
+    private void BuildComposite(RenderTreeBuilder __builder)
+    {
+        var anim = AnimationClass;
+        var radiusStyle = !string.IsNullOrEmpty(Radius) ? $"border-radius:{Radius};" : "";
+
+        __builder.OpenElement(0, "div");
+        var wrapperClasses = $"sgc-skeleton-wrapper {anim} {(Active ? "sgc-skeleton-active" : "")} {(Round ? "sgc-skeleton-round" : "")} {CssClass}";
+        __builder.AddAttribute(1, "class", wrapperClasses);
+        if (!string.IsNullOrEmpty(radiusStyle))
+            __builder.AddAttribute(1, "style", radiusStyle);
+        if (AdditionalAttributes != null)
+            __builder.AddMultipleAttributes(2, AdditionalAttributes);
+
+        if (Avatar)
+        {
+            __builder.OpenElement(3, "div");
+            __builder.AddAttribute(4, "class", "sgc-skeleton-avatar-wrap");
+            __builder.OpenElement(5, "div");
+            __builder.AddAttribute(6, "class", "sgc-skeleton-element sgc-skeleton-circle");
+            __builder.AddAttribute(6, "style", "width:40px;height:40px;");
+            __builder.CloseElement();
+            __builder.CloseElement();
+        }
+
+        __builder.OpenElement(7, "div");
+        __builder.AddAttribute(8, "class", "sgc-skeleton-content");
+
+        __builder.OpenElement(9, "div");
+        __builder.AddAttribute(10, "class", "sgc-skeleton-element sgc-skeleton-title");
+        __builder.CloseElement();
+
+        if (Paragraph)
+        {
+            __builder.OpenElement(11, "div");
+            __builder.AddAttribute(12, "class", "sgc-skeleton-paragraph");
+
+            for (int i = 0; i < ParagraphRows; i++)
+            {
+                var pSeq = 13 + i * 10;
+                var isLast = i == ParagraphRows - 1;
+                var lineClass = isLast
+                    ? "sgc-skeleton-element sgc-skeleton-paragraph-line sgc-skeleton-paragraph-line-last"
+                    : "sgc-skeleton-element sgc-skeleton-paragraph-line";
+                __builder.OpenElement(pSeq, "div");
+                __builder.AddAttribute(pSeq + 1, "class", lineClass);
+                __builder.CloseElement();
+            }
+
+            __builder.CloseElement(); // paragraph
+        }
+
+        __builder.CloseElement(); // content
+        __builder.CloseElement(); // wrapper
+    }
+
+    private void BuildPrimitive(RenderTreeBuilder __builder)
+    {
+        __builder.OpenElement(0, "div");
+        __builder.AddAttribute(1, "class",
+            $"sgc-skeleton {ShapeClass} {AnimationClass} {CssClass}".Trim());
+        var style = GetStyle();
+        if (!string.IsNullOrEmpty(style))
+            __builder.AddAttribute(2, "style", style);
+        if (AdditionalAttributes != null)
+            __builder.AddMultipleAttributes(3, AdditionalAttributes);
+        __builder.CloseElement();
     }
 }

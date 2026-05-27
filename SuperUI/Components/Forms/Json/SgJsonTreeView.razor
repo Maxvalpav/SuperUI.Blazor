@@ -1,0 +1,434 @@
+@namespace SuperUI.Components
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using System.Text.RegularExpressions
+@inject IJSRuntime JS
+
+<div class="sg-jtv @CssClass">
+    @if (_error is not null)
+    {
+        <div class="sg-jtv-error">@_error</div>
+    }
+    else if (_nodes.Count == 0)
+    {
+        <div class="sg-jtv-empty">
+            @(string.IsNullOrEmpty(Value) ? "No data" : "Invalid JSON")
+        </div>
+    }
+    else
+    {
+        <div class="sg-jtv-body">
+            <div class="sg-jtv-content">
+                <ul class="sg-jtv-tree">
+                    @foreach (var node in _nodes)
+                    {
+                        @RenderNode(node)
+                    }
+                </ul>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+
+    // ── Parameters ────────────────────────────────────────────────────────────
+
+    /// <summary>JSON string to display as an interactive tree.</summary>
+    [Parameter] public string? Value { get; set; }
+
+    /// <summary>How many levels deep to auto-expand. Default 1.</summary>
+    [Parameter] public int ExpandDepth { get; set; } = 1;
+
+    /// <summary>Text to highlight in matching node keys and values.</summary>
+    [Parameter] public string? SearchText { get; set; }
+
+    /// <summary>Show line numbers for each visible node. Default false.</summary>
+    [Parameter] public bool ShowLineNumbers { get; set; }
+
+    /// <summary>Show type badges (string, number, object, array, bool, null). Default true.</summary>
+    [Parameter] public bool ShowTypes { get; set; } = true;
+
+    /// <summary>Allow editing values (future use). Default true.</summary>
+    [Parameter] public bool ReadOnly { get; set; } = true;
+
+    /// <summary>Allow collapsing and expanding container nodes. Default true.</summary>
+    [Parameter] public bool Collapsible { get; set; } = true;
+
+    /// <summary>Additional CSS class for the root element.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Fires when a node value is edited (future use).</summary>
+    [Parameter] public EventCallback<string> OnValueEdited { get; set; }
+
+    // ── Internal state ────────────────────────────────────────────────────────
+
+    private List<JsonTreeNode> _nodes = new();
+    private HashSet<string> _expandedIds = new();
+    private string? _error;
+    private int _nodeCounter;
+
+    // ── Tree node model ───────────────────────────────────────────────────────
+
+    private class JsonTreeNode
+    {
+        public string Id { get; set; } = "";
+        public string Key { get; set; } = "";
+        public string? RawValue { get; set; }
+        public string DisplayValue { get; set; } = "";
+        public string Type { get; set; } = "string";
+        public List<JsonTreeNode> Children { get; set; } = new();
+        public int Depth { get; set; }
+        public bool IsContainer { get; set; }
+    }
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────────
+
+    protected override void OnParametersSet()
+    {
+        RebuildTree();
+    }
+
+    private void RebuildTree()
+    {
+        _nodes.Clear();
+        _expandedIds.Clear();
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(Value))
+            return;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(Value);
+            _nodeCounter = 0;
+            _nodes = BuildNodes(doc.RootElement, "", 0);
+        }
+        catch (JsonException ex)
+        {
+            _error = $"Invalid JSON: {ex.Message}";
+        }
+    }
+
+    private List<JsonTreeNode> BuildNodes(JsonElement el, string key, int depth)
+    {
+        var list = new List<JsonTreeNode>();
+
+        switch (el.ValueKind)
+        {
+            case JsonValueKind.Object:
+            {
+                var tn = new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    Type = "object",
+                    Depth = depth,
+                    IsContainer = true,
+                    DisplayValue = el.GetArrayLength() == 0
+                        ? "{ }"
+                        : $"{{ {el.GetArrayLength()} property{(el.GetArrayLength() != 1 ? "ies" : "y")} }}"
+                };
+
+                if (depth < ExpandDepth)
+                    _expandedIds.Add(tn.Id);
+
+                foreach (var prop in el.EnumerateObject())
+                {
+                    tn.Children.AddRange(BuildNodes(prop.Value, prop.Name, depth + 1));
+                }
+
+                if (tn.Children.Count == 0)
+                {
+                    tn.DisplayValue = "{ }";
+                    tn.IsContainer = false;
+                }
+
+                list.Add(tn);
+                break;
+            }
+            case JsonValueKind.Array:
+            {
+                var count = 0;
+                foreach (var _ in el.EnumerateArray()) count++;
+
+                var tn = new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    Type = "array",
+                    Depth = depth,
+                    IsContainer = count > 0,
+                    DisplayValue = count == 0
+                        ? "[ ]"
+                        : $"[ {count} item{(count != 1 ? "s" : "")} ]"
+                };
+
+                if (depth < ExpandDepth && count > 0)
+                    _expandedIds.Add(tn.Id);
+
+                int idx = 0;
+                foreach (var item in el.EnumerateArray())
+                {
+                    tn.Children.AddRange(BuildNodes(item, $"[{idx}]", depth + 1));
+                    idx++;
+                }
+
+                list.Add(tn);
+                break;
+            }
+            case JsonValueKind.String:
+            {
+                var raw = el.GetString() ?? "";
+                list.Add(new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    RawValue = raw,
+                    DisplayValue = $"\"{raw}\"",
+                    Type = "string",
+                    Depth = depth
+                });
+                break;
+            }
+            case JsonValueKind.Number:
+            {
+                var raw = el.GetRawText();
+                var isInt = raw.IndexOf('.') < 0 && raw.IndexOf('e') < 0 && raw.IndexOf('E') < 0;
+                list.Add(new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    RawValue = raw,
+                    DisplayValue = raw,
+                    Type = isInt ? "integer" : "number",
+                    Depth = depth
+                });
+                break;
+            }
+            case JsonValueKind.True:
+            {
+                list.Add(new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    RawValue = "true",
+                    DisplayValue = "true",
+                    Type = "boolean",
+                    Depth = depth
+                });
+                break;
+            }
+            case JsonValueKind.False:
+            {
+                list.Add(new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    RawValue = "false",
+                    DisplayValue = "false",
+                    Type = "boolean",
+                    Depth = depth
+                });
+                break;
+            }
+            case JsonValueKind.Null:
+            {
+                list.Add(new JsonTreeNode
+                {
+                    Id = $"jtv-{++_nodeCounter}",
+                    Key = key,
+                    RawValue = null,
+                    DisplayValue = "null",
+                    Type = "null",
+                    Depth = depth
+                });
+                break;
+            }
+        }
+
+        return list;
+    }
+
+    // ── Expand / collapse ────────────────────────────────────────────────────
+
+    private void ToggleNode(string nodeId)
+    {
+        if (!Collapsible) return;
+        if (!_expandedIds.Remove(nodeId))
+            _expandedIds.Add(nodeId);
+    }
+
+    private bool IsExpanded(string nodeId) => _expandedIds.Contains(nodeId);
+
+    // ── Search ────────────────────────────────────────────────────────────────
+
+    private bool MatchesSearch(JsonTreeNode node)
+    {
+        if (string.IsNullOrWhiteSpace(SearchText))
+            return false;
+        var st = SearchText;
+        if (node.Key.Contains(st, StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (node.DisplayValue?.Contains(st, StringComparison.OrdinalIgnoreCase) == true)
+            return true;
+        return false;
+    }
+
+    // ── Rendering ─────────────────────────────────────────────────────────────
+
+    private RenderFragment RenderNode(JsonTreeNode node) => builder =>
+    {
+        int seq = 0;
+        var expanded = IsExpanded(node.Id);
+        var isMatch = MatchesSearch(node);
+
+        builder.OpenElement(seq++, "li");
+        builder.AddAttribute(seq++, "class", "sg-jtv-node" + (isMatch ? " sg-jtv-match" : ""));
+
+        if (ShowLineNumbers)
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jtv-ln");
+            builder.AddContent(seq++, node.Depth > 0 ? "" : "");
+            builder.CloseElement();
+        }
+
+        // Toggle arrow
+        if (Collapsible && node.IsContainer && node.Children.Count > 0)
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jtv-arrow" + (expanded ? " sg-jtv-arrow-exp" : ""));
+            builder.AddAttribute(seq++, "role", "button");
+            builder.AddAttribute(seq++, "tabindex", "0");
+            builder.AddAttribute(seq++, "aria-expanded", expanded ? "true" : "false");
+            builder.AddAttribute(seq++, "onclick", EventCallback.Factory.Create(this, () => ToggleNode(node.Id)));
+            builder.AddAttribute(seq++, "onkeydown", EventCallback.Factory.Create<KeyboardEventArgs>(this, e =>
+            {
+                if (e.Key is "Enter" or " ") ToggleNode(node.Id);
+            }));
+            builder.AddMarkupContent(seq++, expanded
+                ? "<svg viewBox=\"0 0 16 16\" width=\"14\" height=\"14\" fill=\"currentColor\"><path d=\"M4.5 3l7 5-7 5V3z\"/></svg>"
+                : "<svg viewBox=\"0 0 16 16\" width=\"14\" height=\"14\" fill=\"currentColor\"><path d=\"M6 3l5 5-5 5V3z\"/></svg>");
+            builder.CloseElement();
+        }
+        else if (Collapsible)
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jtv-arrow sg-jtv-arrow-empty");
+            builder.CloseElement();
+        }
+
+        // Type badge
+        if (ShowTypes)
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", $"sg-jtv-badge sg-jtv-badge-{node.Type}");
+            builder.AddContent(seq++, node.Type);
+            builder.CloseElement();
+        }
+
+        // Key
+        if (!string.IsNullOrEmpty(node.Key))
+        {
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jtv-key");
+            builder.AddContent(seq++, HighlightText(node.Key));
+            builder.CloseElement();
+
+            builder.AddMarkupContent(seq++, "<span class=\"sg-jtv-colon\">:</span>");
+        }
+
+        // Value
+        if (expanded && node.IsContainer && node.Children.Count > 0)
+        {
+            // Opening brace/bracket
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jtv-bracket");
+            builder.AddContent(seq++, node.Type == "object" ? "{" : "[");
+            builder.CloseElement();
+
+            builder.CloseElement(); // </li>
+
+            // Children
+            builder.OpenElement(seq++, "ul");
+            builder.AddAttribute(seq++, "class", "sg-jtv-children");
+
+            foreach (var child in node.Children)
+            {
+                builder.AddContent(seq++, RenderNode(child));
+                seq = 0;
+            }
+
+            builder.CloseElement(); // </ul>
+
+            // Closing brace/bracket
+            builder.OpenElement(seq++, "li");
+            builder.AddAttribute(seq++, "class", "sg-jtv-node sg-jtv-bracket-line");
+            builder.OpenElement(seq++, "span");
+            builder.AddAttribute(seq++, "class", "sg-jtv-bracket");
+            builder.AddContent(seq++, node.Type == "object" ? "}" : "]");
+            builder.CloseElement();
+            builder.CloseElement(); // </li>
+        }
+        else
+        {
+            if (node.IsContainer && node.Children.Count > 0)
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", "sg-jtv-summary");
+                builder.AddContent(seq++, node.DisplayValue);
+                builder.CloseElement();
+            }
+            else
+            {
+                builder.OpenElement(seq++, "span");
+                builder.AddAttribute(seq++, "class", $"sg-jtv-val sg-jtv-val-{node.Type}");
+                builder.AddContent(seq++, HighlightText(node.DisplayValue));
+                builder.CloseElement();
+            }
+
+            builder.CloseElement(); // </li>
+        }
+    };
+
+    private RenderFragment HighlightText(string text)
+    {
+        if (string.IsNullOrWhiteSpace(SearchText) || string.IsNullOrEmpty(text))
+            return b => b.AddContent(0, text);
+
+        var st = SearchText;
+        var lower = text;
+        var idx = lower.IndexOf(st, StringComparison.OrdinalIgnoreCase);
+
+        if (idx < 0)
+            return b => b.AddContent(0, text);
+
+        return builder =>
+        {
+            int seq = 0;
+            int last = 0;
+
+            while (idx >= 0)
+            {
+                if (idx > last)
+                {
+                    builder.AddContent(seq++, text[last..idx]);
+                }
+
+                builder.OpenElement(seq++, "mark");
+                builder.AddAttribute(seq++, "class", "sg-jtv-search-hl");
+                builder.AddContent(seq++, text.Substring(idx, st.Length));
+                builder.CloseElement();
+
+                last = idx + st.Length;
+                idx = lower.IndexOf(st, last, StringComparison.OrdinalIgnoreCase);
+            }
+
+            if (last < text.Length)
+            {
+                builder.AddContent(seq++, text[last..]);
+            }
+        };
+    }
+}

@@ -7,15 +7,16 @@
     var isComplete = pct >= 100;
 }
 
-<div class="@RootClass" 
+<div class="@RootClass"
      style="@RootStyle"
      role="progressbar"
      aria-valuemin="0"
      aria-valuemax="@Max"
      aria-valuenow="@(Indeterminate ? null : Value)"
      aria-label="@AriaLabel"
+     data-tooltip="@(ShowTooltip ? $"{pct:0}%" : null)"
      @attributes="AdditionalAttributes">
-    
+
     @if (Circular)
     {
         @* ═══════════════════════════════════════════════════════════════════════ *@
@@ -44,7 +45,7 @@
                     <stop offset="0%" stop-color="#ef4444" />
                     <stop offset="100%" stop-color="#f87171" />
                 </linearGradient>
-                
+
                 @* Glow Filter *@
                 @if (Glow)
                 {
@@ -57,13 +58,13 @@
                     </filter>
                 }
             </defs>
-            
+
             @* Background Circle *@
             <circle class="sg-progress-circular-bg"
                     cx="50" cy="50" r="@CircularRadius"
                     fill="none"
                     stroke-width="@StrokeWidth" />
-            
+
             @* Progress Circle *@
             <circle class="sg-progress-circular-bar @(Indeterminate ? "sg-indeterminate" : "")"
                     cx="50" cy="50" r="@CircularRadius"
@@ -74,16 +75,25 @@
                     stroke="@CircularStroke"
                     stroke-linecap="round"
                     filter="@(Glow ? $"url(#sg-glow-{_uniqueId})" : "")"
-                    transform="rotate(-90 50 50)" />
+                    transform="rotate(-90 50 50)"
+                    style="@CircularBarInlineStyle" />
         </svg>
-        
-        @* Center Label *@
+
+        @* Center Label / Content *@
         @if (ShowLabel && !Indeterminate)
         {
             <div class="sg-progress-circular-label">
-                @if (CustomLabel != null)
+                @if (CenterContent != null)
+                {
+                    @CenterContent
+                }
+                else if (CustomLabel != null)
                 {
                     @CustomLabel
+                }
+                else if (FormatLabel != null)
+                {
+                    <span class="sg-progress-value">@FormatLabel(pct)</span>
                 }
                 else
                 {
@@ -98,13 +108,124 @@
                 <span class="sg-progress-spinner">⟳</span>
             </div>
         }
+
+        @* Confetti overlay for circular *@
+        @if (_confettiPieces != null)
+        {
+            <div class="sg-progress-confetti sg-confetti-circular">
+                @foreach (var piece in _confettiPieces)
+                {
+                    <div class="sg-progress-confetti-piece"
+                         style="--x: @piece.X; --delay: @piece.Delay; --color: @piece.Color; --size: @(piece.Size)px; --rotation: @(piece.Rotation)deg; --shape: @piece.Shape;">
+                    </div>
+                }
+            </div>
+        }
+    }
+    else if (Steps != null && Steps.Count > 0)
+    {
+        @* ═══════════════════════════════════════════════════════════════════════ *@
+        @*                        STEPS MODE (Wizard)                              *@
+        @* ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="sg-progress-steps">
+            @for (int i = 0; i < Steps.Count; i++)
+            {
+                var step = Steps[i];
+                var stepClass = "sg-progress-step" +
+                    (step.Completed ? " sg-step-completed" : "") +
+                    (step.Active ? " sg-step-active" : "") +
+                    (step.Error ? " sg-step-error" : "");
+
+                <div class="@stepClass">
+                    <div class="sg-progress-step-indicator">
+                        @if (step.Icon != null)
+                        {
+                            <span class="sg-progress-step-icon">@step.Icon</span>
+                        }
+                        else if (step.Completed)
+                        {
+                            <span class="sg-progress-step-icon">✓</span>
+                        }
+                        else if (step.Error)
+                        {
+                            <span class="sg-progress-step-icon">✗</span>
+                        }
+                        else
+                        {
+                            <span class="sg-progress-step-dot"></span>
+                        }
+                    </div>
+                    <div class="sg-progress-step-label">@step.Label</div>
+                    @if (step.Description != null)
+                    {
+                        <div class="sg-progress-step-desc">@step.Description</div>
+                    }
+                </div>
+
+                @if (i < Steps.Count - 1)
+                {
+                    <div class="sg-progress-step-connector @(step.Completed || Steps[i + 1].Completed ? "sg-step-completed" : "")"></div>
+                }
+            }
+        </div>
+
+        @* Confetti overlay for steps *@
+        @if (_confettiPieces != null)
+        {
+            <div class="sg-progress-confetti sg-confetti-steps">
+                @foreach (var piece in _confettiPieces)
+                {
+                    <div class="sg-progress-confetti-piece"
+                         style="--x: @piece.X; --delay: @piece.Delay; --color: @piece.Color; --size: @(piece.Size)px; --rotation: @(piece.Rotation)deg; --shape: @piece.Shape;">
+                    </div>
+                }
+            </div>
+        }
+    }
+    else if (Values != null && Values.Count > 0)
+    {
+        @* ═══════════════════════════════════════════════════════════════════════ *@
+        @*                       MULTI-BAR PROGRESS                                *@
+        @* ═══════════════════════════════════════════════════════════════════════ *@
+        <div class="sg-progress-multibar">
+            @for (int i = 0; i < Values.Count; i++)
+            {
+                var val = Values[i];
+                var valPct = Max <= 0 ? 0 : Math.Clamp(val / Max * 100, 0, 100);
+                var color = Colors != null && i < Colors.Count ? Colors[i] : null;
+                var label = Labels != null && i < Labels.Count ? Labels[i] : null;
+                var barStyle = Vertical
+                    ? $"height: {valPct}%"
+                    : $"width: {valPct}%";
+                if (color != null)
+                {
+                    barStyle += $"; background-color: {color}";
+                }
+
+                <div class="sg-progress-multibar-item">
+                    @if (label != null)
+                    {
+                        <span class="sg-progress-multibar-label">@label</span>
+                    }
+                    <div class="sg-progress-track @(Vertical ? "sg-vertical" : "")">
+                        <div class="sg-progress-bar @AnimationClass"
+                             style="@barStyle">
+                            @if (Gradient && color == null)
+                            {
+                                <div class="sg-progress-gradient"></div>
+                            }
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
     }
     else
     {
         @* ═══════════════════════════════════════════════════════════════════════ *@
         @*                           LINEAR PROGRESS                               *@
         @* ═══════════════════════════════════════════════════════════════════════ *@
-        
+
         @* Title / Label Top *@
         @if (!string.IsNullOrEmpty(Title) && LabelPosition == SgLabelPosition.Top)
         {
@@ -112,27 +233,34 @@
                 <span class="sg-progress-title">@Title</span>
                 @if (ShowLabel && !Indeterminate)
                 {
-                    <span class="sg-progress-percentage">@($"{pct:0}%")</span>
+                    @if (FormatLabel != null)
+                    {
+                        <span class="sg-progress-percentage">@FormatLabel(pct)</span>
+                    }
+                    else
+                    {
+                        <span class="sg-progress-percentage">@(FormatLabel?.Invoke(pct) ?? $"{pct:0}%")</span>
+                    }
                 }
             </div>
         }
-        
+
         @* Progress Track *@
         <div class="sg-progress-track @(Vertical ? "sg-vertical" : "")">
             @if (Indeterminate)
             {
                 @* Indeterminate Animation *@
-                <div class="sg-progress-bar sg-indeterminate" style="@BarColorStyle"></div>
+                <div class="sg-progress-bar sg-indeterminate @AnimationClass" style="@BarColorStyle"></div>
             }
             else
             {
                 @* Buffer Bar (Background) *@
                 @if (BufferValue.HasValue && BufferValue.Value > 0)
                 {
-                    <div class="sg-progress-bar sg-buffer" 
+                    <div class="sg-progress-bar sg-buffer"
                          style="@GetBarStyle(bufferPct, true)"></div>
                 }
-                
+
                 @* Main Progress Bar *@
                 @if (Segmented)
                 {
@@ -144,7 +272,7 @@
                             var segmentStart = i * segmentPct;
                             var isActive = pct > segmentStart;
                             var segmentFill = isActive ? Math.Min(100, ((pct - segmentStart) / segmentPct) * 100) : 0;
-                            
+
                             <div class="sg-progress-segment @(isActive ? "sg-active" : "")"
                                  style="@($"--segment-fill: {segmentFill}%;")"></div>
                         }
@@ -153,7 +281,7 @@
                 else
                 {
                     @* Solid Progress Bar *@
-                    <div class="sg-progress-bar @(Striped ? "sg-striped" : "") @(Animated ? "sg-animated" : "")" 
+                    <div class="sg-progress-bar @(Striped ? "sg-striped" : "") @(Animated ? "sg-animated" : "") @AnimationClass"
                          style="@GetBarStyle(pct, false)">
                         @if (Gradient)
                         {
@@ -167,129 +295,231 @@
                 }
             }
         </div>
-        
+
         @* Label Right / Bottom *@
         @if (ShowLabel && !Indeterminate && LabelPosition == SgLabelPosition.Right)
         {
-            <span class="sg-progress-label-right">@($"{pct:0}%")</span>
+            @if (FormatLabel != null)
+            {
+                <span class="sg-progress-label-right">@FormatLabel(pct)</span>
+            }
+            else
+            {
+                <span class="sg-progress-label-right">@($"{pct:0}%")</span>
+            }
         }
-        
+
         @* Description *@
         @if (!string.IsNullOrEmpty(Description))
         {
             <div class="sg-progress-description">@Description</div>
+        }
+
+        @* Confetti overlay for linear *@
+        @if (_confettiPieces != null)
+        {
+            <div class="sg-progress-confetti sg-confetti-linear">
+                @foreach (var piece in _confettiPieces)
+                {
+                    <div class="sg-progress-confetti-piece"
+                         style="--x: @piece.X; --delay: @piece.Delay; --color: @piece.Color; --size: @(piece.Size)px; --rotation: @(piece.Rotation)deg; --shape: @piece.Shape;">
+                    </div>
+                }
+            </div>
         }
     }
 </div>
 
 @code {
     private string _uniqueId = Guid.NewGuid().ToString("N")[..8];
-    
+    private double _previousValue = -1;
+    private List<ConfettiPiece>? _confettiPieces;
+
+    private static readonly string[] _confettiPalette = { "#ff6b6b", "#ffd93d", "#6bcb77", "#4d96ff", "#ff6b9d", "#c44dff", "#ff8c42", "#00d2d3", "#ff4757", "#2ed573" };
+
     // ═══════════════════════════════════════════════════════════════════════════
     //                              PARAMETERS
     // ═══════════════════════════════════════════════════════════════════════════
-    
-    /// <summary>Current progress value (0 to Max)</summary>
+
+    /// <summary>Current progress value (0 to Max).</summary>
     [Parameter] public double Value { get; set; }
-    
-    /// <summary>Maximum value (default: 100)</summary>
+
+    /// <summary>Maximum value (default: 100).</summary>
     [Parameter] public double Max { get; set; } = 100;
-    
-    /// <summary>Buffer value for buffered progress (streaming, loading)</summary>
+
+    /// <summary>Buffer value for buffered progress (streaming, loading).</summary>
     [Parameter] public double? BufferValue { get; set; }
-    
-    /// <summary>Show percentage label</summary>
+
+    /// <summary>Show percentage label.</summary>
     [Parameter] public bool ShowLabel { get; set; } = true;
-    
-    /// <summary>Indeterminate loading state</summary>
+
+    /// <summary>Indeterminate loading state.</summary>
     [Parameter] public bool Indeterminate { get; set; }
-    
-    /// <summary>Striped pattern</summary>
+
+    /// <summary>Striped pattern.</summary>
     [Parameter] public bool Striped { get; set; }
-    
-    /// <summary>Animate stripes</summary>
+
+    /// <summary>Animate stripes.</summary>
     [Parameter] public bool Animated { get; set; }
-    
-    /// <summary>Vertical orientation</summary>
+
+    /// <summary>Vertical orientation.</summary>
     [Parameter] public bool Vertical { get; set; }
-    
-    /// <summary>Circular progress indicator</summary>
+
+    /// <summary>Circular progress indicator.</summary>
     [Parameter] public bool Circular { get; set; }
-    
-    /// <summary>Segmented progress bar</summary>
+
+    /// <summary>Segmented progress bar.</summary>
     [Parameter] public bool Segmented { get; set; }
-    
-    /// <summary>Number of segments (when Segmented = true)</summary>
+
+    /// <summary>Number of segments (when Segmented = true).</summary>
     [Parameter] public int Segments { get; set; } = 10;
-    
-    /// <summary>Gradient fill</summary>
+
+    /// <summary>Gradient fill.</summary>
     [Parameter] public bool Gradient { get; set; }
-    
-    /// <summary>Glow effect</summary>
+
+    /// <summary>Glow effect.</summary>
     [Parameter] public bool Glow { get; set; }
-    
-    /// <summary>Pulse animation on complete</summary>
+
+    /// <summary>Pulse animation on complete.</summary>
     [Parameter] public bool PulseOnComplete { get; set; } = true;
-    
-    /// <summary>Sticky to top (for page loading)</summary>
+
+    /// <summary>Sticky to top (for page loading).</summary>
     [Parameter] public bool StickyTop { get; set; }
-    
-    /// <summary>Size variant</summary>
+
+    /// <summary>Size variant.</summary>
     [Parameter] public SgSize Size { get; set; } = SgSize.Md;
-    
-    /// <summary>Color variant</summary>
+
+    /// <summary>Color variant.</summary>
     [Parameter] public SgSpinnerVariant Variant { get; set; } = SgSpinnerVariant.Default;
-    
-    /// <summary>Custom color (overrides Variant)</summary>
+
+    /// <summary>Custom color (overrides Variant).</summary>
     [Parameter] public string? Color { get; set; }
-    
-    /// <summary>Title text</summary>
+
+    /// <summary>Title text.</summary>
     [Parameter] public string? Title { get; set; }
-    
-    /// <summary>Description text (below progress)</summary>
+
+    /// <summary>Description text (below progress).</summary>
     [Parameter] public string? Description { get; set; }
-    
-    /// <summary>Label position</summary>
+
+    /// <summary>Label position.</summary>
     [Parameter] public SgLabelPosition LabelPosition { get; set; } = SgLabelPosition.Top;
-    
-    /// <summary>Custom label content</summary>
+
+    /// <summary>Custom label content.</summary>
     [Parameter] public RenderFragment? CustomLabel { get; set; }
-    
-    /// <summary>Bar height in pixels (linear only)</summary>
+
+    /// <summary>Bar height in pixels (linear only).</summary>
     [Parameter] public int? Height { get; set; }
-    
-    /// <summary>Stroke width for circular (default: auto based on size)</summary>
+
+    /// <summary>Stroke width for circular (default: auto based on size).</summary>
     [Parameter] public double? StrokeWidth { get; set; }
-    
-    /// <summary>Additional CSS classes</summary>
+
+    /// <summary>Additional CSS classes.</summary>
     [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>Additional inline styles</summary>
+
+    /// <summary>Additional inline styles.</summary>
     [Parameter] public string? Style { get; set; }
-    
-    /// <summary>Additional HTML attributes</summary>
-    [Parameter(CaptureUnmatchedValues = true)] 
+
+    /// <summary>Additional HTML attributes.</summary>
+    [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
-    
+
+    /// <summary>Custom color for the track/background area of the progress indicator.</summary>
+    [Parameter] public string? TrackColor { get; set; }
+
+    /// <summary>Custom animation duration in seconds for value transitions (applies when ShowAnimation is true).</summary>
+    [Parameter] public double? AnimationDuration { get; set; }
+
+    /// <summary>Whether to animate value changes using CSS transitions. When false, value changes are instant.</summary>
+    [Parameter] public bool ShowAnimation { get; set; }
+
+    /// <summary>Custom label formatter function. Receives the effective percentage (0-100) and returns the display string.</summary>
+    [Parameter] public Func<double, string>? FormatLabel { get; set; }
+
+    /// <summary>Event raised when progress first reaches 100%.</summary>
+    [Parameter] public EventCallback OnComplete { get; set; }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    //                         NEW FEATURE PARAMETERS
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    /// <summary>
+    /// List of step items for wizard/step progress display.
+    /// When set, the component renders a step indicator instead of a bar.
+    /// Each step shows a dot/circle with label, connected by lines.
+    /// </summary>
+    [Parameter] public IReadOnlyList<SgProgressStep>? Steps { get; set; }
+
+    /// <summary>
+    /// Whether to show a CSS-only tooltip with the percentage value on hover.
+    /// The tooltip appears as a floating label above the bar or circular indicator.
+    /// </summary>
+    [Parameter] public bool ShowTooltip { get; set; }
+
+    /// <summary>
+    /// Animation style applied to the progress bar.
+    /// <list type="bullet">
+    ///   <item><description>Wave — animated stripes sliding across (current default).</description></item>
+    ///   <item><description>Slide — bar slides in from the left.</description></item>
+    ///   <item><description>Reveal — bar scales from 0 to full width.</description></item>
+    ///   <item><description>Ripple — concentric ripple effect on the bar surface.</description></item>
+    ///   <item><description>Pulse — gentle pulse at the leading edge of the bar.</description></item>
+    /// </list>
+    /// </summary>
+    [Parameter] public SgProgressAnimationType AnimationType { get; set; } = SgProgressAnimationType.Wave;
+
+    /// <summary>
+    /// Multiple progress values for stacked multi-bar display.
+    /// When set, renders a separate progress bar for each value,
+    /// stacked vertically (or horizontally when <see cref="Vertical"/> is true).
+    /// </summary>
+    [Parameter] public IReadOnlyList<double>? Values { get; set; }
+
+    /// <summary>
+    /// Labels for each bar in multi-bar mode (<see cref="Values"/>).
+    /// Each label is displayed next to its corresponding bar.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string>? Labels { get; set; }
+
+    /// <summary>
+    /// Custom colors for each bar in multi-bar mode (<see cref="Values"/>).
+    /// Colors are applied in order; if fewer colors than values, remaining bars use the default variant color.
+    /// </summary>
+    [Parameter] public IReadOnlyList<string>? Colors { get; set; }
+
+    /// <summary>
+    /// Custom content rendered in the center of circular progress.
+    /// Overrides the default percentage label. Perfect for icons, avatars, or custom text.
+    /// Only applies when <see cref="Circular"/> is true.
+    /// </summary>
+    [Parameter] public RenderFragment? CenterContent { get; set; }
+
+    /// <summary>
+    /// Whether to show a confetti animation when progress reaches 100%.
+    /// Displays 20 colorful animated pieces (circles and squares) with random positions and fall effects.
+    /// </summary>
+    [Parameter] public bool Confetti { get; set; }
+
     // ═══════════════════════════════════════════════════════════════════════════
     //                           COMPUTED PROPERTIES
     // ═══════════════════════════════════════════════════════════════════════════
-    
+
     private double EffectivePct => Max <= 0 ? 0 : Math.Clamp(Value / Max * 100, 0, 100);
-    private double BufferPct => BufferValue.HasValue && Max > 0 
-        ? Math.Clamp(BufferValue.Value / Max * 100, 0, 100) 
+    private double BufferPct => BufferValue.HasValue && Max > 0
+        ? Math.Clamp(BufferValue.Value / Max * 100, 0, 100)
         : 0;
-    
-    private string AriaLabel => !string.IsNullOrEmpty(Title) 
-        ? Title 
-        : Indeterminate 
-            ? Localizer["Common_Loading"] 
+
+    private string AriaLabel => !string.IsNullOrEmpty(Title)
+        ? Title
+        : Indeterminate
+            ? Localizer["Common_Loading"]
             : $"{Localizer["Common_Progress"]}: {EffectivePct:0}%";
-    
+
+    private string AnimationClass => $"sg-anim-{AnimationType.ToString().ToLower()}";
+
     // ─────────────────────────────────────────────────────────────────────────
     //                              SIZE MAPPING
     // ─────────────────────────────────────────────────────────────────────────
-    
+
     private int BarHeight => Height ?? Size switch
     {
         SgSize.Sm => 4,
@@ -298,9 +528,9 @@
         SgSize.Xl => 16,
         _ => 8
     };
-    
-    private double CircularRadius => 42; // Fixed for viewBox 100x100
-    
+
+    private double CircularRadius => 42;
+
     private double EffectiveStrokeWidth => StrokeWidth ?? Size switch
     {
         SgSize.Sm => 4,
@@ -309,7 +539,7 @@
         SgSize.Xl => 10,
         _ => 6
     };
-    
+
     private int CircularSize => Size switch
     {
         SgSize.Sm => 48,
@@ -318,19 +548,19 @@
         SgSize.Xl => 128,
         _ => 64
     };
-    
+
     // ─────────────────────────────────────────────────────────────────────────
     //                           CIRCULAR CALCULATIONS
     // ─────────────────────────────────────────────────────────────────────────
-    
+
     private double CircularCircumference => 2 * Math.PI * CircularRadius;
     private string CircularDashArray => $"{CircularCircumference}";
-    private string CircularDashOffset => Indeterminate 
-        ? "0" 
+    private string CircularDashOffset => Indeterminate
+        ? "0"
         : $"{CircularCircumference * (1 - EffectivePct / 100)}";
-    
+
     private string CircularStroke => Color ?? (Gradient ? $"url(#sg-grad-{_uniqueId}-{VariantName})" : VariantColor);
-    
+
     private string VariantName => Variant switch
     {
         SgSpinnerVariant.Info => "info",
@@ -339,7 +569,7 @@
         SgSpinnerVariant.Danger => "danger",
         _ => "primary"
     };
-    
+
     private string VariantColor => Variant switch
     {
         SgSpinnerVariant.Info => "#0ea5e9",
@@ -348,37 +578,42 @@
         SgSpinnerVariant.Danger => "#ef4444",
         _ => "#006fee"
     };
-    
+
     // ─────────────────────────────────────────────────────────────────────────
     //                              CSS CLASSES
     // ─────────────────────────────────────────────────────────────────────────
-    
+
     private string RootClass
     {
         get
         {
             var classes = new List<string> { "sg-progress" };
-            
+
             if (Circular) classes.Add("sg-circular");
+            if (ShowAnimation) classes.Add("sg-animated-progress");
             if (Vertical && !Circular) classes.Add("sg-vertical");
             if (StickyTop) classes.Add("sg-sticky-top");
             if (PulseOnComplete && EffectivePct >= 100) classes.Add("sg-complete");
-            
+            if (Steps != null) classes.Add("sg-progress-steps-mode");
+            if (Values != null) classes.Add("sg-progress-multibar-mode");
+            if (ShowTooltip) classes.Add("sg-has-tooltip");
+            if (_confettiPieces != null) classes.Add("sg-confetti-active");
+
             classes.Add($"sg-size-{Size.ToString().ToLower()}");
             classes.Add($"sg-variant-{VariantName}");
-            
+
             if (!string.IsNullOrEmpty(CssClass)) classes.Add(CssClass);
-            
+
             return string.Join(" ", classes);
         }
     }
-    
+
     private string RootStyle
     {
         get
         {
             var styles = new List<string>();
-            
+
             if (Circular)
             {
                 styles.Add($"width: {CircularSize}px");
@@ -393,40 +628,65 @@
             {
                 styles.Add($"--bar-height: {BarHeight}px");
             }
-            
+
             if (Color != null)
             {
                 styles.Add($"--progress-color: {Color}");
             }
-            
+
+            if (TrackColor != null)
+            {
+                styles.Add($"--track-color: {TrackColor}");
+                styles.Add($"--progress-bg: {TrackColor}");
+            }
+
+            if (!ShowAnimation)
+            {
+                styles.Add("--transition-speed: 0s");
+            }
+            else if (AnimationDuration.HasValue)
+            {
+                styles.Add($"--transition-speed: {AnimationDuration.Value}s");
+            }
+
             if (!string.IsNullOrEmpty(Style))
             {
                 styles.Add(Style);
             }
-            
+
             return string.Join("; ", styles);
         }
     }
-    
+
+    private string? CircularBarInlineStyle
+    {
+        get
+        {
+            if (!ShowAnimation) return "transition-duration: 0s";
+            if (AnimationDuration.HasValue) return $"transition-duration: {AnimationDuration.Value}s";
+            return null;
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     //                            BAR STYLES
     // ─────────────────────────────────────────────────────────────────────────
-    
+
     private string BarColorStyle
     {
         get
         {
             if (Color != null)
                 return $"background-color: {Color};";
-            
+
             return $"background-color: {VariantColor};";
         }
     }
-    
+
     private string GetBarStyle(double percentage, bool isBuffer)
     {
         var styles = new List<string>();
-        
+
         if (Vertical)
         {
             styles.Add($"height: {percentage}%");
@@ -435,12 +695,12 @@
         {
             styles.Add($"width: {percentage}%");
         }
-        
+
         if (isBuffer)
         {
             styles.Add("opacity: 0.3");
         }
-        
+
         if (Color != null && !Gradient)
         {
             styles.Add($"background-color: {Color}");
@@ -456,10 +716,10 @@
             var color2 = Color ?? GetGradientEndColor();
             styles.Add($"background: linear-gradient({gradientDir}, {color1}, {color2})");
         }
-        
+
         return string.Join("; ", styles);
     }
-    
+
     private string GetGradientEndColor() => Variant switch
     {
         SgSpinnerVariant.Info => "#22d3ee",
@@ -468,4 +728,45 @@
         SgSpinnerVariant.Danger => "#f87171",
         _ => "#338ef7"
     };
+
+    // ─────────────────────────────────────────────────────────────────────────
+    //                           CONFETTI HELPERS
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private record ConfettiPiece(double X, double Delay, string Color, double Size, double Rotation, string Shape);
+
+    private void EnsureConfettiPieces()
+    {
+        if (_confettiPieces != null || !Confetti || EffectivePct < 100) return;
+
+        var rng = Random.Shared;
+        var pieces = new List<ConfettiPiece>(20);
+        for (int i = 0; i < 20; i++)
+        {
+            pieces.Add(new ConfettiPiece(
+                rng.NextDouble(),
+                rng.NextDouble() * 2,
+                _confettiPalette[rng.Next(_confettiPalette.Length)],
+                4 + rng.NextDouble() * 6,
+                rng.NextDouble() * 360,
+                rng.Next(2) == 0 ? "circle" : "square"
+            ));
+        }
+        _confettiPieces = pieces;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!Indeterminate && EffectivePct >= 100 && _previousValue >= 0 && _previousValue < 100)
+        {
+            OnComplete.InvokeAsync();
+        }
+
+        if (Confetti && EffectivePct >= 100 && _confettiPieces == null)
+        {
+            EnsureConfettiPieces();
+        }
+
+        _previousValue = EffectivePct;
+    }
 }
