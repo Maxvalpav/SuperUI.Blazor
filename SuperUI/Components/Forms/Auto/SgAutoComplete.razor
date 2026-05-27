@@ -2,15 +2,18 @@
 @typeparam TItem
 @using System.Linq.Expressions
 @using SuperUI.Localization
+@using SuperUI.Enums
+@using Microsoft.JSInterop
 @inject ISuperUILocalizer Localizer
-@implements IDisposable
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass" style="@Style">
+<div class="@GetRootClasses()" style="@Style" @ref="_rootRef">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
     }
-    <div class="sgc-combo sgc-ac @(Block ? "sgc-block" : "") @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @(IsInvalid ? "sgc-invalid" : "")"
+    <div class="@GetComboClasses()"
          role="combobox"
          aria-expanded="@(_open ? "true" : "false")"
          aria-haspopup="listbox"
@@ -21,64 +24,141 @@
          aria-describedby="@DescribedBy"
          @onclick:stopPropagation="true"
          @attributes="AdditionalAttributes">
-        <div class="sgc-combo-control">
+        <div class="sgc-combo-control" @onfocusin="OnFocusInAsync">
+            @if (Prefix != null)
+            {
+                <span class="sgc-combo-prefix">@Prefix</span>
+            }
+            @if (ShowSearchIcon)
+            {
+                <span class="sgc-ac-search-icon">@SearchIcon</span>
+            }
             <input class="sgc-combo-input"
                    value="@_search"
                    placeholder="@EffectivePlaceholder"
                    disabled="@Disabled"
                    aria-autocomplete="list"
                    aria-controls="@_listboxId"
-                   @onfocus="OpenAsync"
-                   @onblur="HandleBlurAsync"
+                   @ref="_inputRef"
                    @oninput="OnSearchInput"
-                   @onkeydown="OnKeyDownAsync" />
-            @if (AllowClear && Value is not null && !Disabled)
+                   @onkeydown="OnKeyDownAsync"
+                   @onblur="HandleBlurAsync"
+                   @onfocus="OnFocusInAsync" />
+            @if (Suffix != null)
+            {
+                <span class="sgc-combo-suffix">@Suffix</span>
+            }
+            @if (AllowClear && HasValue && !Disabled)
             {
                 <button class="sgc-combo-clear" type="button" aria-label="@ClearLabel" @onclick="ClearAsync" @onclick:stopPropagation="true">
-                    @((MarkupString)SgIcons.X)
+                    @ClearIcon
                 </button>
             }
-            <span class="sgc-combo-caret" aria-hidden="true">@((MarkupString)SgIcons.ChevronDown)</span>
+            @if (Loading)
+            {
+                <span class="sgc-ac-loading-spinner">@LoadingIcon</span>
+            }
+            <span class="sgc-combo-caret @(_open ? "sgc-caret-open" : "")" aria-hidden="true">
+                @CaretIcon
+            </span>
         </div>
         @if (_open)
         {
-            <div id="@_listboxId" class="sgc-combo-menu" role="listbox">
-                @{ var filtered = GetFilteredItems().ToList(); }
-                @if (_search.Length < MinCharacters)
+            <div id="@_listboxId" class="sgc-combo-menu" role="listbox" style="@MenuStyle" @onmousedown:stopPropagation="true">
+                @if (DropdownHeader != null)
                 {
-                    <div class="sgc-combo-empty" role="status">@Localizer["DataGrid_AutoCompleteMinChars"]</div>
+                    <div class="sgc-combo-menu-header">@DropdownHeader</div>
                 }
-                else if (Loading)
+                @if (GetFilteredItems() is var filtered && filtered.Count == 0)
                 {
-                    <div class="sgc-combo-empty" role="status">
-                        <span class="sgc-combo-spinner"></span>
-                        @Localizer["Loading"]
-                    </div>
-                }
-                else if (filtered.Count == 0)
-                {
-                    @if (NoResultsTemplate is not null)
+                    @if (_search.Length < MinCharacters)
                     {
-                        @NoResultsTemplate
+                        <div class="sgc-combo-empty" role="status">@Localizer["DataGrid_AutoCompleteMinChars"]</div>
+                    }
+                    else if (Loading)
+                    {
+                        <div class="sgc-combo-loading" role="status">
+                            @LoadingIcon
+                            <span>@Localizer["Loading"]</span>
+                        </div>
                     }
                     else
                     {
-                        <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                        @if (EmptyContent != null)
+                        {
+                            @EmptyContent
+                        }
+                        else if (NoResultsTemplate != null)
+                        {
+                            @NoResultsTemplate
+                        }
+                        else
+                        {
+                            <div class="sgc-combo-empty" role="status">@EffectiveEmptyText</div>
+                        }
                     }
                 }
                 else
                 {
-                    @for (var i = 0; i < filtered.Count; i++)
-                    {
-                        var idx = i;
-                        var item = filtered[idx];
-                        <div class="sgc-combo-option @(idx == _activeIndex ? "sgc-active" : "") @(IsSelected(item) ? "sgc-selected" : "")"
-                             role="option"
-                             aria-selected="@(IsSelected(item) ? "true" : "false")"
-                             @onclick="() => PickAsync(item)">
-                            @LabelFrom(item)
-                        </div>
-                    }
+                    <div class="sgc-combo-options" role="listbox">
+                        @{
+                            string? currentGroup = null;
+                            var idx = 0;
+                            foreach (var item in filtered)
+                            {
+                                var currentItem = item;
+                                var itemGroup = GroupSelector?.Invoke(currentItem);
+                                if (itemGroup != currentGroup)
+                                {
+                                    currentGroup = itemGroup;
+                                    if (itemGroup != null)
+                                    {
+                                        <div class="sgc-combo-group-header" role="group" aria-label="@itemGroup">
+                                            <span class="sgc-combo-group-label">@itemGroup</span>
+                                        </div>
+                                    }
+                                }
+
+                                var isActive = idx == _activeIndex;
+                                var isSelected = IsSelected(currentItem);
+                                var optClasses = "sgc-combo-option";
+                                if (isActive) optClasses += " sgc-active";
+                                if (isSelected) optClasses += " sgc-selected";
+
+                                <div class="@optClasses"
+                                     role="option"
+                                     aria-selected="@(isSelected ? "true" : "false")"
+                                     @onclick="() => PickAsync(currentItem)">
+                                    @if (ItemTemplate != null)
+                                    {
+                                        @ItemTemplate(currentItem)
+                                    }
+                                    else
+                                    {
+                                        @if (isSelected)
+                                        {
+                                            <span class="sgc-combo-option-check">@CheckedIcon</span>
+                                        }
+                                        <span class="sgc-combo-option-label">
+                                            @if (HighlightMatch && !string.IsNullOrEmpty(_search))
+                                            {
+                                                @((MarkupString)HighlightText(LabelFrom(currentItem), _search))
+                                            }
+                                            else
+                                            {
+                                                @LabelFrom(currentItem)
+                                            }
+                                        </span>
+                                    }
+                                </div>
+                                idx++;
+                            }
+                        }
+                    </div>
+                }
+                @if (DropdownFooter != null)
+                {
+                    <div class="sgc-combo-menu-footer">@DropdownFooter</div>
                 }
             </div>
         }
@@ -94,174 +174,376 @@
 </div>
 
 @code {
-    private readonly string _labelId = "sg-ac-label-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _listboxId = "sg-ac-listbox-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _hintId = "sg-ac-hint-" + Guid.NewGuid().ToString("N")[..8];
-    private readonly string _errorId = "sg-ac-err-" + Guid.NewGuid().ToString("N")[..8];
+    private IJSObjectReference? _jsModule;
+    private ElementReference _rootRef;
+    private ElementReference _inputRef;
+    private DotNetObjectReference<SgAutoComplete<TItem>>? _dotNetRef;
     private bool _open;
+    private bool _disposed;
     private string _search = string.Empty;
     private int _activeIndex = -1;
     private SgEditContextBinder<TItem?>? _binder;
     private CancellationTokenSource? _blurCts;
     private CancellationTokenSource? _searchCts;
+    private bool _focusWithin;
+
+    private readonly string _labelId = "sg-ac-label-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _listboxId = "sg-ac-listbox-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _hintId = "sg-ac-hint-" + Guid.NewGuid().ToString("N")[..8];
+    private readonly string _errorId = "sg-ac-err-" + Guid.NewGuid().ToString("N")[..8];
 
     [CascadingParameter] private EditContext? CascadedEditContext { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the expression that identifies the bound value for EditContext validation.
-    /// </summary>
+
+    /// <summary>Expression that identifies the bound value for EditContext validation.</summary>
     [Parameter] public Expression<Func<TItem?>>? ValueExpression { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the currently selected item.
-    /// </summary>
+
+    /// <summary>The currently selected item.</summary>
     [Parameter] public TItem? Value { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the selected item changes.
-    /// </summary>
+
+    /// <summary>Callback invoked when the selected item changes.</summary>
     [Parameter] public EventCallback<TItem?> ValueChanged { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the collection of items to search and select from.
-    /// </summary>
+
+    /// <summary>Collection of items to search and select from.</summary>
     [Parameter] public IEnumerable<TItem> Items { get; set; } = Array.Empty<TItem>();
-    
-    /// <summary>
-    /// Gets or sets the function to extract display text from each item.
-    /// If not specified, uses ToString() on the item.
-    /// </summary>
+
+    /// <summary>Function to extract display text from each item. Defaults to ToString().</summary>
     [Parameter] public Func<TItem, string>? LabelSelector { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the placeholder text shown when no item is selected.
-    /// If not specified, uses the localized "Select" string.
-    /// </summary>
+
+    /// <summary>Placeholder text shown when no item is selected.</summary>
     [Parameter] public string? Placeholder { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the text displayed when no items match the search.
-    /// If not specified, uses the localized "NoMatches" string.
-    /// </summary>
+
+    /// <summary>Text displayed when no items match the search.</summary>
     [Parameter] public string? EmptyText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the label text displayed above the autocomplete.
-    /// </summary>
+
+    /// <summary>Label text displayed above the autocomplete.</summary>
     [Parameter] public string? Label { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the hint text displayed below the autocomplete.
-    /// </summary>
+
+    /// <summary>Hint text displayed below the autocomplete.</summary>
     [Parameter] public string? Hint { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the error text to display. Takes precedence over validation messages from EditContext.
-    /// </summary>
+
+    /// <summary>Error text to display. Takes precedence over validation messages from EditContext.</summary>
     [Parameter] public string? ErrorText { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether a clear button is shown when an item is selected. Default is true.
-    /// </summary>
+
+    /// <summary>Whether a clear button is shown when an item is selected. Default true.</summary>
     [Parameter] public bool AllowClear { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether a selection is required.
-    /// </summary>
+
+    /// <summary>Whether a selection is required.</summary>
     [Parameter] public bool Required { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the autocomplete is disabled.
-    /// </summary>
+
+    /// <summary>Whether the autocomplete is disabled.</summary>
     [Parameter] public bool Disabled { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether the autocomplete should take full width of its container. Default is true.
-    /// </summary>
+
+    /// <summary>Whether to take full width. Default true.</summary>
     [Parameter] public bool Block { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets the minimum number of characters required before showing suggestions. Default is 0.
-    /// </summary>
-    [Parameter] public int MinCharacters { get; set; } = 0;
-    
-    /// <summary>
-    /// Gets or sets the maximum number of suggestions to display. Default is 50.
-    /// </summary>
+
+    /// <summary>Minimum characters required before showing suggestions. Default 0.</summary>
+    [Parameter] public int MinCharacters { get; set; }
+
+    /// <summary>Maximum number of suggestions to display. Default 50. 0 = unlimited.</summary>
     [Parameter] public int MaxResults { get; set; } = 50;
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the field container.
-    /// </summary>
-    /// <summary>Gets or sets additional CSS class names to apply to the field container.</summary>
+
+    /// <summary>Additional CSS class names to apply to the field container.</summary>
     [Parameter] public string? CssClass { get; set; }
 
-    /// <summary>Gets or sets additional CSS styles to apply to the field container.</summary>
+    /// <summary>Additional CSS styles to apply to the field container.</summary>
     [Parameter] public string? Style { get; set; }
 
-    /// <summary>Debounce delay in milliseconds for the search input. When set, filtering is delayed until the user stops typing.</summary>
+    /// <summary>Debounce delay in ms for the search input. When set, filtering is delayed until the user stops typing.</summary>
     [Parameter] public int DebounceMs { get; set; }
 
-    /// <summary>Whether to show a loading indicator inside the dropdown (e.g., during async search).</summary>
+    /// <summary>Whether to show a loading indicator inside the dropdown.</summary>
     [Parameter] public bool Loading { get; set; }
 
-    /// <summary>Custom content shown when no items match the search. Overrides <see cref="EmptyText"/>.</summary>
+    /// <summary>Custom content shown when no items match the search. Overrides EmptyText.</summary>
     [Parameter] public RenderFragment? NoResultsTemplate { get; set; }
 
-    /// <summary>
-    /// Gets or sets additional HTML attributes to apply to the combobox element.
-    /// </summary>
+    /// <summary>Additional HTML attributes to apply to the combobox element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    // ── New Premium Features ──
+
+    /// <summary>Visual variant: Outlined (default), Borderless, or Filled.</summary>
+    [Parameter] public SgCascaderVariant Variant { get; set; } = SgCascaderVariant.Outlined;
+
+    /// <summary>Size: Sm, Md (default), or Lg.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Dropdown placement relative to the trigger.</summary>
+    [Parameter] public SgPlacement Placement { get; set; } = SgPlacement.BottomStart;
+
+    /// <summary>Maximum height of the dropdown menu (e.g. "400px").</summary>
+    [Parameter] public string? MaxHeight { get; set; }
+
+    /// <summary>Custom template for rendering each option in the dropdown.</summary>
+    [Parameter] public RenderFragment<TItem>? ItemTemplate { get; set; }
+
+    /// <summary>Custom template for rendering the selected value when not using input.</summary>
+    [Parameter] public RenderFragment<TItem>? SelectedTemplate { get; set; }
+
+    /// <summary>Content rendered before the input inside the trigger.</summary>
+    [Parameter] public RenderFragment? Prefix { get; set; }
+
+    /// <summary>Content rendered after the input inside the trigger.</summary>
+    [Parameter] public RenderFragment? Suffix { get; set; }
+
+    /// <summary>Async callback for remote search. Replaces client-side filtering when set. Returns items matching the query.</summary>
+    [Parameter] public Func<string, Task<List<TItem>>>? OnSearch { get; set; }
+
+    /// <summary>Callback invoked when selection changes, receiving the selected item.</summary>
+    [Parameter] public EventCallback<TItem?> OnChange { get; set; }
+
+    /// <summary>Callback invoked when the dropdown open state changes.</summary>
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+
+    /// <summary>Custom empty state content. Overrides NoResultsTemplate and EmptyText.</summary>
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+
+    /// <summary>Function to extract group key from each item. Items with same key are shown under a group header.</summary>
+    [Parameter] public Func<TItem, string?>? GroupSelector { get; set; }
+
+    /// <summary>Whether to highlight matching text portions in option labels. Default true.</summary>
+    [Parameter] public bool HighlightMatch { get; set; } = true;
+
+    /// <summary>Whether to show the search icon at the start of the input.</summary>
+    [Parameter] public bool ShowSearchIcon { get; set; } = true;
+
+    /// <summary>Custom content rendered at the top of the dropdown menu.</summary>
+    [Parameter] public RenderFragment? DropdownHeader { get; set; }
+
+    /// <summary>Custom content rendered at the bottom of the dropdown menu.</summary>
+    [Parameter] public RenderFragment? DropdownFooter { get; set; }
+
+    /// <summary>When true, uses JS fixed positioning for the dropdown menu (solves overflow/clipping issues).</summary>
+    [Parameter] public bool Fixed { get; set; }
+
+    /// <summary>When true, scrolls to the active/selected item when the dropdown opens.</summary>
+    [Parameter] public bool ScrollToSelected { get; set; }
+
+    /// <summary>When true, the dropdown menu width matches the trigger width.</summary>
+    [Parameter] public bool MatchWidth { get; set; }
+
+    /// <summary>Custom render fragment for the search icon.</summary>
+    [Parameter] public RenderFragment? SearchIconOverride { get; set; }
+
+    /// <summary>Custom render fragment for the caret icon.</summary>
+    [Parameter] public RenderFragment? CaretIconOverride { get; set; }
+
+    /// <summary>Custom render fragment for the clear icon.</summary>
+    [Parameter] public RenderFragment? ClearIconOverride { get; set; }
+
+    /// <summary>Custom render fragment for the loading icon.</summary>
+    [Parameter] public RenderFragment? LoadingIconOverride { get; set; }
+
+    // ── Computed ──
 
     private string EffectivePlaceholder => Placeholder ?? Localizer["Select"];
     private string EffectiveEmptyText => string.IsNullOrEmpty(EmptyText) ? Localizer["NoMatches"] : EmptyText;
     private string ClearLabel => Localizer["Clear"];
+    private string MenuStyle
+    {
+        get
+        {
+            var h = MaxHeight ?? "320px";
+            return $"max-height:{h}";
+        }
+    }
 
+    private bool HasValue => Value is not null;
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || (_binder?.HasValidationErrors ?? false);
-    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText) 
-        ? ErrorText 
+    private string? DisplayedError => !string.IsNullOrEmpty(ErrorText)
+        ? ErrorText
         : _binder?.ValidationMessages.FirstOrDefault();
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
+
+    private RenderFragment SearchIcon => SearchIconOverride ?? _defaultSearchIcon;
+    private RenderFragment CaretIcon => CaretIconOverride ?? _defaultCaret;
+    private RenderFragment ClearIcon => ClearIconOverride ?? _defaultClear;
+    private RenderFragment LoadingIcon => LoadingIconOverride ?? _defaultLoading;
+    private RenderFragment CheckedIcon => _defaultCheckedIcon;
+
+    // ── Default Icons ──
+
+    private RenderFragment _defaultSearchIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <path fill-rule=""evenodd"" d=""M9 3.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11ZM2 9a7 7 0 1 1 12.452 4.391l3.328 3.329a.75.75 0 1 1-1.06 1.06l-3.329-3.328A7 7 0 0 1 2 9Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultCaret => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""16"" height=""16"">
+            <path fill-rule=""evenodd"" d=""M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultClear => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <path d=""M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultLoading => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"" class=""sgc-ac-spinner"">
+            <path d=""M15.655 4.344a8 8 0 1 0-.028 11.345.75.75 0 1 1 1.06 1.06 9.5 9.5 0 1 1 .03-13.487.75.75 0 0 1-1.062 1.082Z""/>
+        </svg>");
+    };
+
+    private RenderFragment _defaultCheckedIcon => __builder =>
+    {
+        __builder.AddMarkupContent(0, @"<svg xmlns=""http://www.w3.org/2000/svg"" viewBox=""0 0 20 20"" fill=""currentColor"" width=""14"" height=""14"">
+            <path fill-rule=""evenodd"" d=""M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z"" clip-rule=""evenodd""/>
+        </svg>");
+    };
+
+    // ── CSS Classes ──
+
+    private string GetRootClasses()
+    {
+        var sb = new List<string> { "sgc-field" };
+        if (Block) sb.Add("sgc-block");
+        if (Size == SgSize.Sm) sb.Add("sgc-field-sm");
+        if (Size == SgSize.Lg) sb.Add("sgc-field-lg");
+        if (!string.IsNullOrEmpty(CssClass)) sb.Add(CssClass);
+        return string.Join(" ", sb);
+    }
+
+    private string GetComboClasses()
+    {
+        var sb = new List<string> { "sgc-combo", "sgc-ac" };
+        if (Block) sb.Add("sgc-block");
+        if (_open) sb.Add("sgc-open");
+        if (Disabled) sb.Add("sgc-disabled");
+        if (IsInvalid) sb.Add("sgc-invalid");
+        if (Size == SgSize.Sm) sb.Add("sgc-ac-sm");
+        if (Size == SgSize.Lg) sb.Add("sgc-ac-lg");
+        if (Variant == SgCascaderVariant.Borderless) sb.Add("sgc-ac-borderless");
+        if (Variant == SgCascaderVariant.Filled) sb.Add("sgc-ac-filled");
+        return string.Join(" ", sb);
+    }
+
+    private string GetPlacementString() => Placement switch
+    {
+        SgPlacement.BottomStart => "BottomStart",
+        SgPlacement.BottomEnd => "BottomEnd",
+        SgPlacement.TopStart => "TopStart",
+        SgPlacement.TopEnd => "TopEnd",
+        _ => "BottomStart"
+    };
+
+    // ── Lifecycle ──
 
     protected override void OnInitialized()
     {
         _binder = new SgEditContextBinder<TItem?>(StateHasChanged);
+        _dotNetRef = DotNetObjectReference.Create(this);
     }
 
     protected override void OnParametersSet()
     {
         _binder?.Update(CascadedEditContext, ValueExpression);
-        if (!_open)
+        if (!_open && !_focusWithin)
         {
             _search = Value is null ? string.Empty : LabelFrom(Value);
         }
     }
 
-    private string LabelFrom(TItem item) => LabelSelector is not null ? LabelSelector(item) : item?.ToString() ?? string.Empty;
-    private bool IsSelected(TItem item) => EqualityComparer<TItem>.Default.Equals(item, Value!);
-
-    private IEnumerable<TItem> GetFilteredItems()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_search.Length < MinCharacters)
+        if (firstRender)
         {
-            return Array.Empty<TItem>();
+            try
+            {
+                _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
+                    "./_content/SuperUI/superui-autocomplete.js");
+                var placementStr = GetPlacementString();
+                await _jsModule.InvokeVoidAsync("attach", _rootRef, _dotNetRef, placementStr, MatchWidth);
+            }
+            catch
+            {
+                // JS module not available (e.g., during testing)
+            }
         }
 
-        return Items
-            .Where(item => LabelFrom(item).Contains(_search, StringComparison.CurrentCultureIgnoreCase))
-            .Take(MaxResults > 0 ? MaxResults : int.MaxValue);
+        if (_open)
+        {
+            try
+            {
+                await _jsModule!.InvokeVoidAsync("repositionMenu", _rootRef);
+                if (ScrollToSelected)
+                    await _jsModule!.InvokeVoidAsync("scrollToSelected", _rootRef);
+            }
+            catch { }
+        }
     }
 
-    private Task OpenAsync()
+    // ── Helpers ──
+
+    private string LabelFrom(TItem item) => LabelSelector is not null ? LabelSelector(item) : item?.ToString() ?? string.Empty;
+    private bool IsSelected(TItem item) => EqualityComparer<TItem>.Default.Equals(item, Value);
+
+    private static string HighlightText(string text, string query)
     {
-        if (Disabled) return Task.CompletedTask;
+        if (string.IsNullOrEmpty(query)) return text;
+        var idx = text.IndexOf(query, StringComparison.CurrentCultureIgnoreCase);
+        if (idx < 0) return text;
+        var before = text[..idx];
+        var match = text.Substring(idx, query.Length);
+        var after = text[(idx + query.Length)..];
+        return $"{before}<mark>{match}</mark>{after}";
+    }
+
+    // ── Filtering ──
+
+    private List<TItem> GetFilteredItems()
+    {
+        if (_search.Length < MinCharacters)
+            return new List<TItem>();
+
+        IEnumerable<TItem> source;
+
+        if (OnSearch != null)
+        {
+            source = _remoteResults ?? new List<TItem>();
+        }
+        else
+        {
+            source = Items.Where(item => LabelFrom(item).Contains(_search, StringComparison.CurrentCultureIgnoreCase));
+        }
+
+        if (MaxResults > 0)
+            source = source.Take(MaxResults);
+
+        // Apply grouping if needed
+        if (GroupSelector != null)
+        {
+            var grouped = source
+                .Select(item => new { Item = item, Group = GroupSelector(item) ?? "" })
+                .OrderBy(x => x.Group)
+                .ThenBy(x => LabelFrom(x.Item))
+                .Select(x => x.Item);
+            return grouped.ToList();
+        }
+
+        return source.ToList();
+    }
+
+    private List<TItem>? _remoteResults;
+
+    // ── Events ──
+
+    private async Task OnFocusInAsync()
+    {
+        // On focus, clear the blur cancellation so we don't close
         _blurCts?.Cancel();
-        _open = true;
-        return InvokeAsync(StateHasChanged);
+        _focusWithin = true;
     }
 
     private async Task HandleBlurAsync(FocusEventArgs e)
     {
+        _focusWithin = false;
         _blurCts?.Cancel();
         _blurCts = new CancellationTokenSource();
         var token = _blurCts.Token;
@@ -273,83 +555,110 @@
         catch (TaskCanceledException) { }
     }
 
-    private Task CloseAsync()
+    private Task OpenAsync()
+    {
+        if (Disabled) return Task.CompletedTask;
+        _blurCts?.Cancel();
+        _open = true;
+        _activeIndex = 0;
+        if (OpenChanged.HasDelegate)
+            return OpenChanged.InvokeAsync(true);
+        return InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CloseAsync()
     {
         _open = false;
+        _focusWithin = false;
         _activeIndex = -1;
         if (Value is not null)
         {
             _search = LabelFrom(Value);
         }
-        return InvokeAsync(StateHasChanged);
+        if (OpenChanged.HasDelegate)
+            await OpenChanged.InvokeAsync(false);
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnSearchInput(ChangeEventArgs e)
     {
-        _search = e.Value?.ToString() ?? string.Empty;
-        _open = true;
+        var newSearch = e.Value?.ToString() ?? string.Empty;
+        _search = newSearch;
+
+        if (!_open) _open = true;
         _activeIndex = 0;
 
-        if (typeof(TItem) == typeof(string))
+        // Remote search
+        if (OnSearch != null && _search.Length >= MinCharacters)
         {
-            Value = (TItem)(object)_search;
-            if (ValueChanged.HasDelegate)
+            Loading = true;
+            StateHasChanged();
+            try
             {
-                await ValueChanged.InvokeAsync(Value);
+                var results = await OnSearch(_search);
+                _remoteResults = results;
+            }
+            catch
+            {
+                _remoteResults = new List<TItem>();
+            }
+            finally
+            {
+                Loading = false;
             }
         }
 
-        if (DebounceMs > 0)
+        // Debounce
+        if (DebounceMs > 0 && OnSearch == null)
         {
             _searchCts?.Cancel();
             _searchCts?.Dispose();
             _searchCts = new CancellationTokenSource();
             var token = _searchCts.Token;
-            var currentSearch = _search;
             try
             {
                 await Task.Delay(DebounceMs, token);
                 if (!token.IsCancellationRequested)
-                {
-                    _search = currentSearch;
-                    await InvokeAsync(StateHasChanged);
-                }
+                    StateHasChanged();
             }
             catch (TaskCanceledException) { }
         }
         else
         {
-            await InvokeAsync(StateHasChanged);
+            StateHasChanged();
         }
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
-        var filtered = GetFilteredItems().ToList();
+        var filtered = GetFilteredItems();
         if (e.Key == "ArrowDown")
         {
             _open = true;
-            _activeIndex = Math.Min(filtered.Count - 1, _activeIndex + 1);
+            _activeIndex = filtered.Count == 0 ? -1 : Math.Min(filtered.Count - 1, _activeIndex + 1);
         }
         else if (e.Key == "ArrowUp")
         {
-            _activeIndex = Math.Max(0, _activeIndex - 1);
+            _activeIndex = filtered.Count == 0 ? -1 : Math.Max(0, _activeIndex - 1);
         }
-        else if (e.Key == "Enter")
+        else if (e.Key == "Enter" || e.Key == "Tab")
         {
-            if (_activeIndex >= 0 && _activeIndex < filtered.Count)
+            if (_open && _activeIndex >= 0 && _activeIndex < filtered.Count)
             {
                 await PickAsync(filtered[_activeIndex]);
                 return;
             }
+            if (_open && e.Key == "Enter")
+            {
+                await CloseAsync();
+            }
         }
         else if (e.Key == "Escape")
         {
-            await CloseAsync();
-            return;
+            if (_open) await CloseAsync();
         }
 
-        await InvokeAsync(StateHasChanged);
+        StateHasChanged();
     }
 
     private async Task PickAsync(TItem item)
@@ -358,6 +667,7 @@
         Value = item;
         _search = LabelFrom(item);
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(item);
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync(item);
         _binder?.NotifyFieldChanged();
         await CloseAsync();
     }
@@ -367,22 +677,50 @@
         Value = default;
         _search = string.Empty;
         _open = false;
+        _focusWithin = false;
         _activeIndex = -1;
-        if (ValueChanged.HasDelegate)
-        {
-            await ValueChanged.InvokeAsync(default);
-        }
+        _remoteResults = null;
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(default);
+        if (OnChange.HasDelegate) await OnChange.InvokeAsync(default);
         _binder?.NotifyFieldChanged();
         await InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose()
+    // ── JSInvokable ──
+
+    [JSInvokable]
+    public async Task CloseFromJsAsync()
     {
+        if (_open)
+        {
+            _open = false;
+            _focusWithin = false;
+            if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
+            StateHasChanged();
+        }
+    }
+
+    // ── Dispose ──
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed) return;
+        _disposed = true;
         _blurCts?.Cancel();
         _blurCts?.Dispose();
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _binder?.Dispose();
+        _dotNetRef?.Dispose();
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("detach", _rootRef);
+                await _jsModule.DisposeAsync();
+            }
+            catch { }
+        }
+        GC.SuppressFinalize(this);
     }
 }
-
