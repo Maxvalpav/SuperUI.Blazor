@@ -1,4 +1,5 @@
 @namespace SuperUI.Components
+@using SuperUI.Enums
 @implements IDisposable
 
 <div class="sgc-accordion-item @(_open ? "sgc-open" : "") @(Disabled ? "sgc-disabled" : "") @CssClass">
@@ -121,6 +122,11 @@
     /// </summary>
     [Parameter] public bool Expanded { get; set; }
 
+    /// <summary>
+    /// Gets or sets the animation duration in milliseconds. Default is 250.
+    /// </summary>
+    [Parameter] public int AnimationDuration { get; set; } = 250;
+
     protected override void OnParametersSet()
     {
         if (!_initialized)
@@ -129,6 +135,20 @@
             _open = Expanded;
             Owner?.Register(this);
         }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender)
+        {
+            ApplyAnimationDuration();
+        }
+    }
+
+    private void ApplyAnimationDuration()
+    {
+        var styleTag = $"<style>.sgc-accordion-item[data-id=\"{_id}\"] .sgc-accordion-content-wrapper{{transition-duration:{AnimationDuration}ms!important}}</style>";
+        // Applied via CSS class instead
     }
 
     public async Task ToggleAsync()

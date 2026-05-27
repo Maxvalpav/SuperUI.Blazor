@@ -1,83 +1,314 @@
 @page "/command-palette-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
 @inject NavigationManager Nav
 
-<PageTitle>Command Palette - SUI</PageTitle>
+<PageTitle>SgCommandPalette — Command Palette — SuperUI</PageTitle>
 
-<SgCard Title="SgCommandPalette - Командная панель"
-        Subtitle="Быстрый поиск команд и навигация через сочетание клавиш Ctrl+K.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px; text-align: center; padding: 64px; background: var(--sui-bg-secondary); border: 2px dashed var(--sui-border-color); border-radius: 16px;">
-        <div style="font-size: 48px; margin-bottom: 24px;">⌨️</div>
-        <h2 style="margin-top: 0;">Нажмите <kbd style="background: #fff; border: 1px solid #ccc; padding: 4px 8px; border-radius: 6px; box-shadow: 0 2px 0 #ccc;">Ctrl + K</kbd></h2>
-        <p style="color: var(--sui-text-secondary); max-width: 400px; margin: 16px auto;">
-            Используйте командную панель для быстрого перехода между разделами документации или выполнения действий.
-        </p>
-        <SgButton Text="Открыть панель мышью" Variant="SgButtonVariant.Primary" OnClick="async () => { if (_palette != null) await _palette.Open(); }">
-            <Icon><SgIcon Icon="@SgIcons.Search" /></Icon>
-        </SgButton>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgCommandPalette — Demo                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgCommandPalette — Quick Command Access
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Press <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Ctrl + K</SgTypography> or click the button below to open the command palette. Navigate with arrow keys and press Enter to execute.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Launch Palette" Shadow="SgShadow.Md" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center" Style="padding:32px 0;">
+                    <div class="demo-palette-hero-icon">
+                        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h6"/><path d="M8 16h4"/>
+                        </svg>
+                    </div>
+                    <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold" Align="SgTypographyAlign.Center">
+                        Press <kbd style="background:var(--sg-surface-alt);border:1px solid var(--sg-border);padding:2px 8px;border-radius:6px;box-shadow:0 1px 0 var(--sg-border);font-size:inherit;">Ctrl + K</kbd>
+                    </SgTypography>
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)" Align="SgTypographyAlign.Center">
+                        Quickly navigate between sections or execute actions.
+                    </SgTypography>
+                    <SgSpace>
+                        <SgButton Variant="SgButtonVariant.Primary" OnClick="async () => { if (_palette != null) await _palette.Open(); }">
+                            <Icon><SgIcon Icon="@SgIcons.Search" /></Icon>
+                            <ChildContent>Open Command Palette</ChildContent>
+                        </SgButton>
+                        <SgButton Variant="SgButtonVariant.Outlined" OnClick="() => ToggleRegistration()">
+                            @(_paletteRegistered ? "Remove Commands" : "Restore Commands")
+                        </SgButton>
+                    </SgSpace>
+                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                        <SgBadge Variant="@(_paletteRegistered ? SgBadgeVariant.Success : SgBadgeVariant.Default)" Text="@(_paletteRegistered ? "Registered" : "Empty")" Standalone="true" Style="margin-right:4px;" />
+                        @(_paletteRegistered ? $"{_totalCommandCount} commands available" : "No commands registered — click Restore")
+                    </SgTypography>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="SgCommandPalette Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_paletteProperties" />
+            </SgCard>
+        </div>
     </div>
 
-    <SgCommandPalette @ref="_palette" Placeholder="Куда хотите перейти?" />
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Features                                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Features
+            </SgTypography>
+        </div>
 
-    <div style="margin-top: 48px;">
-        <h3>Как это работает?</h3>
-        <ul style="line-height: 1.8; color: var(--sui-text-secondary);">
-            <li><b>Глобальный хоткей</b>: Компонент автоматически регистрирует Ctrl+K в браузере.</li>
-            <li><b>Группировка</b>: Команды логически разделены на категории (Навигация, Действия и т.д.).</li>
-            <li><b>Управление клавиатурой</b>: Используйте стрелки для выбора и Enter для подтверждения.</li>
-            <li><b>Гибкость</b>: Каждая команда — это просто <code>EventCallback</code>, который может делать что угодно.</li>
-        </ul>
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true">
+                    <div class="demo-feature-card">
+                        <div class="demo-feature-icon" style="background:var(--sg-primary);">⌨️</div>
+                        <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Global Hotkey</SgTypography>
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Automatically registers <kbd>Ctrl+K</kbd> in the browser.
+                        </SgTypography>
+                    </div>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true">
+                    <div class="demo-feature-card">
+                        <div class="demo-feature-icon" style="background:var(--sg-color-success);">📂</div>
+                        <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Grouped Commands</SgTypography>
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Commands are logically organized into categories.
+                        </SgTypography>
+                    </div>
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true">
+                    <div class="demo-feature-card">
+                        <div class="demo-feature-icon" style="background:var(--sg-color-warning);">🎯</div>
+                        <SgTypography Weight="SgTypographyWeight.Semibold" Size="SgTypographySize.Sm">Search & Highlight</SgTypography>
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)">
+                            Real-time filtering with match highlighting.
+                        </SgTypography>
+                    </div>
+                </SgCard>
+            </SgCol>
+        </SgRow>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. SgCommand Group / SgCommand                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgCommandGroup / SgCommand — Models
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Define commands with text, description, shortcut, icon, and execute callback. Group them logically.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="6">
+                <SgCard Title="SgCommandGroup" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_groupProperties" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="6">
+                <SgCard Title="SgCommand" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_commandProperties" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+</ChildContent>
 </SgCard>
 
+<SgCommandPalette @ref="_palette" Placeholder="Search commands..." NoResultsText="No commands found" />
+
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
+    .demo-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @@media (max-width: 768px) { .demo-two-col { grid-template-columns: 1fr; } }
+    .demo-palette-hero-icon { width: 72px; height: 72px; border-radius: 18px; background: linear-gradient(135deg, var(--sg-primary), #8b5cf6); display: flex; align-items: center; justify-content: center; color: #fff; }
+    .demo-palette-hero-icon svg { width: 32px; height: 32px; }
+    kbd { background: var(--sg-surface-alt); border: 1px solid var(--sg-border); padding: 1px 6px; border-radius: 4px; font-family: inherit; }
+    .demo-feature-card { padding: 20px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+    .demo-feature-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; }
+</style>
+
 @code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M4 4h16v16H4z"/><path d="M8 8h8"/><path d="M8 12h6"/><path d="M8 16h4"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgCommandPalette</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    A searchable command palette with global hotkey (Ctrl+K), grouped commands, keyboard navigation, and real-time filtering with match highlighting.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
     private SgCommandPalette? _palette;
+    private bool _paletteRegistered;
+    private int _totalCommandCount;
 
     protected override void OnAfterRender(bool firstRender)
     {
-        if (firstRender && _palette != null)
+        if (firstRender)
         {
-            var navGroup = new SgCommandGroup { Title = "Навигация" };
-            
-            AddNavCommand(navGroup, "DataGrid", "datagrid", SgIcons.Layout);
-            AddNavCommand(navGroup, "Table", "table", SgIcons.Layout);
-            AddNavCommand(navGroup, "Charts", "charts", SgIcons.PieChart);
-            AddNavCommand(navGroup, "Smart Form", "smart-form-demo", SgIcons.Layout);
-            AddNavCommand(navGroup, "Gantt Chart", "gantt", SgIcons.Activity);
-
-            var actionGroup = new SgCommandGroup { Title = "Быстрые действия" };
-            actionGroup.Commands.Add(new SgCommand { 
-                Text = "Переключить темную тему", 
-                Shortcut = "T T",
-                Icon = (builder) => { builder.OpenComponent<SgIcon>(0); builder.AddAttribute(1, "Icon", SgIcons.Zap); builder.CloseComponent(); },
-                OnExecute = EventCallback.Factory.Create(this, () => { /* Логика темы */ }) 
-            });
-            
-            actionGroup.Commands.Add(new SgCommand { 
-                Text = "Создать новый тикет", 
-                Shortcut = "N T",
-                Icon = (builder) => { builder.OpenComponent<SgIcon>(0); builder.AddAttribute(1, "Icon", SgIcons.Plus); builder.CloseComponent(); },
-                OnExecute = EventCallback.Factory.Create(this, () => { }) 
-            });
-
-            _palette.RegisterGroup(navGroup);
-            _palette.RegisterGroup(actionGroup);
+            RegisterCommands();
         }
     }
 
-    private void AddNavCommand(SgCommandGroup group, string text, string url, string icon)
+    private void RegisterCommands()
     {
-        group.Commands.Add(new SgCommand { 
-            Text = $"Перейти к {text}", 
-            Icon = (builder) => { 
-                builder.OpenComponent<SgIcon>(0); 
-                builder.AddAttribute(1, "Icon", icon); 
-                builder.AddAttribute(2, "Size", "16px");
-                builder.CloseComponent(); 
+        if (_palette == null) return;
+
+        // Navigation group
+        var navGroup = new SgCommandGroup
+        {
+            Title = "Navigation",
+            Icon = "<svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z\"/><polyline points=\"9 22 9 12 15 12 15 22\"/></svg>"
+        };
+        AddNavCommand(navGroup, "Data Grid", "data-grid-demo", "Grid");
+        AddNavCommand(navGroup, "Charts", "charts", "Chart");
+        AddNavCommand(navGroup, "Smart Form", "smart-form-demo", "Form");
+        AddNavCommand(navGroup, "Gantt Chart", "gantt", "Gantt");
+        AddNavCommand(navGroup, "Pagination", "pagination-demo", "Pages");
+        AddNavCommand(navGroup, "Accordion", "accordion-demo", "Sections");
+        AddNavCommand(navGroup, "Tree View", "tree-view", "Tree");
+        _palette.RegisterGroup(navGroup);
+
+        // Actions group
+        var actionGroup = new SgCommandGroup
+        {
+            Title = "Quick Actions",
+            Icon = "<svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><polygon points=\"13 2 3 14 12 14 11 22 21 10 12 10 13 2\"/></svg>"
+        };
+        AddActionCommand(actionGroup, "Toggle Theme", "T T", SgIcons.Zap, "Switch between light and dark mode");
+        AddActionCommand(actionGroup, "Create New Item", "N I", SgIcons.Plus, "Create a new item in the current context");
+        AddActionCommand(actionGroup, "Export Data", "E D", SgIcons.Download, "Export current data to CSV");
+        AddActionCommand(actionGroup, "Print Page", "P", SgIcons.FileText, "Open print dialog");
+        _palette.RegisterGroup(actionGroup);
+
+        // Help group
+        var helpGroup = new SgCommandGroup
+        {
+            Title = "Help & Support",
+            Icon = "<svg viewBox=\"0 0 24 24\" width=\"14\" height=\"14\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"10\"/><path d=\"M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3\"/><line x1=\"12\" y1=\"17\" x2=\"12.01\" y2=\"17\"/></svg>"
+        };
+        AddActionCommand(helpGroup, "Documentation", "F 1", SgIcons.Book, "Open the SuperUI documentation");
+        AddActionCommand(helpGroup, "Report Bug", null, SgIcons.HelpCircle, "Report an issue on GitHub");
+        AddActionCommand(helpGroup, "About SuperUI", null, SgIcons.Info, "Version and license information");
+        _palette.RegisterGroup(helpGroup);
+
+        _totalCommandCount = 3 + 4 + 3;
+        _paletteRegistered = true;
+    }
+
+    private void ToggleRegistration()
+    {
+        if (_palette == null) return;
+        if (_paletteRegistered)
+        {
+            _palette.ClearGroups();
+            _paletteRegistered = false;
+        }
+        else
+        {
+            RegisterCommands();
+        }
+        StateHasChanged();
+    }
+
+    private void AddNavCommand(SgCommandGroup group, string text, string url, string description)
+    {
+        group.Commands.Add(new SgCommand
+        {
+            Text = $"Go to {text}",
+            Description = description,
+            Icon = (builder) =>
+            {
+                builder.OpenElement(0, "span");
+                builder.AddAttribute(1, "style", "width:18px;height:18px;display:flex;align-items:center;justify-content:center;");
+                builder.OpenComponent<SgIcon>(2);
+                builder.AddAttribute(3, "Icon", SgIcons.ChevronRight);
+                builder.AddAttribute(4, "Size", "14px");
+                builder.CloseComponent();
+                builder.CloseElement();
             },
-            OnExecute = EventCallback.Factory.Create(this, () => Nav.NavigateTo(url)) 
+            OnExecute = EventCallback.Factory.Create(this, () => Nav.NavigateTo(url))
         });
     }
+
+    private void AddActionCommand(SgCommandGroup group, string text, string? shortcut, string icon, string description)
+    {
+        group.Commands.Add(new SgCommand
+        {
+            Text = text,
+            Description = description,
+            Shortcut = shortcut,
+            Icon = (builder) =>
+            {
+                builder.OpenElement(0, "span");
+                builder.AddAttribute(1, "style", "width:18px;height:18px;display:flex;align-items:center;justify-content:center;");
+                builder.OpenComponent<SgIcon>(2);
+                builder.AddAttribute(3, "Icon", icon);
+                builder.AddAttribute(4, "Size", "14px");
+                builder.CloseComponent();
+                builder.CloseElement();
+            },
+            OnExecute = EventCallback.Factory.Create(this, () => { })
+        });
+    }
+
+    // ── Property tables ───────────────────────────────────────────────────
+    private List<PropertyPanelItem> _paletteProperties = new()
+    {
+        new() { Label = "Placeholder",    Value = "string",                           BadgeText = "Search hint",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "NoResultsText",  Value = "string",                           BadgeText = "Empty msg",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Width",          Value = "string (default 640px)",           BadgeText = "Palette width", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "MaxHeight",      Value = "string (default 480px)",           BadgeText = "Max height",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Open()",         Value = "method",                           BadgeText = "Open",          BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Close()",        Value = "method",                           BadgeText = "Close",         BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "RegisterGroup()",Value = "method(SgCommandGroup)",           BadgeText = "Add group",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ClearGroups()",  Value = "method",                           BadgeText = "Reset",         BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _groupProperties = new()
+    {
+        new() { Label = "Title",    Value = "string",              BadgeText = "Group name", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",     Value = "string? (SVG)",        BadgeText = "Group icon", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Commands", Value = "List<SgCommand>",      BadgeText = "Items",     BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _commandProperties = new()
+    {
+        new() { Label = "Text",        Value = "string",                BadgeText = "Label",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Description", Value = "string?",               BadgeText = "Hint",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Icon",        Value = "RenderFragment?",       BadgeText = "Icon",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Shortcut",    Value = "string? e.g. \"T T\"",  BadgeText = "Keys",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OnExecute",   Value = "EventCallback",         BadgeText = "Action",   BadgeVariant = SgBadgeVariant.Success },
+    };
 }

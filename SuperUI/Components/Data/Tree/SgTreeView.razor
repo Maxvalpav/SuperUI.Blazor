@@ -24,12 +24,18 @@
 }
 else
 {
-    <ul class="sgc-tree @CssClass" role="tree" aria-multiselectable="@(MultiSelect ? "true" : "false")">
-        @foreach (var node in GetVisibleRootNodes())
+    <div class="sgc-tree-wrapper">
+        @if (ShowNodeCount)
         {
-            @RenderNode(node, 1)
+            <div class="sgc-tree-count">@GetFlatVisibleNodeItems().Count nodes</div>
         }
-    </ul>
+        <ul class="sgc-tree @CssClass" role="tree" aria-multiselectable="@(MultiSelect ? "true" : "false")">
+            @foreach (var node in GetVisibleRootNodes())
+            {
+                @RenderNode(node, 1)
+            }
+        </ul>
+    </div>
 }
 
 @code {
@@ -124,11 +130,27 @@ else
     [Parameter] public Func<TreeNodeDropInfo, bool>? CanDrop { get; set; }
 
     /// <summary>
+    /// Gets or sets whether to render checkboxes next to each node.
+    /// </summary>
+    [Parameter] public bool ShowCheckboxes { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether clicking a node row toggles expand/collapse. Default is false.
+    /// </summary>
+    [Parameter] public bool ExpandOnClick { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the total visible node count. Default is false.
+    /// </summary>
+    [Parameter] public bool ShowNodeCount { get; set; }
+
+    /// <summary>
     /// Gets or sets additional CSS classes to apply to the component.
     /// </summary>
     [Parameter] public string? CssClass { get; set; }
 
     private readonly HashSet<TreeNode> _selectedNodes = new();
+    private readonly HashSet<TreeNode> _checkedNodes = new();
     private readonly List<TreeNode> _rootNodes = new();
     private IEnumerable<TreeNode>? _lastNodesSource;
     private TreeNode? _focusedNode;
@@ -157,6 +179,7 @@ else
         }
 
         SyncSelectionFromParameters();
+        SyncCheckedFromParameters();
         EnsureFocusedNode();
     }
 
@@ -213,6 +236,17 @@ else
                     @(CanExpand(node) ? (IsExpandedForRender(node) ? "▾" : "▸") : "")
                 }
             </button>
+            @if (ShowCheckboxes)
+            {
+                <span class="sgc-tree-checkbox" @onclick:stopPropagation="true" @onclick="@(async () => await ToggleCheckAsync(node))">
+                    <input type="checkbox"
+                           checked="@node.Checked"
+                           tabindex="-1"
+                           class="sgc-tree-checkbox-input"
+                           aria-label="Toggle @node.Text" />
+                    <span class="sgc-tree-checkbox-visual"></span>
+                </span>
+            }
             @if (!string.IsNullOrEmpty(node.Icon))
             {
                 <span class="sgc-tree-icon" aria-hidden="true">@node.Icon</span>
@@ -347,6 +381,11 @@ else
 
     private async Task OnRowClickAsync(MouseEventArgs e, TreeNode node)
     {
+        if (ExpandOnClick && CanExpand(node))
+        {
+            await ToggleAsync(node);
+        }
+
         var preserveExisting = MultiSelect && e.CtrlKey;
         await SelectAsync(node, preserveExisting);
     }
@@ -746,6 +785,29 @@ else
     {
         var offset = Math.Max(0, (level - 1) * 16);
         return $"padding-left: {offset + 4}px;";
+    }
+
+    private void SyncCheckedFromParameters()
+    {
+        if (!ShowCheckboxes) return;
+        void Walk(IEnumerable<TreeNode> nodes)
+        {
+            foreach (var n in nodes)
+            {
+                if (n.Checked) _checkedNodes.Add(n);
+                else _checkedNodes.Remove(n);
+                if (n.Children.Count > 0) Walk(n.Children);
+            }
+        }
+        Walk(RootNodeCollection);
+    }
+
+    private async Task ToggleCheckAsync(TreeNode node)
+    {
+        node.Checked = !node.Checked;
+        if (node.Checked) _checkedNodes.Add(node);
+        else _checkedNodes.Remove(node);
+        await InvokeAsync(StateHasChanged);
     }
 
     private void SyncSelectionFromParameters()

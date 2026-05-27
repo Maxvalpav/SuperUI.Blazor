@@ -1,0 +1,340 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+@implements IDisposable
+
+@*
+   SgLlmHeader — единая шапка для всех AI-компонентов:
+   иконка задачи, заголовок/подзаголовок, статус-бейдж, маршрут
+   (provider · model), кнопка «⚙ настройки» в попапе.
+*@
+
+<div class="sgc-llm-header @CssClass">
+    <div class="sgc-llm-header-left">
+        @if (!string.IsNullOrEmpty(TaskIcon))
+        {
+            <span class="sgc-llm-header-icon" aria-hidden="true">@TaskIcon</span>
+        }
+        <div class="sgc-llm-header-titles">
+            <div class="sgc-llm-header-title">@Title</div>
+            @if (!string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <div class="sgc-llm-header-subtitle">@Subtitle</div>
+            }
+            <div class="sgc-llm-header-route">
+                <span class="sgc-llm-header-route-label">@RouteLabel</span>
+                <span class="sgc-llm-header-route-arrow">→</span>
+                <span class="sgc-llm-header-route-provider" title="@_resolvedConfig?.BaseUrl">@_providerLabel</span>
+                <span class="sgc-llm-header-route-sep">·</span>
+                <span class="sgc-llm-header-route-model" title="@_resolvedConfig?.ModelId">@_modelLabel</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="sgc-llm-header-right">
+        <span class="sgc-llm-header-status @StatusCls" title="@StatusTooltip">
+            <span class="sgc-llm-header-dot"></span>
+            <span class="sgc-llm-header-status-text">@StatusText</span>
+        </span>
+
+        @if (Actions is not null)
+        {
+            <div class="sgc-llm-header-actions">@Actions</div>
+        }
+
+        @if (!string.IsNullOrEmpty(DocsUrl))
+        {
+            <a class="sgc-llm-header-help" href="@DocsUrl" target="_blank" rel="noopener" title="Документация провайдера">?</a>
+        }
+
+        @if (ShowSettingsButton)
+        {
+            <button type="button" class="sgc-llm-header-settings" @onclick="ToggleSettings" title="Настройки LLM">⚙</button>
+        }
+    </div>
+</div>
+
+@if (_settingsOpen)
+{
+    <div class="sgc-llm-header-popover" @onclick:stopPropagation="true">
+        <div class="sgc-llm-header-popover-head">
+            <span>Настройки LLM</span>
+            <button type="button" @onclick="ToggleSettings" title="Закрыть">✕</button>
+        </div>
+        <SgLlmSettings Compact="true" />
+    </div>
+    <div class="sgc-llm-header-popover-backdrop" @onclick="ToggleSettings"></div>
+}
+
+@code {
+    /// <summary>Bold one-line title shown on the left.</summary>
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+
+    /// <summary>Optional one-line subtitle under the title.</summary>
+    [Parameter] public string? Subtitle { get; set; }
+
+    /// <summary>
+    /// One of <see cref="SgLlmTaskPurpose"/> values. The header resolves the
+    /// route for this purpose so users see «chat → OpenAI · gpt-5.5».
+    /// </summary>
+    [Parameter] public string TaskPurpose { get; set; } = SgLlmTaskPurpose.Chat;
+
+    /// <summary>Optional inline action area (rendered to the right of the route).</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    /// <summary>Emoji icon shown on the far left. Defaults to a task-specific glyph.</summary>
+    [Parameter] public string TaskIcon { get; set; } = string.Empty;
+
+    /// <summary>Documentation link surfaced via a small «?» button.</summary>
+    [Parameter] public string? DocsUrl { get; set; }
+
+    /// <summary>If true (default), shows a ⚙ button that opens compact settings in a popover.</summary>
+    [Parameter] public bool ShowSettingsButton { get; set; } = true;
+
+    /// <summary>Extra CSS class added to the outer container.</summary>
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+
+    private SgLlmConfig? _resolvedConfig;
+    private string _providerLabel = "—";
+    private string _modelLabel = "—";
+    private bool _ready;
+    private string? _lastError;
+    private bool _settingsOpen;
+
+    private string RouteLabel => TaskPurpose switch
+    {
+        SgLlmTaskPurpose.Chat => "chat",
+        SgLlmTaskPurpose.Documents => "docs",
+        SgLlmTaskPurpose.Vision => "vision",
+        SgLlmTaskPurpose.Structured => "structured",
+        SgLlmTaskPurpose.Embeddings => "embed",
+        SgLlmTaskPurpose.Rerank => "rerank",
+        SgLlmTaskPurpose.Images => "images",
+        SgLlmTaskPurpose.Moderation => "moderation",
+        SgLlmTaskPurpose.Speech => "speech",
+        SgLlmTaskPurpose.Video => "video",
+        _ => TaskPurpose
+    };
+
+    private string StatusCls => _lastError != null ? "error" : _ready ? "ok" : "idle";
+    private string StatusText => _lastError != null ? "Ошибка" : _ready ? "готов" : "не настроен";
+    private string StatusTooltip => _lastError ?? (_ready
+        ? "Провайдер настроен и модель выбрана"
+        : "Выберите провайдера и модель в настройках");
+
+    protected override void OnInitialized()
+    {
+        if (string.IsNullOrEmpty(TaskIcon)) TaskIcon = DefaultIcon(TaskPurpose);
+        LlmService.OnConfigChanged += HandleConfigChanged;
+        LlmService.OnReadyChanged += HandleReadyChanged;
+        LlmService.OnError += HandleError;
+        Refresh(LlmService.CurrentConfig);
+    }
+
+    protected override void OnParametersSet()
+    {
+        Refresh(LlmService.CurrentConfig);
+    }
+
+    private void HandleConfigChanged(SgLlmConfig config)
+    {
+        Refresh(config);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleReadyChanged(bool ready)
+    {
+        _ready = ready;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void HandleError(string err)
+    {
+        _lastError = string.IsNullOrWhiteSpace(err) ? null : err;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Refresh(SgLlmConfig? root)
+    {
+        if (root == null)
+        {
+            _resolvedConfig = null;
+            _providerLabel = "—";
+            _modelLabel = "не выбрана";
+            _ready = false;
+            return;
+        }
+
+        _resolvedConfig = LlmService.ResolveConfigForTask(TaskPurpose, root);
+        _providerLabel = SgLlmProviderRegistry.Label(_resolvedConfig.Provider);
+        _modelLabel = string.IsNullOrWhiteSpace(_resolvedConfig.ModelId) ? "модель не выбрана" : _resolvedConfig.ModelId!;
+        _ready = !string.IsNullOrEmpty(_resolvedConfig.ModelId)
+            && (!SgLlmProviderRegistry.RequiresKey(_resolvedConfig.Provider) || !string.IsNullOrEmpty(_resolvedConfig.ApiKey));
+
+        if (string.IsNullOrEmpty(DocsUrl))
+        {
+            DocsUrl = SgLlmProviderRegistry.GetPreset(_resolvedConfig.Provider)?.DocsUrl;
+        }
+    }
+
+    private void ToggleSettings() => _settingsOpen = !_settingsOpen;
+
+    private static string DefaultIcon(string purpose) => purpose switch
+    {
+        SgLlmTaskPurpose.Chat => "💬",
+        SgLlmTaskPurpose.Documents => "📄",
+        SgLlmTaskPurpose.Vision => "👁",
+        SgLlmTaskPurpose.Structured => "📐",
+        SgLlmTaskPurpose.Embeddings => "🧬",
+        SgLlmTaskPurpose.Rerank => "📊",
+        SgLlmTaskPurpose.Images => "🖼",
+        SgLlmTaskPurpose.Moderation => "🛡",
+        SgLlmTaskPurpose.Speech => "🎙",
+        SgLlmTaskPurpose.Video => "🎬",
+        _ => "🤖"
+    };
+
+    public void Dispose()
+    {
+        LlmService.OnConfigChanged -= HandleConfigChanged;
+        LlmService.OnReadyChanged -= HandleReadyChanged;
+        LlmService.OnError -= HandleError;
+    }
+}
+
+<style>
+    .sgc-llm-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        background: var(--sg-bg, #fff);
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 10px;
+        margin-bottom: 10px;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+        position: relative;
+    }
+    .sgc-llm-header-left { display: flex; gap: 10px; align-items: flex-start; min-width: 0; flex: 1; }
+    .sgc-llm-header-icon { font-size: 24px; line-height: 1; padding-top: 2px; flex: 0 0 auto; }
+    .sgc-llm-header-titles { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .sgc-llm-header-title { font-size: 14px; font-weight: 750; color: var(--sg-fg, #111827); }
+    .sgc-llm-header-subtitle { font-size: 11.5px; color: var(--sg-fg-muted, #64748b); line-height: 1.4; }
+    .sgc-llm-header-route {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        margin-top: 3px;
+        font-size: 11px;
+        color: var(--sg-fg-muted, #64748b);
+        flex-wrap: wrap;
+    }
+    .sgc-llm-header-route-label {
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        font-weight: 700;
+        padding: 1px 6px;
+        background: var(--sg-bg-subtle, #f8fafc);
+        border-radius: 999px;
+        font-size: 9.5px;
+    }
+    .sgc-llm-header-route-arrow { color: var(--sg-fg-muted, #64748b); opacity: .6; }
+    .sgc-llm-header-route-provider { font-weight: 650; color: var(--sg-fg, #111827); }
+    .sgc-llm-header-route-sep { opacity: .5; }
+    .sgc-llm-header-route-model {
+        font-family: var(--sg-font-mono, monospace);
+        font-size: 10.5px;
+        color: var(--sg-fg-muted, #64748b);
+        max-width: 280px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .sgc-llm-header-right { display: inline-flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+    .sgc-llm-header-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 650;
+        border: 1px solid transparent;
+    }
+    .sgc-llm-header-dot { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
+    .sgc-llm-header-status.ok { background: #f0fdf4; color: #166534; border-color: #bbf7d0; }
+    .sgc-llm-header-status.ok .sgc-llm-header-dot { background: #16a34a; box-shadow: 0 0 0 2px rgba(22, 163, 74, .2); }
+    .sgc-llm-header-status.error { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+    .sgc-llm-header-status.error .sgc-llm-header-dot { background: #ef4444; box-shadow: 0 0 0 2px rgba(239, 68, 68, .2); }
+    .sgc-llm-header-status.idle { background: var(--sg-bg-subtle, #f8fafc); color: var(--sg-fg-muted, #64748b); border-color: var(--sg-border, #e5e7eb); }
+
+    .sgc-llm-header-actions { display: inline-flex; gap: 4px; align-items: center; }
+
+    .sgc-llm-header-help,
+    .sgc-llm-header-settings {
+        width: 26px; height: 26px;
+        border-radius: 50%;
+        border: 1px solid var(--sg-border, #e5e7eb);
+        background: var(--sg-bg, #fff);
+        color: var(--sg-fg-muted, #64748b);
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        text-decoration: none;
+        line-height: 1;
+        transition: border-color .15s, color .15s;
+    }
+    .sgc-llm-header-help:hover,
+    .sgc-llm-header-settings:hover {
+        border-color: var(--sg-color-primary, #2563eb);
+        color: var(--sg-color-primary, #2563eb);
+    }
+
+    .sgc-llm-header-popover {
+        position: absolute;
+        right: 10px;
+        top: calc(100% + 6px);
+        z-index: 50;
+        background: var(--sg-bg, #fff);
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 10px;
+        padding: 10px;
+        width: min(640px, 92vw);
+        max-height: 70vh;
+        overflow: auto;
+        box-shadow: 0 12px 32px rgba(15, 23, 42, .14);
+    }
+    .sgc-llm-header-popover-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 12.5px;
+        font-weight: 700;
+        margin-bottom: 6px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid var(--sg-border, #e5e7eb);
+    }
+    .sgc-llm-header-popover-head button {
+        border: none;
+        background: transparent;
+        font-size: 14px;
+        cursor: pointer;
+        color: var(--sg-fg-muted, #64748b);
+    }
+    .sgc-llm-header-popover-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 49;
+        background: transparent;
+    }
+
+    @@media (max-width: 560px) {
+        .sgc-llm-header { flex-direction: column; align-items: stretch; }
+        .sgc-llm-header-right { justify-content: flex-end; }
+        .sgc-llm-header-route-model { max-width: 200px; }
+    }
+</style>

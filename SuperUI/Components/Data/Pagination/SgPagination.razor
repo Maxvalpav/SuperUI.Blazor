@@ -3,7 +3,7 @@
 @inject ISuperUILocalizer Localizer
 @inject IJSRuntime JS
 
-<div class="sg-pager @CssClass">
+<div class="sg-pager sg-pager-@SizeClass @PagerAlignmentClass @CssClass">
     @if (ShowInfo)
     {
         <div class="sg-pager-info">
@@ -13,7 +13,7 @@
                 if (TotalItems == 0) startRow = 0;
             }
             @startRow-@endRow @(Localizer["Table_Of"] ?? "из") @TotalItems
-            
+
             @if (SelectedCount > 0)
             {
                 <span class="sg-pager-selected">
@@ -35,25 +35,46 @@
         </div>
     }
 
-    <button class="sg-page-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(1)" title="@Localizer["First"]">«</button>
-    <button class="sg-page-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(Page - 1)" title="@Localizer["Previous"]">‹</button>
-    
-    @foreach (var p in BuildPages())
+    @if (Simple)
     {
-        if (p < 0)
+        <button class="sg-page-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(Page - 1)" title="@Localizer["Previous"]">‹</button>
+        <span class="sg-page-simple-info">
+            <span class="sg-page-simple-current">@Page</span>
+            <span class="sg-page-simple-sep">/</span>
+            <span class="sg-page-simple-total">@TotalPages</span>
+        </span>
+        <button class="sg-page-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(Page + 1)" title="@Localizer["Next"]">›</button>
+    }
+    else
+    {
+        @if (ShowFirstLast)
         {
-            <span class="sg-page-gap">...</span>
+            <button class="sg-page-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(1)" title="@Localizer["First"]">«</button>
         }
-        else
+        <button class="sg-page-btn" type="button" disabled="@(Page <= 1)" @onclick="() => GoAsync(Page - 1)" title="@Localizer["Previous"]">‹</button>
+
+        @foreach (var p in BuildPages())
         {
-            var pl = p;
-            <button class="sg-page-btn @(pl == Page ? "current" : "")"
-                    type="button" @onclick="() => GoAsync(pl)">@pl</button>
+            if (p < 0)
+            {
+                <span class="sg-page-gap">...</span>
+            }
+            else
+            {
+                var pl = p;
+                <button class="sg-page-btn @(pl == Page ? "current" : "")"
+                        type="button" @onclick="() => GoAsync(pl)">
+                    <span class="sg-page-btn-text">@pl</span>
+                </button>
+            }
+        }
+
+        <button class="sg-page-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(Page + 1)" title="@Localizer["Next"]">›</button>
+        @if (ShowFirstLast)
+        {
+            <button class="sg-page-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(TotalPages)" title="@Localizer["Last"]">»</button>
         }
     }
-    
-    <button class="sg-page-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(Page + 1)" title="@Localizer["Next"]">›</button>
-    <button class="sg-page-btn" type="button" disabled="@(Page >= TotalPages)" @onclick="() => GoAsync(TotalPages)" title="@Localizer["Last"]">»</button>
 
     @if (ShowJump)
     {
@@ -69,18 +90,99 @@
 </div>
 
 @code {
-    [Parameter] public bool ShowJump { get; set; }
-    [Parameter] public int Page { get; set; } = 1;
-    [Parameter] public EventCallback<int> PageChanged { get; set; }
-    [Parameter] public int PageSize { get; set; } = 25;
+    /// <summary>
+    /// Gets or sets the total number of items across all pages.
+    /// </summary>
     [Parameter] public int TotalItems { get; set; }
-    [Parameter] public int SelectedCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of items per page. Default is 25.
+    /// </summary>
+    [Parameter] public int PageSize { get; set; } = 25;
+
+    /// <summary>
+    /// Gets or sets the current page number (1-based). Supports two-way binding.
+    /// </summary>
+    [Parameter] public int Page { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the page changes.
+    /// </summary>
+    [Parameter] public EventCallback<int> PageChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of sibling page buttons to show on each side of the current page. Default is 1.
+    /// </summary>
     [Parameter] public int Siblings { get; set; } = 1;
+
+    /// <summary>
+    /// Gets or sets whether to show info text (e.g. "1-10 of 100"). Default is true.
+    /// </summary>
     [Parameter] public bool ShowInfo { get; set; } = true;
-    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>
+    /// Gets or sets the number of selected items displayed in the info bar.
+    /// </summary>
+    [Parameter] public int SelectedCount { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to show the jump-to-page input.
+    /// </summary>
+    [Parameter] public bool ShowJump { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to scroll to top on page change.
+    /// </summary>
     [Parameter] public bool ScrollToTop { get; set; }
+
+    /// <summary>
+    /// Gets or sets the available page size options displayed as a dropdown.
+    /// </summary>
     [Parameter] public IEnumerable<int>? PageSizeOptions { get; set; }
+
+    /// <summary>
+    /// Gets or sets the callback invoked when the page size changes.
+    /// </summary>
     [Parameter] public EventCallback<int> PageSizeChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether to use compact "prev / next" mode instead of full page buttons.
+    /// </summary>
+    [Parameter] public bool Simple { get; set; }
+
+    /// <summary>
+    /// Gets or sets the size of the pagination controls. Default is <see cref="SgSize.Md"/>.
+    /// </summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>
+    /// Gets or sets whether to show the first and last page buttons. Default is true.
+    /// </summary>
+    [Parameter] public bool ShowFirstLast { get; set; } = true;
+
+    /// <summary>
+    /// Gets or sets the horizontal alignment of the pagination controls. Default is <see cref="SgJustifyContent.Start"/>.
+    /// </summary>
+    [Parameter] public SgJustifyContent Alignment { get; set; } = SgJustifyContent.Start;
+
+    /// <summary>
+    /// Gets or sets additional CSS classes to apply to the component.
+    /// </summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    private string SizeClass => Size switch
+    {
+        SgSize.Sm => "sm",
+        SgSize.Lg => "lg",
+        _ => "md"
+    };
+
+    private string PagerAlignmentClass => Alignment switch
+    {
+        SgJustifyContent.Center => "sg-pager-center",
+        SgJustifyContent.End => "sg-pager-end",
+        _ => ""
+    };
 
     private int TotalPages => Math.Max(1, (int)Math.Ceiling((double)TotalItems / Math.Max(1, PageSize)));
 
@@ -93,10 +195,7 @@
 
         if (ScrollToTop)
         {
-            try
-            {
-                await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
-            }
+            try { await JS.InvokeVoidAsync("window.scrollTo", 0, 0); }
             catch { }
         }
     }
@@ -104,9 +203,7 @@
     private async Task OnJumpChanged(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var p))
-        {
             await GoAsync(p);
-        }
     }
 
     private async Task OnPageSizeChangedAsync(ChangeEventArgs e)

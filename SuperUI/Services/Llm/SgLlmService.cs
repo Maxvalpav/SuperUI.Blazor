@@ -35,6 +35,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         CurrentConfig = config;
         var json = System.Text.Json.JsonSerializer.Serialize(SanitizeForStorage(config));
         await _js.InvokeVoidAsync("localStorage.setItem", GlobalConfigStorageKey, json);
+        RaiseConfigChanged(config);
     }
 
     public async Task<SgLlmConfig?> GetGlobalConfigAsync()
@@ -48,6 +49,7 @@ public class SgLlmService : ILlmService, IAsyncDisposable
             {
                 CurrentConfig = MigrateConfig(System.Text.Json.JsonSerializer.Deserialize<SgLlmConfig>(json) ?? new SgLlmConfig());
                 await _js.InvokeVoidAsync("localStorage.setItem", GlobalConfigStorageKey, System.Text.Json.JsonSerializer.Serialize(SanitizeForStorage(CurrentConfig)));
+                RaiseConfigChanged(CurrentConfig);
             }
         }
         catch { }
@@ -267,6 +269,35 @@ public class SgLlmService : ILlmService, IAsyncDisposable
     public event Action<string>? OnError;
     public event Action<double>? OnLoadingProgress;
 
+    /// <inheritdoc />
+    public event Action<SgLlmConfig>? OnConfigChanged;
+
+    /// <inheritdoc />
+    public event Action<bool>? OnReadyChanged;
+
+    private bool _lastReady;
+
+    /// <summary>
+    /// Snapshot of the most recently broadcast readiness state.
+    /// Use this to seed UI without awaiting <see cref="IsReadyAsync"/>.
+    /// </summary>
+    public bool IsReady => _lastReady;
+
+    private void RaiseConfigChanged(SgLlmConfig? config)
+    {
+        if (config == null) return;
+        OnConfigChanged?.Invoke(config);
+
+        // Recompute readiness inline — synchronous form for the event listeners.
+        var ready = !string.IsNullOrEmpty(config.ModelId)
+            && (!SgLlmProviderRegistry.RequiresKey(config.Provider) || !string.IsNullOrEmpty(config.ApiKey));
+        if (ready != _lastReady)
+        {
+            _lastReady = ready;
+            OnReadyChanged?.Invoke(ready);
+        }
+    }
+
     public SgLlmService(IJSRuntime js, HttpClient http)
     {
         _js = js;
@@ -291,6 +322,8 @@ public class SgLlmService : ILlmService, IAsyncDisposable
         object overrides = BuildOverrides(config);
 
         await _module.InvokeVoidAsync("loadLlm", _instanceId, config.Provider.ToString(), config.ModelId, overrides);
+
+        RaiseConfigChanged(config);
     }
 
     public SgLlmConfig ResolveConfigForTask(string purpose, SgLlmConfig? baseConfig = null)

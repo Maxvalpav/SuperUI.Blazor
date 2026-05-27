@@ -12,6 +12,31 @@ public interface ILlmService
     event Action<string>? OnChatComplete;
     event Action<string>? OnError;
 
+    /// <summary>
+    /// Fired after <see cref="InitializeAsync"/> or <see cref="SaveGlobalConfigAsync"/>
+    /// updates <see cref="CurrentConfig"/>. Consumers should refresh any local
+    /// state derived from the global config.
+    /// </summary>
+    event Action<SgLlmConfig>? OnConfigChanged;
+
+    /// <summary>
+    /// Fired when the readiness state of the service flips. Same value as
+    /// <see cref="IsReadyAsync"/> would return at that moment.
+    /// </summary>
+    event Action<bool>? OnReadyChanged;
+
+    /// <summary>
+    /// Persists the supplied config to LocalStorage and updates
+    /// <see cref="CurrentConfig"/>. Fires <see cref="OnConfigChanged"/>.
+    /// </summary>
+    Task SaveGlobalConfigAsync(SgLlmConfig config);
+
+    /// <summary>
+    /// Returns the cached <see cref="CurrentConfig"/> if any, otherwise rehydrates
+    /// it from LocalStorage.
+    /// </summary>
+    Task<SgLlmConfig?> GetGlobalConfigAsync();
+
     Task InitializeAsync(SgLlmConfig config);
     SgLlmConfig ResolveConfigForTask(string purpose, SgLlmConfig? baseConfig = null);
     Task ChatAsync(string message, SgLlmPromptOptions? options = null);

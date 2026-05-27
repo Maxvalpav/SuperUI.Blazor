@@ -1,0 +1,146 @@
+@namespace SuperUI.Components
+@using SuperUI.Services.Llm
+@inject ILlmService LlmService
+
+@*
+   SgLlmEmptyState — стандартизированное пустое состояние для AI-компонентов.
+   Подсказывает, что сделать дальше, и автоматически объясняет частые причины
+   («введите API ключ», «запустите Ollama», «попробуйте Backend proxy»).
+*@
+
+<div class="sgc-llm-empty-state @CssClass">
+    <div class="sgc-llm-empty-icon">@(string.IsNullOrEmpty(Icon) ? "🤖" : Icon)</div>
+    <div class="sgc-llm-empty-title">@(string.IsNullOrEmpty(Title) ? "Нет данных" : Title)</div>
+    @if (!string.IsNullOrWhiteSpace(Message))
+    {
+        <div class="sgc-llm-empty-message">@Message</div>
+    }
+    @if (ShowProviderHint && _hint != null)
+    {
+        <div class="sgc-llm-empty-hint">@_hint</div>
+    }
+    @if (Actions is not null)
+    {
+        <div class="sgc-llm-empty-actions">@Actions</div>
+    }
+</div>
+
+@code {
+    /// <summary>Big emoji shown at the top.</summary>
+    [Parameter] public string Icon { get; set; } = "🤖";
+
+    /// <summary>Bold one-line heading.</summary>
+    [Parameter] public string Title { get; set; } = "Нет данных";
+
+    /// <summary>Free-form descriptive line under the title.</summary>
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>
+    /// If true (default), append a provider-specific hint (e.g. «введите API key»,
+    /// «запустите Ollama», «попробуйте Backend proxy»).
+    /// </summary>
+    [Parameter] public bool ShowProviderHint { get; set; } = true;
+
+    /// <summary>Optional action buttons (rendered as a single row at the bottom).</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    /// <summary>Extra CSS class on the outer container.</summary>
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+
+    private string? _hint;
+
+    protected override void OnInitialized()
+    {
+        Recompute();
+        LlmService.OnConfigChanged += HandleConfigChanged;
+    }
+
+    protected override void OnParametersSet() => Recompute();
+
+    private void HandleConfigChanged(SgLlmConfig _) { Recompute(); InvokeAsync(StateHasChanged); }
+
+    private void Recompute()
+    {
+        var cfg = LlmService.CurrentConfig;
+        if (cfg == null || cfg.Provider == SgLlmProvider.None)
+        {
+            _hint = "Выберите провайдера и модель в настройках LLM.";
+            return;
+        }
+
+        var preset = SgLlmProviderRegistry.GetPreset(cfg.Provider);
+        if (preset is { Category: SgLlmProviderCategory.Local })
+        {
+            _hint = cfg.Provider switch
+            {
+                SgLlmProvider.Ollama => "Запустите Ollama на localhost:11434 и проверьте, что OLLAMA_ORIGINS разрешает ваш origin.",
+                SgLlmProvider.LmStudio => "Запустите Local Server в LM Studio (по умолчанию http://localhost:1234/v1).",
+                SgLlmProvider.Vllm => "Запустите vLLM с флагом --allow-cors, иначе браузер не сможет вызвать API.",
+                _ => "Локальный сервер должен быть запущен; проверьте Base URL и CORS."
+            };
+            return;
+        }
+        if (SgLlmProviderRegistry.RequiresKey(cfg.Provider) && string.IsNullOrWhiteSpace(cfg.ApiKey))
+        {
+            var keyUrl = preset?.ApiKeyUrl;
+            _hint = string.IsNullOrEmpty(keyUrl)
+                ? "Введите API-ключ в настройках LLM."
+                : $"Введите API-ключ. Получить ключ: {keyUrl}";
+            return;
+        }
+        if (cfg.UseBackendProxy)
+        {
+            _hint = null;
+            return;
+        }
+        _hint = "Если запросы блокируются CORS, попробуйте включить Backend proxy в настройках.";
+    }
+
+    public void Dispose()
+    {
+        LlmService.OnConfigChanged -= HandleConfigChanged;
+    }
+}
+
+<style>
+    .sgc-llm-empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 32px 24px;
+        text-align: center;
+        color: var(--sg-fg-muted, #64748b);
+        border: 1px dashed var(--sg-border, #e5e7eb);
+        border-radius: 10px;
+        background: var(--sg-bg, #fff);
+    }
+    .sgc-llm-empty-icon { font-size: 40px; line-height: 1; }
+    .sgc-llm-empty-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--sg-fg, #111827);
+    }
+    .sgc-llm-empty-message {
+        font-size: 12.5px;
+        max-width: 520px;
+        line-height: 1.5;
+    }
+    .sgc-llm-empty-hint {
+        font-size: 11.5px;
+        max-width: 520px;
+        line-height: 1.5;
+        color: var(--sg-fg-muted, #64748b);
+        background: var(--sg-bg-subtle, #f8fafc);
+        border: 1px solid var(--sg-border, #e5e7eb);
+        border-radius: 8px;
+        padding: 8px 12px;
+    }
+    .sgc-llm-empty-actions {
+        display: inline-flex;
+        gap: 8px;
+        margin-top: 6px;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+</style>

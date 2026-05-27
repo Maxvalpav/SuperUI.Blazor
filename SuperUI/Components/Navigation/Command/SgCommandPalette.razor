@@ -6,7 +6,7 @@
 @if (_visible)
 {
     <div class="sgc-command-palette-overlay" @onclick="Close">
-        <div class="sgc-command-palette" @onclick:stopPropagation="true">
+        <div class="sgc-command-palette" @onclick:stopPropagation="true" style="width:@Width;max-height:@MaxHeight;">
             <div class="sgc-command-palette-search">
                 <div class="sgc-command-palette-input-wrapper">
                     <SgIcon Icon="@SgIcons.Search" />
@@ -17,20 +17,62 @@
             <div class="sgc-command-palette-results">
                 @if (!_filteredGroups.Any())
                 {
-                    <div class="sgc-command-palette-empty">Ничего не найдено</div>
+                    <div class="sgc-command-palette-empty">
+                        <SgIcon Icon="@SgIcons.Search" Size="32" Style="opacity:0.4;margin-bottom:8px;" />
+                        <div>@NoResultsText</div>
+                    </div>
                 }
                 @foreach (var group in _filteredGroups)
                 {
                     <div class="sgc-command-group">
-                        <div class="sgc-command-group-title">@group.Title</div>
+                        <div class="sgc-command-group-title">
+                            @if (!string.IsNullOrEmpty(group.Icon))
+                            {
+                                <span class="sgc-command-group-icon">@((MarkupString)group.Icon)</span>
+                            }
+                            @group.Title
+                            <span class="sgc-command-group-count">@group.Commands.Count</span>
+                        </div>
                         @foreach (var command in group.Commands)
                         {
-                            <div class="sgc-command-item @(command == _selectedCommand ? "selected" : "")" @onclick="() => ExecuteCommand(command)">
-                                <span class="sgc-command-icon">@(command.Icon ?? (RenderFragment)(builder => builder.AddContent(0, "•")))</span>
-                                <span class="sgc-command-text">@command.Text</span>
+                            <div class="sgc-command-item @(command == _selectedCommand ? "selected" : "")"
+                                 @onclick="() => ExecuteCommand(command)"
+                                 @onmouseenter="() => _selectedCommand = command">
+                                <span class="sgc-command-icon">
+                                    @if (command.Icon is not null)
+                                    {
+                                        @command.Icon
+                                    }
+                                    else
+                                    {
+                                        <span class="sgc-command-dot"></span>
+                                    }
+                                </span>
+                                <span class="sgc-command-text">
+                                    @if (!string.IsNullOrEmpty(_search) && command.Text.Contains(_search, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        var idx = command.Text.IndexOf(_search, StringComparison.OrdinalIgnoreCase);
+                                        @command.Text[..idx]
+                                        <mark class="sgc-command-highlight">@command.Text.Substring(idx, _search.Length)</mark>
+                                        @command.Text[(idx + _search.Length)..]
+                                    }
+                                    else
+                                    {
+                                        @command.Text
+                                    }
+                                </span>
+                                @if (!string.IsNullOrEmpty(command.Description))
+                                {
+                                    <span class="sgc-command-desc">@command.Description</span>
+                                }
                                 @if (!string.IsNullOrEmpty(command.Shortcut))
                                 {
-                                    <span class="sgc-command-shortcut">@command.Shortcut</span>
+                                    <span class="sgc-command-shortcut">
+                                        @foreach (var part in command.Shortcut.Split(' '))
+                                        {
+                                            <kbd>@part</kbd>
+                                        }
+                                    </span>
                                 }
                             </div>
                         }
@@ -38,8 +80,10 @@
                 }
             </div>
             <div class="sgc-command-palette-footer">
-                <span><kbd>↑↓</kbd> Навигация</span>
-                <span><kbd>Enter</kbd> Выбрать</span>
+                <span class="sgc-footer-nav"><kbd>↑↓</kbd> Navigate</span>
+                <span class="sgc-footer-nav"><kbd>Enter</kbd> Select</span>
+                <span class="sgc-footer-nav"><kbd>Esc</kbd> Close</span>
+                <span class="sgc-footer-commands-count">@_filteredGroups.Sum(g => g.Commands.Count) commands</span>
             </div>
         </div>
     </div>
@@ -52,152 +96,269 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background: rgba(0, 0, 0, 0.4);
-        backdrop-filter: blur(4px);
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
         display: flex;
         justify-content: center;
-        padding-top: 15vh;
+        padding-top: 12vh;
         z-index: 9999;
-        animation: sgc-fade-in 0.2s ease-out;
+        animation: sgc-fade-in 0.15s ease-out;
     }
 
     .sgc-command-palette {
         background: var(--sg-surface, #fff);
         width: 640px;
         max-height: 480px;
-        border-radius: 12px;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        border-radius: 16px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.05);
         display: flex;
         flex-direction: column;
         overflow: hidden;
-        border: 1px solid var(--sg-border, #eee);
-        animation: sgc-slide-down 0.2s ease-out;
+        animation: sgc-slide-down 0.15s ease-out;
     }
 
     .sgc-command-palette-search {
-        padding: 16px;
-        border-bottom: 1px solid var(--sg-divider, #eee);
+        padding: 12px 12px 8px;
     }
 
     .sgc-command-palette-input-wrapper {
         display: flex;
         align-items: center;
+        gap: 10px;
         padding: 0 16px;
         height: 48px;
-        background: var(--sg-bg-alt, #f5f5f5);
-        border-radius: 24px;
+        background: var(--sg-surface-alt, #f5f5f5);
+        border-radius: 12px;
         border: 2px solid transparent;
-        transition: border-color 0.2s;
+        transition: border-color 0.2s, background 0.2s;
     }
 
     .sgc-command-palette-input-wrapper:focus-within {
         border-color: var(--sg-primary, #1890ff);
-        background: #fff;
+        background: var(--sg-surface, #fff);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--sg-primary, #1890ff) 15%, transparent);
     }
 
-    .sgc-command-palette-search input {
+    .sgc-command-palette input {
         border: none;
         outline: none;
         flex: 1;
         font-size: 16px;
-        margin-left: 12px;
         background: transparent;
         color: var(--sg-text, #333);
     }
 
+    .sgc-command-palette input::placeholder {
+        color: var(--sg-text-muted, #999);
+    }
+
     .sgc-command-palette-hotkey-hint {
         font-size: 10px;
-        background: #fff;
-        padding: 2px 6px;
+        font-weight: 600;
+        background: var(--sg-surface, #fff);
+        padding: 2px 7px;
         border-radius: 4px;
-        border: 1px solid #ddd;
-        color: #999;
+        border: 1px solid var(--sg-border, #ddd);
+        color: var(--sg-text-muted, #999);
     }
 
     .sgc-command-palette-results {
         overflow-y: auto;
-        padding: 8px;
+        padding: 4px 8px 8px;
         flex: 1;
     }
 
+    .sgc-command-palette-results::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .sgc-command-palette-results::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .sgc-command-palette-results::-webkit-scrollbar-thumb {
+        background: var(--sg-border, #ddd);
+        border-radius: 3px;
+    }
+
     .sgc-command-palette-empty {
-        padding: 32px;
+        padding: 48px 32px;
         text-align: center;
-        color: #999;
+        color: var(--sg-text-muted, #999);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        font-size: 14px;
+    }
+
+    .sgc-command-group {
+        margin-bottom: 4px;
     }
 
     .sgc-command-group-title {
         font-size: 11px;
         font-weight: 600;
-        color: var(--sg-text-secondary, #999);
-        padding: 12px 12px 4px;
+        color: var(--sg-text-muted, #999);
+        padding: 10px 12px 4px;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
+        letter-spacing: 0.06em;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .sgc-command-group-icon {
+        display: inline-flex;
+        opacity: 0.6;
+    }
+
+    .sgc-command-group-icon svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .sgc-command-group-count {
+        margin-left: auto;
+        font-size: 10px;
+        font-weight: 500;
+        color: var(--sg-text-muted, #bbb);
+        background: var(--sg-surface-alt, #f5f5f5);
+        padding: 1px 6px;
+        border-radius: 8px;
     }
 
     .sgc-command-item {
-        padding: 12px;
+        padding: 10px 12px;
         display: flex;
         align-items: center;
+        gap: 12px;
         border-radius: 8px;
         cursor: pointer;
-        margin: 2px 4px;
-        transition: all 0.1s;
+        margin: 2px 0;
+        transition: all 0.1s ease;
+        scroll-margin: 4px;
     }
 
     .sgc-command-item.selected {
         background: var(--sg-primary, #1890ff);
         color: #fff;
+        box-shadow: 0 2px 8px color-mix(in srgb, var(--sg-primary, #1890ff) 30%, transparent);
     }
 
     .sgc-command-item:not(.selected):hover {
-        background: var(--sg-bg-alt, #f5f5f5);
+        background: var(--sg-surface-hover, var(--sg-surface-alt));
     }
 
     .sgc-command-icon {
-        width: 24px;
-        height: 24px;
+        width: 28px;
+        height: 28px;
         display: flex;
         align-items: center;
         justify-content: center;
-        opacity: 0.7;
+        flex-shrink: 0;
+        opacity: 0.6;
     }
 
     .sgc-command-item.selected .sgc-command-icon {
         opacity: 1;
     }
 
+    .sgc-command-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: 0.4;
+    }
+
     .sgc-command-text {
         flex: 1;
-        margin-left: 12px;
         font-size: 14px;
+        font-weight: 500;
+        line-height: 1.4;
+    }
+
+    .sgc-command-highlight {
+        background: color-mix(in srgb, var(--sg-primary, #1890ff) 25%, transparent);
+        color: inherit;
+        border-radius: 2px;
+        padding: 0 2px;
+    }
+
+    .sgc-command-item.selected .sgc-command-highlight {
+        background: rgba(255, 255, 255, 0.25);
+    }
+
+    .sgc-command-desc {
+        font-size: 11px;
+        color: var(--sg-text-muted, #999);
+        margin-right: 8px;
+        max-width: 160px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .sgc-command-item.selected .sgc-command-desc {
+        color: rgba(255, 255, 255, 0.7);
     }
 
     .sgc-command-shortcut {
-        font-size: 11px;
-        opacity: 0.6;
-        background: rgba(0,0,0,0.1);
-        padding: 2px 6px;
+        display: flex;
+        gap: 3px;
+        flex-shrink: 0;
+    }
+
+    .sgc-command-shortcut kbd {
+        font-size: 10px;
+        font-weight: 600;
+        background: var(--sg-surface-alt, #f5f5f5);
+        padding: 2px 5px;
         border-radius: 4px;
-        font-family: monospace;
+        border: 1px solid var(--sg-border, #ddd);
+        font-family: inherit;
+        color: var(--sg-text-muted, #888);
+        line-height: 1.4;
+    }
+
+    .sgc-command-item.selected .sgc-command-shortcut kbd {
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.2);
+        color: rgba(255, 255, 255, 0.9);
     }
 
     .sgc-command-palette-footer {
-        padding: 12px 16px;
-        background: var(--sg-bg-alt, #fafafa);
-        border-top: 1px solid var(--sg-divider, #eee);
+        padding: 10px 16px;
+        background: var(--sg-surface-alt, #fafafa);
+        border-top: 1px solid var(--sg-border, #eee);
         display: flex;
+        align-items: center;
         gap: 16px;
-        font-size: 12px;
-        color: #888;
+        font-size: 11px;
+        color: var(--sg-text-muted, #999);
     }
 
     .sgc-command-palette-footer kbd {
-        background: #fff;
-        border: 1px solid #ddd;
+        background: var(--sg-surface, #fff);
+        border: 1px solid var(--sg-border, #ddd);
         border-radius: 3px;
-        padding: 1px 4px;
+        padding: 1px 5px;
         font-family: inherit;
+        font-weight: 500;
+    }
+
+    .sgc-footer-nav {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .sgc-footer-commands-count {
+        margin-left: auto;
+        font-size: 10px;
+        color: var(--sg-text-muted, #bbb);
     }
 
     @@keyframes sgc-fade-in {
@@ -206,8 +367,8 @@
     }
 
     @@keyframes sgc-slide-down {
-        from { transform: translateY(-20px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
+        from { transform: translateY(-16px) scale(0.98); opacity: 0; }
+        to { transform: translateY(0) scale(1); opacity: 1; }
     }
 </style>
 
@@ -219,7 +380,25 @@
     private List<SgCommandGroup> _filteredGroups = new();
     private SgCommand? _selectedCommand;
 
+    /// <summary>
+    /// Gets or sets the placeholder text displayed in the search input. Default is "Поиск команд...".
+    /// </summary>
     [Parameter] public string Placeholder { get; set; } = "Поиск команд...";
+
+    /// <summary>
+    /// Gets or sets the text displayed when no results match the search. Default is "Ничего не найдено".
+    /// </summary>
+    [Parameter] public string NoResultsText { get; set; } = "Ничего не найдено";
+
+    /// <summary>
+    /// Gets or sets the width of the command palette. Default is "640px".
+    /// </summary>
+    [Parameter] public string Width { get; set; } = "640px";
+
+    /// <summary>
+    /// Gets or sets the maximum height of the command palette. Default is "480px".
+    /// </summary>
+    [Parameter] public string MaxHeight { get; set; } = "480px";
 
     protected override string ModulePath => "./_content/SuperUI/superui-command-palette.js";
 
@@ -228,16 +407,22 @@
         await SafeInvokeVoidAsync("init", SelfRef);
     }
 
+    /// <summary>
+    /// Opens the command palette and focuses the search input.
+    /// </summary>
     public async Task Open()
     {
         _visible = true;
         _search = "";
         FilterCommands();
         StateHasChanged();
-        await Task.Delay(50); // Даем время на рендер
+        await Task.Delay(50);
         await _searchInput.FocusAsync();
     }
 
+    /// <summary>
+    /// Closes the command palette.
+    /// </summary>
     public void Close()
     {
         _visible = false;
@@ -251,6 +436,9 @@
         else Close();
     }
 
+    /// <summary>
+    /// Registers a group of commands for display in the palette.
+    /// </summary>
     public void RegisterGroup(SgCommandGroup group)
     {
         if (!_groups.Any(g => g.Title == group.Title))
@@ -258,6 +446,15 @@
             _groups.Add(group);
             FilterCommands();
         }
+    }
+
+    /// <summary>
+    /// Clears all registered command groups.
+    /// </summary>
+    public void ClearGroups()
+    {
+        _groups.Clear();
+        FilterCommands();
     }
 
     private void OnSearchInput(ChangeEventArgs e)
@@ -268,14 +465,20 @@
 
     private void FilterCommands()
     {
-        _filteredGroups = _groups.Select(g => new SgCommandGroup
-        {
-            Title = g.Title,
-            Commands = g.Commands.Where(c => 
-                string.IsNullOrEmpty(_search) || 
-                c.Text.Contains(_search, StringComparison.OrdinalIgnoreCase)
-            ).ToList()
-        }).Where(g => g.Commands.Any()).ToList();
+        _filteredGroups = _groups
+            .Select(g => new SgCommandGroup
+            {
+                Title = g.Title,
+                Icon = g.Icon,
+                Commands = g.Commands.Where(c =>
+                    string.IsNullOrEmpty(_search) ||
+                    c.Text.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    (c.Shortcut?.Contains(_search, StringComparison.OrdinalIgnoreCase) == true) ||
+                    (c.Description?.Contains(_search, StringComparison.OrdinalIgnoreCase) == true)
+                ).ToList()
+            })
+            .Where(g => g.Commands.Any())
+            .ToList();
 
         _selectedCommand = _filteredGroups.FirstOrDefault()?.Commands.FirstOrDefault();
     }

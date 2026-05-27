@@ -1,99 +1,185 @@
 ﻿@page "/tree-view"
 @using SuperUI.Components
+@using SuperUI.Enums
 @using SuperUI.Demo.Models
 
-<PageTitle>Древовидный список - SUI</PageTitle>
+<PageTitle>SgTreeView — Tree View — SuperUI</PageTitle>
 
-<SgCard Title="SgTreeView - Древовидный список" 
-        Subtitle="Компонент для отображения иерархических структур данных. Поддерживает неограниченную вложенность, иконки узлов и управление состоянием развертывания.">
-    <!-- SgTreeView -->
-    <div style="margin-top: 32px;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 16px;">
-            <div>
-                <h2>Проводник файлов</h2>
-                <p>Интерактивное дерево с поддержкой поиска, мультивыбора и виртуализации.</p>
-            </div>
-            <div style="display: flex; gap: 12px;">
-                <SgTextBox Placeholder="Поиск..." @bind-Value="_searchText" Style="width: 200px;" />
-                <SgCheckBox Label="Виртуализация" @bind-Value="_virtualize" />
-                <SgCheckBox Label="Мультивыбор" @bind-Value="_multiSelect" />
-            </div>
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgTreeView — Basic Usage                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgTreeView — File Explorer
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                An interactive tree with search, multi-select, virtualization, drag-and-drop, and checkboxes.
+            </SgTypography>
         </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
-            <!-- Примеры -->
-            <SgCard Title="Примеры использования">
-                <div style="height: 450px; border: 1px solid var(--sui-border); border-radius: 8px; padding: 12px; overflow: auto; background: white;">
-                    <SgTreeView Nodes="_fileNodes" 
-                                SelectedNode="_selectedNode" 
-                                SelectedNodeChanged="OnNodeSelected"
-                                SearchText="@_searchText"
-                                Virtualize="_virtualize"
-                                MultiSelect="_multiSelect"
-                                AllowDragDrop="true" />
-                </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Interactive Tree" Shadow="SgShadow.Sm" Size="SgSize.Sm" NoPadding="true">
+                <SgStack Vertical Space="SgSize.Sm" Style="padding:16px;">
+                    <SgRow Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgCol Fill="true">
+                            <SgTextBox Placeholder="Search nodes..." @bind-Value="_searchText" Block="true">
+                                <Prefix><SgIcon Icon="@SgIcons.Search" Size="14" /></Prefix>
+                            </SgTextBox>
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgCheckBox Label="Virtualize" @bind-Value="_virtualize" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgCheckBox Label="Multi" @bind-Value="_multiSelect" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgCheckBox Label="Drag" @bind-Value="_allowDragDrop" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgCheckBox Label="Checkboxes" @bind-Value="_showCheckboxes" />
+                        </SgCol>
+                        <SgCol Auto="true">
+                            <SgCheckBox Label="Expand Click" @bind-Value="_expandOnClick" />
+                        </SgCol>
+                    </SgRow>
+                    <div class="demo-tree-container">
+                        <SgTreeView Nodes="_fileNodes"
+                                    SelectedNode="_selectedNode"
+                                    SelectedNodeChanged="OnNodeSelected"
+                                    SearchText="@_searchText"
+                                    Virtualize="@_virtualize"
+                                    MultiSelect="@_multiSelect"
+                                    AllowDragDrop="@_allowDragDrop"
+                                    ShowCheckboxes="@_showCheckboxes"
+                                    ExpandOnClick="@_expandOnClick"
+                                    ShowNodeCount="true" />
+                    </div>
+                </SgStack>
             </SgCard>
 
-            <!-- Property Grid -->
-            <SgCard Title="Свойства компонента">
+            <SgCard Title="SgTreeView Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_treeViewProperties" />
             </SgCard>
         </div>
     </div>
 
-    <!-- Node Details -->
-    <div style="margin-top: 32px;">
-        <h2>Детали выбранного узла</h2>
-        <p>Информация о выбранном элементе дерева.</p>
-        
-        <SgCard Title="Детали выбранного узла" Style="margin-top: 16px;">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. Node Details                                                     -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Selected Node Details
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Click any node to see its details and perform actions.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Sm" Size="SgSize.Sm">
             @if (_selectedNode != null)
             {
-                <SgDescriptions Columns="1" Bordered="true" Items="_nodeItems" />
-                <div style="margin-top: 24px; display: flex; gap: 12px;">
-                    <SgButton Text="Открыть" Variant="SgButtonVariant.Primary" Block="true" OnClick='() => Toasts.Show($"Открытие: {_selectedNode.Text}")' />
-                    <SgButton Text="Свойства" Variant="SgButtonVariant.Ghost" Block="true" />
-                </div>
+                <SgRow Space="SgSize.Lg">
+                    <SgCol Fill="true">
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <span style="font-size:24px;">@(_selectedNode.Icon ?? "📄")</span>
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Variant="SgTypographyVariant.Heading6" Weight="SgTypographyWeight.Semibold">@_selectedNode.Text</SgTypography>
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Key: @_selectedNode.Key</SgTypography>
+                                </SgStack>
+                            </SgStack>
+                            <SgDescriptions Columns="2" Bordered="true" Items="_nodeItems" />
+                        </SgStack>
+                    </SgCol>
+                    <SgCol Auto="true">
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgButton Text="Open" Variant="SgButtonVariant.Primary" OnClick='() => Toasts.Show($"Opening: {_selectedNode.Text}")' Block="true" />
+                            <SgButton Text="Properties" Variant="SgButtonVariant.Ghost" Block="true" OnClick='() => Toasts.Show($"Properties: {_selectedNode.Key}")' />
+                            <SgButton Text="Delete" Variant="SgButtonVariant.Outlined" Color="danger" Block="true" OnClick='() => Toasts.Show($"Deleted: {_selectedNode.Text}")' />
+                        </SgStack>
+                    </SgCol>
+                </SgRow>
             }
             else
             {
-                <SgEmpty Text="Выберите узел в дереве для просмотра деталей" />
+                <SgEmpty Text="Select a node in the tree to view details" />
             }
         </SgCard>
     </div>
 
-    <!-- Code example -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. TreeNode Model                                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                TreeNode — Model
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Each node has a key, text, icon, optional children, and state properties.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="TreeNode Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <PropertyTable Items="_nodeModelProperties" />
+        </SgCard>
     </div>
 
+</ChildContent>
 </SgCard>
 
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
+    .demo-two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @@media (max-width: 768px) { .demo-two-col { grid-template-columns: 1fr; } }
+    .demo-tree-container { border: 1px solid var(--sg-border); border-radius: 8px; padding: 8px; overflow: auto; background: var(--sg-surface); min-height: 320px; max-height: 420px; }
+</style>
+
 @code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20 6a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h3.5l2 2H20z"/>
+                    <line x1="8" y1="12" x2="16" y2="12"/>
+                    <line x1="12" y1="8" x2="12" y2="16"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgTreeView</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Hierarchical tree with unlimited nesting, search filtering, multi-select, drag-and-drop reordering, virtualization, and checkbox selection.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
     [Inject] private SgToastService Toasts { get; set; } = default!;
 
     private TreeNode? _selectedNode;
     private string? _searchText;
     private bool _virtualize;
     private bool _multiSelect;
+    private bool _allowDragDrop = true;
+    private bool _showCheckboxes;
+    private bool _expandOnClick;
 
     private List<DescriptionItem> _nodeItems = new();
 
-    private List<PropertyPanelItem> _treeViewProperties = new()
-    {
-        new() { Label = "Nodes",              Value = "IEnumerable<TreeNode>",          BadgeText = "Узлы",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SelectedNode",       Value = "TreeNode",                       BadgeText = "Выбранный",         BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "MultiSelect",        Value = "bool",                           BadgeText = "Мультивыбор",       BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "SearchText",         Value = "string",                         BadgeText = "Поиск",             BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Virtualize",         Value = "bool",                           BadgeText = "Виртуализация",     BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "AllowDragDrop",      Value = "bool",                           BadgeText = "Drag & Drop",       BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CssClass",           Value = "string",                         BadgeText = "CSS класс",         BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SelectedNodeChanged",Value = "EventCallback<TreeNode>",        BadgeText = "Изменение",         BadgeVariant = SgBadgeVariant.Success }
-    };
-
+    // ── File tree data ────────────────────────────────────────────────────
     private List<TreeNode> _fileNodes = new()
     {
-        new TreeNode { Key = "root", Text = "Корень проекта", Icon = "📁", Expanded = true, Children = new() {
+        new TreeNode { Key = "root", Text = "Project Root", Icon = "📁", Expanded = true, Children = new() {
             new TreeNode { Key = "src", Text = "src", Icon = "📁", Expanded = true, Children = new() {
                 new TreeNode { Key = "comp", Text = "Components", Icon = "📁", Children = new() {
                     new TreeNode { Key = "btn", Text = "Button.razor", Icon = "📄" },
@@ -103,10 +189,18 @@
                 new TreeNode { Key = "pages", Text = "Pages", Icon = "📁", Children = new() {
                     new TreeNode { Key = "home", Text = "Index.razor", Icon = "📄" },
                     new TreeNode { Key = "demo", Text = "TreeViewDemo.razor", Icon = "📄" }
+                }},
+                new TreeNode { Key = "services", Text = "Services", Icon = "📁", Children = new() {
+                    new TreeNode { Key = "api", Text = "ApiService.cs", Icon = "📄" },
+                    new TreeNode { Key = "auth", Text = "AuthService.cs", Icon = "📄" }
                 }}
             }},
             new TreeNode { Key = "config", Text = "appsettings.json", Icon = "⚙️" },
-            new TreeNode { Key = "readme", Text = "README.md", Icon = "ℹ️" }
+            new TreeNode { Key = "readme", Text = "README.md", Icon = "ℹ️" },
+            new TreeNode { Key = "tests", Text = "Tests", Icon = "📁", Children = new() {
+                new TreeNode { Key = "unit", Text = "UnitTests.cs", Icon = "📄" },
+                new TreeNode { Key = "integration", Text = "IntegrationTests.cs", Icon = "📄" }
+            }}
         }}
     };
 
@@ -124,13 +218,42 @@
             return;
         }
 
+        var path = GetNodePath(_selectedNode);
         _nodeItems = new()
         {
-            new() { Label = "Название", Value = $"{_selectedNode.Icon} {_selectedNode.Text}" },
-            new() { Label = "Ключ", Value = _selectedNode.Key },
-            new() { Label = "Дочерние элементы", Value = (_selectedNode.Children?.Any() == true ? _selectedNode.Children.Count.ToString() : "Нет") },
-            new() { Label = "Состояние", Value = (_selectedNode.Expanded ? "Развернут" : "Свернут") }
+            new() { Label = "Name", Value = $"{_selectedNode.Icon} {_selectedNode.Text}" },
+            new() { Label = "Key", Value = _selectedNode.Key },
+            new() { Label = "Path", Value = path },
+            new() { Label = "Children", Value = (_selectedNode.Children?.Any() == true ? _selectedNode.Children.Count.ToString() : "None") },
+            new() { Label = "Expanded", Value = _selectedNode.Expanded ? "Yes" : "No" },
+            new() { Label = "Checked", Value = _selectedNode.Checked ? "Yes" : "No" },
         };
+    }
+
+    private string GetNodePath(TreeNode node)
+    {
+        var parts = new List<string>();
+        BuildPath(node, _fileNodes, parts);
+        parts.Reverse();
+        return string.Join(" / ", parts);
+    }
+
+    private bool BuildPath(TreeNode target, List<TreeNode> nodes, List<string> parts)
+    {
+        foreach (var n in nodes)
+        {
+            if (ReferenceEquals(n, target))
+            {
+                parts.Add(n.Text);
+                return true;
+            }
+            if (n.Children.Count > 0 && BuildPath(target, n.Children, parts))
+            {
+                parts.Add(n.Text);
+                return true;
+            }
+        }
+        return false;
     }
 
     private void OnNodeSelected(TreeNode node)
@@ -138,5 +261,35 @@
         _selectedNode = node;
         UpdateNodeItems();
     }
-}
 
+    // ── Property tables ───────────────────────────────────────────────────
+    private List<PropertyPanelItem> _treeViewProperties = new()
+    {
+        new() { Label = "Nodes",              Value = "IEnumerable<TreeNode>",          BadgeText = "Root nodes",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "SelectedNode",       Value = "TreeNode?",                       BadgeText = "Selected",    BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "MultiSelect",        Value = "bool",                            BadgeText = "Multi",       BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "SearchText",         Value = "string?",                          BadgeText = "Filter",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Virtualize",         Value = "bool",                            BadgeText = "Virtual",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "AllowDragDrop",      Value = "bool",                            BadgeText = "Drag & Drop", BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowCheckboxes",     Value = "bool",                            BadgeText = "Checkboxes",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ExpandOnClick",      Value = "bool",                            BadgeText = "Click expand",BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowNodeCount",      Value = "bool",                            BadgeText = "Node count",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Height",             Value = "string (default 320px)",          BadgeText = "Viewport",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ItemHeight",         Value = "float (default 28)",              BadgeText = "Row height",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CanDrop",            Value = "Func<TreeNodeDropInfo, bool>?",    BadgeText = "Drop rule",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "NodeDropped",        Value = "EventCallback<TreeNodeDropInfo>", BadgeText = "Drop event",  BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "CssClass",           Value = "string?",                          BadgeText = "Custom CSS",  BadgeVariant = SgBadgeVariant.Info    },
+    };
+
+    private List<PropertyPanelItem> _nodeModelProperties = new()
+    {
+        new() { Label = "Key",      Value = "string",       BadgeText = "Unique ID", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Text",     Value = "string",       BadgeText = "Label",     BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Icon",     Value = "string?",       BadgeText = "Emoji/SVG",BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Tag",      Value = "object?",       BadgeText = "Data",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Children", Value = "List<TreeNode>", BadgeText = "Nested",   BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Expanded", Value = "bool",          BadgeText = "Open",      BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Checked",  Value = "bool",          BadgeText = "Checked",   BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Loading",  Value = "bool",          BadgeText = "Loading",   BadgeVariant = SgBadgeVariant.Warn    },
+    };
+}

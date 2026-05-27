@@ -9,4 +9,6 @@ public sealed class TreeNode
     public List<TreeNode> Children { get; set; } = new();
     public bool Expanded { get; set; }
     public bool Loading { get; set; }
+    public bool Checked { get; set; }
+    public string? CssClass { get; set; }
 }
