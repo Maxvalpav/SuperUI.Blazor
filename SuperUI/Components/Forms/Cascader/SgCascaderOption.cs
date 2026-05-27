@@ -33,4 +33,16 @@ public sealed class SgCascaderOption
     /// When true, no expand arrow is shown even if <see cref="Children"/> is non-empty.
     /// </summary>
     public bool IsLeaf { get; set; }
+
+    /// <summary>
+    /// When true, this option acts as a non-selectable group header.
+    /// Useful for visually grouping options within a column.
+    /// </summary>
+    public bool IsGroup { get; set; }
+
+    /// <summary>
+    /// Optional data payload attached to this option.
+    /// Can hold any application-specific data.
+    /// </summary>
+    public object? Data { get; set; }
 }
