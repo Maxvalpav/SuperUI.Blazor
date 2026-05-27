@@ -1,0 +1,161 @@
+@namespace SuperUI.Components
+
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass @SizeClass"
+     style="@(Color is not null ? $"--sgc-slider-color:{Color}" : null)">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <div class="sgc-slider-header">
+            <label class="sgc-label">@Label</label>
+            @if (ShowValue)
+            {
+                <span class="sgc-slider-value-badge">@FormatDisplay(LowerValue) — @FormatDisplay(UpperValue)</span>
+            }
+        </div>
+    }
+    <div class="sgc-range-slider-wrap @(ShowTooltip ? "sgc-slider-has-tooltip" : "") @(AlwaysShowTooltip && ShowTooltip ? "sgc-slider-tooltip-always" : "")">
+        <div class="sgc-range-slider-track">
+            <div class="sgc-range-slider-fill" style="left: @LowerPct%;width: @RangePct%;"></div>
+        </div>
+        <input type="range"
+               class="sgc-range-slider-input sgc-range-lower"
+               min="@Min"
+               max="@Max"
+               step="@Step"
+               value="@LowerValue"
+               disabled="@Disabled"
+               @oninput="OnLowerInputAsync" />
+        <input type="range"
+               class="sgc-range-slider-input sgc-range-upper"
+               min="@Min"
+               max="@Max"
+               step="@Step"
+               value="@UpperValue"
+               disabled="@Disabled"
+               @oninput="OnUpperInputAsync" />
+        @if (ShowTooltip)
+        {
+            <span class="sgc-slider-tooltip sgc-range-tooltip-lower" style="left: @LowerPct%">@FormatDisplay(LowerValue)</span>
+            <span class="sgc-slider-tooltip sgc-range-tooltip-upper" style="left: @UpperPct%">@FormatDisplay(UpperValue)</span>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="sgc-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    private static readonly System.Globalization.CultureInfo CultureInfo = System.Globalization.CultureInfo.InvariantCulture;
+
+    /// <summary>Gets or sets the minimum value. Default is 0.</summary>
+    [Parameter] public double Min { get; set; }
+
+    /// <summary>Gets or sets the maximum value. Default is 100.</summary>
+    [Parameter] public double Max { get; set; } = 100;
+
+    /// <summary>Gets or sets the step increment. Default is 1.</summary>
+    [Parameter] public double Step { get; set; } = 1;
+
+    /// <summary>Gets or sets the lower (minimum) selected value.</summary>
+    [Parameter] public double LowerValue { get; set; }
+
+    /// <summary>Callback invoked when LowerValue changes.</summary>
+    [Parameter] public EventCallback<double> LowerValueChanged { get; set; }
+
+    /// <summary>Gets or sets the upper (maximum) selected value.</summary>
+    [Parameter] public double UpperValue { get; set; } = 100;
+
+    /// <summary>Callback invoked when UpperValue changes.</summary>
+    [Parameter] public EventCallback<double> UpperValueChanged { get; set; }
+
+    /// <summary>Gets or sets the label text.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Gets or sets the hint text.</summary>
+    [Parameter] public string? Hint { get; set; }
+
+    /// <summary>Whether to show the current value range badge.</summary>
+    [Parameter] public bool ShowValue { get; set; } = true;
+
+    /// <summary>Whether to show floating tooltips above each thumb.</summary>
+    [Parameter] public bool ShowTooltip { get; set; }
+
+    /// <summary>When true, tooltips are always visible.</summary>
+    [Parameter] public bool AlwaysShowTooltip { get; set; }
+
+    /// <summary>Custom CSS color for the range fill and thumbs.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Size of the range slider. Default is Md.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Whether the slider is disabled.</summary>
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Whether to take full width. Default is true.</summary>
+    [Parameter] public bool Block { get; set; } = true;
+
+    /// <summary>Additional CSS classes.</summary>
+    [Parameter] public string? CssClass { get; set; }
+
+    /// <summary>Optional function to format displayed values.</summary>
+    [Parameter] public Func<double, string>? FormatValue { get; set; }
+
+    private string LowerPct
+    {
+        get
+        {
+            var range = Max - Min;
+            if (range <= 0) return "0";
+            return Math.Clamp((LowerValue - Min) / range * 100, 0, 100).ToString("F1", CultureInfo);
+        }
+    }
+
+    private string UpperPct
+    {
+        get
+        {
+            var range = Max - Min;
+            if (range <= 0) return "0";
+            return Math.Clamp((UpperValue - Min) / range * 100, 0, 100).ToString("F1", CultureInfo);
+        }
+    }
+
+    private string RangePct
+    {
+        get
+        {
+            var range = Max - Min;
+            if (range <= 0) return "0";
+            var pct = (UpperValue - LowerValue) / range * 100;
+            return Math.Max(0, pct).ToString("F1", CultureInfo);
+        }
+    }
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-slider-sm",
+        SgSize.Lg => "sgc-slider-lg",
+        _ => null
+    };
+
+    private string FormatDisplay(double v) => FormatValue is not null ? FormatValue(v) : v.ToString(CultureInfo);
+
+    private async Task OnLowerInputAsync(ChangeEventArgs e)
+    {
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, CultureInfo, out var v)) return;
+        v = Math.Clamp(v, Min, UpperValue);
+        LowerValue = v;
+        if (LowerValueChanged.HasDelegate)
+            await LowerValueChanged.InvokeAsync(v);
+    }
+
+    private async Task OnUpperInputAsync(ChangeEventArgs e)
+    {
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, CultureInfo, out var v)) return;
+        v = Math.Clamp(v, LowerValue, Max);
+        UpperValue = v;
+        if (UpperValueChanged.HasDelegate)
+            await UpperValueChanged.InvokeAsync(v);
+    }
+}

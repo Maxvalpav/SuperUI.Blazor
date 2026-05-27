@@ -1,49 +1,77 @@
 @namespace SuperUI.Components
 @inherits SgComponentBase
 
-<div class="@Css("sgc-rating").AddClass("sgc-rating-disabled", Disabled).AddClass("sgc-rating-readonly", ReadOnly).Build()"
+<div class="@Css("sgc-rating")
+    .AddClass("sgc-rating-disabled", Disabled)
+    .AddClass("sgc-rating-readonly", ReadOnly)
+    .AddClass("sgc-rating-animated", Animation)
+    .AddClass(SizeClass)
+    .AddClass("sgc-rating-character", !string.IsNullOrEmpty(Character))
+    .Build()"
      role="slider"
      aria-valuemin="0"
      aria-valuemax="@Max"
      aria-valuenow="@Value"
      style="@(Color is not null ? $"--sgc-rating-color:{Color}" : null)"
      @attributes="AttributesWithoutClassAndStyle">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="sgc-rating-label">@Label</span>
+    }
     @{
         var displayValue = _hoverValue > 0 ? _hoverValue : Value;
-        var fullStars = (int)Math.Floor(displayValue);
-        var hasHalf = HalfStar && displayValue - fullStars >= 0.5;
+        var precision = CalcPrecision;
+        var full = (int)Math.Floor(displayValue / precision) * precision;
+        var hasHalf = HalfStar && displayValue - full >= precision;
     }
     @for (int i = 1; i <= Max; i++)
     {
-        var starValue = i;
-        var isFull = starValue <= fullStars;
-        var isHalfStar = HalfStar && starValue == fullStars + 1 && hasHalf;
-        var cls = isFull || isHalfStar ? "sgc-rating-star sgc-active" : "sgc-rating-star";
+        var starValue = (double)i;
+        var isActive = starValue <= full || (HalfStar && starValue == full + 1 && hasHalf);
+        var isHalfStar = HalfStar && starValue == full + 1 && hasHalf;
+        var cls = isActive ? "sgc-rating-star sgc-active" : "sgc-rating-star";
         if (isHalfStar) cls += " sgc-rating-half";
+
         <span class="@cls"
-              @onclick="() => SetValue(HalfStar && starValue == fullStars + 1 && hasHalf ? starValue - 0.5 : (double)starValue)"
+              @onclick="() => SetValue(starValue)"
               @onmouseenter="() => Hover(starValue)"
               @onmouseleave="() => Hover(0)"
-              aria-label="@(starValue + " stars")">
-            @if (isHalfStar)
+              aria-label="@(starValue + " stars")"
+              title="@(Tooltip is not null ? Tooltip(starValue) : null)">
+            @if (!string.IsNullOrEmpty(Character))
+            {
+                @if (isActive)
+                {
+                    <span class="sgc-rating-char sgc-active-char">@Character</span>
+                }
+                else
+                {
+                    <span class="sgc-rating-char">@Character</span>
+                }
+            }
+            else if (isHalfStar)
             {
                 <span class="sgc-rating-half-bg">
-                    <SgIcon Icon="@SgIcons.Star" />
+                    <SgIcon Icon="@Icon" />
                 </span>
                 <span class="sgc-rating-half-fill">
-                    <SgIcon Icon="@SgIcons.StarFill" />
+                    <SgIcon Icon="@FillIcon" />
                 </span>
             }
             else
             {
-                <SgIcon Icon="@(isFull ? SgIcons.StarFill : SgIcons.Star)" />
+                <SgIcon Icon="@(isActive ? FillIcon : Icon)" />
             }
         </span>
+    }
+    @if (ShowValue && !string.IsNullOrEmpty(Label))
+    {
+        <span class="sgc-rating-value">@Value.ToString("0.#") / @Max</span>
     }
 </div>
 
 @code {
-    /// <summary>Gets or sets the current rating value. Supports integer values; half-star increments when <see cref="HalfStar"/> is enabled.</summary>
+    /// <summary>Gets or sets the current rating value.</summary>
     [Parameter] public double Value { get; set; }
 
     /// <summary>Callback invoked when the rating value changes.</summary>
@@ -58,13 +86,57 @@
     /// <summary>Gets or sets whether the rating is read-only.</summary>
     [Parameter] public bool ReadOnly { get; set; }
 
-    /// <summary>Enables 0.5-star increments. The <see cref="Value"/> property accepts double when this is enabled.</summary>
+    /// <summary>Enables 0.5-star increments when true. For other precisions use <see cref="Precision"/>.
+    /// When both HalfStar and Precision are set, the larger precision wins.</summary>
     [Parameter] public bool HalfStar { get; set; }
 
-    /// <summary>Custom color for active (filled) stars. Accepts any CSS color value.</summary>
+    /// <summary>Precision of rating value: 1 (whole stars), 0.5 (half stars), 0.1 (fine-grained).
+    /// Default is 1. When set, takes precedence over HalfStar if larger.</summary>
+    [Parameter] public double Precision { get; set; } = 1;
+
+    /// <summary>When true, clicking the same star again resets the value to 0.</summary>
+    [Parameter] public bool Clearable { get; set; }
+
+    /// <summary>Custom SVG icon for empty/inactive stars. Default is Star outline.</summary>
+    [Parameter] public string Icon { get; set; } = SgIcons.Star;
+
+    /// <summary>Custom SVG icon for filled/active stars. Default is StarFill.</summary>
+    [Parameter] public string FillIcon { get; set; } = SgIcons.StarFill;
+
+    /// <summary>A single character or emoji to use instead of SVG icons (e.g., "❤", "👍", "★").
+    /// When set, <see cref="Icon"/> and <see cref="FillIcon"/> are ignored.</summary>
+    [Parameter] public string? Character { get; set; }
+
+    /// <summary>Optional function returning a tooltip string for each star value.
+    /// Receives the star index (1-based) and returns the tooltip text.
+    /// Example: <c>(v) => v switch { 1 => "Poor", 5 => "Excellent", _ => "" }</c></summary>
+    [Parameter] public Func<double, string>? Tooltip { get; set; }
+
+    /// <summary>Custom color for active (filled) icons. Accepts any CSS color value.</summary>
     [Parameter] public string? Color { get; set; }
 
+    /// <summary>Label text displayed next to the rating stars.</summary>
+    [Parameter] public string? Label { get; set; }
+
+    /// <summary>Shows the numeric value as text next to the stars (e.g., "3.5 / 5"). Requires Label to be set for positioning.</summary>
+    [Parameter] public bool ShowValue { get; set; }
+
+    /// <summary>Enables a subtle scale animation on star click and hover. Default is true.</summary>
+    [Parameter] public bool Animation { get; set; } = true;
+
+    /// <summary>Size of the rating stars. Default is Md.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
     private double _hoverValue;
+
+    private double CalcPrecision => Math.Max(HalfStar ? 0.5 : 0, Precision);
+
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-rating-sm",
+        SgSize.Lg => "sgc-rating-lg",
+        _ => null
+    };
 
     private void Hover(double value)
     {
@@ -72,19 +144,30 @@
         _hoverValue = value;
     }
 
-    private async Task SetValue(double value)
+    private async Task SetValue(double starValue)
     {
         if (Disabled || ReadOnly) return;
-        if (HalfStar)
+
+        var precision = CalcPrecision;
+        double newValue;
+        if (precision >= 1)
         {
-            value = Math.Round(value * 2, MidpointRounding.AwayFromZero) / 2;
-            value = Math.Clamp(value, 0, Max);
+            newValue = starValue;
         }
         else
         {
-            value = Math.Clamp(Math.Round(value), 0, Max);
+            newValue = starValue - (1 - precision);
+            if (newValue < 0) newValue = precision;
         }
-        Value = value;
+        newValue = Math.Round(newValue / precision, MidpointRounding.AwayFromZero) * precision;
+        newValue = Math.Clamp(newValue, 0, Max);
+
+        if (Clearable && Math.Abs(newValue - Value) < precision * 0.5)
+        {
+            newValue = 0;
+        }
+
+        Value = newValue;
         if (ValueChanged.HasDelegate)
             await ValueChanged.InvokeAsync(Value);
     }

@@ -1,19 +1,22 @@
 @namespace SuperUI.Components
 @typeparam TValue
 @inherits SgInputBase<TValue>
+@implements IDisposable
 
-<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass">
+<div class="sgc-field @(Block ? "sgc-block" : "") @CssClass @SizeClass"
+     style="@(Color is not null ? $"--sgc-slider-color:{Color}" : null)">
     @if (!string.IsNullOrEmpty(Label))
     {
         <div class="sgc-slider-header">
             <label id="@_labelId" class="sgc-label @(Required ? "sgc-required" : "")">@Label</label>
             @if (ShowValue)
             {
-                <span class="sgc-slider-value-badge">@ValueAsDouble@Suffix</span>
+                var displayValue = FormatValue is not null ? FormatValue(ValueAsDouble) : $"{ValueAsDouble}{Suffix}";
+                <span class="sgc-slider-value-badge">@displayValue</span>
             }
         </div>
     }
-    <div class="sgc-slider-wrap @(ShowTooltip ? "sgc-slider-has-tooltip" : "")">
+    <div class="sgc-slider-track-wrap @(ShowTooltip ? "sgc-slider-has-tooltip" : "") @(AlwaysShowTooltip && ShowTooltip ? "sgc-slider-tooltip-always" : "") @(Vertical ? "sgc-slider-vertical" : "")">
         <input id="@_sliderId"
                type="range"
                class="sgc-slider @(IsInvalid ? "sgc-invalid" : "") @(Marks is { Count: > 0 } ? "sgc-slider-has-marks" : "")"
@@ -28,7 +31,7 @@
                aria-valuemin="@Min"
                aria-valuemax="@Max"
                aria-valuenow="@ValueAsDouble"
-               aria-orientation="horizontal"
+               aria-orientation="@(Vertical ? "vertical" : "horizontal")"
                aria-required="@(Required ? "true" : null)"
                aria-invalid="@(IsInvalid ? "true" : null)"
                aria-describedby="@DescribedBy"
@@ -37,11 +40,27 @@
                @attributes="AdditionalAttributes" />
         @if (ShowTooltip)
         {
-            <span class="sgc-slider-tooltip" style="left: @FillPercent%">@ValueAsDouble@Suffix</span>
+            var tooltipValue = TooltipFormat is not null ? TooltipFormat(ValueAsDouble) : (FormatValue is not null ? FormatValue(ValueAsDouble) : $"{ValueAsDouble}{Suffix}");
+            <span class="sgc-slider-tooltip" style="left: @FillPercent%">@tooltipValue</span>
         }
-        @if (ShowValue && string.IsNullOrEmpty(Label))
+        @if (ShowValue && string.IsNullOrEmpty(Label) && !ShowTooltip)
         {
-            <span class="sgc-slider-value">@ValueAsDouble@Suffix</span>
+            var displayValue = FormatValue is not null ? FormatValue(ValueAsDouble) : $"{Prefix}{ValueAsDouble}{Suffix}";
+            <span class="sgc-slider-value">@displayValue</span>
+        }
+        @if (ShowInput)
+        {
+            <input type="number"
+                   class="sgc-slider-input"
+                   value="@ValueAsDouble"
+                   min="@Min"
+                   max="@Max"
+                   step="@Step"
+                   disabled="@Disabled"
+                   @onchange="OnInputNumberAsync"
+                   @onfocus="() => _suppressUpdate = true"
+                   @onblur="() => _suppressUpdate = false"
+                   aria-label="@(Label ?? "Slider value")" />
         }
         @if (Marks is { Count: > 0 })
         {
@@ -49,7 +68,20 @@
                 @foreach (var mark in Marks)
                 {
                     var pct = Max > Min ? (mark - Min) / (Max - Min) * 100.0 : 0;
-                    <span class="sgc-slider-mark" style="left: @pct%"></span>
+                    var labelText = MarksLabels is not null && MarksLabels.TryGetValue(mark, out var lbl) ? lbl : (ShowMarksLabels ? mark.ToString(CultureInfo.InvariantCulture) : null);
+                    <span class="sgc-slider-mark @(MarksClickable ? "sgc-slider-mark-clickable" : "")"
+                          style="left: @pct%"
+                          title="@mark.ToString(CultureInfo.InvariantCulture)"
+                          @onclick="MarksClickable ? (() => ClickMark(mark)) : null"
+                          @onkeydown="MarksClickable ? (() => ClickMark(mark)) : null"
+                          tabindex="@(MarksClickable ? "0" : null)"
+                          role="@(MarksClickable ? "button" : null)"
+                          aria-label="@(MarksClickable ? $"Set value to {mark}" : null)">
+                        @if (labelText is not null)
+                        {
+                            <span class="sgc-slider-mark-label">@labelText</span>
+                        }
+                    </span>
                 }
             </div>
         }
@@ -70,6 +102,11 @@
     private readonly string _hintId = "sg-slider-hint-" + Guid.NewGuid().ToString("N")[..8];
     private readonly string _errorId = "sg-slider-err-" + Guid.NewGuid().ToString("N")[..8];
 
+    private static readonly System.Globalization.CultureInfo CultureInfo = System.Globalization.CultureInfo.InvariantCulture;
+
+    private CancellationTokenSource? _debounceCts;
+    private bool _suppressUpdate;
+
     /// <summary>Gets or sets the minimum value of the slider. Default is 0.</summary>
     [Parameter] public double Min { get; set; }
 
@@ -82,7 +119,10 @@
     /// <summary>Gets or sets the label text displayed above the slider.</summary>
     [Parameter] public string? Label { get; set; }
 
-    /// <summary>Gets or sets the suffix text displayed after the value (e.g., "%", "px").</summary>
+    /// <summary>Text displayed before the value (e.g., "$").</summary>
+    [Parameter] public string? Prefix { get; set; }
+
+    /// <summary>Text displayed after the value (e.g., "%", "px").</summary>
     [Parameter] public string? Suffix { get; set; }
 
     /// <summary>Gets or sets the hint text displayed below the slider.</summary>
@@ -97,8 +137,44 @@
     /// <summary>Whether to show a floating tooltip above the slider thumb displaying the current value.</summary>
     [Parameter] public bool ShowTooltip { get; set; }
 
+    /// <summary>When true, the tooltip is always visible instead of appearing only on hover.</summary>
+    [Parameter] public bool AlwaysShowTooltip { get; set; }
+
+    /// <summary>When true renders a number input field next to the slider for precise value entry.</summary>
+    [Parameter] public bool ShowInput { get; set; }
+
     /// <summary>List of tick-mark values to render along the slider track. Each value must be within [Min, Max].</summary>
     [Parameter] public List<double>? Marks { get; set; }
+
+    /// <summary>When true, clicking a mark tick sets the slider value to that mark.</summary>
+    [Parameter] public bool MarksClickable { get; set; }
+
+    /// <summary>When true, renders text labels under each mark tick using the numeric value.</summary>
+    [Parameter] public bool ShowMarksLabels { get; set; }
+
+    /// <summary>Custom labels for marks keyed by mark value. Overrides ShowMarksLabels for specific marks.</summary>
+    [Parameter] public Dictionary<double, string>? MarksLabels { get; set; }
+
+    /// <summary>Custom CSS color for the slider track fill and thumb. Accepts any CSS color value.</summary>
+    [Parameter] public string? Color { get; set; }
+
+    /// <summary>Size of the slider. Default is Md.</summary>
+    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>When true renders the slider vertically instead of horizontally.</summary>
+    [Parameter] public bool Vertical { get; set; }
+
+    /// <summary>Optional function to format the displayed value. Receives the raw double and returns a string.
+    /// When set, Prefix, Suffix and automatic formatting are ignored in favor of this function.</summary>
+    [Parameter] public Func<double, string>? FormatValue { get; set; }
+
+    /// <summary>Optional function to format the tooltip value separately from the main value display.
+    /// Falls back to FormatValue when null, then to automatic formatting.</summary>
+    [Parameter] public Func<double, string>? TooltipFormat { get; set; }
+
+    /// <summary>Debounce delay in milliseconds for updating the value during slider drag.
+    /// Helps reduce render pressure on slow operations. Default is 0 (no debounce).</summary>
+    [Parameter] public int DebounceMs { get; set; }
 
     /// <summary>Mark the slider as required.</summary>
     [Parameter] public bool Required { get; set; }
@@ -115,9 +191,16 @@
     /// <summary>Gets or sets additional HTML attributes to apply to the input element.</summary>
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
+    private string? SizeClass => Size switch
+    {
+        SgSize.Sm => "sgc-slider-sm",
+        SgSize.Lg => "sgc-slider-lg",
+        _ => null
+    };
+
     private bool IsInvalid => !string.IsNullOrEmpty(ErrorText) || HasValidationErrors;
     private string? DescribedBy => IsInvalid ? _errorId : (!string.IsNullOrEmpty(Hint) ? _hintId : null);
-    private double ValueAsDouble => Value is not null ? Convert.ToDouble(Value, System.Globalization.CultureInfo.InvariantCulture) : Min;
+    private double ValueAsDouble => Value is not null ? Convert.ToDouble(Value, CultureInfo) : Min;
 
     private string FillPercent
     {
@@ -126,14 +209,49 @@
             var range = Max - Min;
             if (range <= 0) return "0";
             var pct = (ValueAsDouble - Min) / range * 100;
-            return Math.Clamp(pct, 0, 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+            return Math.Clamp(pct, 0, 100).ToString("F1", CultureInfo);
         }
     }
 
     private async Task OnInputAsync(ChangeEventArgs e)
     {
-        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var v))
+        if (_suppressUpdate) return;
+        if (!double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, CultureInfo, out var v)) return;
+
+        if (DebounceMs > 0)
+        {
+            _debounceCts?.Cancel();
+            _debounceCts = new CancellationTokenSource();
+            var token = _debounceCts.Token;
+            try
+            {
+                await Task.Delay(DebounceMs, token);
+                if (!token.IsCancellationRequested)
+                    await SetValueAsync(ConvertValue<TValue>(v));
+            }
+            catch (TaskCanceledException) { }
+        }
+        else
+        {
             await SetValueAsync(ConvertValue<TValue>(v));
+        }
+    }
+
+    private async Task OnInputNumberAsync(ChangeEventArgs e)
+    {
+        if (double.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Any, CultureInfo, out var v))
+        {
+            v = Math.Clamp(v, Min, Max);
+            if (Step > 0)
+                v = Math.Round(v / Step) * Step;
+            await SetValueAsync(ConvertValue<TValue>(v));
+        }
+    }
+
+    private async Task ClickMark(double mark)
+    {
+        if (Disabled) return;
+        await SetValueAsync(ConvertValue<TValue>(mark));
     }
 
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
@@ -158,6 +276,12 @@
     private static T ConvertValue<T>(double value)
     {
         var targetType = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
-        return (T)Convert.ChangeType(value, targetType, System.Globalization.CultureInfo.InvariantCulture);
+        return (T)Convert.ChangeType(value, targetType, CultureInfo);
+    }
+
+    public void Dispose()
+    {
+        _debounceCts?.Cancel();
+        _debounceCts?.Dispose();
     }
 }

@@ -1,181 +1,768 @@
 @page "/slider-demo"
 @using SuperUI.Components
 @using SuperUI.Demo.Models
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Ползунки и рейтинг - SUI</PageTitle>
+<PageTitle>SgSlider & SgRating — Range & Rating — SuperUI</PageTitle>
 
-<SgCard Title="Компоненты выбора значения"
-        Subtitle="Визуальные компоненты для выбора числовых значений — ползунки и рейтинг."
-        CssClass="sgc-card-flush">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    @* ── SgSlider ─────────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgSlider                                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
         <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgSlider</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgSlider — Range Slider
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Numeric range selector with configurable min/max, step, marks, tooltips, sizes, colors, and vertical orientation. Supports <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">@@bind-Value</SgTypography> and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">OnChange</SgTypography> callback.
+            </SgTypography>
         </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Компонент для выбора значения в диапазоне с визуальным ползунком. Перетащите ползунок для изменения значения.</SgTypography>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
-                    <SgSlider TValue="double" @bind-Value="@_slider1" Label="Простой ползунок" Min="0" Max="100" ShowValue="true" />
-                    <SgSlider TValue="double" @bind-Value="@_slider2" Label="С шагом 10" Min="0" Max="100" Step="10" ShowValue="true" />
-                    <SgSlider TValue="double" @bind-Value="@_slider3" Label="С суффиксом %" Min="0" Max="100" Suffix="%" ShowValue="true" />
-                    <SgSlider TValue="double" @bind-Value="@_slider4" Label="Отключённый" Min="0" Max="100" Disabled="true" ShowValue="true" />
-                    <SgSlider TValue="double" @bind-Value="@_slider5" Label="С тултипом" Min="0" Max="100" ShowValue="true" ShowTooltip="true" />
-                    <SgSlider TValue="double" @bind-Value="@_slider6" Label="С метками" Min="0" Max="100" Step="25" ShowValue="true" Marks="@_sliderMarks" />
-                </div>
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgSlider TValue="double" @bind-Value="@_slider1" Label="Simple slider" Min="0" Max="100" />
+                            <SgSlider TValue="double" @bind-Value="@_slider2" Label="Step 10" Min="0" Max="100" Step="10" />
+                            <SgSlider TValue="double" @bind-Value="@_slider3" Label="Suffix %" Min="0" Max="100" Suffix="%" />
+                            <SgSlider TValue="double" @bind-Value="@_slider4" Label="Prefix $" Min="0" Max="100" Prefix="$" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            States
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgSlider TValue="double" @bind-Value="@_slider5" Label="Disabled" Min="0" Max="100" Disabled="true" />
+                            <SgSlider TValue="double" @bind-Value="@_slider6" Label="With tooltip" Min="0" Max="100" ShowTooltip="true" />
+                            <SgSlider TValue="double" @bind-Value="@_slider7" Label="Custom color" Min="0" Max="100" Color="var(--sg-color-success)" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Marks & Labels
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgSlider TValue="double" @bind-Value="@_slider8" Label="With marks" Min="0" Max="100" Step="25" Marks="@_marks1" />
+                            <SgSlider TValue="double" @bind-Value="@_slider9" Label="Marks + labels" Min="0" Max="100" Step="25" Marks="@_marks1" ShowMarksLabels="true" />
+                            <SgSlider TValue="double" @bind-Value="@_slider10" Label="Custom mark labels" Min="0" Max="100" Step="25" Marks="@_marks1" MarksLabels="@_markLabels" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Sizes
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgSlider TValue="double" @bind-Value="@_slider11" Label="Small (Sm)" Min="0" Max="100" Size="SgSize.Sm" />
+                            <SgSlider TValue="double" @bind-Value="@_slider12" Label="Medium (Md, default)" Min="0" Max="100" Size="SgSize.Md" />
+                            <SgSlider TValue="double" @bind-Value="@_slider13" Label="Large (Lg)" Min="0" Max="100" Size="SgSize.Lg" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Vertical
+                        </SgTypography>
+                        <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Style="min-height:180px;">
+                            <SgSlider TValue="double" @bind-Value="@_slider14" Label="Sm" Min="0" Max="100" Size="SgSize.Sm" Vertical="true" ShowTooltip="true" />
+                            <SgSlider TValue="double" @bind-Value="@_slider15" Label="Md" Min="0" Max="100" Vertical="true" ShowTooltip="true" />
+                            <SgSlider TValue="double" @bind-Value="@_slider16" Label="Lg" Min="0" Max="100" Size="SgSize.Lg" Vertical="true" ShowTooltip="true" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            FormatValue (custom formatter)
+                        </SgTypography>
+                        <SgSlider TValue="double" @bind-Value="@_slider17" Label="Temperature" Min="-20" Max="50" FormatValue="@(v => $"{v:F1}°C")" ShowTooltip="true" Color="#ef4444" />
+                        <SgSlider TValue="double" @bind-Value="@_slider18" Label="Progress" Min="0" Max="1" Step="0.01" FormatValue="@(v => $"{v:P0}")" ShowTooltip="true" Color="#8b5cf6" />
+                    </div>
+                </SgStack>
             </SgCard>
-            <SgCard Title="Свойства компонента">
+
+            <SgCard Title="SgSlider Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_sliderProperties" />
             </SgCard>
         </div>
 
-        <div class="demo-interactive-controls">
-            <div class="demo-control-group">
-                <span>Текущие значения:</span>
-            </div>
-            <div class="demo-value-display">
-                <span class="demo-value-display-label">Slider 1</span>
-                <span class="demo-value-display-value">@_slider1.ToString("F0")</span>
-            </div>
-            <div class="demo-value-display">
-                <span class="demo-value-display-label">Slider 2</span>
-                <span class="demo-value-display-value">@_slider2.ToString("F0")</span>
-            </div>
-            <div class="demo-value-display">
-                <span class="demo-value-display-label">Slider 3</span>
-                <span class="demo-value-display-value">@_slider3.ToString("F0")%</span>
-            </div>
-            <div class="demo-value-display">
-                <span class="demo-value-display-label">Tooltip</span>
-                <span class="demo-value-display-value">@_slider5.ToString("F0")</span>
-            </div>
-            <div class="demo-value-display">
-                <span class="demo-value-display-label">Marks</span>
-                <span class="demo-value-display-value">@_slider6.ToString("F0")</span>
-            </div>
-        </div>
-
-        <div style="margin-top:16px;">
-            <pre class="demo-code-block"><span class="demo-code-comment">&lt;!-- SgSlider with live value display --&gt;</span>
-<span class="demo-code-keyword">&lt;SgSlider</span> <span class="demo-code-attr">TValue</span>=<span class="demo-code-string">"double"</span>
-          <span class="demo-code-attr">@@bind-Value</span>=<span class="demo-code-string">"@@_myValue"</span>
-          <span class="demo-code-attr">Min</span>=<span class="demo-code-string">"0"</span> <span class="demo-code-attr">Max</span>=<span class="demo-code-string">"100"</span>
-          <span class="demo-code-attr">Step</span>=<span class="demo-code-string">"5"</span>
-          <span class="demo-code-attr">Suffix</span>=<span class="demo-code-string">"%"</span>
-          <span class="demo-code-attr">ShowValue</span>=<span class="demo-code-string">"true"</span> <span class="demo-code-keyword">/&gt;</span>
-<span class="demo-code-comment">&lt;!-- With tooltip and marks --&gt;</span>
-<span class="demo-code-keyword">&lt;SgSlider</span> <span class="demo-code-attr">TValue</span>=<span class="demo-code-string">"double"</span> <span class="demo-code-attr">@@bind-Value</span>=<span class="demo-code-string">"@@_v"</span>
-          <span class="demo-code-attr">ShowTooltip</span>=<span class="demo-code-string">"true"</span>
-          <span class="demo-code-attr">ShowValue</span>=<span class="demo-code-string">"true"</span> <span class="demo-code-keyword">/&gt;</span>
-<span class="demo-code-keyword">&lt;SgSlider</span> <span class="demo-code-attr">TValue</span>=<span class="demo-code-string">"double"</span> <span class="demo-code-attr">@@bind-Value</span>=<span class="demo-code-string">"@@_v"</span>
-          <span class="demo-code-attr">Step</span>=<span class="demo-code-string">"25"</span> <span class="demo-code-attr">Marks</span>=<span class="demo-code-string">"@@(new List&lt;double&gt; { 0, 25, 50, 75, 100 })"</span> <span class="demo-code-keyword">/&gt;</span></pre>
+        <!-- Live value displays -->
+        <div style="margin-top:16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="margin-right:4px;">Live Values:</SgTypography>
+            @foreach (var val in _liveValues)
+            {
+                <span class="demo-live-chip">@val.Label: <strong>@val.Value</strong></span>
+            }
         </div>
     </div>
 
-    @* ── SgRating ─────────────────────────────────────────────────── *@
-    <div class="sgc-demo-section">
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. SgRating                                                        -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
         <div class="demo-section-header">
-            <SgTypography Variant="SgTypographyVariant.Heading2">SgRating</SgTypography>
-            <span class="demo-live-badge">Интерактивный</span>
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgRating — Star Rating
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Star-based rating widget with half-star precision, custom colors, sizes, labels, character/emoji mode, custom icons, clearable, tooltips, and read-only display. Supports <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">@@bind-Value</SgTypography>.
+            </SgTypography>
         </div>
-        <SgTypography Variant="SgTypographyVariant.Body" Color="var(--sg-text-muted)" CssClass="demo-section-desc">Компонент для выбора числового значения в виде звезд. Динамическая оценка.</SgTypography>
 
-        <div class="demo-grid-adaptive">
-            <SgCard Title="Примеры использования" CssClass="demo-interactive-card">
-                <div class="demo-flex-col">
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div class="demo-label">Базовый — нажмите звезду</div>
-                        <div class="demo-flex-row">
-                            <SgRating @bind-Value="@_rating1" />
-                            <div class="demo-value-display">
-                                <span class="demo-value-display-label">Value:</span>
-                                <span class="demo-value-display-value">@_rating1.ToString("0.#") / 5</span>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating @bind-Value="@_rating1" />
+                                <SgBadge Variant="SgBadgeVariant.Warn" Text="@($"Value: {_rating1:F1}")" Standalone="true" />
                             </div>
-                        </div>
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating @bind-Value="@_rating2" Label="Rating" ShowValue="true" />
+                            </div>
+                        </SgStack>
                     </div>
-                    <SgDivider />
                     <div>
-                        <div class="demo-label">10 звезд, только чтение</div>
-                        <div style="margin-top:8px;">
-                            <SgRating Value="7" Max="10" ReadOnly="true" />
-                        </div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            States
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRating Value="7" Max="10" ReadOnly="true" Label="10 stars (read-only)" ShowValue="true" />
+                            <SgRating Value="3" Max="5" Disabled="true" Label="Disabled" ShowValue="true" />
+                        </SgStack>
                     </div>
-                    <SgDivider />
                     <div>
-                        <div class="demo-label">Half-star &amp; Color</div>
-                        <div class="demo-flex-row" style="margin-top:8px;">
-                            <SgRating Value="3.5" Max="5" HalfStar="true" />
-                            <SgRating Value="4" Max="5" Color="var(--sg-color-success)" />
-                            <SgRating Value="2.5" Max="5" HalfStar="true" Color="#e91e63" />
-                        </div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Half-star & Colors
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRating Value="3.5" Max="5" HalfStar="true" Label="Half-star" ShowValue="true" />
+                            <SgRating Value="4" Max="5" Color="var(--sg-color-success)" Label="Success" ShowValue="true" />
+                            <SgRating Value="2.5" Max="5" HalfStar="true" Color="#e91e63" Label="Custom" ShowValue="true" />
+                        </SgStack>
                     </div>
-                </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Sizes
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgRating Value="3" Max="5" Size="SgSize.Sm" Label="Small" ShowValue="true" />
+                            <SgRating Value="3" Max="5" Size="SgSize.Md" Label="Medium (default)" ShowValue="true" />
+                            <SgRating Value="3" Max="5" Size="SgSize.Lg" Label="Large" ShowValue="true" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            No animation
+                        </SgTypography>
+                        <SgRating Value="3" Max="5" Animation="false" Label="Animation disabled" ShowValue="true" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Advanced
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating @bind-Value="@_ratingClear" Clearable="true" Label="Clearable (click again)" ShowValue="true" />
+                            </div>
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating Value="4" Max="5" Icon="@SgIcons.Heart" FillIcon="@SgIcons.HeartFill" Color="#ef4444" Label="Heart icons" ShowValue="true" />
+                            </div>
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating @bind-Value="@_ratingChar" Character="❤" Label="Character mode" ShowValue="true" Color="#ef4444" />
+                            </div>
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating Value="3" Max="5" Character="👍" Label="Thumbs up" ShowValue="true" Color="#22c55e" />
+                            </div>
+                            <div class="demo-flex-row" style="align-items:center;gap:12px;">
+                                <SgRating Value="3" Max="5" Tooltip="@(v => v switch { 1 => "Poor", 2 => "Fair", 3 => "Good", 4 => "Very Good", 5 => "Excellent", _ => "" })" Label="Tooltip (hover stars)" ShowValue="true" />
+                            </div>
+                        </SgStack>
+                    </div>
+                </SgStack>
             </SgCard>
-            <SgCard Title="Свойства компонента">
+
+            <SgCard Title="SgRating Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_ratingProperties" />
             </SgCard>
         </div>
+    </div>
 
-        <div style="margin-top:16px;">
-            <pre class="demo-code-block"><span class="demo-code-comment">&lt;!-- SgRating with live binding --&gt;</span>
-<span class="demo-code-keyword">&lt;SgRating</span> <span class="demo-code-attr">@@bind-Value</span>=<span class="demo-code-string">"@@_myRating"</span> <span class="demo-code-keyword">/&gt;</span>
-<span class="demo-code-keyword">&lt;SgRating</span> <span class="demo-code-attr">Value</span>=<span class="demo-code-string">"7"</span> <span class="demo-code-attr">Max</span>=<span class="demo-code-string">"10"</span> <span class="demo-code-attr">ReadOnly</span>=<span class="demo-code-string">"true"</span> <span class="demo-code-keyword">/&gt;</span>
-<span class="demo-code-comment">&lt;!-- Half-star and color variants --&gt;</span>
-<span class="demo-code-keyword">&lt;SgRating</span> <span class="demo-code-attr">Value</span>=<span class="demo-code-string">"3.5"</span> <span class="demo-code-attr">Max</span>=<span class="demo-code-string">"5"</span> <span class="demo-code-attr">HalfStar</span>=<span class="demo-code-string">"true"</span> <span class="demo-code-keyword">/&gt;</span>
-<span class="demo-code-keyword">&lt;SgRating</span> <span class="demo-code-attr">Value</span>=<span class="demo-code-string">"4"</span> <span class="demo-code-attr">Max</span>=<span class="demo-code-string">"5"</span> <span class="demo-code-attr">Color</span>=<span class="demo-code-string">"var(--sg-color-success)"</span> <span class="demo-code-keyword">/&gt;</span></pre>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. SgRangeSlider                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgRangeSlider — Dual-Thumb Range
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Two-thumb range slider for selecting a min-max interval. Supports labels, tooltips, sizes, colors, and disabled state with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">LowerValue</SgTypography>/<SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">UpperValue</SgTypography> binding.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Basic
+                        </SgTypography>
+                        <SgRangeSlider @bind-LowerValue="@_rangeLow1" @bind-UpperValue="@_rangeHigh1" Label="Price range" Min="0" Max="1000" Step="10" ShowValue="true" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            With tooltip
+                        </SgTypography>
+                        <SgRangeSlider @bind-LowerValue="@_rangeLow2" @bind-UpperValue="@_rangeHigh2" Label="Temperature" Min="-10" Max="40" Step="1" ShowTooltip="true" Color="#ef4444" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Custom format + sizes
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Md">
+                            <SgRangeSlider @bind-LowerValue="@_rangeLow3" @bind-UpperValue="@_rangeHigh3" Label="Budget" Min="0" Max="10000" Step="500" FormatValue="@(v => $"${v:F0}")" Size="SgSize.Sm" />
+                            <SgRangeSlider @bind-LowerValue="@_rangeLow4" @bind-UpperValue="@_rangeHigh4" Label="Percentage" Min="0" Max="100" Step="5" FormatValue="@(v => $"{v:F0}%")" Size="SgSize.Lg" Color="#8b5cf6" />
+                        </SgStack>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Disabled
+                        </SgTypography>
+                        <SgRangeSlider LowerValue="25" UpperValue="75" Label="Disabled range" Min="0" Max="100" Disabled="true" ShowValue="true" />
+                    </div>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="SgRangeSlider Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="_rangeSliderProperties" />
+            </SgCard>
         </div>
     </div>
 
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 4. Live SgSlider Constructor                                       -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgSlider Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure parameters and see the result in real time. Click any preview to copy its code.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+                <!-- ── Control Panel ── -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <!-- Value -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Value: @_ctorSliderValue.ToString("F0")</SgTypography>
+                            <SgSlider TValue="double" @bind-Value="@_ctorSliderValue" Min="0" Max="100" ShowTooltip="true" />
+                        </SgStack>
+
+                        <!-- Min / Max -->
+                        <SgRow Space="SgSize.Md">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Min</SgTypography>
+                                    <SgSlider TValue="double" @bind-Value="@_ctorMin" Min="-100" Max="0" Step="10" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Max</SgTypography>
+                                    <SgSlider TValue="double" @bind-Value="@_ctorMax" Min="10" Max="200" Step="10" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Step -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Step</SgTypography>
+                            <SgSegmented TValue="double"
+                                         Value="@_ctorStep"
+                                         ValueChanged="v => { _ctorStep = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_stepSegOptions" />
+                        </SgStack>
+
+                        <!-- Size -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                            <SgSegmented TValue="SgSize"
+                                         Value="@_ctorSize"
+                                         ValueChanged="v => { _ctorSize = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_sizeSegOptions" />
+                        </SgStack>
+
+                        <!-- Toggles -->
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">ShowTooltip</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorShowTooltip"
+                                                 ValueChanged="v => { _ctorShowTooltip = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Vertical</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorVertical"
+                                                 ValueChanged="v => { _ctorVertical = v; UpdateConstructorCode(); }"
+                                                 Block="true"
+                                                 Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <!-- Suffix -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Suffix</SgTypography>
+                            <SgSegmented TValue="string"
+                                         Value="@_ctorSuffix"
+                                         ValueChanged="v => { _ctorSuffix = v; UpdateConstructorCode(); }"
+                                         Block="true"
+                                         Size="sm"
+                                         Options="_suffixSegOptions" />
+                        </SgStack>
+
+                        <!-- Summary -->
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Min</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorMin.ToString("F0")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Max</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorMax.ToString("F0")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Step</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Success" Text="@_ctorStep.ToString("F0")" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorSize.ToString()" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+                    </SgStack>
+                </SgCol>
+
+                <!-- ── Preview + Code ── -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview" id="constructor-preview" style="@(_ctorVertical ? "height:200px;display:flex;align-items:center;justify-content:center;" : "")">
+                                <SgSlider TValue="double"
+                                          Value="@_ctorSliderValue"
+                                          ValueChanged="v => { _ctorSliderValue = v; UpdateConstructorCode(); StateHasChanged(); }"
+                                          Min="@_ctorMin"
+                                          Max="@_ctorMax"
+                                          Step="@_ctorStep"
+                                          Size="@_ctorSize"
+                                          Suffix="@_ctorSuffix"
+                                          ShowTooltip="@_ctorShowTooltip"
+                                          Vertical="@_ctorVertical"
+                                          ShowValue="true" />
+                            </div>
+                        </SgStack>
+
+                        <!-- Code with Copy -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </SgCard>
+    </div>
+
+    </ChildContent>
 </SgCard>
 
 <style>
-    .sgc-card-flush > .sgc-card-body {
-        padding: 0 24px 24px;
+    /* ── Section layout (matches RowDemo) ──────────────────────────────────── */
+    .demo-section {
+        margin-top: 48px;
     }
-    @@media (max-width: 640px) {
-        .sgc-card-flush > .sgc-card-body {
-            padding: 0 12px 12px;
-        }
+    .demo-section-header {
+        margin-bottom: 20px;
     }
-    .demo-mt-2 { margin-top: 8px; }
+
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    /* ── Live chip ──────────────────────────────────────────────────────────── */
+    .demo-live-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 3px 10px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        font-size: 11px;
+        color: var(--sg-text-muted);
+        font-variant-numeric: tabular-nums;
+        transition: all 0.2s ease;
+    }
+    .demo-live-chip:hover {
+        border-color: var(--sg-color-primary-border);
+        background: var(--sg-surface);
+    }
+    .demo-live-chip strong {
+        color: var(--sg-color-primary);
+    }
+
+    /* ── Constructor ────────────────────────────────────────────────────────── */
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 24px 16px;
+        min-height: 80px;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    /* ── Copy button ────────────────────────────────────────────────────────── */
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+
+    /* ── Demo helpers ───────────────────────────────────────────────────────── */
+    .demo-flex-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
 </style>
 
 @code {
-    // Slider
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
+    {
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+                    <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+                    <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+                    <line x1="2" y1="14" x2="6" y2="14"/><line x1="10" y1="12" x2="14" y2="12"/>
+                    <line x1="18" y1="16" x2="22" y2="16"/><polygon points="12 2 15 7 9 7"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Range &amp; Rating</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    SgSlider — fully customizable range slider with marks, tooltips, sizes, colors, vertical mode, and format callbacks. SgRating — star rating with half-star precision, sizes, colors, and animation.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
+
+    // ── Slider state ────────────────────────────────────────────────────
     private double _slider1 = 50;
     private double _slider2 = 30;
     private double _slider3 = 75;
     private double _slider4 = 40;
-    private double _slider5 = 60;
-    private double _slider6 = 25;
-    private List<double> _sliderMarks = new() { 0, 25, 50, 75, 100 };
+    private double _slider5 = 40;
+    private double _slider6 = 60;
+    private double _slider7 = 70;
+    private double _slider8 = 25;
+    private double _slider9 = 50;
+    private double _slider10 = 75;
+    private double _slider11 = 30;
+    private double _slider12 = 60;
+    private double _slider13 = 80;
+    private double _slider14 = 40;
+    private double _slider15 = 60;
+    private double _slider16 = 80;
+    private double _slider17 = 22;
+    private double _slider18 = 0.65;
 
+    private readonly List<double> _marks1 = new() { 0, 25, 50, 75, 100 };
+    private readonly Dictionary<double, string> _markLabels = new()
+    {
+        [0] = "Min", [25] = "Low", [50] = "Mid", [75] = "High", [100] = "Max"
+    };
+
+    // ── Live values display ─────────────────────────────────────────────
+    private List<(string Label, string Value)> _liveValues =>
+    [
+        ("Basic", _slider1.ToString("F0")),
+        ("Step 10", _slider2.ToString("F0")),
+        ("Tooltip", _slider6.ToString("F0")),
+        ("Custom color", _slider7.ToString("F0")),
+        ("Marks", _slider8.ToString("F0")),
+    ];
+
+    // ── Rating state ────────────────────────────────────────────────────
     private double _rating1 = 4;
+    private double _rating2 = 3;
+    private double _ratingClear = 3;
+    private double _ratingChar = 4;
 
+    // ── Range slider state ─────────────────────────────────────────────
+    private double _rangeLow1 = 200;
+    private double _rangeHigh1 = 800;
+    private double _rangeLow2 = 5;
+    private double _rangeHigh2 = 25;
+    private double _rangeLow3 = 2000;
+    private double _rangeHigh3 = 6000;
+    private double _rangeLow4 = 20;
+    private double _rangeHigh4 = 70;
+
+    // ── Constructor state ───────────────────────────────────────────────
+    private double _ctorSliderValue = 50;
+    private double _ctorMin = 0;
+    private double _ctorMax = 100;
+    private double _ctorStep = 1;
+    private SgSize _ctorSize = SgSize.Md;
+    private bool _ctorShowTooltip;
+    private bool _ctorVertical;
+    private string _ctorSuffix = "";
+
+    // ── Code generation ─────────────────────────────────────────────────
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "📋";
+    private string _copyLabel = "Copy";
+
+    private readonly List<SgSegmentedOption<double>> _stepSegOptions = new()
+    {
+        new() { Value = 1, Label = "1" },
+        new() { Value = 5, Label = "5" },
+        new() { Value = 10, Label = "10" },
+        new() { Value = 25, Label = "25" },
+    };
+
+    private readonly List<SgSegmentedOption<SgSize>> _sizeSegOptions = new()
+    {
+        new() { Value = SgSize.Sm, Label = "Sm" },
+        new() { Value = SgSize.Md, Label = "Md" },
+        new() { Value = SgSize.Lg, Label = "Lg" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true,  Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<string>> _suffixSegOptions = new()
+    {
+        new() { Value = "", Label = "None" },
+        new() { Value = "%", Label = "%" },
+        new() { Value = "px", Label = "px" },
+    };
+
+    // ── Lifecycle ───────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgSlider TValue=\"double\"");
+        lines.Add($"           Value=\"@_myValue\"");
+        lines.Add($"           Min=\"{_ctorMin:F0}\" Max=\"{_ctorMax:F0}\"");
+        if (_ctorStep != 1)
+            lines.Add($"           Step=\"{_ctorStep:F0}\"");
+        if (_ctorSize != SgSize.Md)
+            lines.Add($"           Size=\"SgSize.{_ctorSize}\"");
+        if (!string.IsNullOrEmpty(_ctorSuffix))
+            lines.Add($"           Suffix=\"{_ctorSuffix}\"");
+        if (_ctorShowTooltip)
+            lines.Add($"           ShowTooltip=\"true\"");
+        if (_ctorVertical)
+            lines.Add($"           Vertical=\"true\"");
+        lines.Add($"           ShowValue=\"true\" />");
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "✓";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "✗";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "📋";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Property tables ─────────────────────────────────────────────────
     private List<PropertyPanelItem> _sliderProperties = new()
     {
-        new() { Label = "Value", Value = "TValue", BadgeText = "Значение", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Min", Value = "double", BadgeText = "Минимум", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Max", Value = "double", BadgeText = "Максимум", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Step", Value = "double", BadgeText = "Шаг", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Label", Value = "string", BadgeText = "Метка", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Suffix", Value = "string", BadgeText = "Суффикс", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowValue", Value = "bool", BadgeText = "Показать значение", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "ShowTooltip", Value = "bool", BadgeText = "Тултип над бегунком", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Marks", Value = "List&lt;double&gt;?", BadgeText = "Метки на шкале", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключить", BadgeVariant = SgBadgeVariant.Warn }
+        new() { Label = "TValue",    Value = "int / double / float", BadgeText = "Type",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Value",     Value = "TValue",               BadgeText = "Selected",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Min",       Value = "double",               BadgeText = "Min",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Max",       Value = "double",               BadgeText = "Max",        BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Step",      Value = "double",               BadgeText = "Increment",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Label",     Value = "string?",              BadgeText = "Label",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Prefix",    Value = "string?",              BadgeText = "Before val", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Suffix",    Value = "string?",              BadgeText = "After val",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowValue", Value = "bool",                 BadgeText = "Show val",   BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowTooltip",Value = "bool",                BadgeText = "Tooltip",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Marks",     Value = "List&lt;double&gt;?", BadgeText = "Tick marks", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "ShowMarksLabels",Value = "bool",            BadgeText = "Mark lbls",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "MarksLabels",Value = "Dict&lt;dbl,str&gt;?",BadgeText = "Custom lbls",BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Color",     Value = "string?",              BadgeText = "Color",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Size",      Value = "SgSize",               BadgeText = "Sm/Md/Lg",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Vertical",  Value = "bool",                 BadgeText = "Vertical",   BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "FormatValue",Value = "Func&lt;dbl,str&gt;?",BadgeText = "Formatter",  BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Disabled",  Value = "bool",                 BadgeText = "Disabled",   BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Block",     Value = "bool",                 BadgeText = "Full width", BadgeVariant = SgBadgeVariant.Default },
     };
 
     private List<PropertyPanelItem> _ratingProperties = new()
     {
-        new() { Label = "Value", Value = "double", BadgeText = "Текущее значение", Description = "0" },
-        new() { Label = "Max", Value = "int", BadgeText = "Максимум", Description = "5" },
-        new() { Label = "Disabled", Value = "bool", BadgeText = "Отключено", Description = "false" },
-        new() { Label = "ReadOnly", Value = "bool", BadgeText = "Только для чтения", Description = "false" },
-        new() { Label = "HalfStar", Value = "bool", BadgeText = "Половина звезды", Description = "false" },
-        new() { Label = "Color", Value = "string?", BadgeText = "Цвет активных", Description = "—" }
+        new() { Label = "Value",     Value = "double",               BadgeText = "Current",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Max",       Value = "int",                  BadgeText = "Max",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "HalfStar",  Value = "bool",                 BadgeText = "Half star", BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Precision", Value = "double",               BadgeText = "Step",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Clearable", Value = "bool",                 BadgeText = "Reset",     BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Color",     Value = "string?",              BadgeText = "Color",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Icon",      Value = "string?",              BadgeText = "SVG icon",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FillIcon",  Value = "string?",              BadgeText = "Fill icon", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Character", Value = "string?",              BadgeText = "Emoji",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Label",     Value = "string?",              BadgeText = "Label",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowValue", Value = "bool",                 BadgeText = "Show val",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Size",      Value = "SgSize",               BadgeText = "Sm/Md/Lg",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Animation", Value = "bool",                 BadgeText = "Animate",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Tooltip",   Value = "Func&lt;dbl,str&gt;?", BadgeText = "Hover txt", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Disabled",  Value = "bool",                 BadgeText = "Disabled",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ReadOnly",  Value = "bool",                 BadgeText = "Read-only", BadgeVariant = SgBadgeVariant.Warn    },
+    };
+
+    private List<PropertyPanelItem> _rangeSliderProperties = new()
+    {
+        new() { Label = "LowerValue", Value = "double",              BadgeText = "Min sel",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "UpperValue", Value = "double",              BadgeText = "Max sel",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Min",        Value = "double",              BadgeText = "Min",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Max",        Value = "double",              BadgeText = "Max",       BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Step",       Value = "double",              BadgeText = "Step",      BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Label",      Value = "string?",             BadgeText = "Label",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ShowValue",  Value = "bool",                BadgeText = "Show val",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "ShowTooltip",Value = "bool",                BadgeText = "Tooltips",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "AlwaysShowTooltip",Value = "bool",          BadgeText = "Always",    BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Color",      Value = "string?",             BadgeText = "Color",     BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Size",       Value = "SgSize",              BadgeText = "Sm/Md/Lg",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FormatValue",Value = "Func&lt;dbl,str&gt;?",BadgeText = "Formatter", BadgeVariant = SgBadgeVariant.Info    },
+        new() { Label = "Disabled",   Value = "bool",                BadgeText = "Disabled",  BadgeVariant = SgBadgeVariant.Warn    },
+        new() { Label = "Block",      Value = "bool",                BadgeText = "Full width",BadgeVariant = SgBadgeVariant.Default },
     };
 }
