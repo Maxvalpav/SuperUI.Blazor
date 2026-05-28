@@ -53,6 +53,10 @@ else
     @* Vertical mode: expandable group *@
     var titleMatch = !string.IsNullOrEmpty(SearchQuery) && !string.IsNullOrEmpty(Title) &&
         Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase);
+    var hasSearchMatch = string.IsNullOrEmpty(SearchQuery) || titleMatch ||
+        _links.Any(l => LinkMatchesQuery(l)) ||
+        _childGroups.Any(cg => cg.HasSearchMatch);
+    var hideGroup = !string.IsNullOrEmpty(SearchQuery) && !hasSearchMatch;
     var groupClass = string.Join(" ", new[]
     {
         "sgc-nav-group",
@@ -63,7 +67,7 @@ else
         titleMatch ? "sgc-nav-group-search-match" : "",
         CssClass
     }.Where(x => !string.IsNullOrEmpty(x)));
-    <div class="@groupClass">
+    <div class="@groupClass" style="@(hideGroup ? "display:none" : null)">
         <div class="sgc-nav-group-header"
              role="button"
              tabindex="@(Disabled ? "-1" : "0")"
@@ -101,8 +105,44 @@ else
 
 @code {
     private readonly List<SgNavLink> _links = new();
+    private readonly List<SgNavGroup> _childGroups = new();
     private bool _expanded;
     private bool _isActive;
+
+    internal bool HasSearchMatch
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(SearchQuery)) return true;
+            if (!string.IsNullOrEmpty(Title) && Title.Contains(SearchQuery, StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (_links.Any(l => LinkMatchesQuery(l)))
+                return true;
+            if (_childGroups.Any(cg => cg.HasSearchMatch))
+                return true;
+            return false;
+        }
+    }
+
+    private bool LinkMatchesQuery(SgNavLink link)
+    {
+        if (link.Text?.Contains(SearchQuery ?? "", StringComparison.OrdinalIgnoreCase) == true)
+            return true;
+        if (link.Title?.Contains(SearchQuery ?? "", StringComparison.OrdinalIgnoreCase) == true)
+            return true;
+        return false;
+    }
+
+    internal void RegisterChildGroup(SgNavGroup child)
+    {
+        if (!_childGroups.Contains(child))
+            _childGroups.Add(child);
+    }
+
+    internal void UnregisterChildGroup(SgNavGroup child)
+    {
+        _childGroups.Remove(child);
+    }
 
     internal void Register(SgNavLink link)
     {
@@ -143,13 +183,13 @@ else
     private int _activeChildCount;
     private bool _dropdownOpen;
 
-    [CascadingParameter] public bool IsMini { get; set; }
+    [CascadingParameter(Name = "Mini")] public bool IsMini { get; set; }
     [CascadingParameter] public SgNavGroup? ParentGroup { get; set; }
     [CascadingParameter] public SgNavMenu? Menu { get; set; }
     [CascadingParameter] public string? SearchQuery { get; set; }
-    [CascadingParameter] public bool AccordionMode { get; set; }
+    [CascadingParameter(Name = "Accordion")] public bool AccordionMode { get; set; }
     [CascadingParameter] public Action<SgNavGroup>? AccordionNotifier { get; set; }
-    [CascadingParameter] public bool IsHorizontal { get; set; }
+    [CascadingParameter(Name = "IsHorizontal")] public bool IsHorizontal { get; set; }
 
     /// <summary>
     /// Gets or sets the group title.
@@ -200,6 +240,7 @@ else
     {
         _expanded = Expanded;
         Menu?.RegisterGroup(this);
+        ParentGroup?.RegisterChildGroup(this);
         Navigation.LocationChanged += HandleLocationChanged;
         CheckActiveState();
         if (ParentGroup is null)
@@ -307,6 +348,7 @@ else
     public void Dispose()
     {
         Menu?.UnregisterGroup(this);
+        ParentGroup?.UnregisterChildGroup(this);
         Navigation.LocationChanged -= HandleLocationChanged;
     }
 }

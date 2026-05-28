@@ -65,28 +65,28 @@
             <input type="text"
                    class="sgc-nav-search-input"
                    placeholder="@SearchPlaceholder"
-                   value="@_searchQuery"
-                   @oninput="OnSearchAsync"
+                   @bind-value="SearchQuery"
+                   @bind-value:event="oninput"
                    aria-label="@SearchPlaceholder" />
-            @if (!string.IsNullOrEmpty(_searchQuery))
+            @if (!string.IsNullOrEmpty(SearchQuery))
             {
                 <button type="button" class="sgc-nav-search-clear" @onclick="ClearSearchAsync" aria-label="Clear search">
                     <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             }
         </div>
-        @if (!string.IsNullOrEmpty(_searchQuery))
+        @if (!string.IsNullOrEmpty(SearchQuery))
         {
-            <div class="sgc-nav-search-hint">@_searchQuery</div>
+            <div class="sgc-nav-search-hint">@SearchQuery</div>
         }
     }
     <div class="sgc-nav-body">
         <CascadingValue Value="this" IsFixed="true">
-            <CascadingValue Value="Mini">
-                    <CascadingValue Value="_searchQuery">
-                        <CascadingValue Value="Accordion">
+            <CascadingValue Name="Mini" Value="Mini">
+                    <CascadingValue Value="SearchQuery">
+                        <CascadingValue Name="Accordion" Value="Accordion">
                             <CascadingValue Value="(Action<SgNavGroup>?)CollapseSiblings">
-                                <CascadingValue Value="Orientation == SgOrientation.Horizontal">
+                                <CascadingValue Name="IsHorizontal" Value="Orientation == SgOrientation.Horizontal">
                                 @ChildContent
                                 @if (BottomContent is not null)
                                 {
@@ -209,9 +209,13 @@
     [Parameter] public EventCallback<SgOrientation> OrientationChanged { get; set; }
 
     /// <summary>
-    /// Gets the current search query.
+    /// Gets the current search query for cascading to nav items.
     /// </summary>
-    public string SearchQuery => _searchQuery;
+    public string SearchQuery
+    {
+        get => _searchQuery;
+        set => _searchQuery = value;
+    }
 
     /// <summary>
     /// Expands all groups.
@@ -293,13 +297,7 @@
     /// </summary>
     public Task ClearSearchAsync()
     {
-        _searchQuery = "";
+        SearchQuery = "";
         return InvokeAsync(StateHasChanged);
-    }
-
-    private async Task OnSearchAsync(ChangeEventArgs e)
-    {
-        _searchQuery = e.Value?.ToString() ?? "";
-        await InvokeAsync(StateHasChanged);
     }
 }
