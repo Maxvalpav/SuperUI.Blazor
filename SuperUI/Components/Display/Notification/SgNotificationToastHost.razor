@@ -1,0 +1,68 @@
+@namespace SuperUI.Components
+@implements IDisposable
+@inject SgNotificationService Notifications
+
+<div class="sgc-notification-toast-host @PositionClass" @attributes="AdditionalAttributes">
+    @foreach (var toast in _toasts)
+    {
+        <SgNotificationToast @key="@toast.Id" Item="toast" OnDismiss="HandleDismiss" OnClick="HandleClick" />
+    }
+</div>
+
+@code {
+    /// <summary>Toast stack position on screen. Default is <see cref="SgPlacement.BottomEnd"/> (bottom-right).</summary>
+    [Parameter] public SgPlacement Position { get; set; } = SgPlacement.BottomEnd;
+
+    /// <summary>Additional HTML attributes.</summary>
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    /// <summary>Raised when a toast is clicked.</summary>
+    [Parameter] public EventCallback<SgNotificationToastItem> OnToastClick { get; set; }
+
+    private List<SgNotificationToastItem> _toasts = new();
+
+    protected override void OnInitialized()
+    {
+        Notifications.ToastsChanged += OnToastsChanged;
+        RefreshToasts();
+    }
+
+    private void OnToastsChanged() => InvokeAsync(() =>
+    {
+        RefreshToasts();
+        StateHasChanged();
+    });
+
+    private void RefreshToasts()
+    {
+        _toasts = Notifications.Toasts.Reverse().ToList();
+    }
+
+    private async Task HandleDismiss(SgNotificationToastItem toast)
+    {
+        await Task.Delay(280);
+        Notifications.RemoveToast(toast.Id);
+    }
+
+    private Task HandleClick(SgNotificationToastItem toast)
+    {
+        if (OnToastClick.HasDelegate)
+            return OnToastClick.InvokeAsync(toast);
+        return Task.CompletedTask;
+    }
+
+    private string PositionClass => Position switch
+    {
+        SgPlacement.TopStart => "sgc-toast-host-top-start",
+        SgPlacement.TopEnd => "sgc-toast-host-top-end",
+        SgPlacement.BottomStart => "sgc-toast-host-bottom-start",
+        SgPlacement.Top => "sgc-toast-host-top-center",
+        SgPlacement.Bottom => "sgc-toast-host-bottom-center",
+        _ => "sgc-toast-host-bottom-end"
+    };
+
+    public void Dispose()
+    {
+        Notifications.ToastsChanged -= OnToastsChanged;
+    }
+}

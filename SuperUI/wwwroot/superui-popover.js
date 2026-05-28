@@ -102,6 +102,9 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
     // Clean up any existing handlers first
     detach(root);
 
+    // Hide until JS positions it to avoid flash at wrong coordinates
+    popoverElement.style.visibility = 'hidden';
+
     let isDisposed = false;
 
     const onPointerDown = (event) => {
@@ -195,6 +198,9 @@ export function attach(root, popoverElement, triggerElement, dotnetRef, closeOnO
         popoverElement.style.bottom = 'auto';
         popoverElement.style.transform = 'none';
         popoverElement.style.margin = '0';
+
+        // Make visible only after correct positioning to avoid flash
+        popoverElement.style.visibility = 'visible';
 
         // Focus first focusable element in popover
         const focusableElements = getFocusableElements(popoverElement);

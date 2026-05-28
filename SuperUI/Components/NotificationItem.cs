@@ -93,4 +93,21 @@ public sealed class NotificationItem
     /// Gets or sets a small tag label (e.g. "NEW", "BETA").
     /// </summary>
     public string? Tag { get; set; }
+
+    /// <summary>
+    /// Gets or sets the notification channel (e.g. "email", "system", "billing").
+    /// Used for channel filtering and channel badge display.
+    /// </summary>
+    public string? Channel { get; set; }
+
+    /// <summary>
+    /// Gets or sets the absolute start time. Shown in snooze picker as the time the
+    /// notification will reappear. If null, the item was not snoozed.
+    /// </summary>
+    public DateTimeOffset? SnoozeUntil { get; set; }
+
+    /// <summary>
+    /// Gets or sets whether this notification has been snoozed and is waiting to reappear.
+    /// </summary>
+    public bool IsSnoozed => SnoozeUntil.HasValue && SnoozeUntil > DateTimeOffset.Now;
 }

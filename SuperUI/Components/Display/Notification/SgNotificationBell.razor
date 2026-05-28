@@ -18,7 +18,7 @@
             }
             @if (Notifications.UnreadCount > 0)
             {
-                <span class="sgc-notification-bell-badge" aria-label="@($"{Notifications.UnreadCount} unread")">
+                <span class="sgc-notification-bell-badge sgc-bell-badge-animated" aria-label="@($"{Notifications.UnreadCount} unread")" key="@Notifications.UnreadCount">
                     @(Notifications.UnreadCount > 99 ? "99+" : Notifications.UnreadCount.ToString())
                 </span>
             }
@@ -35,11 +35,22 @@
                                  AllowDismiss="@AllowDismiss"
                                  AllowClear="@AllowClear"
                                  ShowPinnedSeparately="@ShowPinnedSeparately"
+                                 AllowBulkActions="@AllowBulkActions"
+                                 AllowSearch="@AllowSearch"
+                                 CollapsibleGroups="@CollapsibleGroups"
+                                 ImportanceThreshold="@ImportanceThreshold"
+                                 AllowSnooze="@AllowSnooze"
+                                 AllowSwipeDismiss="@AllowSwipeDismiss"
+                                 ShowChannel="@ShowChannel"
                                  OnItemClick="HandleItemClick"
                                  OnReadToggle="HandleReadToggle"
                                  OnDismiss="HandleDismiss"
                                  OnMarkAllRead="HandleMarkAllRead"
                                  OnClearAll="HandleClearAll"
+                                 OnBulkMarkRead="HandleBulkMarkRead"
+                                 OnBulkDismiss="HandleBulkDismiss"
+                                 OnBulkMarkUnread="HandleBulkMarkUnread"
+                                 OnSnooze="HandleSnooze"
                                  FooterContent="FooterContent" />
         </div>
     </ChildContent>
@@ -82,8 +93,41 @@
     /// <summary>Whether pinned items appear in a separate group.</summary>
     [Parameter] public bool ShowPinnedSeparately { get; set; } = true;
 
+    /// <summary>Enables bulk select checkboxes and action toolbar.</summary>
+    [Parameter] public bool AllowBulkActions { get; set; }
+
+    /// <summary>Shows a search input that filters notifications.</summary>
+    [Parameter] public bool AllowSearch { get; set; }
+
+    /// <summary>Makes group headers clickable to collapse/expand.</summary>
+    [Parameter] public bool CollapsibleGroups { get; set; }
+
+    /// <summary>Items at or below this priority are collapsed under a "Show more" link.</summary>
+    [Parameter] public SgNotificationPriority ImportanceThreshold { get; set; } = SgNotificationPriority.Default;
+
+    /// <summary>Shows a snooze button with preset durations on each item.</summary>
+    [Parameter] public bool AllowSnooze { get; set; }
+
+    /// <summary>Enables touch-swipe-to-dismiss on notification items.</summary>
+    [Parameter] public bool AllowSwipeDismiss { get; set; }
+
+    /// <summary>Shows channel badge on items that have a channel value.</summary>
+    [Parameter] public bool ShowChannel { get; set; }
+
     /// <summary>Raised when an item is clicked.</summary>
     [Parameter] public EventCallback<NotificationItem> OnItemClick { get; set; }
+
+    /// <summary>Raised when bulk mark-read is triggered.</summary>
+    [Parameter] public EventCallback<IEnumerable<string>> OnBulkMarkRead { get; set; }
+
+    /// <summary>Raised when bulk dismiss is triggered.</summary>
+    [Parameter] public EventCallback<IEnumerable<string>> OnBulkDismiss { get; set; }
+
+    /// <summary>Raised when bulk mark-unread is triggered.</summary>
+    [Parameter] public EventCallback<IEnumerable<string>> OnBulkMarkUnread { get; set; }
+
+    /// <summary>Raised when an item is snoozed.</summary>
+    [Parameter] public EventCallback<(string Id, DateTimeOffset Until)> OnSnooze { get; set; }
 
     protected override void OnInitialized()
     {
@@ -105,6 +149,14 @@
     private void HandleMarkAllRead() => Notifications.MarkAllAsRead();
 
     private void HandleClearAll() => Notifications.Clear();
+
+    private void HandleBulkMarkRead(IEnumerable<string> ids) => Notifications.MarkManyAsRead(ids);
+
+    private void HandleBulkDismiss(IEnumerable<string> ids) => Notifications.RemoveMany(ids);
+
+    private void HandleBulkMarkUnread(IEnumerable<string> ids) => Notifications.MarkManyAsUnread(ids);
+
+    private void HandleSnooze((string Id, DateTimeOffset Until) args) => Notifications.Snooze(args.Id, args.Until);
 
     public void Dispose()
     {

@@ -5,6 +5,12 @@
     {
         <div class="sgc-notification-panel-header">
             <div class="sgc-notification-panel-title-group">
+                @if (AllowBulkActions && _showBulkBar)
+                {
+                    <label class="sgc-notification-panel-check-label" title="@SelectAllText">
+                        <input type="checkbox" class="sgc-notification-panel-check" checked="@AllSelected" @onclick="ToggleSelectAll" />
+                    </label>
+                }
                 <span class="sgc-notification-panel-title">@Title</span>
                 @if (_unreadCount > 0)
                 {
@@ -28,6 +34,12 @@
                     {
                         <button type="button" class="sgc-notification-panel-link sgc-notification-panel-link-muted" @onclick="ClearAllInternalAsync">
                             @ClearAllText
+                        </button>
+                    }
+                    @if (AllowClear && _unreadCount < _allCount)
+                    {
+                        <button type="button" class="sgc-notification-panel-link sgc-notification-panel-link-muted" @onclick="ClearReadInternalAsync">
+                            @ClearReadText
                         </button>
                     }
                 </div>
@@ -57,66 +69,119 @@
         </div>
     }
 
+    @if (AllowSearch)
+    {
+        <div class="sgc-notification-panel-search">
+            <svg class="sgc-notification-panel-search-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="text" class="sgc-notification-panel-search-input"
+                   placeholder="@SearchPlaceholder"
+                   value="@_searchText"
+                   @oninput="OnSearchInputAsync" />
+            @if (!string.IsNullOrEmpty(_searchText))
+            {
+                <button type="button" class="sgc-notification-panel-search-clear" @onclick="ClearSearch" aria-label="Clear search">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+            }
+        </div>
+    }
+
+    @if (_showBulkBar)
+    {
+        <div class="sgc-notification-panel-bulkbar">
+            <span class="sgc-notification-panel-bulkbar-count">@string.Format(SelectedCountText, _selectedIds.Count)</span>
+            <div class="sgc-notification-panel-bulkbar-actions">
+                <button type="button" class="sgc-notification-panel-link" @onclick="HandleBulkMarkReadAsync">@BulkMarkReadText</button>
+                <button type="button" class="sgc-notification-panel-link" @onclick="HandleBulkMarkUnreadAsync">@BulkMarkUnreadText</button>
+                <button type="button" class="sgc-notification-panel-link sgc-notification-panel-link-muted" @onclick="HandleBulkDismissAsync">@BulkDismissText</button>
+            </div>
+        </div>
+    }
+
     <div class="sgc-notification-panel-list" style="@(string.IsNullOrEmpty(MaxHeight) ? null : $"max-height:{MaxHeight};overflow:auto;")">
-        @if (_filteredItems.Count == 0)
+        @if (_filteredItems.Count == 0 && _lowPriorityHiddenCount == 0)
         {
             <div class="sgc-notification-panel-empty">
                 <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;margin-bottom:8px;">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
                     <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
                 </svg>
-                @EmptyText
+                @(!string.IsNullOrWhiteSpace(_searchText) ? NoResultsText : EmptyText)
             </div>
-        }
-        else if (GroupBy is not null)
-        {
-            @foreach (var group in _filteredItems.GroupBy(GroupBy))
-            {
-                <div class="sgc-notification-panel-group">
-                    <div class="sgc-notification-panel-group-title">@group.Key</div>
-                    @foreach (var item in group)
-                    {
-                        @RenderItem(item)
-                    }
-                </div>
-            }
-        }
-        else if (ShowPinnedSeparately && _filteredItems.Any(x => x.IsPinned))
-        {
-            var pinned = _filteredItems.Where(x => x.IsPinned);
-            var other = _filteredItems.Where(x => !x.IsPinned);
-            if (pinned.Any())
-            {
-                <div class="sgc-notification-panel-group">
-                    <div class="sgc-notification-panel-group-title">
-                        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
-                            <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"></path>
-                        </svg>
-                        @PinnedText
-                    </div>
-                    @foreach (var item in pinned)
-                    {
-                        @RenderItem(item)
-                    }
-                </div>
-            }
-            if (other.Any())
-            {
-                <div class="sgc-notification-panel-group">
-                    <div class="sgc-notification-panel-group-title">@OtherText</div>
-                    @foreach (var item in other)
-                    {
-                        @RenderItem(item)
-                    }
-                </div>
-            }
         }
         else
         {
-            @foreach (var item in _filteredItems)
+            var displayItems = _filteredItems;
+            if (GroupBy is not null)
             {
-                @RenderItem(item)
+                foreach (var group in displayItems.GroupBy(GroupBy))
+                {
+                    var groupKey = group.Key;
+                    var isCollapsed = CollapsibleGroups && IsGroupCollapsed(groupKey);
+                    <div class="sgc-notification-panel-group">
+                        <div class="sgc-notification-panel-group-title @(CollapsibleGroups ? "sgc-group-collapsible" : "")"
+                             @onclick="@(CollapsibleGroups ? (Action)(() => ToggleGroup(groupKey)) : null)">
+                            @if (CollapsibleGroups)
+                            {
+                                <svg class="sgc-group-chevron @(isCollapsed ? "sgc-chevron-collapsed" : "")" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            }
+                            <span>@groupKey</span>
+                            <span class="sgc-notification-panel-group-count">@group.Count()</span>
+                        </div>
+                        @if (!isCollapsed)
+                        {
+                            foreach (var item in group)
+                            {
+                                @RenderItem(item, false)
+                            }
+                        }
+                    </div>
+                }
             }
+            else if (ShowPinnedSeparately && displayItems.Any(x => x.IsPinned))
+            {
+                var pinned = displayItems.Where(x => x.IsPinned);
+                var other = displayItems.Where(x => !x.IsPinned);
+                if (pinned.Any())
+                {
+                    <div class="sgc-notification-panel-group">
+                        <div class="sgc-notification-panel-group-title">
+                            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;">
+                                <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2z"></path>
+                            </svg>
+                            @PinnedText
+                        </div>
+                        @foreach (var item in pinned)
+                        {
+                            @RenderItem(item, false)
+                        }
+                    </div>
+                }
+                if (other.Any())
+                {
+                    <div class="sgc-notification-panel-group">
+                        <div class="sgc-notification-panel-group-title">@OtherText</div>
+                        @foreach (var item in other)
+                        {
+                            @RenderItem(item, false)
+                        }
+                    </div>
+                }
+            }
+            else
+            {
+                foreach (var item in displayItems)
+                {
+                    @RenderItem(item, false)
+                }
+            }
+        }
+
+        @if (_lowPriorityHiddenCount > 0)
+        {
+            <button type="button" class="sgc-notification-panel-show-more" @onclick="RevealLowPriority">
+                @string.Format(ShowMoreText, _lowPriorityHiddenCount)
+            </button>
         }
     </div>
 
@@ -127,10 +192,19 @@
 </div>
 
 @code {
-    private RenderFragment RenderItem(NotificationItem item) =>
-        @<div class="sgc-notification-panel-item @VariantClass(item.Variant) @(item.IsRead ? "" : "sgc-unread") @PriorityClass(item.Priority) @(item.IsPinned ? "sgc-pinned" : "")"
+    private RenderFragment RenderItem(NotificationItem item, bool unused) =>
+        @<div class="sgc-notification-panel-item @VariantClass(item.Variant) @(item.IsRead ? "" : "sgc-unread") @PriorityClass(item.Priority) @(item.IsPinned ? "sgc-pinned" : "") @(AllowSwipeDismiss ? "sgc-swipeable" : "") @(IsSelected(item) ? "sgc-selected" : "")"
               @key="item.Id"
-              @onclick="@(() => HandleItemClickAsync(item))">
+              @onclick="@(() => HandleItemClickAsync(item))"
+              @ontouchstart="@((TouchEventArgs e) => OnTouchStart(item, e))"
+              @ontouchmove="@((TouchEventArgs e) => OnTouchMove(item, e, default))"
+              @ontouchend="@((TouchEventArgs e) => OnTouchEndAsync(item, e))">
+            @if (AllowBulkActions)
+            {
+                <label class="sgc-notification-panel-item-check" @onclick:stopPropagation="true">
+                    <input type="checkbox" checked="@IsSelected(item)" @onclick="@(() => ToggleSelection(item))" />
+                </label>
+            }
             <div class="sgc-notification-panel-item-marker">
                 @if (item.AvatarUrl is not null)
                 {
@@ -170,6 +244,10 @@
                         {
                             <span class="sgc-notification-panel-item-tag">@item.Tag</span>
                         }
+                        @if (ShowChannel && item.Channel is not null)
+                        {
+                            <span class="sgc-notification-panel-item-channel">@item.Channel</span>
+                        }
                         @if (!string.IsNullOrWhiteSpace(item.Message))
                         {
                             <div class="sgc-notification-panel-item-message">@item.Message</div>
@@ -203,6 +281,25 @@
                 }
             </div>
             <div class="sgc-notification-panel-item-tools" @onclick:stopPropagation="true">
+                @if (AllowSnooze)
+                {
+                    <button type="button"
+                            class="sgc-notification-panel-icon-btn"
+                            title="@SnoozeText"
+                            aria-label="@SnoozeText"
+                            @onclick="@(() => ShowSnoozePicker(item.Id))">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    </button>
+                    @if (_snoozingItemId == item.Id)
+                    {
+                        <div class="sgc-notification-panel-snooze-picker" @onclick:stopPropagation="true">
+                            <button type="button" class="sgc-notification-panel-snooze-option" @onclick="() => SnoozeAsync(item.Id, 1)">@Snooze1hText</button>
+                            <button type="button" class="sgc-notification-panel-snooze-option" @onclick="() => SnoozeAsync(item.Id, 3)">@Snooze3hText</button>
+                            <button type="button" class="sgc-notification-panel-snooze-option" @onclick="() => SnoozeUntilAsync(item.Id, DateTimeOffset.Now.Date.AddDays(1).AddHours(9))">@SnoozeTomorrowText</button>
+                            <button type="button" class="sgc-notification-panel-snooze-option" @onclick="() => SnoozeUntilAsync(item.Id, DateTimeOffset.Now.Date.AddDays(7 - (int)DateTimeOffset.Now.DayOfWeek + 1).AddHours(9))">@SnoozeWeekText</button>
+                        </div>
+                    }
+                }
                 <button type="button"
                         class="sgc-notification-panel-icon-btn"
                         title="@(item.IsRead ? MarkUnreadText : MarkReadText)"
@@ -230,4 +327,3 @@
             </div>
         </div>;
 }
-

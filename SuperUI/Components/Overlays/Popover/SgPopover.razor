@@ -180,7 +180,8 @@
         if (_open && !_lastRenderedOpen)
         {
             _lastRenderedOpen = true;
-            await AttachAsync();
+            if (Module is not null)
+                await AttachAsync();
         }
         else if (!_open && _lastRenderedOpen)
         {
@@ -188,6 +189,12 @@
             await DetachAsync();
             _ = ScheduleClosingResetAsync();
         }
+    }
+
+    protected override async ValueTask OnInteractiveAsync()
+    {
+        if (_open)
+            await AttachAsync();
     }
 
     protected override async ValueTask OnDisposingAsync()
@@ -207,6 +214,7 @@
             RootRef, _popoverRef, _triggerRef, SelfRef,
             CloseOnOutsideClick, CloseOnEscape);
         _attached = true;
+        StateHasChanged();
     }
 
     private async Task DetachAsync()

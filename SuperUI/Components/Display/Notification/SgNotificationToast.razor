@@ -1,0 +1,123 @@
+@namespace SuperUI.Components
+@implements IDisposable
+
+<div class="sgc-notification-toast @VariantClass() @(_item.IsClosing ? "sgc-toast-closing" : "")" @onclick="HandleClick">
+    <div class="sgc-notification-toast-icon">@GetIcon()</div>
+    <div class="sgc-notification-toast-body">
+        @if (!string.IsNullOrWhiteSpace(_item.Title))
+        {
+            <div class="sgc-notification-toast-title">@_item.Title</div>
+        }
+        @if (!string.IsNullOrWhiteSpace(_item.Message))
+        {
+            <div class="sgc-notification-toast-message">@_item.Message</div>
+        }
+    </div>
+    <button type="button" class="sgc-notification-toast-close" @onclick:stopPropagation="true" @onclick="HandleDismiss" aria-label="Dismiss">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+</div>
+
+@code {
+    [Parameter] public SgNotificationToastItem Item { get; set; } = default!;
+    [Parameter] public EventCallback<SgNotificationToastItem> OnDismiss { get; set; }
+    [Parameter] public EventCallback<SgNotificationToastItem> OnClick { get; set; }
+
+    private SgNotificationToastItem _item = default!;
+    private CancellationTokenSource? _cts;
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        _item = Item;
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (firstRender && _item.DurationMs > 0 && !_disposed)
+        {
+            _cts = new CancellationTokenSource();
+            _ = AutoDismissAsync(_cts.Token);
+        }
+    }
+
+    private async Task AutoDismissAsync(CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(_item.DurationMs, ct);
+            if (!ct.IsCancellationRequested && !_disposed)
+                await DismissAsync();
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private async Task HandleClick()
+    {
+        if (OnClick.HasDelegate)
+            await OnClick.InvokeAsync(_item);
+    }
+
+    private async Task HandleDismiss()
+    {
+        _cts?.Cancel();
+        await DismissAsync();
+    }
+
+    private async Task DismissAsync()
+    {
+        _item.IsClosing = true;
+        StateHasChanged();
+        await Task.Delay(300);
+        if (OnDismiss.HasDelegate)
+            await OnDismiss.InvokeAsync(_item);
+    }
+
+    private string VariantClass() => _item.Variant switch
+    {
+        SgBadgeVariant.Success => "sgc-toast-success",
+        SgBadgeVariant.Warn => "sgc-toast-warn",
+        SgBadgeVariant.Danger => "sgc-toast-danger",
+        SgBadgeVariant.Info => "sgc-toast-info",
+        _ => ""
+    };
+
+    private RenderFragment GetIcon() => _item.IconContent ?? (_item.Variant switch
+    {
+        SgBadgeVariant.Success => SuccessIcon,
+        SgBadgeVariant.Warn => WarnIcon,
+        SgBadgeVariant.Danger => DangerIcon,
+        _ => InfoIcon
+    });
+
+    private static readonly RenderFragment SuccessIcon = __builder =>
+    {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        ;
+    };
+
+    private static readonly RenderFragment WarnIcon = __builder =>
+    {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        ;
+    };
+
+    private static readonly RenderFragment DangerIcon = __builder =>
+    {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        ;
+    };
+
+    private static readonly RenderFragment InfoIcon = __builder =>
+    {
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        ;
+    };
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _cts?.Cancel();
+        _cts?.Dispose();
+    }
+}

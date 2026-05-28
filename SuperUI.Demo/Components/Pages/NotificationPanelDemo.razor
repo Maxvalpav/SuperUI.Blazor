@@ -43,7 +43,13 @@
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
                         <SgButton Text="Send Pinned" Variant="SgButtonVariant.Outlined" OnClick="@(() => PushPinned())" />
                         <SgButton Text="Send with Avatar" Variant="SgButtonVariant.Outlined" OnClick="@(() => PushWithAvatar())" />
+                        <SgButton Text="Send with Channel" Variant="SgButtonVariant.Outlined" OnClick="@(() => PushWithChannel())" />
                         <SgButton Text="Clear All" Variant="SgButtonVariant.Ghost" OnClick="@(() => Notifications.Clear())" />
+                    </div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <SgButton Text="Push Toast" Variant="SgButtonVariant.Default" OnClick="@(() => PushToast())" />
+                        <SgButton Text="Error Toast" Variant="SgButtonVariant.Danger" OnClick="@(() => PushToastError())" />
+                        <SgButton Text="Unsnooze Due" Variant="SgButtonVariant.Ghost" OnClick="@(() => UnsnoozeDue())" />
                     </div>
                     <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
                         <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Total:</SgTypography>
@@ -66,7 +72,15 @@
                                  OnDismiss="HandleDismiss"
                                  OnMarkAllRead="HandleMarkAllRead"
                                  OnClearAll="HandleClearAll"
-                                 ShowPinnedSeparately="true">
+                                 OnBulkMarkRead="HandleBulkMarkRead"
+                                 OnBulkDismiss="HandleBulkDismiss"
+                                 OnBulkMarkUnread="HandleBulkMarkUnread"
+                                 OnSnooze="HandleSnooze"
+                                 ShowPinnedSeparately="true"
+                                 AllowBulkActions="true"
+                                 AllowSearch="true"
+                                 AllowSnooze="true"
+                                 ShowChannel="true">
                 <FooterContent>
                     <a href="#" @onclick:preventDefault="true" @onclick="HandleViewAll" style="color:var(--sg-color-primary);text-decoration:none;font-size:12px;font-weight:500;">
                         View all notifications →
@@ -135,15 +149,15 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 4. Grouped by Category                                              -->
+    <!-- 4. Grouped by Category (collapsible)                                -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
             <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
-                Grouped by Category
+                Grouped by Category (Collapsible)
             </SgTypography>
             <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                Use the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">GroupBy</SgTypography> parameter to organize items by category or any custom key.
+                Use <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">GroupBy</SgTypography> with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">CollapsibleGroups=true</SgTypography> to let users collapse/expand groups.
             </SgTypography>
         </div>
 
@@ -151,22 +165,84 @@
             <div style="max-width:420px;">
                 <SgNotificationPanel Items="_groupedItems"
                                      GroupBy="@(n => n.Category ?? "Other")"
+                                     CollapsibleGroups="true"
                                      ShowFilter="false"
                                      ShowDefaultActions="false"
                                      Title="Categorized"
                                      MaxHeight="320px" />
             </div>
 
-            <SgCard Title="GroupBy Parameter" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgCard Title="Collapsible & GroupBy" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                    Pass a <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Func&lt;NotificationItem, string&gt;</SgTypography> to the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">GroupBy</SgTypography> parameter. Items sharing the same key are rendered under that group heading.
+                    Set <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">CollapsibleGroups="true"</SgTypography> to make group headers clickable. <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">GroupBy</SgTypography> accepts any <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Func&lt;NotificationItem, string&gt;</SgTypography>.
                 </SgTypography>
             </SgCard>
         </div>
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 5. Empty State                                                      -->
+    <!-- 5. Importance Threshold                                             -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Importance Threshold
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Items at or below the threshold priority are hidden behind a "Show N more" link. Cleaner list for high-volume scenarios.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <div style="max-width:420px;">
+                <SgNotificationPanel Items="_importanceItems"
+                                     ImportanceThreshold="SgNotificationPriority.High"
+                                     ShowFilter="false"
+                                     ShowDefaultActions="false"
+                                     Title="Threshold: High+"
+                                     MaxHeight="320px" />
+            </div>
+            <SgCard Title="ImportanceThreshold" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Set <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ImportanceThreshold="SgNotificationPriority.High"</SgTypography> to show only High and Urgent items by default; Normal/Low items are collapsed.
+                </SgTypography>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 6. Channels, Snooze & Swipe                                         -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Channels, Snooze & Swipe
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Items with a <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Channel</SgTypography> value show a channel badge. Snooze lets you postpone items. Enable swipe-to-dismiss on touch devices.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <div style="max-width:420px;">
+                <SgNotificationPanel Items="_channelItems"
+                                     ShowFilter="false"
+                                     ShowDefaultActions="false"
+                                     ShowChannel="true"
+                                     AllowSnooze="true"
+                                     Title="Channels & Snooze"
+                                     MaxHeight="340px" />
+            </div>
+            <SgCard Title="New Feature Parameters" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Enable <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ShowChannel</SgTypography> to display channel badges, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">AllowSnooze</SgTypography> for snooze presets, and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">AllowSwipeDismiss</SgTypography> for touch devices.
+                </SgTypography>
+            </SgCard>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 7. Empty State                                                      -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
@@ -193,7 +269,7 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 6. Live Constructor                                                 -->
+    <!-- 8. Live Constructor                                                 -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
@@ -232,6 +308,31 @@
                     <SgSwitch @bind-Value="_showPinnedSeparately" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
                 </SgStack>
 
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Allow Bulk Actions:</SgTypography>
+                    <SgSwitch @bind-Value="_allowBulkActions" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Allow Search:</SgTypography>
+                    <SgSwitch @bind-Value="_allowSearch" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Allow Snooze:</SgTypography>
+                    <SgSwitch @bind-Value="_allowSnooze" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Show Channel:</SgTypography>
+                    <SgSwitch @bind-Value="_showChannel" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
+                <SgStack Horizontal Space="SgSize.Lg" Align="SgAlignItems.Center" Wrap="true">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Medium">Collapsible Groups:</SgTypography>
+                    <SgSwitch @bind-Value="_collapsibleGroups" OnChange="@(() => UpdateConstructorCode())" ShowLabel="false" Size="SgSize.Sm" />
+                </SgStack>
+
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
                     <div>
                         <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:8px;display:block;">Preview</SgTypography>
@@ -241,6 +342,11 @@
                                              AllowDismiss="@_allowDismiss"
                                              ShowDefaultActions="@_showDefaultActions"
                                              ShowPinnedSeparately="@_showPinnedSeparately"
+                                             AllowBulkActions="@_allowBulkActions"
+                                             AllowSearch="@_allowSearch"
+                                             AllowSnooze="@_allowSnooze"
+                                             ShowChannel="@_showChannel"
+                                             CollapsibleGroups="@_collapsibleGroups"
                                              MaxHeight="300px"
                                              Title="Constructor Demo" />
                     </div>
@@ -273,7 +379,7 @@
             <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
                 <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Notification Panel</SgTypography>
                 <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
-                    SgNotificationPanel — Filterable notification list with unread tracking, grouping, priority levels, pinning, avatars, action buttons, and code constructor.
+                    SgNotificationPanel — Filterable notification list with unread tracking, grouping, priority levels, pinning, avatars, action buttons, bulk ops, search, channels, snooze, swipe, and code constructor.
                 </SgTypography>
             </SgStack>
         </SgStack>
@@ -300,6 +406,24 @@
         new() { Title = "Invoice paid", Message = "Invoice #INV-00481 paid", Time = "Today", Variant = SgBadgeVariant.Success, Category = "Billing" }
     };
 
+    // ── Demo data: importance threshold ───────────────────────────────────
+    private List<NotificationItem> _importanceItems = new()
+    {
+        new() { Title = "CRITICAL: Payment failure", Message = "Payment gateway timeout", Time = "2 min ago", Priority = SgNotificationPriority.Urgent, Variant = SgBadgeVariant.Danger },
+        new() { Title = "DB connection pool full", Message = "Connection pool reached 90% capacity", Time = "10 min ago", Priority = SgNotificationPriority.High, Variant = SgBadgeVariant.Warn },
+        new() { Title = "Cache refresh done", Message = "Redis cache refreshed successfully", Time = "1 hour ago", Priority = SgNotificationPriority.Normal, Variant = SgBadgeVariant.Success },
+        new() { Title = "Analytics export ready", Message = "Monthly report available for download", Time = "3 hours ago", Priority = SgNotificationPriority.Low, Variant = SgBadgeVariant.Info }
+    };
+
+    // ── Demo data: channels & snooze ─────────────────────────────────────
+    private List<NotificationItem> _channelItems = new()
+    {
+        new() { Title = "Invoice #INV-00512", Message = "Payment of $2,400 received", Time = "5 min ago", Channel = "billing", Variant = SgBadgeVariant.Success },
+        new() { Title = "Deploy to prod", Message = "v2.5.0 deployed by CI pipeline", Time = "30 min ago", Channel = "system", Variant = SgBadgeVariant.Info },
+        new() { Title = "New signup", Message = "user@example.com registered", Time = "1 hour ago", Channel = "email", Variant = SgBadgeVariant.Default },
+        new() { Title = "Alert: CPU spike", Message = "CPU at 92% on api-3", Time = "2 hours ago", Channel = "system", Variant = SgBadgeVariant.Warn }
+    };
+
     // ── Demo data: empty ─────────────────────────────────────────────────
     private List<NotificationItem> _emptyItems = new();
 
@@ -309,15 +433,21 @@
     private bool _allowDismiss = true;
     private bool _showDefaultActions = true;
     private bool _showPinnedSeparately = true;
+    private bool _allowBulkActions;
+    private bool _allowSearch;
+    private bool _allowSnooze;
+    private bool _showChannel;
+    private bool _collapsibleGroups;
     private string[] _generatedCodeLines = Array.Empty<string>();
     private string _copyLabel = "📋 Copy";
 
     // ── Constructor items ─────────────────────────────────────────────────
     private List<NotificationItem> _constructorItems = new()
     {
-        new() { Title = "Pinned urgent notice", Message = "This is a pinned high-priority notification.", Time = "Now", Variant = SgBadgeVariant.Danger, Priority = SgNotificationPriority.Urgent, IsPinned = true },
-        new() { Title = "System update available", Message = "Version 3.0 is ready to install.", Time = "5 min ago", Variant = SgBadgeVariant.Info },
-        new() { Title = "Deploy succeeded", Message = "Production build #421 deployed.", Time = "1 hour ago", Variant = SgBadgeVariant.Success }
+        new() { Title = "Pinned urgent notice", Message = "This is a pinned high-priority notification.", Time = "Now", Variant = SgBadgeVariant.Danger, Priority = SgNotificationPriority.Urgent, IsPinned = true, Channel = "system" },
+        new() { Title = "System update available", Message = "Version 3.0 is ready to install.", Time = "5 min ago", Variant = SgBadgeVariant.Info, Channel = "system" },
+        new() { Title = "Deploy succeeded", Message = "Production build #421 deployed.", Time = "1 hour ago", Variant = SgBadgeVariant.Success, Channel = "system" },
+        new() { Title = "Invoice received", Message = "Invoice #INV-104 from vendor", Time = "2 hours ago", Variant = SgBadgeVariant.Default, Channel = "billing" }
     };
 
     // ── Property tables ───────────────────────────────────────────────────
@@ -330,6 +460,13 @@
         new() { Label = "ShowDefaultActions", Value = "bool", BadgeText = "Actions", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "AllowDismiss", Value = "bool", BadgeText = "Dismiss", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "AllowClear", Value = "bool", BadgeText = "Clear", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "AllowBulkActions", Value = "bool", BadgeText = "Bulk", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowSearch", Value = "bool", BadgeText = "Search", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowSnooze", Value = "bool", BadgeText = "Snooze", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "AllowSwipeDismiss", Value = "bool", BadgeText = "Swipe", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ShowChannel", Value = "bool", BadgeText = "Channel", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "CollapsibleGroups", Value = "bool", BadgeText = "Collapse", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "ImportanceThreshold", Value = "SgNotificationPriority", BadgeText = "Threshold", BadgeVariant = SgBadgeVariant.Danger },
         new() { Label = "MaxHeight", Value = "string?", BadgeText = "Scroll", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "GroupBy", Value = "Func<NotificationItem,string>?", BadgeText = "Grouping", BadgeVariant = SgBadgeVariant.Info },
         new() { Label = "ShowPinnedSeparately", Value = "bool", BadgeText = "Pinned", BadgeVariant = SgBadgeVariant.Warn },
@@ -339,6 +476,10 @@
         new() { Label = "OnDismiss", Value = "EventCallback<NotificationItem>", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "OnMarkAllRead", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "OnClearAll", Value = "EventCallback", BadgeText = "Event", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnBulkMarkRead", Value = "EventCallback<IEnumerable<string>>", BadgeText = "Bulk", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnBulkDismiss", Value = "EventCallback<IEnumerable<string>>", BadgeText = "Bulk", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnBulkMarkUnread", Value = "EventCallback<IEnumerable<string>>", BadgeText = "Bulk", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "OnSnooze", Value = "EventCallback<(string,DateTimeOffset)>", BadgeText = "Snooze", BadgeVariant = SgBadgeVariant.Success },
         new() { Label = "ActionsContent", Value = "RenderFragment?", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "FooterContent", Value = "RenderFragment?", BadgeText = "Custom", BadgeVariant = SgBadgeVariant.Default },
     };
@@ -365,6 +506,8 @@
         new() { Label = "AvatarUrl", Value = "string?", BadgeText = "Image", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "AvatarName", Value = "string?", BadgeText = "Initials", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "Tag", Value = "string?", BadgeText = "Label", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Channel", Value = "string?", BadgeText = "Badge", BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "SnoozeUntil", Value = "DateTimeOffset?", BadgeText = "Snooze", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "Actions", Value = "List<SgNotificationAction>?", BadgeText = "Buttons", BadgeVariant = SgBadgeVariant.Warn },
         new() { Label = "IconContent", Value = "RenderFragment?", BadgeText = "Custom icon", BadgeVariant = SgBadgeVariant.Default },
         new() { Label = "ExtraContent", Value = "RenderFragment?", BadgeText = "Extra", BadgeVariant = SgBadgeVariant.Default },
@@ -498,8 +641,46 @@
         Toasts.Info($"Avatar notification sent (#{_counter})");
     }
 
+    private void PushWithChannel()
+    {
+        _counter++;
+        var channels = new[] { "billing", "system", "email", "alerts" };
+        Notifications.Push(new NotificationItem
+        {
+            Title = $"[{channels[_counter % channels.Length]}] Event #{_counter}",
+            Message = $"Notification with channel '{channels[_counter % channels.Length]}'",
+            Time = "just now",
+            Variant = (SgBadgeVariant)(_counter % 5),
+            Channel = channels[_counter % channels.Length],
+            Category = "Demo"
+        });
+        Toasts.Info($"Channel notification sent (#{_counter})");
+    }
+
+    private void PushToast()
+    {
+        _counter++;
+        Notifications.PushToast("Toast alert", $"This is a transient toast #{_counter}", SgBadgeVariant.Info);
+    }
+
+    private void PushToastError()
+    {
+        _counter++;
+        Notifications.PushToast("Error", $"Something went wrong #{_counter}", SgBadgeVariant.Danger, 6000);
+    }
+
+    private void UnsnoozeDue()
+    {
+        var count = Notifications.UnsnoozeDueItems();
+        if (count > 0)
+            Toasts.Success($"{count} snoozed notification(s) reappeared");
+        else
+            Toasts.Show("No snoozed items due", "Info", SgToastVariant.Default);
+    }
+
     private void HandleItemClick(NotificationItem item)
     {
+        if (!Notifications.Items.Any(x => x.Id == item.Id)) return;
         Notifications.MarkAsRead(item.Id);
         Toasts.Info($"Opened: {item.Title}", "Notification");
     }
@@ -524,6 +705,37 @@
         Toasts.Show("Notification list cleared", "Cleared", SgToastVariant.Default);
     }
 
+    private void HandleBulkMarkRead(IEnumerable<string> ids)
+    {
+        Notifications.MarkManyAsRead(ids);
+        Toasts.Success("Selected notifications marked as read");
+    }
+
+    private void HandleBulkDismiss(IEnumerable<string> ids)
+    {
+        Notifications.RemoveMany(ids);
+        Toasts.Show("Selected notifications dismissed", "Bulk", SgToastVariant.Default);
+    }
+
+    private void HandleBulkMarkUnread(IEnumerable<string> ids)
+    {
+        Notifications.MarkManyAsUnread(ids);
+        Toasts.Info("Selected notifications marked as unread");
+    }
+
+    private void HandleSnooze((string Id, DateTimeOffset Until) args)
+    {
+        Notifications.Snooze(args.Id, args.Until);
+        var friendly = args.Until switch
+        {
+            { } when args.Until <= DateTimeOffset.Now.AddHours(2) => "1 hour",
+            { } when args.Until <= DateTimeOffset.Now.AddHours(5) => "3 hours",
+            { } when args.Until.Date == DateTimeOffset.Now.Date.AddDays(1) => "tomorrow",
+            _ => "next week"
+        };
+        Toasts.Show($"Snoozed until {friendly}", "Snoozed", SgToastVariant.Info);
+    }
+
     private void HandleViewAll() => Toasts.Info("Navigating to all notifications", "Navigation");
 
     // ── Code constructor ──────────────────────────────────────────────────
@@ -539,11 +751,16 @@
         if (!_allowDismiss) lines.Add($"    AllowDismiss=\"false\"");
         if (!_showDefaultActions) lines.Add($"    ShowDefaultActions=\"false\"");
         if (!_showPinnedSeparately) lines.Add($"    ShowPinnedSeparately=\"false\"");
+        if (_allowBulkActions) lines.Add($"    AllowBulkActions=\"true\"");
+        if (_allowSearch) lines.Add($"    AllowSearch=\"true\"");
+        if (_allowSnooze) lines.Add($"    AllowSnooze=\"true\"");
+        if (_showChannel) lines.Add($"    ShowChannel=\"true\"");
+        if (_collapsibleGroups) lines.Add($"    CollapsibleGroups=\"true\"");
         lines.Add($"    MaxHeight=\"300px\"");
         lines.Add($"    OnItemClick=\"...\"");
         lines.Add($"    OnReadToggle=\"...\"");
         lines.Add($"    OnDismiss=\"...\">");
-        lines.Add($"    <FooterContent>...view all link...</FooterContent>");
+        lines.Add($"    <FooterContent>...</FooterContent>");
         lines.Add("</SgNotificationPanel>");
         _generatedCodeLines = lines.ToArray();
     }
