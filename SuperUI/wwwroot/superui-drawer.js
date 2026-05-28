@@ -1,9 +1,11 @@
-// superui-drawer.js — Focus-trap, ESC, scroll-lock, resize with min/max
+// superui-drawer.js — Focus-trap, ESC, scroll-lock, resize, swipe, cascade
 
 const drawerStack = [];
 let escapeHandler = null;
 let focusTrapHandler = null;
 let previousScrollPosition = 0;
+let touchStartX = 0;
+let touchStartY = 0;
 
 function getTopDrawer() {
     return drawerStack[drawerStack.length - 1];
@@ -27,10 +29,32 @@ function getScrollbarWidth() {
     return w;
 }
 
-export function attach(drawerElement, dotnetRef, closeOnEscape) {
-    const previousFocus = document.activeElement;
+function getPlacement(drawerElement) {
+    if (drawerElement.classList.contains('sgc-drawer-left')) return 'left';
+    if (drawerElement.classList.contains('sgc-drawer-top')) return 'top';
+    if (drawerElement.classList.contains('sgc-drawer-bottom')) return 'bottom';
+    return 'right';
+}
 
-    if (drawerStack.length === 0) {
+function updateCascadeOffset() {
+    for (let i = 0; i < drawerStack.length; i++) {
+        const entry = drawerStack[i];
+        if (!entry || entry.isDisposed || !entry.element || !entry.element.isConnected) continue;
+        const offset = i * 16;
+        const el = entry.element;
+        const placement = getPlacement(el);
+        if (placement === 'right') el.style.transform = `translateX(-${offset}px)`;
+        else if (placement === 'left') el.style.transform = `translateX(${offset}px)`;
+        else if (placement === 'top') el.style.transform = `translateY(${offset}px)`;
+        else if (placement === 'bottom') el.style.transform = `translateY(-${offset}px)`;
+    }
+}
+
+export function attach(drawerElement, dotnetRef, closeOnEscape, autoFocus, disableScrollLock) {
+    const previousFocus = document.activeElement;
+    const placement = getPlacement(drawerElement);
+
+    if (!disableScrollLock && drawerStack.length === 0) {
         previousScrollPosition = window.scrollY || document.documentElement.scrollTop;
         document.body.style.overflow = 'hidden';
         document.body.style.paddingRight = getScrollbarWidth() + 'px';
@@ -42,6 +66,7 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
         closeOnEscape,
         previousFocus,
         isDisposed: false,
+        placement,
         dispose: () => {
             entry.isDisposed = true;
             entry.dotnet = null;
@@ -49,6 +74,7 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
     };
 
     drawerStack.push(entry);
+    updateCascadeOffset();
 
     if (!escapeHandler) {
         escapeHandler = (e) => {
@@ -79,27 +105,54 @@ export function attach(drawerElement, dotnetRef, closeOnEscape) {
             const last = focusable[focusable.length - 1];
             const active = document.activeElement;
             if (e.shiftKey) {
-                if (active === first || !top.element.contains(active)) {
-                    e.preventDefault();
-                    last.focus();
-                }
+                if (active === first || !top.element.contains(active)) { e.preventDefault(); last.focus(); }
             } else {
-                if (active === last || !top.element.contains(active)) {
-                    e.preventDefault();
-                    first.focus();
-                }
+                if (active === last || !top.element.contains(active)) { e.preventDefault(); first.focus(); }
             }
         };
         document.addEventListener('keydown', focusTrapHandler, true);
     }
 
-    setTimeout(() => {
-        if (!entry.isDisposed && entry.element && entry.element.isConnected) {
-            const focusable = getFocusableElements(entry.element);
-            if (focusable.length > 0) focusable[0].focus();
-            else entry.element.focus();
+    // Autofocus
+    if (autoFocus !== false) {
+        setTimeout(() => {
+            if (!entry.isDisposed && entry.element && entry.element.isConnected) {
+                const focusable = getFocusableElements(entry.element);
+                if (focusable.length > 0) focusable[0].focus();
+                else entry.element.focus();
+            }
+        }, 80);
+    }
+
+    // Swipe-to-close
+    const onTouchStart = (e) => {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+    };
+    const onTouchEnd = (e) => {
+        if (entry.isDisposed) return;
+        const dx = e.changedTouches[0].clientX - touchStartX;
+        const dy = e.changedTouches[0].clientY - touchStartY;
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
+        const threshold = 80;
+
+        let swipeDetected = false;
+        if (placement === 'right' && dx < -threshold && absDx > absDy * 1.5) swipeDetected = true;
+        else if (placement === 'left' && dx > threshold && absDx > absDy * 1.5) swipeDetected = true;
+        else if (placement === 'top' && dy > threshold && absDy > absDx * 1.5) swipeDetected = true;
+        else if (placement === 'bottom' && dy < -threshold && absDy > absDx * 1.5) swipeDetected = true;
+
+        if (swipeDetected && entry.dotnet) {
+            try { entry.dotnet.invokeMethodAsync('OnSwipeClose').catch(() => {}); } catch {}
         }
-    }, 50);
+    };
+    drawerElement.addEventListener('touchstart', onTouchStart, { passive: true });
+    drawerElement.addEventListener('touchend', onTouchEnd, { passive: true });
+    entry._swipeCleanup = () => {
+        drawerElement.removeEventListener('touchstart', onTouchStart);
+        drawerElement.removeEventListener('touchend', onTouchEnd);
+    };
 }
 
 export function initResize(drawerElement, dotnetRef, placement, minSize, maxSize) {
@@ -144,7 +197,7 @@ export function initResize(drawerElement, dotnetRef, placement, minSize, maxSize
         }
     };
 
-    resizer.addEventListener('pointerdown', (e) => {
+    const onDown = (e) => {
         if (isDisposed) return;
         e.preventDefault();
         isResizing = true;
@@ -154,11 +207,20 @@ export function initResize(drawerElement, dotnetRef, placement, minSize, maxSize
         document.addEventListener('pointermove', onMove);
         document.addEventListener('pointerup', onUp);
         document.addEventListener('pointercancel', onUp);
-        document.body.style.cursor = (placement === 'sgc-drawer-left' || placement === 'sgc-drawer-right') ? 'col-resize' : 'row-resize';
+        const cursor = (placement === 'sgc-drawer-left' || placement === 'sgc-drawer-right') ? 'col-resize' : 'row-resize';
+        document.body.style.cursor = cursor;
         document.body.style.userSelect = 'none';
-    });
+    };
 
-    resizer._dispose = () => { isDisposed = true; dotnetRef = null; };
+    resizer.addEventListener('pointerdown', onDown);
+    resizer._dispose = () => {
+        isDisposed = true;
+        dotnetRef = null;
+        resizer.removeEventListener('pointerdown', onDown);
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        document.removeEventListener('pointercancel', onUp);
+    };
 }
 
 export function detach(drawerElement) {
@@ -166,6 +228,7 @@ export function detach(drawerElement) {
     if (index === -1) return;
     const entry = drawerStack.splice(index, 1)[0];
     if (entry.dispose) entry.dispose();
+    if (entry._swipeCleanup) entry._swipeCleanup();
 
     if (index === drawerStack.length && entry.previousFocus && typeof entry.previousFocus.focus === 'function') {
         try { entry.previousFocus.focus(); } catch {}
@@ -173,6 +236,8 @@ export function detach(drawerElement) {
 
     const resizer = drawerElement.querySelector('.sgc-drawer-resizer');
     if (resizer && resizer._dispose) { resizer._dispose(); delete resizer._dispose; }
+
+    updateCascadeOffset();
 
     if (drawerStack.length === 0) {
         document.body.style.overflow = '';

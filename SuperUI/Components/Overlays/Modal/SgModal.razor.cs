@@ -278,11 +278,10 @@ public partial class SgModal : SgOverlayComponentBase
 
     private string GetBackdropStyle()
     {
-        var b = Styles();
-        b.AddStyle("z-index", BackdropZIndex.ToString(), BackdropZIndex > 0);
-        if (!string.IsNullOrEmpty(BackdropBlur))
-            b.AddStyle("backdrop-filter", $"blur({BackdropBlur})");
-        return b.Build();
+        return Styles()
+            .AddStyle("z-index", BackdropZIndex.ToString(), BackdropZIndex > 0)
+            .AddStyle("backdrop-filter", $"blur({BackdropBlur})", !string.IsNullOrEmpty(BackdropBlur))
+            .Build();
     }
 
     private string GetModalClasses()
@@ -348,15 +347,12 @@ public partial class SgModal : SgOverlayComponentBase
 
     private string GetStyle()
     {
-        var b = Styles();
-        b.AddStyle("z-index", ZIndexValue.ToString(), ZIndexValue > 0);
-        if (!string.IsNullOrEmpty(Width))
-            b.AddStyle("width", Width);
-        if (!string.IsNullOrEmpty(MaxWidth))
-            b.AddStyle("max-width", MaxWidth);
-        if (!string.IsNullOrEmpty(MinWidth))
-            b.AddStyle("min-width", MinWidth);
-        return b.Build();
+        return Styles()
+            .AddStyle("z-index", ZIndexValue.ToString(), ZIndexValue > 0)
+            .AddStyle("width", Width, !string.IsNullOrEmpty(Width))
+            .AddStyle("max-width", MaxWidth, !string.IsNullOrEmpty(MaxWidth))
+            .AddStyle("min-width", MinWidth, !string.IsNullOrEmpty(MinWidth))
+            .Build();
     }
 
     private Task BackdropClickAsync()

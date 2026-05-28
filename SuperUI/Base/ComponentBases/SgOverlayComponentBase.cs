@@ -150,6 +150,7 @@ public abstract class SgOverlayComponentBase : SgJsComponentBase
         }
 
         _isClosing = false;
+        _previousVisible = false;
         ReleaseZIndex();
 
         if (VisibleChanged.HasDelegate)

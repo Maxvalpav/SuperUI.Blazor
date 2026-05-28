@@ -60,6 +60,7 @@ public static class ServiceCollectionExtensions
         
         services.TryAddScoped<SgThemeService>();
         services.TryAddScoped<SgSettingsService>();
+        services.TryAddScoped<SgDrawerService>();
         services.TryAddScoped<SgPageTabsService>();
         services.TryAddScoped<SgRagService>();
         services.TryAddScoped<Services.AI.SgLangGraphService>();
