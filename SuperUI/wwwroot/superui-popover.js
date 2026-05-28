@@ -100,6 +100,7 @@ export function attach(root, popover, trigger, dotnetRef, closeOnOutsideClick, c
     if (!root || !popover || !trigger) return;
 
     popover.style.visibility = 'hidden';
+    popover.style.opacity = '0';
 
     let isDisposed = false;
     let scrollParents = [];
@@ -162,9 +163,10 @@ export function attach(root, popover, trigger, dotnetRef, closeOnOutsideClick, c
     requestAnimationFrame(() => {
         if (isDisposed || !popover) return;
 
-        const newPos = positionPopover(trigger, popover, placement, offset, closeOnEscape, interactive);
+        positionPopover(trigger, popover, placement, offset, closeOnEscape, interactive);
 
         popover.style.visibility = 'visible';
+        popover.style.opacity = '';
 
         const focusable = getFocusableElements(popover);
         if (focusable.length > 0) {
