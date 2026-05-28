@@ -1,151 +1,1034 @@
 ﻿@page "/popover-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
 
-<PageTitle>Всплывающее окно - SUI</PageTitle>
+<PageTitle>SgPopover -- Popover -- SuperUI</PageTitle>
 
-<SgCard Title="SgPopover - Всплывающее окно"
-        Subtitle="Компонент для отображения дополнительной информации при клике. Поддерживает различные позиции и пользовательское содержимое.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <div style="margin-top: 32px;">
-        <h2>Примеры использования</h2>
-        <p>Интерактивные примеры всплывающих окон с различными конфигурациями.</p>
+    <!-- ================================================================ -->
+    <!-- 1. Basic Examples                                                -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Basic Usage
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Click trigger elements to reveal popovers with additional content.
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Title</SgTypography> sets the header,
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ChildContent</SgTypography> is the body content,
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Placement</SgTypography> controls position.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Базовые примеры">
-                <div style="display: flex; flex-direction: column; gap: 16px; align-items: flex-start;">
+        <div class="demo-two-col">
+            <SgCard Title="Popover Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Информационный поповер</div>
-                        <SgPopover Title="Информация" @bind-Open="_pop1">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;">
+                            Action Buttons
+                        </SgTypography>
+                        <SgSpace>
+                            <SgPopover Title="Information" @bind-Open="_basicPop1">
+                                <TriggerContent>
+                                    <SgButton Variant="SgButtonVariant.Primary" Size="SgSize.Sm">
+                                        <ChildContent>
+                                            <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                                <SgHeroicon Name="SgHeroicons.Names.Info" Size="14px" />
+                                                <span>Info</span>
+                                            </SgStack>
+                                        </ChildContent>
+                                    </SgButton>
+                                </TriggerContent>
+                                <ChildContent>
+                                    <p style="margin:0;">This popover provides additional information about the component.</p>
+                                </ChildContent>
+                            </SgPopover>
+                            <SgPopover Title="Confirm Action" @bind-Open="_basicPop2">
+                                <TriggerContent>
+                                    <SgButton Variant="SgButtonVariant.Danger" Size="SgSize.Sm">Delete</SgButton>
+                                </TriggerContent>
+                                <ChildContent>
+                                    <p style="margin:0 0 12px;">Are you sure you want to delete this record?</p>
+                                    <SgSpace>
+                                        <SgButton Text="Delete" Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="@(() => _basicPop2 = false)" />
+                                        <SgButton Text="Cancel" Size="SgSize.Sm" OnClick="@(() => _basicPop2 = false)" />
+                                    </SgSpace>
+                                </ChildContent>
+                            </SgPopover>
+                            <SgPopover Title="Tip" ShowArrow="true" @bind-Open="_basicPop3">
+                                <TriggerContent>
+                                    <SgButton Variant="SgButtonVariant.Outlined" Size="SgSize.Sm">With Arrow</SgButton>
+                                </TriggerContent>
+                                <ChildContent>
+                                    <p style="margin:0;">Popover with an arrow pointing to the trigger element.</p>
+                                </ChildContent>
+                            </SgPopover>
+                        </SgSpace>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;">
+                            Custom Trigger via SgButton
+                        </SgTypography>
+                        <SgButton @onclick="() => _basicPop4 = !_basicPop4"
+                                  Variant="SgButtonVariant.Ghost" Size="SgSize.Sm">
+                            <ChildContent>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    <SgHeroicon Name="SgHeroicons.Names.Cog6Tooth" Size="16px" />
+                                    <span>Settings</span>
+                                </SgStack>
+                            </ChildContent>
+                        </SgButton>
+                        <SgPopover Title="Settings" @bind-Open="_basicPop4" Placement="SgPlacement.Bottom">
                             <TriggerContent>
-                                <SgButton Text="Нажмите для информации" Variant=SgButtonVariant.Primary" />
+                                <span></span>
                             </TriggerContent>
                             <ChildContent>
-                                <p style="margin: 0;">Это всплывающее окно с дополнительной информацией о компоненте.</p>
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <label><input type="checkbox" /> Enable notifications</label>
+                                    <label><input type="checkbox" /> Dark mode</label>
+                                    <label><input type="checkbox" /> Auto-save</label>
+                                </SgStack>
                             </ChildContent>
                         </SgPopover>
                     </div>
-
-                    <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Поповер подтверждения</div>
-                        <SgPopover Title="Подтверждение" @bind-Open="_pop2">
-                            <TriggerContent>
-                                <SgButton Text="Удалить запись" Variant="SgButtonVariant.Danger" />
-                            </TriggerContent>
-                            <ChildContent>
-                                <p style="margin: 0 0 12px;">Вы уверены, что хотите удалить эту запись?</p>
-                                <div style="display: flex; gap: 8px;">
-                                    <SgButton Text="Удалить" Variant="SgButtonVariant.Danger" Size="SgSize.Sm" OnClick="DeleteRecord" />
-                                    <SgButton Text="Отмена" Size="SgSize.Sm" OnClick="@(() => _pop2 = false)" />
-                                </div>
-                            </ChildContent>
-                        </SgPopover>
-                    </div>
-
-                    <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Поповер со стрелкой</div>
-                        <SgPopover Title="Подсказка" ShowArrow="true" @bind-Open="_pop3">
-                            <TriggerContent>
-                                <SgButton Text="Со стрелкой" />
-                            </TriggerContent>
-                            <ChildContent>
-                                <p style="margin: 0;">Поповер со стрелкой, указывающей на триггер.</p>
-                            </ChildContent>
-                        </SgPopover>
-                    </div>
-                </div>
+                </SgStack>
             </SgCard>
 
-            <SgCard Title="Свойства компонента">
+            <SgCard Title="SgPopover Properties" Shadow="SgShadow.Sm" Size="SgSize.Sm">
                 <PropertyTable Items="_popoverProperties" />
             </SgCard>
         </div>
     </div>
 
-    <div style="margin-top: 32px;">
-        <h2>Позиционирование</h2>
-        <p>Поповер поддерживает 12 позиций относительно триггера.</p>
+    <!-- ================================================================ -->
+    <!-- 2. Placement Examples                                             -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Placement -- All 12 Positions
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Placement</SgTypography> controls where the popover appears relative to the trigger.
+                Extended variants (<SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">TopStart</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">BottomEnd</SgTypography>, etc.) align the popover edge with the trigger.
+            </SgTypography>
+        </div>
 
-        <SgCard Title="Варианты позиций" Style="margin-top: 16px;">
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                @foreach (var placement in _placements)
+        <SgCard Title="All Placement Variants" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgStack Vertical Space="SgSize.Lg">
+                @foreach (var group in _placementGroups)
                 {
-                    var p = placement;
-                    <SgPopover Title="@p.ToString()" Placement="@p" @bind-Open="_placementOpen[p]">
-                        <TriggerContent>
-                            <SgButton Text="@p.ToString()" Size="SgSize.Sm" />
-                        </TriggerContent>
-                        <ChildContent>
-                            <p style="margin: 0;">Позиция: <strong>@p</strong></p>
-                        </ChildContent>
-                    </SgPopover>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            @group.Label
+                        </SgTypography>
+                        <SgSpace Wrap="true">
+                            @foreach (var p in group.Items)
+                            {
+                                <SgPopover Title="@($"Placement: {p.Value}")" Placement="@p.Value" ShowArrow="true" @bind-Open="_placementOpen[p.Value]">
+                                    <TriggerContent>
+                                        <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">@p.Label</SgButton>
+                                    </TriggerContent>
+                                    <ChildContent>
+                                        <p style="margin:0;">Popover positioned at <strong>@p.Value</strong></p>
+                                    </ChildContent>
+                                </SgPopover>
+                            }
+                        </SgSpace>
+                    </div>
                 }
-            </div>
+            </SgStack>
         </SgCard>
     </div>
 
-    <!-- Enum + code -->
-    <div style="margin-top: 32px;">
-        <h2>Перечисления и примеры кода</h2>
+    <!-- ================================================================ -->
+    <!-- 3. Trigger Modes                                                  -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Trigger Modes
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Trigger</SgTypography> controls the interaction that shows/hides the popover:
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Click</SgTypography> (default), <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Hover</SgTypography>, or <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Manual</SgTypography>.
+            </SgTypography>
+        </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="SgPlacement (12 позиций)">
-                <PropertyTable Items="_placementEnum" />
+        <div class="demo-two-col">
+            <SgCard Title="Trigger Behaviors" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <SgRow Space="SgSize.Lg">
+                        <SgCol Span="6">
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Click (default)</SgTypography>
+                                <SgPopover Title="Click Popover" Trigger="SgTrigger.Click">
+                                    <TriggerContent>
+                                        <SgButton Size="SgSize.Sm">Click me</SgButton>
+                                    </TriggerContent>
+                                    <ChildContent>
+                                        <p style="margin:0;">I appear on click!</p>
+                                    </ChildContent>
+                                </SgPopover>
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Hover</SgTypography>
+                                <SgPopover Title="Hover Popover" Trigger="SgTrigger.Hover">
+                                    <TriggerContent>
+                                        <SgButton Size="SgSize.Sm">Hover me</SgButton>
+                                    </TriggerContent>
+                                    <ChildContent>
+                                        <p style="margin:0;">I appear on hover!</p>
+                                    </ChildContent>
+                                </SgPopover>
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Hover + Interactive</SgTypography>
+                                <SgPopover Title="Interactive Popover" Trigger="SgTrigger.Hover" Interactive="true" ShowArrow="true">
+                                    <TriggerContent>
+                                        <SgButton Size="SgSize.Sm">Hover + stay</SgButton>
+                                    </TriggerContent>
+                                    <ChildContent>
+                                        <p style="margin:0 0 8px;">I stay open when you hover over me!</p>
+                                        <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary">Click me</SgButton>
+                                    </ChildContent>
+                                </SgPopover>
+                            </SgStack>
+                        </SgCol>
+                        <SgCol Span="6">
+                            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Manual</SgTypography>
+                                <SgSpace>
+                                    <SgPopover @ref="_manualPopover" Title="Manual Popover" Trigger="SgTrigger.Manual">
+                                        <TriggerContent>
+                                            <SgButton Size="SgSize.Sm">Target</SgButton>
+                                        </TriggerContent>
+                                        <ChildContent>
+                                            <p style="margin:0;">I appear programmatically!</p>
+                                        </ChildContent>
+                                    </SgPopover>
+                                    <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Primary" @onclick="ToggleManualPopoverAsync">@_manualButtonLabel</SgButton>
+                                </SgSpace>
+                            </SgStack>
+                        </SgCol>
+                    </SgRow>
+                </SgStack>
+            </SgCard>
+
+            <SgCard Title="Configuration" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;">
+                            CloseOnOutsideClick = false
+                        </SgTypography>
+                        <SgPopover Title="Persistent" CloseOnOutsideClick="false" ShowArrow="true">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">Click (persistent)</SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <p style="margin:0;">I don't close when you click outside. Press ESC or click the button again.</p>
+                            </ChildContent>
+                        </SgPopover>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;">
+                            CloseOnEscape = false
+                        </SgTypography>
+                        <SgPopover Title="No ESC" CloseOnEscape="false" ShowArrow="true">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">Click (no ESC)</SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <p style="margin:0;">ESC key won't close me. Click outside or the trigger to close.</p>
+                            </ChildContent>
+                        </SgPopover>
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:10px;">
+                            Disabled
+                        </SgTypography>
+                        <SgPopover Title="Disabled Popover" Disabled="true" ShowArrow="true">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">Disabled</SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <p style="margin:0;">I should not appear.</p>
+                            </ChildContent>
+                        </SgPopover>
+                    </div>
+                </SgStack>
             </SgCard>
         </div>
     </div>
 
+    <!-- ================================================================ -->
+    <!-- 4. Color Variants                                                 -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Color Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Color</SgTypography> parameter to set any background color.
+                Combine with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">ShowArrow</SgTypography> for a polished look.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="Color Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgSpace Wrap="true">
+                @foreach (var c in _colorExamples)
+                {
+                    <SgPopover Title="@c.Title" Color="@c.Color" ShowArrow="true">
+                        <TriggerContent>
+                            <SgButton Size="SgSize.Sm">@c.Label</SgButton>
+                        </TriggerContent>
+                        <ChildContent>
+                            <p style="margin:0;">Color: @c.Label</p>
+                        </ChildContent>
+                    </SgPopover>
+                }
+            </SgSpace>
+        </SgCard>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- 5. Rich Content                                                   -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Rich Content
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Popovers can contain any Blazor content -- buttons, forms, lists, icons, and more.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="Rich Content Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgRow Space="SgSize.Lg">
+                <SgCol Md="4">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Form</SgTypography>
+                        <SgPopover Title="Quick Login" Placement="SgPlacement.Bottom" ShowArrow="true">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">Login</SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <input type="email" class="demo-input" placeholder="Email" />
+                                    <input type="password" class="demo-input" placeholder="Password" />
+                                    <SgButton Text="Sign In" Variant="SgButtonVariant.Primary" Block="true" />
+                                </SgStack>
+                            </ChildContent>
+                        </SgPopover>
+                    </SgStack>
+                </SgCol>
+                <SgCol Md="4">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">List with Icons</SgTypography>
+                        <SgPopover Title="Notifications" Placement="SgPlacement.Bottom" ShowArrow="true">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">
+                                    <SgHeroicon Name="SgHeroicons.Names.Bell" Size="16px" />
+                                </SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgHeroicon Name="SgHeroicons.Names.CheckCircle" Size="14px" Color="var(--sg-color-success)" />
+                                        <span style="font-size:12px;">Deployment successful</span>
+                                    </SgStack>
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgHeroicon Name="SgHeroicons.Names.ExclamationCircle" Size="14px" Color="var(--sg-color-warning)" />
+                                        <span style="font-size:12px;">Disk usage at 85%</span>
+                                    </SgStack>
+                                    <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                        <SgHeroicon Name="SgHeroicons.Names.XCircle" Size="14px" Color="var(--sg-color-danger)" />
+                                        <span style="font-size:12px;">3 failed jobs</span>
+                                    </SgStack>
+                                </SgStack>
+                            </ChildContent>
+                        </SgPopover>
+                    </SgStack>
+                </SgCol>
+                <SgCol Md="4">
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">User Profile</SgTypography>
+                        <SgPopover Title="User Profile" Placement="SgPlacement.Bottom" ShowArrow="true" MaxWidth="240px">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">Profile</SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                                    <div style="width:48px;height:48px;border-radius:50%;background:var(--sg-primary);display:flex;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:18px;">JD</div>
+                                    <div style="text-align:center;">
+                                        <div style="font-weight:600;font-size:13px;">John Doe</div>
+                                        <div style="font-size:11px;opacity:0.8;">john.doe@example.com</div>
+                                    </div>
+                                    <SgButton Text="View Profile" Size="SgSize.Sm" Variant="SgButtonVariant.Outlined" Block="true" />
+                                    <SgButton Text="Sign Out" Size="SgSize.Sm" Variant="SgButtonVariant.Ghost" Block="true" />
+                                </SgStack>
+                            </ChildContent>
+                        </SgPopover>
+                    </SgStack>
+                </SgCol>
+            </SgRow>
+        </SgCard>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- 6. Size Variants                                                 -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Size Variants
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Use the <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Size</SgTypography> parameter to control popover density.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="Size Variants" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgSpace Wrap="true">
+                @foreach (var sz in _sizeVariants)
+                {
+                    <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Center">
+                        <SgPopover Title="@($"Size: {sz.Label}")" Size="@sz.Value" ShowArrow="true">
+                            <TriggerContent>
+                                <SgButton Size="SgSize.Sm" Variant="SgButtonVariant.Outlined">@sz.Label</SgButton>
+                            </TriggerContent>
+                            <ChildContent>
+                                <p style="margin:0;">Popover with @sz.Label size.</p>
+                            </ChildContent>
+                        </SgPopover>
+                        <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Weight="SgTypographyWeight.Medium">@sz.Label</SgTypography>
+                    </SgStack>
+                }
+            </SgSpace>
+        </SgCard>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- 7. Offset Customization                                           -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Offset Customization
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                The <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Offset</SgTypography> parameter controls the gap (px) between popover and trigger. Default: 6.
+            </SgTypography>
+        </div>
+
+        <SgCard Title="Offset Examples" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+            <SgSpace Wrap="true">
+                @foreach (var o in _offsetExamples)
+                {
+                    <SgPopover Title="@($"Offset: {o}px")" Offset="@o" ShowArrow="true">
+                        <TriggerContent>
+                            <SgButton Size="SgSize.Sm">Offset @o</SgButton>
+                        </TriggerContent>
+                        <ChildContent>
+                            <p style="margin:0;">Offset @o pixels from trigger.</p>
+                        </ChildContent>
+                    </SgPopover>
+                }
+            </SgSpace>
+        </SgCard>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- 8. Live SgPopover Constructor                                    -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Live SgPopover Constructor
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Configure all parameters and see the result live. Click the code to copy.
+            </SgTypography>
+        </div>
+
+        <SgCard Shadow="SgShadow.Md" Radius="SgSize.Lg" NoPadding="true">
+            <SgRow Space="SgSize.Md">
+
+                <!-- Control Panel -->
+                <SgCol Xs="12" Md="5" Style="padding:24px;border-right:1px solid var(--sg-border);">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Title -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Title</SgTypography>
+                            <input type="text" class="demo-input"
+                                   value="@_ctorTitle"
+                                   @oninput="e => { _ctorTitle = (string?)e.Value ?? _ctorTitle; UpdateConstructorCode(); }"
+                                   placeholder="Popover title..." />
+                        </SgStack>
+
+                        <!-- Placement -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Placement</SgTypography>
+                            <SgSelect TValue="SgPlacement"
+                                      @bind-Value="_ctorPlacement"
+                                      Items="_allPlacements"
+                                      LabelSelector="x => x.ToString()"
+                                      Block="true" />
+                        </SgStack>
+
+                        <!-- Trigger -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Trigger</SgTypography>
+                            <SgSelect TValue="SgTrigger"
+                                      @bind-Value="_ctorTrigger"
+                                      Items="_allTriggers"
+                                      LabelSelector="x => x.ToString()"
+                                      Block="true" />
+                        </SgStack>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="4">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Arrow</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorShowArrow"
+                                                 ValueChanged="v => { _ctorShowArrow = v; UpdateConstructorCode(); }"
+                                                 Block="true" Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="4">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Disabled</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorDisabled"
+                                                 ValueChanged="v => { _ctorDisabled = v; UpdateConstructorCode(); }"
+                                                 Block="true" Size="sm"
+                                                 Options="_boolSegOptions2" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="4">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Outside</SgTypography>
+                                    <SgSegmented TValue="bool"
+                                                 Value="_ctorCloseOnOutsideClick"
+                                                 ValueChanged="v => { _ctorCloseOnOutsideClick = v; UpdateConstructorCode(); }"
+                                                 Block="true" Size="sm"
+                                                 Options="_boolSegOptions" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Color</SgTypography>
+                            <SgSegmented TValue="string"
+                                         Value="_ctorColor"
+                                         ValueChanged="v => { _ctorColor = v; UpdateConstructorCode(); }"
+                                         Block="true" Size="sm"
+                                         Options="_colorSegOptions" />
+                        </SgStack>
+
+                        <SgRow Space="SgSize.Sm">
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Size</SgTypography>
+                                    <SgSelect TValue="SgSize?"
+                                              @bind-Value="_ctorSize"
+                                              Items="_allSizeOptions"
+                                              LabelSelector="@(_sizeLabelSelector)"
+                                              Block="true" />
+                                </SgStack>
+                            </SgCol>
+                            <SgCol Span="6">
+                                <SgStack Vertical Space="SgSize.Sm">
+                                    <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Offset</SgTypography>
+                                    <input type="number" class="demo-input"
+                                           value="@_ctorOffset"
+                                           @oninput="e => { _ctorOffset = int.TryParse((string?)e.Value, out var v) ? v : 8; UpdateConstructorCode(); }"
+                                           min="0" max="64" step="1" />
+                                </SgStack>
+                            </SgCol>
+                        </SgRow>
+
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">MaxWidth</SgTypography>
+                            <input type="text" class="demo-input"
+                                   value="@_ctorMaxWidth"
+                                   @oninput="e => { _ctorMaxWidth = (string?)e.Value ?? string.Empty; UpdateConstructorCode(); }"
+                                   placeholder="e.g. 400px" />
+                        </SgStack>
+
+                        <div class="ctrl-summary">
+                            <SgStack Vertical Space="SgSize.Sm">
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Placement</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Info" Text="@_ctorPlacement.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Trigger</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@_ctorTrigger.ToString()" Standalone="true" />
+                                </SgStack>
+                                <SgStack Horizontal Space="SgSize.Sm" Align="SgAlignItems.Center" Justify="SgJustifyContent.SpaceBetween">
+                                    <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Size / Offset</SgTypography>
+                                    <SgBadge Variant="SgBadgeVariant.Default" Text="@($"{_ctorSize?.ToString() ?? "Default"} / {_ctorOffset}px")" Standalone="true" />
+                                </SgStack>
+                            </SgStack>
+                        </div>
+
+                    </SgStack>
+                </SgCol>
+
+                <!-- Preview + Code -->
+                <SgCol Xs="12" Md="7" Style="padding:24px;">
+                    <SgStack Vertical Space="SgSize.Lg">
+
+                        <!-- Preview -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Result</SgTypography>
+                            </div>
+                            <div class="constructor-preview">
+                                <SgPopover Title="@_ctorTitle"
+                                           Placement="@_ctorPlacement"
+                                           Trigger="@_ctorTrigger"
+                                           ShowArrow="@_ctorShowArrow"
+                                           Disabled="@_ctorDisabled"
+                                           CloseOnOutsideClick="@_ctorCloseOnOutsideClick"
+                                           Color="@(string.IsNullOrEmpty(_ctorColor) ? null : _ctorColor)"
+                                           MaxWidth="@(string.IsNullOrEmpty(_ctorMaxWidth) ? null : _ctorMaxWidth)"
+                                           Size="@_ctorSize"
+                                           Offset="@_ctorOffset">
+                                    <TriggerContent>
+                                        <SgButton Variant="SgButtonVariant.Primary">Click me</SgButton>
+                                    </TriggerContent>
+                                    <ChildContent>
+                                        <p style="margin:0;">Configurable popover content.</p>
+                                    </ChildContent>
+                                </SgPopover>
+                            </div>
+                        </SgStack>
+
+                        <!-- Code -->
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <div style="display:flex;align-items:center;justify-content:space-between;">
+                                <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)">Generated Code</SgTypography>
+                                <button type="button" class="demo-copy-btn" title="Copy to clipboard" @onclick="CopyCodeToClipboard">
+                                    <span id="copy-icon">@_copyIcon</span>
+                                    <span id="copy-text" style="font-size:11px;font-weight:600;">@_copyLabel</span>
+                                </button>
+                            </div>
+                            <div class="code-block" id="code-block">
+                                @foreach (var line in _generatedCodeLines)
+                                {
+                                    <code>@line</code>
+                                }
+                            </div>
+                        </SgStack>
+
+                    </SgStack>
+                </SgCol>
+
+            </SgRow>
+        </SgCard>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- 9. Enum Reference                                                -->
+    <!-- ================================================================ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Enum Reference
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Complete reference for <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgPlacement</SgTypography>, <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgTrigger</SgTypography>, and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgSize</SgTypography>.
+            </SgTypography>
+        </div>
+
+        <SgRow Space="SgSize.Lg">
+            <SgCol Md="4">
+                <SgCard Title="SgPlacement" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_placementEnum" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="SgTrigger" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_triggerEnum" />
+                </SgCard>
+            </SgCol>
+            <SgCol Md="4">
+                <SgCard Title="SgSize" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                    <PropertyTable Items="_sizeEnum" />
+                </SgCard>
+            </SgCol>
+        </SgRow>
+    </div>
+
+</ChildContent>
 </SgCard>
 
-@code {
-    private bool _pop1;
-    private bool _pop2;
-    private bool _pop3;
-
-    private void DeleteRecord()
-    {
-        _pop2 = false;
+<style>
+    .demo-section {
+        margin-top: 48px;
+    }
+    .demo-section-header {
+        margin-bottom: 20px;
     }
 
-    private List<SgPlacement> _placements = new()
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+
+    .constructor-preview {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 16px;
+        min-height: 80px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.3s ease;
+    }
+    .ctrl-summary {
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 8px;
+        padding: 12px 14px;
+    }
+    .code-block {
+        background: #0f172a;
+        color: #7dd3fc;
+        padding: 14px 16px;
+        border-radius: 8px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        line-height: 1.9;
+        overflow-x: auto;
+        position: relative;
+    }
+    .code-block code {
+        background: none;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+        display: block;
+        white-space: pre;
+    }
+
+    .demo-input {
+        background: var(--sg-bg);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 13px;
+        font-family: inherit;
+        color: var(--sg-text);
+        width: 100%;
+        box-sizing: border-box;
+        transition: border-color 0.15s;
+    }
+    .demo-input:focus {
+        outline: none;
+        border-color: var(--sg-primary);
+    }
+
+    .demo-copy-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        background: var(--sg-surface-alt);
+        border: 1px solid var(--sg-border);
+        border-radius: 6px;
+        padding: 4px 10px;
+        cursor: pointer;
+        color: var(--sg-text-muted);
+        transition: all 0.2s ease;
+        font-family: inherit;
+    }
+    .demo-copy-btn:hover {
+        color: var(--sg-primary);
+        border-color: var(--sg-primary);
+        background: color-mix(in srgb, var(--sg-primary) 8%, transparent);
+    }
+    .demo-copy-btn:active {
+        transform: scale(0.95);
+    }
+    .demo-copy-btn.copied {
+        color: var(--sg-color-success);
+        border-color: var(--sg-color-success);
+    }
+</style>
+
+@code {
+    // ── Main card header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
     {
-        SgPlacement.TopStart,    SgPlacement.Top,    SgPlacement.TopEnd,
-        SgPlacement.BottomStart, SgPlacement.Bottom, SgPlacement.BottomEnd,
-        SgPlacement.LeftStart,   SgPlacement.Left,   SgPlacement.LeftEnd,
-        SgPlacement.RightStart,  SgPlacement.Right,  SgPlacement.RightEnd
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">SgPopover</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Overlay content component with 12 placements, 4 trigger modes, size/color variants,
+                    rich content support, arrows, and configurable offset/close behavior.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
     };
+
+    // ── Placement groups ────────────────────────────────────────────────
+    private List<PlacementGroup> _placementGroups => new()
+    {
+        new("Top", new[] { (SgPlacement.Top, "Top"), (SgPlacement.TopStart, "TopStart"), (SgPlacement.TopEnd, "TopEnd") }),
+        new("Bottom", new[] { (SgPlacement.Bottom, "Bottom"), (SgPlacement.BottomStart, "BottomStart"), (SgPlacement.BottomEnd, "BottomEnd") }),
+        new("Left", new[] { (SgPlacement.Left, "Left"), (SgPlacement.LeftStart, "LeftStart"), (SgPlacement.LeftEnd, "LeftEnd") }),
+        new("Right", new[] { (SgPlacement.Right, "Right"), (SgPlacement.RightStart, "RightStart"), (SgPlacement.RightEnd, "RightEnd") }),
+    };
+
+    // ── Color examples ──────────────────────────────────────────────────
+    private record ColorExample(string Title, string Label, string Color);
+    private List<ColorExample> _colorExamples => new()
+    {
+        new("Default", "Default", ""),
+        new("Info", "Info", "var(--sg-color-info)"),
+        new("Success", "Success", "var(--sg-color-success)"),
+        new("Warning", "Warning", "var(--sg-color-warning)"),
+        new("Error", "Error", "var(--sg-color-danger)"),
+        new("Custom Dark", "Custom Dark", "#1e293b"),
+    };
+
+    // ── Size variants ─────────────────────────────────────────────────
+    private record SizeItem(string Label, SgSize? Value);
+    private List<SizeItem> _sizeVariants => new()
+    {
+        new("Sm", SgSize.Sm), new("Md", SgSize.Md), new("Lg", SgSize.Lg), new("Xl", SgSize.Xl),
+    };
+
+    // ── Offset examples ─────────────────────────────────────────────────
+    private int[] _offsetExamples = new[] { 0, 4, 6, 12, 24 };
+
+    // ── Constructor state ─────────────────────────────────────────────────
+    private string _ctorTitle = "Hello, Popover!";
+    private SgPlacement _ctorPlacement = SgPlacement.BottomStart;
+    private SgTrigger _ctorTrigger = SgTrigger.Click;
+    private bool _ctorShowArrow = true;
+    private bool _ctorDisabled;
+    private bool _ctorCloseOnOutsideClick = true;
+    private string _ctorColor = "";
+    private string _ctorMaxWidth = "";
+    private SgSize? _ctorSize;
+    private int _ctorOffset = 6;
+
+    private string[] _generatedCodeLines = Array.Empty<string>();
+    private string _copyIcon = "";
+    private string _copyLabel = "Copy";
+
+    // ── Manual popover state ─────────────────────────────────────────────
+    private SgPopover? _manualPopover;
+    private string _manualButtonLabel = "Show popover";
+
+    // ── Basic popover state ──────────────────────────────────────────────
+    private bool _basicPop1;
+    private bool _basicPop2;
+    private bool _basicPop3;
+    private bool _basicPop4;
 
     private Dictionary<SgPlacement, bool> _placementOpen = new()
     {
-        [SgPlacement.TopStart]    = false, [SgPlacement.Top]    = false, [SgPlacement.TopEnd]    = false,
+        [SgPlacement.TopStart] = false, [SgPlacement.Top] = false, [SgPlacement.TopEnd] = false,
         [SgPlacement.BottomStart] = false, [SgPlacement.Bottom] = false, [SgPlacement.BottomEnd] = false,
-        [SgPlacement.LeftStart]   = false, [SgPlacement.Left]   = false, [SgPlacement.LeftEnd]   = false,
-        [SgPlacement.RightStart]  = false, [SgPlacement.Right]  = false, [SgPlacement.RightEnd]  = false
+        [SgPlacement.LeftStart] = false, [SgPlacement.Left] = false, [SgPlacement.LeftEnd] = false,
+        [SgPlacement.RightStart] = false, [SgPlacement.Right] = false, [SgPlacement.RightEnd] = false,
     };
 
+    private async Task ToggleManualPopoverAsync()
+    {
+        if (_manualPopover is null) return;
+        if (_manualPopover.Open)
+        {
+            await _manualPopover.CloseAsync();
+            _manualButtonLabel = "Show popover";
+        }
+        else
+        {
+            await _manualPopover.OpenAsync();
+            _manualButtonLabel = "Hide popover";
+        }
+    }
+
+    // ── All enum values ───────────────────────────────────────────────────
+    private readonly List<SgPlacement> _allPlacements = Enum.GetValues<SgPlacement>().ToList();
+    private readonly List<SgTrigger> _allTriggers = Enum.GetValues<SgTrigger>().ToList();
+    private readonly List<SgSize?> _allSizeOptions = new() { null, SgSize.Sm, SgSize.Md, SgSize.Lg, SgSize.Xl };
+    private static readonly Func<SgSize?, string> _sizeLabelSelector = x => x?.ToString() ?? "Default";
+
+    // ── Segmented options ─────────────────────────────────────────────────
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions = new()
+    {
+        new() { Value = false, Label = "Off" },
+        new() { Value = true, Label = "On" },
+    };
+
+    private readonly List<SgSegmentedOption<bool>> _boolSegOptions2 = new()
+    {
+        new() { Value = true, Label = "On" },
+        new() { Value = false, Label = "Off" },
+    };
+
+    private readonly List<SgSegmentedOption<string>> _colorSegOptions = new()
+    {
+        new() { Value = "", Label = "Default" },
+        new() { Value = "var(--sg-color-info)", Label = "Info" },
+        new() { Value = "var(--sg-color-success)", Label = "Success" },
+        new() { Value = "var(--sg-color-warning)", Label = "Warning" },
+        new() { Value = "var(--sg-color-danger)", Label = "Error" },
+        new() { Value = "#1e293b", Label = "Dark" },
+    };
+
+    // ── Lifecycle ─────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        UpdateConstructorCode();
+    }
+
+    private void UpdateConstructorCode()
+    {
+        var lines = new List<string>();
+        lines.Add($"<SgPopover Title=\"{_ctorTitle}\"");
+
+        if (_ctorPlacement != SgPlacement.BottomStart)
+            lines.Add($"           Placement=\"SgPlacement.{_ctorPlacement}\"");
+        if (_ctorTrigger != SgTrigger.Click)
+            lines.Add($"           Trigger=\"SgTrigger.{_ctorTrigger}\"");
+        if (_ctorShowArrow)
+            lines.Add($"           ShowArrow=\"true\"");
+        if (_ctorDisabled)
+            lines.Add($"           Disabled=\"true\"");
+        if (!_ctorCloseOnOutsideClick)
+            lines.Add($"           CloseOnOutsideClick=\"false\"");
+        if (!string.IsNullOrEmpty(_ctorColor))
+            lines.Add($"           Color=\"{_ctorColor}\"");
+        if (!string.IsNullOrEmpty(_ctorMaxWidth))
+            lines.Add($"           MaxWidth=\"{_ctorMaxWidth}\"");
+        if (_ctorSize.HasValue)
+            lines.Add($"           Size=\"SgSize.{_ctorSize.Value}\"");
+        if (_ctorOffset != 6)
+            lines.Add($"           Offset=\"{_ctorOffset}\"");
+
+        lines.Add($"           >");
+        lines.Add($"    <TriggerContent>");
+        lines.Add($"        <SgButton Variant=\"SgButtonVariant.Primary\">Click me</SgButton>");
+        lines.Add($"    </TriggerContent>");
+        lines.Add($"    <ChildContent>");
+        lines.Add($"        <p style=\"margin:0;\">Configurable popover content.</p>");
+        lines.Add($"    </ChildContent>");
+        lines.Add($"</SgPopover>");
+
+        _generatedCodeLines = lines.ToArray();
+    }
+
+    private async Task CopyCodeToClipboard()
+    {
+        var code = string.Join("\n", _generatedCodeLines);
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            _copyIcon = "Copied!";
+            _copyLabel = "Copied!";
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copyIcon = "";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+        catch
+        {
+            _copyIcon = "Failed";
+            _copyLabel = "Failed";
+            StateHasChanged();
+            await Task.Delay(1500);
+            _copyIcon = "";
+            _copyLabel = "Copy";
+            StateHasChanged();
+        }
+    }
+
+    // ── Properties table ─────────────────────────────────────────────────
     private List<PropertyPanelItem> _popoverProperties = new()
     {
-        new() { Label = "Open",                Value = "bool",                    BadgeText = "Открыт",              BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "OpenChanged",         Value = "EventCallback<bool>",     BadgeText = "Событие",             BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Title",               Value = "string",                  BadgeText = "Заголовок",            BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Placement",           Value = "top|bottom|left|right…",  BadgeText = "Позиция (SgPlacement)", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Trigger",             Value = "click|hover|focus|manual",BadgeText = "Триггер (SgTrigger)", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ShowArrow",           Value = "bool",                    BadgeText = "Стрелка",             BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CloseOnOutsideClick", Value = "bool",                    BadgeText = "Закрыть снаружи",     BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CloseOnEscape",       Value = "bool",                    BadgeText = "Закрыть по Esc",      BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "TriggerContent",      Value = "RenderFragment",          BadgeText = "Триггер",             BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ChildContent",        Value = "RenderFragment",          BadgeText = "Содержимое",          BadgeVariant = SgBadgeVariant.Info }
+        new() { Label = "Open", Value = "bool", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "OpenChanged", Value = "EventCallback<bool>", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Title", Value = "string?", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Placement", Value = "SgPlacement (12)", BadgeText = "", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Trigger", Value = "SgTrigger (3)", BadgeText = "", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowArrow", Value = "bool", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CloseOnOutsideClick", Value = "bool", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CloseOnEscape", Value = "bool", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Disabled", Value = "bool", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "TriggerContent", Value = "RenderFragment?", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ChildContent", Value = "RenderFragment", BadgeText = "Required", BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Size", Value = "SgSize?", BadgeText = "New", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxWidth", Value = "string?", BadgeText = "New", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Color", Value = "string? (CSS)", BadgeText = "New", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Interactive", Value = "bool", BadgeText = "New", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Offset", Value = "int (px)", BadgeText = "New", BadgeVariant = SgBadgeVariant.Info },
     };
 
-    // ── Enum tables ──────────────────────────────────────────────────────────
     private List<PropertyPanelItem> _placementEnum = new()
     {
-        new() { Label = "SgPlacement.Bottom",      Value = "\"bottom\"",       BadgeText = "Снизу по центру",    BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgPlacement.BottomStart", Value = "\"bottom-start\"", BadgeText = "Снизу слева",        BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.BottomEnd",   Value = "\"bottom-end\"",   BadgeText = "Снизу справа",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.Top",         Value = "\"top\"",          BadgeText = "Сверху по центру",   BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.TopStart",    Value = "\"top-start\"",    BadgeText = "Сверху слева",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.TopEnd",      Value = "\"top-end\"",      BadgeText = "Сверху справа",      BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.Left",        Value = "\"left\"",         BadgeText = "Слева",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgPlacement.Right",       Value = "\"right\"",        BadgeText = "Справа",             BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Top", Value = "Centered above", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "TopStart", Value = "Above, left-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "TopEnd", Value = "Above, right-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Bottom", Value = "Centered below", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "BottomStart", Value = "Below, left-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "BottomEnd", Value = "Below, right-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Left", Value = "Centered left", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LeftStart", Value = "Left, top-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "LeftEnd", Value = "Left, bottom-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Right", Value = "Centered right", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "RightStart", Value = "Right, top-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "RightEnd", Value = "Right, bottom-aligned", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
     };
+
+    private List<PropertyPanelItem> _triggerEnum = new()
+    {
+        new() { Label = "Click", Value = "Toggle on click", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Hover", Value = "Show on mouse enter", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Manual", Value = "Programmatic control", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    private List<PropertyPanelItem> _sizeEnum = new()
+    {
+        new() { Label = "null", Value = "Default popover size", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Sm", Value = "Compact popover", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Md", Value = "Medium popover", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Lg", Value = "Large popover", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Xl", Value = "Extra large popover", BadgeText = "", BadgeVariant = SgBadgeVariant.Default },
+    };
+
+    // ── Helper types ──────────────────────────────────────────────────────
+    private record PlacementGroup(string Label, (SgPlacement Value, string Label)[] Items);
 }
