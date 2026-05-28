@@ -8,7 +8,7 @@ This document is the absolute source of truth for all components and services in
 | Component | Related Files | Function | Status |
 | :--- | :--- | :--- | :--- |
 | **SgAutoComplete** | `SgAutoComplete.razor` | Suggestion-based input. | `stable` |
-| **SgButton** | `SgButton.razor` | Clickable button with styles. | `stable` |
+| **SgButton** | `SgButton.razor`, `SgButton.razor.cs` | Clickable button with styles, loading spinner, progress bar/ring (`Progress`, `ProgressType`, `ProgressSpinnerType`). Rendering via `RenderTreeBuilder` in code-behind. | `stable` |
 | **SgButtonGroup** | `SgButtonGroup.razor`, `.css` | Group of related buttons. | `stable` |
 | **SgCascader** | `SgCascader.razor`, `SgCascaderOption.cs` | Cascading selection menu. | `stable` |
 | **SgCheckBox** | `SgCheckBox.razor` | Boolean checkbox. | `stable` |
@@ -68,7 +68,7 @@ This document is the absolute source of truth for all components and services in
 | **SgResizable** | `SgResizable.razor` | Resizable box container. | `experiment beta` |
 | **SgResponsiveContainer** | `SgResponsiveContainer.razor` | Media-query aware container. | `stable` |
 | **SgRow** | `SgRow.razor`, `SgRow.razor.cs` | Grid system row. | `stable` |
-| **SgSplitter** | `SgSplitter.razor` | Pane resizing handle. | `experiment beta` (JS) |
+| **SgSplitter** | `SgSplitter.razor`, `SgSplitter.razor.cs` | Pane resizing handle. Rendering via `RenderTreeBuilder` in code-behind. | `experiment beta` (JS) |
 | **SgSpace** | `SgSpace.razor`, `SgSpace.razor.cs` | Set components spacing. | `stable` |
 | **SgStack** | `SgStack.razor`, `SgStack.razor.cs` | Flexbox auto-layout. | `stable` |
 
@@ -180,8 +180,9 @@ This document is the absolute source of truth for all components and services in
 | **SgDescriptions** | `SgDescriptions.razor`, `DescriptionItem.cs` | Term-definition list. | `stable` |
 | **SgEmpty** | `SgEmpty.razor` | Data-not-found placeholder. | `stable` |
 | **SgNotificationBell** | `SgNotificationBell.razor`, `.css`, `SgNotificationPanel.razor` | Alert counter and popup. | `stable` |
-| **SgProgress** | `SgProgress.razor`, `.css` | Circular/Linear progress. | `stable` |
+| **SgProgress** | `SgProgress.razor`, `.css` | Circular/Linear progress with gradient support. | `stable` |
 | **SgQrCode** | `SgQrCode.razor` | QR generator component. | `stable` |
+| **SgSpinner** | `SgSpinner.razor` | Loading spinner: 9 types (`Ring`, `SpinCircle`, `Dots`, `Bars`, `Pulse`, `Bounce`, `Border`, `Typing`, `Morph`), determinate progress mode with gradient, completion animation, delay, easing, overlay mode. | `stable` |
 | **SgStatistic** | `SgStatistic.razor` | Large KPI number display. | `stable` |
 | **SgStatusPanel** | `SgStatusPanel.razor`, `.css`, `StatusPanelItem.cs` | Industrial health panel. | `stable` |
 | **SgTag** | `SgTag.razor`, `.css`, `SgTagInput.razor` | Color-coded metadata. | `stable` |
@@ -207,5 +208,25 @@ This document is the absolute source of truth for all components and services in
 | **SgWeatherService** | `SuperUI/Services/SgWeatherService.cs` | Weather API connector. |
 | **SgHeatmapService** | `SuperUI/Services/Analytics/SgHeatmapService.cs` | Click and scroll heatmap tracker. |
 
+## 🧩 Key Enums (`SuperUI/Enums`)
+
+| Enum | Values | Used By |
+| :--- | :--- | :--- |
+| **SgButtonProgressType** | `Bar`, `Ring` | `SgButton.ProgressType` |
+| **SgButtonType** | `Button`, `Submit`, `Reset` | `SgButton.Type` |
+| **SgButtonVariant** | `Default`, `Primary`, `Danger`, `Success`, `Ghost`, `Outlined`, `Dashed` | `SgButton.Variant` |
+| **SgSize** | `Sm`, `Md`, `Lg`, `Xl` | Multiple components |
+| **SgSpinnerType** | `Ring`, `Dots`, `Bars`, `Pulse`, `Bounce`, `SpinCircle`, `Border`, `Typing`, `Morph` | `SgSpinner.Type`, `SgButton.ProgressSpinnerType` |
+| **SgSpinnerVariant** | `Primary`, `Default`, `Success`, `Danger`, `Warn`, `Info` | `SgSpinner.Variant` |
+| **SgSpinnerSpeed** | `Slow`, `Normal`, `Fast` | `SgSpinner.Speed` |
+| **SgSpinnerLabelPosition** | `Top`, `Bottom`, `Left`, `Right` | `SgSpinner.LabelPosition` |
+
+## 📦 Bundled Assets (`SuperUI/wwwroot`)
+
+| File | Description |
+| :--- | :--- |
+| `superui-components.css` | Single bundled stylesheet shipped via `_content/SuperUI/`. Contains all component styles, spinner keyframes (`sgc-spin`, `sgc-dot-bounce`, `sgc-bar-wave`, etc.), button progress styles (`sgc-btn-progress-fill`, `sgc-btn-progress-text`), and theme variables. |
+| `superui-theme.css` | CSS variables for light/dark mode theming. |
+
 ---
-*Inventory Audit v5.0 | Total: ~225 Components | ~35 Services | Generated: 2026-05-24*
+*Inventory Audit v5.0 | Total: ~225 Components | ~35 Services | Generated: 2026-05-28*

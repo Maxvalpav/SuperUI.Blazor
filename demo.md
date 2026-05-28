@@ -67,7 +67,8 @@ This document lists all demonstration pages in the `SuperUI.Demo` project and th
 | **Inputs & Forms** | `InputsDemo.razor` | `SgTextBox`, `SgSelect`, `SgAutoComplete`, `SgDatePicker`, `SgColorPicker`, `SgRating`, `SgSlider`, `SgSwitch` |
 | **Data Forms** | `DataFormDemo.razor` | `SgDataForm`, `SgModal`, `SgAlert` |
 | **Display Widgets** | `DataDisplayDemo.razor` | `SgBadge`, `SgTag`, `SgAvatar`, `SgTimeline`, `SgActivityFeed`, `SgStatistic`, `SgEmpty`, `SgSkeleton` |
-| **Feedback UI** | `FeedbackDemo.razor` | `SgResult`, `SgSpinner`, `SgLoader` |
+| **Spinners** | `SpinnerDemo.razor` | `SgSpinner` — 9 spinner types (Ring, Dots, Bars, Pulse, Bounce, SpinCircle, Border, Typing, Morph) with sizes, speeds, variants; Interactive Constructor with native select controls; All Spinner Types CSS grid gallery; Interactive Progress mode with gradients, thickness, real-time slider, and determinate animation |
+| **Buttons** | `ButtonDemo.razor` | `SgButton` — all variants, sizes, loading state, progress bar/ring (`ProgressType`, `ProgressSpinnerType`), glow/pulse/glass effects, danger confirm, countdown, live constructor with auto-generated code |
 | **Overlays** | `ModalDemo.razor` | `SgModal`, `SgDrawer`, `SgTooltip`, `SgPopover`, `SgDropdown` |
 | **PDF Suite** | `PdfSuiteDemo.razor` | `SgPdfViewer`, `SgPdfFormFiller` |
 | **Weather** | `WeatherDemo.razor` | `SgWeatherDashboard` |
