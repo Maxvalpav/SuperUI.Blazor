@@ -1,8 +1,6 @@
 ﻿@page "/modal-demo"
 @using SuperUI.Components
 @using SuperUI.Enums
-@using Microsoft.JSInterop
-@inject IJSRuntime JS
 
 <PageTitle>SgModal — Modal Dialog — SuperUI</PageTitle>
 
@@ -166,12 +164,12 @@
     </div>
 
     <!-- ═══════════════════════════════════════════════════════════════════ -->
-    <!-- 5. Events Log (Real-time)                                         -->
+    <!-- 5. Events Log + Advanced Features                                 -->
     <!-- ═══════════════════════════════════════════════════════════════════ -->
     <div class="demo-section">
         <div class="demo-section-header">
             <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
-                Events Log
+                Advanced Features &amp; Events Log
             </SgTypography>
             <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
                 Real-time events emitted by SgModal. Open any modal below to trigger events.
@@ -205,14 +203,14 @@
                                           PrefixIcon="@SgHeroicons.Outline.AdjustmentsHorizontal" />
                                 <SgButton Text="Keyboard Shortcut" Variant="SgButtonVariant.Outlined"
                                           OnClick="@(() => _showShortcut = true)"
-                                          PrefixIcon="@SgHeroicons.Outline.Keyboard" />
+                                          PrefixIcon="@SgHeroicons.Outline.Key" />
                             </SgStack>
                         </SgCol>
                         <SgCol Md="4">
                             <SgStack Vertical Space="SgSize.Sm">
                                 <SgButton Text="Stacked Modal" Variant="SgButtonVariant.Outlined"
                                           OnClick="@(() => _showStacked1 = true)"
-                                          PrefixIcon="@SgHeroicons.Outline.Layers" />
+                                          PrefixIcon="@SgHeroicons.Outline.RectangleStack" />
                                 <SgButton Text="Responsive Mode" Variant="SgButtonVariant.Outlined"
                                           OnClick="@(() => _showResponsive = true)"
                                           PrefixIcon="@SgHeroicons.Outline.DevicePhoneMobile" />
@@ -231,7 +229,7 @@
                         @foreach (var evt in _events.AsEnumerable().Reverse().Take(10))
                         {
                             <div class="event-entry">
-                                <SgBadge Variant="@(evt.Type == "opened" ? SgBadgeVariant.Success : evt.Type == "closed" ? SgBadgeVariant.Warn : SgBadgeVariant.Info)"
+                                <SgBadge Variant="@(evt.Type == "opened" ? SgBadgeVariant.Success : evt.Type == "closed" ? SgBadgeVariant.Warn : evt.Type == "form" ? SgBadgeVariant.Info : SgBadgeVariant.Info)"
                                          Size="SgSize.Sm" Text="@evt.Type" Standalone="true" />
                                 <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="flex:1;">@evt.Message</SgTypography>
                                 <SgTypography Size="SgTypographySize.Xs" Color="var(--sg-text-muted)" Style="font-family:monospace;font-size:10px;">@evt.Time</SgTypography>
@@ -450,7 +448,9 @@
 
 <!-- Loading Modal -->
 <SgModal @bind-Visible="@_showLoadingTmp" Title="Loading Demo"
-         Loading="@_isLoading" Size="SgModalSize.Sm">
+         Loading="@_isLoading" Size="SgModalSize.Sm"
+         OnOpened="@(() => AddEvent("opened", "Loading modal opened"))"
+         OnClose="@(() => AddEvent("closed", "Loading modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center" Style="text-align:center;">
             <SgTypography>Content loads after 2 seconds...</SgTypography>
@@ -460,7 +460,9 @@
 
 <!-- Backdrop Static (no dismiss) -->
 <SgModal @bind-Visible="@_showBackdropStatic" Title="Static Backdrop"
-         BackdropDismiss="false" Size="SgModalSize.Sm">
+         BackdropDismiss="false" Size="SgModalSize.Sm"
+         OnOpened="@(() => AddEvent("opened", "Static backdrop modal"))"
+         OnClose="@(() => AddEvent("closed", "Static backdrop closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.LockClosed" Size="40px" Color="var(--sg-primary)" />
@@ -474,7 +476,9 @@
 
 <!-- Backdrop Blur -->
 <SgModal @bind-Visible="@_showBackdropBlur" Title="Blurred Backdrop"
-         BackdropBlur="8px" Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp">
+         BackdropBlur="8px" Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp"
+         OnOpened="@(() => AddEvent("opened", "Blurred backdrop modal"))"
+         OnClose="@(() => AddEvent("closed", "Blurred backdrop closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.Sparkles" Size="40px" Color="var(--sg-primary)" />
@@ -489,6 +493,7 @@
 <!-- Maximize Modal -->
 <SgModal @bind-Visible="@_showMaximize" Title="Maximize Demo" Size="SgModalSize.Md"
          ShowMaximize="true" Animation="SgModalAnimation.Scale"
+         OnOpened="@(() => AddEvent("opened", "Maximize modal"))"
          OnMaximizedChanged="@(v => AddEvent("maximized", v ? "Maximized" : "Restored"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
@@ -503,7 +508,9 @@
 
 <!-- Resizable Modal -->
 <SgModal @bind-Visible="@_showResizable" Title="Resizable Modal" Size="SgModalSize.Md"
-         Resizable="true" Animation="SgModalAnimation.Fade">
+         Resizable="true" Animation="SgModalAnimation.Fade"
+         OnOpened="@(() => AddEvent("opened", "Resizable modal"))"
+         OnClose="@(() => AddEvent("closed", "Resizable closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.AdjustmentsHorizontal" Size="40px" Color="var(--sg-primary)" />
@@ -521,10 +528,12 @@
 <!-- Keyboard Shortcut Modal -->
 <SgModal @bind-Visible="@_showShortcut" Title="Keyboard Shortcut"
          Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp"
-         ShortcutSubmit="ctrl+enter" OnSubmit="@(() => { _showShortcut = false; AddEvent("submit", "Ctrl+Enter submitted"); })">
+         ShortcutSubmit="ctrl+enter"
+         OnSubmit="@(() => { _showShortcut = false; AddEvent("submit", "Ctrl+Enter submitted"); })"
+         OnOpened="@(() => AddEvent("opened", "Shortcut modal"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
-            <SgIcon Icon="@SgHeroicons.Outline.Keyboard" Size="40px" Color="var(--sg-primary)" />
+            <SgIcon Icon="@SgHeroicons.Outline.Key" Size="40px" Color="var(--sg-primary)" />
             <SgTypography>Press <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Ctrl+Enter</SgTypography> to close.</SgTypography>
         </SgStack>
     </ChildContent>
@@ -540,10 +549,10 @@
          OnClose="@(() => AddEvent("closed", "Stack Level 1 closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
-            <SgIcon Icon="@SgHeroicons.Outline.Layers" Size="40px" Color="var(--sg-primary)" />
+            <SgIcon Icon="@SgHeroicons.Outline.RectangleStack" Size="40px" Color="var(--sg-primary)" />
             <SgTypography>This is the first modal. Open another on top.</SgTypography>
             <SgButton Text="Open Level 2" Variant="SgButtonVariant.Primary"
-                      OnClick="@(() => _showStacked2 = true)" />
+                      OnClick="@(() => { _showStacked2 = true; AddEvent("opened", "Stack Level 2 opening"); })" />
         </SgStack>
     </ChildContent>
     <FooterContent>
@@ -558,7 +567,7 @@
          OnClose="@(() => AddEvent("closed", "Stack Level 2 closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
-            <SgIcon Icon="@SgHeroicons.Outline.Layers" Size="40px" Color="var(--sg-warning)" />
+            <SgIcon Icon="@SgHeroicons.Outline.RectangleStack" Size="40px" Color="var(--sg-warning)" />
             <SgTypography>Second modal stacked on top. Press ESC to close in reverse order.</SgTypography>
         </SgStack>
     </ChildContent>
@@ -570,7 +579,9 @@
 
 <!-- Responsive Modal -->
 <SgModal @bind-Visible="@_showResponsive" Title="Responsive Modal" Size="SgModalSize.Lg"
-         ResponsiveMode="true" Animation="SgModalAnimation.SlideUp">
+         ResponsiveMode="true" Animation="SgModalAnimation.SlideUp"
+         OnOpened="@(() => AddEvent("opened", "Responsive modal opened"))"
+         OnClose="@(() => AddEvent("closed", "Responsive modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.DevicePhoneMobile" Size="40px" Color="var(--sg-primary)" />
@@ -587,7 +598,8 @@
 <!-- Basic Modal -->
 <SgModal @bind-Visible="@_showBasic" Title="Basic Modal"
          Animation="SgModalAnimation.Scale"
-         OnOpened="@(() => _lastEvent = "Modal opened!")">
+         OnOpened="@(() => { _lastEvent = "Modal opened!"; AddEvent("opened", "Basic modal"); })"
+         OnClose="@(() => AddEvent("closed", "Basic modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md">
             <SgTypography>
@@ -607,7 +619,9 @@
 <!-- Form Modal -->
 <SgModal @bind-Visible="@_showForm" Title="Form Modal"
          Animation="SgModalAnimation.SlideUp" Size="SgModalSize.Lg"
-         Icon="@SgHeroicons.Outline.DocumentText">
+         Icon="@SgHeroicons.Outline.DocumentText"
+         OnOpened="@(() => AddEvent("opened", "Form modal opened"))"
+         OnClose="@(() => AddEvent("closed", "Form modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md">
             <SgTypography>Fill in the details below:</SgTypography>
@@ -630,7 +644,9 @@
 
 <!-- Confirm Delete Modal -->
 <SgModal @bind-Visible="@_showConfirm" Title="Confirm Deletion"
-         Animation="SgModalAnimation.Zoom">
+         Animation="SgModalAnimation.Zoom"
+         OnOpened="@(() => AddEvent("opened", "Confirm delete modal"))"
+         OnClose="@(() => AddEvent("closed", "Confirm delete closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.ExclamationTriangle" Size="48px" Color="var(--sg-color-danger)" />
@@ -650,7 +666,9 @@
 
 <!-- FullScreen Modal -->
 <SgModal @bind-Visible="@_showFullscreen" Title="Full Screen Modal"
-         FullScreen="true" Animation="SgModalAnimation.Fade">
+         FullScreen="true" Animation="SgModalAnimation.Fade"
+         OnOpened="@(() => AddEvent("opened", "Fullscreen modal opened"))"
+         OnClose="@(() => AddEvent("closed", "Fullscreen modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Lg" Align="SgAlignItems.Center" Style="padding:40px;text-align:center;">
             <SgIcon Icon="@SgHeroicons.Outline.ArrowsPointingOut" Size="64px" Color="var(--sg-primary)" />
@@ -667,7 +685,8 @@
 
 @* ── Size Modals ────────────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showSize" Title="@("Size: " + _activeSizeLabel)"
-         Size="@_activeSize" Animation="SgModalAnimation.Scale">
+         Size="@_activeSize" Animation="SgModalAnimation.Scale"
+         OnClose="@(() => AddEvent("closed", $"Size {_activeSizeLabel} closed"))">
     <ChildContent>
         <SgTypography>This modal uses <SgTypography As="SgTypographyElement.Code">Size="@_activeSizeLabel"</SgTypography>.</SgTypography>
     </ChildContent>
@@ -678,7 +697,8 @@
 
 @* ── Animation Modals ───────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showAnim" Title="@("Animation: " + _activeAnimLabel)"
-         Animation="@_activeAnim" Size="SgModalSize.Sm">
+         Animation="@_activeAnim" Size="SgModalSize.Sm"
+         OnClose="@(() => AddEvent("closed", $"Animation {_activeAnimLabel} closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.Play" Size="40px" Color="var(--sg-primary)" />
@@ -693,7 +713,8 @@
 @* ── Position Modals ────────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showPos" Title="@("Position: " + _activePosLabel)"
          Position="@_activePos" Size="SgModalSize.Sm"
-         Animation="SgModalAnimation.SlideUp">
+         Animation="SgModalAnimation.SlideUp"
+         OnClose="@(() => AddEvent("closed", $"Position {_activePosLabel} closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.MapPin" Size="40px" Color="var(--sg-primary)" />
@@ -707,7 +728,8 @@
 
 @* ── Draggable Modal ────────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showDraggable" Title="Draggable Modal"
-         Draggable="true" Animation="SgModalAnimation.Scale" Size="SgModalSize.Sm">
+         Draggable="true" Animation="SgModalAnimation.Scale" Size="SgModalSize.Sm"
+         OnClose="@(() => AddEvent("closed", "Draggable modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.ArrowsPointingOut" Size="40px" Color="var(--sg-primary)" />
@@ -721,7 +743,8 @@
 
 @* ── Glass Modal ────────────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showGlass" Title="Glass Modal"
-         Glass="true" Size="SgModalSize.Sm" Animation="SgModalAnimation.Fade">
+         Glass="true" Size="SgModalSize.Sm" Animation="SgModalAnimation.Fade"
+         OnClose="@(() => AddEvent("closed", "Glass modal closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.Sparkles" Size="40px" Color="var(--sg-primary)" />
@@ -735,7 +758,8 @@
 
 @* ── No Padding Modal ───────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showNoPad" Title="No Padding"
-         NoPadding="true" Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp">
+         NoPadding="true" Size="SgModalSize.Sm" Animation="SgModalAnimation.SlideUp"
+         OnClose="@(() => AddEvent("closed", "No padding modal closed"))">
     <ChildContent>
         <div style="background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);padding:40px;text-align:center;color:#fff;">
             <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold" Color="#fff">
@@ -753,7 +777,8 @@
 
 @* ── Combo Modal ────────────────────────────────────────────────────────── *@
 <SgModal @bind-Visible="@_showCombo" Title="@($"Combo: {_comboAnimLabel} + {_comboSizeLabel}")"
-         Animation="@_comboAnim" Size="@_comboSize">
+         Animation="@_comboAnim" Size="@_comboSize"
+         OnClose="@(() => AddEvent("closed", $"Combo {_comboAnimLabel}+{_comboSizeLabel} closed"))">
     <ChildContent>
         <SgStack Vertical Space="SgSize.Md" Align="SgAlignItems.Center">
             <SgIcon Icon="@SgHeroicons.Outline.Beaker" Size="40px" Color="var(--sg-primary)" />
@@ -830,10 +855,17 @@
     }
     .demo-copy-btn:hover { color: var(--sg-primary); border-color: var(--sg-primary); background: color-mix(in srgb, var(--sg-primary) 8%, transparent); }
     .demo-copy-btn:active { transform: scale(0.95); }
+    .events-log {
+        max-height: 300px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px;
+    }
+    .event-entry {
+        display: flex; align-items: center; gap: 8px;
+        padding: 4px 6px; border-radius: 4px;
+        background: var(--sg-surface-alt);
+    }
 </style>
 
 @code {
-    // ── Main header ──────────────────────────────────────────────────────
     private RenderFragment _mainHeader => __builder =>
     {
         <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
@@ -850,256 +882,5 @@
                 </SgTypography>
             </SgStack>
         </SgStack>
-    };
-
-    // ── State flags ─────────────────────────────────────────────────────
-    private bool _showBasic, _showForm, _showConfirm, _showFullscreen;
-    private bool _showSize, _showAnim, _showPos;
-    private bool _showDraggable, _showGlass, _showNoPad, _showCombo;
-    private bool _showConstructor, _constructorOpened;
-    private string _lastEvent = "";
-
-    // ── Form state ──────────────────────────────────────────────────────
-    private string? _formName, _formEmail, _formRole;
-    private readonly List<string> _roles = new() { "Admin", "Manager", "User", "Guest" };
-
-    // ── Size modal state ─────────────────────────────────────────────────
-    private SgModalSize _activeSize;
-    private string _activeSizeLabel = "";
-
-    // ── Animation modal state ────────────────────────────────────────────
-    private SgModalAnimation _activeAnim;
-    private string _activeAnimLabel = "";
-
-    // ── Position modal state ─────────────────────────────────────────────
-    private SgModalPosition _activePos;
-    private string _activePosLabel = "";
-
-    // ── Combo modal state ────────────────────────────────────────────────
-    private SgModalAnimation _comboAnim;
-    private string _comboAnimLabel = "";
-    private SgModalSize _comboSize;
-    private string _comboSizeLabel = "";
-
-    // ── Constructor state ────────────────────────────────────────────────
-    private SgModalSize _cSize = SgModalSize.Md;
-    private SgModalAnimation _cAnim = SgModalAnimation.Scale;
-    private SgModalPosition _cPos = SgModalPosition.Center;
-    private bool _cDrag, _cFull, _cShowClose = true, _cEsc = true;
-    private string[] _generatedCode = Array.Empty<string>();
-    private string _copyLabel = "Copy";
-
-    // ── Size definitions ─────────────────────────────────────────────────
-    private record SizeDef(SgModalSize Value, string Label, string Width, string PreviewW);
-    private readonly List<SizeDef> _sizes = new()
-    {
-        new(SgModalSize.Sm, "Sm", "400px", "60%"),
-        new(SgModalSize.Md, "Md", "520px", "80%"),
-        new(SgModalSize.Lg, "Lg", "720px", "95%"),
-        new(SgModalSize.Xl, "Xl", "960px", "100%"),
-    };
-
-    // ── Animation definitions ────────────────────────────────────────────
-    private record AnimDef(SgModalAnimation Value, string Label);
-    private readonly List<AnimDef> _animations = new()
-    {
-        new(SgModalAnimation.None, "None"),
-        new(SgModalAnimation.Fade, "Fade"),
-        new(SgModalAnimation.Scale, "Scale"),
-        new(SgModalAnimation.Zoom, "Zoom"),
-        new(SgModalAnimation.Slide, "Slide"),
-        new(SgModalAnimation.SlideUp, "SlideUp"),
-        new(SgModalAnimation.SlideDown, "SlideDown"),
-        new(SgModalAnimation.SlideLeft, "SlideLeft"),
-        new(SgModalAnimation.SlideRight, "SlideRight"),
-    };
-
-    // ── Handler methods ─────────────────────────────────────────────────
-    private void OpenSizeModal(SgModalSize size)
-    {
-        _activeSize = size;
-        _activeSizeLabel = _sizes.First(s => s.Value == size).Label;
-        _showSize = true;
-    }
-
-    private void OpenAnimModal(SgModalAnimation anim)
-    {
-        _activeAnim = anim;
-        _activeAnimLabel = _animations.First(a => a.Value == anim).Label;
-        _showAnim = true;
-    }
-
-    private void OpenPosModal(SgModalPosition pos)
-    {
-        _activePos = pos;
-        _activePosLabel = pos.ToString();
-        _showPos = true;
-    }
-
-    private void OpenComboModal(SgModalAnimation anim, SgModalSize size)
-    {
-        _comboAnim = anim;
-        _comboAnimLabel = _animations.First(a => a.Value == anim).Label;
-        _comboSize = size;
-        _comboSizeLabel = _sizes.First(s => s.Value == size).Label;
-        _showCombo = true;
-    }
-
-    private void SaveForm()
-    {
-        _showForm = false;
-    }
-
-    private void ConfirmDelete()
-    {
-        _showConfirm = false;
-    }
-
-    // ── Segmented options ────────────────────────────────────────────────
-    private readonly List<SgSegmentedOption<SgModalSize>> _sizeSegOpts = new()
-    {
-        new() { Value = SgModalSize.Sm, Label = "Sm" },
-        new() { Value = SgModalSize.Md, Label = "Md" },
-        new() { Value = SgModalSize.Lg, Label = "Lg" },
-        new() { Value = SgModalSize.Xl, Label = "Xl" },
-    };
-
-    private readonly List<SgSegmentedOption<SgModalPosition>> _posSegOpts = new()
-    {
-        new() { Value = SgModalPosition.Center, Label = "Center" },
-        new() { Value = SgModalPosition.Top, Label = "Top" },
-        new() { Value = SgModalPosition.Bottom, Label = "Bottom" },
-    };
-
-    private readonly List<SgSegmentedOption<bool>> _boolSegOpts = new()
-    {
-        new() { Value = false, Label = "Off" },
-        new() { Value = true, Label = "On" },
-    };
-
-    private readonly List<SgSegmentedOption<bool>> _boolSegRevOpts = new()
-    {
-        new() { Value = true, Label = "On" },
-        new() { Value = false, Label = "Off" },
-    };
-
-    private readonly List<SgModalAnimation> _animItems = Enum.GetValues<SgModalAnimation>().ToList();
-
-    // ── Lifecycle ────────────────────────────────────────────────────────
-    protected override void OnInitialized()
-    {
-        UpdateCode();
-    }
-
-    private void UpdateCode()
-    {
-        var lines = new List<string>();
-        lines.Add("<SgModal @bind-Visible=\"_visible\"");
-        lines.Add($"         Size=\"SgModalSize.{_cSize}\"");
-        lines.Add($"         Animation=\"SgModalAnimation.{_cAnim}\"");
-        lines.Add($"         Position=\"SgModalPosition.{_cPos}\"");
-        if (_cDrag) lines.Add("         Draggable=\"true\"");
-        if (_cFull) lines.Add("         FullScreen=\"true\"");
-        if (!_cShowClose) lines.Add("         ShowClose=\"false\"");
-        if (!_cEsc) lines.Add("         CloseOnEscape=\"false\"");
-        lines.Add("         Title=\"Modal Title\">");
-        lines.Add("    <ChildContent>");
-        lines.Add("        <!-- Your content here -->");
-        lines.Add("    </ChildContent>");
-        lines.Add("    <FooterContent>");
-        lines.Add("        <SgButton Text=\"Close\" OnClick=\"@(() => _visible = false)\" />");
-        lines.Add("    </FooterContent>");
-        lines.Add("</SgModal>");
-        _generatedCode = lines.ToArray();
-    }
-
-    private async Task CopyCode()
-    {
-        var code = string.Join("\n", _generatedCode);
-        try
-        {
-            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
-            _copyLabel = "Copied!";
-            StateHasChanged();
-            await Task.Delay(2000);
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-        catch
-        {
-            _copyLabel = "Failed";
-            StateHasChanged();
-            await Task.Delay(1500);
-            _copyLabel = "Copy";
-            StateHasChanged();
-        }
-    }
-
-    // ── Property tables ─────────────────────────────────────────────────
-    private List<PropertyPanelItem> _keyFeatures = new()
-    {
-        new() { Label = "Animations", Value = "9 types", BadgeText = "Scale/Fade/Zoom/Slide", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Sizes", Value = "4 presets", BadgeText = "Sm/Md/Lg/Xl", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Positions", Value = "3 modes", BadgeText = "Center/Top/Bottom", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Draggable", Value = "bool", BadgeText = "Drag header", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "FullScreen", Value = "bool", BadgeText = "Immersive", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Glass", Value = "bool", BadgeText = "Glassmorphism", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "NoPadding", Value = "bool", BadgeText = "Edge-to-edge", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Icon", Value = "string", BadgeText = "Heroicons SVG", BadgeVariant = SgBadgeVariant.Info },
-    };
-
-    private List<PropertyPanelItem> _modalProperties = new()
-    {
-        new() { Label = "Visible", Value = "bool", BadgeText = "Visibility", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Title", Value = "string?", BadgeText = "Header text", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ChildContent", Value = "RenderFragment?", BadgeText = "Body", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FooterContent", Value = "RenderFragment?", BadgeText = "Footer", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "HeaderContent", Value = "RenderFragment?", BadgeText = "Custom header", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Icon", Value = "string?", BadgeText = "Title icon", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Size", Value = "SgModalSize", BadgeText = "Sm/Md/Lg/Xl", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Width", Value = "string?", BadgeText = "Custom CSS", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "MaxWidth", Value = "string?", BadgeText = "Custom CSS", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "FullScreen", Value = "bool", BadgeText = "Overrides Size", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Position", Value = "SgModalPosition", BadgeText = "Center/Top/Bottom", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Animation", Value = "SgModalAnimation", BadgeText = "9 variants", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "ShowClose", Value = "bool", BadgeText = "Close button", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CloseIcon", Value = "string?", BadgeText = "Custom SVG", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "CloseOnBackdrop", Value = "bool", BadgeText = "Click backdrop", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "CloseOnEscape", Value = "bool", BadgeText = "ESC key", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Draggable", Value = "bool", BadgeText = "Drag header", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "NoPadding", Value = "bool", BadgeText = "Body padding", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Glass", Value = "bool", BadgeText = "Glass effect", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "BodyClass", Value = "string?", BadgeText = "CSS class", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "OnClose", Value = "EventCallback", BadgeText = "After close", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnClosing", Value = "EventCallback", BadgeText = "Before close", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "OnOpened", Value = "EventCallback", BadgeText = "After open", BadgeVariant = SgBadgeVariant.Success },
-    };
-
-    private List<PropertyPanelItem> _animEnum = new()
-    {
-        new() { Label = "None", Value = "No animation", BadgeText = "Instant", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Fade", Value = "Opacity fade", BadgeText = "Smooth", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Scale", Value = "Scale in/out", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Zoom", Value = "Zoom from 0.3", BadgeText = "Dramatic", BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Slide", Value = "Slide up (legacy)", BadgeText = "Compat", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SlideUp", Value = "Slide from bottom", BadgeText = "Upward", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SlideDown", Value = "Slide from top", BadgeText = "Downward", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SlideLeft", Value = "Slide from right", BadgeText = "Leftward", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SlideRight", Value = "Slide from left", BadgeText = "Rightward", BadgeVariant = SgBadgeVariant.Info },
-    };
-
-    private List<PropertyPanelItem> _sizeEnum = new()
-    {
-        new() { Label = "Sm", Value = "400px", BadgeText = "Small", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "Md", Value = "520px", BadgeText = "Medium (default)", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Lg", Value = "720px", BadgeText = "Large", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Xl", Value = "960px", BadgeText = "Extra large", BadgeVariant = SgBadgeVariant.Warn },
-    };
-
-    private List<PropertyPanelItem> _posEnum = new()
-    {
-        new() { Label = "Center", Value = "Middle of screen", BadgeText = "Default", BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Top", Value = "Top of screen", BadgeText = "Top-aligned", BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Bottom", Value = "Bottom of screen", BadgeText = "Bottom-aligned", BadgeVariant = SgBadgeVariant.Info },
     };
 }
