@@ -244,6 +244,10 @@ export function watchResponsive(modalElement, dotnetRef) {
     };
     mql.addEventListener('change', listener);
     responsiveWatchers.set(modalElement, { mql, listener });
+    // Fire immediately with initial state
+    try {
+        dotnetRef.invokeMethodAsync('OnResponsiveChangeAsync', mql.matches).catch(() => { });
+    } catch { }
 }
 
 export function unwatchResponsive(modalElement) {

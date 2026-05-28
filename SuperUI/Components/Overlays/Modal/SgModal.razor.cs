@@ -13,8 +13,6 @@ using SuperUI.Services;
 /// </summary>
 public partial class SgModal : SgOverlayComponentBase
 {
-    // ── ID helpers ─────────────────────────────────────────────────────
-
     private string _titleId => SgIdGenerator.StableIdFor(this, "modal-title");
     private string _bodyId => SgIdGenerator.StableIdFor(this, "modal-body");
     private ElementReference _headerRef;
@@ -22,8 +20,6 @@ public partial class SgModal : SgOverlayComponentBase
     private bool _openedFired;
     private bool _isMaximized;
     private bool _responsiveFull;
-    private DotNetObjectReference<SgModal>? _selfRef;
-    private IJSObjectReference? _responsiveMediaQuery;
 
     // ── Core parameters ─────────────────────────────────────────────────
 
@@ -82,7 +78,7 @@ public partial class SgModal : SgOverlayComponentBase
     /// <summary>Custom CSS min-width.</summary>
     [Parameter] public string? MinWidth { get; set; }
 
-    /// <summary>Preset size (Sm=400px, Md=520px, Lg=720px, Xl=960px). Default: Md.</summary>
+    /// <summary>Preset size (Sm/Md/Lg/Xl). Default: Md.</summary>
     [Parameter] public SgModalSize Size { get; set; } = SgModalSize.Md;
 
     /// <summary>Whether the modal fills the entire screen. Overrides Size.</summary>
@@ -98,7 +94,7 @@ public partial class SgModal : SgOverlayComponentBase
     /// <summary>Content rendered inside the backdrop layer.</summary>
     [Parameter] public RenderFragment? BackdropContent { get; set; }
 
-    /// <summary>Whether backdrop dismiss is allowed (shows not-allowed cursor when false). Default: true.</summary>
+    /// <summary>Whether backdrop dismiss is allowed. Default: true.</summary>
     [Parameter] public bool BackdropDismiss { get; set; } = true;
 
     /// <summary>CSS blur value applied to the backdrop (e.g. "8px").</summary>
@@ -160,7 +156,6 @@ public partial class SgModal : SgOverlayComponentBase
     [Parameter] public EventCallback<bool> OnMaximizedChanged { get; set; }
 
     [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
-    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
     protected override string ModulePath => "./_content/SuperUI/superui-modal.js";
     protected override int ZIndexBase => CustomZIndex ?? SgZIndexService.ModalBase;
@@ -176,15 +171,7 @@ public partial class SgModal : SgOverlayComponentBase
 
         if (ResponsiveMode)
         {
-            _selfRef = DotNetObjectReference.Create(this);
-            _responsiveMediaQuery = await JSRuntime.InvokeAsync<IJSObjectReference>(
-                "eval",
-                "window.matchMedia('(max-width: 768px)')");
-            if (_responsiveMediaQuery is not null)
-            {
-                var isMobile = await _responsiveMediaQuery.InvokeAsync<bool>("matches");
-                if (isMobile) _responsiveFull = true;
-            }
+            await SafeInvokeVoidAsync("watchResponsive", RootRef, SelfRef);
         }
 
         await SafeInvokeVoidAsync("attach",
@@ -200,11 +187,6 @@ public partial class SgModal : SgOverlayComponentBase
 
         if (!string.IsNullOrEmpty(ShortcutSubmit))
             await SafeInvokeVoidAsync("initShortcuts", RootRef, SelfRef, ShortcutSubmit);
-
-        if (ResponsiveMode && _responsiveMediaQuery is not null)
-        {
-            await SafeInvokeVoidAsync("watchResponsive", RootRef, SelfRef);
-        }
     }
 
     protected override async ValueTask OnOpenedAsync()
@@ -217,34 +199,23 @@ public partial class SgModal : SgOverlayComponentBase
 
     protected override async ValueTask OnClosingAsync()
     {
-        if (_responsiveMediaQuery is not null)
-        {
+        _responsiveFull = false;
+
+        if (ResponsiveMode)
             await SafeInvokeVoidAsync("unwatchResponsive", RootRef);
-        }
+
         if (OnClosing.HasDelegate)
             await OnClosing.InvokeAsync();
+
         await SafeInvokeVoidAsync("detach", RootRef);
     }
 
     protected override async ValueTask OnClosedAsync()
     {
-        _selfRef?.Dispose();
-        _selfRef = null;
-        if (_responsiveMediaQuery is not null)
-        {
-            await _responsiveMediaQuery.DisposeAsync();
-            _responsiveMediaQuery = null;
-        }
+        _responsiveFull = false;
+
         if (OnClose.HasDelegate)
             await OnClose.InvokeAsync();
-    }
-
-    protected override async ValueTask OnDisposingAsync()
-    {
-        _selfRef?.Dispose();
-        if (_responsiveMediaQuery is not null)
-            await _responsiveMediaQuery.DisposeAsync();
-        await base.OnDisposingAsync();
     }
 
     // ── JS-invokable ────────────────────────────────────────────────────
