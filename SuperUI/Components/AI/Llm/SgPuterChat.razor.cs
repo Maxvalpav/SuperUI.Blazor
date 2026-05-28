@@ -18,7 +18,7 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 
     private List<SgLlmMessage> _messages = new();
     private string _userInput = "";
-    private string _selectedModel = "gpt-4o-mini";
+    private string _selectedModel = "openai/gpt-4o-mini";
     private bool _isThinking;
     private bool _isSignedIn;
     private string? _error;
@@ -30,37 +30,14 @@ public partial class SgPuterChat : ComponentBase, IAsyncDisposable
 
     private List<SgLlmModelInfo> _puterModels = new()
     {
-        // --- Flagship & Reasoning ---
-        new SgLlmModelInfo { Id = "openai/gpt-5.5-high", Name = "GPT-5.5 High", Description = "OpenAI", IsFree = true },
-        new SgLlmModelInfo { Id = "anthropic/claude-opus-4.7-thinking", Name = "Claude 4.7 Opus (Thinking)", Description = "Anthropic", IsFree = true },
-        new SgLlmModelInfo { Id = "anthropic/claude-opus-4.7-fast", Name = "Claude 4.7 Opus (Fast)", Description = "Anthropic", IsFree = true },
-        new SgLlmModelInfo { Id = "google/gemini-3.1-pro", Name = "Gemini 3.1 Pro", Description = "Google", IsFree = true },
-        new SgLlmModelInfo { Id = "x-ai/grok-4.3", Name = "Grok 4.3", Description = "xAI", IsFree = true },
-        new SgLlmModelInfo { Id = "inclusionai/ring-2.6-1t:free", Name = "Ring 2.6 1T", Description = "InclusionAI", IsFree = true },
-
-        // --- Coding & Specialized ---
-        new SgLlmModelInfo { Id = "anthropic/claude-sonnet-4.6", Name = "Claude 4.6 Sonnet (Coding)", Description = "Anthropic", IsFree = true },
-        new SgLlmModelInfo { Id = "poolside/laguna-m.1:free", Name = "Laguna M.1 (Agentic)", Description = "Poolside", IsFree = true },
-        new SgLlmModelInfo { Id = "deepseek/deepseek-v4-pro", Name = "DeepSeek V4 Pro", Description = "DeepSeek", IsFree = true },
-        new SgLlmModelInfo { Id = "baidu/cobuddy:free", Name = "CoBuddy (Coding)", Description = "Baidu", IsFree = true },
-        new SgLlmModelInfo { Id = "perceptron/perceptron-mk1", Name = "Perceptron Mk1 (Video/Vision)", Description = "Perceptron", IsFree = true },
-
-        // --- Fast & Efficient ---
-        new SgLlmModelInfo { Id = "openai/gpt-5.5-mini", Name = "GPT-5.5 Mini", Description = "OpenAI", IsFree = true },
-        new SgLlmModelInfo { Id = "google/gemini-3-flash", Name = "Gemini 3 Flash", Description = "Google", IsFree = true },
-        new SgLlmModelInfo { Id = "qwen/qwen3.6-flash", Name = "Qwen 3.6 Flash", Description = "Alibaba", IsFree = true },
-        new SgLlmModelInfo { Id = "deepseek/deepseek-v4-flash", Name = "DeepSeek V4 Flash", Description = "DeepSeek", IsFree = true },
-        new SgLlmModelInfo { Id = "mistralai/mistral-medium-3.5", Name = "Mistral Medium 3.5", Description = "Mistral AI", IsFree = true },
-
-        // --- Open Weights (SOTA) ---
-        new SgLlmModelInfo { Id = "openai/gpt-oss-120b", Name = "GPT-OSS 120B", Description = "OpenAI (Open)", IsFree = true },
-        new SgLlmModelInfo { Id = "google/gemma-4-31b", Name = "Gemma 4 31B", Description = "Google (Open)", IsFree = true },
-        new SgLlmModelInfo { Id = "meta/llama-4-70b", Name = "Llama 4 70B", Description = "Meta (Open)", IsFree = true },
-        new SgLlmModelInfo { Id = "ibm-granite/granite-4.1-8b", Name = "Granite 4.1 8B", Description = "IBM Granite", IsFree = true },
-
-        // --- Multi-modal & Others ---
-        new SgLlmModelInfo { Id = "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free", Name = "Nemotron 3 Nano Omni", Description = "NVIDIA", IsFree = true },
-        new SgLlmModelInfo { Id = "qwen/qwen3.5-plus-20260420", Name = "Qwen 3.5 Plus", Description = "Alibaba", IsFree = true }
+        new SgLlmModelInfo { Id = "openai/gpt-4o-mini", Name = "GPT-4o mini", Description = "OpenAI", IsFree = true },
+        new SgLlmModelInfo { Id = "openai/gpt-4o", Name = "GPT-4o", Description = "OpenAI", IsFree = true },
+        new SgLlmModelInfo { Id = "anthropic/claude-3-5-sonnet", Name = "Claude 3.5 Sonnet", Description = "Anthropic", IsFree = true },
+        new SgLlmModelInfo { Id = "anthropic/claude-3-5-haiku", Name = "Claude 3.5 Haiku", Description = "Anthropic", IsFree = true },
+        new SgLlmModelInfo { Id = "google/gemini-2.0-flash", Name = "Gemini 2.0 Flash", Description = "Google", IsFree = true },
+        new SgLlmModelInfo { Id = "meta-llama/llama-3.1-70b-instruct", Name = "Llama 3.1 70B", Description = "Meta", IsFree = true },
+        new SgLlmModelInfo { Id = "mistralai/mistral-large", Name = "Mistral Large", Description = "Mistral AI", IsFree = true },
+        new SgLlmModelInfo { Id = "deepseek/deepseek-chat", Name = "DeepSeek Chat", Description = "DeepSeek", IsFree = true }
     };
 
     private IJSObjectReference? _llmModule;
