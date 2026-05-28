@@ -1,6 +1,7 @@
 @namespace SuperUI.Components.AI.LangGraph
 @using SuperUI.Services.AI
 @using SuperUI.Enums
+@implements IDisposable
 
 @if (_currentInterrupt != null)
 {
@@ -86,7 +87,17 @@
         }
     }
 
-    private string JsonData => _currentInterrupt?.Data != null 
-        ? System.Text.Json.JsonSerializer.Serialize(_currentInterrupt.Data, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })
+    private static readonly System.Text.Json.JsonSerializerOptions s_jsonOptions = new() { WriteIndented = true };
+
+    private string JsonData => _currentInterrupt?.Data != null
+        ? System.Text.Json.JsonSerializer.Serialize(_currentInterrupt.Data, s_jsonOptions)
         : "No data";
+
+    public void Dispose()
+    {
+        if (Provider != null)
+        {
+            Provider.InterruptReceived -= HandleInterrupt;
+        }
+    }
 }

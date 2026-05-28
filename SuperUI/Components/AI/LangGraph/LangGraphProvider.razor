@@ -1,7 +1,9 @@
 @namespace SuperUI.Components.AI.LangGraph
 @using SuperUI.Services.AI
+@using Microsoft.Extensions.Logging
 @implements IAsyncDisposable
 @inject SgLangGraphService LangGraphService
+@inject ILogger<LangGraphProvider> Logger
 
 <CascadingValue Value="this" IsFixed="true">
     @ChildContent
@@ -49,35 +51,75 @@
         return new SgLangGraphNodeResult { State = state };
     }
 
-    private async void HandleStep(SgLangGraphStep step)
+    private void HandleStep(SgLangGraphStep step)
     {
         CurrentStep = step;
-        await OnStep.InvokeAsync(step);
-        StepReceived?.Invoke(step);
-        StateHasChanged();
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await OnStep.InvokeAsync(step);
+                StepReceived?.Invoke(step);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "LangGraphProvider.HandleStep failed");
+            }
+        });
     }
 
-    private async void HandleError(string error)
+    private void HandleError(string error)
     {
-        await OnError.InvokeAsync(error);
-        ErrorReceived?.Invoke(error);
-        StateHasChanged();
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await OnError.InvokeAsync(error);
+                ErrorReceived?.Invoke(error);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "LangGraphProvider.HandleError failed");
+            }
+        });
     }
 
-    private async void HandleInitialized(SgLangGraphSchema schema)
+    private void HandleInitialized(SgLangGraphSchema schema)
     {
         Schema = schema;
         IsInitialized = true;
-        await OnInitialized.InvokeAsync(schema);
-        InitializedReceived?.Invoke(schema);
-        StateHasChanged();
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await OnInitialized.InvokeAsync(schema);
+                InitializedReceived?.Invoke(schema);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "LangGraphProvider.HandleInitialized failed");
+            }
+        });
     }
 
-    private async void HandleInterrupt(SgLangGraphInterrupt interrupt)
+    private void HandleInterrupt(SgLangGraphInterrupt interrupt)
     {
-        await OnInterrupt.InvokeAsync(interrupt);
-        InterruptReceived?.Invoke(interrupt);
-        StateHasChanged();
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await OnInterrupt.InvokeAsync(interrupt);
+                InterruptReceived?.Invoke(interrupt);
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "LangGraphProvider.HandleInterrupt failed");
+            }
+        });
     }
 
     public async Task SendMessageAsync(string message)

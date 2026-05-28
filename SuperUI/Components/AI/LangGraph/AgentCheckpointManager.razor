@@ -1,6 +1,7 @@
 @namespace SuperUI.Components.AI.LangGraph
 @using SuperUI.Services.AI
 @using SuperUI.Enums
+@implements IDisposable
 
 <SgCard Title="Checkpoint Manager" Compact="true">
     <SgStack Orientation="SgOrientation.Vertical" Gap="8px">
@@ -55,16 +56,27 @@
     {
         if (Provider != null)
         {
-            Provider.StepReceived += (step) => {
-                _history.Add(new HistoryEntry { Node = step.Node, State = step.State, Timestamp = DateTime.Now });
-                InvokeAsync(StateHasChanged);
-            };
+            Provider.StepReceived += HandleStep;
         }
+    }
+
+    private void HandleStep(SgLangGraphStep step)
+    {
+        _history.Add(new HistoryEntry { Node = step.Node, State = step.State, Timestamp = DateTime.Now });
+        InvokeAsync(StateHasChanged);
     }
 
     private void ResetThreadAsync()
     {
         _history.Clear();
+    }
+
+    public void Dispose()
+    {
+        if (Provider != null)
+        {
+            Provider.StepReceived -= HandleStep;
+        }
     }
 
     private class HistoryEntry

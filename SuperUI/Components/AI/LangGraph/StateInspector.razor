@@ -1,6 +1,7 @@
 @namespace SuperUI.Components.AI.LangGraph
 @using SuperUI.Services.AI
 @using SuperUI.Enums
+@implements IDisposable
 
 <SgCard Title="State Inspector" Compact="true">
     <div class="sgc-state-inspector">
@@ -34,19 +35,34 @@
     [CascadingParameter] public LangGraphProvider? Provider { get; set; }
 
     private object? _currentState;
+    private string? _cachedJson;
+
+    private static readonly System.Text.Json.JsonSerializerOptions s_jsonOptions = new() { WriteIndented = true };
 
     protected override void OnInitialized()
     {
         if (Provider != null)
         {
-            Provider.StepReceived += (step) => {
-                _currentState = step.State;
-                InvokeAsync(StateHasChanged);
-            };
+            Provider.StepReceived += HandleStep;
         }
     }
 
-    private string JsonState => _currentState != null 
-        ? System.Text.Json.JsonSerializer.Serialize(_currentState, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })
+    private void HandleStep(SgLangGraphStep step)
+    {
+        _currentState = step.State;
+        _cachedJson = null;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private string JsonState => _cachedJson ??= _currentState != null
+        ? System.Text.Json.JsonSerializer.Serialize(_currentState, s_jsonOptions)
         : "{}";
+
+    public void Dispose()
+    {
+        if (Provider != null)
+        {
+            Provider.StepReceived -= HandleStep;
+        }
+    }
 }
