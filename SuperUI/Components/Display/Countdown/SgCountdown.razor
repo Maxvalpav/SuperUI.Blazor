@@ -1,164 +1,83 @@
 @namespace SuperUI.Components
-@inject IJSRuntime JS
 @implements IDisposable
 
-<div class="sgc-countdown @CssClass @(Size.ToLowerInvariant()) @(IsFinished ? "finished" : "")" 
-     style="@Style" @attributes="AdditionalAttributes"
-      aria-label="@($"Countdown: {@GetAriaLabel()}")">
-    
+<div class="sgc-countdown @CssClass @SizeClass @FinishedClass"
+     style="@Style"
+     role="timer"
+     aria-live="polite"
+     aria-label="@AriaLabel"
+     @attributes="AdditionalAttributes">
+
     @if (ShowLabels)
     {
-        <div class="sgc-countdown-blocks">
+        <div class="sgc-cd-blocks">
             @if (ShowDays && (TimeLeft.Days > 0 || AlwaysShowDays))
             {
-                <div class="sgc-countdown-block">
-                    <div class="sgc-countdown-value">@TimeLeft.Days.ToString("D2")</div>
-                    @if (ShowLabels) {                     <div class="sgc-countdown-label">@Localizer["Common_Days"]</div> }
+                <div class="sgc-cd-block">
+                    <div class="sgc-cd-value @(Animated ? "sgc-cd-value-animated" : "")">@FormatValue(TimeLeft.Days)</div>
+                    <div class="sgc-cd-label">@Localizer["Common_Days"]</div>
                 </div>
-                @if (ShowSeparators) { <div class="sgc-countdown-separator">:</div> }
+                @if (ShowSeparators) { <div class="sgc-cd-separator @SeparatorClass">:</div> }
             }
-            
+
             @if (ShowHours)
             {
-                <div class="sgc-countdown-block">
-                    <div class="sgc-countdown-value">@TimeLeft.Hours.ToString("D2")</div>
-                    @if (ShowLabels) {                     <div class="sgc-countdown-label">@Localizer["Common_Hours"]</div> }
+                <div class="sgc-cd-block">
+                    <div class="sgc-cd-value @(Animated ? "sgc-cd-value-animated" : "")">@FormatValue(TimeLeft.Hours)</div>
+                    <div class="sgc-cd-label">@Localizer["Common_Hours"]</div>
                 </div>
-                @if (ShowSeparators) { <div class="sgc-countdown-separator">:</div> }
+                @if (ShowSeparators) { <div class="sgc-cd-separator @SeparatorClass">:</div> }
             }
-            
+
             @if (ShowMinutes)
             {
-                <div class="sgc-countdown-block">
-                    <div class="sgc-countdown-value">@TimeLeft.Minutes.ToString("D2")</div>
-                    @if (ShowLabels) { <div class="sgc-countdown-label">@Localizer["Common_Minutes"]</div> }
+                <div class="sgc-cd-block">
+                    <div class="sgc-cd-value @(Animated ? "sgc-cd-value-animated" : "")">@FormatValue(TimeLeft.Minutes)</div>
+                    <div class="sgc-cd-label">@Localizer["Common_Minutes"]</div>
                 </div>
-                @if (ShowSeparators) { <div class="sgc-countdown-separator">:</div> }
+                @if (ShowSeparators && ShowSeconds) { <div class="sgc-cd-separator @SeparatorClass">:</div> }
             }
-            
+
             @if (ShowSeconds)
             {
-                <div class="sgc-countdown-block">
-                    <div class="sgc-countdown-value">@TimeLeft.Seconds.ToString("D2")</div>
-                    @if (ShowLabels) { <div class="sgc-countdown-label">@Localizer["Common_Seconds"]</div> }
+                <div class="sgc-cd-block">
+                    <div class="sgc-cd-value @(Animated ? "sgc-cd-value-animated" : "")">@FormatValue(TimeLeft.Seconds)</div>
+                    <div class="sgc-cd-label">@Localizer["Common_Seconds"]</div>
                 </div>
             }
         </div>
     }
     else
     {
-    <div class="sgc-countdown-text">
-        @if (ShowDays && (TimeLeft.Days > 0 || AlwaysShowDays)) { <span>@TimeLeft.Days </span> }
-        @if (ShowHours) { <span>@TimeLeft.Hours.ToString("D2"):</span> }
-            @if (ShowMinutes) { <span>@TimeLeft.Minutes.ToString("D2"):</span> }
-            @if (ShowSeconds) { <span>@TimeLeft.Seconds.ToString("D2")</span> }
+        <div class="sgc-cd-text">
+            @if (ShowDays && (TimeLeft.Days > 0 || AlwaysShowDays))
+            {
+                <span class="sgc-cd-text-unit">@TimeLeft.Days<span class="sgc-cd-text-sep">:</span></span>
+            }
+            @if (ShowHours)
+            {
+                <span class="sgc-cd-text-unit">@FormatValue(TimeLeft.Hours)<span class="sgc-cd-text-sep">:</span></span>
+            }
+            @if (ShowMinutes)
+            {
+                <span class="sgc-cd-text-unit">@FormatValue(TimeLeft.Minutes)<span class="sgc-cd-text-sep">:</span></span>
+            }
+            @if (ShowSeconds)
+            {
+                <span class="sgc-cd-text-unit">@FormatValue(TimeLeft.Seconds)</span>
+            }
+        </div>
+    }
+
+    @if (ShowProgress && !IsFinished)
+    {
+        <div class="sgc-cd-progress-track">
+            <div class="sgc-cd-progress-fill" style="width: @((Progress * 100).ToString("F1", System.Globalization.CultureInfo.InvariantCulture))%;"></div>
         </div>
     }
 
     @if (IsFinished && !string.IsNullOrEmpty(FinishedMessage))
     {
-        <div class="sgc-countdown-finished">@FinishedMessage</div>
+        <div class="sgc-cd-finished">@FinishedMessage</div>
     }
 </div>
-
-@code {
-    private Timer? _timer;
-    private TimeSpan _timeLeft;
-    
-    [Parameter] public DateTime? TargetDate { get; set; }
-    [Parameter] public TimeSpan? InitialTimeLeft { get; set; }
-    [Parameter] public bool ShowDays { get; set; } = true;
-    [Parameter] public bool ShowHours { get; set; } = true;
-    [Parameter] public bool ShowMinutes { get; set; } = true;
-    [Parameter] public bool ShowSeconds { get; set; } = true;
-    [Parameter] public bool ShowLabels { get; set; } = true;
-    [Parameter] public bool ShowSeparators { get; set; } = true;
-    [Parameter] public bool AlwaysShowDays { get; set; } = false;
-    [Parameter] public string Size { get; set; } = "Medium"; // Small, Medium, Large
-    [Parameter] public string? FinishedMessage { get; set; }
-    [Parameter] public string? CssClass { get; set; }
-    [Parameter] public string? Style { get; set; }
-    [Parameter] public EventCallback OnFinish { get; set; }
-    [Parameter] public bool AutoStart { get; set; } = true;
-    [Parameter] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-    
-    [Inject] private ISuperUILocalizer Localizer { get; set; } = default!;
-    
-    public bool IsFinished => _timeLeft <= TimeSpan.Zero;
-    public TimeSpan TimeLeft => _timeLeft;
-    
-    protected override void OnInitialized()
-    {
-        UpdateTimeLeft();
-        if (AutoStart && !IsFinished)
-        {
-            Start();
-        }
-    }
-    
-    private void UpdateTimeLeft()
-    {
-        if (TargetDate.HasValue)
-        {
-            _timeLeft = TargetDate.Value - DateTime.Now;
-            if (_timeLeft < TimeSpan.Zero) _timeLeft = TimeSpan.Zero;
-        }
-        else if (InitialTimeLeft.HasValue)
-        {
-            _timeLeft = InitialTimeLeft.Value;
-        }
-    }
-    
-    public void Start()
-    {
-        if (IsFinished) return;
-        
-        _timer = new Timer(OnTimerTick, null, 0, 1000);
-    }
-    
-    public void Stop()
-    {
-        _timer?.Dispose();
-        _timer = null;
-    }
-    
-    public void Reset(DateTime newTarget)
-    {
-        TargetDate = newTarget;
-        UpdateTimeLeft();
-        Stop();
-        Start();
-    }
-    
-    private void OnTimerTick(object? state)
-    {
-        if (TargetDate.HasValue)
-        {
-            _timeLeft = TargetDate.Value - DateTime.Now;
-        }
-        else if (_timeLeft > TimeSpan.Zero)
-        {
-            _timeLeft = _timeLeft.Subtract(TimeSpan.FromSeconds(1));
-        }
-        
-        if (_timeLeft <= TimeSpan.Zero)
-        {
-            _timeLeft = TimeSpan.Zero;
-            Stop();
-            InvokeAsync(() => OnFinish.InvokeAsync());
-        }
-        
-        InvokeAsync(StateHasChanged);
-    }
-    
-    private string GetAriaLabel()
-    {
-        if (IsFinished) return "Countdown finished";
-        return $"{TimeLeft.Days} days, {TimeLeft.Hours} hours, {TimeLeft.Minutes} minutes, {TimeLeft.Seconds} seconds remaining";
-    }
-    
-    public void Dispose()
-    {
-        Stop();
-    }
-}

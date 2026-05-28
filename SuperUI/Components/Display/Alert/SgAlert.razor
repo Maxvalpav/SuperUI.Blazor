@@ -1,168 +1,76 @@
 @namespace SuperUI.Components
-@using SuperUI.Enums
-@inject ISuperUILocalizer Localizer
+@implements IDisposable
 
-@if (IsVisible)
+@if (IsVisible || _dismissing)
 {
-    <div class="sgc-alert @VariantClass @(Dense ? "sgc-alert-dense" : "") @CssClass" role="@ResolvedRole" aria-live="@ResolvedAriaLive" style="@Style">
-        @if (ShowIcon)
+    <div class="@ComputedClass"
+         style="@Style"
+         role="@ResolvedRole"
+         aria-live="@ResolvedAriaLive"
+         @onclick="HandleClick"
+         @attributes="AdditionalAttributes">
+
+        @if (Loading)
         {
-            <div class="sgc-alert-icon" aria-hidden="true">@IconToRender</div>
+            <div class="sgc-alert-shimmer" aria-hidden="true">
+                <div class="sgc-alert-shimmer-icon"></div>
+                <div class="sgc-alert-shimmer-lines">
+                    <div class="sgc-alert-shimmer-line" style="width:45%"></div>
+                    <div class="sgc-alert-shimmer-line" style="width:80%"></div>
+                </div>
+            </div>
         }
-
-        <div class="sgc-alert-body">
-            @if (!string.IsNullOrWhiteSpace(Title))
-            {
-                <div class="sgc-alert-title">@Title</div>
-            }
-
-            @if (ChildContent is not null)
-            {
-                <div class="sgc-alert-content">@ChildContent</div>
-            }
-            else if (!string.IsNullOrWhiteSpace(Text))
-            {
-                <div class="sgc-alert-content">@Text</div>
-            }
-        </div>
-
-        @if (ActionsContent is not null)
+        else
         {
-            <div class="sgc-alert-actions">@ActionsContent</div>
-        }
+            @if (ShowIcon)
+            {
+                <div class="sgc-alert-icon" aria-hidden="true">
+                    @if (IconTemplate is not null)
+                    {
+                        @IconTemplate
+                    }
+                    else if (IsSvgIcon)
+                    {
+                        @((MarkupString)ComputedIcon)
+                    }
+                    else
+                    {
+                        @ComputedIcon
+                    }
+                </div>
+            }
 
-        @if (Dismissible)
-        {
-            <button type="button" class="sgc-alert-close" @onclick="CloseAsync" aria-label="@Localizer["Alert_Close"]">
-                <span aria-hidden="true">×</span>
-            </button>
+            <div class="sgc-alert-body">
+                @if (!string.IsNullOrWhiteSpace(Title))
+                {
+                    <div class="sgc-alert-title">@Title</div>
+                }
+
+                @if (ChildContent is not null)
+                {
+                    <div class="sgc-alert-content">@ChildContent</div>
+                }
+                else if (!string.IsNullOrWhiteSpace(Text))
+                {
+                    <div class="sgc-alert-content">@Text</div>
+                }
+            </div>
+
+            @if (ActionsContent is not null)
+            {
+                <div class="sgc-alert-actions">@ActionsContent</div>
+            }
+
+            @if (Dismissible)
+            {
+                <button type="button" class="sgc-alert-close" @onclick="CloseAsync" aria-label="@Localizer["Alert_Close"]">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
+                        <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                    </svg>
+                </button>
+            }
         }
     </div>
 }
 
-@code {
-    private bool _visible = true;
 
-    /// <summary>
-    /// Gets or sets the alert visual variant. Default is <see cref="SgAlertVariant.Info"/>.
-    /// </summary>
-    [Parameter] public SgAlertVariant Variant { get; set; } = SgAlertVariant.Info;
-    
-    /// <summary>
-    /// Gets or sets the alert title text displayed in bold.
-    /// </summary>
-    [Parameter] public string? Title { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the alert message text. Ignored if <see cref="ChildContent"/> is provided.
-    /// </summary>
-    [Parameter] public string? Text { get; set; }
-    
-    /// <summary>
-    /// Gets or sets custom icon text to display. If not specified, uses default icon based on <see cref="Variant"/>.
-    /// </summary>
-    [Parameter] public string? Icon { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether to show the icon. Default is true.
-    /// </summary>
-    [Parameter] public bool ShowIcon { get; set; } = true;
-    
-    /// <summary>
-    /// Gets or sets whether the alert can be dismissed with a close button.
-    /// </summary>
-    [Parameter] public bool Dismissible { get; set; }
-    
-    /// <summary>
-    /// Gets or sets whether to use compact spacing.
-    /// </summary>
-    [Parameter] public bool Dense { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the ARIA role attribute. If null (default), the role is derived from <see cref="Variant"/>:
-    /// "alert" for "danger"/"warn"; "status" otherwise.
-    /// </summary>
-    [Parameter] public string? Role { get; set; }
-
-    /// <summary>
-    /// Gets or sets whether the alert is visible. When null (default), the alert manages its own visibility
-    /// internally and resets to visible when re-rendered after being closed via <see cref="CloseAsync"/>.
-    /// </summary>
-    [Parameter] public bool? Visible { get; set; }
-
-    /// <summary>
-    /// Callback invoked when <see cref="Visible"/> changes (controlled mode).
-    /// </summary>
-    [Parameter] public EventCallback<bool> VisibleChanged { get; set; }
-    
-    /// <summary>
-    /// Gets or sets additional CSS class names to apply to the alert.
-    /// </summary>
-    [Parameter] public string? CssClass { get; set; }
-    
-    /// <summary>
-    /// Gets or sets inline CSS styles to apply to the alert.
-    /// </summary>
-    [Parameter] public string? Style { get; set; }
-    
-    /// <summary>
-    /// Gets or sets custom content to render in the alert body.
-    /// Takes precedence over <see cref="Text"/>.
-    /// </summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets custom action buttons or content to render in the alert actions area.
-    /// </summary>
-    [Parameter] public RenderFragment? ActionsContent { get; set; }
-    
-    /// <summary>
-    /// Gets or sets the callback invoked when the alert is dismissed.
-    /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    private string VariantClass => Variant switch
-    {
-        SgAlertVariant.Success => "sgc-success",
-        SgAlertVariant.Warn    => "sgc-warn",
-        SgAlertVariant.Danger  => "sgc-danger",
-        _                      => "sgc-info"
-    };
-
-    private string IconToRender => !string.IsNullOrWhiteSpace(Icon)
-        ? Icon!
-        : Variant switch
-        {
-            SgAlertVariant.Success => "✓",
-            SgAlertVariant.Warn    => "!",
-            SgAlertVariant.Danger  => "✗",
-            _                      => "i"
-        };
-
-    private bool IsVisible => Visible ?? _visible;
-
-    private string ResolvedRole => Role ?? (Variant is SgAlertVariant.Danger or SgAlertVariant.Warn ? "alert" : "status");
-
-    private string ResolvedAriaLive => Variant is SgAlertVariant.Danger or SgAlertVariant.Warn ? "assertive" : "polite";
-
-    protected override void OnParametersSet()
-    {
-        if (Visible is true)
-        {
-            _visible = true;
-        }
-    }
-
-    private async Task CloseAsync()
-    {
-        _visible = false;
-        if (VisibleChanged.HasDelegate)
-        {
-            await VisibleChanged.InvokeAsync(false);
-        }
-        if (OnClose.HasDelegate)
-        {
-            await OnClose.InvokeAsync();
-        }
-    }
-}
