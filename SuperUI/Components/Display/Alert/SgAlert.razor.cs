@@ -12,6 +12,7 @@ public partial class SgAlert : IDisposable
 {
     private bool _visible = true;
     private bool _dismissing;
+    private bool _collapsed;
     private CancellationTokenSource? _timeoutCts;
     private bool _disposed;
 
@@ -66,6 +67,21 @@ public partial class SgAlert : IDisposable
     /// <summary>Auto-dismiss after this many milliseconds. Default 0 = no auto-dismiss.</summary>
     [Parameter] public int Timeout { get; set; }
 
+    /// <summary>Whether to show a progress bar when <see cref="Timeout"/> is active.</summary>
+    [Parameter] public bool ShowProgress { get; set; }
+
+    /// <summary>Fired when the timeout elapses, before the alert closes.</summary>
+    [Parameter] public EventCallback OnTimeout { get; set; }
+
+    /// <summary>Whether the body content is collapsible via a toggle button.</summary>
+    [Parameter] public bool Collapsible { get; set; }
+
+    /// <summary>Whether the collapsible body is collapsed. Two-way bindable.</summary>
+    [Parameter] public bool Collapsed { get; set; }
+
+    /// <summary>Fires when Collapsed changes (two-way binding).</summary>
+    [Parameter] public EventCallback<bool> CollapsedChanged { get; set; }
+
     /// <summary>ARIA role override. Default derived from variant: "alert" for Danger/Warn, "status" otherwise.</summary>
     [Parameter] public string? Role { get; set; }
 
@@ -87,11 +103,32 @@ public partial class SgAlert : IDisposable
     /// <summary>Custom action buttons/content rendered after the body.</summary>
     [Parameter] public RenderFragment? ActionsContent { get; set; }
 
+    /// <summary>Convenience primary-action button label. Renders an inline button below the body.</summary>
+    [Parameter] public string? PrimaryActionText { get; set; }
+
+    /// <summary>Click callback for the primary action button.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnPrimaryAction { get; set; }
+
+    /// <summary>Custom content rendered below the body, separated by a divider.</summary>
+    [Parameter] public RenderFragment? Footer { get; set; }
+
+    /// <summary>Whether to render child content as a bulleted list (&lt;ul&gt;).</summary>
+    [Parameter] public bool ListMode { get; set; }
+
+    /// <summary>Full-width banner mode with no border-radius.</summary>
+    [Parameter] public bool Banner { get; set; }
+
+    /// <summary>Place the icon above the title (centered) instead of on the left.</summary>
+    [Parameter] public bool IconTop { get; set; }
+
     /// <summary>Fires when the alert is dismissed (via close button or timeout).</summary>
     [Parameter] public EventCallback OnClose { get; set; }
 
     /// <summary>Click event on the alert root.</summary>
     [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+
+    /// <summary>Keyboard event on the alert root (Escape to dismiss, Enter for primary action).</summary>
+    [Parameter] public EventCallback<KeyboardEventArgs> OnKeyDown { get; set; }
 
     /// <summary>Captures unmatched HTML attributes.</summary>
     [Parameter(CaptureUnmatchedValues = true)]
@@ -126,6 +163,7 @@ public partial class SgAlert : IDisposable
 
     protected override void OnInitialized()
     {
+        _collapsed = Collapsed;
         StartTimeout();
     }
 
@@ -135,6 +173,7 @@ public partial class SgAlert : IDisposable
         {
             _visible = true;
         }
+        _collapsed = Collapsed;
     }
 
     protected override void OnAfterRender(bool firstRender)
@@ -162,6 +201,8 @@ public partial class SgAlert : IDisposable
                 {
                     await InvokeAsync(async () =>
                     {
+                        if (OnTimeout.HasDelegate)
+                            await OnTimeout.InvokeAsync();
                         await CloseAsync();
                     });
                 }
@@ -189,6 +230,35 @@ public partial class SgAlert : IDisposable
 
         if (OnClose.HasDelegate)
             await OnClose.InvokeAsync();
+    }
+
+    private void ToggleCollapse()
+    {
+        _collapsed = !_collapsed;
+        Collapsed = _collapsed;
+        if (CollapsedChanged.HasDelegate)
+            CollapsedChanged.InvokeAsync(_collapsed);
+    }
+
+    private async Task HandlePrimaryClick(MouseEventArgs args)
+    {
+        if (OnPrimaryAction.HasDelegate)
+            await OnPrimaryAction.InvokeAsync(args);
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs args)
+    {
+        if (OnKeyDown.HasDelegate)
+            await OnKeyDown.InvokeAsync(args);
+
+        if (args.Key is "Escape" && Dismissible)
+        {
+            await CloseAsync();
+        }
+        else if (args.Key is "Enter" && PrimaryActionText is not null && OnPrimaryAction.HasDelegate)
+        {
+            await OnPrimaryAction.InvokeAsync(new MouseEventArgs());
+        }
     }
 
     private async Task HandleClick(MouseEventArgs args)
@@ -235,6 +305,12 @@ public partial class SgAlert : IDisposable
             if (!ShowBorder) cls += " sgc-alert-noborder";
             if (FullWidth) cls += " sgc-alert-fullwidth";
             if (Loading) cls += " sgc-alert-loading";
+            if (Collapsible) cls += " sgc-alert-collapsible";
+            if (_collapsed) cls += " sgc-alert-collapsed";
+            if (ShowProgress && Timeout > 0) cls += " sgc-alert-has-progress";
+            if (Banner) cls += " sgc-alert-banner";
+            if (IconTop) cls += " sgc-alert-icon-top";
+            if (ListMode) cls += " sgc-alert-list-mode";
 
             if (Size != SgSize.Md) cls += Size switch
             {

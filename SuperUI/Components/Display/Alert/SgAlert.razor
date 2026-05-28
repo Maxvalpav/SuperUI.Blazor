@@ -7,7 +7,9 @@
          style="@Style"
          role="@ResolvedRole"
          aria-live="@ResolvedAriaLive"
+         tabindex="0"
          @onclick="HandleClick"
+         @onkeydown="HandleKeyDown"
          @attributes="AdditionalAttributes">
 
         @if (Loading)
@@ -22,7 +24,7 @@
         }
         else
         {
-            @if (ShowIcon)
+            @if (ShowIcon && IconTop)
             {
                 <div class="sgc-alert-icon" aria-hidden="true">
                     @if (IconTemplate is not null)
@@ -41,24 +43,87 @@
             }
 
             <div class="sgc-alert-body">
-                @if (!string.IsNullOrWhiteSpace(Title))
+                @if (ShowIcon && !IconTop)
                 {
-                    <div class="sgc-alert-title">@Title</div>
+                    <div class="sgc-alert-icon" aria-hidden="true">
+                        @if (IconTemplate is not null)
+                        {
+                            @IconTemplate
+                        }
+                        else if (IsSvgIcon)
+                        {
+                            @((MarkupString)ComputedIcon)
+                        }
+                        else
+                        {
+                            @ComputedIcon
+                        }
+                    </div>
                 }
 
-                @if (ChildContent is not null)
+                @if (!string.IsNullOrWhiteSpace(Title))
                 {
-                    <div class="sgc-alert-content">@ChildContent</div>
+                    <div class="sgc-alert-title">
+                        <span>@Title</span>
+                        @if (Collapsible)
+                        {
+                            <button type="button" class="sgc-alert-collapse-btn" @onclick="ToggleCollapse"
+                                    aria-expanded="@(!_collapsed)" aria-label="Toggle content">
+                                <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true"
+                                     style="transform:rotate(@(_collapsed ? 0 : 180)deg);transition:transform 0.2s;">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        }
+                    </div>
                 }
-                else if (!string.IsNullOrWhiteSpace(Text))
+
+                @if (Collapsible)
                 {
-                    <div class="sgc-alert-content">@Text</div>
+                    <div class="sgc-alert-content sgc-alert-content-collapsible @(_collapsed ? "sgc-alert-content-hidden" : "")">
+                        @if (ChildContent is not null)
+                        {
+                            if (ListMode) { <ul class="sgc-alert-list">@ChildContent</ul> }
+                            else { @ChildContent }
+                        }
+                        else if (!string.IsNullOrWhiteSpace(Text))
+                        {
+                            @Text
+                        }
+                    </div>
+                }
+                else
+                {
+                    @if (ChildContent is not null)
+                    {
+                        if (ListMode) { <ul class="sgc-alert-list">@ChildContent</ul> }
+                        else { @ChildContent }
+                    }
+                    else if (!string.IsNullOrWhiteSpace(Text))
+                    {
+                        @Text
+                    }
                 }
             </div>
+
+            @if (PrimaryActionText is not null && OnPrimaryAction.HasDelegate)
+            {
+                <div class="sgc-alert-actions">
+                    <SgButton Text="@PrimaryActionText"
+                              Variant="SgButtonVariant.Primary"
+                              Size="SgSize.Sm"
+                              OnClick="HandlePrimaryClick" />
+                </div>
+            }
 
             @if (ActionsContent is not null)
             {
                 <div class="sgc-alert-actions">@ActionsContent</div>
+            }
+
+            @if (Footer is not null)
+            {
+                <div class="sgc-alert-footer">@Footer</div>
             }
 
             @if (Dismissible)
@@ -70,7 +135,12 @@
                 </button>
             }
         }
+
+        @if (ShowProgress && Timeout > 0 && !_dismissing)
+        {
+            <div class="sgc-alert-progress" aria-hidden="true">
+                <div class="sgc-alert-progress-bar" style="animation-duration:@(Timeout)ms"></div>
+            </div>
+        }
     </div>
 }
-
-

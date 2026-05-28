@@ -1,151 +1,323 @@
 ﻿@page "/feedback-demo"
 @using SuperUI.Components
+@using SuperUI.Enums
+@using SuperUI.Demo.Components
+@using Microsoft.JSInterop
 @inject SgToastService Toasts
+@inject IJSRuntime JS
 
-<PageTitle>Обратная связь и оверлеи - SUI</PageTitle>
+<PageTitle>Toast & Result — Notifications — SuperUI</PageTitle>
 
-<SgCard Title="Компоненты обратной связи"
-        Subtitle="Компоненты для отображения сообщений, уведомлений и диалогов взаимодействия с пользователем.">
+<SgCard Variant="SgCardVariant.Default" Shadow="SgShadow.Md" Radius="SgSize.Lg"
+        Status="SgCardStatus.Info" Hoverable="false"
+        HeaderContent="@_mainHeader">
+    <ChildContent>
 
-    <!-- SgToast -->
-    <div style="margin-top: 32px;">
-        <h2>SgToast - Всплывающие уведомления</h2>
-        <p>Нажмите кнопку — появится тост-уведомление в углу экрана.</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Варианты тостов">
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">По типу</div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <SgButton Text="✓ Успех" Variant="SgButtonVariant.Success" OnClick="@(() => Toasts.Success("Операция выполнена успешно", "Успех"))" />
-                            <SgButton Text="✗ Ошибка" Variant="SgButtonVariant.Danger" OnClick="@(() => Toasts.Error("Не удалось выполнить операцию", "Ошибка"))" />
-                            <SgButton Text="⚠ Предупреждение" Variant="SgButtonVariant.Default" OnClick="@(() => Toasts.Warn("Обратите внимание", "Предупреждение"))" />
-                            <SgButton Text="ℹ Информация" Variant="SgButtonVariant.Outlined" OnClick="@(() => Toasts.Info("Доступна новая версия", "Информация"))" />
-                        </div>
-                    </div>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 1. SgToast — Toast Notifications                                    -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgToast — Notifications
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Inject <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgToastService</SgTypography> and call
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Success</SgTypography>,
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Error</SgTypography>,
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Warn</SgTypography>, or
+                <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">Info</SgTypography>.
+                Requires <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgToastHost</SgTypography> in the app layout.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Variants" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Md">
+                    <SgStack Horizontal Space="SgSize.Sm" Wrap="true">
+                        <SgButton Text="Success" Variant="SgButtonVariant.Success" OnClick="@(() => Toasts.Success("Operation completed successfully!", "Success"))" />
+                        <SgButton Text="Error" Variant="SgButtonVariant.Danger" OnClick="@(() => Toasts.Error("Something went wrong. Please try again.", "Error"))" />
+                        <SgButton Text="Warning" Variant="SgButtonVariant.Default" OnClick="@(() => Toasts.Warn("Your session will expire in 5 minutes.", "Warning"))" />
+                        <SgButton Text="Info" Variant="SgButtonVariant.Outlined" OnClick="@(() => Toasts.Info("A new version is available.", "Info"))" />
+                    </SgStack>
                     <SgDivider />
-                    <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Только сообщение (без заголовка)</div>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                            <SgButton Text="Сохранено" Size="SgSize.Sm" Variant="SgButtonVariant.Success" OnClick="@(() => Toasts.Success("Данные сохранены"))" />
-                            <SgButton Text="Удалено" Size="SgSize.Sm" Variant="SgButtonVariant.Danger" OnClick="@(() => Toasts.Error("Запись удалена"))" />
-                            <SgButton Text="Загрузка…" Size="SgSize.Sm" OnClick="@(() => Toasts.Info("Файл загружается"))" />
-                        </div>
-                    </div>
+                    <SgStack Horizontal Space="SgSize.Sm" Wrap="true" Align="SgAlignItems.Center">
+                        <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">Message only:</SgTypography>
+                        <SgButton Text="Saved" Size="SgSize.Sm" Variant="SgButtonVariant.Success" OnClick="@(() => Toasts.Success("Data saved"))" />
+                        <SgButton Text="Deleted" Size="SgSize.Sm" Variant="SgButtonVariant.Danger" OnClick="@(() => Toasts.Error("Record deleted"))" />
+                        <SgButton Text="Loading…" Size="SgSize.Sm" OnClick="@(() => Toasts.Info("File is uploading"))" />
+                    </SgStack>
                     <SgDivider />
+                    <SgStack Horizontal Space="SgSize.Sm" Wrap="true" Align="SgAlignItems.Center">
+                        <SgButton Text="Show 3 toasts" Variant="SgButtonVariant.Primary" OnClick="@ShowMultiple" />
+                        <SgButton Text="Clear all" Variant="SgButtonVariant.Ghost" OnClick="@(() => Toasts.DismissAll())" />
+                    </SgStack>
+                </SgStack>
+            </SgCard>
+            <SgCard Title="SgToastService API" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <PropertyTable Items="@_toastProperties" />
+            </SgCard>
+        </div>
+
+        <DemoCodeBlock Code="@_toastCode" Title="Toast usage examples" />
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 2. SgResult — Operation Result                                      -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                SgResult — Operation Result
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Display operation outcomes with icon, title, description, and actions. Supports 4 main variants, HTTP codes, sizes, and display options.
+            </SgTypography>
+        </div>
+
+        <div class="demo-two-col">
+            <SgCard Title="Variants" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
                     <div>
-                        <div style="font-size: 12px; color: var(--sui-text-muted); margin-bottom: 8px;">Несколько подряд</div>
-                        <SgButton Text="Показать 3 тоста" Variant="SgButtonVariant.Primary" OnClick="ShowMultiple" />
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Success
+                            <SgTag Color="success" Style="margin-left:6px;">Status="Success"</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Success" Title="Payment Successful" SubTitle="Your transaction has been processed." />
                     </div>
-                </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Error
+                            <SgTag Color="error" Style="margin-left:6px;">Status="Error"</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Error" Title="Upload Failed" SubTitle="The file exceeds the maximum allowed size." />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Warning & Info
+                        </SgTypography>
+                        <SgStack Vertical Space="SgSize.Sm">
+                            <SgResult Status="SgResultStatus.Warning" Title="Low Disk Space" SubTitle="Please free up space to continue." Compact="true" />
+                            <SgResult Status="SgResultStatus.Info" Title="New Update Available" SubTitle="Version 3.2.0 is ready to install." Compact="true" />
+                        </SgStack>
+                    </div>
+                </SgStack>
             </SgCard>
-            <SgCard Title="Свойства SgToastService">
-                <PropertyTable Items="_toastProperties" />
+            <SgCard Title="Display Options" Shadow="SgShadow.Sm" Size="SgSize.Sm">
+                <SgStack Vertical Space="SgSize.Lg">
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Size Sm
+                            <SgTag Color="processing" Style="margin-left:6px;">Size="Sm"</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Success" Title="Quick Result" SubTitle="Compact variant." Size="SgSize.Sm" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            Elevated + FullWidth
+                            <SgTag Color="processing" Style="margin-left:6px;">Elevated FullWidth</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Warning" Title="Attention Required" SubTitle="Please review the following items." Elevated="true" FullWidth="true" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            No Border + No Animation
+                            <SgTag Color="processing" Style="margin-left:6px;">ShowBorder=false</SgTag>
+                            <SgTag Color="processing" Style="margin-left:6px;">Animated=false</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Error" Title="Critical Error" SubTitle="System encountered an unrecoverable error." ShowBorder="false" Animated="false" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            HTTP Status Codes
+                            <SgTag Color="error" Style="margin-left:6px;">Status="404"</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Status404" Title="Page Not Found" SubTitle="The requested resource could not be found." Size="SgSize.Sm" />
+                    </div>
+                    <div>
+                        <SgTypography Size="SgTypographySize.Xs" Weight="SgTypographyWeight.Bold" Transform="SgTypographyTransform.Uppercase" Tracking="SgTypographyTracking.Wide" Color="var(--sg-text-muted)" Style="display:block;margin-bottom:8px;border-bottom:1px solid var(--sg-border);padding-bottom:4px;">
+                            With Actions
+                            <SgTag Color="processing" Style="margin-left:6px;">PrimaryActionText</SgTag>
+                        </SgTypography>
+                        <SgResult Status="SgResultStatus.Info" Title="Update Available" SubTitle="A new version is ready." PrimaryActionText="Update" SecondaryActionText="Later" Size="SgSize.Sm" />
+                    </div>
+                </SgStack>
             </SgCard>
         </div>
+
+        <DemoCodeBlock Code="@_resultCode" Title="SgResult examples" />
     </div>
 
-    <!-- SgResult -->
-    <div style="margin-top: 32px;">
-        <h2>SgResult - Результат операции</h2>
-        <p>Компонент для отображения итогового состояния операции.</p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-            <SgCard Title="Примеры использования">
-                <div style="display: flex; flex-direction: column; gap: 24px;">
-                    <SgResult Status="SgResultStatus.Success" Title="Успешно!" SubTitle="Операция выполнена без ошибок." />
-                    <SgResult Status="SgResultStatus.Error" Title="Ошибка" SubTitle="Что-то пошло не так. Попробуйте ещё раз." />
-                    <SgResult Status="SgResultStatus.Info" Title="Информация" SubTitle="Дополнительные сведения об операции." />
-                    <SgResult Status="SgResultStatus.Warning" Title="Предупреждение" SubTitle="Обратите внимание на это сообщение." />
-                </div>
-            </SgCard>
-            <SgCard Title="Свойства компонента">
-                <PropertyTable Items="_resultProperties" />
-            </SgCard>
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <!-- 3. Full Properties                                                   -->
+    <!-- ═══════════════════════════════════════════════════════════════════ -->
+    <div class="demo-section">
+        <div class="demo-section-header">
+            <SgTypography Variant="SgTypographyVariant.Heading5" Weight="SgTypographyWeight.Semibold">
+                Full Properties
+            </SgTypography>
+            <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                Complete list of configurable parameters for <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgResult</SgTypography> and <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgToastService</SgTypography>.
+            </SgTypography>
         </div>
+
+        <SgCard Shadow="SgShadow.Sm" Radius="SgSize.Lg">
+            <SgTabs @bind-ActiveTitle="_activePropsTab">
+                <SgTabPanel Title="SgResult">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:12px;display:block;">SgResult</SgTypography>
+                    <PropertyTable Items="@_allResultProperties" />
+                </SgTabPanel>
+                <SgTabPanel Title="SgToastService">
+                    <SgTypography Size="SgTypographySize.Sm" Weight="SgTypographyWeight.Semibold" Style="margin-bottom:12px;display:block;">SgToastService</SgTypography>
+                    <PropertyTable Items="@_allToastProperties" />
+                </SgTabPanel>
+            </SgTabs>
+        </SgCard>
     </div>
 
-    <!-- Примеры кода -->
-    <div style="margin-top: 32px;">
-        <h2>Примеры кода</h2>
-
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
-
-            <SgCard Title="SgToastPlacement — позиция контейнера">
-                <PropertyTable Items="_toastPlacementEnum" />
-            </SgCard>
-
-
-
-            <SgCard Title="SgResult — перечисление SgResultStatus">
-                <div style="display: flex; flex-direction: column; gap: 12px;">
-                    <PropertyTable Items="_resultStatusEnum" />
-                </div>
-            </SgCard>
-        </div>
-    </div>
-
+    </ChildContent>
 </SgCard>
 
+<style>
+    .demo-section { margin-top: 48px; }
+    .demo-section-header { margin-bottom: 20px; }
 
-
-
+    .demo-two-col {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+    }
+    @@media (max-width: 768px) {
+        .demo-two-col { grid-template-columns: 1fr; }
+    }
+</style>
 
 @code {
-    private bool _showModal;
-    private bool _showConfirm;
-    private bool _showDrawerRight;
-    private bool _showDrawerLeft;
-
-    private void ConfirmAction()
+    // ── Main header ─────────────────────────────────────────────────
+    private RenderFragment _mainHeader => __builder =>
     {
-        _showConfirm = false;
-        Toasts.Success("Действие подтверждено");
-    }
+        <SgStack Horizontal Space="SgSize.Md" Align="SgAlignItems.Center">
+            <div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,var(--sg-primary),#8b5cf6);color:#fff;flex-shrink:0;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <SgStack Vertical Space="SgSize.Sm" Align="SgAlignItems.Start">
+                <SgTypography Variant="SgTypographyVariant.Heading4" Weight="SgTypographyWeight.Bold">Toast & Result — Notifications</SgTypography>
+                <SgTypography Size="SgTypographySize.Sm" Color="var(--sg-text-muted)">
+                    Toast notifications via <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgToastService</SgTypography> and operation result pages with <SgTypography As="SgTypographyElement.Code" Size="SgTypographySize.Sm">SgResult</SgTypography>.
+                </SgTypography>
+            </SgStack>
+        </SgStack>
+    };
 
+    // ── Toast state ─────────────────────────────────────────────────
     private void ShowMultiple()
     {
-        Toasts.Info("Первое уведомление");
-        Toasts.Success("Второе уведомление");
-        Toasts.Warn("Третье уведомление");
+        Toasts.Info("First notification");
+        Toasts.Success("Second notification");
+        Toasts.Warn("Third notification");
     }
 
+    private string _activePropsTab = "SgResult";
+
+    // ── Property tables ─────────────────────────────────────────────
     private List<PropertyPanelItem> _toastProperties = new()
     {
-        new() { Label = "Show(msg, title, variant)", Value = "void", BadgeText = "Показать тост",    BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Success(msg, title)",        Value = "void", BadgeText = "Успех",            BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "Error(msg, title)",          Value = "void", BadgeText = "Ошибка",           BadgeVariant = SgBadgeVariant.Danger },
-        new() { Label = "Warn(msg, title)",           Value = "void", BadgeText = "Предупреждение",   BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "Info(msg, title)",           Value = "void", BadgeText = "Информация",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Dismiss(id)",                Value = "void", BadgeText = "Закрыть по ID",    BadgeVariant = SgBadgeVariant.Muted },
+        new() { Label = "Success(msg, title)", Value = "void", BadgeText = "Green toast",   BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Error(msg, title)",   Value = "void", BadgeText = "Red toast",      BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Warn(msg, title)",    Value = "void", BadgeText = "Yellow toast",   BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Info(msg, title)",    Value = "void", BadgeText = "Blue toast",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Dismiss(id)",         Value = "void", BadgeText = "Close by ID",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "DismissAll()",        Value = "void", BadgeText = "Clear all",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Update(id, fn)",      Value = "void", BadgeText = "Mutate",         BadgeVariant = SgBadgeVariant.Info },
     };
 
-
-
-    private List<PropertyPanelItem> _resultProperties = new()
+    private List<PropertyPanelItem> _allResultProperties = new()
     {
-        new() { Label = "Status",       Value = "Success|Error|Info|Warning", BadgeText = "Статус",       BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "Title",        Value = "string",                     BadgeText = "Заголовок",     BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SubTitle",     Value = "string",                     BadgeText = "Подзаголовок",  BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "ExtraContent", Value = "RenderFragment",             BadgeText = "Доп. контент", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Status",             Value = "SgResultStatus",        BadgeText = "Variant",      BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Title",              Value = "string (required)",     BadgeText = "Heading",      BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "SubTitle",           Value = "string?",               BadgeText = "Subheading",   BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Description",        Value = "string?",               BadgeText = "Body text",    BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Icon",               Value = "string?",               BadgeText = "Custom SVG",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "IconContent",        Value = "RenderFragment?",       BadgeText = "Custom icon",  BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ExtraContent",       Value = "RenderFragment?",       BadgeText = "Actions area", BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ChildContent",       Value = "RenderFragment?",       BadgeText = "Body slot",    BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "PrimaryActionText",  Value = "string?",               BadgeText = "Primary btn",  BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "PrimaryActionVariant",Value = "SgButtonVariant",      BadgeText = "Btn style",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "SecondaryActionText",Value = "string?",               BadgeText = "Secondary btn",BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Size",               Value = "SgSize (Md)",          BadgeText = "Preset",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Compact",            Value = "bool",                  BadgeText = "Compact",      BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Animated",           Value = "bool (true)",           BadgeText = "Animation",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Elevated",           Value = "bool",                  BadgeText = "Shadow",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "ShowBorder",         Value = "bool (true)",           BadgeText = "Accent",       BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "FullWidth",          Value = "bool",                  BadgeText = "Stretch",      BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "CssClass",           Value = "string?",               BadgeText = "CSS class",    BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Style",              Value = "string?",               BadgeText = "Inline style", BadgeVariant = SgBadgeVariant.Default },
     };
 
-    // ── Enum tables ──────────────────────────────────────────────────────────
-    private List<PropertyPanelItem> _resultStatusEnum = new()
+    private List<PropertyPanelItem> _allToastProperties = new()
     {
-        new() { Label = "SgResultStatus.Success",  Value = "Status", BadgeText = "Успех",          BadgeVariant = SgBadgeVariant.Success },
-        new() { Label = "SgResultStatus.Error",    Value = "Status", BadgeText = "Ошибка",          BadgeVariant = SgBadgeVariant.Danger },
-        new() { Label = "SgResultStatus.Info",     Value = "Status", BadgeText = "Информация",      BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgResultStatus.Warning",  Value = "Status", BadgeText = "Предупреждение",  BadgeVariant = SgBadgeVariant.Warn },
-        new() { Label = "SgResultStatus.Status404",Value = "Status", BadgeText = "Страница 404",    BadgeVariant = SgBadgeVariant.Muted },
+        new() { Label = "Show(msg, title, variant)", Value = "string (id)",    BadgeText = "Core API",     BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Success(msg, title)",       Value = "string (id)",    BadgeText = "Green",        BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "Error(msg, title)",         Value = "string (id)",    BadgeText = "Red",          BadgeVariant = SgBadgeVariant.Danger },
+        new() { Label = "Warn(msg, title)",          Value = "string (id)",    BadgeText = "Yellow",       BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "Info(msg, title)",          Value = "string (id)",    BadgeText = "Blue",         BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Show(Action<SgToast>)", Value = "string (id)", BadgeText = "Builder",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Dismiss(id)",               Value = "void",           BadgeText = "By ID",        BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "DismissAll()",              Value = "void",           BadgeText = "All",          BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "Update(id, fn)",            Value = "bool",           BadgeText = "Mutate",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "Placement",                 Value = "6 positions",    BadgeText = "Config",       BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "MaxVisibleToasts",          Value = "option (5)",     BadgeText = "Queue limit",  BadgeVariant = SgBadgeVariant.Warn },
+        new() { Label = "DurationMs",                Value = "int (4000)",     BadgeText = "Auto-close",   BadgeVariant = SgBadgeVariant.Default },
+        new() { Label = "ActionsContent",            Value = "RenderFragment?",BadgeText = "Actions",      BadgeVariant = SgBadgeVariant.Info },
+        new() { Label = "OnClick",                   Value = "Action<string>?",BadgeText = "Click",  BadgeVariant = SgBadgeVariant.Success },
+        new() { Label = "ShowProgress",              Value = "bool (true)",    BadgeText = "Countdown bar",BadgeVariant = SgBadgeVariant.Default },
     };
 
-    private List<PropertyPanelItem> _toastPlacementEnum = new()
-    {
-        new() { Label = "SgToastPlacement.TopRight",     Value = "Placement", BadgeText = "Верхний правый (по умолч.)", BadgeVariant = SgBadgeVariant.Default },
-        new() { Label = "SgToastPlacement.TopLeft",      Value = "Placement", BadgeText = "Верхний левый",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgToastPlacement.TopCenter",    Value = "Placement", BadgeText = "Верхний центр",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgToastPlacement.BottomRight",  Value = "Placement", BadgeText = "Нижний правый",              BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgToastPlacement.BottomLeft",   Value = "Placement", BadgeText = "Нижний левый",               BadgeVariant = SgBadgeVariant.Info },
-        new() { Label = "SgToastPlacement.BottomCenter", Value = "Placement", BadgeText = "Нижний центр",               BadgeVariant = SgBadgeVariant.Info },
+    // ── Demo code snippets ──────────────────────────────────────────
+    private string _toastCode => @"@inject SgToastService Toasts
+
+// Basic variants
+Toasts.Success(""Operation completed"", ""Success"");
+Toasts.Error(""Something went wrong"", ""Error"");
+Toasts.Warn(""Session expiring"", ""Warning"");
+Toasts.Info(""New version available"", ""Info"");
+
+// Message only
+Toasts.Success(""Data saved"");
+
+// Builder API (advanced)
+Toasts.Show(t => {
+    t.Title = ""Custom"";
+    t.Message = ""With actions"";
+    t.Variant = SgToastVariant.Success;
+    t.DurationMs = 6000;
+    t.ActionsContent = builder => {
+        <SgButton Text=""Undo"" Size=""SgSize.Sm"" />;
     };
+    t.OnClick = id => Console.WriteLine($""Toast {id} clicked"");
+    t.ShowProgress = true;
+});
+
+// Clear all
+Toasts.DismissAll();";
+
+    private string _resultCode => @"<SgResult Status=""SgResultStatus.Success""
+          Title=""Payment Successful""
+          SubTitle=""Transaction processed."" />
+
+<SgResult Status=""SgResultStatus.Error""
+          Title=""Upload Failed""
+          SubTitle=""File too large."" />
+
+<SgResult Status=""SgResultStatus.Warning""
+          Title=""Low Disk Space"" Compact=""true"" />
+
+<!-- With actions -->
+<SgResult Status=""SgResultStatus.Info""
+          Title=""Update Available""
+          PrimaryActionText=""Update""
+          PrimaryActionVariant=""SgButtonVariant.Primary""
+          SecondaryActionText=""Later"" />";
 }

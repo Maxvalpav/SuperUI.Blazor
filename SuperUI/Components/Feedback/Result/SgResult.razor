@@ -1,192 +1,112 @@
 @namespace SuperUI.Components
-@inject ISuperUILocalizer Localizer
+@implements IDisposable
 
-<div class="sgc-result sgc-result-@StatusClass @SizeClass @(Compact ? "sgc-result-compact" : "") @CssClass"
+<div class="@ComputedClass"
      style="@Style"
      role="status"
      aria-live="polite"
      @attributes="AdditionalAttributes">
 
-    @* Icon *@
-    <div class="sgc-result-icon" aria-hidden="true">
-        @if (IconContent is not null)
-        {
-            @IconContent
-        }
-        else
-        {
-            @StatusIcon
-        }
-    </div>
-
-    @* Title *@
-    <div class="sgc-result-title">@Title</div>
-
-    @* Subtitle *@
-    @if (!string.IsNullOrEmpty(SubTitle))
+    @if (ShowLoading)
     {
-        <div class="sgc-result-subtitle">@SubTitle</div>
-    }
-
-    @* Description *@
-    @if (!string.IsNullOrEmpty(Description))
-    {
-        <div class="sgc-result-description">@Description</div>
-    }
-
-    @* Extra / actions *@
-    @if (ExtraContent is not null)
-    {
-        <div class="sgc-result-extra">@ExtraContent</div>
-    }
-    else if (HasShortcutActions)
-    {
-        <div class="sgc-result-extra">
-            @if (!string.IsNullOrEmpty(PrimaryActionText))
-            {
-                <SgButton Text="@PrimaryActionText"
-                          Variant="SgButtonVariant.Primary"
-                          OnClick="HandlePrimaryAsync" />
-            }
-            @if (!string.IsNullOrEmpty(SecondaryActionText))
-            {
-                <SgButton Text="@SecondaryActionText"
-                          Variant="SgButtonVariant.Default"
-                          OnClick="HandleSecondaryAsync" />
-            }
+        <div class="sgc-result-loading" aria-hidden="true">
+            <div class="sgc-result-loading-spinner">
+                <svg viewBox="0 0 24 24" fill="none" width="40" height="40" aria-hidden="true">
+                    <circle cx="12" cy="12" r="10" stroke="var(--sg-border)" stroke-width="3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" stroke-width="3" stroke-linecap="round" style="transform-origin:12px 12px;animation:sgc-spin 0.8s linear infinite;" />
+                </svg>
+            </div>
+            <div class="sgc-result-title">@(LoadingText ?? "Loading...")</div>
         </div>
     }
-
-    @* Body content *@
-    @if (ChildContent is not null)
+    else
     {
-        <div class="sgc-result-content">@ChildContent</div>
+        @if (Illustration is not null)
+        {
+            <div class="sgc-result-illustration">@Illustration</div>
+        }
+
+        <div class="sgc-result-icon" aria-hidden="true">
+            @if (IconContent is not null)
+            {
+                @IconContent
+            }
+            else if (IsStatusCode)
+            {
+                <span class="sgc-result-code">@ResolvedIcon</span>
+            }
+            else if (IsSvg)
+            {
+                @((MarkupString)ResolvedIcon)
+            }
+            else
+            {
+                @ResolvedIcon
+            }
+        </div>
+
+        <div class="sgc-result-title" role="heading" aria-level="@TitleLevel">
+            @Title
+            @if (Step.HasValue && TotalSteps.HasValue)
+            {
+                <span class="sgc-result-step">Step @Step / @TotalSteps</span>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(SubTitle))
+        {
+            <div class="sgc-result-subtitle">@SubTitle</div>
+        }
+
+        @if (!string.IsNullOrEmpty(Description))
+        {
+            <div class="sgc-result-description">@Description</div>
+        }
+
+        @if (ExtraContent is not null)
+        {
+            <div class="sgc-result-extra">@ExtraContent</div>
+        }
+        else if (HasShortcutActions)
+        {
+            <div class="sgc-result-extra">
+                @if (!string.IsNullOrEmpty(PrimaryActionText))
+                {
+                    <SgButton Text="@PrimaryActionText"
+                              Variant="@PrimaryActionVariant"
+                              OnClick="HandlePrimaryAsync" />
+                }
+                @if (!string.IsNullOrEmpty(SecondaryActionText))
+                {
+                    <SgButton Text="@SecondaryActionText"
+                              Variant="@SecondaryActionVariant"
+                              OnClick="HandleSecondaryAsync" />
+                }
+            </div>
+        }
+
+        @if (ChildContent is not null)
+        {
+            <div class="sgc-result-content">@ChildContent</div>
+        }
+
+        @if (FooterContent is not null)
+        {
+            <div class="sgc-result-footer">@FooterContent</div>
+        }
+
+        @if (AutoRedirectMs > 0 && !_autoRedirectAborted)
+        {
+            <div class="sgc-result-redirect" role="timer">
+                <span>Redirecting in <strong>@_countdownSeconds</strong>s…</span>
+                <button type="button" class="sgc-result-redirect-abort" @onclick="HandleAbortRedirect"
+                        aria-label="Cancel redirect">
+                    <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
+                        <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                    </svg>
+                    @(AbortRedirectText ?? "Cancel")
+                </button>
+            </div>
+        }
     }
 </div>
-
-@code {
-    /// <summary>Result status type. Default <see cref="SgResultStatus.Info"/>.</summary>
-    [Parameter] public SgResultStatus Status { get; set; } = SgResultStatus.Info;
-
-    /// <summary>Main title text. Required.</summary>
-    [Parameter, EditorRequired] public string Title { get; set; } = default!;
-
-    /// <summary>Subtitle text displayed below the title.</summary>
-    [Parameter] public string? SubTitle { get; set; }
-
-    /// <summary>Longer description paragraph below the subtitle.</summary>
-    [Parameter] public string? Description { get; set; }
-
-    /// <summary>Custom icon content replacing the default status icon.</summary>
-    [Parameter] public RenderFragment? IconContent { get; set; }
-
-    /// <summary>Extra content (typically action buttons) displayed below the description.</summary>
-    [Parameter] public RenderFragment? ExtraContent { get; set; }
-
-    /// <summary>Main body content displayed at the bottom.</summary>
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>Convenience primary-action button label. Used when <see cref="ExtraContent"/> is null.</summary>
-    [Parameter] public string? PrimaryActionText { get; set; }
-
-    /// <summary>Click callback for the primary action.</summary>
-    [Parameter] public EventCallback OnPrimaryAction { get; set; }
-
-    /// <summary>Convenience secondary-action button label.</summary>
-    [Parameter] public string? SecondaryActionText { get; set; }
-
-    /// <summary>Click callback for the secondary action.</summary>
-    [Parameter] public EventCallback OnSecondaryAction { get; set; }
-
-    /// <summary>Component size. Default <see cref="SgSize.Md"/>.</summary>
-    [Parameter] public SgSize Size { get; set; } = SgSize.Md;
-
-    /// <summary>Reduces padding and icon size.</summary>
-    [Parameter] public bool Compact { get; set; }
-
-    /// <summary>Additional CSS classes.</summary>
-    [Parameter] public string? CssClass { get; set; }
-
-    /// <summary>Inline CSS styles for the root element.</summary>
-    [Parameter] public string? Style { get; set; }
-
-    /// <summary>Additional HTML attributes for the root element.</summary>
-    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
-    private bool HasShortcutActions =>
-        (!string.IsNullOrEmpty(PrimaryActionText) && OnPrimaryAction.HasDelegate) ||
-        (!string.IsNullOrEmpty(SecondaryActionText) && OnSecondaryAction.HasDelegate);
-
-    private string SizeClass => Size switch
-    {
-        SgSize.Sm => "sgc-result-sm",
-        SgSize.Lg => "sgc-result-lg",
-        SgSize.Xl => "sgc-result-xl",
-        _         => ""
-    };
-
-    private string StatusClass => Status switch
-    {
-        SgResultStatus.Success   => "success",
-        SgResultStatus.Error     => "error",
-        SgResultStatus.Info      => "info",
-        SgResultStatus.Warning   => "warning",
-        SgResultStatus.Status403 => "403",
-        SgResultStatus.Status404 => "404",
-        SgResultStatus.Status500 => "500",
-        _                        => "info"
-    };
-
-    private RenderFragment StatusIcon => __builder =>
-    {
-        @switch (Status)
-        {
-            case SgResultStatus.Success:
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="9 12 11 14 15 10"/>
-                </svg>
-                break;
-            case SgResultStatus.Error:
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="15" y1="9" x2="9" y2="15"/>
-                    <line x1="9" y1="9" x2="15" y2="15"/>
-                </svg>
-                break;
-            case SgResultStatus.Warning:
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                    <line x1="12" y1="9" x2="12" y2="13"/>
-                    <line x1="12" y1="17" x2="12.01" y2="17"/>
-                </svg>
-                break;
-            case SgResultStatus.Status403:
-                <span class="sgc-result-code">403</span>
-                break;
-            case SgResultStatus.Status404:
-                <span class="sgc-result-code">404</span>
-                break;
-            case SgResultStatus.Status500:
-                <span class="sgc-result-code">500</span>
-                break;
-            default: @* Info *@
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                break;
-        }
-    };
-
-    private async Task HandlePrimaryAsync()
-    {
-        if (OnPrimaryAction.HasDelegate) await OnPrimaryAction.InvokeAsync();
-    }
-
-    private async Task HandleSecondaryAsync()
-    {
-        if (OnSecondaryAction.HasDelegate) await OnSecondaryAction.InvokeAsync();
-    }
-}

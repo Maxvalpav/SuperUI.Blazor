@@ -3,28 +3,131 @@
 @inject SgToastService Toasts
 @inject Microsoft.Extensions.Options.IOptions<SuperUI.SuperUiOptions> Options
 
-<SgPortal>
-    <div class="sgc-toast-container sgc-toast-@PlacementClass" role="region" aria-label="Notifications" aria-live="polite">
-        @foreach (var t in OrderedItems())
-        {
-            var tLocal = t;
-            <div class="sgc-toast @VariantClass(tLocal.Variant) @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")"
-                 role="status"
-                 aria-live="polite"
-                 aria-atomic="true"
-                 @key="tLocal.Id">
-                <div class="sgc-toast-body">
-                    @if (!string.IsNullOrEmpty(tLocal.Title))
+@{
+    /* Group toasts by resolved placement for per-position containers */
+    var byPlacement = OrderedItems()
+        .GroupBy(t => t.Position ?? Placement)
+        .ToDictionary(g => g.Key, g => g.ToList());
+}
+
+@foreach (var kvp in byPlacement)
+{
+    var pos = kvp.Key;
+    var items = kvp.Value;
+    var overflow = items.Count > _maxVisible ? items.Count - _maxVisible : 0;
+    var visibleItems = items.Take(overflow > 0 ? _maxVisible : items.Count).ToList();
+
+    <SgPortal>
+        <div class="sgc-toast-container sgc-toast-@PlacementClass(pos)" role="region" aria-label="Notifications" aria-live="polite">
+            @foreach (var t in visibleItems)
+            {
+                var tLocal = t;
+                var isPaused = _pausedIds.Contains(tLocal.Id);
+                var isExpanded = _expandedIds.Contains(tLocal.Id) || tLocal.Expanded;
+                <div class="sgc-toast
+                           @VariantClass(tLocal.Variant)
+                           @(_closingIds.Contains(tLocal.Id) ? "sgc-closing" : "")
+                           @(tLocal.OnClick is not null ? "sgc-toast-clickable" : "")
+                           @(isPaused ? "sgc-toast-paused" : "")
+                           @SizeClass(tLocal.Size)"
+                     role="status"
+                     aria-live="polite"
+                     aria-atomic="true"
+                     @key="tLocal.Id"
+                     @onmouseenter="() => PauseTimeout(tLocal.Id)"
+                     @onmouseleave="() => ResumeTimeout(tLocal.Id)"
+                     @onclick="() => tLocal.OnClick?.Invoke(tLocal.Id)">
+
+                    @if (VariantClass(tLocal.Variant) is not "")
                     {
-                        <div class="sgc-toast-title">@tLocal.Title</div>
+                        <div class="sgc-toast-icon" aria-hidden="true">@VariantIcon(tLocal.Variant)</div>
                     }
-                    <div>@tLocal.Message</div>
+
+                    <div class="sgc-toast-body">
+                        @if (!string.IsNullOrEmpty(tLocal.Title))
+                        {
+                            <div class="sgc-toast-title">@tLocal.Title</div>
+                        }
+                        <div>@tLocal.Message</div>
+
+                        @if (tLocal.ExpandedContent is not null)
+                        {
+                            <div class="sgc-toast-expanded @(isExpanded ? "sgc-toast-expanded-open" : "")">
+                                @tLocal.ExpandedContent
+                            </div>
+                        }
+
+                        @if (tLocal.Group is not null)
+                        {
+                            var group = tLocal.Group;
+                            if (items.Count(ot => ot.Group == group) > 1)
+                            {
+                                <button type="button" class="sgc-toast-group-dismiss"
+                                        @onclick="() => DismissGroupAsync(group)"
+                                        @onclick:stopPropagation>
+                                    Dismiss all @group
+                                </button>
+                            }
+                        }
+                    </div>
+
+                    <div class="sgc-toast-actions-end">
+                        @if (tLocal.DurationMs <= 0)
+                        {
+                            <span class="sgc-toast-pin" title="Persistent" aria-label="Persistent notification">
+                                <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true">
+                                    <path d="m11.53 3.47 5 5a.75.75 0 0 1 0 1.06l-1.72 1.72a2.75 2.75 0 0 1-3.06.55l-3.2 5.1A1.5 1.5 0 0 1 7.3 18H3.75a.75.75 0 0 1-.75-.75v-3.55c0-.54.29-1.04.76-1.3l5.1-3.2a2.75 2.75 0 0 1 .55-3.06l1.72-1.72a.75.75 0 0 1 1.06 0l.34.35Z"/>
+                                </svg>
+                            </span>
+                        }
+                        @if (tLocal.ExpandedContent is not null)
+                        {
+                            <button type="button" class="sgc-toast-expand-btn"
+                                    @onclick="() => ToggleExpand(tLocal.Id)"
+                                    @onclick:stopPropagation
+                                    aria-label="@(isExpanded ? "Collapse" : "Expand")">
+                                <svg viewBox="0 0 20 20" fill="currentColor" width="12" height="12" aria-hidden="true"
+                                     style="transform:rotate(@(isExpanded ? 180 : 0)deg);transition:transform 0.2s;">
+                                    <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 0 1 1.06.02L10 11.168l3.71-3.938a.75.75 0 1 1 1.08 1.04l-4.25 4.5a.75.75 0 0 1-1.08 0l-4.25-4.5a.75.75 0 0 1 .02-1.06Z" clip-rule="evenodd" />
+                                </svg>
+                            </button>
+                        }
+                        <button type="button" class="sgc-toast-x" aria-label="Close notification" @onclick="() => DismissAsync(tLocal.Id)" @onclick:stopPropagation>
+                            <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14" aria-hidden="true">
+                                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    @if (tLocal.ActionText is not null)
+                    {
+                        var actId = tLocal.Id;
+                        <div class="sgc-toast-action-row">
+                            <button type="button" class="sgc-toast-action-btn"
+                                    @onclick="() => { tLocal.OnAction?.Invoke(actId); DismissAsync(actId); }"
+                                    @onclick:stopPropagation>
+                                @tLocal.ActionText
+                            </button>
+                        </div>
+                    }
+
+                    @if (tLocal.DurationMs > 0 && tLocal.ShowProgress && !_closingIds.Contains(tLocal.Id))
+                    {
+                        var remaining = _pauseRemainingMs.TryGetValue(tLocal.Id, out var r) ? r : tLocal.DurationMs;
+                        <div class="sgc-toast-progress" style="animation-duration:@(remaining)ms;animation-play-state:@(isPaused ? "paused" : "running")"></div>
+                    }
                 </div>
-                <button type="button" class="sgc-toast-x" aria-label="Close notification" @onclick="() => DismissAsync(tLocal.Id)">×</button>
-            </div>
-        }
-    </div>
-</SgPortal>
+            }
+
+            @if (overflow > 0)
+            {
+                <button type="button" class="sgc-toast-overflow-btn" @onclick="ShowAllToasts">
+                    + @overflow more
+                </button>
+            }
+        </div>
+    </SgPortal>
+}
 
 @code {
     private const int CloseAnimationMs = 300;
@@ -33,8 +136,14 @@
     private readonly Queue<SgToast> _queue = new();
     private readonly HashSet<string> _closingIds = new();
     private readonly Dictionary<string, CancellationTokenSource> _timeouts = new();
+    private readonly Dictionary<string, int> _pauseRemainingMs = new();
+    private readonly HashSet<string> _pausedIds = new();
+    private readonly HashSet<string> _expandedIds = new();
+    private readonly Dictionary<string, DateTime> _pauseStartTimes = new();
 
     private CancellationTokenSource _hostCts = new();
+    private int _maxVisible = 5;
+    private bool _showAll;
     private bool _disposed;
 
     /// <summary>Toast container placement. Default — <see cref="SgToastPlacement.TopRight"/>.</summary>
@@ -42,6 +151,7 @@
 
     protected override void OnInitialized()
     {
+        _maxVisible = Math.Max(1, Options.Value.MaxVisibleToasts);
         Toasts.Added += OnAdd;
         Toasts.Removed += OnRemove;
         Toasts.Updated += OnUpdate;
@@ -53,6 +163,32 @@
                        or SgToastPlacement.TopCenter)
             ? _items.AsEnumerable().Reverse()
             : _items;
+
+    // ── Expand / Collapse ──────────────────────────────────────────────────
+
+    private void ToggleExpand(string id)
+    {
+        if (_expandedIds.Contains(id))
+            _expandedIds.Remove(id);
+        else
+            _expandedIds.Add(id);
+        StateHasChanged();
+    }
+
+    // ── Max visible / overflow ─────────────────────────────────────────────
+
+    private void ShowAllToasts()
+    {
+        _showAll = true;
+        _maxVisible = int.MaxValue;
+        // Flush any queued toasts
+        while (_queue.Count > 0 && _items.Count < _maxVisible)
+        {
+            var next = _queue.Dequeue();
+            _items.Add(next);
+        }
+        StateHasChanged();
+    }
 
     // ── Service events ────────────────────────────────────────────────────────
 
@@ -73,7 +209,6 @@
         if (_disposed) return;
         _ = SafeAsync(async () =>
         {
-            // Подменяем элемент в видимом списке (если он там есть)
             var idx = _items.FindIndex(x => x.Id == t.Id);
             if (idx >= 0) _items[idx] = t;
             await InvokeAsync(StateHasChanged);
@@ -84,7 +219,7 @@
 
     private async Task AddAsync(SgToast t)
     {
-        var max = Math.Max(1, Options.Value.MaxVisibleToasts);
+        var max = _showAll ? int.MaxValue : Math.Max(1, Options.Value.MaxVisibleToasts);
 
         if (_items.Count >= max)
         {
@@ -97,35 +232,80 @@
 
         if (t.DurationMs > 0)
         {
-            await StartAutoDismissAsync(t);
+            await StartTimeoutAsync(t.Id, t.DurationMs);
         }
     }
 
-    private async Task StartAutoDismissAsync(SgToast t)
+    private async Task StartTimeoutAsync(string id, int durationMs)
     {
-        // Отменяем старый таймер если был (например, после Update с продлением)
-        if (_timeouts.Remove(t.Id, out var oldCts))
-        {
-            try { oldCts.Cancel(); } catch { }
-            oldCts.Dispose();
-        }
+        CancelTimeout(id);
 
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_hostCts.Token);
-        _timeouts[t.Id] = cts;
+        _timeouts[id] = cts;
 
         try
         {
-            await Task.Delay(t.DurationMs, cts.Token);
-            if (!_disposed) await DismissAsync(t.Id);
+            await Task.Delay(durationMs, cts.Token);
+            if (!_disposed) await DismissAsync(id);
         }
         catch (OperationCanceledException) { }
         finally
         {
-            if (_timeouts.Remove(t.Id, out var owned))
+            if (_timeouts.TryGetValue(id, out var owned) && owned == cts)
             {
+                _timeouts.Remove(id);
                 owned.Dispose();
             }
         }
+    }
+
+    private void CancelTimeout(string id)
+    {
+        if (_timeouts.Remove(id, out var cts))
+        {
+            try { cts.Cancel(); } catch { }
+            cts.Dispose();
+        }
+    }
+
+    // ── Pause / Resume on hover ───────────────────────────────────────────────
+
+    private void PauseTimeout(string id)
+    {
+        if (_disposed) return;
+        if (_closingIds.Contains(id)) return;
+        if (_pausedIds.Contains(id)) return;
+
+        var item = _items.FirstOrDefault(x => x.Id == id);
+        if (item is null || item.DurationMs <= 0) return;
+
+        var elapsed = _pauseStartTimes.TryGetValue(id, out var start)
+            ? (int)(DateTime.UtcNow - start).TotalMilliseconds
+            : 0;
+
+        var remaining = Math.Max(0, (_pauseRemainingMs.TryGetValue(id, out var rem) ? rem : item.DurationMs) - elapsed);
+        _pauseRemainingMs[id] = remaining;
+        _pausedIds.Add(id);
+        CancelTimeout(id);
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void ResumeTimeout(string id)
+    {
+        if (_disposed) return;
+        if (!_pausedIds.Remove(id)) return;
+
+        if (_closingIds.Contains(id)) return;
+
+        var remaining = _pauseRemainingMs.TryGetValue(id, out var rem) ? rem : 0;
+        _pauseRemainingMs.Remove(id);
+        _pauseStartTimes[id] = DateTime.UtcNow;
+
+        if (remaining > 0)
+        {
+            _ = SafeAsync(async () => await StartTimeoutAsync(id, remaining), nameof(ResumeTimeout));
+        }
+        _ = InvokeAsync(StateHasChanged);
     }
 
     // ── Close ─────────────────────────────────────────────────────────────────
@@ -134,28 +314,31 @@
     {
         if (_disposed) return;
         if (_closingIds.Contains(id)) return;
-        if (_items.All(x => x.Id != id)) return; // нечего закрывать
+        if (_items.All(x => x.Id != id)) return;
 
-        // Гасим таймер
-        if (_timeouts.Remove(id, out var cts))
-        {
-            try { cts.Cancel(); } catch { }
-            cts.Dispose();
-        }
+        CancelTimeout(id);
+        _pausedIds.Remove(id);
+        _pauseRemainingMs.Remove(id);
+        _pauseStartTimes.Remove(id);
 
         _closingIds.Add(id);
         await InvokeAsync(StateHasChanged);
 
-        // Ждём анимацию закрытия, но прерываемся при dispose
         try { await Task.Delay(CloseAnimationMs, _hostCts.Token); }
         catch (OperationCanceledException) { return; }
 
         if (_disposed) return;
 
+        // Fire OnClose before removal
+        var toast = _items.FirstOrDefault(x => x.Id == id);
+        if (toast?.OnClose is not null)
+        {
+            try { toast.OnClose.Invoke(id); } catch { }
+        }
+
         _items.RemoveAll(x => x.Id == id);
         _closingIds.Remove(id);
 
-        // Подкачка из очереди
         if (_queue.Count > 0)
         {
             var next = _queue.Dequeue();
@@ -163,6 +346,14 @@
         }
 
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task DismissGroupAsync(string group)
+    {
+        if (_disposed) return;
+        var ids = _items.Where(t => t.Group == group).Select(t => t.Id).ToList();
+        foreach (var id in ids)
+            await DismissAsync(id);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -178,7 +369,7 @@
         }
     }
 
-    private string PlacementClass => Placement switch
+    private string PlacementClass(SgToastPlacement placement) => placement switch
     {
         SgToastPlacement.TopLeft      => "topleft",
         SgToastPlacement.TopCenter    => "topcenter",
@@ -194,6 +385,35 @@
         SgToastVariant.Danger  => "sgc-danger",
         SgToastVariant.Warn    => "sgc-warn",
         _                      => ""
+    };
+
+    private static string SizeClass(SgSize size) => size switch
+    {
+        SgSize.Sm => "sgc-toast-sm",
+        SgSize.Lg => "sgc-toast-lg",
+        _         => ""
+    };
+
+    private static RenderFragment VariantIcon(SgToastVariant v) => __builder =>
+    {
+        if (v == SgToastVariant.Success)
+        {
+            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm3.857-9.809a.75.75 0 0 0-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 1 0-1.06 1.061l2.5 2.5a.75.75 0 0 0 1.137-.089l4-5.5Z" clip-rule="evenodd" />
+            </svg>
+        }
+        else if (v == SgToastVariant.Danger)
+        {
+            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16ZM8.28 7.22a.75.75 0 0 0-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 1 0 1.06 1.06L10 11.06l1.72 1.72a.75.75 0 1 0 1.06-1.06L11.06 10l1.72-1.72a.75.75 0 0 0-1.06-1.06L10 8.94 8.28 7.22Z" clip-rule="evenodd" />
+            </svg>
+        }
+        else if (v == SgToastVariant.Warn)
+        {
+            <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18" aria-hidden="true">
+                <path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495ZM10 5a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 10 5Zm0 9a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+            </svg>
+        }
     };
 
     async ValueTask IAsyncDisposable.DisposeAsync()
@@ -218,8 +438,11 @@
         _items.Clear();
         _queue.Clear();
         _closingIds.Clear();
+        _pausedIds.Clear();
+        _pauseRemainingMs.Clear();
+        _pauseStartTimes.Clear();
+        _expandedIds.Clear();
 
-        // НЕ диспозим Toasts — это DI-singleton, владеет контейнер.
         await ValueTask.CompletedTask;
     }
 }

@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Options;
 using SuperUI;
 using SuperUI.Enums;
@@ -24,6 +25,39 @@ public sealed class SgToast
 
     /// <summary>Длительность авто-закрытия (мс). 0 или меньше — тост остаётся до ручного закрытия.</summary>
     public int DurationMs { get; set; } = 4000;
+
+    /// <summary>Optional action buttons rendered inside the toast.</summary>
+    public RenderFragment? ActionsContent { get; set; }
+
+    /// <summary>Click callback invoked when the toast is clicked (receives toast ID).</summary>
+    public Action<string>? OnClick { get; set; }
+
+    /// <summary>Close callback invoked when the toast is dismissed (by timeout or manual close). Receives toast ID.</summary>
+    public Action<string>? OnClose { get; set; }
+
+    /// <summary>Toast size preset. Default Md.</summary>
+    public SgSize Size { get; set; } = SgSize.Md;
+
+    /// <summary>Whether to show a visual countdown progress bar. Default true when DurationMs &gt; 0.</summary>
+    public bool ShowProgress { get; set; } = true;
+
+    /// <summary>Per-toast position override. When set, the toast renders in the specified position container instead of the host's default.</summary>
+    public SgToastPlacement? Position { get; set; }
+
+    /// <summary>Simple action button label shown in the toast.</summary>
+    public string? ActionText { get; set; }
+
+    /// <summary>Callback when the action button is clicked (receives toast ID).</summary>
+    public Action<string>? OnAction { get; set; }
+
+    /// <summary>Group tag for batch dismiss (see <see cref="SgToastService.DismissByGroup"/>).</summary>
+    public string? Group { get; set; }
+
+    /// <summary>Whether the toast starts in expanded mode.</summary>
+    public bool Expanded { get; set; }
+
+    /// <summary>Content revealed when the toast is expanded.</summary>
+    public RenderFragment? ExpandedContent { get; set; }
 }
 
 /// <summary>
@@ -181,6 +215,19 @@ public sealed class SgToastService : IAsyncDisposable
         if (Volatile.Read(ref _disposed) == 1) return;
         foreach (var id in _activeToasts.Keys)
             Dismiss(id);
+    }
+
+    /// <summary>Закрывает все тосты с указанным тегом группы.</summary>
+    public void DismissByGroup(string group)
+    {
+        if (string.IsNullOrEmpty(group)) return;
+        if (Volatile.Read(ref _disposed) == 1) return;
+
+        foreach (var kvp in _activeToasts)
+        {
+            if (string.Equals(kvp.Value.Group, group, StringComparison.Ordinal))
+                Dismiss(kvp.Key);
+        }
     }
 
     private void FlushPending()
