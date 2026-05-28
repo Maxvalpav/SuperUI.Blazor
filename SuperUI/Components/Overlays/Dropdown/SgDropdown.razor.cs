@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using SuperUI.Base.ComponentBases;
 using SuperUI.Enums;
+using SuperUI.Services;
 
 public partial class SgDropdown : SgJsComponentBase
 {
@@ -23,6 +24,9 @@ public partial class SgDropdown : SgJsComponentBase
     private int _contextX;
     private int _contextY;
     private ElementReference _searchRef;
+    private int _zIndex;
+
+    [Inject] private SgZIndexService ZIndexService { get; set; } = default!;
 
     // ── Existing Parameters ──
     [Parameter] public string? Text { get; set; }
@@ -99,6 +103,8 @@ public partial class SgDropdown : SgJsComponentBase
                 parts.Add("top:calc(100% + 4px);bottom:auto");
             if (Trigger == SgDropdownTrigger.ContextMenu)
                 parts.Add($"left:{_contextX}px;top:{_contextY}px;position:fixed");
+            if (_zIndex > 0)
+                parts.Add($"z-index:{_zIndex}");
             return string.Join(";", parts);
         }
     }
@@ -365,6 +371,7 @@ public partial class SgDropdown : SgJsComponentBase
     private async Task AttachAsync()
     {
         if (_attached) return;
+        _zIndex = ZIndexService.Allocate(this, SgZIndexService.DropdownBase);
         await SafeInvokeVoidAsync("attach",
             RootRef, _triggerRef, _menuRef, SelfRef,
             true, true, Flip, UsePortal);
@@ -374,6 +381,8 @@ public partial class SgDropdown : SgJsComponentBase
     private async Task DetachAsync()
     {
         if (!_attached) return;
+        ZIndexService.Release(this);
+        _zIndex = 0;
         await SafeInvokeVoidAsync("detach", RootRef);
         _attached = false;
     }

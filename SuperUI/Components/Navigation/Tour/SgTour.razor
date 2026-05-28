@@ -3,6 +3,7 @@
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
 @inject IJSRuntime JS
+@inject SgZIndexService ZIndexService
 
 @if (IsOpen)
 {
@@ -75,7 +76,7 @@
     .sgc-tour-overlay {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
-        z-index: var(--sg-z-tour, 2000);
+        z-index: var(--sg-z-tour, 8000);
         pointer-events: none;
         outline: none;
     }
@@ -136,6 +137,8 @@
     private IJSObjectReference? _module;
     private DotNetObjectReference<SgTour>? _selfRef;
     private ElementReference _overlayRef;
+    private int _tourZIndex;
+    private bool _prevOpen;
 
     public SgTourStep? CurrentStep => _steps.Count > CurrentStepIndex ? _steps[CurrentStepIndex] : null;
 
@@ -150,10 +153,16 @@
 
     protected override async Task OnParametersSetAsync()
     {
-        if (IsOpen)
+        if (IsOpen && !_prevOpen)
         {
+            _tourZIndex = ZIndexService.BringToFront(this, SgZIndexService.ModalOverlayBase);
             await UpdatePositionAsync();
         }
+        else if (!IsOpen && _prevOpen)
+        {
+            ZIndexService.Release(this);
+        }
+        _prevOpen = IsOpen;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -226,10 +235,11 @@
     private async Task CloseAsync()
     {
         IsOpen = false;
+        ZIndexService.Release(this);
         await IsOpenChanged.InvokeAsync(false);
     }
 
-    private string OverlayStyle => IsOpen ? "" : "display:none;";
+    private string OverlayStyle => IsOpen ? $"z-index:{_tourZIndex};" : "display:none;";
     
     private string HighlightStyle => _targetRect == null ? "display:none;" : 
         $"top: {_targetRect.Top - 5}px; left: {_targetRect.Left - 5}px; width: {_targetRect.Width + 10}px; height: {_targetRect.Height + 10}px;";
@@ -272,6 +282,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        ZIndexService.Release(this);
         if (_module != null)
         {
             try { await _module.InvokeVoidAsync("dispose"); } catch { }

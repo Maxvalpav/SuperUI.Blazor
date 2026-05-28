@@ -1,11 +1,12 @@
 @namespace SuperUI.Components.AI.LangGraph
 @using SuperUI.Services.AI
 @using SuperUI.Enums
+@inject SgZIndexService ZIndexService
 @implements IDisposable
 
 @if (_currentInterrupt != null)
 {
-    <div class="sgc-interrupt-overlay">
+    <div class="sgc-interrupt-overlay" style="z-index:@_interruptZIndex">
         <SgCard Title="Требуется одобрение" Subtitle="@_currentInterrupt.Node">
             <div class="sgc-interrupt-body">
                 <p>Агент хочет выполнить действие:</p>
@@ -31,7 +32,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        z-index: var(--sg-zindex-modal, 1000);
+        z-index: var(--sg-zindex-modal, 8000);
         padding: 20px;
     }
     .sgc-interrupt-body { padding: 12px 0; }
@@ -52,6 +53,7 @@
     [CascadingParameter] public LangGraphProvider? Provider { get; set; }
 
     private SgLangGraphInterrupt? _currentInterrupt;
+    private int _interruptZIndex;
 
     protected override void OnInitialized()
     {
@@ -64,6 +66,7 @@
     private void HandleInterrupt(SgLangGraphInterrupt interrupt)
     {
         _currentInterrupt = interrupt;
+        _interruptZIndex = ZIndexService.BringToFront(this, SgZIndexService.ModalOverlayBase);
         InvokeAsync(StateHasChanged);
     }
 
@@ -73,6 +76,7 @@
         {
             await Provider.RespondToInterruptAsync(new { approved = true });
             _currentInterrupt = null;
+            ZIndexService.Release(this);
             StateHasChanged();
         }
     }
@@ -83,6 +87,7 @@
         {
             await Provider.RespondToInterruptAsync(new { approved = false });
             _currentInterrupt = null;
+            ZIndexService.Release(this);
             StateHasChanged();
         }
     }
@@ -95,6 +100,7 @@
 
     public void Dispose()
     {
+        ZIndexService.Release(this);
         if (Provider != null)
         {
             Provider.InterruptReceived -= HandleInterrupt;

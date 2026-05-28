@@ -1,11 +1,13 @@
 @namespace SuperUI.Components
 @using Microsoft.AspNetCore.Components.Web
 @using SuperUI.Base.ComponentBases
+@using SuperUI.Services
 @inherits SgJsComponentBase
+@inject SgZIndexService ZIndexService
 
 @if (_visible)
 {
-    <div class="sgc-command-palette-overlay" @onclick="Close">
+    <div class="sgc-command-palette-overlay" style="z-index:@_zIndex" @onclick="Close">
         <div class="sgc-command-palette" @onclick:stopPropagation="true" style="width:@Width;max-height:@MaxHeight;">
             <div class="sgc-command-palette-search">
                 <div class="sgc-command-palette-input-wrapper">
@@ -102,7 +104,7 @@
         display: flex;
         justify-content: center;
         padding-top: 12vh;
-        z-index: 9999;
+        z-index: 8000;
         animation: sgc-fade-in 0.15s ease-out;
     }
 
@@ -379,6 +381,7 @@
     private List<SgCommandGroup> _groups = new();
     private List<SgCommandGroup> _filteredGroups = new();
     private SgCommand? _selectedCommand;
+    private int _zIndex;
 
     /// <summary>
     /// Gets or sets the placeholder text displayed in the search input. Default is "Поиск команд...".
@@ -407,12 +410,19 @@
         await SafeInvokeVoidAsync("init", SelfRef);
     }
 
+    protected override async ValueTask OnDisposingAsync()
+    {
+        if (_zIndex > 0) ZIndexService.Release(this);
+        _zIndex = 0;
+    }
+
     /// <summary>
     /// Opens the command palette and focuses the search input.
     /// </summary>
     public async Task Open()
     {
         _visible = true;
+        _zIndex = ZIndexService.Allocate(this, SgZIndexService.ModalOverlayBase);
         _search = "";
         FilterCommands();
         StateHasChanged();
@@ -426,6 +436,8 @@
     public void Close()
     {
         _visible = false;
+        if (_zIndex > 0) ZIndexService.Release(this);
+        _zIndex = 0;
         StateHasChanged();
     }
 

@@ -19,6 +19,9 @@ public sealed class SgZIndexService
     [DebuggerDisplay("Value = {Value}, Owner = {Owner}")]
     private sealed record ZIndexEntry(int Value, object Owner);
 
+    /// <summary>Base z-index for dropdown menus (below modals).</summary>
+    public const int DropdownBase = 1050;
+
     /// <summary>Base z-index for modal dialogs.</summary>
     public const int ModalBase = 1100;
 
@@ -31,11 +34,11 @@ public sealed class SgZIndexService
     /// <summary>Base z-index for tooltips.</summary>
     public const int TooltipBase = 1400;
 
-    /// <summary>Base z-index for toast notifications.</summary>
-    public const int ToastBase = 1500;
-
     /// <summary>Base z-index for floating windows (e.g. <c>SgDockWindow</c>).</summary>
     public const int WindowBase = 2000;
+
+    /// <summary>Base z-index for modal-like overlays (command palette, tour).</summary>
+    public const int ModalOverlayBase = 8000;
 
     /// <summary>Base z-index for portal teleported content.</summary>
     public const int PortalBase = 9000;
